@@ -48,13 +48,13 @@ vi.mock('../lib/device-pool.js', () => ({
   resolveRunnerRepoPath: () => Promise.resolve(null),
 }));
 
-const buildChatPreamble = vi.fn(async () => '## Project Config\n\n---\n\n');
+const buildChatPreamble = vi.fn(async (..._args: unknown[]) => '## Project Config\n\n---\n\n');
 vi.mock('../lib/chat-preamble.js', () => ({
   buildChatPreamble: (id: string) => buildChatPreamble(id),
   TOOL_REFERENCE: '## Tool Reference (test)',
 }));
 
-const publishSpy = vi.fn(() => 1);
+const publishSpy = vi.fn((..._args: unknown[]) => 1);
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
@@ -74,6 +74,14 @@ vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: vi.fn(async () => undefined),
   setCurrentStep: vi.fn(async () => undefined),
   setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+}));
+
+// Org-level authz: stub the db-touching resolvers; pure helpers stay real.
+const projectAccessMock = vi.fn();
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: (...args: unknown[]) => projectAccessMock(...args),
+  loadVisibleProjectIds: vi.fn(async () => []),
 }));
 
 const { agentSessionRoutes } = await import('./routes.js');
@@ -108,7 +116,17 @@ beforeEach(() => {
   selectOrderByLimit.mockReset();
   insertReturning.mockReset();
   updateReturning.mockReset();
+  projectAccessMock.mockReset();
 });
+
+function grantAccess(role: 'admin' | 'member' | 'viewer' | null) {
+  projectAccessMock.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role,
+    orgRole: role === 'admin' ? 'owner' : null,
+  });
+}
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -162,11 +180,8 @@ describe('POST /api/agent-sessions/start', () => {
           repoPath: '/repo',
           defaultDeviceId: null,
         },
-      ])
-      // loadProjectAccess: project lookup
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'someone-else' }])
-      // member lookup → no row
-      .mockResolvedValueOnce([]);
+      ]);
+    grantAccess(null);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -191,19 +206,32 @@ describe('POST /api/agent-sessions/start', () => {
           repoPath: '/repo',
           defaultDeviceId: null,
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
 
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
 
+    // createChatSessionRow inserts an EMPTY row (idle, no device, no claude id).
     insertReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        status: 'idle',
+        title: 'hello',
+        messages: [],
+        claudeSessionId: null,
+      },
+    ]);
+    // dispatchChatTurn flips it to running + pins the device in the tx.update.
+    updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
         projectId: PROJECT_ID,
         deviceId: DEVICE_ID,
         status: 'running',
         title: 'hello',
+        claudeSessionId: null,
       },
     ]);
 
@@ -240,9 +268,8 @@ describe('POST /api/agent-sessions/start', () => {
           repoPath: '/repo',
           defaultDeviceId: null,
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
 
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
 
@@ -284,9 +311,8 @@ describe('POST /api/agent-sessions/start', () => {
           repoPath: '/repo',
           defaultDeviceId: null,
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
     insertReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
@@ -321,9 +347,8 @@ describe('POST /api/agent-sessions/start', () => {
           repoPath: '/repo',
           defaultDeviceId: null,
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
 
     const app = buildApp();
@@ -355,9 +380,8 @@ describe('POST /api/agent-sessions/start', () => {
     selectLimit
       .mockResolvedValueOnce([
         { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, repoPath: '/repo', defaultDeviceId: null },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
 
     const app = buildApp();
@@ -404,13 +428,14 @@ describe('POST /api/agent-sessions/send', () => {
           messages: [{ role: 'user', content: 'first' }],
           metadata: { deviceId: DEVICE_ID },
           repoPath: '/repo',
-          claudeSessionId: null,
+          // A genuine follow-up already has a Claude session → agent:send.
+          claudeSessionId: 'claude-abc',
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
-      .mockResolvedValueOnce([{ status: 'online' }]) // /send guard: pinned device online
-      .mockResolvedValueOnce([{ slug: 'apiflow' }]);
+      ]);
+    grantAccess('admin');
+    selectLimit
+      .mockResolvedValueOnce([{ status: 'online' }]) // resolveChatDevice: pinned device online
+      .mockResolvedValueOnce([{ id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo' }]);
     updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -418,7 +443,7 @@ describe('POST /api/agent-sessions/send', () => {
         deviceId: DEVICE_ID,
         status: 'running',
         repoPath: '/repo',
-        claudeSessionId: null,
+        claudeSessionId: 'claude-abc',
         metadata: { deviceId: DEVICE_ID },
         messages: [],
       },
@@ -459,9 +484,9 @@ describe('POST /api/agent-sessions/send', () => {
           repoPath: '/repo',
           claudeSessionId: null,
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
+      ]);
+    grantAccess('admin');
+    selectLimit
       .mockResolvedValueOnce([{ status: 'offline' }]); // pinned device offline
 
     const app = buildApp();
@@ -491,9 +516,8 @@ describe('POST /api/agent-sessions/abort', () => {
           deviceId: DEVICE_ID,
           metadata: { deviceId: DEVICE_ID },
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
     updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -534,9 +558,8 @@ describe('POST /api/agent-sessions/abort', () => {
           deviceId: DEVICE_ID,
           metadata: {},
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'project-owner' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+      ]);
+    grantAccess('member');
 
     const app = buildApp();
     const res = await app.fetch(
@@ -564,9 +587,8 @@ describe('POST /api/agent-sessions/build-prompt', () => {
           repoPath: '/repo',
           defaultDeviceId: null,
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
 
     const app = buildApp();
@@ -595,9 +617,8 @@ describe('POST /api/agent-sessions/build-prompt', () => {
           repoPath: '/repo',
           defaultDeviceId: null,
         },
-      ])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      ]);
+    grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
 
     const app = buildApp();

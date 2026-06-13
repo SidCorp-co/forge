@@ -26,7 +26,7 @@ vi.mock('./retry.js', () => ({
 
 // db.select().from().innerJoin().where().limit() → issue+owner row.
 const issueRowMock = vi.fn<() => unknown[]>(() => [
-  { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, ownerId: 'owner1' },
+  { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
 ]);
 function selectChain() {
   const chain = {
@@ -118,7 +118,7 @@ function makeJob(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   scheduleRetryMock.mockResolvedValue({ scheduled: false });
   issueRowMock.mockReturnValue([
-    { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, ownerId: 'owner1' },
+    { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
   ]);
 });
 
@@ -216,7 +216,7 @@ describe('finalizeFailedJob', () => {
   it('does not revert when the issue is already at entry-status (no NO_OP transition)', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
     issueRowMock.mockReturnValueOnce([
-      { id: 'i1', projectId: 'p1', status: 'reopen', reopenCount: 0, ownerId: 'owner1' },
+      { id: 'i1', projectId: 'p1', status: 'reopen', reopenCount: 0, projectCreatedBy: 'owner1' },
     ]);
     await finalizeFailedJob(makeJob({ type: 'fix' }), { error: 'boom' });
     expect(applyTransitionMock).not.toHaveBeenCalled();

@@ -10,7 +10,13 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
@@ -67,7 +73,7 @@ async function token() {
 describe('GET /api/projects/:projectId/skills/effective', () => {
   it('403 when caller is not a project member', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]); // project
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // access
     selectLimit.mockResolvedValueOnce([]); // member -> none
 
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/skills/effective`, {
@@ -78,8 +84,7 @@ describe('GET /api/projects/:projectId/skills/effective', () => {
 
   it('lists globals (read-only) + project skills with shadow annotations', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     // globals select.orderBy
     selectOrderBy.mockResolvedValueOnce([
       { id: GLOBAL_ID, name: 'forge-code', scope: 'global', skillMd: 'GLOBAL', prompt: null, files: [] },
@@ -122,8 +127,7 @@ describe('GET /api/projects/:projectId/skills/effective', () => {
 describe('POST /api/projects/:projectId/skills/apply-default', () => {
   it('201 creates a same-name project copy from the global template', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
-    selectLimit.mockResolvedValueOnce([{ role: 'admin' }]); // member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     selectLimit.mockResolvedValueOnce([
       { id: GLOBAL_ID, name: 'forge-code', scope: 'global', skillMd: 'GLOBAL', prompt: null, files: [] },
     ]); // global lookup
@@ -147,8 +151,7 @@ describe('POST /api/projects/:projectId/skills/apply-default', () => {
 
   it('400 ALREADY_SHADOWED when a same-name project skill exists', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     selectLimit.mockResolvedValueOnce([
       { id: GLOBAL_ID, name: 'forge-code', scope: 'global', skillMd: 'GLOBAL', prompt: null, files: [] },
     ]); // global lookup
@@ -164,8 +167,7 @@ describe('POST /api/projects/:projectId/skills/apply-default', () => {
 
   it('400 when the source skill is not global', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     selectLimit.mockResolvedValueOnce([
       { id: GLOBAL_ID, name: 'forge-code', scope: 'project', projectId: PROJECT_ID },
     ]); // not a global

@@ -6,28 +6,31 @@
 // shared `useTabParam` hook (ISS-349) so a tab is linkable and the strip matches
 // the other tabbed screens, mirroring the workspace SettingsScreen.
 import {
-  ScreenTabs,
-  ProjectLoader,
+  Badge,
   EmptyState,
   ErrorState,
-  ProjectMark,
   MonoTag,
-  Badge,
+  PageContainer,
+  ProjectLoader,
+  ProjectMark,
+  ScreenTabs,
   type TabItem,
 } from "@/design";
-import { useTabParam } from "@/lib/utils/use-tab-param";
-import { useProjectsIncludingArchived, useProject } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import {
+  useProject,
+  useProjectsIncludingArchived,
+} from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useTabParam } from "@/lib/utils/use-tab-param";
+import { AdvancedTab } from "./advanced-tab";
 import { BasicsTab } from "./basics-tab";
-import { RepoTab } from "./repo-tab";
-import { TestingTab } from "./testing-tab";
-import { PipelineTab } from "./pipeline-tab";
+import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
-import { AgentTab } from "./agent-tab";
-import { IntegrationsTab } from "./integrations-tab";
-import { AdvancedTab } from "./advanced-tab";
+import { PipelineTab } from "./pipeline-tab";
+import { RepoTab } from "./repo-tab";
+import { TestingTab } from "./testing-tab";
 
 const TAB_VALUES = [
   "basics",
@@ -36,7 +39,6 @@ const TAB_VALUES = [
   "pipeline",
   "labels",
   "members",
-  "agent",
   "integrations",
   "advanced",
 ] as const;
@@ -49,7 +51,6 @@ const TABS: TabItem[] = [
   { value: "pipeline", label: "Pipeline" },
   { value: "labels", label: "Labels" },
   { value: "members", label: "Members" },
-  { value: "agent", label: "Agent" },
   { value: "integrations", label: "Integrations" },
   { value: "advanced", label: "Advanced" },
 ];
@@ -78,7 +79,10 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
   if (projectsQ.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+        <ErrorState
+          message={formatApiError(projectsQ.error)}
+          onRetry={() => projectsQ.refetch()}
+        />
       </div>
     );
   }
@@ -98,7 +102,10 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
   if (detailQ.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState message={formatApiError(detailQ.error)} onRetry={() => detailQ.refetch()} />
+        <ErrorState
+          message={formatApiError(detailQ.error)}
+          onRetry={() => detailQ.refetch()}
+        />
       </div>
     );
   }
@@ -107,7 +114,10 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
   if (!project) return null;
 
   const glyph = projectGlyph(project.id);
-  const canEdit = listItem.role === "owner";
+  // Settings-level edits require org owner/admin on the project's org; member
+  // and label management only needs the effective project admin role.
+  const canEdit = listItem.orgRole === "owner" || listItem.orgRole === "admin";
+  const isProjectAdmin = listItem.role === "admin";
 
   return (
     <div className="flex min-h-full flex-col">
@@ -128,33 +138,60 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
                 <h1 className="fg-h2 truncate">Project settings</h1>
                 <div className="mt-1 flex items-center gap-2">
                   <MonoTag>{project.slug}</MonoTag>
-                  <Badge tone={canEdit ? "accent" : "neutral"}>{listItem.role}</Badge>
+                  <Badge tone={canEdit ? "accent" : "neutral"}>
+                    {listItem.role ?? "org"}
+                  </Badge>
                 </div>
               </div>
             </header>
 
             {!canEdit && (
               <p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
-                You have read-only access — only the project owner can change these settings.
+                {isProjectAdmin
+                  ? "Basics, Repo, Testing, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
+                  : "You have read-only access to these settings."}
               </p>
             )}
           </>
         }
       />
 
-      <div className="mx-auto w-full max-w-4xl px-4 pb-8 pt-6 sm:px-8">
-        {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
-        {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
-        {tab === "testing" && <TestingTab project={project} canEdit={canEdit} />}
-        {tab === "pipeline" && <PipelineTab projectId={project.id} canEdit={canEdit} />}
-        {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
-        {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
-        {tab === "agent" && (
-          <AgentTab projectId={project.id} canEdit={canEdit || listItem.role === "admin"} />
-        )}
-        {tab === "integrations" && <IntegrationsTab projectId={project.id} canEdit={canEdit} />}
-        {tab === "advanced" && <AdvancedTab project={project} canEdit={canEdit} />}
-      </div>
+      <PageContainer>
+        {/* Shell stays the shared wide column; form content capped (mirrors
+            the workspace SettingsScreen). */}
+        <div className="max-w-4xl">
+          {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
+          {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
+          {tab === "testing" && (
+            <TestingTab project={project} canEdit={canEdit} />
+          )}
+          {tab === "pipeline" && (
+            <PipelineTab
+              projectId={project.id}
+              canEdit={canEdit}
+              slug={project.slug}
+            />
+          )}
+          {tab === "labels" && (
+            <LabelsTab
+              projectId={project.id}
+              canEdit={canEdit || isProjectAdmin}
+            />
+          )}
+          {tab === "members" && (
+            <MembersTab
+              projectId={project.id}
+              canEdit={canEdit || isProjectAdmin}
+            />
+          )}
+          {tab === "integrations" && (
+            <IntegrationsTab projectId={project.id} canEdit={canEdit} />
+          )}
+          {tab === "advanced" && (
+            <AdvancedTab project={project} canEdit={canEdit} />
+          )}
+        </div>
+      </PageContainer>
     </div>
   );
 }

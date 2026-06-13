@@ -6,6 +6,12 @@
 // category, and complexity are optional. On success we invalidate `['issues']`
 // (done by the hook) and navigate to the new issue's detail page. Modeled on
 // the New Project dialog (ISS-319).
+//
+// ISS-454 — adds a "Quick capture" mode (tab) for small-request intake: a
+// one-liner title plus an optional Context textarea. The context is sent as
+// both `description` and `aiSummary` so triage has enough to act on without
+// bouncing to needs_info. The issue enters at the server default status
+// (`open`) and rides the normal pipeline — the standard form is unchanged.
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -16,7 +22,18 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { Banner, Button, Field, Icon, IconButton, Input, Select, SlideOver, Textarea } from "@/design";
+import {
+  Banner,
+  Button,
+  Field,
+  Icon,
+  IconButton,
+  Input,
+  Select,
+  SlideOver,
+  Tabs,
+  Textarea,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
@@ -63,13 +80,24 @@ export interface NewIssueDialogProps {
   scope: { projectId: string; slug: string };
 }
 
+type DialogMode = "standard" | "quick";
+
+const MODE_TABS = [
+  { value: "standard", label: "Standard" },
+  { value: "quick", label: "Quick capture" },
+];
+
 export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const router = useRouter();
   const { toast } = useToast();
   const create = useCreateIssue(scope.projectId);
 
+  const [mode, setMode] = useState<DialogMode>("standard");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  // Quick-capture context — kept separate from `description` so switching
+  // tabs never silently carries a draft between the two forms.
+  const [context, setContext] = useState("");
   const [priority, setPriority] = useState<IssuePriority>("medium");
   const [category, setCategory] = useState("");
   const [complexity, setComplexity] = useState("");
@@ -83,8 +111,10 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   // or stale error into a fresh create.
   useEffect(() => {
     if (open) {
+      setMode("standard");
       setTitle("");
       setDescription("");
+      setContext("");
       setPriority("medium");
       setCategory("");
       setComplexity("");
@@ -152,6 +182,8 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   // a fallback so the chip + server validation have something to show.
   const onPaste = useCallback(
     (e: ClipboardEvent) => {
+      // Quick capture sends no attachments — never stage invisible files there.
+      if (mode === "quick") return;
       const blobs: File[] = [];
       for (const item of Array.from(e.clipboardData.items)) {
         if (item.kind === "file" && item.type.startsWith("image/")) {
@@ -172,7 +204,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         acceptFiles(blobs);
       }
     },
-    [acceptFiles],
+    [acceptFiles, mode],
   );
 
   const removeFile = (index: number) => {
@@ -193,24 +225,37 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     }
     setErrors({});
 
-    const trimmedDesc = description.trim();
-    const trimmedCategory = category.trim();
     try {
-      const attachments = await Promise.all(
-        files.map(async (f) => ({
-          name: f.name,
-          mime: f.type || "application/octet-stream",
-          dataBase64: await fileToBase64(f),
-        })),
-      );
-      const created = await create.mutateAsync({
-        title: trimmedTitle,
-        priority,
-        ...(trimmedDesc ? { description: trimmedDesc } : {}),
-        ...(trimmedCategory ? { category: trimmedCategory } : {}),
-        ...(complexity ? { complexity: complexity as IssueComplexity } : {}),
-        ...(attachments.length ? { attachments } : {}),
-      });
+      let created;
+      if (mode === "quick") {
+        // ISS-454 — quick capture: one-liner + optional context. The context
+        // doubles as `description` and `aiSummary` so triage can act on the
+        // issue without bouncing it to needs_info. Status defaults to `open`
+        // server-side; the issue rides the normal pipeline.
+        const trimmedContext = context.trim();
+        created = await create.mutateAsync({
+          title: trimmedTitle,
+          ...(trimmedContext ? { description: trimmedContext, aiSummary: trimmedContext } : {}),
+        });
+      } else {
+        const trimmedDesc = description.trim();
+        const trimmedCategory = category.trim();
+        const attachments = await Promise.all(
+          files.map(async (f) => ({
+            name: f.name,
+            mime: f.type || "application/octet-stream",
+            dataBase64: await fileToBase64(f),
+          })),
+        );
+        created = await create.mutateAsync({
+          title: trimmedTitle,
+          priority,
+          ...(trimmedDesc ? { description: trimmedDesc } : {}),
+          ...(trimmedCategory ? { category: trimmedCategory } : {}),
+          ...(complexity ? { complexity: complexity as IssueComplexity } : {}),
+          ...(attachments.length ? { attachments } : {}),
+        });
+      }
       toast({ title: "Issue created", description: created.displayId, tone: "success" });
       onClose();
       router.push(`/projects/${scope.slug}/issues/${created.id}`);
@@ -222,135 +267,165 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   return (
     <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
       <form onSubmit={onSubmit} onPaste={onPaste} className="flex h-full flex-col gap-4">
+        <Tabs
+          tabs={MODE_TABS}
+          value={mode}
+          onChange={(v) => {
+            setMode(v as DialogMode);
+            setErrors({});
+          }}
+        />
+
         {errors.form && <Banner tone="danger">{errors.form}</Banner>}
 
         <Field label="Title" required error={errors.title}>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Short summary of the issue"
+            placeholder={
+              mode === "quick" ? "One-line request…" : "Short summary of the issue"
+            }
             autoFocus
             maxLength={500}
           />
         </Field>
 
-        <Field label="Description" hint="Optional — context, repro steps, or links.">
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="What needs to happen and why…"
-            maxLength={100_000}
-            rows={5}
-          />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Priority">
-            <Select
-              aria-label="Priority"
-              value={priority}
-              options={PRIORITY_OPTIONS}
-              onChange={(v) => setPriority(v as IssuePriority)}
-            />
-          </Field>
-          <Field label="Complexity" hint="Optional.">
-            <Select
-              aria-label="Complexity"
-              value={complexity}
-              options={COMPLEXITY_OPTIONS}
-              onChange={setComplexity}
-            />
-          </Field>
-        </div>
-
-        <Field label="Category" hint="Optional — e.g. bug, feature, chore.">
-          <Input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="bug"
-            maxLength={100}
-          />
-        </Field>
-
-        <Field
-          label="Attachments"
-          hint="Optional — drop files, choose them, or paste a screenshot (⌘/Ctrl+V)."
-        >
-          <div
-            onDrop={onDrop}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
-              dragOver ? "border-cobalt-400 bg-cobalt-50/50" : "border-line-strong bg-sunken"
-            }`}
+        {mode === "quick" && (
+          <Field
+            label="Context"
+            hint="Optional — anything triage needs to act without asking back. Saved as the description and AI summary."
           >
-            <Icon name="plus" size={18} className="text-subtle" />
-            <p className="fg-body-sm text-fg">Drop files or paste an image to attach</p>
-            <p className="fg-caption">
-              Max 10 MB each · up to {MAX_FILES} · images, video, PDF, text, markdown.
-            </p>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="mt-1"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Choose files
-            </Button>
-            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onPick} />
-          </div>
+            <Textarea
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              placeholder="Why this matters, where it happens, links…"
+              maxLength={100_000}
+              rows={5}
+            />
+          </Field>
+        )}
 
-          {warnings.length > 0 && (
-            <div className="mt-2">
-              <Banner tone="attention">
-                <ul className="space-y-0.5">
-                  {warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
+        {mode === "standard" && (
+          <>
+            <Field label="Description" hint="Optional — context, repro steps, or links.">
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What needs to happen and why…"
+                maxLength={100_000}
+                rows={5}
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Priority">
+                <Select
+                  aria-label="Priority"
+                  value={priority}
+                  options={PRIORITY_OPTIONS}
+                  onChange={(v) => setPriority(v as IssuePriority)}
+                />
+              </Field>
+              <Field label="Complexity" hint="Optional.">
+                <Select
+                  aria-label="Complexity"
+                  value={complexity}
+                  options={COMPLEXITY_OPTIONS}
+                  onChange={setComplexity}
+                />
+              </Field>
+            </div>
+
+            <Field label="Category" hint="Optional — e.g. bug, feature, chore.">
+              <Input
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="bug"
+                maxLength={100}
+              />
+            </Field>
+
+            <Field
+              label="Attachments"
+              hint="Optional — drop files, choose them, or paste a screenshot (⌘/Ctrl+V)."
+            >
+              <div
+                onDrop={onDrop}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
+                  dragOver ? "border-cobalt-400 bg-cobalt-50/50" : "border-line-strong bg-sunken"
+                }`}
+              >
+                <Icon name="plus" size={18} className="text-subtle" />
+                <p className="fg-body-sm text-fg">Drop files or paste an image to attach</p>
+                <p className="fg-caption">
+                  Max 10 MB each · up to {MAX_FILES} · images, video, PDF, text, markdown.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-1"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Choose files
+                </Button>
+                <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onPick} />
+              </div>
+
+              {warnings.length > 0 && (
+                <div className="mt-2">
+                  <Banner tone="attention">
+                    <ul className="space-y-0.5">
+                      {warnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                  </Banner>
+                </div>
+              )}
+
+              {files.length > 0 && (
+                <ul className="mt-2.5 flex flex-col gap-1.5">
+                  {files.map((f, i) => (
+                    <li
+                      key={`${f.name}-${i}`}
+                      className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
+                    >
+                      <Icon
+                        name={f.type.startsWith("image/") ? "grid" : "folder"}
+                        size={15}
+                        className="flex-none text-subtle"
+                      />
+                      <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={f.name}>
+                        {f.name}
+                      </span>
+                      <span className="fg-caption flex-none">{formatSize(f.size)}</span>
+                      <IconButton
+                        type="button"
+                        icon="x"
+                        size="sm"
+                        aria-label={`Remove ${f.name}`}
+                        onClick={() => removeFile(i)}
+                      />
+                    </li>
                   ))}
                 </ul>
-              </Banner>
-            </div>
-          )}
-
-          {files.length > 0 && (
-            <ul className="mt-2.5 flex flex-col gap-1.5">
-              {files.map((f, i) => (
-                <li
-                  key={`${f.name}-${i}`}
-                  className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
-                >
-                  <Icon
-                    name={f.type.startsWith("image/") ? "grid" : "folder"}
-                    size={15}
-                    className="flex-none text-subtle"
-                  />
-                  <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={f.name}>
-                    {f.name}
-                  </span>
-                  <span className="fg-caption flex-none">{formatSize(f.size)}</span>
-                  <IconButton
-                    type="button"
-                    icon="x"
-                    size="sm"
-                    aria-label={`Remove ${f.name}`}
-                    onClick={() => removeFile(i)}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </Field>
+              )}
+            </Field>
+          </>
+        )}
 
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" icon="plus" loading={create.isPending}>
-            Create issue
+            {mode === "quick" ? "Capture issue" : "Create issue"}
           </Button>
         </div>
       </form>

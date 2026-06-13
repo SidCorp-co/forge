@@ -4,14 +4,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
-import {
-  AttachmentError,
-  type AttachmentErrorEntry,
-  type DecodedAttachment,
-  type PersistedIssueAttachment,
-  decodeAndValidateAttachments,
-  persistDecodedIssueAttachments,
-} from './attachment-service.js';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
@@ -27,16 +19,22 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { logger } from '../logger.js';
+import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import {
-  type PipelineHealth,
-  hydratePipelineHealthForIssues,
-} from './pipeline-health.js';
-import { logger } from '../logger.js';
+  AttachmentError,
+  type AttachmentErrorEntry,
+  type DecodedAttachment,
+  type PersistedIssueAttachment,
+  decodeAndValidateAttachments,
+  persistDecodedIssueAttachments,
+} from './attachment-service.js';
+import { type PipelineHealth, hydratePipelineHealthForIssues } from './pipeline-health.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
 // pipelineHealth is derived; the list/single endpoints must not 500 if the
@@ -56,11 +54,7 @@ async function safeHydratePipelineHealth(
   }
 }
 import type { IssueBranchOverride } from '../branches/resolve.js';
-import {
-  DecomposeError,
-  IntegrationBranchError,
-  decomposeParent,
-} from './decompose.js';
+import { DecomposeError, IntegrationBranchError, decomposeParent } from './decompose.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const attachmentInputSchema = z
@@ -71,7 +65,7 @@ const attachmentInputSchema = z
   })
   .strict();
 
-import { issueMetadataSchema, isSelfReferentialBranch } from './metadata.js';
+import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 export {
   branchNameSchema,
   branchConfigOverrideSchema,
@@ -98,6 +92,13 @@ export const issueCreateSchema = z
     // atomically with the insert. ISS-236 — also `draft` for AI-generated
     // proposals (Dream / Doc-Sync) that wait for human promote/discard.
     status: z.enum(['open', 'on_hold', 'draft']).optional(),
+    // ISS-454 — quick-capture intake. Operator-entered context so triage can
+    // act without bouncing to needs_info. Shapes mirror the MCP create tool
+    // (forge-issues.ts); all optional + nullable, default null preserves the
+    // pre-ISS-454 behaviour. No LLM populates these on create.
+    aiSummary: z.string().max(100_000).nullable().optional(),
+    aiSuggestedSolution: z.string().max(100_000).nullable().optional(),
+    aiAcceptanceCriteria: z.array(z.string().max(2_000)).max(50).nullable().optional(),
   })
   .strict();
 
@@ -230,7 +231,7 @@ issueProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
     if (input.labels && input.labels.length > 0)
@@ -267,6 +268,9 @@ issueProjectRoutes.post(
           reportedBy: input.reportedBy ?? null,
           assigneeId: input.assigneeId ?? null,
           parentIssueId: input.parentIssueId ?? null,
+          aiSummary: input.aiSummary ?? null,
+          aiSuggestedSolution: input.aiSuggestedSolution ?? null,
+          aiAcceptanceCriteria: input.aiAcceptanceCriteria ?? null,
           createdById: userId,
         })
         .returning();
@@ -333,7 +337,7 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const issSeq = Number(displayId.slice(4));
     const [row] = await db
@@ -377,7 +381,7 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const conditions = [eq(issues.projectId, projectId)];
     if (q.status) conditions.push(eq(issues.status, q.status));
@@ -460,7 +464,7 @@ issueRoutes.get(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const labelRows = await db
       .select({ id: labels.id, name: labels.name, color: labels.color })
@@ -512,7 +516,7 @@ issueRoutes.get(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const rows = await db
       .select({
@@ -550,7 +554,7 @@ issueRoutes.patch(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
     if (patch.labels && patch.labels.length > 0)
@@ -729,7 +733,7 @@ issueRoutes.post(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     try {
       const result = await decomposeParent(
@@ -781,11 +785,22 @@ issueRoutes.delete(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     await db.delete(issues).where(eq(issues.id, id));
+
+    // The issue's memory row references it only by sourceRef (no FK), so a
+    // hard delete would otherwise leave the title/description searchable
+    // forever. Detached: memory cleanup must not delay or fail the delete.
+    queueMicrotask(() => {
+      deleteMemory(issue.projectId, 'issue', id).catch((err) => {
+        logger.warn(
+          { err: (err as Error).message, issueId: id, projectId: issue.projectId },
+          'issues.delete: memory cleanup failed',
+        );
+      });
+    });
+
     return c.body(null, 204);
   },
 );

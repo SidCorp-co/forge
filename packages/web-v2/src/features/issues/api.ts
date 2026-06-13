@@ -38,6 +38,12 @@ export interface CreateIssueInput {
   /** Inline base64 attachments — mirrors core's `issueCreateSchema.attachments`
    *  (max 10, server-validated for size/mime). Omit when none are staged. */
   attachments?: { name: string; mime: string; dataBase64: string }[];
+  /** ISS-454 quick-capture intake — operator-entered context persisted onto
+   *  the issue's ai* columns so triage can act without bouncing to
+   *  needs_info. All optional; omit to preserve plain-create behaviour. */
+  aiSummary?: string;
+  aiSuggestedSolution?: string;
+  aiAcceptanceCriteria?: string[];
 }
 
 export const issuesApi = {
@@ -63,7 +69,12 @@ export const issuesApi = {
     params.set("offset", String((page - 1) * pageSize));
     params.set("sort", opts.sort ?? "createdAt:desc");
     params.set("withAgentSessions", "1");
+    // ISS-437 — server-side per-issue cost rollup on the same response (one
+    // grouped query) instead of the old per-row cost-summary N+1.
+    params.set("withCost", "1");
     if (opts.q) params.set("q", opts.q);
+    if (opts.priority) params.set("priority", opts.priority);
+    if (opts.assignee) params.set("assignee", opts.assignee);
     const { status, statusNot } = filterToStatusParams(opts.filter ?? "all");
     for (const s of status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);

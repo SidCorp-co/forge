@@ -3,16 +3,20 @@ import { z } from 'zod';
 import {
   AttachmentError,
   type PersistedCommentAttachment,
+  listCommentAttachmentsForIssue,
   persistCommentAttachment,
 } from '../../comments/attachment-service.js';
+import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
+import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { comments, issues, projectMembers, projects } from '../../db/schema.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
   zodToMcpSchema,
+  assertPrincipalIsWriter,
 } from './lib.js';
 
 /**
@@ -63,7 +67,10 @@ type CommentRow = {
   updatedAt: Date;
 };
 
-function serialize(row: CommentRow): Record<string, unknown> {
+function serialize(
+  row: CommentRow,
+  attachments: CommentAttachmentLite[] = [],
+): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: row.issueId,
@@ -72,6 +79,7 @@ function serialize(row: CommentRow): Record<string, unknown> {
     parentId: row.parentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    attachments,
   };
 }
 
@@ -138,7 +146,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         const issueId = input.filters?.issue;
         if (!issueId) throw new Error('BAD_REQUEST: filters.issue is required for list');
         const projectId = await loadIssueProjectId(issueId);
-        await assertPrincipalIsMember(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId);
 
         const rows = await db
           .select({
@@ -155,7 +163,12 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           .orderBy(asc(comments.createdAt))
           .limit(input.limit ?? 50);
 
-        return { comments: rows.map((r) => serialize(r as CommentRow)) };
+        const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
+        return {
+          comments: rows.map((r) =>
+            serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? []),
+          ),
+        };
       }
 
       case 'create': {
@@ -165,7 +178,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!body) throw new Error('BAD_REQUEST: data.body is required for create');
 
         const projectId = await loadIssueProjectId(issueId);
-        await assertPrincipalIsMember(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId);
 
         // Pre-decode + size-validate attachments BEFORE writing the comment row.
         // A size-cap rejection here returns PAYLOAD_TOO_LARGE without leaving an
@@ -177,9 +190,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
             const a = rawAttachments[i]!;
             const buf = decodeBase64Strict(a.dataBase64);
             if (!buf) {
-              throw new Error(
-                `BAD_REQUEST: data.attachments[${i}].dataBase64 is not valid base64`,
-              );
+              throw new Error(`BAD_REQUEST: data.attachments[${i}].dataBase64 is not valid base64`);
             }
             decoded.push({ name: a.name, mime: a.mime, bytes: buf });
           }
@@ -284,7 +295,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         // still delete on REST, but here we also require current membership
         // — MCP traffic comes from device principals, so a stale device on
         // an ex-member should not be able to mutate the project.
-        await assertPrincipalIsMember(principal, comment.projectId);
+        await assertPrincipalIsWriter(principal, comment.projectId);
         if (comment.authorId !== device.ownerId) {
           await assertCommentDeletePermission(device.ownerId, comment.projectId);
         }
@@ -303,23 +314,10 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   },
 });
 
-async function assertCommentDeletePermission(
-  userId: string,
-  projectId: string,
-): Promise<void> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (project.ownerId === userId) return;
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-  if (!member || member.role !== 'owner') {
-    throw new Error('FORBIDDEN: only the comment author or project owner can delete');
+async function assertCommentDeletePermission(userId: string, projectId: string): Promise<void> {
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!access) throw new Error('FORBIDDEN: project not found or not accessible');
+  if (!projectRoleAtLeast(access.role, 'admin')) {
+    throw new Error('FORBIDDEN: only the comment author or a project admin can delete');
   }
 }

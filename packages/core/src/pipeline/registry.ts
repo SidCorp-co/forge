@@ -108,9 +108,13 @@ export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map
 // v1 `packages/web/src/features/pipeline/runner-capabilities.ts`; it was
 // removed with v1 (ISS-397) and web-v2 has no copy, so this is now the sole
 // source. The test suite still asserts the values stay self-consistent.
+// `smoke` (ISS-455) is the skill smoke-verify canary — a plain prompt run with
+// no step semantics, so every runner type that can run a pipeline step can run
+// it; without the entry the dispatcher would permanently fail the job as
+// `runner_unsupported_type`.
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify'],
-  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify', 'smoke'],
+  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify', 'smoke'],
 };
 
 export interface JobTypeMapping {

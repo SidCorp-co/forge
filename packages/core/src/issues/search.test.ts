@@ -13,12 +13,46 @@ const selectOrderBy = vi.fn(() => ({ limit: vi.fn(() => ({ offset: selectOffset 
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
   orderBy: selectOrderBy,
+  // The totalCount query awaits select().from().where() directly — make the
+  // chain object thenable so the 200-path tests (ISS-437) can run through it.
+  then: (resolve: (v: unknown) => void) => resolve([{ n: 0 }]),
 }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+// ISS-437 — the withCost rollup runs select().from(subquery).innerJoin()
+// .groupBy() (awaited directly; mockReturnValueOnce an array of
+// `{ issueId, estimatedCost }` rows).
+const costGroupBy = vi.fn(() => []);
+const selectInnerJoin = vi.fn(() => ({ groupBy: costGroupBy }));
+const selectFrom = vi.fn(() => ({
+  where: selectWhere,
+  leftJoin: selectLeftJoin,
+  innerJoin: selectInnerJoin,
+}));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
+// ISS-437 — the rollup's DISTINCT (issue, session) subquery is only BUILT
+// (never awaited): selectDistinct().from().where().as('…') must return a
+// column-bag the outer query can reference.
+const distinctAs = vi.fn(() => ({ issueId: 'issue_sessions.issue_id', sessionId: 'issue_sessions.session_id' }));
+const dbSelectDistinct = vi.fn(() => ({
+  from: vi.fn(() => ({ where: vi.fn(() => ({ as: distinctAs })) })),
+}));
 
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect },
+  db: { select: dbSelect, selectDistinct: dbSelectDistinct },
+}));
+
+// ISS-437 — the agent-session hydrator hits the db with its own query shapes;
+// stub it so the withCost ∘ withAgentSessions composition test stays a pure
+// serialization check.
+vi.mock('./agent-sessions-hydrator.js', () => ({
+  hydrateAgentSessionsForIssues: vi.fn(async () => new Map([
+    ['33333333-3333-4333-8333-333333333333', { agentSessions: [], agentStatus: 'running' }],
+  ])),
 }));
 
 const { searchRoutes, buildIlikePattern } = await import('./search.js');
@@ -57,13 +91,11 @@ function req(qs = '', tok?: string) {
 
 function queueProjectAccessMember() {
   // loadProjectAccess: 1) project row, 2) member row
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'someone-else' }]);
-  selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
 function queueProjectAccessNonMember() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'someone-else' }]);
-  selectLimit.mockResolvedValueOnce([]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 }
 
 function queueProjectMissing() {
@@ -140,6 +172,64 @@ describe('GET /api/projects/:id/issues/search', () => {
     const t = await token();
     const res = await req('', t);
     expect(res.status).toBe(403);
+  });
+});
+
+// ISS-437 — opt-in per-issue cost rollup on the search response.
+describe('withCost (ISS-437)', () => {
+  const ISSUE_A = '33333333-3333-4333-8333-333333333333';
+  const ISSUE_B = '44444444-4444-4444-8444-444444444444';
+
+  function queueIssuesPage() {
+    selectOffset.mockReturnValueOnce([
+      { id: ISSUE_A, issSeq: 1, title: 'a' },
+      { id: ISSUE_B, issSeq: 2, title: 'b' },
+    ]);
+  }
+
+  it('omitted → response shape unchanged, no rollup query runs', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    const t = await token();
+    const res = await req('', t);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(2);
+    expect(body[0]).toMatchObject({ id: ISSUE_A, displayId: 'ISS-1' });
+    expect(body[0]).not.toHaveProperty('estimatedCost');
+    expect(dbSelectDistinct).not.toHaveBeenCalled();
+  });
+
+  it('withCost=1 → one grouped rollup; issues without usage report 0', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    costGroupBy.mockReturnValueOnce([{ issueId: ISSUE_A, estimatedCost: 1.23 }]);
+    const t = await token();
+    const res = await req('?withCost=1', t);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body[0]).toMatchObject({ id: ISSUE_A, displayId: 'ISS-1', estimatedCost: 1.23 });
+    expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0 });
+    // Exactly ONE extra query regardless of page size (the grouped rollup).
+    // The DISTINCT-session fan-out semantics live in the SQL itself (same
+    // shape as the cost-summary route) — covered by integration, not mocks.
+    expect(dbSelectDistinct).toHaveBeenCalledTimes(1);
+    expect(selectInnerJoin).toHaveBeenCalledTimes(1);
+  });
+
+  it('composes with withAgentSessions=1 (cost + agent fields on the same row)', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    costGroupBy.mockReturnValueOnce([{ issueId: ISSUE_A, estimatedCost: 0.5 }]);
+    const t = await token();
+    const res = await req('?withCost=1&withAgentSessions=1', t);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body[0]).toMatchObject({ id: ISSUE_A, estimatedCost: 0.5, agentStatus: 'running' });
+    expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0, agentStatus: null });
   });
 });
 

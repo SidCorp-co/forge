@@ -11,7 +11,7 @@ const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const updateWhere = vi.fn(async () => undefined);
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const updateFn = vi.fn(() => ({ set: updateSet }));
 
 vi.mock('../db/client.js', () => ({

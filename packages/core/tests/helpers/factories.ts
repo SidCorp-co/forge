@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import type { ProjectMemberRole } from '../../src/db/schema.js';
+import type { OrgMemberRole, ProjectMemberRole } from '../../src/db/schema.js';
 import type { TestDb } from './db.js';
 
 /**
- * Inserts against the real `users`, `projects`, and `project_members` tables
- * (Phase 2.1-C + 2.1-D). All factories are deterministic and return the row
- * shape they inserted.
+ * Inserts against the real `users`, `organizations`, `organization_members`,
+ * `projects`, and `project_members` tables. All factories are deterministic
+ * and return the row shape they inserted.
+ *
+ * Org-level authz: every project belongs to an organization (`projects.org_id`
+ * NOT NULL) and `projects.owner_id` was replaced by the audit-only
+ * `created_by`. `createTestProject` seeds a backing org (with the creator as
+ * org `owner`) automatically unless an explicit `orgId` override is given.
  */
 
 export interface TestUser {
@@ -38,35 +43,116 @@ export async function createTestUser(
   return user;
 }
 
+export interface TestOrg {
+  id: string;
+  slug: string;
+  name: string;
+  isPersonal: boolean;
+  createdBy: string;
+}
+
+export interface SeedOrgOverrides {
+  id?: string;
+  slug?: string;
+  name?: string;
+  isPersonal?: boolean;
+  /** Role granted to `ownerUserId` via organization_members (default 'owner'). */
+  ownerRole?: OrgMemberRole;
+}
+
+/**
+ * Inserts an organization plus an `organization_members` row for
+ * `ownerUserId` (role `owner` by default). Use before inserting projects —
+ * `projects.org_id` is NOT NULL.
+ */
+export async function seedOrg(
+  db: TestDb,
+  ownerUserId: string,
+  overrides: SeedOrgOverrides = {},
+): Promise<TestOrg> {
+  const id = overrides.id ?? randomUUID();
+  const org: TestOrg = {
+    id,
+    slug: overrides.slug ?? `org-${id.slice(0, 8)}`,
+    name: overrides.name ?? `Test Org ${id.slice(0, 8)}`,
+    isPersonal: overrides.isPersonal ?? false,
+    createdBy: ownerUserId,
+  };
+
+  await db.execute(sql`
+    INSERT INTO organizations (id, slug, name, is_personal, created_by)
+    VALUES (${org.id}, ${org.slug}, ${org.name}, ${org.isPersonal}, ${org.createdBy})
+  `);
+  await db.execute(sql`
+    INSERT INTO organization_members (org_id, user_id, role)
+    VALUES (${org.id}, ${ownerUserId}, ${overrides.ownerRole ?? 'owner'})
+  `);
+
+  return org;
+}
+
+export interface TestOrgMember {
+  orgId: string;
+  userId: string;
+  role: OrgMemberRole;
+}
+
+export async function createTestOrgMember(
+  db: TestDb,
+  args: { orgId: string; userId: string; role?: OrgMemberRole },
+): Promise<TestOrgMember> {
+  const member: TestOrgMember = {
+    orgId: args.orgId,
+    userId: args.userId,
+    role: args.role ?? 'member',
+  };
+
+  await db.execute(sql`
+    INSERT INTO organization_members (org_id, user_id, role)
+    VALUES (${member.orgId}, ${member.userId}, ${member.role})
+  `);
+
+  return member;
+}
+
 export interface TestProject {
   id: string;
   slug: string;
   name: string;
-  ownerId: string;
+  orgId: string;
+  /** Audit-only creator (`projects.created_by`) — carries no authz semantics. */
+  createdBy: string;
 }
 
 export interface CreateTestProjectOverrides {
   id?: string;
   slug?: string;
   name?: string;
+  /**
+   * Existing organization to attach the project to. When omitted, a fresh org
+   * is seeded with `createdBy` as org `owner` (the common single-user case).
+   */
+  orgId?: string;
 }
 
 export async function createTestProject(
   db: TestDb,
-  ownerId: string,
+  createdBy: string,
   overrides: CreateTestProjectOverrides = {},
 ): Promise<TestProject> {
   const id = overrides.id ?? randomUUID();
+  const orgId = overrides.orgId ?? (await seedOrg(db, createdBy)).id;
   const project: TestProject = {
     id,
     slug: overrides.slug ?? `test-${id.slice(0, 8)}`,
     name: overrides.name ?? `Test Project ${id.slice(0, 8)}`,
-    ownerId,
+    orgId,
+    createdBy,
   };
 
   await db.execute(sql`
-    INSERT INTO projects (id, slug, name, owner_id)
-    VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.ownerId})
+    INSERT INTO projects (id, slug, name, org_id, created_by)
+    VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy})
   `);
 
   return project;

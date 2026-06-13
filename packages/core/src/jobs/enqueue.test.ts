@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const sendMock = vi.fn(async () => 'msg-1');
+const sendMock = vi.fn(async (..._args: unknown[]) => 'msg-1');
 const insertMock = vi.fn();
 
 vi.mock('../queue/boss.js', () => ({

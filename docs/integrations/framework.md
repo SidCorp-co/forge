@@ -22,8 +22,9 @@ Origin: the former `integration-framework` proposal (retired). This doc = SHIPPE
 ```
 Layer 3 — Adapters    coolify/ · postman/ · epodsystem/   (all registered at boot)
 Layer 2 — Framework   registry · vault · store · deliveries · queue · circuit-breaker
-Layer 1 — Storage     project_integrations (1 row per project+provider+env)
-                      integration_deliveries (audit / idempotency)
+Layer 1 — Storage     integration_connections (credential) + integration_bindings
+                      (per-project attach, 1 row per project+provider+env)
+                      integration_deliveries (audit / idempotency, keyed by binding_id)
 ```
 
 All under `packages/core/src/integrations/`.
@@ -50,17 +51,18 @@ interface IntegrationAdapter<TConfig, TSecrets> {
 
 ### Vault (secret encryption)
 
-`vault.ts` — AES-256-GCM with `INTEGRATION_MASTER_KEY` env var (hex-64 or base64, must decode to 32 bytes). Ciphertext layout `<iv:12><tag:16><ciphertext>`, stored in `project_integrations.secrets_enc` (`bytea`). No KMS (matches proposal §9.1).
+`vault.ts` — AES-256-GCM with `INTEGRATION_MASTER_KEY` env var (hex-64 or base64, must decode to 32 bytes). Ciphertext layout `<iv:12><tag:16><ciphertext>`, stored in `integration_connections.secrets_enc` (`bytea`). No KMS (matches proposal §9.1).
 
 - `isVaultConfigured()` — pure presence check; routes turn a missing key into a 503 (`VAULT_NOT_CONFIGURED`) before any encrypt/decrypt.
-- `assertVaultBootSafety()` — boot guard: refuses to start if key missing **and** any active `project_integrations` row exists. Fresh OSS installs with no integrations boot fine without a key.
+- `assertVaultBootSafety()` — boot guard: refuses to start if key missing **and** any active connection row exists. Fresh OSS installs with no integrations boot fine without a key.
 
 ### Storage
 
-`store.ts` over two tables in `db/schema.ts` (~line 2008):
+`store.ts` over the connection/binding model in `db/schema.ts` (~line 2160). `project_integrations` was **retired by ISS-410** (epic ISS-404) — see [connection-binding.md](connection-binding.md) for the split.
 
-- **`project_integrations`** — `id, project_id, provider, environment ('staging'|'prod'), config (jsonb), secrets_enc (bytea), integration_secret (HMAC key), active, breaker_opened_at, last_health_status, last_health_at`. Unique on `(project_id, provider, environment)`.
-- **`integration_deliveries`** — audit + idempotency: `direction ('outbound'|'inbound'), event_name, request_id, status ('pending'|'ok'|'failed'), payload, response, error_message, duration_ms`. Partial unique index on `(project_integration_id, request_id)` where `request_id IS NOT NULL` (idempotency). Soft-delete = `active=false`.
+- **`integration_connections`** — the CREDENTIAL (owner-scoped): `provider, secrets_enc (bytea), active`. Indexed on `(owner, provider)`.
+- **`integration_bindings`** — the per-project ATTACH: `connection_id (FK cascade), project_id, provider, environment ('staging'|'prod'), config (jsonb), integration_secret (HMAC key), active, breaker_opened_at, last_health_status, last_health_at`. Unique on `(project_id, provider, environment)` — preserves the old one-row-per-(project, provider, env) guard.
+- **`integration_deliveries`** — audit + idempotency: `direction ('outbound'|'inbound'), event_name, request_id, status ('pending'|'ok'|'failed'), payload, response, error_message, duration_ms`, keyed by `binding_id`. Partial unique index on `(binding_id, request_id)` where `request_id IS NOT NULL` (idempotency). Soft-delete = `active=false`.
 
 Shipped schema differs from proposal: `environment` is a real column (not in config); no `events[]` / `state` / `health` jsonb; breaker state is just `active` + `breaker_opened_at`.
 
@@ -133,9 +135,6 @@ All under `/api/projects/:projectId/integrations` (`integrations/routes.ts`, aut
 6. Add a provider Zod schema in `integrations/routes.ts` (config + secrets) — config validation lives here, since the adapter has no `validateConfig`.
 7. Record every call via `recordDelivery`/`updateDelivery` for audit + idempotency.
 
-## Not yet (proposed, unshipped)
+## Not yet (unshipped)
 
-- **Sentry / Human-Task as per-project adapters**, and their DB-backed config — proposal §7.2/§7.3. No `project_integrations` provider for them exists.
-- **Typed event bus** (`ForgeEvent` union, `events[]` subscriptions). Outbound is triggered directly by the release-job hook, not a generic bus.
-- **`validateConfig` / `pollState`** adapter hooks; **health-poll worker**; **secret-rotation `webhook_secret_previous`** (only the Coolify *API token* has a rotation window); **delivery replay / test-event UI**; **outbound coalescing**; **payload versioning**; **`generic_webhook` migration** of `projectWebhooks`.
-- A **generalized outbound worker** (today it only knows `coolify.dispatch`).
+Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no per-project Sentry/Human-Task adapters; no `validateConfig`/`pollState` hooks, health-poll worker, webhook-secret rotation window, delivery replay UI, or payload versioning. Future work lives in [../IDEAS.md](../IDEAS.md) / issues — not here.

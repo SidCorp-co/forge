@@ -85,7 +85,7 @@ async function reconcileIssueStatusAfterFailure(
       projectId: issues.projectId,
       status: issues.status,
       reopenCount: issues.reopenCount,
-      ownerId: projects.ownerId,
+      projectCreatedBy: projects.createdBy,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -99,10 +99,11 @@ async function reconcileIssueStatusAfterFailure(
     return;
   }
 
-  // activity_log.actorId has no FK; the project owner is a valid stand-in for
-  // a system-initiated transition (mirrors orchestrator `resolveSkipDevice`).
-  // Fall back to the job creator when the project has no owner.
-  const actorId = row.ownerId ?? job.createdBy;
+  // activity_log.actorId has no FK; the project creator (audit
+  // `projects.created_by`) is a valid stand-in for a system-initiated
+  // transition (mirrors orchestrator `resolveSkipDevice`). Fall back to the
+  // job creator.
+  const actorId = row.projectCreatedBy ?? job.createdBy;
   const device: DeviceLite = { id: actorId, ownerId: actorId };
   const issueRow: TransitionIssueRow = {
     id: row.id,

@@ -34,7 +34,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -163,7 +164,7 @@ describe('POST /api/issues/:id/enrich', () => {
   it('403 when not a project member', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: null });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/enrich`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await token()}` },
@@ -176,8 +177,9 @@ describe('POST /api/issues/:id/enrich', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID, status: 'queued' }]);
     enqueueJobMock.mockResolvedValueOnce(undefined);
@@ -206,8 +208,9 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
     selectLimit.mockResolvedValueOnce([]); // findActiveJob → no conflict
@@ -266,8 +269,9 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
     selectLimit.mockResolvedValueOnce([{ id: 'existing-job-id' }]); // findActiveJob hit
@@ -290,8 +294,9 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID, status: 'on_hold' }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     // No projects/jobs select mocks — the resolveSkillForStatus check throws
     // before triggerPipelineStepManual reaches loadPipelineConfig.
@@ -325,7 +330,7 @@ describe('GET /api/issues/pipeline-timing', () => {
 
   it('403 when not a project member', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: null });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/issues/pipeline-timing?projectId=${PROJECT_ID}`, {
       headers: { authorization: `Bearer ${await token()}` },
     });
@@ -336,8 +341,9 @@ describe('GET /api/issues/pipeline-timing', () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
 
     const issueA = '55555555-5555-4555-8555-555555555555';

@@ -21,8 +21,10 @@ function tagTable(name: string) {
 const agentSessions = tagTable('agent_sessions');
 const issues = tagTable('issues');
 const jobs = tagTable('jobs');
+// ISS-447 — applyKernelTransition writes the audit row here on the session sync.
+const kernelTransitions = tagTable('kernel_transitions');
 
-vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs }));
+vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs, kernelTransitions }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -36,7 +38,14 @@ vi.mock('../db/client.js', () => ({
     update: (tbl: object) => ({
       set: (s: Record<string, unknown>) => {
         updateCalls.push({ table: tableNames.get(tbl) ?? '?', set: s });
-        return { where: () => Promise.resolve(undefined) };
+        // The non-terminal ensure-path awaits `.where()` directly; the terminal
+        // session sync routes through applyKernelTransition, which chains
+        // `.where().returning()`. Return a thenable that supports both.
+        const p = Promise.resolve(undefined) as Promise<unknown> & {
+          returning: () => Promise<Array<{ id: string }>>;
+        };
+        p.returning = () => Promise.resolve([{ id: 'sess-1' }]);
+        return { where: () => p };
       },
     }),
     insert: (tbl: object) => ({
@@ -55,7 +64,7 @@ vi.mock('drizzle-orm', () => ({
 // ISS-101 — agent-session-link now closes one-shot pipeline_runs on terminal
 // job lifecycles. Mock the runs helper so we can assert call shape without
 // dragging the real db.update chain through this test.
-const closeRunIfOneShotMock = vi.fn(async () => undefined);
+const closeRunIfOneShotMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../pipeline/runs.js', () => ({
   closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
 }));
@@ -91,7 +100,7 @@ const baseJob = {
   agentSessionId: null,
   // ISS-101 — every job now belongs to a pipeline_run (NOT NULL in the DB).
   pipelineRunId: 'run-1',
-} as never;
+};
 
 describe('jobs/agent-session-link', () => {
   beforeEach(() => {
@@ -129,6 +138,28 @@ describe('jobs/agent-session-link', () => {
       expect(updateCalls[0]?.set.lastHeartbeatAt).toBeNull();
       expect(updateCalls[0]?.set.failureReason).toBeNull();
       expect(updateCalls[1]?.set.agentSessionId).toBe('sess-parent');
+      expect(insertCalls).toHaveLength(0);
+    });
+
+    it('ISS-434 — a NULL-session retry clone resets its (terminal) parent session at dispatch (no early-return, no new session)', async () => {
+      // The retry clone is born with agentSessionId=null (retry.ts) and its
+      // retryOf parent carries the prior attempt's now-terminal session. The
+      // early-return must NOT fire; the reuse+reset branch must revive that
+      // session so reconcileOrphanedJobs cannot reap the dispatched clone.
+      pushSelect({ agentSessionId: 'sess-terminal' });
+      const result = await ensureAgentSessionForJob(
+        { ...baseJob, agentSessionId: null, retryOf: 'job-prev' } as never,
+        { repoPath: '/r' },
+      );
+      expect(result).toBe('sess-terminal');
+      // Same session row revived to a non-terminal, never-started state.
+      expect(updateCalls.map((c) => c.table)).toEqual(['agent_sessions', 'jobs']);
+      expect(updateCalls[0]?.set.status).toBe('queued');
+      expect(updateCalls[0]?.set.startedAt).toBeNull();
+      expect(updateCalls[0]?.set.lastHeartbeatAt).toBeNull();
+      expect(updateCalls[0]?.set.failureReason).toBeNull();
+      // Clone re-linked to the SAME row — no fresh session minted.
+      expect(updateCalls[1]?.set.agentSessionId).toBe('sess-terminal');
       expect(insertCalls).toHaveLength(0);
     });
 

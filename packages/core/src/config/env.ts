@@ -53,6 +53,12 @@ const EnvSchema = z.object({
   RATE_LIMIT_DESKTOP_PAIR_INIT_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DESKTOP_APPROVE_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DESKTOP_APPROVE_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  // memory-v2 phase 0 — memory write/search both call the embeddings provider
+  // per request; the cap bounds per-member LiteLLM spend.
+  RATE_LIMIT_MEMORY_WRITE_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MEMORY_WRITE_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MEMORY_SEARCH_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS: z.coerce.number().int().positive().optional(),
   // LiteLLM-compatible embeddings service (ADR 0011, Phase 2.5-F3).
   // Required only when memory indexing / semantic search is exercised; the
   // singleton defers client creation until first use.
@@ -77,6 +83,15 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(10 * 1024 * 1024),
+  // Max bytes an attachment may have before `forge_uploads` action=fetch
+  // inlines it into the model context (image block / text). Larger files
+  // return metadata + the download URL instead, so a big file never blows the
+  // context window or the output-token limit (re-emitted base64 truncates).
+  UPLOADS_INLINE_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
   // Storage backend for comment attachments. `local` writes under UPLOADS_DIR;
   // `s3` is stubbed (calls throw) until the S3 adapter is implemented.
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),

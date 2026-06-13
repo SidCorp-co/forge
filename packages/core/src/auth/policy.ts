@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projectMembers, projects } from '../db/schema.js';
+import { assertOrgRoleOnProject, effectiveProjectRole } from '../lib/authz.js';
 import type { UserVars } from '../middleware/require-user.js';
 
 type UserCtx = Context<{ Variables: UserVars }>;
@@ -22,19 +23,7 @@ export async function assertUserIsProjectMember(c: UserCtx, projectId: string): 
 
 export async function assertUserIsProjectOwner(c: UserCtx, projectId: string): Promise<void> {
   const user = c.get('user');
-  const [row] = await db
-    .select({ projectId: projects.id })
-    .from(projects)
-    .leftJoin(
-      projectMembers,
-      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)),
-    )
-    .where(
-      and(
-        eq(projects.id, projectId),
-        or(eq(projects.ownerId, user.id), eq(projectMembers.role, 'owner')),
-      ),
-    )
-    .limit(1);
-  if (!row) throw forbidden('not a project owner');
+  const access = await effectiveProjectRole(user.id, projectId);
+  if (!access) throw forbidden('not a project owner');
+  assertOrgRoleOnProject(access, 'admin', 'not a project owner');
 }

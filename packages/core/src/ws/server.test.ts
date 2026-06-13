@@ -1,4 +1,5 @@
-import { type AddressInfo, createServer } from 'node:http';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // /ws upgrade auth — exercises the canonical Sec-WebSocket-Protocol
@@ -88,7 +89,11 @@ function dial(opts: {
       resolve({ status: 'open', protocol: proto });
     });
     ws.on('unexpected-response', (_req, res) => {
-      resolve({ status: 'error', code: res.statusCode, message: res.statusMessage ?? '' });
+      resolve({
+        status: 'error',
+        ...(res.statusCode !== undefined ? { code: res.statusCode } : {}),
+        message: res.statusMessage ?? '',
+      });
     });
     ws.on('error', (err: NodeJS.ErrnoException) => {
       resolve({ status: 'error', message: err.message });

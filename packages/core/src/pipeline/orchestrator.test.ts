@@ -91,7 +91,7 @@ vi.mock('./runs.js', () => ({
 // model (db.update, db.select + project owner join, comments insert). Stub
 // them so the test asserts orchestration intent (helper called with the
 // right args) without re-deriving the helper's DB shape.
-const pauseMissingSkillMock = vi.fn(async () => ({ paused: true, alreadyPaused: false }));
+const pauseMissingSkillMock = vi.fn(async (..._args: unknown[]) => ({ paused: true, alreadyPaused: false }));
 const postMissingSkillCommentMock = vi.fn(async () => undefined);
 vi.mock('./missing-skill-guard.js', () => ({
   PAUSE_REASON_PREFIX: 'missing_skill:',
@@ -230,7 +230,7 @@ function issueCreated(overrides: Partial<CreatedPayload> = {}): CreatedPayload {
 }
 
 function cfgResolved(cfg: unknown) {
-  nextSelect.mockResolvedValueOnce([{ agentConfig: { pipelineConfig: cfg }, ownerId: 'u-owner' }]);
+  nextSelect.mockResolvedValueOnce([{ agentConfig: { pipelineConfig: cfg }, createdBy: 'u-owner' }]);
 }
 
 function skillRegistered(skillName: string, type: string, toggle: string) {
@@ -299,7 +299,7 @@ describe('pipeline/orchestrator', () => {
     nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
 
-    const valuesSpy = vi.fn(() => ({ returning: insertReturning }));
+    const valuesSpy = vi.fn((..._args: unknown[]) => ({ returning: insertReturning }));
     dbInsert.mockImplementationOnce(() => ({ values: valuesSpy }));
 
     const bus = makeBus();

@@ -14,7 +14,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   type PipelineRunRow,
@@ -27,9 +27,6 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -44,8 +41,9 @@ async function loadRunWithAccess(runId: string, userId: string): Promise<Pipelin
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
   if (!row) throw notFound('pipeline run not found');
+  // pause/resume/cancel are mutations — viewers are read-only.
   const access = await loadProjectAccess(row.projectId, userId);
-  if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+  assertProjectRole(access, 'member');
   return row;
 }
 

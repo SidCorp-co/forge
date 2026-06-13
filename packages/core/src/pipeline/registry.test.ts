@@ -193,6 +193,7 @@ describe('GET /api/pipeline/registry', () => {
       'test',
       'release',
       'clarify',
+      'smoke',
     ]);
   });
 });

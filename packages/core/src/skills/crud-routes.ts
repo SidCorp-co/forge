@@ -4,13 +4,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  projectMembers,
-  projects,
-  skillRegistrations,
-  skills,
-  skillTargets,
-} from '../db/schema.js';
+import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   createProjectSkill,
@@ -88,23 +83,6 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-async function loadCallerRole(projectId: string, userId: string) {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('project not found');
-
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-
-  return { ownerId: project.ownerId, role: member?.role ?? null };
-}
-
 export const skillCrudRoutes = new Hono<{ Variables: AuthVars }>();
 skillCrudRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -122,14 +100,14 @@ skillCrudRoutes.get(
       conditions.push(eq(skills.scope, 'global'));
     } else if (scope === 'project') {
       if (!projectId) throw badRequest({ projectId: 'required when scope=project' });
-      const ctx = await loadCallerRole(projectId, userId);
-      if (!ctx.role && ctx.ownerId !== userId) throw forbidden('not a project member');
+      const access = await loadProjectAccess(projectId, userId);
+      if (!access.role) throw forbidden('not a project member');
       conditions.push(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)) as SQL);
     } else {
       // default + 'all': global ∪ project (if projectId)
       if (projectId) {
-        const ctx = await loadCallerRole(projectId, userId);
-        if (!ctx.role && ctx.ownerId !== userId) throw forbidden('not a project member');
+        const access = await loadProjectAccess(projectId, userId);
+        if (!access.role) throw forbidden('not a project member');
         const projectCond = and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)) as SQL;
         conditions.push(or(eq(skills.scope, 'global'), projectCond) as SQL);
       } else {
@@ -160,8 +138,8 @@ skillCrudRoutes.get(
     if (!row) throw notFound('skill not found');
 
     if (row.scope === 'project' && row.projectId) {
-      const ctx = await loadCallerRole(row.projectId, userId);
-      if (!ctx.role && ctx.ownerId !== userId) throw forbidden('not a project member');
+      const access = await loadProjectAccess(row.projectId, userId);
+      if (!access.role) throw forbidden('not a project member');
     }
 
     return c.json(row);
@@ -190,10 +168,8 @@ skillCrudRoutes.post(
       throw badRequest({ projectId: 'required when isGlobal=false' });
     }
 
-    const ctx = await loadCallerRole(input.projectId, userId);
-    if (ctx.ownerId !== userId && ctx.role !== 'owner' && ctx.role !== 'admin') {
-      throw forbidden('only project owner or admin can create skills');
-    }
+    const access = await loadProjectAccess(input.projectId, userId);
+    assertProjectRole(access, 'admin', 'only a project admin can create skills');
 
     const inserted = await createProjectSkill({
       projectId: input.projectId,
@@ -226,10 +202,8 @@ skillCrudRoutes.put(
     if (!row) throw notFound('skill not found');
 
     if (row.projectId) {
-      const ctx = await loadCallerRole(row.projectId, userId);
-      if (ctx.ownerId !== userId && ctx.role !== 'owner' && ctx.role !== 'admin') {
-        throw forbidden('only project owner or admin can update skills');
-      }
+      const access = await loadProjectAccess(row.projectId, userId);
+      assertProjectRole(access, 'admin', 'only a project admin can update skills');
     } else {
       // Global skills: only allow CEO/admin via existing admin route.
       throw forbidden('global skills cannot be updated via this endpoint');
@@ -257,10 +231,8 @@ skillCrudRoutes.delete(
     if (!row) throw notFound('skill not found');
 
     if (row.projectId) {
-      const ctx = await loadCallerRole(row.projectId, userId);
-      if (ctx.ownerId !== userId && ctx.role !== 'owner') {
-        throw forbidden('only project owner can delete skills');
-      }
+      const access = await loadProjectAccess(row.projectId, userId);
+      assertProjectRole(access, 'admin', 'only a project admin can delete skills');
     } else {
       throw forbidden('global skills cannot be deleted via this endpoint');
     }
@@ -279,8 +251,8 @@ skillCrudRoutes.post(
     const { projectId } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const ctx = await loadCallerRole(projectId, userId);
-    if (!ctx.role && ctx.ownerId !== userId) throw forbidden('not a project member');
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     // Project skills + global skills relevant to this project.
     const projectSkills = await db
@@ -343,10 +315,8 @@ skillCrudRoutes.post(
     const { projectId, deviceId, skillNames } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const ctx = await loadCallerRole(projectId, userId);
-    if (ctx.ownerId !== userId && ctx.role !== 'owner' && ctx.role !== 'admin') {
-      throw forbidden('only project owner or admin can push skills');
-    }
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'only a project admin can push skills');
 
     // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
     // each pulls its effective manifest and reports installed hashes back.

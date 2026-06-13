@@ -2,10 +2,10 @@
 import type {
   LoginInput,
   LoginResponse,
+  MeResponse,
   RefreshResponse,
   RegisterInput,
   RegisterResponse,
-  User,
 } from '@forge/contracts';
 import { apiClient } from './client';
 
@@ -22,7 +22,7 @@ export const authApi = {
       body: JSON.stringify(input),
     }),
 
-  me: () => apiClient<User>('/auth/me'),
+  me: () => apiClient<MeResponse>('/auth/me'),
 
   logout: () => apiClient<void>('/auth/logout', { method: 'POST' }),
 

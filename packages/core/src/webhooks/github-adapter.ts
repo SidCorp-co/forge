@@ -13,13 +13,13 @@ interface GitHubIssuePayload {
   pull_request?: { id?: number; title?: string; body?: string | null };
 }
 
-async function projectOwnerId(projectId: string): Promise<string | null> {
+async function projectCreatedById(projectId: string): Promise<string | null> {
   const [row] = await db
-    .select({ ownerId: projects.ownerId })
+    .select({ createdBy: projects.createdBy })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  return row?.ownerId ?? null;
+  return row?.createdBy ?? null;
 }
 
 async function upsertExternalIssue(
@@ -85,10 +85,11 @@ export async function handleGitHubEvent(
   const action = payload.action ?? 'unknown';
   const key = `${eventType}.${action}`;
 
-  // System user: fall back to project owner (see risks in F4 plan).
-  const ownerId = await projectOwnerId(projectId);
-  if (!ownerId) {
-    logger.warn({ projectId }, 'github-adapter: project missing owner');
+  // System user: fall back to the project creator (`projects.createdBy`,
+  // audit-only — see risks in F4 plan).
+  const createdById = await projectCreatedById(projectId);
+  if (!createdById) {
+    logger.warn({ projectId }, 'github-adapter: project missing creator');
     return { actions: 0 };
   }
 
@@ -99,7 +100,7 @@ export async function handleGitHubEvent(
       const result = await upsertExternalIssue(projectId, 'github', externalId, {
         title: payload.issue.title ?? '(untitled GitHub issue)',
         description: payload.issue.body ?? null,
-        createdById: ownerId,
+        createdById,
       });
       return { actions: result === 'noop' ? 0 : 1 };
     }
@@ -116,7 +117,7 @@ export async function handleGitHubEvent(
       const result = await upsertExternalIssue(projectId, 'github', externalId, {
         title: payload.pull_request.title ?? '(untitled PR)',
         description: payload.pull_request.body ?? null,
-        createdById: ownerId,
+        createdById,
       });
       return { actions: result === 'noop' ? 0 : 1 };
     }

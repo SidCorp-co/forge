@@ -17,9 +17,18 @@ export interface ProjectListItem {
   id: string;
   slug: string;
   name: string;
-  ownerId: string;
-  role: ProjectMember['role'];
-  apiKey: string;
+  orgId: string;
+  orgName: string;
+  orgIsPersonal: boolean;
+  createdBy: string;
+  /** Effective role (org owner/admin surface as 'admin'). */
+  role: ProjectMember['role'] | null;
+  /** Caller's role in the project's org — null when not an org member. */
+  orgRole: 'owner' | 'admin' | 'member' | null;
+  /** null for the read-only viewer tier (execution-grade key is withheld). */
+  apiKey: string | null;
+  /** Non-null when the project is archived (rows appear via `?archived=1`). */
+  archivedAt: string | null;
   createdAt: string;
 }
 
@@ -83,6 +92,8 @@ export interface CreateProjectInput {
   slug: string;
   name: string;
   description?: string | null;
+  /** Target org — omitted = the caller's personal org. */
+  orgId?: string;
 }
 
 /**
@@ -93,9 +104,21 @@ export interface CreatedProject {
   id: string;
   slug: string;
   name: string;
-  ownerId: string;
+  orgId: string;
+  createdBy: string;
   apiKey: string;
   createdAt: string;
+}
+
+/**
+ * Response of `POST /api/projects/:id/skills/bootstrap` (ISS-2A / ISS-453) —
+ * mirrors the bootstrap route in `packages/core/src/projects/routes.ts`.
+ * 201 on first run, 200 with `alreadyBootstrapped: true` on re-runs (idempotent).
+ */
+export interface BootstrapResult {
+  alreadyBootstrapped: boolean;
+  skillsBound: number;
+  pipelineEnabled: boolean;
 }
 
 /** Sort options for the projects console toolbar. */
@@ -112,6 +135,9 @@ export interface ProjectConsoleItem {
   id: string;
   slug: string;
   name: string;
+  orgId: string;
+  orgName: string;
+  orgIsPersonal: boolean;
   role: ProjectListItem['role'];
   createdAt: string;
   description: string | null;

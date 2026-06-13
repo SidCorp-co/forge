@@ -171,7 +171,8 @@ describe('db/schema — projects', () => {
         'id',
         'kind',
         'name',
-        'owner_id',
+        'org_id',
+        'created_by',
         'preview_deploy',
         'production_branch',
         'repo_path',
@@ -216,10 +217,19 @@ describe('db/schema — projects', () => {
     expect(withTimezone(c)).toBe(true);
   });
 
-  it('owner_id references users.id with onDelete restrict', () => {
+  it('org_id references organizations.id with onDelete restrict', () => {
     const cfg = getTableConfig(projects);
-    const fk = cfg.foreignKeys.find((f) => f.reference().columns[0]?.name === 'owner_id');
-    if (!fk) throw new Error('expected owner_id FK');
+    const fk = cfg.foreignKeys.find((f) => f.reference().columns[0]?.name === 'org_id');
+    if (!fk) throw new Error('expected org_id FK');
+    const ref = fk.reference();
+    expect(ref.foreignColumns[0]?.name).toBe('id');
+    expect(fk.onDelete).toBe('restrict');
+  });
+
+  it('created_by (audit-only) references users.id with onDelete restrict', () => {
+    const cfg = getTableConfig(projects);
+    const fk = cfg.foreignKeys.find((f) => f.reference().columns[0]?.name === 'created_by');
+    if (!fk) throw new Error('expected created_by FK');
     const ref = fk.reference();
     expect(ref.foreignColumns[0]?.name).toBe('id');
     expect(fk.onDelete).toBe('restrict');
@@ -247,9 +257,10 @@ describe('db/schema — projects', () => {
     expect(cfg.indexes.some((i) => i.config.name === 'projects_default_device_id_idx')).toBe(true);
   });
 
-  it('has a named index on owner_id', () => {
+  it('has named indexes on org_id and created_by', () => {
     const cfg = getTableConfig(projects);
-    expect(cfg.indexes.some((i) => i.config.name === 'projects_owner_id_idx')).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'projects_org_id_idx')).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'projects_created_by_idx')).toBe(true);
   });
 
   it('projectsRelations targets the projects table', () => {
@@ -289,7 +300,7 @@ describe('db/schema — project_members', () => {
   });
 
   it('projectMemberRoles exports the expected values', () => {
-    expect(projectMemberRoles).toEqual(['owner', 'admin', 'member']);
+    expect(projectMemberRoles).toEqual(['admin', 'member', 'viewer']);
   });
 
   it('has a named index on project_id', () => {
@@ -601,6 +612,7 @@ describe('db/schema — jobs', () => {
       'fix',
       'custom',
       'pm',
+      'smoke',
     ]);
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });
@@ -609,6 +621,7 @@ describe('db/schema — jobs', () => {
     const names = getTableConfig(jobs).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
+        'acked_at',
         'agent_session_id',
         'archive_path',
         'attempts',
@@ -742,6 +755,8 @@ describe('db/schema — job_events', () => {
       'tool_result',
       'progress',
       'result',
+      // ISS-442 C0 — audited manual intervention (single-job cancel).
+      'intervention',
     ]);
   });
 

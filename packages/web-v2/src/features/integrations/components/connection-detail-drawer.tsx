@@ -1,17 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ErrorState, Icon, SegmentedControl, Skeleton, SlideOver, Tabs } from "@/design";
+import { ErrorState, SegmentedControl, Skeleton, SlideOver, Tabs } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
-import { useConnectionBindings, useIntegrationsList } from "../hooks";
-import { DIRECTORY_STATUS_META, cardProvider, deriveDirectoryStatus, getCapabilities } from "../derive";
+import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
+import { cardProvider, getCapabilities } from "../derive";
 import type { DrillableProvider } from "../derive";
 import type { BindingSummary, IntegrationEnvironment, StatusCard } from "../types";
 import { CoolifySection } from "./coolify-section";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { EpodsystemSection } from "./epodsystem-section";
 import { PostmanSection } from "./postman-section";
+import { ENV_LABEL, ENV_OPTIONS, PROVIDER_LABEL, StatusPill } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
@@ -24,35 +25,6 @@ import { PostmanSection } from "./postman-section";
  *  listing every project + environment the underlying connection is bound to
  *  (the "Projects using this connection" payoff of the connection-sharing
  *  cutover). */
-
-const PROVIDER_LABEL: Record<DrillableProvider, string> = {
-  coolify: "Coolify deploy",
-  postman: "Postman",
-  epodsystem: "Epodsystem",
-};
-
-const ENV_OPTIONS: { value: IntegrationEnvironment; label: string }[] = [
-  { value: "staging", label: "Staging" },
-  { value: "prod", label: "Production" },
-];
-
-const ENV_LABEL: Record<IntegrationEnvironment, string> = {
-  staging: "Staging",
-  prod: "Production",
-};
-
-function StatusPill({ card }: { card: StatusCard }) {
-  const m = DIRECTORY_STATUS_META[deriveDirectoryStatus(card)];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[12px] font-semibold"
-      style={{ color: m.fg, background: m.bg }}
-    >
-      <Icon name={m.icon} size={13} />
-      {m.label}
-    </span>
-  );
-}
 
 function ProviderSection({ provider, projectId }: { provider: DrillableProvider; projectId: string }) {
   if (provider === "coolify") return <CoolifySection projectId={projectId} />;
@@ -88,6 +60,11 @@ function BindingsSection({
 }) {
   const bindingsQ = useConnectionBindings(connectionId);
   const projectsQ = useProjectsIncludingArchived();
+  // Org-owned connections (shared across the org) get a badge so it's clear
+  // the credential isn't personal; managing it requires org admin.
+  const connectionsQ = useConnections();
+  const isOrgOwned =
+    connectionsQ.data?.items.find((c) => c.id === connectionId)?.ownerType === "org";
 
   // Project-id -> display name for friendly rendering (falls back to the raw
   // id so a missing/archived project still reads correctly).
@@ -99,7 +76,14 @@ function BindingsSection({
 
   return (
     <section className="mt-4 flex flex-col gap-2">
-      <h3 className="fg-h4">Projects using this connection</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="fg-h4">Projects using this connection</h3>
+        {isOrgOwned && (
+          <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+            org-shared
+          </span>
+        )}
+      </div>
       {bindingsQ.isLoading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-8 w-full" />

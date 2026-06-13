@@ -21,6 +21,7 @@ function makeInputs(overrides?: Partial<Inputs>): Inputs {
   };
   return {
     ladder: ['open', 'confirmed', 'approved', 'developed', 'testing', 'released', 'closed'],
+    branches: { baseBranch: null, productionBranch: null },
     project: (key: string) => values[key],
     projectFactKeys: ['build-commands'],
     ...overrides,

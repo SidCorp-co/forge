@@ -4,8 +4,21 @@
   "generated": "2026-04-23",
   "root": "forge",
   "legend": {
-    "kinds": ["plane", "service", "module", "feature", "datastore", "external"],
-    "statuses": ["active", "legacy", "paused", "proposed", "planned"],
+    "kinds": [
+      "plane",
+      "service",
+      "module",
+      "feature",
+      "datastore",
+      "external"
+    ],
+    "statuses": [
+      "active",
+      "legacy",
+      "paused",
+      "proposed",
+      "planned"
+    ],
     "relations": [
       "contains",
       "depends_on",
@@ -14,7 +27,6 @@
       "replaced_by"
     ]
   },
-
   "nodes": [
     {
       "id": "forge",
@@ -22,7 +34,6 @@
       "purpose": "Project management + AI agent platform",
       "status": "active"
     },
-
     {
       "id": "client-plane",
       "kind": "plane",
@@ -41,21 +52,28 @@
       "purpose": "Device-side agent execution (Claude credentials live here)",
       "status": "active"
     },
-
     {
       "id": "packages/web-v2",
       "kind": "service",
       "purpose": "Next.js 16 cloud UI (canonical; replaced v1 packages/web at host root, ISS-397)",
       "status": "active",
-      "stack": ["next", "react-query", "tailwind"],
+      "stack": [
+        "next",
+        "react-query",
+        "tailwind"
+      ],
       "docs": "docs/proposals/web-v2-redesign.md"
     },
     {
       "id": "packages/dev",
       "kind": "service",
-      "purpose": "Tauri desktop app — local codebase + agent runner",
+      "purpose": "Tauri desktop app \u2014 local codebase + agent runner",
       "status": "active",
-      "stack": ["tauri", "rust", "react"],
+      "stack": [
+        "tauri",
+        "rust",
+        "react"
+      ],
       "docs": "packages/dev/CLAUDE.md"
     },
     {
@@ -63,30 +81,42 @@
       "kind": "service",
       "purpose": "Hono + Drizzle backend (REST + WS + MCP)",
       "status": "active",
-      "stack": ["hono", "drizzle", "pg-boss", "ws"],
+      "stack": [
+        "hono",
+        "drizzle",
+        "pg-boss",
+        "ws"
+      ],
       "docs": "packages/core/",
-      "decisions": ["ADR-0002", "ADR-0010"]
+      "decisions": [
+        "ADR-0002",
+        "ADR-0010"
+      ]
     },
     {
       "id": "forge/strapi",
       "kind": "service",
       "purpose": "Strapi 5 backend (frozen, scheduled for deletion)",
       "status": "legacy",
-      "decisions": ["ADR-0010"],
+      "decisions": [
+        "ADR-0010"
+      ],
       "docs": "forge/strapi/CLAUDE.md"
     },
     {
-      "id": "forged",
+      "id": "packages/runner",
       "kind": "service",
-      "purpose": "Headless CLI device agent (CI runners, daemons)",
-      "status": "planned",
-      "decisions": ["ADR-0001"]
+      "purpose": "Headless CLI device agent (Rust forge-runner daemon \u2014 CI runners, servers)",
+      "status": "active",
+      "decisions": [
+        "ADR-0001"
+      ],
+      "docs": "docs/architecture/runner-daemon.md"
     },
-
     {
       "id": "issues-pipeline",
       "kind": "module",
-      "purpose": "14-status issue lifecycle, projects, comments, labels",
+      "purpose": "18-status issue lifecycle, projects, comments, labels",
       "status": "active",
       "docs": "docs/modules/issues-pipeline/"
     },
@@ -116,7 +146,9 @@
       "kind": "module",
       "purpose": "pgvector semantic memory + RAG retrieval",
       "status": "active",
-      "decisions": ["ADR-0011"],
+      "decisions": [
+        "ADR-0011"
+      ],
       "docs": "docs/modules/memory-knowledge/"
     },
     {
@@ -131,12 +163,14 @@
       "kind": "module",
       "purpose": "Dual-principal JWT (user) + revocable token (device) + policy layer",
       "status": "active",
-      "decisions": ["ADR-0005"]
+      "decisions": [
+        "ADR-0005"
+      ]
     },
     {
-      "id": "feature.issue-pipeline-14status",
+      "id": "feature.issue-pipeline-18status",
       "kind": "feature",
-      "purpose": "open → confirmed → clarified → … → closed (max 5 reopen cycles)",
+      "purpose": "open \u2192 confirmed \u2192 clarified \u2192 \u2026 \u2192 closed (max 5 reopen cycles)",
       "status": "active",
       "docs": "docs/modules/issues-pipeline/status-pipeline.md"
     },
@@ -159,21 +193,25 @@
       "status": "proposed",
       "docs": "docs/proposals/cost-aware-model-routing.md"
     },
-
     {
       "id": "postgres",
       "kind": "datastore",
       "purpose": "Single store: rows + pg-boss jobs + pgvector embeddings",
       "status": "active",
-      "decisions": ["ADR-0006", "ADR-0011"]
+      "decisions": [
+        "ADR-0006",
+        "ADR-0011"
+      ]
     },
-
     {
       "id": "claude-cli",
       "kind": "external",
       "purpose": "Anthropic Claude Code CLI (runs on device, holds credentials)",
       "status": "active",
-      "decisions": ["ADR-0003", "ADR-0004"]
+      "decisions": [
+        "ADR-0003",
+        "ADR-0004"
+      ]
     },
     {
       "id": "litellm",
@@ -194,44 +232,97 @@
       "status": "active"
     }
   ],
-
   "edges": [
-    { "from": "forge", "to": "client-plane", "relation": "contains" },
-    { "from": "forge", "to": "control-plane", "relation": "contains" },
-    { "from": "forge", "to": "runtime-plane", "relation": "contains" },
-
-    { "from": "client-plane", "to": "packages/web-v2", "relation": "contains" },
-    { "from": "client-plane", "to": "packages/dev", "relation": "contains" },
-
-    { "from": "control-plane", "to": "packages/core", "relation": "contains" },
+    {
+      "from": "forge",
+      "to": "client-plane",
+      "relation": "contains"
+    },
+    {
+      "from": "forge",
+      "to": "control-plane",
+      "relation": "contains"
+    },
+    {
+      "from": "forge",
+      "to": "runtime-plane",
+      "relation": "contains"
+    },
+    {
+      "from": "client-plane",
+      "to": "packages/web-v2",
+      "relation": "contains"
+    },
+    {
+      "from": "client-plane",
+      "to": "packages/dev",
+      "relation": "contains"
+    },
+    {
+      "from": "control-plane",
+      "to": "packages/core",
+      "relation": "contains"
+    },
     {
       "from": "control-plane",
       "to": "forge/strapi",
       "relation": "contains",
-      "note": "frozen — replaced_by packages/core"
+      "note": "frozen \u2014 replaced_by packages/core"
     },
-
     {
       "from": "runtime-plane",
       "to": "packages/dev",
       "relation": "contains",
       "note": "dev is both client (UI) and runtime (agent)"
     },
-    { "from": "runtime-plane", "to": "forged", "relation": "contains" },
-
-    { "from": "forge/strapi", "to": "packages/core", "relation": "replaced_by" },
-
-    { "from": "packages/core", "to": "issues-pipeline", "relation": "contains" },
-    { "from": "packages/core", "to": "agents-jobs", "relation": "contains" },
-    { "from": "packages/core", "to": "devices", "relation": "contains" },
-    { "from": "packages/core", "to": "skills", "relation": "contains" },
-    { "from": "packages/core", "to": "memory-knowledge", "relation": "contains" },
-    { "from": "packages/core", "to": "chat", "relation": "contains" },
-    { "from": "packages/core", "to": "auth", "relation": "contains" },
-
+    {
+      "from": "runtime-plane",
+      "to": "packages/runner",
+      "relation": "contains"
+    },
+    {
+      "from": "forge/strapi",
+      "to": "packages/core",
+      "relation": "replaced_by"
+    },
+    {
+      "from": "packages/core",
+      "to": "issues-pipeline",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "agents-jobs",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "devices",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "skills",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "memory-knowledge",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "chat",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "auth",
+      "relation": "contains"
+    },
     {
       "from": "issues-pipeline",
-      "to": "feature.issue-pipeline-14status",
+      "to": "feature.issue-pipeline-18status",
       "relation": "contains"
     },
     {
@@ -249,8 +340,11 @@
       "to": "feature.cost-aware-routing",
       "relation": "contains"
     },
-
-    { "from": "packages/core", "to": "postgres", "relation": "depends_on" },
+    {
+      "from": "packages/core",
+      "to": "postgres",
+      "relation": "depends_on"
+    },
     {
       "from": "memory-knowledge",
       "to": "postgres",
@@ -263,28 +357,38 @@
       "relation": "depends_on",
       "note": "pg-boss queue tables"
     },
-    { "from": "auth", "to": "smtp", "relation": "depends_on" },
+    {
+      "from": "auth",
+      "to": "smtp",
+      "relation": "depends_on"
+    },
     {
       "from": "memory-knowledge",
       "to": "litellm",
       "relation": "depends_on",
       "note": "embedding generation"
     },
-    { "from": "chat", "to": "litellm", "relation": "depends_on" },
+    {
+      "from": "chat",
+      "to": "litellm",
+      "relation": "depends_on"
+    },
     {
       "from": "issues-pipeline",
       "to": "github-webhook",
       "relation": "depends_on"
     },
-
     {
       "from": "packages/dev",
       "to": "claude-cli",
       "relation": "depends_on",
       "note": "spawned in git worktree per job"
     },
-    { "from": "forged", "to": "claude-cli", "relation": "depends_on" },
-
+    {
+      "from": "packages/runner",
+      "to": "claude-cli",
+      "relation": "depends_on"
+    },
     {
       "from": "packages/web-v2",
       "to": "packages/core",
@@ -297,7 +401,6 @@
       "relation": "depends_on",
       "note": "REST + WS for control; receives job dispatches"
     },
-
     {
       "from": "packages/core",
       "to": "packages/web-v2",
@@ -310,7 +413,6 @@
       "relation": "broadcasts_to",
       "note": "user + device rooms"
     },
-
     {
       "from": "packages/core",
       "exposes": "REST",

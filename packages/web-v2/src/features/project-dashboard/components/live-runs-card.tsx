@@ -7,7 +7,18 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, Icon, LiveDot, StatusChip } from "@/design";
 import { stageColor } from "@/design/stages";
 import { formatUsd, jobTypeToStage } from "@/features/pipeline/derive";
-import type { PipelineRunListItem } from "@/features/pipeline/types";
+import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline/types";
+
+// ISS-460 — humanized label for runs with no issue (pm/system/interactive).
+const KIND_LABEL: Record<PipelineRunKind, string> = {
+  issue: "Issue run",
+  pm: "PM run",
+  interactive: "Interactive session",
+  system: "System run",
+};
+function runLabel(kind: PipelineRunKind): string {
+  return KIND_LABEL[kind] ?? `${kind} run`;
+}
 
 export function LiveRunsCard({ runs, slug }: { runs: PipelineRunListItem[]; slug: string }) {
   const router = useRouter();
@@ -46,7 +57,16 @@ export function LiveRunsCard({ runs, slug }: { runs: PipelineRunListItem[]; slug
                       domain="session"
                       size="sm"
                     />
-                    <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">{run.kind} run</span>
+                    <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">
+                      {run.issueRef ? (
+                        <>
+                          <span className="font-mono text-fg">{run.issueRef}</span>
+                          {run.issueTitle ? ` ${run.issueTitle}` : ""}
+                        </>
+                      ) : (
+                        runLabel(run.kind)
+                      )}
+                    </span>
                     <span className="font-mono text-sm font-semibold tabular-nums text-fg">
                       {formatUsd(run.cost?.estimatedCost)}
                     </span>

@@ -52,6 +52,8 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   release: ['released', 'closed'],
   custom: [],
   pm: [],
+  // smoke canaries (ISS-455) are issue-less; there is no status to advance.
+  smoke: [],
 };
 
 /** Statuses the issue has nothing left to do on; any failed job lands here as

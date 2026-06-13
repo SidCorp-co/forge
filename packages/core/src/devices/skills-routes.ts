@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { deviceSkills, runners } from '../db/schema.js';
-import { assertProjectMemberAccess } from '../lib/project-access.js';
+import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import {
@@ -223,7 +223,7 @@ deviceSkillStatusRoutes.get(
   async (c) => {
     const { projectId, deviceId } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectMemberAccess(projectId, userId);
+    await assertProjectAccess(projectId, userId, 'viewer');
 
     const status = await loadDeviceSkillStatus(projectId, deviceId);
     return c.json({ skills: status });
@@ -246,7 +246,7 @@ deviceSkillStatusRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectMemberAccess(projectId, userId);
+    await assertProjectAccess(projectId, userId, 'viewer');
 
     const data = await loadProjectSkillSyncStatus(projectId);
     return c.json(data);

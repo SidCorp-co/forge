@@ -1,58 +1,59 @@
-# Forge — Quản lý resource & quyền của user
+# User resources & permissions
 
-Một user có gì, vào được đâu, ai mới làm admin. Backend: `forge-beta-api.sidcorp.co`.
+What a user owns, what they can access, who counts as admin.
 
-## 1. User sở hữu gì
+## 1. Ownership model
 
-Mọi resource neo vào một **Project** — không có Issue mồ côi.
+Every project belongs to exactly **one Organization** (`projects.org_id` NOT NULL). Each user gets a **personal org** at signup (migration 0106 backfilled existing users). `projects.created_by` is audit-only — carries no permission.
 
 ```
-User ──(own / member)──> Project ──> Issue ──> Task / Comment / File đính kèm
-                                 ├──> Pipeline run (AI tự chạy quy trình)
-                                 └──> Agent session (phiên AI làm việc)
+User ──(org role)──> Organization ──> Project ──> Issue / Run / Session / Connection-binding
+User ──(project role)────────────────^
 ```
 
-## 2. Bốn cửa vào (cùng một backend, khác "chìa khoá")
+## 2. Two role tiers + one instance layer
 
-| Cửa | Chìa khoá |
+| Tier | Roles | Meaning |
+|---|---|---|
+| **Org** | `owner` > `admin` > `member` | owner/admin: implicit **project admin** on EVERY org project + manage org members + org-owned connections; `member`: may create projects + use org connections — does NOT see projects automatically |
+| **Project** | `admin` > `member` > `viewer` | admin: members/labels/runners/skills/bind connections; member: issues/runs/comments/chat; viewer: read-only |
+| **Instance** | `ADMIN_EMAILS` env | gates REST `/api/admin/*` only (self-host operator) — tenant-independent |
+
+**Single formula** (`packages/core/src/lib/authz.ts`):
+`effectiveProjectRole = max(projectMembers.role, org owner/admin → 'admin')`. Every REST + MCP + WS gate goes through this module.
+
+Legacy "project owner" gates (settings PATCH, DELETE, archive, pipeline-config) = **org owner/admin** (`assertOrgRoleOnProject`) — an invited project admin is NOT enough.
+
+## 3. Four entry doors
+
+| Door | Key | Notes |
+|---|---|---|
+| Web / Mobile | `forge_auth` cookie (JWT) | full per-role access |
+| Desktop (Forge Dev) | Device token | acts as the user (no scopes) |
+| Script / AI tool | PAT (`/settings`) | user rights ∩ `projectIds` allowlist ∩ **scopes** |
+
+**PAT scopes** (`read` / `write` / `admin`): admin-grade MCP mutations (`forge_skills` update/push, `forge_projects.update/.archive`, `forge_config`…) require `admin` (`assertPrincipalIsAdmin`). Pre-0106 PATs were grandfathered `admin`; new PATs default `read,write`. Threat analysis: [mcp-threat-model.md](mcp-threat-model.md).
+
+## 4. Key surfaces
+
+- REST `/api/orgs` — org + member CRUD (members added directly by email of an existing user; project invites still use email tokens).
+- `POST /api/projects` + `forge_projects.create` — optional `orgId` (defaults to personal org); creator gets project role `admin`.
+- MCP `forge_orgs.list` / `forge_orgs.members` — read-only discovery.
+- Integration connections: `ownerType 'user'|'org'`. Org connections: create/rotate/delete needs org admin; org members see them in lists; bindable only to projects **in the same org** (by a project admin).
+
+## 5. New-user setup
+
+- Signup → personal org (owner) auto-created.
+- Collaboration: add to an **org** (sees shared connections; org admin sees all projects) or invite to a single **project** (admin/member/viewer).
+- AI tooling → create a PAT at `/settings`; admin operations need the `admin` scope.
+- Instance REST admin → add email to `ADMIN_EMAILS` + redeploy.
+
+## 6. Code mapping
+
+| In code | Meaning |
 |---|---|
-| 🌐 Web (`forge-beta.sidcorp.co`) | Cookie đăng nhập (`forge_auth` / JWT) |
-| 📱 Mobile | Cookie đăng nhập |
-| 💻 Desktop (Forge Dev) | Mã ghép cặp thiết bị → device token |
-| 🔑 Script / AI tool (Claude, Cursor…) | Personal Access Token (PAT), lấy ở `/settings` |
-
-## 3. Hai lớp quyền
-
-- **Lớp 1 — owner/member theo từng project.** Mọi user login là owner project của chính mình (toàn quyền trong phạm vi đó). Member được mời chỉ thấy/sửa project được mời. Mutation nhạy cảm (archive, mời người, quản runner) cần owner/admin của project đó. Không liên quan project → `403` / `NOT_FOUND`.
-- **Lớp 2 — admin REST, độc lập.** Chỉ email trong `ADMIN_EMAILS` (env, cấu hình khi deploy) mới vào `/api/admin/*`; còn lại `403 ADMIN_ONLY`.
-
-> AI tool `forge_projects.*` / `forge_pm.*` và metrics **giới hạn theo phạm vi user** (chỉ project own/member, **không cross-tenant**). `forge_projects.create` luôn đặt người gọi làm owner.
-
-## 4. Cửa nào làm được gì
-
-| Hành động | 🌐/📱 (cookie) | 💻 Desktop | 🔑 PAT |
-|---|---|---|---|
-| Xem/sửa Issue trong project mình là member | ✅ | ✅ (qua AI tool) | ✅ (qua AI tool) |
-| Tạo project qua web | ✅ | ❌ | ❌ |
-| Tạo project qua `forge_projects.create` | ❌ | ✅ (người gọi → owner) | ✅ (cần scope write; người gọi → owner) |
-| Mời user vào project mình sở hữu | ✅ | ❌ | ❌ |
-| Admin toàn hệ thống qua REST `/api/admin/*` | chỉ khi email ∈ `ADMIN_EMAILS` | ❌ | ❌ |
-| `forge_projects.*` / `forge_pm.*` / metrics cross-project | ❌ | ✅ nhưng chỉ phạm vi own/member | ✅ nhưng chỉ phạm vi own/member |
-
-## 5. Thiết lập user mới
-
-- **Làm trên project có sẵn** → owner add làm member → thấy/sửa qua web.
-- **Project riêng** → tự tạo, là owner.
-- **Dùng AI tool / MCP** → `/settings` tạo PAT → cài vào Claude/Cursor (thao tác trong phạm vi own/member).
-- **Cần admin REST** → maintainer thêm email vào `ADMIN_EMAILS` + redeploy (chỉ bước này cần cấu hình hạ tầng).
-
-## 6. Mapping thuật ngữ
-
-| Trong code | Nghĩa |
-|---|---|
-| `JWT` / `forge_auth` cookie | Phiên đăng nhập web/mobile |
-| Device token | Chìa khoá của máy đã ghép cặp (desktop) |
-| `PAT` | Token cá nhân, dán vào script / AI tool |
-| `projectMembers` | "Ai được vào project nào" |
-| `ADMIN_EMAILS` | Danh sách email admin REST (config khi deploy) |
-| `forge_admin_*` (MCP) | AI tool quản trị, giới hạn phạm vi user, không cross-tenant |
+| `organizations` / `organizationMembers` | org + org role |
+| `projects.org_id` / `created_by` | owning org / creator audit |
+| `projectMembers` | explicit project role (admin/member/viewer) |
+| `lib/authz.ts` | the only authz module (effectiveProjectRole, assertProjectRole, assertOrgRoleOnProject, loadVisibleProjectIds) |
+| `ADMIN_EMAILS` | instance REST admin (deploy config) |

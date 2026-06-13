@@ -1,13 +1,11 @@
 "use client";
 
-// Project settings → Integrations. ISS-408/F3 adds a "Share an existing
-// connection" Card on top of the existing deep-link Card: an admin can bind an
-// owner-scoped connection to this project (+ env) WITHOUT re-entering the
-// credential. The full per-project integration config still lives at the
-// workspace `/integrations` hub (ISS-395 AC4) — this tab does not duplicate the
-// provider forms; the secondary Card deep-links there.
+// Project settings → Integrations — the FULL per-project management surface
+// (ISS-429): live status cards with config/Test/Rotate/Disconnect drill-in,
+// the Agent MCP servers preview, and the ISS-408/F3 "Share an existing
+// connection" Card. The workspace `/integrations` page is the owner-scoped
+// connection directory; everything project-scoped lives here.
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Banner,
   Button,
@@ -17,6 +15,8 @@ import {
   Select,
   type SelectOption,
 } from "@/design";
+import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
+import { PROVIDER_LABEL } from "@/features/integrations/components/status-pill";
 import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
 import type { ConnectionSummary, IntegrationEnvironment } from "@/features/integrations/types";
 
@@ -24,12 +24,6 @@ const ENVIRONMENT_OPTIONS: SelectOption[] = [
   { value: "staging", label: "Staging" },
   { value: "prod", label: "Production" },
 ];
-
-const PROVIDER_LABEL: Record<string, string> = {
-  coolify: "Coolify deploy",
-  postman: "Postman",
-  epodsystem: "Epodsystem",
-};
 
 function connectionLabel(c: ConnectionSummary): string {
   const provider = PROVIDER_LABEL[c.provider] ?? c.provider;
@@ -123,25 +117,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   );
 }
 
-function ConfigureNewCard() {
-  const router = useRouter();
-  return (
-    <Card>
-      <CardContent>
-        <h2 className="fg-h3 mb-1">Configure a new integration</h2>
-        <p className="fg-body-sm mb-4 text-muted">
-          Add or rotate credentials for Epodsystem storefront, Coolify deploy
-          (staging/prod, webhook secret, production gate), and Postman on the workspace
-          Integrations hub. Connection testing and secret rotation happen there.
-        </p>
-        <Button variant="secondary" icon="link" onClick={() => router.push("/integrations")}>
-          Open Integrations
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
 export function IntegrationsTab({
   projectId,
   canEdit,
@@ -151,8 +126,8 @@ export function IntegrationsTab({
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <ProjectIntegrationsPanel projectId={projectId} />
       <ShareExistingCard projectId={projectId} canEdit={canEdit} />
-      <ConfigureNewCard />
     </div>
   );
 }

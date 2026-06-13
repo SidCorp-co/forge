@@ -19,6 +19,7 @@ import {
   StatusChip,
   useElapsed,
 } from "@/design";
+import { useProjects } from "@/features/projects/hooks";
 import {
   classifySessionOutcome,
   deriveSessionDisplayStatus,
@@ -39,7 +40,7 @@ import {
   useSessionTurns,
 } from "../hooks";
 import { parseTurns } from "../types";
-import { Composer } from "./composer";
+import { Composer, ReadOnlyComposerNote } from "./composer";
 import { Conversation } from "./conversation";
 import { ConversationList, EditableTitle } from "./conversation-list";
 
@@ -47,6 +48,11 @@ const AGENT_TYPE = "agent";
 
 export function ChatScreen({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
+
+  // Viewer = read-only: hide the composer (the server 403s sends regardless).
+  const projectsQ = useProjects();
+  const canWrite =
+    projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
 
   // Resume the latest interactive agent session for this project, and list a
   // page of recent ones to drive the history switcher (ISS-421). Archived
@@ -69,7 +75,10 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   const sessionQ = useSession(resolvedId);
   const turnsQ = useSessionTurns(resolvedId);
-  const items = useMemo(() => parseTurns(turnsQ.data?.turns ?? []), [turnsQ.data]);
+  const items = useMemo(
+    () => parseTurns(turnsQ.data?.turns ?? []),
+    [turnsQ.data],
+  );
 
   const create = useCreateSession();
   const send = useSendMessage(resolvedId ?? "");
@@ -80,12 +89,17 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   const session = sessionQ.data;
   const display = session ? deriveSessionDisplayStatus(session) : undefined;
   const live = display === "running" || display === "stalled";
-  const startMs = session?.startedAt ? new Date(session.startedAt).getTime() : undefined;
+  const startMs = session?.startedAt
+    ? new Date(session.startedAt).getTime()
+    : undefined;
   const elapsed = useElapsed(startMs, live);
 
   // Only a GENUINE failure (not a benign lifecycle/capacity cancel or pipeline
   // cleanup) surfaces the recovery banner — mirrors the sessions list (ISS-322).
-  const outcome = session && display ? classifySessionOutcome(display, session.failureReason) : undefined;
+  const outcome =
+    session && display
+      ? classifySessionOutcome(display, session.failureReason)
+      : undefined;
   const isFailed = outcome?.bucket === "failed";
 
   // Start a fresh draft chat — no server row until the user sends a message
@@ -103,19 +117,30 @@ export function ChatScreen({ projectId }: { projectId: string }) {
     setHistoryOpen(false);
   };
 
+  // Archiving/deleting the CURRENTLY-resolved conversation would leave a stale
+  // `activeId` (or a default-resolved row) pointing at a gone/hidden row →
+  // ErrorState. Fall back to a clean draft so the screen resolves to the next
+  // recent chat or the empty state (review follow-up, ISS-465).
+  const handleActiveRemoved = () => {
+    setActiveId(undefined);
+    setDraft(false);
+  };
+
+  // `await`s the send so a failure rejects up into the Composer, which then
+  // keeps the typed text for retry (ISS-462) instead of clearing it. No `title`
+  // on create — the server auto-titles from the first user message (ISS-462).
   const handleSend = async (message: string) => {
     let id = resolvedId;
     if (!id) {
       const created = await create.mutateAsync({
         projectId,
-        title: "Chat",
         metadata: { type: AGENT_TYPE },
       });
       id = created.id;
       setDraft(false);
       setActiveId(id);
     }
-    send.mutate({ sessionId: id, message });
+    await send.mutateAsync({ sessionId: id, message });
   };
 
   const busy = live || send.isPending || create.isPending;
@@ -153,11 +178,18 @@ export function ChatScreen({ projectId }: { projectId: string }) {
           ) : (
             <h1 className="fg-h2">My conversations</h1>
           )}
-          <p className="fg-body-sm mt-1 text-muted">Ask the agent anything about this project.</p>
+          <p className="fg-body-sm mt-1 text-muted">
+            Ask the agent anything about this project.
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {session && display && (
-            <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
+            <StatusChip
+              status={statusToChip(display)}
+              stage={deriveStage(session.metadata)}
+              size="sm"
+              domain="session"
+            />
           )}
           <div className="relative">
             <Button
@@ -177,6 +209,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               rows={recentSessions}
               activeId={resolvedId}
               onPick={(s) => handlePick(s.id)}
+              onActiveRemoved={handleActiveRemoved}
             />
           </div>
           <Button variant="secondary" size="sm" icon="plus" onClick={handleNewChat}>
@@ -186,7 +219,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8">
+        <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
           {isFailed && (
             <div className="mb-6">
               <Banner
@@ -197,8 +230,18 @@ export function ChatScreen({ projectId }: { projectId: string }) {
                   </Button>
                 }
               >
-                <span className="font-medium">{outcome?.label ?? "Chat failed"}</span>
+                <span className="font-medium">
+                  {outcome?.label ?? "Chat failed"}
+                </span>
                 {outcome?.tooltip ? <> — {outcome.tooltip}</> : null}
+              </Banner>
+            </div>
+          )}
+          {send.isError && (
+            <div className="mb-6">
+              <Banner tone="danger">
+                <span className="font-medium">Couldn&apos;t send.</span>{" "}
+                {formatApiError(send.error)}
               </Banner>
             </div>
           )}
@@ -217,7 +260,9 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               busy={busy || regenerate.isPending || editTurn.isPending}
               onRegenerate={(turnId) => regenerate.mutate(turnId)}
               onFork={(fromTurnId) => fork.mutate({ fromTurnId })}
-              onEditTurn={(turnId, content, expectedEditedAt) => editTurn.mutate({ turnId, content, expectedEditedAt })}
+              onEditTurn={(turnId, content, expectedEditedAt) =>
+                editTurn.mutate({ turnId, content, expectedEditedAt })
+              }
             />
           )}
           {live && (
@@ -228,7 +273,15 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      <Composer onSend={handleSend} busy={busy} placeholder="Message the agent…" />
+      {canWrite ? (
+        <Composer
+          onSend={handleSend}
+          busy={busy}
+          placeholder="Message the agent…"
+        />
+      ) : (
+        <ReadOnlyComposerNote />
+      )}
     </div>
   );
 }

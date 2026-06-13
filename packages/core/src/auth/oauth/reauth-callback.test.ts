@@ -85,12 +85,12 @@ beforeEach(() => {
   });
 });
 
-async function makeReauthState(uid: string | undefined) {
+async function makeReauthState(uid: string | undefined, returnPath = '/settings/tokens') {
   return signState({
     p: 'github',
     n: 'state-nonce',
     v: 'pkce-verifier',
-    r: '/settings/tokens',
+    r: returnPath,
     mode: 'reauth',
     ...(uid ? { uid } : {}),
   });
@@ -115,6 +115,21 @@ describe('oauth callback — mode=reauth', () => {
       expect.objectContaining({ lastFreshAuthAt: expect.any(Date) }),
     );
     expect(setAuthCookieMock).not.toHaveBeenCalled();
+  });
+
+  it('appends with & when the return path already carries a query string', async () => {
+    const cookie = await makeReauthState(USER_ID, '/settings?tab=tokens');
+    oauthLimit.mockResolvedValueOnce([{ userId: USER_ID }]);
+
+    const res = await buildApp().request(
+      '/api/auth/oauth/github/callback?code=c&state=state-nonce',
+      { headers: { cookie: `${STATE_COOKIE_NAME}=${cookie}` } },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://web.example.test/settings?tab=tokens&reauth=ok',
+    );
   });
 
   it('redirects with identity_mismatch when the linked row belongs to a different user', async () => {

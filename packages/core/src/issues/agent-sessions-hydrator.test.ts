@@ -27,6 +27,12 @@ function s(
     createdAt: new Date(updatedAt.getTime() - 1000),
     updatedAt,
     title: null,
+    deviceId: null,
+    startedAt: null,
+    lastHeartbeatAt: null,
+    pipelineRunId: null,
+    claudeSessionId: null,
+    deviceName: null,
   };
 }
 

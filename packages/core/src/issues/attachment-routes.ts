@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -61,7 +61,7 @@ issueAttachmentRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const body = await c.req.parseBody();
     const file = body['file'];
@@ -102,7 +102,7 @@ issueAttachmentRoutes.get(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const rows = await db
       .select({
@@ -157,7 +157,7 @@ attachmentRoutes.get(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     let buffer: Buffer;
     try {
@@ -202,12 +202,11 @@ attachmentRoutes.delete(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    const isMember = !!access.role || access.ownerId === userId;
-    if (!isMember) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     const isUploader = row.uploaderId === userId;
-    const isOwner = access.ownerId === userId || access.role === 'owner';
-    if (!isUploader && !isOwner) throw forbidden('only the uploader or a project owner may delete');
+    const isAdmin = projectRoleAtLeast(access.role, 'admin');
+    if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
 
     await getStorage().delete(row.path);
     await db.delete(issueAttachments).where(eq(issueAttachments.id, id));

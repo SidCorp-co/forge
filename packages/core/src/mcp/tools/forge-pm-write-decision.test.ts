@@ -13,6 +13,7 @@ const queue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
 chain.from = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -52,6 +53,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -68,7 +71,7 @@ const ctx = {
 };
 
 function pushPmActorOk() {
-  queue.push([{ ownerId: OWNER_ID }]);
+  queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
   queue.push([{ capabilities: { pm: true } }]);
 }
 
@@ -118,7 +121,7 @@ describe('forge_pm.write_decision', () => {
 
   it('rejects non-pm-actor', async () => {
     const tool = forgePmWriteDecisionTool(ctx);
-    queue.push([{ ownerId: OWNER_ID }]);
+    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     queue.push([{ capabilities: {} }]); // pm flag missing
     await expect(
       tool.handler({
@@ -133,7 +136,7 @@ describe('forge_pm.write_decision', () => {
     const tool = forgePmWriteDecisionTool(ctx);
     pushPmActorOk();
     queue.push([{ id: DECISION_ID }]); // decision insert
-    queue.push([{ ownerId: OWNER_ID }]); // project lookup
+    queue.push([{ createdBy: OWNER_ID }]); // escalation project lookup (audit creator)
     queue.push([{ id: NOTIFICATION_ID }]); // notification insert
 
     const result = (await tool.handler({

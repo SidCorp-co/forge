@@ -2,7 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectMemberAccess } from '../lib/project-access.js';
+import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import {
@@ -61,7 +61,7 @@ stepHandoffRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectMemberAccess(body.projectId, userId);
+    await assertProjectAccess(body.projectId, userId);
     const r = await writeIssueContext({ ...body, kind: 'handoff' });
     return c.json(r, 201);
   },
@@ -75,7 +75,7 @@ stepHandoffRoutes.get(
   async (c) => {
     const q = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMemberAccess(q.projectId, userId);
+    await assertProjectAccess(q.projectId, userId, 'viewer');
     const rows = await getIssueContexts({
       projectId: q.projectId,
       issueId: q.issueId,
@@ -97,7 +97,7 @@ stepHandoffRoutes.delete(
   async (c) => {
     const q = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMemberAccess(q.projectId, userId);
+    await assertProjectAccess(q.projectId, userId);
     const n = await deleteIssueContext({
       projectId: q.projectId,
       issueId: q.issueId,

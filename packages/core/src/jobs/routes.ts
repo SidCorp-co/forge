@@ -14,8 +14,8 @@ import {
   promptBlobs,
   usageRecords,
 } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
@@ -33,9 +33,6 @@ const badRequest = (details: unknown) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
@@ -129,7 +126,7 @@ jobProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     if (input.issueId) await assertIssueInProject(projectId, input.issueId);
 
@@ -187,7 +184,7 @@ jobProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const conditions = [eq(jobs.projectId, projectId)];
     if (q.status) conditions.push(eq(jobs.status, q.status));
@@ -228,7 +225,7 @@ jobRoutes.get(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     let device: { id: string; name: string; status: string } | null = null;
     if (job.deviceId) {
@@ -261,7 +258,7 @@ jobRoutes.patch(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     if (job.status !== 'queued') {
       throw conflict('jobs can only be patched while queued', 'JOB_NOT_QUEUED');
@@ -293,7 +290,7 @@ jobRoutes.get(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     // Archive-path stub (W2.1.5 will land the real fetcher).
     if (job.archivePath && !job.userPromptSnapshot && !job.systemPromptHash) {

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const spawnMock = vi.fn(async () => ({ ok: true, jobId: 'pm-1' }) as const);
+const spawnMock = vi.fn(async (..._args: unknown[]) => ({ ok: true, jobId: 'pm-1' }) as const);
 vi.mock('./spawner.js', () => ({
   spawnPmSession: (...args: unknown[]) => spawnMock(...(args as [unknown])),
 }));
 
-const autoDisableMock = vi.fn(async () => undefined);
+const autoDisableMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./auto-disable.js', () => ({
   handlePmJobFailedAutoDisable: (...args: unknown[]) =>
     autoDisableMock(...(args as [unknown])),

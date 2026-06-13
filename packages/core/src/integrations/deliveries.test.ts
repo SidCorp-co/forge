@@ -1,6 +1,6 @@
 /**
- * ISS-399 — recordDelivery writes the binding_id key (post-cutover) and tolerates
- * a null project_integration_id (new bindings have no backing legacy row).
+ * ISS-399 / ISS-410 — recordDelivery writes the binding_id key (post-cutover);
+ * the legacy backing column was dropped, so a new binding inserts binding_id only.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 describe('recordDelivery', () => {
-  it('persists binding_id and leaves project_integration_id null for new bindings', async () => {
+  it('persists binding_id only for new bindings', async () => {
     const id = await recordDelivery({
       bindingId: 'bind-1',
       direction: 'outbound',
@@ -36,7 +36,6 @@ describe('recordDelivery', () => {
     expect(id).toBe('delivery-1');
     expect(inserted).toMatchObject({
       bindingId: 'bind-1',
-      projectIntegrationId: null,
       direction: 'outbound',
       eventName: 'release.requested',
       requestId: 'req-1',

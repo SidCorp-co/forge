@@ -1,15 +1,14 @@
 # web-v2
 
-The redesigned Forge cloud UI — built in parallel with `packages/web`, switchable
-on the UI, big-bang cutover when the core loop is covered. See
-[`docs/proposals/web-v2-redesign.md`](../../docs/proposals/web-v2-redesign.md).
+The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
+`packages/web` retired).
 
 - **Brand:** light-first "calm, bright workshop" — warm paper neutrals, flame-orange
   action accent, cobalt structure, the 7-stage pipeline hue motif. Hanken Grotesk +
   JetBrains Mono.
 - **Stack:** Next.js 16 (App Router) · React 19 · Tailwind v4 (CSS `@theme`, no config
-  file) · custom primitives (no shadcn) · lucide-react · TanStack Query. Shares the
-  same `core` REST/WS contract + `@forge/contracts` as `packages/web`.
+  file) · custom primitives (no shadcn) · lucide-react · TanStack Query. Consumes the
+  `core` REST/WS contract via `@forge/contracts`.
 
 ## Tokens — 2 layers (light-only now, dark drop-in)
 

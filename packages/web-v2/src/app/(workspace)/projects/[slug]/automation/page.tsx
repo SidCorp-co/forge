@@ -43,6 +43,6 @@ export default function ProjectAutomationPage() {
     );
   }
 
-  const canManage = project.role === "owner" || project.role === "admin";
+  const canManage = project.role === "admin";
   return <AutomationScreen scope={{ projectId: project.id, canManage }} />;
 }

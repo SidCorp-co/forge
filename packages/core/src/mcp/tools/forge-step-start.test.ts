@@ -13,6 +13,7 @@ const queue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
 chain.from = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -27,16 +28,30 @@ vi.mock('../../db/client.js', () => ({
 const loadIssue = vi.fn();
 vi.mock('./forge-issues.js', () => ({
   loadIssue: (...args: unknown[]) => loadIssue(...args),
-  // identity serializer — bundle assertions read the raw row
+  // identity serializer — bundle assertions read the raw row. The
+  // attachment-aware variant just adds an empty `attachments[]` here (the
+  // real DB join is exercised in forge-issues.test.ts).
   serialize: (row: unknown) => row,
+  serializeWithAttachments: async (row: Record<string, unknown>) => ({
+    ...row,
+    attachments: [],
+  }),
 }));
 
-const applyStatusTransition = vi.fn(async () => {});
+// Comment attachments are joined separately in the handler; stub to empty so
+// the bundle shape is exercised without programming another db chain.
+vi.mock('../../comments/attachment-service.js', () => ({
+  listCommentAttachmentsForIssue: vi.fn(async () => new Map()),
+}));
+
+const applyStatusTransition = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('../../issues/apply-transition.js', () => ({
   applyStatusTransition: (...args: unknown[]) => applyStatusTransition(...args),
 }));
 
-const getIssueContexts = vi.fn(async () => [{ step: 'plan', payload: { planSummary: 'x' } }]);
+const getIssueContexts = vi.fn(async (..._args: unknown[]) => [
+  { step: 'plan', payload: { planSummary: 'x' } },
+]);
 vi.mock('../../pipeline/issue-context-store.js', () => ({
   getIssueContexts: (...args: unknown[]) => getIssueContexts(...args),
 }));
@@ -54,6 +69,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -82,7 +99,7 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
 
 /** Queue: membership assert → (handler) comments rows → projects row. */
 function queueHappyPath(opts?: { comments?: unknown[]; project?: unknown }) {
-  queue.push([{ ownerId: OWNER_ID }], opts?.comments ?? [], [
+  queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }], opts?.comments ?? [], [
     opts?.project ?? { baseBranch: 'main', productionBranch: 'main' },
   ]);
 }
@@ -115,6 +132,21 @@ describe('forge_step_start', () => {
     expect(result.issue.status).toBe('in_progress');
     expect(result.comments).toHaveLength(1);
     expect(result.handoffs).toHaveLength(1);
+  });
+
+  it('bundle carries attachments[] on the issue and on each comment', async () => {
+    const tool = forgeStepStartTool(ctx);
+    loadIssue.mockResolvedValue(makeIssue());
+    queueHappyPath({ comments: [{ documentId: 'c1', body: 'has a screenshot' }] });
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+      string,
+      // biome-ignore lint/suspicious/noExplicitAny: test readback
+      any
+    >;
+
+    expect(result.issue.attachments).toEqual([]);
+    expect(result.comments[0].attachments).toEqual([]);
   });
 
   it('is idempotent on resume — already at working status, no transition', async () => {
@@ -186,7 +218,7 @@ describe('forge_step_start', () => {
   it('requires explicit stage when the status alone is ambiguous', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue({ status: 'in_progress' }));
-    queue.push([{ ownerId: OWNER_ID }]);
+    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })).rejects.toThrow(
       /BAD_REQUEST.*pass `stage`/,
@@ -196,7 +228,7 @@ describe('forge_step_start', () => {
   it('rejects an issue outside the project', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue({ projectId: 'other-project' }));
-    queue.push([{ ownerId: OWNER_ID }]);
+    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })).rejects.toThrow(
       /NOT_FOUND/,

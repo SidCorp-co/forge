@@ -1,6 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
+import { listCommentAttachmentsForIssue } from '../../comments/attachment-service.js';
 import { db } from '../../db/client.js';
 import { type IssueStatus, type JobType, comments, jobTypes, projects } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
@@ -10,8 +11,10 @@ import {
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../../pipeline/registry.js';
-import { type IssueRow, loadIssue, serialize } from './forge-issues.js';
-import { assertPrincipalIsMember, zodToMcpSchema } from './lib.js';
+import { type IssueRow, loadIssue, serializeWithAttachments } from './forge-issues.js';
+import { assertPrincipalIsMember, zodToMcpSchema,
+  assertPrincipalIsWriter,
+} from './lib.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 
 /**
@@ -61,7 +64,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    await assertPrincipalIsWriter(ctx.principal, input.projectId);
 
     const issue: IssueRow = await loadIssue(input.issueId);
     if (issue.projectId !== input.projectId) {
@@ -86,7 +89,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
       statusNote = `not flipped: issue is at '${issue.status}', not the '${stage}' trigger '${triggerStatus}'`;
     }
 
-    const [commentRows, handoffs, [projectRow]] = await Promise.all([
+    const [commentRows, commentAttachmentsByCommentId, handoffs, [projectRow]] = await Promise.all([
       db
         .select({
           documentId: comments.id,
@@ -98,6 +101,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
         .from(comments)
         .where(eq(comments.issueId, input.issueId))
         .orderBy(asc(comments.createdAt)),
+      listCommentAttachmentsForIssue(input.issueId),
       getIssueContexts({
         projectId: input.projectId,
         issueId: input.issueId,
@@ -133,8 +137,11 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
       stage,
       statusChanged,
       ...(statusNote ? { statusNote } : {}),
-      issue: serialize(issue),
-      comments: commentRows,
+      issue: await serializeWithAttachments(issue),
+      comments: commentRows.map((c) => ({
+        ...c,
+        attachments: commentAttachmentsByCommentId.get(c.documentId) ?? [],
+      })),
       handoffs,
       branchConfig,
     };

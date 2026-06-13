@@ -15,7 +15,7 @@ import { EmptyState, PageContainer } from "@/design";
 
 export function UsageScreen() {
   return (
-    <PageContainer width="wide">
+    <PageContainer>
       <header className="mb-4">
         <h1 className="fg-h2">Usage</h1>
         <p className="fg-body-sm mt-0.5 text-muted">

@@ -1,9 +1,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
-import { embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { searchMemories } from './search.js';
 
 /**
  * Subscribe to issue/comment lifecycle hooks and keep the `memories` table in
@@ -32,19 +33,58 @@ export interface IndexInput {
 export interface IndexResult {
   id: string;
   embeddedAt: Date;
-  /** True when text exceeded MAX_EMBED_CHARS and was cut before embedding. */
+  /**
+   * True when text exceeded MAX_EMBED_CHARS and was cut before embedding.
+   * The stored `textContent` is always the full text — only the string sent
+   * to the embedding model is trimmed.
+   */
   truncated: boolean;
+  /**
+   * True when the embeddings service was unavailable and the row was stored
+   * WITHOUT a vector (memory-v2 phase 1 degraded write). The row is
+   * keyword-searchable immediately; the backfill job re-embeds it once the
+   * service recovers. `embeddedAt` is stale/meaningless until then.
+   */
+  degraded: boolean;
+  /**
+   * Set when semantic dedup absorbed this write into an existing
+   * near-identical row (memory-v2 phase 2): the `sourceRef` of that row.
+   * `id` is the absorbing row's id. Callers should reuse this sourceRef for
+   * future refinements instead of their requested one.
+   */
+  dedupedInto?: string;
+}
+
+export interface IndexOptions {
+  /**
+   * memory-v2 phase 2 — semantic dedup, ported from forge-agents crud.ts.
+   * When the write would CREATE a new row (no exact natural-key match) but a
+   * semantically near-identical row (cosine > DEDUP_THRESHOLD) already exists
+   * under the same source, the write refines THAT row instead of inserting a
+   * near-duplicate. Exact-key re-writes (intentional refinement) and degraded
+   * writes (no vector to compare) bypass dedup. Enabled by the agent-curated
+   * write paths for `note`/`knowledge`; never by lifecycle mirrors.
+   */
+  semanticDedup?: boolean;
 }
 
 /**
- * Strict variant — throws on embedding failure or DB upsert failure. Returns
- * the upserted row's id + embeddedAt + a `truncated` flag so explicit callers
- * (REST `POST /api/memory`, MCP `forge_memory.write`, knowledge ingest) can
- * report it.
+ * 0.85 mirrors forge-agents. NOTE (proposal open question): tuned on the
+ * predecessor's embedding model — re-validate against the configured model
+ * before relying on it for aggressive consolidation.
  */
-export async function indexMemory(input: IndexInput): Promise<IndexResult> {
+export const DEDUP_THRESHOLD = 0.85;
+
+/**
+ * Strict variant — throws on DB upsert failure or non-outage embedding
+ * failure. An embeddings OUTAGE (`EmbeddingUnavailableError`) no longer
+ * throws: the row is written without a vector and flagged `degraded` so
+ * explicit callers (REST `POST /api/memory`, MCP `forge_memory.write`,
+ * knowledge ingest) can report it instead of losing the write.
+ */
+export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promise<IndexResult> {
   const truncated = input.text.length > MAX_EMBED_CHARS;
-  const trimmed = truncated ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
+  const embedText = truncated ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
   if (truncated) {
     logger.warn(
       {
@@ -57,7 +97,56 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
     );
   }
 
-  const vector = await embed(trimmed);
+  let vector: number[] | null = null;
+  try {
+    vector = await embed(embedText);
+  } catch (err) {
+    if (!(err instanceof EmbeddingUnavailableError)) throw err;
+    logger.warn(
+      { projectId: input.projectId, source: input.source, sourceRef: input.sourceRef },
+      'memory.indexer: embeddings unavailable, storing degraded row for backfill',
+    );
+  }
+  const degraded = vector === null;
+
+  if (opts?.semanticDedup && vector !== null) {
+    const target = await findDedupTarget(input, vector);
+    if (target) {
+      const [updated] = await db
+        .update(memories)
+        .set({
+          textContent: input.text,
+          embedding: vector,
+          metadata: input.metadata ?? {},
+          archivedAt: null,
+          embeddedAt: sql`now()`,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(memories.id, target.id))
+        .returning({ id: memories.id, embeddedAt: memories.embeddedAt });
+      if (updated) {
+        logger.info(
+          {
+            projectId: input.projectId,
+            source: input.source,
+            requestedSourceRef: input.sourceRef,
+            dedupedInto: target.sourceRef,
+            score: target.score,
+          },
+          'memory.indexer: semantic dedup absorbed write into existing row',
+        );
+        return {
+          id: updated.id,
+          embeddedAt: updated.embeddedAt,
+          truncated,
+          degraded: false,
+          dedupedInto: target.sourceRef,
+        };
+      }
+      // Row vanished between search and update (concurrent delete) — fall
+      // through to the normal insert path.
+    }
+  }
 
   const [row] = await db
     .insert(memories)
@@ -65,7 +154,7 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
       projectId: input.projectId,
       source: input.source,
       sourceRef: input.sourceRef,
-      textContent: trimmed,
+      textContent: input.text,
       embedding: vector,
       metadata: input.metadata ?? {},
     })
@@ -73,9 +162,18 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
       target: [memories.projectId, memories.source, memories.sourceRef],
       set: {
         textContent: sql`excluded.text_content`,
-        embedding: sql`excluded.embedding`,
+        // Degraded re-write: null the vector ONLY when the text actually
+        // changed (the old vector embeds stale text; null forces the backfill
+        // re-embed). When the text is identical, the existing vector is still
+        // valid — keep it instead of losing a good embedding to an outage.
+        embedding: degraded
+          ? sql`CASE WHEN ${memories.textContent} = excluded.text_content THEN ${memories.embedding} ELSE excluded.embedding END`
+          : sql`excluded.embedding`,
         metadata: sql`excluded.metadata`,
-        embeddedAt: sql`now()`,
+        // A fresh write revives a decayed/consolidated-away row.
+        archivedAt: sql`null`,
+        // embeddedAt only advances when a vector was actually written.
+        ...(degraded ? {} : { embeddedAt: sql`now()` }),
         updatedAt: sql`now()`,
       },
     })
@@ -85,31 +183,63 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
     // Shouldn't happen — UPSERT with returning always returns a row.
     throw new Error('memory.indexer: upsert returned no row');
   }
-  return { id: row.id, embeddedAt: row.embeddedAt, truncated };
+  return { id: row.id, embeddedAt: row.embeddedAt, truncated, degraded };
 }
 
 /**
- * Best-effort variant — swallows embedding and DB failures with rich
- * structured logging. Use from hook subscribers where the request path must
- * not see indexer errors and a later edit will re-attempt indexing.
+ * Dedup target lookup: skip when the exact natural key already exists (the
+ * upsert path refines it — that's intentional), otherwise return the closest
+ * same-source row above DEDUP_THRESHOLD.
+ */
+async function findDedupTarget(
+  input: IndexInput,
+  vector: number[],
+): Promise<{ id: string; sourceRef: string; score: number } | null> {
+  const [exact] = await db
+    .select({ id: memories.id })
+    .from(memories)
+    .where(
+      and(
+        eq(memories.projectId, input.projectId),
+        eq(memories.source, input.source),
+        eq(memories.sourceRef, input.sourceRef),
+      ),
+    )
+    .limit(1);
+  if (exact) return null;
+
+  const similar = await searchMemories({
+    projectId: input.projectId,
+    queryVec: vector,
+    topK: 1,
+    sourceFilter: [input.source],
+  });
+  const best = similar[0];
+  if (!best || best.score <= DEDUP_THRESHOLD) return null;
+  return { id: best.id, sourceRef: best.sourceRef, score: best.score };
+}
+
+/**
+ * Best-effort variant — swallows failures with structured logging. Use from
+ * hook subscribers where the request path must not see indexer errors and a
+ * later edit will re-attempt indexing. Embeddings OUTAGES never reach here —
+ * `indexMemory` absorbs them as degraded writes — so anything caught is a DB
+ * failure or a non-outage embed error (e.g. dimension mismatch).
  */
 export async function indexMemoryBestEffort(input: IndexInput): Promise<void> {
   try {
     await indexMemory(input);
   } catch (err) {
-    const meta = {
-      err: (err as Error).message,
-      projectId: input.projectId,
-      source: input.source,
-      sourceRef: input.sourceRef,
-    };
-    // Distinguish embed vs DB by inspecting the error message prefix — both
-    // are logged at warn so a bursty embed outage doesn't flood error counters.
-    if ((err as Error).message?.includes('embed')) {
-      logger.warn(meta, 'memory.indexer: embed failed, skipping');
-    } else {
-      logger.warn(meta, 'memory.indexer: upsert failed');
-    }
+    // warn, not error, so a bursty outage doesn't flood error counters.
+    logger.warn(
+      {
+        err: (err as Error).message,
+        projectId: input.projectId,
+        source: input.source,
+        sourceRef: input.sourceRef,
+      },
+      'memory.indexer: write failed',
+    );
   }
 }
 

@@ -30,6 +30,9 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
+    // ISS-447 — applyKernelTransition writes the kernel_transitions audit row
+    // on the same executor after the run flip.
+    insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
   return { db: dbStub };
@@ -37,7 +40,7 @@ vi.mock('../db/client.js', () => {
 
 // ISS-411 — observe the operator-cancel → issue `on_hold` park without the
 // real state-machine. parkIssueOnCancel is best-effort, so the spy resolves.
-const applyStatusTransitionSpy = vi.fn(async () => undefined);
+const applyStatusTransitionSpy = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...args: unknown[]) => applyStatusTransitionSpy(...args),
 }));
@@ -159,7 +162,9 @@ describe('cancelPipelineRun', () => {
       { id: 'job-2', agentSessionId: null, deviceId: 'dev-A' },
       { id: 'job-3', agentSessionId: 'sess-2', deviceId: 'dev-B' },
     ]);
-    // Note: agent_sessions update has no .returning() — no third mock needed.
+    // ISS-447 — the session cascade now also flows through applyKernelTransition,
+    // which calls `.returning()`; supply the flipped session rows it audits.
+    updateReturning.mockResolvedValueOnce([{ id: 'sess-1' }, { id: 'sess-2' }]);
 
     const result = await cancelPipelineRun(RUN_ID);
 
@@ -230,7 +235,7 @@ describe('cancelPipelineRun', () => {
         projectId: PROJECT_ID,
         status: 'in_progress',
         reopenCount: 0,
-        ownerId: 'owner-1',
+        createdBy: 'owner-1',
       },
     ]);
 
@@ -253,7 +258,7 @@ describe('cancelPipelineRun', () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     updateReturning.mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0, ownerId: 'owner-1' },
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0, createdBy: 'owner-1' },
     ]);
 
     await cancelPipelineRun(RUN_ID);

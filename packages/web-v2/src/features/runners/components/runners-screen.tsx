@@ -16,6 +16,7 @@ import {
   Icon,
   Input,
   MonoTag,
+  PageContainer,
   Skeleton,
   Table,
   TBody,
@@ -153,7 +154,7 @@ export function RunnersScreen() {
   const detailDevice = rows.find((d) => d.id === detailId) ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-5 px-6 py-6">
+    <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="fg-h2">Runners &amp; devices</h1>
@@ -310,6 +311,6 @@ export function RunnersScreen() {
       </Banner>
 
       <DeviceDetail device={detailDevice} onClose={() => setDetailId(null)} />
-    </div>
+    </PageContainer>
   );
 }

@@ -5,8 +5,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { usageRecords, usageSources } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { estimateCost } from './pricing.js';
 
@@ -63,9 +63,6 @@ const bulkSchema = z
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
@@ -82,7 +79,7 @@ usageRecordRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const conditions: SQL[] = [eq(usageRecords.projectId, projectId)];
     if (source) conditions.push(eq(usageRecords.source, source));
@@ -121,7 +118,7 @@ usageRecordRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -200,7 +197,7 @@ usageRecordRoutes.get(
 
     if (row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      assertProjectRole(access, 'viewer', 'not a project member');
     }
 
     return c.json(row);
@@ -218,7 +215,7 @@ usageRecordRoutes.post(
 
     if (input.projectId) {
       const access = await loadProjectAccess(input.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      assertProjectRole(access, 'member', 'not a project member');
     }
 
     const cost =
@@ -268,7 +265,7 @@ usageRecordRoutes.post(
     );
     for (const projectId of projectIds) {
       const access = await loadProjectAccess(projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      assertProjectRole(access, 'member', 'not a project member');
     }
 
     const values = records.map((r) => ({
@@ -314,7 +311,7 @@ usageRecordRoutes.post(
     );
     for (const projectId of projectIds) {
       const access = await loadProjectAccess(projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      assertProjectRole(access, 'member', 'not a project member');
     }
 
     const values = records.map((r) => ({

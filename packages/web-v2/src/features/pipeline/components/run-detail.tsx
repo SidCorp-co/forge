@@ -1,14 +1,17 @@
 "use client";
 
 // RunDetail SlideOver (ISS-295) — an issue's pipeline run opens here rather
-// than navigating away. Header → controls → full PipelineTracker → Timeline /
-// Tasks / Cost tabs, all driven by `GET /api/pipeline-runs/:id` (`useRun`,
-// WS-live via key `['pipeline-run', id]`). Pause/Resume/Cancel hit real
-// endpoints; Rerun/Fork have NO backend (info toast, no phantom call). Mirrors
-// the prototype `web-redesign-plan/ui-kit/RunDetail.jsx`.
+// than navigating away. Reordered for ISS-436 so it reads top-down as a
+// status panel: header (title + issue meta) → full PipelineTracker → run
+// controls → Timeline / Tasks / Cost tabs, all driven by
+// `GET /api/pipeline-runs/:id` (`useRun`, WS-live via key
+// `['pipeline-run', id]`). Pause/Resume/Cancel hit real endpoints; Rerun/Fork
+// have NO backend (info toast, no phantom call).
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Avatar,
+  Badge,
   Button,
   EmptyState,
   ErrorState,
@@ -29,10 +32,12 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
+import { priorityLabel } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import {
   formatDurationMs,
   formatUsd,
+  initialsFor,
   issueStatusToStatusKey,
   jobTypeToStage,
   runStatusToStatusKey,
@@ -57,6 +62,10 @@ interface RunDetailProps {
   runId: string | null;
   /** Active project slug — enables the "Open issue" cross-link when present. */
   slug?: string;
+  /** False for project viewers (read-only): hides the issue quick-action bar
+   *  and the Pause/Resume/Stop run controls (the server 403s them anyway).
+   *  Optional, defaults true so existing callers keep their behaviour. */
+  canWrite?: boolean;
 }
 
 const TABS = [
@@ -65,7 +74,16 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps) {
+// Priority badge tone — mirrors the issues table's PriorityCell.
+const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
+  critical: "red",
+  high: "amber",
+  medium: "neutral",
+  low: "neutral",
+  none: "neutral",
+};
+
+export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("timeline");
   const { toast } = useToast();
   const router = useRouter();
@@ -147,8 +165,9 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
   // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link. When an
   // issue row is present the quick-action bar already exposes a first-class
   // "Open issue" control, so the menu only carries it in the run-only context
-  // (e.g. the Ops Runs tab, where there is no issue row + quick bar).
-  if (slug && taskIssueId && !issue) {
+  // (e.g. the Ops Runs tab, where there is no issue row + quick bar) — or for
+  // read-only viewers, whose quick bar is hidden.
+  if (slug && taskIssueId && (!issue || !canWrite)) {
     menuItems.push({ label: "Open issue", icon: "list", onSelect: openIssue });
   }
   if (runId) {
@@ -181,8 +200,9 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
               most-used issue mutations (status / priority / assignee) + the
               full-detail link are reachable in one glance without scrolling.
               Only when opened from an issue card (the Ops run-only view has no
-              issue row to edit). */}
-          {issue && (
+              issue row to edit) and for writers — viewers get a read-only
+              drawer ("Open issue" moves into the overflow menu). */}
+          {issue && canWrite && (
             <div className="sticky -top-4 z-10 -mx-5 -mt-4 border-b border-line bg-surface/95 px-5 pb-3 pt-4 backdrop-blur-sm">
               <IssueQuickActions
                 issueId={issue.id}
@@ -197,10 +217,25 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
             </div>
           )}
 
-          {/* Header */}
+          {/* Header — title + the issue's own meta (priority / assignee /
+              branch / run cost), so the panel answers "what is this and where
+              does it stand" before offering controls (ISS-436). */}
           <div className="flex flex-col gap-2.5">
             <h2 className="fg-h2 leading-tight">{title}</h2>
             <div className="flex flex-wrap items-center gap-2.5">
+              {issue && issue.priority !== "none" && (
+                <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
+                  {priorityLabel(issue.priority as IssuePriority)}
+                </Badge>
+              )}
+              {issue?.assigneeId && (
+                <span
+                  className="inline-flex items-center"
+                  title={issue.assigneeId}
+                >
+                  <Avatar initials={initialsFor(issue.assigneeId) ?? "?"} size={20} />
+                </span>
+              )}
               {branch && (
                 <MonoTag>
                   <Icon name="branch" size={12} className="mr-1 align-[-1px]" />
@@ -211,11 +246,17 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
             </div>
           </div>
 
+          {/* Full tracker — where the pipeline stands, ahead of the controls
+              that act on it (ISS-436 panel reorder). */}
+          <div className="rounded-lg border border-line-subtle bg-sunken p-4">
+            <PipelineTracker stage={stage} status={trackerStatus} variant="full" />
+          </div>
+
           {/* Controls — Pause (finish-then-halt) and Stop now (abort) are
               visually + verbally distinct: a primary Pause vs a danger Stop. */}
           <div className="flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              {run?.status === "running" && (
+              {canWrite && run?.status === "running" && (
                 <Tooltip label="Finishes the in-flight step, then halts before the next step. Does NOT stop the running agent.">
                   <Button
                     variant="primary"
@@ -227,7 +268,7 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
                   </Button>
                 </Tooltip>
               )}
-              {run?.status === "paused" && (
+              {canWrite && run?.status === "paused" && (
                 <Button
                   variant="primary"
                   icon="play"
@@ -239,7 +280,7 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
               )}
               {/* Distinct destructive abort — present whenever an agent could
                   still be running (running, or the finishing step while pausing). */}
-              {runId && (run?.status === "running" || isPausing) && (
+              {canWrite && runId && (run?.status === "running" || isPausing) && (
                 <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
                   <Button
                     variant="danger"
@@ -277,11 +318,6 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
             {isHalted && (
               <p className="fg-body-sm text-muted">Run halted — no active session.</p>
             )}
-          </div>
-
-          {/* Full tracker */}
-          <div className="rounded-lg border border-line-subtle bg-sunken p-4">
-            <PipelineTracker stage={stage} status={trackerStatus} variant="full" />
           </div>
 
           {/* Tabs */}

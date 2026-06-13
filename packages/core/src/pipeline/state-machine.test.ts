@@ -109,11 +109,17 @@ describe('state machine', () => {
       }
     });
 
-    it('restricts a draft source to open or closed only', () => {
+    it('restricts a draft source to open, closed, or the direct-ship developed entry', () => {
       expect(canTransitionFree('draft', 'open')).toBe(true);
       expect(canTransitionFree('draft', 'closed')).toBe(true);
+      // ISS-431 — direct-ship: work done outside the pipeline enters at the
+      // review gate instead of bypassing it (or re-running triage via open).
+      expect(canTransitionFree('draft', 'developed')).toBe(true);
+      // Early/mid pipeline stages stay sealed off from unaccepted proposals.
       expect(canTransitionFree('draft', 'in_progress')).toBe(false);
-      expect(canTransitionFree('draft', 'developed')).toBe(false);
+      expect(canTransitionFree('draft', 'approved')).toBe(false);
+      expect(canTransitionFree('draft', 'testing')).toBe(false);
+      expect(canTransitionFree('draft', 'released')).toBe(false);
     });
   });
 });

@@ -5,17 +5,27 @@
 // chips, and an owner/admin enable control. ISS-299.
 import { useMemo, useState } from "react";
 import {
+  Button,
   EmptyState,
   ErrorState,
   Input,
+  PageContainer,
   ProjectCardSkeleton,
   SegmentedControl,
   Stat,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useRegisterSkill, useSkills, useSkillSyncStatus, useUnregisterSkill } from "../hooks";
-import { mergeSkills, type SkillScope } from "../types";
+import {
+  useAdoptSkill,
+  useRegisterSkill,
+  useSkills,
+  useSkillSyncStatus,
+  useUnregisterSkill,
+} from "../hooks";
+import { mergeSkills, projectSkillNames, type SkillScope, type SkillView } from "../types";
 import { SkillCard } from "./skill-card";
+import { SkillStudioDrawer } from "./skill-studio-drawer";
+import { SmokeVerifyPanel } from "./smoke-verify-panel";
 
 interface SkillsScreenProps {
   scope: { projectId: string; canManage: boolean };
@@ -25,7 +35,8 @@ type ScopeFilter = "all" | SkillScope;
 
 const SCOPE_OPTIONS: { value: ScopeFilter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "global", label: "Global" },
+  // `global` skills are org templates you adopt; `project` skills are usable.
+  { value: "global", label: "Templates" },
   { value: "project", label: "Project" },
 ];
 
@@ -35,6 +46,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
   const syncQ = useSkillSyncStatus(projectId);
   const register = useRegisterSkill(projectId);
   const unregister = useUnregisterSkill(projectId);
+  const adopt = useAdoptSkill(projectId);
 
   const isLoading = skillsQ.isLoading || syncQ.isLoading;
   const isError = skillsQ.isError || syncQ.isError;
@@ -44,14 +56,21 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
     () => mergeSkills(skillsQ.data ?? [], syncQ.data ?? []),
     [skillsQ.data, syncQ.data],
   );
-  const pending = register.isPending || unregister.isPending;
+  const pending = register.isPending || unregister.isPending || adopt.isPending;
+
+  // A global template whose name already has a project copy is redundant in the
+  // list — the project card represents it, so hide the global.
+  const shadowedGlobalNames = useMemo(() => projectSkillNames(skills), [skills]);
 
   const [query, setQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+  // Skill Studio drawer: null = closed; { skill: null } = create; { skill } = edit.
+  const [studio, setStudio] = useState<{ skill: SkillView | null } | null>(null);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return skills.filter((s) => {
+      if (s.scope === "global" && shadowedGlobalNames.has(s.name)) return false;
       if (scopeFilter !== "all" && s.scope !== scopeFilter) return false;
       if (!q) return true;
       return (
@@ -59,7 +78,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
         (s.description?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [skills, query, scopeFilter]);
+  }, [skills, query, scopeFilter, shadowedGlobalNames]);
 
   const isFiltered = query.trim() !== "" || scopeFilter !== "all";
 
@@ -72,13 +91,27 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
   }, [visible]);
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
-      <header className="mb-6">
-        <h1 className="fg-h2">Skills</h1>
-        <p className="fg-body-sm mt-1">
-          Global and project skills, and the pipeline stages they run on.
-        </p>
+    <PageContainer className="min-h-dvh">
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="fg-h2">Skills</h1>
+          <p className="fg-body-sm mt-1">
+            Project skills (usable) and org templates you can adopt, plus the pipeline stages they
+            run on.
+          </p>
+        </div>
+        {canManage && (
+          <Button variant="primary" icon="plus" onClick={() => setStudio({ skill: null })}>
+            New skill
+          </Button>
+        )}
       </header>
+
+      {/* ISS-455 — per-stage smoke-verify report (execution/static evidence,
+          not the `synced` badge). The tier-2 canary is gated on canManage. */}
+      <div className="mb-4">
+        <SmokeVerifyPanel projectId={projectId} canManage={canManage} />
+      </div>
 
       {!isLoading && !isError && skills.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -147,10 +180,21 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
               showScope={!singleScope}
               onRegister={(skillId, stage) => register.mutate({ skillId, stage })}
               onUnregister={(stage) => unregister.mutate(stage)}
+              onAdopt={(globalSkillId) => adopt.mutate(globalSkillId)}
+              onEdit={() => setStudio({ skill })}
             />
           ))}
         </div>
       )}
-    </div>
+
+      {canManage && (
+        <SkillStudioDrawer
+          open={studio !== null}
+          onClose={() => setStudio(null)}
+          projectId={projectId}
+          skill={studio?.skill}
+        />
+      )}
+    </PageContainer>
   );
 }

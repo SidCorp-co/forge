@@ -96,6 +96,9 @@ export interface IssueRow {
   updatedAt: string;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
+  /** ISS-437 — per-issue usage rollup in USD, present when the search call
+   *  opts in with `withCost=1` (the list always does). 0 = no usage recorded. */
+  estimatedCost?: number;
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
@@ -153,8 +156,10 @@ export interface IssueDependencies {
 
 /** Client-side filter tabs → server `status`/`statusNot` arrays. `all` means
  *  literally every issue INCLUDING drafts (ISS-360 reverses the ISS-236 "All
- *  excludes drafts" rule); there is no separate drafts tab. */
-export type IssueFilter = "all" | "active" | "review" | "blocked";
+ *  excludes drafts" rule). `draft` and `done` are explicit buckets (ISS-438) —
+ *  unlike the removed ISS-236 "All + drafts" split, they narrow rather than
+ *  change what "All" means. */
+export type IssueFilter = "all" | "draft" | "active" | "review" | "blocked" | "done";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "assignee";
@@ -167,10 +172,15 @@ export type IssueSort =
   | "priority:desc"
   | "priority:asc";
 
-/** Options passed to the search endpoint via the `useIssues` hook. */
+/** Options passed to the search endpoint via the `useIssues` hook. `priority`
+ *  and `assignee` map 1:1 onto the server search params (ISS-436 — the
+ *  endpoint always supported them; the UI just never exposed a control). */
 export interface IssueSearchOpts {
   q?: string;
   filter?: IssueFilter;
+  priority?: IssuePriority;
+  /** Member userId. */
+  assignee?: string;
   sort?: IssueSort;
   page?: number;
   pageSize?: number;

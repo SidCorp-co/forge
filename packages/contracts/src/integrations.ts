@@ -68,6 +68,10 @@ export interface BindingSummary {
   provider: IntegrationProvider;
   environment: IntegrationEnvironment;
   config: Record<string, unknown>;
+  /** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
+   *  is the merged connection+binding view; this distinguishes a per-project
+   *  value from one inherited off the shared connection. */
+  bindingConfig: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
   lastHealthAt: string | null;
@@ -82,7 +86,20 @@ export interface BindingSummary {
 
 // === Composed status card (read-only hub) ===
 
-export type IntegrationCardStatus = 'connected' | 'attention' | 'error' | 'not_configured';
+/**
+ * Coarse card-status bucket for the composed status read model.
+ * - `disabled`   — a binding/connection EXISTS but was switched off (distinct
+ *                  from `not_configured`, which means nothing is set up).
+ * - `unverified` — active binding whose connection has never been health-checked
+ *                  (no signal ≠ degraded). ISS-429.
+ */
+export type IntegrationCardStatus =
+  | 'connected'
+  | 'attention'
+  | 'error'
+  | 'not_configured'
+  | 'disabled'
+  | 'unverified';
 
 /** One card in the composed integrations-status read model (`GET .../integrations/status`). */
 export interface IntegrationStatusCard {
@@ -105,11 +122,10 @@ export interface IntegrationsStatus {
 /**
  * Webhook/dispatch delivery row (`GET .../integrations/:id/deliveries`). Raw
  * `integration_deliveries` row with Date columns serialized to ISO strings.
- * `projectIntegrationId` is null for post-cutover dispatches (binding-only).
+ * Scoped by `bindingId` since the ISS-410 retirement of project_integrations.
  */
 export interface IntegrationDeliveryRow {
   id: string;
-  projectIntegrationId: string | null;
   bindingId: string | null;
   direction: IntegrationDeliveryDirection;
   eventName: string;
@@ -138,6 +154,15 @@ export interface IntegrationHealthResult {
   /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
   diagnostics?: Record<string, unknown>;
 }
+
+/**
+ * Result of `POST /integration-connections/:id/test` (ISS-435) — the
+ * connection-scoped healthcheck used by the workspace directory drawer. Same
+ * adapter result shape as the binding-scoped test; the server probes through a
+ * representative active binding and replies 404 `NO_BINDING` when the
+ * connection has no active binding to build a context from.
+ */
+export type ConnectionTestResult = IntegrationHealthResult;
 
 /** Result of `POST .../confirm-prod-deploy`. `integrationId` stays the binding id. */
 export interface ConfirmProdDeployResult {
@@ -234,18 +259,22 @@ export type ConnectionCreateInput =
       displayName?: string;
       config: CoolifyConfigInput;
       secrets: CoolifySecretsInput;
+      /** Present = org-owned connection (requires org admin); absent = personal. */
+      orgId?: string;
     }
   | {
       provider: 'postman';
       displayName?: string;
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
+      orgId?: string;
     }
   | {
       provider: 'epodsystem';
       displayName?: string;
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+      orgId?: string;
     };
 
 /** Body for `PATCH /integration-connections/:id` — re-validated against the existing provider. */
@@ -265,6 +294,10 @@ export interface ConnectionUpdateInput {
 export interface BindExistingConnectionRequest {
   projectId: string;
   environment: IntegrationEnvironment;
+  /** Optional binding-tier overrides (coolify resourceUuid/branch) so the
+   *  shared connection targets a different deploy resource in this project.
+   *  Connection-tier keys (baseUrl) are dropped server-side. */
+  config?: Record<string, unknown>;
 }
 
 // === Response envelopes ===
@@ -281,6 +314,12 @@ export interface ConnectionResponse {
 export interface BindingResponse {
   integration: BindingSummary;
   integrationSecret?: string;
+  /**
+   * Immediate post-create/bind health probe (ISS-429) — create + bind-existing
+   * run the adapter healthcheck right away so the integration starts from a
+   * real state. `null` when the probe crashed at the transport layer.
+   */
+  health?: IntegrationHealthResult | null;
 }
 
 // These list routes return a bare `{ items }` object (not the X-Total-Count +
@@ -302,6 +341,44 @@ export interface IntegrationDeliveryListResponse {
 /** List envelope for a connection's bindings (`GET /integration-connections/:id/bindings`). */
 export interface ConnectionBindingsResponse {
   items: BindingSummary[];
+}
+
+// === MCP injection preview (ISS-429) ===
+
+/**
+ * One entry of `GET /:projectId/integrations/mcp-preview` — exactly what the
+ * dispatch-time resolver will inject into a runner's `mcpServers` for this
+ * project (same builders + filters server-side, so the URL cannot drift).
+ * `headers.Authorization` is redacted BY CONSTRUCTION — the real key is never
+ * rendered into the preview.
+ *
+ * `reason`:
+ * - `ok`             — this binding's entry WILL be injected on the next dispatch.
+ * - `not_configured` — no binding exists for the provider (synthetic row).
+ * - `disabled`       — binding or connection is switched off.
+ * - `no_credential`  — active but the connection stores no secret.
+ * - `shadowed`       — active with credential, but another binding of the same
+ *                      provider wins the single `mcpServers.<provider>` slot.
+ */
+export interface McpServerPreviewEntry {
+  provider: IntegrationProvider;
+  serverName: string;
+  /** Binding id backing this entry — null for the synthetic not_configured row. */
+  bindingId: string | null;
+  environment: IntegrationEnvironment | null;
+  configured: boolean;
+  active: boolean;
+  willInject: boolean;
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed';
+  url: string | null;
+  headers: Record<string, string> | null;
+  lastHealthStatus: string | null;
+  lastHealthAt: string | null;
+}
+
+/** Envelope for `GET /:projectId/integrations/mcp-preview`. */
+export interface McpPreviewResponse {
+  servers: McpServerPreviewEntry[];
 }
 
 /**

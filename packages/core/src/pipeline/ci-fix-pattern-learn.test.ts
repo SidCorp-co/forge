@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const dbExecute = vi.fn(async () => ({ rows: [] }));
+const dbExecute = vi.fn(async (..._args: unknown[]) => ({ rows: [] }));
 const dbDelete = vi.fn();
 const nextSelect = vi.fn();
 
@@ -25,7 +25,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const indexMemoryMock = vi.fn(async () => undefined);
+const indexMemoryMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../memory/indexer.js', () => ({
   indexMemory: (...a: unknown[]) => indexMemoryMock(...(a as [])),
 }));

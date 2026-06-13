@@ -11,6 +11,7 @@ import {
   Icon,
   Input,
   Markdown,
+  PageContainer,
   Select,
   Skeleton,
 } from "@/design";
@@ -200,7 +201,7 @@ export function DocsScreen() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-4 px-6 py-6">
+    <PageContainer className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="fg-h2">Docs</h1>
@@ -345,6 +346,6 @@ export function DocsScreen() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -33,6 +33,8 @@ const fakeDevice: Device = {
   lastSeenAt: null,
   pairedAt: new Date(),
   capabilities: null,
+  machineId: null,
+  gitCredentialRef: null,
   createdAt: new Date(),
 };
 

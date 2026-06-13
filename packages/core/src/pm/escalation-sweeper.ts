@@ -8,7 +8,8 @@
  *
  * For each, walk the `actions` array, locate the `escalate` entries, and
  * execute their PM-authored `fallback` action as a system actor (project
- * owner). Record the outcome as a new `pm_decisions` row with
+ * creator, audit `projects.created_by`). Record the outcome as a new
+ * `pm_decisions` row with
  * `cause='escalation-timeout'` so a re-run sees the row as followed up
  * (NOT EXISTS guard) and skips it.
  *
@@ -170,8 +171,8 @@ async function executeDispatchFallback(
     return { status: 'skipped', reason: 'invalid_dispatch_payload' };
   }
 
-  const ownerId = await loadProjectOwner(projectId);
-  if (!ownerId) return { status: 'skipped', reason: 'project_missing' };
+  const creatorId = await loadProjectCreator(projectId);
+  if (!creatorId) return { status: 'skipped', reason: 'project_missing' };
 
   const userPayload =
     fallback.payload && typeof fallback.payload === 'object' ? fallback.payload : {};
@@ -200,7 +201,7 @@ async function executeDispatchFallback(
         projectId,
         issueId,
         pipelineRunId: run.id,
-        createdBy: ownerId,
+        createdBy: creatorId,
         type: jobType as never,
         payload,
         status: 'queued',
@@ -228,13 +229,13 @@ async function executeDispatchFallback(
   return { status: 'executed' };
 }
 
-async function loadProjectOwner(projectId: string): Promise<string | null> {
+async function loadProjectCreator(projectId: string): Promise<string | null> {
   const [row] = await db
-    .select({ ownerId: projects.ownerId })
+    .select({ createdBy: projects.createdBy })
     .from(projects)
     .where(sql`${projects.id} = ${projectId}`)
     .limit(1);
-  return row?.ownerId ?? null;
+  return row?.createdBy ?? null;
 }
 
 async function recordTimeout(

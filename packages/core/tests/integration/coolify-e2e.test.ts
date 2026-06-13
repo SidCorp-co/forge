@@ -5,12 +5,19 @@
  * trip an operator's webhook would take:
  *   1. dispatchOutbound posts to Coolify (mocked via fetchImpl) and writes
  *      an `integration_deliveries` row with the deployment_uuid.
- *   2. handleInbound verifies the HMAC against the row's integrationSecret
+ *   2. handleInbound verifies the HMAC against the binding's integrationSecret
  *      and stamps `pipelineRuns.currentStep` even when the run is already
  *      closed (the release flow closes the run before the deploy outcome
  *      arrives — see release-coolify.ts).
- *   3. Repeated outbound failures within the breaker window flip
- *      `project_integrations.active=false`.
+ *   3. Repeated outbound failures within the breaker window flip the owning
+ *      `integration_connections.active=false`.
+ *
+ * ISS-410 — the legacy `project_integrations` table was dropped; the data now
+ * lives in `integration_connections` (the credential, which carries the
+ * active/breaker state) + `integration_bindings` (the per-project+env link,
+ * which carries config overrides + the inbound HMAC secret). The adapter
+ * resolves a binding+connection pair via `findBindingWithConnectionById` +
+ * `buildContextFromBinding`; breaker/health mutations target the connection.
  *
  * Multi-env disambiguation in the inbound router is covered by
  * `inbound-routes.test.ts`; this test focuses on the adapter loop.
@@ -19,6 +26,8 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CoolifyConfig, CoolifySecrets } from '../../src/integrations/coolify/types.js';
+import { signHmacSha256 } from '../../src/webhooks/hmac.js';
 import {
   type TestDatabase,
   createTestProject,
@@ -26,20 +35,17 @@ import {
   setupTestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import type {
-  CoolifyConfig,
-  CoolifySecrets,
-} from '../../src/integrations/coolify/types.js';
-import { signHmacSha256 } from '../../src/webhooks/hmac.js';
 
 // Fixed test key so vault encrypt/decrypt is deterministic.
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
+type StoreMod = typeof import('../../src/integrations/store.js');
 type Mods = {
   coolifyAdapter: typeof import('../../src/integrations/coolify/adapter.js').coolifyAdapter;
   encryptJson: typeof import('../../src/integrations/vault.js').encryptJson;
-  findById: typeof import('../../src/integrations/store.js').findById;
-  buildContext: typeof import('../../src/integrations/store.js').buildContext;
+  findConnectionById: StoreMod['findConnectionById'];
+  findBindingWithConnectionById: StoreMod['findBindingWithConnectionById'];
+  buildContextFromBinding: StoreMod['buildContextFromBinding'];
 };
 
 describe('ISS-234 — coolify deploy integration E2E', () => {
@@ -59,8 +65,9 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
     mods = {
       coolifyAdapter: adapterMod.coolifyAdapter,
       encryptJson: vaultMod.encryptJson,
-      findById: storeMod.findById,
-      buildContext: storeMod.buildContext,
+      findConnectionById: storeMod.findConnectionById,
+      findBindingWithConnectionById: storeMod.findBindingWithConnectionById,
+      buildContextFromBinding: storeMod.buildContextFromBinding,
     };
   }, 60_000);
 
@@ -79,34 +86,52 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
   }) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    const integrationId = randomUUID();
-    const integrationSecret = opts.secret ?? `whsec_test_${integrationId.slice(0, 12)}`;
+
+    // Connection = the credential (active/breaker state + secrets + baseUrl).
+    const connectionId = randomUUID();
     const secretsEnc = mods.encryptJson({ apiToken: 'test-token-abc-123' });
     await harness.db.execute(sql`
-      INSERT INTO project_integrations
-        (id, project_id, provider, environment, config, secrets_enc, integration_secret, active)
+      INSERT INTO integration_connections
+        (id, owner_type, owner_id, provider, config, secrets_enc, active)
       VALUES (
-        ${integrationId},
+        ${connectionId},
+        'user',
+        ${owner.id},
+        'coolify',
+        ${JSON.stringify({ baseUrl: 'https://coolify.test' })}::jsonb,
+        ${secretsEnc},
+        true
+      )
+    `);
+
+    // Binding = per-project+env link (config overrides + inbound HMAC secret).
+    const bindingId = randomUUID();
+    const integrationSecret = opts.secret ?? `whsec_test_${bindingId.slice(0, 12)}`;
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings
+        (id, connection_id, project_id, provider, environment, config, integration_secret, active)
+      VALUES (
+        ${bindingId},
+        ${connectionId},
         ${project.id},
         'coolify',
         ${opts.environment},
         ${JSON.stringify({
-          baseUrl: 'https://coolify.test',
           resourceUuid: 'res-1',
           branch: 'main',
           environment: opts.environment,
         })}::jsonb,
-        ${secretsEnc},
         ${integrationSecret},
         true
       )
     `);
+
     const runId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
       VALUES (${runId}, ${project.id}, NULL, 'system', 'completed', NOW())
     `);
-    return { project, integrationId, integrationSecret, runId };
+    return { project, connectionId, bindingId, integrationSecret, runId };
   }
 
   it('outbound dispatch → records delivery with deployment_uuid', async () => {
@@ -115,19 +140,21 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
     // Coolify v4 deploy returns a `deployments[]` array.
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
-        JSON.stringify({ deployments: [{ deployment_uuid: 'deploy-uuid-A', message: 'queued' }] }),
+        JSON.stringify({
+          deployments: [{ deployment_uuid: 'deploy-uuid-A', message: 'queued' }],
+        }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     );
 
-    const row = await mods.findById(seed.integrationId);
-    expect(row).not.toBeNull();
-    const ctx = mods.buildContext<CoolifyConfig, CoolifySecrets>(row!);
+    const pair = await mods.findBindingWithConnectionById(seed.bindingId);
+    expect(pair).not.toBeNull();
+    const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair!);
     const result = await mods.coolifyAdapter.dispatchOutbound(ctx, {
       eventName: 'release.requested',
       runId: seed.runId,
       payload: { runId: seed.runId, issueId: null, environment: 'staging' },
-      requestId: `${seed.runId}:${seed.integrationId}`,
+      requestId: `${seed.runId}:${seed.bindingId}`,
     });
 
     expect(result.externalId).toBe('deploy-uuid-A');
@@ -139,7 +166,9 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
       SELECT status, response FROM integration_deliveries
       WHERE id = ${result.deliveryId}
     `);
-    const r = rows[0] as { status: string; response: { deployment_uuid?: string } | null } | undefined;
+    const r = rows[0] as
+      | { status: string; response: { deployment_uuid?: string } | null }
+      | undefined;
     expect(r?.status).toBe('ok');
     expect(r?.response?.deployment_uuid).toBe('deploy-uuid-A');
   });
@@ -151,8 +180,8 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
     vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ deployment_uuid: 'deploy-uuid-B' }), { status: 200 }),
     );
-    const row = await mods.findById(seed.integrationId);
-    const ctx = mods.buildContext<CoolifyConfig, CoolifySecrets>(row!);
+    const pair = await mods.findBindingWithConnectionById(seed.bindingId);
+    const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair!);
     await mods.coolifyAdapter.dispatchOutbound(ctx, {
       eventName: 'release.requested',
       runId: seed.runId,
@@ -182,8 +211,8 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
 
   it('rejects inbound with bad signature', async () => {
     const seed = await seedIntegration({ environment: 'staging' });
-    const row = await mods.findById(seed.integrationId);
-    const ctx = mods.buildContext<CoolifyConfig, CoolifySecrets>(row!);
+    const pair = await mods.findBindingWithConnectionById(seed.bindingId);
+    const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair!);
 
     const body = JSON.stringify({
       event: 'deploy.succeeded',
@@ -203,12 +232,10 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
   it('three consecutive outbound failures trip the breaker (active=false)', async () => {
     const seed = await seedIntegration({ environment: 'staging' });
 
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response('boom', { status: 500 }),
-    );
+    vi.spyOn(global, 'fetch').mockResolvedValue(new Response('boom', { status: 500 }));
 
-    const row = await mods.findById(seed.integrationId);
-    const ctx = mods.buildContext<CoolifyConfig, CoolifySecrets>(row!);
+    const pair = await mods.findBindingWithConnectionById(seed.bindingId);
+    const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair!);
 
     for (let i = 0; i < 3; i++) {
       try {
@@ -222,18 +249,19 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
       }
     }
 
-    const afterRow = await mods.findById(seed.integrationId);
-    expect(afterRow?.active).toBe(false);
-    expect(afterRow?.breakerOpenedAt).not.toBeNull();
+    // Breaker/active state lives on the CONNECTION (the credential), not the binding.
+    const afterConnection = await mods.findConnectionById(seed.connectionId);
+    expect(afterConnection?.active).toBe(false);
+    expect(afterConnection?.breakerOpenedAt).not.toBeNull();
   });
 
   it('a tripped breaker blocks further outbound dispatch', async () => {
     const seed = await seedIntegration({ environment: 'staging' });
     await harness.db.execute(sql`
-      UPDATE project_integrations SET active = false WHERE id = ${seed.integrationId}
+      UPDATE integration_connections SET active = false WHERE id = ${seed.connectionId}
     `);
-    const row = await mods.findById(seed.integrationId);
-    const ctx = mods.buildContext<CoolifyConfig, CoolifySecrets>(row!);
+    const pair = await mods.findBindingWithConnectionById(seed.bindingId);
+    const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair!);
 
     await expect(
       mods.coolifyAdapter.dispatchOutbound(ctx, {

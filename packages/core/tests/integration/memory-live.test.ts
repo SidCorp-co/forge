@@ -81,23 +81,18 @@ describeIfLive('memory live E2E (real embeddings)', () => {
 
   async function seedMember(): Promise<{ projectId: string; token: string }> {
     const user = await createTestUser(harness.db);
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`,
-    );
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     const token = await signUserToken(user.id);
     return { projectId: project.id, token };
   }
 
-  async function postMemory(
-    token: string,
-    payload: Record<string, unknown>,
-  ): Promise<Response> {
+  async function postMemory(token: string, payload: Record<string, unknown>): Promise<Response> {
     return app.request('/api/memory', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -105,10 +100,7 @@ describeIfLive('memory live E2E (real embeddings)', () => {
     });
   }
 
-  async function searchMemory(
-    token: string,
-    payload: Record<string, unknown>,
-  ): Promise<Response> {
+  async function searchMemory(token: string, payload: Record<string, unknown>): Promise<Response> {
     return app.request('/api/memory/search', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -303,10 +295,9 @@ describeIfLive('memory live E2E (real embeddings)', () => {
     expect(res.status).toBe(201);
 
     // Direct metadata-filter lookup (forge_memory.get path).
-    const getRes = await app.request(
-      `/api/memory?projectId=${projectId}&source=step_handoff`,
-      { headers: { authorization: `Bearer ${token}` } },
-    );
+    const getRes = await app.request(`/api/memory?projectId=${projectId}&source=step_handoff`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect(getRes.status).toBe(200);
     const rows = (await getRes.json()) as Array<{ metadata: Record<string, unknown> }>;
     expect(rows.length).toBe(1);

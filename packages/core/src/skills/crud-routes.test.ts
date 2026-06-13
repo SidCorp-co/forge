@@ -11,12 +11,18 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn((..._args: unknown[]) => ({ returning: insertReturning }));
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const deleteWhere = vi.fn();
 
 vi.mock('../db/client.js', () => ({
@@ -95,7 +101,7 @@ describe('POST /api/skills', () => {
 
   it('403 when not owner/admin', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'x' }]); // project lookup
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // access
     selectLimit.mockResolvedValueOnce([{ role: 'member' }]); // member lookup
     const res = await buildApp().request('/api/skills', {
       method: 'POST',
@@ -113,8 +119,7 @@ describe('POST /api/skills', () => {
 
   it('201 inserts project skill for owner', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     insertReturning.mockResolvedValueOnce([
       {
         id: SKILL_ID,
@@ -155,8 +160,7 @@ describe('files round-trip (AC #4)', () => {
 
   it('create stores files[] byte-identical and hashes over skillMd + files', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     // Echo back exactly what the handler inserted so the response reflects storage.
     insertReturning.mockImplementationOnce(async () => {
       const v = insertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
@@ -198,8 +202,7 @@ describe('files round-trip (AC #4)', () => {
         version: 1,
       },
     ]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     updateReturning.mockImplementationOnce(async () => {
       const v = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
       return [{ id: SKILL_ID, ...v }];
@@ -224,7 +227,7 @@ describe('files round-trip (AC #4)', () => {
 describe('POST /api/skills/bulk-push', () => {
   it('403 for non-admin/owner', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'x' }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
 
     const res = await buildApp().request('/api/skills/bulk-push', {

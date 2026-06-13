@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const publish = vi.fn(() => 0);
+const publish = vi.fn((..._args: unknown[]) => 0);
 
 vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => publish(...args) },

@@ -1,17 +1,23 @@
 /**
- * Uniform round-robin auto-retry engine.
+ * Per-class round-robin auto-retry engine.
  *
- * Design (deliberately simple + transparent — one policy for EVERY failure):
+ * ISS-450 (ISS-442 C4 / I4) — this REVERSES the ISS-407 "uniform, no
+ * per-error branching" design. The classifier verdict now DRIVES the retry
+ * decision, with one policy per failure class:
  *
- *   - **No per-error branching.** A failure is a failure. We do NOT inspect the
- *     failure kind to decide whether/how to retry — `transient`, `permanent`,
- *     a weekly-usage-limit, an "Unknown command" skill glitch, a silent runner
- *     death: all retry the same way. (The classifier still runs, but ONLY to
- *     persist a human-readable label on the job + recovery stats for the
- *     operator UI; it never gates the retry decision. See the loud comment at
- *     the call site.)
- *   - **Uniform cooldown.** Every retry waits exactly `RETRY_COOLDOWN_MS`
- *     (60s). No phases, no provider Retry-After parsing.
+ *   - **`code`** — the work itself is wrong (validation, content filter,
+ *     unsupported type). Retrying burns spend without changing the outcome →
+ *     NO retry; the caller parks the issue at `waiting` immediately.
+ *   - **`transient-cc`** — Claude-CLI startup death (ISS-402 class). Burning
+ *     the same-device tries against a wedged CLI install wasted 46 retries on
+ *     ISS-402 before rotation saved it → IMMEDIATE different-device failover:
+ *     no cooldown, no same-device tries, straight to the next online device.
+ *     Falls back to the standard rotation when no other device is online.
+ *   - **`infra` / `timeout`** — environment failures. Standard bounded
+ *     round-robin (below), unchanged from ISS-407.
+ *
+ * The standard rotation:
+ *   - **Uniform cooldown.** `RETRY_COOLDOWN_MS` (60s) between attempts.
  *   - **Round-robin across devices.** Each device gets `RETRY_TRIES_PER_DEVICE`
  *     (3) attempts before the chain rotates to the next online device. The
  *     project's `defaultDeviceId` (primary) only decides the FIRST dispatch;
@@ -19,15 +25,16 @@
  *     rotation state lives in `payload._autoRetry` and the dispatcher honours
  *     it (`target` → pin, `done` → exclude).
  *   - **Bounded.** After `RETRY_MAX_ROUNDS` (10) full sweeps the chain stops
- *     and the caller parks the issue at `waiting` for a human.
+ *     and the caller parks the issue at `waiting` for a human. The
+ *     `transient-cc` failover path consumes the SAME round budget (it burns a
+ *     device's slot per hop), so it cannot ping-pong unbounded.
  *
- * The only NON-error guards that can still short-circuit a retry are
- * structural, not error-type: a job whose cancellation was requested, and the
- * verify-first check (the issue already advanced past / reverted away from
- * this step, so retrying would be wasted spend).
+ * Structural guards that short-circuit any class: a job whose cancellation
+ * was requested, and the verify-first check (the issue already advanced past /
+ * reverted away from this step, so retrying would be wasted spend).
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { publishSessionRecoveryChanged } from '../agent-sessions/recovery-publish.js';
 import {
   incrementAutoRetryCount,
@@ -35,7 +42,7 @@ import {
   markSessionTerminal,
 } from '../agent-sessions/recovery-stats.js';
 import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
+import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
@@ -144,10 +151,43 @@ async function nextRotation(
 }
 
 /**
- * Schedule the next uniform round-robin retry, or return `{ scheduled: false }`
- * so the caller parks the issue at `waiting`.
+ * ISS-450 — derive the structured cc-startup-death signal from the failed
+ * job's event stream: the CLI spawned (≥1 event) but died having emitted zero
+ * `tool_call` events and ≤3 assistant (`stdout`) messages. A job with ZERO
+ * events never spawned at all (dispatch_unclaimed class) — that is an infra
+ * failure, not a cc-startup death, so `diedBeforeFirstToolUse` stays false.
+ * Best-effort: a query failure returns null (classifier falls through to its
+ * text patterns).
+ */
+async function deriveCcStartupSignals(
+  job: JobRow,
+): Promise<{ diedBeforeFirstToolUse: boolean; sessionMessageCount: number } | null> {
+  try {
+    const [row] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        toolCalls: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'tool_call')::int`,
+        messages: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'stdout')::int`,
+      })
+      .from(jobEvents)
+      .where(eq(jobEvents.jobId, job.id));
+    if (!row) return null;
+    return {
+      diedBeforeFirstToolUse: row.total > 0 && row.toolCalls === 0,
+      sessionMessageCount: row.messages,
+    };
+  } catch (err) {
+    logger.warn({ err, jobId: job.id }, 'retry: cc-startup signal derive failed, skipping');
+    return null;
+  }
+}
+
+/**
+ * Schedule the next retry under the per-class policy (see module header), or
+ * return `{ scheduled: false }` so the caller parks the issue at `waiting`.
  *
- * Idempotent: cancellation + verify-first + round budget all guard the insert.
+ * Idempotent: cancellation + class policy + verify-first + round budget all
+ * guard the insert.
  */
 export async function scheduleAutoRetryWithVerify(
   job: JobRow,
@@ -157,15 +197,14 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: 'cancellation_requested' };
   }
 
-  // --- DISPLAY ONLY ---------------------------------------------------------
-  // Classify the failure purely to label it for the operator UI / recovery
-  // stats. This NEVER influences whether or how we retry — every failure is
-  // retried by the same uniform round-robin policy below. Do not add a
-  // `if (classified.kind === …) return` branch here.
+  // ISS-450 — the classification below DRIVES the per-class retry policy
+  // (code → no retry, transient-cc → immediate device failover) as well as
+  // labelling the row for the operator UI / recovery stats.
   const inputError = typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
   const classified = classifyFailure({
     error: inputError,
     meta: (job.failureMeta as Record<string, unknown> | null) ?? null,
+    signals: await deriveCcStartupSignals(job),
   });
   if (job.failureKind === null || job.failureKind === undefined) {
     try {
@@ -196,7 +235,6 @@ export async function scheduleAutoRetryWithVerify(
       );
     }
   }
-  // --- END DISPLAY ONLY -----------------------------------------------------
 
   // Verify-first (structural, NOT error-type): if the issue already moved past
   // this step, retrying is wasted spend.
@@ -227,9 +265,42 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  // Uniform round-robin rotation. `null` → 10-round budget exhausted → park.
+  // ISS-450 — per-class policy. `code` failures never retry: the work itself
+  // is wrong, so re-running it burns spend without changing the outcome. The
+  // caller (finalizeFailedJob) parks the issue at `waiting` for a human.
+  // Checked AFTER verify-first so an already-advanced issue still resolves as
+  // completed_via_recovery instead of being parked.
+  const effectiveKind = job.failureKind ?? classified.kind;
+  if (effectiveKind === 'code') {
+    logger.info(
+      { jobId: job.id, failureKind: effectiveKind, reason },
+      'retry: non-retryable code failure, no retry scheduled',
+    );
+    return { scheduled: false, reason: 'non_retryable_code' };
+  }
+
+  // Round-robin rotation. `null` → 10-round budget exhausted → park.
+  //
+  // ISS-450 — `transient-cc` (cc-startup death) does an IMMEDIATE
+  // different-device failover: same-device retries burn the whole budget
+  // against a wedged CLI install (ISS-402: 46 wasted retries). Forcing
+  // `tries` to the per-device cap makes `nextRotation` treat the device that
+  // just ran as exhausted, so it picks the next online device (or advances
+  // the round — keeping the same RETRY_MAX_ROUNDS bound). Cooldown is skipped
+  // only when the failover actually landed on a different device; when no
+  // other device is online the standard cooldown applies (same device needs
+  // the breather).
   const state = readAutoRetryPayload(job.payload);
-  const next = await nextRotation(job, state);
+  let next: AutoRetryPayload | null;
+  if (effectiveKind === 'transient-cc') {
+    next = await nextRotation(job, {
+      ...state,
+      target: state.target ?? job.deviceId ?? null,
+      tries: RETRY_TRIES_PER_DEVICE,
+    });
+  } else {
+    next = await nextRotation(job, state);
+  }
   if (next === null) {
     logger.info(
       { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, reason },
@@ -238,7 +309,10 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: 'retry_rounds_exhausted' };
   }
 
-  const retryAfterAt = new Date(Date.now() + RETRY_COOLDOWN_MS);
+  const immediateFailover =
+    effectiveKind === 'transient-cc' && next.target !== null && next.target !== job.deviceId;
+  const cooldownMs = immediateFailover ? 0 : RETRY_COOLDOWN_MS;
+  const retryAfterAt = new Date(Date.now() + cooldownMs);
   const basePayload = (job.payload ?? {}) as Record<string, unknown>;
   const nextPayload: Record<string, unknown> = {
     ...basePayload,
@@ -259,9 +333,18 @@ export async function scheduleAutoRetryWithVerify(
       attempts: job.attempts + 1,
       retryOf: job.id,
       retryAfterAt,
-      // Carry the agent_session forward so the retry's own future failure
-      // increments stats on the same session row.
-      agentSessionId: job.agentSessionId,
+      // Intentionally DO NOT carry agentSessionId onto the clone: it must be
+      // born NULL. The parent's linked session is terminal (`failed` after the
+      // failure that triggered this retry), and copying it here would (a) let
+      // `ensureAgentSessionForJob` early-return at dispatch — short-circuiting
+      // its `retryOf` reuse+reset branch that flips the session back to
+      // `queued`/startedAt:null/failureReason:null — leaving a terminal session
+      // linked to a freshly-dispatched job, and (b) make the job a candidate
+      // for `reconcileOrphanedJobs`, which reaps it `session_lost` on the next
+      // sweeper tick. Leaving it NULL means the orphan reconciler's
+      // JOIN on agent_session_id finds no row, and `ensureAgentSessionForJob`
+      // re-links + resets the SAME session row (via the retryOf lookup) at
+      // dispatch, preserving the one-session-per-retry-chain invariant. (ISS-434)
     })
     .returning({ id: jobs.id });
 

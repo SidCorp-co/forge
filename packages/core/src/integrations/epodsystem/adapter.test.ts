@@ -51,8 +51,8 @@ const apiKeyContextErrors = {
 describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)', () => {
   it('retries with previousApiKey on HTTP 401 within the rotation window', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const auth = (init?.headers as Record<string, string>).Authorization;
+    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const auth = (init?.headers as Record<string, string>).Authorization ?? '';
       calls.push(auth);
       if (auth === 'Bearer crmk_current') return new Response('unauthorized', { status: 401 });
       // Enrichment probe (second call after the retry) returns empty body.
@@ -92,8 +92,8 @@ describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)',
 
   it('retries with previousApiKey on a 200 + GraphQL errors[] auth rejection', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const auth = (init?.headers as Record<string, string>).Authorization;
+    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const auth = (init?.headers as Record<string, string>).Authorization ?? '';
       calls.push(auth);
       const text = init?.body ? String(init.body) : '';
       if (text.includes('storeThemes')) {
@@ -129,8 +129,8 @@ describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)',
 
   it('does NOT retry when the rotation window has expired', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push((init?.headers as Record<string, string>).Authorization);
+    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push((init?.headers as Record<string, string>).Authorization ?? '');
       return new Response('unauthorized', { status: 401 });
     }) as unknown as typeof fetch;
 
@@ -155,8 +155,8 @@ describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)',
 
   it('does NOT retry when no previousApiKey is stored', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push((init?.headers as Record<string, string>).Authorization);
+    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push((init?.headers as Record<string, string>).Authorization ?? '');
       return new Response(JSON.stringify(apiKeyContextErrors), {
         status: 200,
         headers: { 'content-type': 'application/json' },

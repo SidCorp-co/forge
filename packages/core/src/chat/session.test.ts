@@ -36,7 +36,7 @@ function insertMock(returnedRow: unknown) {
 
 function updateMock() {
   const where = vi.fn(() => Promise.resolve(undefined));
-  const set = vi.fn(() => ({ where }));
+  const set = vi.fn((..._args: unknown[]) => ({ where }));
   const update = vi.fn(() => ({ set }));
   return { update, set, where };
 }

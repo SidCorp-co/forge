@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
 
@@ -63,7 +63,7 @@ pipelineRunReadRoutes.get(
     if (!row) throw notFound('pipeline run not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const summary = await loadPipelineRunSummary(id);
     if (!summary) throw notFound('pipeline run not found');
@@ -89,7 +89,7 @@ pipelineRunProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const conds: SQL[] = [eq(pipelineRuns.projectId, projectId)];
     if (q.status) conds.push(eq(pipelineRuns.status, q.status));

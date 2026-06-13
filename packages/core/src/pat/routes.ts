@@ -18,23 +18,14 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import {
-  countActivePatsForUser,
-  mintPat,
-  revokePat,
-  rotatePat,
-} from '../auth/pat.js';
+import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import {
-  mcpAuditLog,
-  personalAccessTokens,
-  projectMembers,
-  projects,
-} from '../db/schema.js';
+import { mcpAuditLog, personalAccessTokens, projectMembers, projects } from '../db/schema.js';
+import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { forgetPatThrottle } from '../middleware/require-pat-or-device.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
+import { forgetPatThrottle } from '../middleware/require-pat-or-device.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
@@ -268,16 +259,5 @@ patRoutes.post(
 );
 
 async function listUserProjectIds(userId: string): Promise<string[]> {
-  const owned = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.ownerId, userId));
-  const member = await db
-    .select({ id: projectMembers.projectId })
-    .from(projectMembers)
-    .where(eq(projectMembers.userId, userId));
-  const ids = new Set<string>();
-  for (const row of owned) ids.add(row.id);
-  for (const row of member) ids.add(row.id);
-  return [...ids];
+  return loadVisibleProjectIds(userId);
 }

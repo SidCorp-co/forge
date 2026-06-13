@@ -101,7 +101,7 @@ One device active per project at a time. Pool multiple devices (Switch Device to
 Create an issue in the web UI or send a test webhook:
 
 ```bash
-curl -X POST http://localhost:3000/api/webhooks/in/<project-slug> \
+curl -X POST http://localhost:8080/api/webhooks/in/<project-slug> \
   -H "Content-Type: application/json" \
   -d '{"title":"Test issue","description":"Verify the pipeline works"}'
 ```

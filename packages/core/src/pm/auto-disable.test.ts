@@ -33,7 +33,7 @@ function queueCount(rows: Array<{ count: number }>): void {
   }));
 }
 
-function queueTxOwner(rows: Array<{ ownerId: string }>): void {
+function queueTxOwner(rows: Array<{ createdBy: string }>): void {
   txSelectMock.mockImplementationOnce(() => ({
     from: () => ({
       where: () => ({
@@ -96,7 +96,7 @@ describe('handlePmJobFailedAutoDisable', () => {
   it('disables config and inserts a notification on the 3rd failure', async () => {
     queueCount([{ count: 3 }]);
     const { setSpy, whereSpy } = setupTxUpdateChain();
-    queueTxOwner([{ ownerId: 'owner-1' }]);
+    queueTxOwner([{ createdBy: 'owner-1' }]);
     const { valuesSpy } = setupTxInsertChain();
 
     await handlePmJobFailedAutoDisable({

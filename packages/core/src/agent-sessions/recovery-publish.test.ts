@@ -9,7 +9,7 @@ vi.mock('../db/client.js', () => ({
   db: { select: dbSelect },
 }));
 
-const publishSpy = vi.fn(() => 0);
+const publishSpy = vi.fn((..._args: unknown[]) => 0);
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
@@ -53,9 +53,9 @@ describe('publishSessionRecoveryChanged', () => {
     const call = publishSpy.mock.calls[0]?.[1] as { data: { recoveryStats: unknown } };
     expect(call.data.recoveryStats).toEqual({
       totalFailures: 0,
-      byKind: { transient: 0, permission: 0, permanent: 0, timeout: 0 },
+      byKind: { code: 0, infra: 0, 'transient-cc': 0, timeout: 0 },
       lastFailureAt: new Date(0).toISOString(),
-      lastFailureKind: 'unknown',
+      lastFailureKind: 'infra',
       autoRetries: 0,
     });
   });

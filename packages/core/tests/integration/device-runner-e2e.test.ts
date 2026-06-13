@@ -68,7 +68,7 @@ describe.skipIf(!runE2E)('F2 device-runner E2E', () => {
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     return { user, project };
   }

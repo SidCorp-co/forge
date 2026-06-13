@@ -289,7 +289,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const actions = { cancel, retry, rerun, abort };
 
   return (
-    <PageContainer width="wide" className="min-h-dvh">
+    <PageContainer className="min-h-dvh">
       {/* Workspace tier: subscribe to every visible project room for live updates. */}
       {!projectId && projectsQ.data?.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
 

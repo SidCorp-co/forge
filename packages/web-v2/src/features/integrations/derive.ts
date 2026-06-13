@@ -10,16 +10,21 @@ import type { IntegrationCapabilities } from "@forge/contracts";
 import type { IconName } from "@/design";
 import type { StatusCard } from "./types";
 
-/** Five honest directory states. ISS-408/F3 added `needs_reauth`, surfaced from
- *  the raw `lastHealthStatus` (F4 deliberately did NOT widen the 4-bucket
- *  `IntegrationCardStatus`; needs_reauth still maps to `attention` on the
- *  coarse server bucket, but the chip here reads the raw string). */
+/** Honest directory states. ISS-408/F3 added `needs_reauth`, surfaced from
+ *  the raw `lastHealthStatus`. ISS-429 added two server-bucket states so the
+ *  UI stops conflating distinct situations:
+ *  - `disabled`   — the integration EXISTS but is switched off (previously
+ *                   rendered "Not connected", indistinguishable from unset).
+ *  - `unverified` — active but never health-checked (previously rendered
+ *                   Degraded, which read as a live problem). */
 export type DirectoryStatus =
   | "connected"
   | "degraded"
   | "error"
   | "not_connected"
-  | "needs_reauth";
+  | "needs_reauth"
+  | "disabled"
+  | "unverified";
 
 /** Conservative capabilities default — mirrors core `DEFAULT_CAPABILITIES`
  *  (packages/core/src/integrations/types.ts) so an absent `meta.capabilities`
@@ -68,9 +73,35 @@ export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">)
       return "degraded";
     case "error":
       return "error";
+    case "disabled":
+      return "disabled";
+    case "unverified":
+      // A tripped breaker is a live problem even before the first healthcheck.
+      return breakerOpen ? "degraded" : "unverified";
     default:
       return "not_connected";
   }
+}
+
+/**
+ * Directory state for an OWNER-SCOPED connection row (the workspace
+ * connections directory, ISS-429) — the server's card bucketing applied
+ * client-side, since connection summaries carry raw health fields rather than
+ * a pre-bucketed status.
+ */
+export function deriveConnectionStatus(connection: {
+  active: boolean;
+  lastHealthStatus: string | null;
+  breakerOpenedAt: string | null;
+}): DirectoryStatus {
+  if (!connection.active) return "disabled";
+  if (connection.lastHealthStatus === "needs_reauth") return "needs_reauth";
+  if (connection.breakerOpenedAt !== null) return "degraded";
+  if (!connection.lastHealthStatus) return "unverified";
+  const s = connection.lastHealthStatus.toLowerCase();
+  if (s === "ok" || s === "healthy" || s === "success") return "connected";
+  if (s === "degraded" || s === "pending" || s === "unknown") return "degraded";
+  return "error";
 }
 
 /** Icon + text + tinted-pill metadata for each directory state. Never
@@ -96,6 +127,22 @@ export const DIRECTORY_STATUS_META: Record<
     label: "Needs re-auth",
     fg: "var(--amberw-700)",
     bg: "var(--amberw-50)",
+  },
+  // ISS-429 — exists but switched off; neutral like not_connected but the
+  // label says the truth (there IS a configured integration here).
+  disabled: {
+    icon: "dot",
+    label: "Disabled",
+    fg: "var(--fg-subtle)",
+    bg: "var(--bg-sunken)",
+  },
+  // ISS-429 — active, never health-checked. Neutral, not amber: no signal is
+  // not a live problem, just an unproven one.
+  unverified: {
+    icon: "dot",
+    label: "Not verified",
+    fg: "var(--fg-muted)",
+    bg: "var(--bg-sunken)",
   },
 };
 

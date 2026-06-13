@@ -5,7 +5,9 @@ import {
   writeIssueContext,
 } from '../../pipeline/issue-context-store.js';
 import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
-import { assertDeviceOwnerIsMember, zodToMcpSchema } from './lib.js';
+import { assertDeviceOwnerIsMember, zodToMcpSchema,
+  assertDeviceOwnerIsWriter,
+} from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
 
 /**
@@ -53,7 +55,7 @@ export const forgeStepHandoffWriteTool: DeviceScopedMcpToolFactory = (device) =>
   inputSchema: zodToMcpSchema(writeInputSchema),
   handler: async (args) => {
     const input = writeInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, input.projectId);
+    await assertDeviceOwnerIsWriter(device, input.projectId);
     return writeIssueContext({ ...input, kind: 'handoff' });
   },
 });
@@ -88,7 +90,7 @@ export const forgeStepHandoffDeleteTool: DeviceScopedMcpToolFactory = (device) =
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, input.projectId);
+    await assertDeviceOwnerIsWriter(device, input.projectId);
     const n = await deleteIssueContext({ ...input, kind: 'handoff' });
     return { deleted: n > 0 };
   },

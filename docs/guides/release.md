@@ -98,44 +98,43 @@ Preflight is **atomic**: after bumping runs `jq -r .version <all json files> | s
 
 ## CHANGELOG
 
-`release.yml` extracts the section under `## [X.Y.Z] - YYYY-MM-DD` from `CHANGELOG.md` as release notes body. Format must be exactly:
+`release.yml` extracts the section under `## [X.Y.Z] - YYYY-MM-DD` from `CHANGELOG.md` as release notes body. Format is exactly a headline line + a flat bullet list:
 
 ```markdown
 ## [0.1.16] - 2026-04-30
 
-### Added
-- Thing.
+Short headline — why a user would update.
 
-### Fixed
-- Other thing.
+- Fixed a thing users saw.
+- Added a thing users can now do.
 ```
 
 No matching section → workflow falls back to GitHub's auto-generated commit-list.
 
 ### Writing changelog entries — style guide
 
-Each entry reaches end users (in-app updater changelog) AND developers (GitHub release page). Must read first as a release note for someone who never opened the repo, with technical depth on second pass.
+The CHANGELOG is the **end-user release note** (it feeds the in-app updater and the GitHub Release page). Optimise it for a person who never opened the repo and is scanning to decide whether to update. **Keep it flat and terse, like the Claude Code CLI changelog.**
 
-- **Lead with user-visible outcome, not implementation.**
-  - ✅ *"The pipeline now uses ~30% fewer tokens per issue — your monthly cost on the same workload drops."*
-  - ❌ *"`buildPipelinePreamble` in `chat-preamble.ts` now ships `PIPELINE_RULES` + `TOOL_REFERENCE` for prompt-cache hits."*
-- **One concept per bullet.** Two "and"s → split. Don't bury a fix in a feature bullet — different `###` sections (`### Added` vs `### Fixed`).
-- **Plain language first sentence; code in a sub-line.** Tool/function names, file paths, migration numbers go in an italic `*Technical:*` sub-line. Skip the sub-line if there's no useful debugging breadcrumb.
-- **Numbers > adjectives.** "~30% fewer tokens" beats "much faster". "Dropped from $1.42 to $0.45" beats "significantly cheaper". No number → name the surface the user sees changed (e.g. "the Insights → Cost page" not "metrics").
-- **No internal jargon in the user-facing sentence.** Avoid "legacy device path", "Wave 1", "PR-B", `ISS-NNN`, "the L2 dispatcher gate" — fine inside `*Technical:*`. Feature exists because of a removed system → name the user-visible replacement, not the old internal name.
-- **One headline per release.** First line under `## [X.Y.Z]` is 1–2 plain-language sentences on why a user would update. Lead with user benefit, ideally one concrete number.
+- **One line per change. No `*Technical:*` sub-line, no bold, no sub-bullets.** The technical detail (file paths, functions, migration numbers, root cause, `ISS-NNN`, merge SHA) lives in the **commit body and the PR** — that's the developer's trail, and duplicating it here is what made the changelog a wall of text. The changelog never repeats it.
+- **Lead with the user-visible outcome, in plain language.** Start with a verb where natural (`Fixed…`, `Added…`, or just describe the new behaviour). Past or present tense, ≤ ~120 chars.
+  - ✅ `Fixed agent chat failing to send when a runner was online`
+  - ✅ `Pipeline uses ~30% fewer tokens per issue`
+  - ❌ `buildPipelinePreamble now ships PIPELINE_RULES + TOOL_REFERENCE for cache hits`
+- **One concept per bullet.** Two "and"s → split into two bullets.
+- **Numbers > adjectives.** "~30% fewer tokens" beats "much faster"; "$1.42 → $0.45" beats "cheaper". No number → name the surface the user sees (e.g. "the Cost page", not "metrics").
+- **No internal jargon.** No "legacy device path", "Wave 1", "PR-B", `ISS-NNN`, "L2 dispatcher gate". Name the user-visible thing, not the internal system it replaced.
+- **Flat — no `### Added/Fixed` sections.** A single scannable list under the version. (Optionally prefix a bullet with an area, Claude-Code-style: `Runners: …`, `Chat: …` — only when it aids scanning.)
+- **One headline per release.** The line right under `## [X.Y.Z]` is 1–2 plain sentences on why a user would update — ideally with one concrete number. This is also the `--headline` the in-app updater shows.
 
 #### Template
 
 ```markdown
 ## [X.Y.Z] - YYYY-MM-DD
 
-<headline — 1–2 sentences in plain language. Mention numbers where you have them.>
+<headline — 1–2 plain sentences, a number if you have one>
 
-### Added | Changed | Fixed | Removed | Security
-
-- **<Plain user-facing summary in 1 sentence.>** <Why it matters / what they'll see — 1 more sentence, optional.>
-  *Technical: file paths, function names, migration numbers, root cause. Optional — include only when useful for debugging.*
+- <One user-facing line. What changed, for the user. No file paths, no SHAs.>
+- <Next change, one line.>
 ```
 
 #### Worked example
@@ -143,15 +142,13 @@ Each entry reaches end users (in-app updater changelog) AND developers (GitHub r
 ```markdown
 ## [0.1.34] - 2026-05-21
 
-The pipeline now uses ~30–60% fewer tokens per issue thanks to smarter server-side prompt caching, and the cost dashboard finally shows real numbers (it used to display $0 on every step).
+Pipeline uses ~30–60% fewer tokens per issue, and the cost dashboard now shows real numbers (it used to read $0 on every step).
 
-### Fixed
-
-- **The Insights → Cost dashboard now shows actual spend per pipeline step.** Every triage / plan / code / review / test / release / fix row used to report $0 USD regardless of real cost. The next issue your worker handles will populate real numbers within seconds.
-  *Technical: `usage_records.session_id` was storing the local Tauri job id instead of the forge `agent_sessions.id`, so the `pipeline_run_step_durations` view JOIN never matched. Accumulator + POST moved to `use-web-socket.ts`'s pipeline-complete handler, keyed by the forge UUID surfaced on `job.assigned`.*
+- Fixed the Cost dashboard showing $0 on every pipeline step — real spend now populates within seconds
+- Pipeline uses ~30–60% fewer tokens per issue via smarter server-side prompt caching
 ```
 
-Two-pass rule: a non-developer reading only the bold first sentence of every bullet knows what the release does for them; a developer reading the *Technical:* lines knows where to start debugging.
+Where the technical detail goes: the commit that lands the change. Its body carries the root cause, files, migration numbers — so `git log` / the PR is the developer trail, and the CHANGELOG stays the user's.
 
 ## Testing a release without publishing
 

@@ -7,7 +7,7 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn((..._args: unknown[]) => ({ returning: insertReturning }));
 const selectWhere = vi.fn();
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 

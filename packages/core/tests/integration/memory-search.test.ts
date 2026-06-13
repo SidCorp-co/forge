@@ -77,7 +77,7 @@ describe('F3 memory search + indexer integration', () => {
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     const token = await signUserToken(user.id);
     return { userId: user.id, projectId: project.id, token };
@@ -378,36 +378,14 @@ describe('F3 memory search + indexer integration', () => {
     expect(embedCalls).toBe(1);
   });
 
-  it('indexer: commentCreated hook upserts a memory row', async () => {
-    const { projectId } = await seedMember();
-    const { hooks } = await registerIndexerFresh();
-    stubEmbedding(hotVector(0));
-
-    const commentId = randomUUID();
-    await hooks.emit('commentCreated', {
-      issueId: randomUUID(),
-      projectId,
-      actor: { type: 'user', id: randomUUID() },
-      commentId,
-      body: 'comment body',
-    });
-    await new Promise((r) => setTimeout(r, 50));
-
-    const rows = await harness.db.execute<{ count: string }>(
-      sql`SELECT count(*)::text AS count FROM memories WHERE source_ref = ${commentId} AND source = 'comment'`,
-    );
-    expect((rows[0] as { count: string }).count).toBe('1');
-  });
-
-  it('indexer: commentUpdated re-embeds with the new body', async () => {
+  it('indexer: comment lifecycle hooks are NOT auto-indexed (removed for perf, a8d5d17b)', async () => {
     const { projectId } = await seedMember();
     const { hooks } = await registerIndexerFresh();
 
-    const commentId = randomUUID();
-    let lastEmbedText = '';
+    let embedCalls = 0;
     const fake = {
-      embed: vi.fn(async (text: string) => {
-        lastEmbedText = text;
+      embed: vi.fn(async () => {
+        embedCalls++;
         return hotVector(0);
       }),
       embedBatch: vi.fn(),
@@ -417,6 +395,14 @@ describe('F3 memory search + indexer integration', () => {
       fake as unknown as InstanceType<typeof embeddingsMod.EmbeddingsClient>,
     );
 
+    const commentId = randomUUID();
+    await hooks.emit('commentCreated', {
+      issueId: randomUUID(),
+      projectId,
+      actor: { type: 'user', id: randomUUID() },
+      commentId,
+      body: 'comment body',
+    });
     await hooks.emit('commentUpdated', {
       issueId: randomUUID(),
       projectId,
@@ -426,7 +412,15 @@ describe('F3 memory search + indexer integration', () => {
       after: 'new text',
     });
     await new Promise((r) => setTimeout(r, 50));
-    expect(lastEmbedText).toBe('new text');
+
+    // The indexer subscribes to issue lifecycle only — comments are mostly bot
+    // status chatter in a pipeline project and have no automatic read path.
+    // Agents persist a comment-worthy lesson explicitly as source:'knowledge'.
+    expect(embedCalls).toBe(0);
+    const rows = await harness.db.execute<{ count: string }>(
+      sql`SELECT count(*)::text AS count FROM memories WHERE source_ref = ${commentId}`,
+    );
+    expect((rows[0] as { count: string }).count).toBe('0');
   });
 
   it('indexer: registerMemoryIndexer is idempotent — double-call does not double-subscribe', async () => {
@@ -467,31 +461,5 @@ describe('F3 memory search + indexer integration', () => {
     });
     await new Promise((r) => setTimeout(r, 50));
     expect(embedCalls).toBe(1);
-  });
-
-  it('indexer: commentDeleted removes the memory row', async () => {
-    const { projectId } = await seedMember();
-    const { hooks } = await registerIndexerFresh();
-
-    const commentId = randomUUID();
-    await insertMemory(projectId, {
-      source: 'comment',
-      sourceRef: commentId,
-      text: 'doomed',
-      vec: hotVector(0),
-    });
-
-    await hooks.emit('commentDeleted', {
-      issueId: randomUUID(),
-      projectId,
-      actor: { type: 'user', id: randomUUID() },
-      commentId,
-    });
-    await new Promise((r) => setTimeout(r, 30));
-
-    const rows = await harness.db.execute<{ count: string }>(
-      sql`SELECT count(*)::text AS count FROM memories WHERE source_ref = ${commentId}`,
-    );
-    expect((rows[0] as { count: string }).count).toBe('0');
   });
 });

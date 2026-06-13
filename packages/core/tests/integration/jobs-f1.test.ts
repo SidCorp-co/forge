@@ -63,15 +63,22 @@ describe('F1 jobs integration', () => {
     await createTestProjectMember(harness.db, {
       userId: owner.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     return { owner, project };
   }
 
   async function createJob(projectId: string, ownerId: string): Promise<string> {
+    // jobs.pipeline_run_id is NOT NULL (migration 0054). Parent run is left
+    // `running` so the dispatch gates treat the job as dispatchable.
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${runId}, ${projectId}, NULL, 'system', 'running', now())
+    `);
     const rows = await harness.db.execute<{ id: string }>(sql`
-      INSERT INTO jobs (project_id, created_by, type, payload, status)
-      VALUES (${projectId}, ${ownerId}, 'plan', '{}'::jsonb, 'queued')
+      INSERT INTO jobs (project_id, created_by, type, payload, status, pipeline_run_id)
+      VALUES (${projectId}, ${ownerId}, 'plan', '{}'::jsonb, 'queued', ${runId})
       RETURNING id
     `);
     return (rows[0] as { id: string }).id;

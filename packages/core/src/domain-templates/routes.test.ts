@@ -10,7 +10,13 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere, orderBy: selectOrderBy }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin, orderBy: selectOrderBy }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -56,13 +62,11 @@ function authVerified() {
 }
 
 function projectAccessAsOwner() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }]);
-  selectLimit.mockResolvedValueOnce([]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: 'owner' }]);
 }
 
 function projectAccessAsMember() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'someone-else' }]);
-  selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
 async function token() {

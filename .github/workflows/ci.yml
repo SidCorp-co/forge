@@ -203,9 +203,25 @@ jobs:
       - run: pnpm --filter @forge/core typecheck
         continue-on-error: true
       - run: pnpm --filter @forge/core build
-      # Integration tests (Testcontainers) intentionally not in CI — heavy,
-      # slow, and currently has flake. Maintainer runs locally before
-      # release: `pnpm --filter @forge/core test:integration:ci`.
+      # Integration tests run in the separate, NON-BLOCKING `core-integration`
+      # job below (not this gated one) — see its comment.
+
+  # Integration tests (Testcontainers) for core. Deliberately NON-BLOCKING:
+  #   - NOT in the `ci-passed` needs list, so a red run never blocks a merge.
+  #   - heavy/slow + occasional Testcontainers flake (the reason these were
+  #     kept out of CI originally) makes them a poor hard gate.
+  # The point is VISIBILITY: this suite asserts real-Postgres behavior +
+  # applies every migration on a fresh DB, so it silently rotted when the
+  # memory-v2 contract changed and nothing ran it. A visible red job catches
+  # that drift; the maintainer still runs it locally before release.
+  core-integration:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-workspace
+      - run: pnpm --filter @forge/core test:integration:ci
 
   docs:
     needs: changes

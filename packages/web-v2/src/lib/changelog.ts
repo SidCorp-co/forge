@@ -100,7 +100,14 @@ export function parseChangelog(md: string): ChangelogRelease[] {
       section = { title: sec[1].trim(), body: "" };
       continue;
     }
-    if (section) section.body += `${line}\n`;
+    if (section) {
+      section.body += `${line}\n`;
+    } else if (line.trim()) {
+      // Flat (Claude-Code-style) release notes — 0.2.12 onwards have no
+      // `###` subsections: a headline line + flat bullets. Collect them
+      // into an untitled section so the feed renders them as-is.
+      section = { title: "", body: `${line}\n` };
+    }
   }
   closeSection();
 

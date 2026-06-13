@@ -47,6 +47,9 @@ export type {
   BindExistingConnectionRequest,
   ConnectionBindingsResponse,
   DeliveryRetryResponse,
+  // === ISS-429 — MCP injection preview ===
+  McpServerPreviewEntry,
+  McpPreviewResponse,
 } from "@forge/contracts";
 
 // === ISS-336 — Postman integration config shape ===
@@ -101,6 +104,12 @@ export interface ProviderConfig {
   baseUrl?: string;
   resourceUuid?: string;
   branch?: string;
+  // postman
+  workspaceId?: string;
+  workspaceName?: string;
+  collectionId?: string;
+  region?: PostmanRegion;
+  mode?: PostmanMode;
   // epodsystem
   orgId?: string;
   scopes?: string[];
@@ -122,18 +131,22 @@ export type CreateIntegrationInput =
       environment: "staging" | "prod";
       config: CoolifyConfigInput;
       secrets: CoolifySecretsInput;
+      /** Present = org-owned credential (project's own org, org admin only). */
+      orgId?: string;
     }
   | {
       provider: "epodsystem";
       environment?: "staging" | "prod";
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+      orgId?: string;
     }
   | {
       provider: "postman";
       environment?: "staging" | "prod";
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
+      orgId?: string;
     };
 
 /** Partial patch for `PATCH .../integrations/:id`. */

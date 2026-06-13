@@ -16,7 +16,7 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
 const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn((..._args: unknown[]) => ({ returning: insertReturning }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 
 const updateReturning = vi.fn();
@@ -32,21 +32,36 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const hooksEmitMock = vi.fn(async () => {});
+const hooksEmitMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: (...args: unknown[]) => hooksEmitMock(...(args as [never, never])) },
 }));
 
-const loadProjectAccessMock = vi.fn(async () => ({
-  projectId: 'p-1',
-  ownerId: 'u-1',
-  role: 'owner' as const,
-}));
-vi.mock('../lib/project-access.js', () => ({
+type MockAccess = {
+  projectId: string;
+  orgId: string;
+  role: 'admin' | 'member' | 'viewer' | null;
+  orgRole: 'owner' | 'admin' | 'member' | null;
+};
+const loadProjectAccessMock = vi.fn(
+  async (..._args: unknown[]): Promise<MockAccess> => ({
+    projectId: 'p-1',
+    orgId: 'org-1',
+    role: 'admin',
+    orgRole: 'owner',
+  }),
+);
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => loadProjectAccessMock(...(args as [string, string])),
 }));
 
-const spawnMock = vi.fn(async () => ({ ok: true, jobId: 'pm-1' }) as const);
+const spawnMock = vi.fn(
+  async (..._args: unknown[]): Promise<{ ok: boolean; jobId?: string | null; reason?: string }> => ({
+    ok: true,
+    jobId: 'pm-1',
+  }),
+);
 vi.mock('./spawner.js', () => ({
   spawnPmSession: (...args: unknown[]) => spawnMock(...(args as [unknown])),
 }));
@@ -80,8 +95,9 @@ beforeEach(() => {
   loadProjectAccessMock.mockReset();
   loadProjectAccessMock.mockResolvedValue({
     projectId: 'p-1',
-    ownerId: 'u-1',
-    role: 'owner',
+    orgId: 'org-1',
+    role: 'admin',
+    orgRole: 'owner',
   });
   spawnMock.mockResolvedValue({ ok: true, jobId: 'pm-1' });
   insertReturning.mockReset();
@@ -118,8 +134,9 @@ describe('POST /api/projects/:projectId/pm/run', () => {
     selectLimit.mockResolvedValueOnce([verifiedUser]);
     loadProjectAccessMock.mockResolvedValueOnce({
       projectId: 'p-1',
-      ownerId: 'someone-else',
+      orgId: 'org-1',
       role: null,
+      orgRole: null,
     });
     const token = await signUserToken('u-1');
     const app = buildApp();
@@ -186,8 +203,9 @@ describe('POST /api/projects/:projectId/pm/escalations/:decisionId/respond', () 
     selectLimit.mockResolvedValueOnce([verifiedUser]);
     loadProjectAccessMock.mockResolvedValueOnce({
       projectId: 'p-1',
-      ownerId: 'someone-else',
+      orgId: 'org-1',
       role: null,
+      orgRole: null,
     });
     const token = await signUserToken('u-1');
     const app = buildApp();

@@ -30,6 +30,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -51,7 +53,9 @@ function mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
       leftJoin: () => ({
-        where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        leftJoin: () => ({
+          where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        }),
       }),
     }),
   }));
@@ -104,7 +108,7 @@ describe('forge_metrics.step_durations', () => {
     await tool.handler({ days: 30 });
 
     expect(executeImpl).toHaveBeenCalledTimes(1);
-    const sqlText = collectSqlFragments(executeImpl.mock.calls[0][0]);
+    const sqlText = collectSqlFragments(executeImpl.mock.calls[0]?.[0]);
     expect(sqlText).toContain('IN (');
     expect(sqlText).not.toContain('ANY(');
     expect(sqlText).not.toContain('::uuid[]');

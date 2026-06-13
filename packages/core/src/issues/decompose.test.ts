@@ -95,7 +95,7 @@ function tableName(t: unknown): string | undefined {
 
 interface QueryChain {
   _kind: 'select' | 'insert' | 'update' | 'delete';
-  _table?: string;
+  _table?: string | undefined;
   _where?: unknown;
   _values?: Record<string, unknown> | Record<string, unknown>[];
   _set?: Record<string, unknown>;
@@ -129,7 +129,7 @@ function makeChain(kind: QueryChain['_kind']): QueryChain & PromiseLike<unknown>
     },
   };
   Object.assign(chain, proto);
-  return chain as QueryChain & PromiseLike<unknown>;
+  return chain as unknown as QueryChain & PromiseLike<unknown>;
 }
 
 function executeQuery(q: QueryChain): unknown {

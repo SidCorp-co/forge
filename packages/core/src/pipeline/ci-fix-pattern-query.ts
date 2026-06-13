@@ -1,6 +1,6 @@
 import { embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
-import { searchMemories } from '../memory/search.js';
+import { searchMemories, touchMemories } from '../memory/search.js';
 
 /**
  * ISS-32 — Query side of CI fix pattern learning.
@@ -61,6 +61,7 @@ async function runQuery(input: QueryPreventivePatternsInput): Promise<Preventive
 
   const max = input.maxPatterns ?? DEFAULT_MAX_PATTERNS;
   const patterns: PreventivePattern[] = [];
+  const usedIds: string[] = [];
   for (const hit of hits) {
     const meta = (hit.metadata ?? {}) as PatternMetadata;
     // Belt-and-braces: searchMemories already filters by metadata.kind, but guard
@@ -74,7 +75,21 @@ async function runQuery(input: QueryPreventivePatternsInput): Promise<Preventive
     };
     if (typeof meta.branch === 'string') pattern.branch = meta.branch;
     patterns.push(pattern);
+    usedIds.push(hit.id);
     if (patterns.length >= max) break;
+  }
+
+  // memory-v2 phase 2 — injection counts as usage: patterns that keep firing
+  // stay alive, patterns that never match decay. Detached + best-effort.
+  if (usedIds.length > 0) {
+    queueMicrotask(() => {
+      touchMemories(usedIds).catch((err) => {
+        logger.warn(
+          { err: (err as Error).message, projectId: input.projectId },
+          'ci_fix_pattern.query: usage tracking failed',
+        );
+      });
+    });
   }
   return patterns;
 }

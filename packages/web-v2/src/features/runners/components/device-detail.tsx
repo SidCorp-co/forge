@@ -241,7 +241,7 @@ function AssignProject({
     () =>
       (projects.data ?? []).filter((p) => {
         if (assignedIds.has(p.id)) return false;
-        return p.ownerId === user?.id || p.role === "owner" || p.role === "admin";
+        return p.role === "admin";
       }),
     [projects.data, user?.id, assignedIds],
   );

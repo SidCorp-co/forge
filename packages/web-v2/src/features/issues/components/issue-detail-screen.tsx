@@ -1,11 +1,5 @@
 "use client";
 
-// web-v2 Issue detail (`/projects/[slug]/issues/[id]`). Simple + rich in one
-// derived layout: markdown description, AC checklist, collapsible agent plan,
-// full PipelineTracker, Comments/Activity/Tasks tabs, and a properties rail.
-// Live via WS (`['issue',id]` / `['comments',id]` / `['activities',id]`). ISS-294.
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
@@ -21,23 +15,30 @@ import {
   IconButton,
   Markdown,
   Menu,
+  type MenuItem,
   MonoTag,
   PageContainer,
   PipelineTracker,
   ProjectLoader,
   Skeleton,
   StatusChip,
-  Tabs,
-  type MenuItem,
   type TabItem,
+  Tabs,
 } from "@/design";
+import { STAGES, type StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
+import { useProjects } from "@/features/projects/hooks";
+import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
-import { useRecents, buildShareLink } from "@/features/shell";
-import { STAGES, type StageKey } from "@/design/stages";
+import { useRouter } from "next/navigation";
+// web-v2 Issue detail (`/projects/[slug]/issues/[id]`). Simple + rich in one
+// derived layout: markdown description, AC checklist, collapsible agent plan,
+// full PipelineTracker, Comments/Activity/Tasks tabs, and a properties rail.
+// Live via WS (`['issue',id]` / `['comments',id]` / `['activities',id]`). ISS-294.
+import { useEffect, useMemo, useState } from "react";
 import {
   deriveBlockerState,
   deriveStageOutcomes,
@@ -47,13 +48,6 @@ import {
   statusToStage,
 } from "../derive";
 import {
-  usePatchIssue,
-  useIssueCost,
-  useIssueDeps,
-  useProjectMembers,
-  useTransitionIssue,
-} from "../hooks";
-import {
   useActivity,
   useAttachments,
   useComments,
@@ -62,6 +56,13 @@ import {
   useStepHandoffs,
   useTasks,
 } from "../detail-hooks";
+import {
+  useIssueCost,
+  useIssueDeps,
+  usePatchIssue,
+  useProjectMembers,
+  useTransitionIssue,
+} from "../hooks";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AttachmentList } from "./attachment-list";
@@ -72,7 +73,10 @@ import { PropertiesRail } from "./properties-rail";
 import { SessionGroupTimeline } from "./session-group-timeline";
 import { StepArtifactCard } from "./step-artifact-card";
 
-const TASK_STATUS_TONE: Record<TaskRow["status"], "neutral" | "cobalt" | "amber" | "green"> = {
+const TASK_STATUS_TONE: Record<
+  TaskRow["status"],
+  "neutral" | "cobalt" | "amber" | "green"
+> = {
   backlog: "neutral",
   todo: "neutral",
   in_progress: "cobalt",
@@ -97,7 +101,11 @@ interface IssueDetailScreenProps {
   id: string;
 }
 
-export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProps) {
+export function IssueDetailScreen({
+  projectId,
+  slug,
+  id,
+}: IssueDetailScreenProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
@@ -107,6 +115,12 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const [expandedStage, setExpandedStage] = useState<StageKey | null>(null);
 
   useRoom(projectRoom(projectId));
+
+  // Viewer role is read-only: hide transition/edit/comment affordances (the
+  // server 403s regardless — this is UX, not the gate).
+  const projectsQ = useProjects();
+  const canWrite =
+    projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -126,7 +140,10 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const issue = issueQ.data;
   const checklist = useMemo(() => {
     if (issue?.aiAcceptanceCriteria && issue.aiAcceptanceCriteria.length > 0) {
-      return issue.aiAcceptanceCriteria.map((text) => ({ text, checked: false }));
+      return issue.aiAcceptanceCriteria.map((text) => ({
+        text,
+        checked: false,
+      }));
     }
     return parseChecklist(issue?.acceptanceCriteria);
   }, [issue?.aiAcceptanceCriteria, issue?.acceptanceCriteria]);
@@ -171,8 +188,10 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   }
 
   const stage = statusToStage(issue.status);
-  const onTransition = (toStatus: IssueStatus) => transition.mutate({ id, toStatus });
-  const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) => patch.mutate({ id, body });
+  const onTransition = (toStatus: IssueStatus) =>
+    transition.mutate({ id, toStatus });
+  const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
+    patch.mutate({ id, body });
 
   // ISS-377 — these are pure derivations (not hooks), so they sit safely after
   // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
@@ -201,7 +220,9 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
     setExpandedStage(s);
     if (typeof window !== "undefined") {
       requestAnimationFrame(() =>
-        document.getElementById(`stage-card-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        document
+          .getElementById(`stage-card-${s}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
       );
     }
   };
@@ -216,23 +237,44 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
     issue.agentStatus === "queued" ||
     issue.status === "in_progress" ||
     issue.status === "reopen";
-  const openSessions = () => router.push(`/projects/${slug}/agents?issue=${id}`);
+  const openSessions = () =>
+    router.push(`/projects/${slug}/agents?issue=${id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   const moreItems: MenuItem[] = [
     { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
-    ...(isTerminal || isParked
+    ...(isTerminal || isParked || !canWrite
       ? []
-      : [{ label: "Pause (hold)", icon: "stop", onSelect: () => onTransition("on_hold") } as MenuItem]),
-    ...(isTerminal
+      : [
+          {
+            label: "Pause (hold)",
+            icon: "stop",
+            onSelect: () => onTransition("on_hold"),
+          } as MenuItem,
+        ]),
+    ...(isTerminal || !canWrite
       ? []
-      : [{ label: "Reopen", icon: "rerun", onSelect: () => onTransition("reopen") } as MenuItem]),
+      : [
+          {
+            label: "Reopen",
+            icon: "rerun",
+            onSelect: () => onTransition("reopen"),
+          } as MenuItem,
+        ]),
     { label: "Copy link", icon: "link", onSelect: copyLink },
   ];
 
   const tabs: TabItem[] = [
-    { value: "comments", label: "Comments", count: countComments(commentsQ.data) },
-    { value: "activity", label: "Activity", count: activityQ.data?.items.length },
+    {
+      value: "comments",
+      label: "Comments",
+      count: countComments(commentsQ.data),
+    },
+    {
+      value: "activity",
+      label: "Activity",
+      count: activityQ.data?.items.length,
+    },
     { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
   ];
 
@@ -251,7 +293,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             : null;
 
   return (
-    <PageContainer width="wide" className="min-h-dvh">
+    <PageContainer className="min-h-dvh">
       {/* Sticky action + state bar — keeps the id, live status, and the primary
           actions reachable while scrolling a long issue (ISS-347). The shell's
           TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
@@ -270,7 +312,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             <StatusChip status={statusToChip(issue.status)} />
             {runChip && (
-              <StatusChip status={runChip} stage={runChip === "running" ? stage : undefined} domain="session" />
+              <StatusChip
+                status={runChip}
+                stage={runChip === "running" ? stage : undefined}
+                domain="session"
+              />
             )}
             <span className="fg-caption font-mono">{stage}</span>
           </div>
@@ -286,20 +332,53 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             ]}
             shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
           />
-          {isTerminal ? (
-            <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
-              Reopen
-            </Button>
+          {!canWrite || isTerminal ? (
+            canWrite ? (
+              <Button
+                variant="primary"
+                size="sm"
+                icon="rerun"
+                loading={pending}
+                onClick={() => onTransition("reopen")}
+              >
+                Reopen
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon="pipeline"
+                onClick={openPipeline}
+              >
+                View pipeline
+              </Button>
+            )
           ) : isRunActive ? (
-            <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="stop"
+              loading={pending}
+              onClick={() => onTransition("on_hold")}
+            >
               Pause
             </Button>
           ) : (
-            <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
+            <Button
+              variant="primary"
+              size="sm"
+              icon="pipeline"
+              onClick={openPipeline}
+            >
               Run pipeline
             </Button>
           )}
-          <Button variant="secondary" size="sm" icon="agent" onClick={openSessions}>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="agent"
+            onClick={openSessions}
+          >
             Open session
           </Button>
           <Menu
@@ -318,7 +397,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             <BlockerBanner
               blocker={blocker}
               slug={slug}
-              pending={pending}
+              pending={pending || !canWrite}
               onApprove={() => onTransition("approved")}
               onResume={() => onTransition("reopen")}
               onProvideInfo={() => setTab("comments")}
@@ -342,7 +421,12 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
           {/* Tier-1: live-agent detail — only when an agent is active (AC#3). */}
           {liveSession && (
-            <LiveAgentPanel session={liveSession} step={liveStep} slug={slug} issueId={id} />
+            <LiveAgentPanel
+              session={liveSession}
+              step={liveStep}
+              slug={slug}
+              issueId={id}
+            />
           )}
 
           {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-
@@ -412,7 +496,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                 <ul className="space-y-2">
                   {checklist.map((item, i) => (
                     <li key={i}>
-                      <Checkbox checked={item.checked} disabled label={item.text} />
+                      <Checkbox
+                        checked={item.checked}
+                        disabled
+                        label={item.text}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -438,6 +526,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                       issueId={id}
                       comments={commentsQ.data ?? []}
                       members={membersQ.data}
+                      readOnly={!canWrite}
                     />
                   ))}
                 {tab === "activity" &&
@@ -450,7 +539,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                   (tasksQ.isLoading ? (
                     <TabLoading />
                   ) : (tasksQ.data?.length ?? 0) === 0 ? (
-                    <EmptyState title="No tasks" message="This issue has no sub-tasks." mascot={false} />
+                    <EmptyState
+                      title="No tasks"
+                      message="This issue has no sub-tasks."
+                      mascot={false}
+                    />
                   ) : (
                     <ul className="space-y-2">
                       {tasksQ.data?.map((t) => (
@@ -458,8 +551,12 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                           key={t.id}
                           className="flex items-center justify-between gap-3 rounded-md border border-line-subtle px-3 py-2"
                         >
-                          <span className="fg-body-sm min-w-0 truncate text-fg">{t.title}</span>
-                          <Badge tone={TASK_STATUS_TONE[t.status]}>{TASK_STATUS_LABELS[t.status]}</Badge>
+                          <span className="fg-body-sm min-w-0 truncate text-fg">
+                            {t.title}
+                          </span>
+                          <Badge tone={TASK_STATUS_TONE[t.status]}>
+                            {TASK_STATUS_LABELS[t.status]}
+                          </Badge>
                         </li>
                       ))}
                     </ul>
@@ -486,7 +583,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                 members={membersQ.data}
                 cost={costQ.data}
                 deps={depsQ.data}
-                pending={pending}
+                pending={pending || !canWrite}
                 onPatch={onPatch}
                 onTransition={onTransition}
               />
@@ -501,7 +598,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
               members={membersQ.data}
               cost={costQ.data}
               deps={depsQ.data}
-              pending={pending}
+              pending={pending || !canWrite}
               onPatch={onPatch}
               onTransition={onTransition}
             />
@@ -532,7 +629,9 @@ function TabLoading() {
 
 /** Pick the agent session to surface in the live-agent panel: a running one
  *  wins, else a queued one. Returns null when none is active (no false signal). */
-function pickActiveSession(sessions: IssueAgentSession[] | undefined): IssueAgentSession | null {
+function pickActiveSession(
+  sessions: IssueAgentSession[] | undefined,
+): IssueAgentSession | null {
   if (!sessions || sessions.length === 0) return null;
   return (
     sessions.find((s) => s.status === "running") ??
@@ -541,7 +640,9 @@ function pickActiveSession(sessions: IssueAgentSession[] | undefined): IssueAgen
   );
 }
 
-function countComments(nodes: { replies: unknown[] }[] | undefined): number | undefined {
+function countComments(
+  nodes: { replies: unknown[] }[] | undefined,
+): number | undefined {
   if (!nodes) return undefined;
   let n = 0;
   const walk = (list: { replies: unknown[] }[]) => {

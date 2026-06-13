@@ -40,7 +40,13 @@ function selectWhere(): unknown {
   };
 }
 
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 function setupSelectChain() {
   whereThenableValues.length = 0;
@@ -95,13 +101,11 @@ function runProjectMissing() {
 }
 
 function projectAccessAsMember() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: OTHER_USER_ID }]);
-  selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
 function projectAccessAsNonMember() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: OTHER_USER_ID }]);
-  selectLimit.mockResolvedValueOnce([]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 }
 
 async function token() {
@@ -204,6 +208,8 @@ describe('GET /api/projects/:id/pipeline-runs', () => {
         id: RUN_ID,
         projectId: PROJECT_ID,
         issueId: null,
+        issueRef: 'ISS-460',
+        issueTitle: 'Live run data',
         kind: 'issue',
         status: 'running',
         currentStep: null,
@@ -227,9 +233,16 @@ describe('GET /api/projects/:id/pipeline-runs', () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('7');
-    const body = (await res.json()) as Array<{ id: string; cost: { estimatedCost: number } }>;
+    const body = (await res.json()) as Array<{
+      id: string;
+      issueRef: string | null;
+      issueTitle: string | null;
+      cost: { estimatedCost: number };
+    }>;
     expect(body).toHaveLength(1);
     expect(body[0]!.cost.estimatedCost).toBe(1.23);
+    expect(body[0]!.issueRef).toBe('ISS-460');
+    expect(body[0]!.issueTitle).toBe('Live run data');
   });
 
   it('returns 403 when caller is not a project member', async () => {

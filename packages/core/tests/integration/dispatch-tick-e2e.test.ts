@@ -26,6 +26,7 @@ import {
 
 type DTMods = {
   dispatchTickForProject: typeof import('../../src/jobs/dispatch-tick.js').dispatchTickForProject;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   setDispatchTickDebounceMs: typeof import('../../src/jobs/dispatch-tick.js').setDispatchTickDebounceMs;
 };
 
@@ -88,20 +89,46 @@ describe('ISS-40 dispatch-tick E2E', () => {
     return id;
   }
 
+  async function insertPipelineRun(projectId: string, issueId?: string | null): Promise<string> {
+    const id = randomUUID();
+    const kind = issueId ? 'issue' : 'system';
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${id}, ${projectId}, ${issueId ?? null}, ${kind}, 'running', now())
+    `);
+    return id;
+  }
+
   async function insertJob(
     projectId: string,
     args: { issueId?: string | null; status?: string; type?: string } = {},
   ): Promise<string> {
     const id = randomUUID();
+    const pipelineRunId = await insertPipelineRun(projectId, args.issueId ?? null);
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, created_by)
+      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, pipeline_run_id, created_by)
       VALUES (
         ${id}, ${projectId}, ${args.issueId ?? null}, ${args.type ?? 'plan'},
-        ${args.status ?? 'queued'}, '{}'::jsonb,
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        ${args.status ?? 'queued'}, '{}'::jsonb, ${pipelineRunId},
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;
+  }
+
+  async function seedRunner(projectId: string, ownerId: string): Promise<string> {
+    const { createTestDevice } = await import('../helpers/index.js');
+    const device = await createTestDevice(harness.db, ownerId, { status: 'online' });
+    await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
+    const runnerId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${runnerId}, ${projectId}, 'claude-code', 'device', ${device.id},
+        ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now()
+      )
+    `);
+    return runnerId;
   }
 
   async function insertIssue(projectId: string, issSeq = 0): Promise<string> {
@@ -111,7 +138,7 @@ describe('ISS-40 dispatch-tick E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${issSeq + Math.floor(Math.random() * 100000)},
         ${'Issue'}, 'open',
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;
@@ -121,7 +148,8 @@ describe('ISS-40 dispatch-tick E2E', () => {
 
   describe('dispatchTickForProject (per-project sweep)', () => {
     it('picks the highest-priority queued job and dispatches it', async () => {
-      const { project } = await seedProject();
+      const { owner, project } = await seedProject();
+      await seedRunner(project.id, owner.id);
 
       // Insert two queued jobs with different priorities. The high-priority
       // job should be dispatched first.
@@ -140,10 +168,13 @@ describe('ISS-40 dispatch-tick E2E', () => {
       const handleDispatch = dispatcher.handleDispatch as unknown as ReturnType<typeof vi.fn>;
       handleDispatch.mockClear();
       handleDispatch.mockImplementation(async (args: { jobId: string }) => {
-        // Simulate dispatch by flipping the job to running so the next tick
-        // iteration moves on instead of re-picking.
+        // Simulate dispatch by flipping the job to a terminal state so the
+        // next tick iteration moves on instead of re-picking. Marking it
+        // `done` (not `running`) also frees the project cap (hardcoded 1 in
+        // ISS-232), so the lower-priority job on a *different* issue can be
+        // picked next — proving both jobs eventually dispatch in priority order.
         await harness.db.execute(sql`
-          UPDATE jobs SET status = 'running' WHERE id = ${args.jobId}
+          UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${args.jobId}
         `);
         return 'dispatched';
       });
@@ -169,7 +200,8 @@ describe('ISS-40 dispatch-tick E2E', () => {
     // being returned. The tick breaks on the first `skipped` outcome to
     // avoid spinning; the next external trigger or 60s backstop re-enters.
     it('breaks the loop on the first skipped outcome', async () => {
-      const { project } = await seedProject();
+      const { owner, project } = await seedProject();
+      await seedRunner(project.id, owner.id);
       const issueId = await insertIssue(project.id);
       const stuck = await insertJob(project.id, { issueId });
 

@@ -4,7 +4,15 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { activityLog, type DeviceStatus, deviceStatuses, devices, projectMembers, projects, users } from '../db/schema.js';
+import {
+  type DeviceStatus,
+  activityLog,
+  deviceStatuses,
+  devices,
+  projectMembers,
+  projects,
+  users,
+} from '../db/schema.js';
 import { buildIlikePattern } from '../issues/search.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -92,13 +100,13 @@ adminProtected.get(
         id: projects.id,
         slug: projects.slug,
         name: projects.name,
-        ownerId: projects.ownerId,
-        ownerEmail: users.email,
+        createdBy: projects.createdBy,
+        creatorEmail: users.email,
         memberCount: memberCountSq.n,
         createdAt: projects.createdAt,
       })
       .from(projects)
-      .leftJoin(users, eq(users.id, projects.ownerId))
+      .leftJoin(users, eq(users.id, projects.createdBy))
       .leftJoin(memberCountSq, eq(memberCountSq.projectId, projects.id))
       .where(countWhere)
       .orderBy(desc(projects.createdAt))
@@ -150,7 +158,8 @@ adminProtected.get(
     if (action) where.push(eq(activityLog.action, action));
     if (actorId) where.push(eq(activityLog.actorId, actorId));
     if (since) where.push(sql`${activityLog.createdAt} >= ${new Date(since)}`);
-    const whereExpr = where.length === 0 ? undefined : where.length === 1 ? where[0] : and(...where);
+    const whereExpr =
+      where.length === 0 ? undefined : where.length === 1 ? where[0] : and(...where);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(activityLog).where(whereExpr);
     const rows = await db
@@ -172,7 +181,11 @@ const whoamiRoutes = new Hono<{ Variables: AuthVars }>();
 whoamiRoutes.use('*', requireAuth(), assertEmailVerified());
 whoamiRoutes.get('/whoami', async (c) => {
   const userId = c.get('userId');
-  const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  const [row] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
   if (!row) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }

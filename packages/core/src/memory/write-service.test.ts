@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const indexMemoryMock = vi.fn();
 vi.mock('./indexer.js', () => ({
-  indexMemory: (input: unknown) => indexMemoryMock(input),
+  indexMemory: (input: unknown, opts: unknown) => indexMemoryMock(input, opts),
 }));
 
 const { runMemoryWrite, writeMemoryInputSchema } = await import('./write-service.js');
@@ -100,13 +100,41 @@ describe('runMemoryWrite', () => {
     });
 
     expect(r).toBe(fakeResult);
-    expect(indexMemoryMock).toHaveBeenCalledWith({
-      projectId: PROJECT_ID,
-      source: 'note',
-      sourceRef: 'run:1/step:plan/attempt:1',
-      text: 'handoff text',
-      metadata: { run_id: 'run-1', step: 'plan', attempt: 1 },
+    expect(indexMemoryMock).toHaveBeenCalledWith(
+      {
+        projectId: PROJECT_ID,
+        source: 'note',
+        sourceRef: 'run:1/step:plan/attempt:1',
+        text: 'handoff text',
+        metadata: { run_id: 'run-1', step: 'plan', attempt: 1 },
+      },
+      { semanticDedup: true },
+    );
+  });
+
+  it('enables semantic dedup only for agent-curated sources', async () => {
+    indexMemoryMock.mockResolvedValue({
+      id: 'm-3',
+      embeddedAt: new Date(),
+      truncated: false,
+      degraded: false,
     });
+
+    await runMemoryWrite({
+      projectId: PROJECT_ID,
+      source: 'knowledge',
+      sourceRef: 'k-1',
+      textContent: 'a convention',
+    });
+    expect(indexMemoryMock).toHaveBeenLastCalledWith(expect.anything(), { semanticDedup: true });
+
+    await runMemoryWrite({
+      projectId: PROJECT_ID,
+      source: 'decision',
+      sourceRef: 'd-1',
+      textContent: 'a pm decision mirror',
+    });
+    expect(indexMemoryMock).toHaveBeenLastCalledWith(expect.anything(), { semanticDedup: false });
   });
 
   it('omits metadata key entirely when input.metadata is undefined', async () => {

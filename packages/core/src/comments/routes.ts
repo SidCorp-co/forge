@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -82,7 +82,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      assertProjectRole(access, 'member');
 
       if (parentId) {
         const [parent] = await db
@@ -196,7 +196,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      if (!access.role) throw forbidden('not a project member');
 
       // Single fetch of every comment on the issue. Depth is bounded to 3 by
       // the DB trigger; cap breadth defensively so a runaway issue can't OOM
@@ -281,7 +281,7 @@ commentRoutes.get(
 
     const parent = await loadComment(id);
     const access = await loadProjectAccess(parent.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const [{ n } = { n: 0 }] = await db
       .select({ n: count() })
@@ -325,8 +325,8 @@ commentRoutes.patch(
     const comment = await loadComment(id);
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
-      if (access.ownerId !== userId && access.role !== 'owner') {
-        throw forbidden('not comment author or project owner');
+      if (!projectRoleAtLeast(access.role, 'admin')) {
+        throw forbidden('not comment author or project admin');
       }
     }
 
@@ -367,8 +367,8 @@ commentRoutes.delete(
     const comment = await loadComment(id);
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
-      if (access.ownerId !== userId && access.role !== 'owner') {
-        throw forbidden('not comment author or project owner');
+      if (!projectRoleAtLeast(access.role, 'admin')) {
+        throw forbidden('not comment author or project admin');
       }
     }
 

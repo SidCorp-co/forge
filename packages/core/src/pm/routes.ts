@@ -12,8 +12,8 @@ import {
   pmDecisions,
   pmPolicies,
 } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { type ProjectAccess, loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -84,9 +84,6 @@ const decisionsQuerySchema = z.object({
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
@@ -98,17 +95,6 @@ const tooManyRequests = (message: string, code: string) =>
 
 function reasonToCode(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']): string {
   return reason.toUpperCase().replace(/-/g, '_');
-}
-
-function assertMemberOrThrow(access: ProjectAccess, userId: string): void {
-  if (access.ownerId === userId) return;
-  if (!access.role) throw forbidden('not a project member');
-}
-
-function assertOwnerOrAdmin(access: ProjectAccess, userId: string): void {
-  if (access.ownerId === userId) return;
-  if (access.role === 'owner' || access.role === 'admin') return;
-  throw forbidden('owner or admin required');
 }
 
 function detachIndex(fn: () => Promise<void>): void {
@@ -139,7 +125,7 @@ pmRoutes.post(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertMemberOrThrow(access, userId);
+    assertProjectRole(access, 'member', 'not a project member');
     const result = await spawnPmSession({
       projectId,
       cause: 'operator',
@@ -178,7 +164,7 @@ pmRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertMemberOrThrow(access, userId);
+    assertProjectRole(access, 'member', 'not a project member');
 
     const [decision] = await db
       .select({ id: pmDecisions.id, eventRef: pmDecisions.eventRef })
@@ -260,7 +246,7 @@ pmRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertMemberOrThrow(access, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const [existing] = await db
       .select()
@@ -301,7 +287,7 @@ pmRoutes.put(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertOwnerOrAdmin(access, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     await db
       .insert(pmConfig)
@@ -331,7 +317,7 @@ pmRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertMemberOrThrow(access, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const rows = await db
       .select({
@@ -366,7 +352,7 @@ pmRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertOwnerOrAdmin(access, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     const [inserted] = await db
       .insert(pmPolicies)
@@ -418,7 +404,7 @@ pmRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertOwnerOrAdmin(access, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     const [updated] = await db
       .update(pmPolicies)
@@ -463,7 +449,7 @@ pmRoutes.delete(
     const { projectId, id } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertOwnerOrAdmin(access, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     const deleted = await db
       .delete(pmPolicies)
@@ -495,7 +481,7 @@ pmRoutes.get(
     const { page, pageSize, cause } = c.req.valid('query');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertMemberOrThrow(access, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const conditions = [eq(pmDecisions.projectId, projectId)];
     if (cause) conditions.push(eq(pmDecisions.cause, cause));

@@ -21,7 +21,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { assertProjectMemberAccess } from '../lib/project-access.js';
+import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 export const docsRoutes = new Hono<{ Variables: AuthVars }>();
@@ -104,7 +104,7 @@ async function walk(root: string, dir: string, depth: number, counter: { n: numb
 
 docsRoutes.get('/:projectId/docs', async (c) => {
   const projectId = c.req.param('projectId');
-  await assertProjectMemberAccess(projectId, c.get('userId'));
+  await assertProjectAccess(projectId, c.get('userId'), 'viewer');
   const root = await resolveRepoRoot(projectId);
 
   const counter = { n: 0 };
@@ -153,7 +153,7 @@ docsRoutes.get('/:projectId/docs', async (c) => {
 
 docsRoutes.get('/:projectId/docs/content', async (c) => {
   const projectId = c.req.param('projectId');
-  await assertProjectMemberAccess(projectId, c.get('userId'));
+  await assertProjectAccess(projectId, c.get('userId'), 'viewer');
   const root = await resolveRepoRoot(projectId);
 
   const rel = c.req.query('path');

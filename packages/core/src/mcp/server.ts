@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
+import { toToolCallContent } from './tool-result.js';
 import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
@@ -12,7 +13,12 @@ import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeHealthTool } from './tools/forge-health.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
-import { forgeJobsEventsTool, forgeJobsGetTool, forgeJobsListTool } from './tools/forge-jobs.js';
+import {
+  forgeJobsCancelTool,
+  forgeJobsEventsTool,
+  forgeJobsGetTool,
+  forgeJobsListTool,
+} from './tools/forge-jobs.js';
 import {
   forgeMemoryDeleteTool,
   forgeMemoryGetTool,
@@ -25,6 +31,7 @@ import {
   forgeMetricsStepDurationsTool,
 } from './tools/forge-metrics.js';
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
+import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import {
   forgePipelineRunsCancelTool,
   forgePipelineRunsGetTool,
@@ -88,7 +95,9 @@ import type { McpContext } from './tools/lib.js';
  *    (ISS-293). Task CRUD lives on `forge_issues` as actions `createTask` /
  *    `listTasks` / `updateTask` / `deleteTask` (ISS-146).
  *  - `forge_jobs.list` / `.get` / `.events` — read-only diagnostic surfaces
- *    over jobs + job_events (ISS-7).
+ *    over jobs + job_events (ISS-7). `forge_jobs.cancel` — writer-gated
+ *    audited single-job cancel (ISS-442 C0); the manual escape hatch that
+ *    also clears jobs orphaned under an already-terminal pipeline_run.
  *  - `forge_agent_sessions.list` / `.get` — read-only access to
  *    `agent_sessions` rows (ISS-7).
  *  - `forge_project_pipeline_runs` — action dispatcher
@@ -214,6 +223,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeJobsListTool(ctx.device),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),
+    forgeJobsCancelTool(ctx),
     forgeAgentSessionsListTool(ctx.device),
     forgeAgentSessionsGetTool(ctx),
     // ISS-145 — consolidated dispatchers first; legacy shims registered
@@ -227,6 +237,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePipelineRunsCancelTool(ctx),
     forgeProjectsListTool(ctx),
     forgeProjectsCreateTool(ctx),
+    forgeOrgsListTool(ctx),
+    forgeOrgsMembersTool(ctx),
     forgeProjectsUpdateTool(ctx),
     forgeProjectsGetTool(ctx),
     forgeProjectsArchiveTool(ctx),
@@ -310,15 +322,8 @@ export function createMcpServer(ctx: McpContext): Server {
 
     try {
       const result = await tool.handler(args);
-      const structured =
-        result && typeof result === 'object' && !Array.isArray(result)
-          ? (result as Record<string, unknown>)
-          : { value: result };
       writeMcpAudit({ ...auditBase, resultCode: 'ok' });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-        structuredContent: structured,
-      };
+      return toToolCallContent(result);
     } catch (err) {
       const { code, message } = classifyError(err);
       writeMcpAudit({ ...auditBase, resultCode: code });

@@ -33,6 +33,7 @@ import {
   assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
   zodToMcpSchema,
+  assertPrincipalIsWriter,
 } from './lib.js';
 
 export const pipelineRunsListInputSchema = z
@@ -99,7 +100,8 @@ export async function pipelineRunsPauseHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
-  await loadRunForPrincipal(principal, input.runId);
+  const loaded = await loadRunForPrincipal(principal, input.runId);
+  await assertPrincipalIsWriter(principal, loaded.projectId);
   const run = await pausePipelineRun(input.runId);
   return { run };
 }
@@ -108,7 +110,8 @@ export async function pipelineRunsResumeHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
-  await loadRunForPrincipal(principal, input.runId);
+  const loaded = await loadRunForPrincipal(principal, input.runId);
+  await assertPrincipalIsWriter(principal, loaded.projectId);
   const run = await resumePipelineRun(input.runId);
   return { run };
 }
@@ -117,7 +120,8 @@ export async function pipelineRunsCancelHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
-  await loadRunForPrincipal(principal, input.runId);
+  const loaded = await loadRunForPrincipal(principal, input.runId);
+  await assertPrincipalIsWriter(principal, loaded.projectId);
   return cancelPipelineRun(input.runId);
 }
 

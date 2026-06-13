@@ -45,8 +45,8 @@ describe('PAT scrubbing (ISS-150)', () => {
     expect(event.request.headers.authorization).toBe(FILTERED);
     expect(event.request.url.includes(PAT)).toBe(false);
     expect((event.request.data as string).includes(PAT)).toBe(false);
-    expect(event.breadcrumbs[0].message.includes(PAT)).toBe(false);
-    const bdata = event.breadcrumbs[0].data as { url: string };
+    expect(event.breadcrumbs[0]?.message.includes(PAT)).toBe(false);
+    const bdata = event.breadcrumbs[0]?.data as { url: string };
     expect(bdata.url.includes(PAT)).toBe(false);
   });
 

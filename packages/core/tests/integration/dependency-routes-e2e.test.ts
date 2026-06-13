@@ -89,7 +89,7 @@ describe('ISS-40 issue dependency routes E2E', () => {
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     return { user, project };
   }

@@ -18,11 +18,12 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
-const indexMemoryMock = vi.fn(async () => undefined);
+const indexMemoryMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../memory/indexer.js', () => ({
   indexMemory: (input: unknown) => indexMemoryMock(input),
 }));
@@ -96,7 +97,7 @@ describe('POST /api/knowledge/ingest', () => {
 
   it('403 non-member', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'x', role: null });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request('/api/knowledge/ingest', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -110,7 +111,7 @@ describe('POST /api/knowledge/ingest', () => {
 
   it('200 ingests valid documents', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
 
     const res = await buildApp().request('/api/knowledge/ingest', {
       method: 'POST',
@@ -137,7 +138,7 @@ describe('POST /api/knowledge/ingest', () => {
 
   it('skips oversized docs', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
     const oversized = 'x'.repeat(60 * 1024);
 
     const res = await buildApp().request('/api/knowledge/ingest', {

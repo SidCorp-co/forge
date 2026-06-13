@@ -1,12 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { chatLogs, projectMembers, projects, qaRatings } from '../db/schema.js';
+import { type ProjectMemberRole, chatLogs, projects, qaRatings } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -52,9 +52,6 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 async function resolveProjectIdBySlug(slug: string): Promise<string | null> {
   const [row] = await db
     .select({ id: projects.id })
@@ -67,15 +64,12 @@ async function resolveProjectIdBySlug(slug: string): Promise<string | null> {
 async function assertChatLogAccess(
   projectSlug: string,
   userId: string,
-  requireOwner = false,
+  minRole: ProjectMemberRole = 'viewer',
 ): Promise<void> {
   const projectId = await resolveProjectIdBySlug(projectSlug);
   if (!projectId) throw notFound('project not found');
   const access = await loadProjectAccess(projectId, userId);
-  if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-  if (requireOwner && access.ownerId !== userId && access.role !== 'owner') {
-    throw forbidden('only project owner can manage chat logs');
-  }
+  assertProjectRole(access, minRole, 'not a project member');
 }
 
 export const chatLogRoutes = new Hono<{ Variables: AuthVars }>();
@@ -97,13 +91,19 @@ chatLogRoutes.get(
       await assertChatLogAccess(projectSlug, userId);
       conditions.push(eq(chatLogs.projectSlug, projectSlug));
     } else {
-      // Cross-project view: restrict to caller-visible projects
-      // (owned + member). Pattern mirrors packages/core/src/projects/health-routes.ts.
+      // Cross-project view: restrict to caller-visible projects (explicit
+      // membership at any role, or org owner/admin) via the single authz
+      // resolver.
+      const visibleIds = await loadVisibleProjectIds(userId);
+      if (visibleIds.length === 0) {
+        setTotalCount(c, 0);
+        return c.json([]);
+      }
+
       const visible = await db
-        .selectDistinct({ slug: projects.slug })
+        .select({ slug: projects.slug })
         .from(projects)
-        .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-        .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+        .where(inArray(projects.id, visibleIds));
 
       if (visible.length === 0) {
         setTotalCount(c, 0);
@@ -231,7 +231,7 @@ chatLogRoutes.patch(
       .limit(1);
     if (!row) throw notFound('chat log not found');
 
-    await assertChatLogAccess(row.projectSlug, userId, /* requireOwner */ true);
+    await assertChatLogAccess(row.projectSlug, userId, 'admin');
 
     const updates: Record<string, unknown> = {};
     if (patch.qaRating !== undefined) updates.qaRating = patch.qaRating;

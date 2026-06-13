@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   type TestDatabase,
   createTestProject,
@@ -31,7 +32,7 @@ interface SeedJobOpts {
 
 describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
   let harness: TestDatabase;
-  let app: Hono;
+  let app: Hono<{ Variables: RequestIdVars }>;
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 
   beforeAll(async () => {
@@ -54,7 +55,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     const jwtMod = await import('../../src/auth/jwt.js');
     signUserToken = jwtMod.signUserToken;
 
-    app = new Hono();
+    app = new Hono<{ Variables: RequestIdVars }>();
     app.use('*', requestId());
     app.route('/api/issues', issueRoutes);
     app.onError(errorHandler);
@@ -68,11 +69,9 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     await truncateAll(harness.db);
   });
 
-  async function seedUserProject(role: 'owner' | 'admin' | 'member' = 'owner') {
+  async function seedUserProject(role: 'admin' | 'member' | 'viewer' = 'admin') {
     const user = await createTestUser(harness.db);
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`,
-    );
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
     await createTestProjectMember(harness.db, {
       userId: user.id,
@@ -104,9 +103,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     return { issueId, runId };
   }
 
-  async function seedJob(
-    opts: SeedJobOpts & { runId: string },
-  ): Promise<string> {
+  async function seedJob(opts: SeedJobOpts & { runId: string }): Promise<string> {
     const jobId = randomUUID();
     const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
     await harness.db.execute(sql`
@@ -148,7 +145,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
   }
 
   it('returns plan-jobs only, newest first, with token/cost rollup', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const { issueId, runId } = await seedIssueWithRun(project.id, user.id);
 
     const tOlder = new Date(Date.now() - 60_000);
@@ -228,27 +225,27 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     expect(rows).toHaveLength(3);
     // Newest first: queued (queued_at most recent, dispatched_at null →
     // coalesce uses queued_at), then newerJob, then olderJob.
-    expect(rows[0].jobId).toBe(queuedJob);
-    expect(rows[1].jobId).toBe(newerJob);
-    expect(rows[2].jobId).toBe(olderJob);
+    expect(rows[0]!.jobId).toBe(queuedJob);
+    expect(rows[1]!.jobId).toBe(newerJob);
+    expect(rows[2]!.jobId).toBe(olderJob);
 
-    expect(rows[0].tokens).toBe(0);
-    expect(rows[0].cost).toBe(0);
-    expect(rows[0].status).toBe('queued');
-    expect(rows[0].startedAt).toBeNull();
-    expect(rows[0].finishedAt).toBeNull();
+    expect(rows[0]!.tokens).toBe(0);
+    expect(rows[0]!.cost).toBe(0);
+    expect(rows[0]!.status).toBe('queued');
+    expect(rows[0]!.startedAt).toBeNull();
+    expect(rows[0]!.finishedAt).toBeNull();
 
-    expect(rows[1].tokens).toBe(300);
-    expect(rows[1].cost).toBeCloseTo(0.005, 5);
-    expect(rows[1].model).toBe('claude-opus-4-7');
+    expect(rows[1]!.tokens).toBe(300);
+    expect(rows[1]!.cost).toBeCloseTo(0.005, 5);
+    expect(rows[1]!.model).toBe('claude-opus-4-7');
 
-    expect(rows[2].tokens).toBe(200);
-    expect(rows[2].cost).toBeCloseTo(0.0015, 5);
-    expect(rows[2].estTokens).toBe(100);
+    expect(rows[2]!.tokens).toBe(200);
+    expect(rows[2]!.cost).toBeCloseTo(0.0015, 5);
+    expect(rows[2]!.estTokens).toBe(100);
   });
 
   it('returns 403 when the caller is not a project member', async () => {
-    const { user: owner, project } = await seedUserProject('owner');
+    const { user: owner, project } = await seedUserProject('admin');
     const { issueId, runId } = await seedIssueWithRun(project.id, owner.id);
     await seedJob({
       projectId: project.id,
@@ -269,7 +266,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
   });
 
   it('returns 400 for an unknown step', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const { issueId } = await seedIssueWithRun(project.id, user.id);
     const token = await signUserToken(user.id);
     const res = await app.request(`/api/issues/${issueId}/job-history?step=bogus`, {
@@ -279,14 +276,14 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
   });
 
   it('returns 404 for an unknown issue id', async () => {
-    const { user } = await seedUserProject('owner');
+    const { user } = await seedUserProject('admin');
     const token = await signUserToken(user.id);
     const res = await getHistory(randomUUID(), 'plan', token);
     expect(res.status).toBe(404);
   });
 
   it('returns [] when the issue has no jobs of the requested step', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const { issueId, runId } = await seedIssueWithRun(project.id, user.id);
     // Seed a job of a DIFFERENT step.
     await seedJob({

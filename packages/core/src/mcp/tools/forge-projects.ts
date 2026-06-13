@@ -8,24 +8,26 @@ import {
   projectMembers,
   projects,
 } from '../../db/schema.js';
+import {
+  effectiveProjectRole,
+  loadOrgRole,
+  loadPersonalOrgId,
+  orgRoleAtLeast,
+} from '../../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
+  loadVisibleProjectIdsForPrincipal,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
 
 /**
- * MCP Phase 1 (ISS-7) — enumerate projects visible to the device's owner.
- * Visibility logic mirrors the cross-project fan-out used in
- * `packages/core/src/agent-sessions/routes.ts` (~line 705) and
- * `projects/health-routes.ts`: CEO sees all; everyone else sees owned plus
- * member projects. Pre-req for ISS-9 (cross-project dispatch).
- *
- * Role values follow the `projectMemberRoles` enum (`owner | admin | member`)
- * — the issue spec called the third tier `contributor`, but the schema is
- * authoritative.
+ * Enumerate projects visible to the principal — explicit membership (any
+ * role) plus org owner/admin implicit access (lib/authz.ts is the single
+ * rule). Role values follow the `projectMemberRoles` enum
+ * (`admin | member | viewer`).
  */
 
 const inputSchema = z.object({}).strict();
@@ -34,70 +36,39 @@ type ListedProject = {
   id: string;
   slug: string;
   name: string;
-  ownerId: string;
-  role: 'owner' | ProjectMemberRole;
+  orgId: string;
+  role: ProjectMemberRole | null;
 };
 
 export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.list',
   description:
-    "List projects visible to the principal (projects owned + ones the user is a member of). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, ownerId, role.",
+    "List projects visible to the principal (explicit project membership of any role, plus org owner/admin implicit access). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, orgId, role (effective: admin|member|viewer).",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     inputSchema.parse(args);
     const { principal } = ctx;
-    const userId = principal.kind === 'device' ? principal.device.ownerId : principal.userId;
-    const patAllowlist =
-      principal.kind === 'pat' && principal.projectIds !== null
-        ? new Set(principal.projectIds)
-        : null;
+    const userId = principalUserId(principal);
 
-    // Two separate queries instead of a left-join + selectDistinct: the join
-    // approach inflates rows for owned projects that have multiple members
-    // (every member row passes the WHERE because `projects.ownerId = userId`
-    // is true), and `memberRole` in the distinct key prevents dedup. Two
-    // queries + a Map dedupe is cleaner and matches REST behaviour.
-    const ownedRows = await db
+    const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
+    if (visibleIds.length === 0) return { projects: [] };
+
+    const rows = await db
       .select({
         id: projects.id,
         slug: projects.slug,
         name: projects.name,
-        ownerId: projects.ownerId,
+        orgId: projects.orgId,
       })
       .from(projects)
-      .where(eq(projects.ownerId, userId));
+      .where(inArray(projects.id, visibleIds));
 
-    const memberRows = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        ownerId: projects.ownerId,
-        role: projectMembers.role,
-      })
-      .from(projectMembers)
-      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-      .where(eq(projectMembers.userId, userId));
-
-    const byId = new Map<string, ListedProject>();
-    for (const r of ownedRows) {
-      byId.set(r.id, { ...r, role: 'owner' });
+    const listed: ListedProject[] = [];
+    for (const r of rows) {
+      const access = await effectiveProjectRole(userId, r.id);
+      listed.push({ ...r, role: access?.role ?? null });
     }
-    for (const r of memberRows) {
-      // Owner takes precedence — never downgrade an already-owner row.
-      if (byId.has(r.id)) continue;
-      byId.set(r.id, {
-        id: r.id,
-        slug: r.slug,
-        name: r.name,
-        ownerId: r.ownerId,
-        role: r.role,
-      });
-    }
-
-    const all = [...byId.values()];
-    const narrowed = patAllowlist ? all.filter((r) => patAllowlist.has(r.id)) : all;
-    return { projects: narrowed };
+    return { projects: listed };
   },
 });
 
@@ -126,6 +97,8 @@ const createInputSchema = z
     repoPath: z.string().trim().max(500).optional(),
     baseBranch: z.string().trim().max(100).optional(),
     productionBranch: z.string().trim().max(100).optional(),
+    // Org tier — omitted = the caller's personal org.
+    orgId: z.uuid().optional(),
   })
   .strict();
 
@@ -159,7 +132,7 @@ const createInputSchema = z
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.create',
   description:
-    'Create a new project owned by the calling principal. Accepts slug+name plus optional initial description/repoPath/baseBranch/productionBranch (superset of REST POST /api/projects, which forces these through a follow-up PATCH). PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/ownerId/apiKey/createdAt — the apiKey is needed for widget install and device pairing.',
+    "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug+name plus optional initial description/repoPath/baseBranch/productionBranch. PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/orgId/createdBy/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
   inputSchema: zodToMcpSchema(createInputSchema),
   handler: async (args) => {
     const input = createInputSchema.parse(args);
@@ -176,7 +149,19 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
     }
 
-    const ownerId = principalUserId(principal);
+    const creatorId = principalUserId(principal);
+    // Resolve the target org: explicit orgId (caller must be an org member)
+    // or the caller's personal org.
+    let orgId: string;
+    if (input.orgId) {
+      const orgRole = await loadOrgRole(input.orgId, creatorId);
+      if (!orgRole) throw new Error('NOT_FOUND: org not found or not accessible');
+      orgId = input.orgId;
+    } else {
+      const personal = await loadPersonalOrgId(creatorId);
+      if (!personal) throw new Error('INTERNAL: personal org missing — run migrations');
+      orgId = personal;
+    }
     try {
       const created = await db.transaction(async (tx) => {
         const inserted = await tx
@@ -184,7 +169,8 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
           .values({
             slug: input.slug,
             name: input.name,
-            ownerId,
+            orgId,
+            createdBy: creatorId,
             description: input.description ?? null,
             repoPath: input.repoPath ?? null,
             // ISS-274 — default to 'main' when the caller omits the branch so a
@@ -199,16 +185,17 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
             id: projects.id,
             slug: projects.slug,
             name: projects.name,
-            ownerId: projects.ownerId,
+            orgId: projects.orgId,
+            createdBy: projects.createdBy,
             apiKey: projects.apiKey,
             createdAt: projects.createdAt,
           });
         const project = inserted[0];
         if (!project) throw new Error('projects: insert returned no row');
         await tx.insert(projectMembers).values({
-          userId: ownerId,
+          userId: creatorId,
           projectId: project.id,
-          role: 'owner',
+          role: 'admin',
         });
         return project;
       });
@@ -272,7 +259,7 @@ const updateInputSchema = z
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   description:
-    'Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be the project owner (members with role=admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is read-only via forge_projects.get.',
+    "Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is read-only via forge_projects.get.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -293,29 +280,14 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     const userId = principalUserId(principal);
-    const [proj] = await db
-      .select({ ownerId: projects.ownerId })
-      .from(projects)
-      .where(eq(projects.id, input.projectId))
-      .limit(1);
-    if (!proj) throw new Error('NOT_FOUND: project not found or not accessible');
-
-    if (proj.ownerId !== userId) {
-      // Not the primary owner — projects can have multiple `owner`-role
-      // members via projectMembers; allow those, refuse everyone else.
-      const [member] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, userId)),
-        )
-        .limit(1);
-      // Non-member returns NOT_FOUND (not FORBIDDEN) to avoid leaking
-      // existence; project-member-not-owner gets the truthful FORBIDDEN.
-      if (!member) throw new Error('NOT_FOUND: project not found or not accessible');
-      if (member.role !== 'owner') {
-        throw new Error('FORBIDDEN: requires project owner (admin role is insufficient)');
-      }
+    const access = await effectiveProjectRole(userId, input.projectId);
+    // Non-member returns NOT_FOUND (not FORBIDDEN) to avoid leaking
+    // existence; a member below the org-admin bar gets the truthful FORBIDDEN.
+    if (!access || !access.role) {
+      throw new Error('NOT_FOUND: project not found or not accessible');
+    }
+    if (!orgRoleAtLeast(access.orgRole, 'admin')) {
+      throw new Error('FORBIDDEN: requires org admin (project admin role is insufficient)');
     }
 
     const updates: Record<string, unknown> = {};
@@ -335,7 +307,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
         id: projects.id,
         slug: projects.slug,
         name: projects.name,
-        ownerId: projects.ownerId,
+        orgId: projects.orgId,
         description: projects.description,
         repoPath: projects.repoPath,
         baseBranch: projects.baseBranch,
@@ -365,7 +337,7 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
   description:
-    'Fetch project detail visible to the principal — id, slug, name, description, ownerId, role, repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials}, createdAt. Any project member (owner/admin/member) can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+    'Fetch project detail visible to the principal — id, slug, name, description, orgId, createdBy, role (effective: admin|member|viewer), repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials}, createdAt. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
@@ -392,7 +364,8 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         slug: projects.slug,
         name: projects.name,
         description: projects.description,
-        ownerId: projects.ownerId,
+        orgId: projects.orgId,
+        createdBy: projects.createdBy,
         repoPath: projects.repoPath,
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
@@ -405,25 +378,13 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
       .limit(1);
     if (!proj) throw new Error('NOT_FOUND: project not found or not accessible');
 
-    // Resolve caller role. Owner short-circuit keeps the hot path at one
-    // query; a non-member surfaces NOT_FOUND so the namespace stays
-    // non-enumerable.
-    let role: 'owner' | ProjectMemberRole;
-    if (proj.ownerId === userId) {
-      role = 'owner';
-    } else {
-      const [member] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, userId)),
-        )
-        .limit(1);
-      if (!member) {
-        throw new Error('NOT_FOUND: project not found or not accessible');
-      }
-      role = member.role;
+    // Resolve the effective caller role; a non-member surfaces NOT_FOUND so
+    // the namespace stays non-enumerable.
+    const access = await effectiveProjectRole(userId, input.projectId);
+    if (!access || !access.role) {
+      throw new Error('NOT_FOUND: project not found or not accessible');
     }
+    const role: ProjectMemberRole = access.role;
 
     // Normalize previewDeploy: tolerate null + missing inner fields so the
     // response shape is stable regardless of DB state.
@@ -441,7 +402,8 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         slug: proj.slug,
         name: proj.name,
         description: proj.description,
-        ownerId: proj.ownerId,
+        orgId: proj.orgId,
+        createdBy: proj.createdBy,
         role,
         repoPath: proj.repoPath,
         baseBranch: proj.baseBranch,
@@ -471,7 +433,7 @@ const archiveInputSchema = z
 export const forgeProjectsArchiveTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.archive',
   description:
-    'Hard-delete a project. Requires owner/admin on the project and `confirm:true`. Refuses with PROJECT_BUSY if the project has any queued/running agent sessions. Returns `{ archived: true, projectId, actorUserId }`.',
+    "Hard-delete a project. Requires org owner/admin on the project's org (and the `admin` scope for PAT principals) plus `confirm:true`. Refuses with PROJECT_BUSY if the project has any queued/running agent sessions. Returns `{ archived: true, projectId, actorUserId }`.",
   inputSchema: zodToMcpSchema(archiveInputSchema),
   handler: async (args) => {
     const input = archiveInputSchema.parse(args);
@@ -485,8 +447,14 @@ export const forgeProjectsArchiveTool: ContextScopedMcpToolFactory = (ctx) => ({
       throw new Error('BAD_REQUEST: archive requires confirm:true');
     }
     const projectId = input.projectId;
-    // Only an owner/admin of the project may archive it.
+    // Destructive: requires effective project admin (assertPrincipalIsAdmin —
+    // also enforces the PAT `admin` scope) AND org owner/admin on the
+    // project's org, mirroring REST DELETE /api/projects/:id.
     await assertPrincipalIsAdmin(ctx.principal, projectId);
+    const access = await effectiveProjectRole(principalUserId(ctx.principal), projectId);
+    if (!access || !orgRoleAtLeast(access.orgRole, 'admin')) {
+      throw new Error('FORBIDDEN: requires org admin on the project');
+    }
     const activeRows = await db
       .select({ active: count() })
       .from(agentSessions)

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
@@ -10,7 +11,7 @@ vi.mock('../config/env.js', () => ({
 // Verified-email lookup (from assertEmailVerified) is the first select call
 // every authenticated test makes. We queue results FIFO via selectLimit.
 const selectLimit = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+const selectWhere = vi.fn((): unknown => ({ limit: selectLimit }));
 const selectOn = vi.fn(() => ({ where: selectWhere }));
 const innerJoin = vi.fn(() => ({ on: selectOn, where: selectWhere }));
 const selectFrom = vi.fn(() => ({
@@ -18,6 +19,16 @@ const selectFrom = vi.fn(() => ({
   innerJoin,
   // chained without limit/where (e.g. project_members for /:id detail)
 }));
+
+// GET / visibility query:
+// selectDistinctOn(...).from().innerJoin(orgs).leftJoin().leftJoin().where()
+const distinctWhere = vi.fn((): Promise<unknown[]> => Promise.resolve([]));
+const distinctLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: distinctLeftJoin,
+  where: distinctWhere,
+}));
+const distinctInnerJoin = vi.fn(() => ({ leftJoin: distinctLeftJoin }));
+const distinctFrom = vi.fn(() => ({ innerJoin: distinctInnerJoin, leftJoin: distinctLeftJoin }));
 
 const txInsertProjectReturning = vi.fn();
 const txInsertProjectValues = vi.fn(() => ({ returning: txInsertProjectReturning }));
@@ -34,7 +45,7 @@ const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
 const deleteWhere = vi.fn(async () => undefined);
@@ -43,7 +54,7 @@ const dbDelete = vi.fn(() => ({ where: deleteWhere }));
 const insertOnConflict = vi.fn(async () => undefined);
 const insertReturning = vi.fn();
 const insertOnConflictDoUpdate = vi.fn(() => ({ returning: insertReturning }));
-const insertValues = vi.fn(() => ({
+const insertValues = vi.fn((..._args: unknown[]) => ({
   onConflictDoNothing: insertOnConflict,
   onConflictDoUpdate: insertOnConflictDoUpdate,
   returning: insertReturning,
@@ -53,11 +64,23 @@ const dbInsert = vi.fn(() => ({ values: insertValues }));
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
+    selectDistinctOn: vi.fn(() => ({ from: distinctFrom })),
     transaction,
     update: dbUpdate,
     delete: dbDelete,
     insert: dbInsert,
   },
+}));
+
+// Org-level authz: db-touching resolvers are stubbed; the pure helpers
+// (assertProjectRole, assertOrgRoleOnProject, maxProjectRole, …) stay real so
+// the tests exercise the production role logic on the mocked access shape.
+const projectAccess = vi.fn();
+const personalOrg = vi.fn();
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
+  loadPersonalOrgId: (...args: unknown[]) => personalOrg(...args),
 }));
 
 // Bootstrap adopts each stage's global template into a project skill via
@@ -84,11 +107,26 @@ function buildApp() {
   return app;
 }
 
+const ORG_ID = '99999999-9999-4999-8999-999999999999';
+
+type Role = 'admin' | 'member' | 'viewer' | null;
+type OrgRole = 'owner' | 'admin' | 'member' | null;
+const access = (role: Role, orgRole: OrgRole = null) => ({
+  projectId: 'p1',
+  orgId: ORG_ID,
+  role,
+  orgRole,
+});
+const notFoundErr = () =>
+  new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
+
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   selectWhere.mockClear();
   innerJoin.mockClear();
+  distinctWhere.mockReset();
+  distinctWhere.mockResolvedValue([]);
   txInsertProjectReturning.mockReset();
   updateReturning.mockReset();
   deleteWhere.mockClear();
@@ -96,6 +134,9 @@ beforeEach(() => {
   insertOnConflict.mockClear();
   insertOnConflictDoUpdate.mockClear();
   insertReturning.mockReset();
+  projectAccess.mockReset();
+  personalOrg.mockReset();
+  personalOrg.mockResolvedValue(ORG_ID);
   resolveOrAdoptProjectSkillMock.mockReset();
   resolveOrAdoptProjectSkillMock.mockResolvedValue(null);
   let callIdx = 0;
@@ -116,7 +157,7 @@ function req(path: string, init: RequestInit & { token?: string } = {}) {
 }
 
 function post(body: unknown, token?: string) {
-  return req('', { method: 'POST', body: JSON.stringify(body), token });
+  return req('', { method: 'POST', body: JSON.stringify(body), ...(token ? { token } : {}) });
 }
 
 describe('POST /api/projects', () => {
@@ -138,7 +179,7 @@ describe('POST /api/projects', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it('201 with created project + owner member row for verified user', async () => {
+  it('201 with created project + admin member row for verified user', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     const createdAt = new Date('2026-04-23T00:00:00Z');
@@ -147,21 +188,29 @@ describe('POST /api/projects', () => {
         id: 'proj-1',
         slug: 'my-proj',
         name: 'My Project',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
+        apiKey: 'fk_x',
         createdAt,
       },
     ]);
 
     const res = await post({ slug: 'my-proj', name: 'My Project' }, token);
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { id: string; slug: string; ownerId: string };
-    expect(body).toMatchObject({ id: 'proj-1', slug: 'my-proj', ownerId: 'uuid-owner' });
+    const body = (await res.json()) as { id: string; slug: string; createdBy: string };
+    expect(body).toMatchObject({
+      id: 'proj-1',
+      slug: 'my-proj',
+      orgId: ORG_ID,
+      createdBy: 'uuid-owner',
+    });
 
     expect(txInsertProjectValues).toHaveBeenCalledWith(
       expect.objectContaining({
         slug: 'my-proj',
         name: 'My Project',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         apiKey: expect.stringMatching(/^fk_[0-9a-f]{48}$/),
         // ISS-274 — branch columns are defaulted at create time so the
         // resolver never surfaces a null-base misconfig for new projects.
@@ -172,8 +221,18 @@ describe('POST /api/projects', () => {
     expect(txInsertMembersValues).toHaveBeenCalledWith({
       userId: 'uuid-owner',
       projectId: 'proj-1',
-      role: 'owner',
+      role: 'admin',
     });
+  });
+
+  it('500 PERSONAL_ORG_MISSING when the user has no personal org', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    personalOrg.mockResolvedValueOnce(null);
+
+    const res = await post({ slug: 'my-proj', name: 'My Project' }, token);
+    expect(res.status).toBe(500);
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it('400 BAD_REQUEST on invalid slug', async () => {
@@ -201,29 +260,53 @@ describe('POST /api/projects', () => {
 });
 
 describe('GET /api/projects', () => {
-  it('returns the joined membership rows for the user', async () => {
+  it('returns the visible projects with effective role', async () => {
     const token = await signUserToken('uuid-user');
-    // 1) verified-email lookup goes through select().from().where().limit().
-    //    selectWhere's default returns { limit: selectLimit } — preserve that
-    //    for the auth call by re-stubbing it explicitly first, then make the
-    //    route's `where(...)` (no limit) resolve to our row list.
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectWhere.mockReturnValueOnce({ limit: selectLimit }).mockResolvedValueOnce([
+    distinctWhere.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-user',
-        role: 'owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-user',
+        memberRole: 'admin',
+        orgRole: 'owner',
+        apiKey: 'fk_x',
+        archivedAt: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
     ]);
 
     const res = await req('', { token });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{ id: string; role: string }>;
+    const body = (await res.json()) as Array<{ id: string; role: string; orgRole: string }>;
     expect(body).toHaveLength(1);
-    expect(body[0]).toMatchObject({ id: 'p1', role: 'owner' });
+    expect(body[0]).toMatchObject({ id: 'p1', role: 'admin', orgRole: 'owner' });
+  });
+
+  it('derives project admin from org role when there is no member row', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    distinctWhere.mockResolvedValueOnce([
+      {
+        id: 'p2',
+        slug: 'p-two',
+        name: 'P Two',
+        orgId: ORG_ID,
+        createdBy: 'uuid-other',
+        memberRole: null,
+        orgRole: 'admin',
+        apiKey: 'fk_y',
+        archivedAt: null,
+        createdAt: new Date('2026-04-01T00:00:00Z'),
+      },
+    ]);
+
+    const res = await req('', { token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string; role: string; orgRole: string }>;
+    expect(body[0]).toMatchObject({ id: 'p2', role: 'admin', orgRole: 'admin' });
   });
 });
 
@@ -238,9 +321,8 @@ describe('GET /api/projects/:id', () => {
 
   it('404 NOT_FOUND when project missing', async () => {
     const token = await signUserToken('uuid-user');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]) // verified
-      .mockResolvedValueOnce([]); // project lookup -> empty
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockRejectedValueOnce(notFoundErr());
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
     expect(res.status).toBe(404);
@@ -250,10 +332,8 @@ describe('GET /api/projects/:id', () => {
 
   it('403 FORBIDDEN when not a member', async () => {
     const token = await signUserToken('uuid-stranger');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }]) // project exists
-      .mockResolvedValueOnce([]); // membership lookup -> empty
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access(null));
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
     expect(res.status).toBe(403);
@@ -263,16 +343,16 @@ describe('GET /api/projects/:id', () => {
 
   it('200 with project + members + labels + devicePool for member', async () => {
     const token = await signUserToken('uuid-user');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-user' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([
         {
           id: 'p1',
           slug: 'p-one',
           name: 'P One',
-          ownerId: 'uuid-user',
+          orgId: ORG_ID,
+          createdBy: 'uuid-user',
           description: 'desc',
           repoPath: '/repo',
           baseBranch: 'main',
@@ -283,14 +363,12 @@ describe('GET /api/projects/:id', () => {
           createdAt: new Date('2026-04-01T00:00:00Z'),
         },
       ]);
-    // First 4 selectWhere calls go through .limit() (auth + 3 lookups);
+    // First 2 selectWhere calls go through .limit() (auth + project detail);
     // members + labels resolve directly; devicePool flows through innerJoin -> where.
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'owner' }])
+      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'admin' }])
       .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
       .mockResolvedValueOnce([
         {
@@ -309,6 +387,8 @@ describe('GET /api/projects/:id', () => {
       id: string;
       description: string;
       repoPath: string;
+      role: string;
+      orgRole: string;
       members: unknown[];
       labels: unknown[];
       devicePool: Array<{ id: string; runnerId: string }>;
@@ -316,6 +396,8 @@ describe('GET /api/projects/:id', () => {
     expect(body.id).toBe('p1');
     expect(body.description).toBe('desc');
     expect(body.repoPath).toBe('/repo');
+    expect(body.role).toBe('admin');
+    expect(body.orgRole).toBe('owner');
     expect(body.members).toHaveLength(1);
     expect(body.labels).toHaveLength(1);
     expect(body.devicePool).toHaveLength(1);
@@ -325,16 +407,16 @@ describe('GET /api/projects/:id', () => {
   it('returns the full apiKey to project members (no redaction)', async () => {
     const token = await signUserToken('uuid-user');
     const fullKey = 'fk_aaaabbbbccccddddeeeeffff00001111222233334444555566667777';
+    projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-user' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([
         {
           id: 'p1',
           slug: 'p-one',
           name: 'P One',
-          ownerId: 'uuid-user',
+          orgId: ORG_ID,
+          createdBy: 'uuid-user',
           description: null,
           repoPath: null,
           baseBranch: null,
@@ -349,9 +431,7 @@ describe('GET /api/projects/:id', () => {
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'owner' }])
+      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'member' }])
       .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
       .mockResolvedValueOnce([
         {
@@ -384,12 +464,10 @@ describe('PATCH /api/projects/:id', () => {
     expect(res.status).toBe(400);
   });
 
-  it('403 FORBIDDEN when caller is a non-owner member', async () => {
+  it('403 FORBIDDEN when caller is a project member without org admin', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member', 'member'));
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
@@ -399,18 +477,30 @@ describe('PATCH /api/projects/:id', () => {
     expect(res.status).toBe(403);
   });
 
-  it('200 updates allowed fields when caller is owner', async () => {
+  it('403 FORBIDDEN even for an invited project admin without org role', async () => {
+    const token = await signUserToken('uuid-admin');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', null));
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'New' }),
+      token,
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('200 updates allowed fields when caller is org admin', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'New Name',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         agentConfig: { auto: true },
         webhookSecret: 'secret-of-at-least-16-chars',
         createdAt: new Date(),
@@ -436,16 +526,15 @@ describe('PATCH /api/projects/:id', () => {
 
   it('200 updates new settings fields (description, repoPath, branches, defaultDeviceId)', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
@@ -480,16 +569,15 @@ describe('PATCH /api/projects/:id', () => {
 
   it('200 accepts null defaultDeviceId to clear the assignment', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -524,16 +612,15 @@ describe('PATCH /api/projects/:id', () => {
 
   it('200 updates previewDeploy with testingUrls + testCredentials', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -565,16 +652,15 @@ describe('PATCH /api/projects/:id', () => {
 
   it('200 preserves unknown previewDeploy keys (catchall)', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -603,16 +689,15 @@ describe('PATCH /api/projects/:id', () => {
 
   it('200 accepts null previewDeploy to clear config', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -651,10 +736,9 @@ describe('PATCH /api/projects/:id', () => {
   // ISS-188 — token budget schema persistence (W2.3.1).
   it('200 stateContext: writes the patch merged under agentConfig (preserves siblings)', async () => {
     const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([
         {
           agentConfig: {
@@ -668,7 +752,8 @@ describe('PATCH /api/projects/:id', () => {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         agentConfig: {
           pipelineConfig: { enabled: true },
           stateContext: {
@@ -739,12 +824,10 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
   const DID = '22222222-2222-4222-8222-222222222222';
   const RID = '33333333-3333-4333-8333-333333333333';
 
-  it('403 FORBIDDEN for non-owner non-admin', async () => {
+  it('403 FORBIDDEN for non-admin member', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member'));
 
     const res = await req(`/${PID}/runners`, {
       method: 'POST',
@@ -757,10 +840,9 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
 
   it('404 DEVICE_NOT_FOUND when deviceId does not exist', async () => {
     const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([]); // device lookup -> empty
 
     const res = await req(`/${PID}/runners`, {
@@ -777,10 +859,9 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
   it('201 upserts a claude-code runner row (idempotent, status=online when device fresh)', async () => {
     const token = await signUserToken('uuid-owner');
     const lastSeenAt = new Date();
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'online', lastSeenAt }]);
     insertReturning.mockResolvedValueOnce([
       { id: RID, projectId: PID, deviceId: DID, status: 'online' },
@@ -809,10 +890,9 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
 
   it('201 with status=offline when device.status is offline', async () => {
     const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'offline', lastSeenAt: null }]);
     insertReturning.mockResolvedValueOnce([
       { id: RID, projectId: PID, deviceId: DID, status: 'offline' },
@@ -846,24 +926,20 @@ describe('DELETE /api/projects/:id/runners/:runnerId (ISS-172)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const RID = '33333333-3333-4333-8333-333333333333';
 
-  it('403 FORBIDDEN for non-owner non-admin', async () => {
+  it('403 FORBIDDEN for non-admin member', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member'));
 
     const res = await req(`/${PID}/runners/${RID}`, { method: 'DELETE', token });
     expect(res.status).toBe(403);
     expect(deleteWhere).not.toHaveBeenCalled();
   });
 
-  it('204 removes the runner row for owner', async () => {
+  it('204 removes the runner row for project admin', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
 
     const res = await req(`/${PID}/runners/${RID}`, { method: 'DELETE', token });
     expect(res.status).toBe(204);
@@ -878,10 +954,9 @@ describe('POST /api/projects/:id/runners — repoPath/branch (ISS-271)', () => {
 
   it('passes repoPath/branch into the insert and returns them', async () => {
     const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([
         { id: DID, name: 'laptop', status: 'online', lastSeenAt: new Date() },
       ]);
@@ -915,12 +990,10 @@ describe('PATCH /api/projects/:id/runners/:runnerId (ISS-271)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const RID = '33333333-3333-4333-8333-333333333333';
 
-  it('403 FORBIDDEN for non-owner non-admin', async () => {
+  it('403 FORBIDDEN for non-admin member', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member'));
 
     const res = await req(`/${PID}/runners/${RID}`, {
       method: 'PATCH',
@@ -931,12 +1004,10 @@ describe('PATCH /api/projects/:id/runners/:runnerId (ISS-271)', () => {
     expect(updateReturning).not.toHaveBeenCalled();
   });
 
-  it('200 updates repoPath/branch for owner', async () => {
+  it('200 updates repoPath/branch for project admin', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: RID,
@@ -964,10 +1035,8 @@ describe('PATCH /api/projects/:id/runners/:runnerId (ISS-271)', () => {
 
   it('404 RUNNER_NOT_FOUND when no row matches', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([]);
 
     const res = await req(`/${PID}/runners/${RID}`, {
@@ -996,12 +1065,10 @@ describe('PATCH /api/projects/:id/runners/:runnerId (ISS-271)', () => {
 describe('POST /api/projects/:id/api-key/rotate', () => {
   const ID = '11111111-1111-4111-8111-111111111111';
 
-  it('403 FORBIDDEN for non-owner non-admin', async () => {
+  it('403 FORBIDDEN for non-admin member', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member'));
 
     const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
     expect(res.status).toBe(403);
@@ -1010,10 +1077,8 @@ describe('POST /api/projects/:id/api-key/rotate', () => {
 
   it('200 with fresh fk_-prefixed key for admin', async () => {
     const token = await signUserToken('uuid-admin');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'admin' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin'));
     updateReturning.mockImplementationOnce(async () => {
       const setArg = updateSet.mock.calls[0]?.[0] as { apiKey: string };
       return [{ id: 'p1', apiKey: setArg.apiKey }];
@@ -1045,16 +1110,18 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     'testing',
   ].sort();
 
-  function bootstrap(token: string) {
-    return req(`/${PID}/skills/bootstrap`, { method: 'POST', token });
+  function bootstrap(token: string, body?: unknown) {
+    return req(`/${PID}/skills/bootstrap`, {
+      method: 'POST',
+      token,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
   }
 
-  it('403 FORBIDDEN when caller is neither owner nor admin', async () => {
+  it('403 FORBIDDEN when caller is not a project admin', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member'));
 
     const res = await bootstrap(token);
     expect(res.status).toBe(403);
@@ -1063,10 +1130,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
 
   it('201 inserts 7 stage→skill registrations and applies the Balanced preset on first call', async () => {
     const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]) // assertEmailVerified
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }]) // loadMembership: project
-      .mockResolvedValueOnce([{ role: 'owner' }]) // loadMembership: member
       .mockResolvedValueOnce([]) // existing registrations -> none
       .mockResolvedValueOnce([{ agentConfig: null }]); // project agentConfig
 
@@ -1128,10 +1194,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
 
   it('200 returns alreadyBootstrapped on second call without writing registrations or agentConfig', async () => {
     const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([{ id: 'reg-1' }]) // existing registrations -> one row, short-circuits
       .mockResolvedValueOnce([
         { agentConfig: { pipelineConfig: { enabled: true, autoTriage: true } } },
@@ -1139,8 +1204,6 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
 
     // The second call does a count(*) over registrations via .where(...) no limit.
     selectWhere
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
@@ -1177,10 +1240,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     const token = await signUserToken('uuid-owner');
     // First call already set pipelineConfig.enabled=false; bootstrap must
     // skip the preset write and report the user's value back.
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ agentConfig: { pipelineConfig: { enabled: false } } }]);
 
@@ -1202,12 +1264,66 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     expect(Object.keys(patched.agentConfig.pipelineConfig.states)).toContain('approved');
   });
 
-  it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {
+  // ISS-453 — skill seeding is data-driven via named template sets + presets.
+  it('400 BAD_REQUEST on an unknown templateSet, before any mutation', async () => {
     const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await bootstrap(token, { templateSet: 'no-such-set' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('400 BAD_REQUEST on an unknown preset, before any mutation', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await bootstrap(token, { preset: 'aggressive' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('explicit { templateSet: forge-default, preset: balanced } matches the bodyless default', async () => {
+    const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([]) // existing registrations -> none
+      .mockResolvedValueOnce([{ agentConfig: null }]);
+
+    resolveOrAdoptProjectSkillMock.mockImplementation(async (_p: string, name: string) =>
+      name === 'forge-clarify' ? null : `proj-${name}`,
+    );
+    insertValues.mockReturnValueOnce(Promise.resolve() as never);
+
+    const res = await bootstrap(token, { templateSet: 'forge-default', preset: 'balanced' });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { skillsBound: number; pipelineEnabled: boolean };
+    expect(body.skillsBound).toBe(7);
+    expect(body.pipelineEnabled).toBe(true);
+
+    const inserted = insertValues.mock.calls[0]?.[0] as Array<{ stage: string }>;
+    expect(inserted.map((r) => r.stage).sort()).toEqual(
+      ['approved', 'clarified', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+    );
+
+    const setArg = updateSet.mock.calls[0]?.[0] as {
+      agentConfig: { pipelineConfig: Record<string, unknown> };
+    };
+    expect(setArg.agentConfig.pipelineConfig).toMatchObject({ enabled: true, autoTriage: true });
+  });
+
+  it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {
+    const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ agentConfig: null }]);
 
@@ -1232,10 +1348,8 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('403 FORBIDDEN when caller is not a project member', async () => {
     const token = await signUserToken('uuid-stranger');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([]); // no membership row
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access(null));
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
     expect(res.status).toBe(403);
@@ -1243,10 +1357,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('404 NOT_FOUND when the issue does not exist in the project', async () => {
     const token = await signUserToken('uuid-user');
+    projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
       .mockResolvedValueOnce([]); // issue lookup empty
 
@@ -1258,10 +1371,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('200 returns the project defaults when the issue has no override', async () => {
     const token = await signUserToken('uuid-user');
+    projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
@@ -1281,10 +1393,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('200 layers a sessionContext.branchConfig override on top of project defaults', async () => {
     const token = await signUserToken('uuid-user');
+    projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
       .mockResolvedValueOnce([
         {
@@ -1309,10 +1420,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('200 returns null branches (no hard fallback) when project defaults are null and no override — surfaces misconfig', async () => {
     const token = await signUserToken('uuid-user');
+    projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
-      .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([{ baseBranch: null, productionBranch: null }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
@@ -1328,12 +1438,10 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 });
 
 describe('POST /api/projects/:id/archive (ISS-353)', () => {
-  it('403 FORBIDDEN when caller is a non-owner member', async () => {
+  it('403 FORBIDDEN when caller is not org admin', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member', 'member'));
 
     const res = await req('/11111111-1111-4111-8111-111111111111/archive', {
       method: 'POST',
@@ -1343,18 +1451,17 @@ describe('POST /api/projects/:id/archive (ISS-353)', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('200 archives when caller is owner (sets archivedAt)', async () => {
+  it('200 archives when caller is org owner (sets archivedAt)', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         apiKey: 'fk_x',
         archivedAt: new Date('2026-06-02T00:00:00Z'),
         createdAt: new Date(),
@@ -1373,12 +1480,10 @@ describe('POST /api/projects/:id/archive (ISS-353)', () => {
 });
 
 describe('POST /api/projects/:id/unarchive (ISS-353)', () => {
-  it('403 FORBIDDEN when caller is a non-owner member', async () => {
+  it('403 FORBIDDEN when caller is not org admin', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member', 'member'));
 
     const res = await req('/11111111-1111-4111-8111-111111111111/unarchive', {
       method: 'POST',
@@ -1388,18 +1493,17 @@ describe('POST /api/projects/:id/unarchive (ISS-353)', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('200 unarchives when caller is owner (clears archivedAt)', async () => {
+  it('200 unarchives when caller is org owner (clears archivedAt)', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
         name: 'P One',
-        ownerId: 'uuid-owner',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
         apiKey: 'fk_x',
         archivedAt: null,
         createdAt: new Date(),
@@ -1418,12 +1522,10 @@ describe('POST /api/projects/:id/unarchive (ISS-353)', () => {
 });
 
 describe('DELETE /api/projects/:id', () => {
-  it('403 FORBIDDEN when caller is not owner', async () => {
+  it('403 FORBIDDEN when caller is not org admin', async () => {
     const token = await signUserToken('uuid-member');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('member', 'member'));
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'DELETE',
@@ -1433,12 +1535,23 @@ describe('DELETE /api/projects/:id', () => {
     expect(deleteWhere).not.toHaveBeenCalled();
   });
 
-  it('204 deletes when caller is owner', async () => {
+  it('403 FORBIDDEN for an invited project admin without org role', async () => {
+    const token = await signUserToken('uuid-admin');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', null));
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'DELETE',
+      token,
+    });
+    expect(res.status).toBe(403);
+    expect(deleteWhere).not.toHaveBeenCalled();
+  });
+
+  it('204 deletes when caller is org admin', async () => {
     const token = await signUserToken('uuid-owner');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'admin'));
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'DELETE',

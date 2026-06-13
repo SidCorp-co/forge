@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { domainTemplates } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   TemplateInvalidManifestError,
@@ -24,9 +24,6 @@ const applyBodySchema = z
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -66,9 +63,7 @@ domainTemplateRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner' && access.role !== 'admin') {
-      throw forbidden('insufficient permission');
-    }
+    assertProjectRole(access, 'admin', 'insufficient permission');
 
     try {
       const result = await applyTemplate({ projectId, templateKey, actorUserId: userId });

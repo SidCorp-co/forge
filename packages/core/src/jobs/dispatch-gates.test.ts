@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const dbExecute = vi.fn(async () => [] as unknown[]);
+const dbExecute = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
 const dbSelect = vi.fn();
 
 vi.mock('../db/client.js', () => ({

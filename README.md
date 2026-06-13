@@ -161,7 +161,7 @@ framework, custom skill authoring, and the web dashboard. See
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The repo follows **Trunk-Based
 Development** — single `main`, no `develop`, branches live <1 day, feature
-flags absorb in-flight work. Full rules + rationale:
+flags absorb in-flight work. Full rules:
 [docs/guides/trunk-based-development.md](docs/guides/trunk-based-development.md).
 
 First-time? Look for

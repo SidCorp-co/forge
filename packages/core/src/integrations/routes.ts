@@ -17,8 +17,14 @@ import {
   runners,
 } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
+import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { findDeliveryById } from './deliveries.js';
+import { buildEpodsystemMcpEntry } from './epodsystem/resolver.js';
+import { buildPostmanMcpEntry } from './postman/resolver.js';
+import { raceWithTimeout } from './probe.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
@@ -32,18 +38,17 @@ import {
   findActiveBinding,
   findBindingWithConnectionById,
   findConnectionById,
+  listActiveBindingsForProjectProvider,
   listBindingsForConnection,
   listBindingsForProject,
-  listConnectionsForOwner,
+  listConnectionsForPrincipalUser,
   softDeleteBinding,
   softDeleteConnection,
   updateBinding,
   updateConnection,
 } from './store.js';
-import { type IntegrationProvider, capabilitiesFor } from './types.js';
+import { type HealthCheckResult, type IntegrationProvider, capabilitiesFor } from './types.js';
 import { isVaultConfigured } from './vault.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 
 // `assertVaultBootSafety` lets core boot when the integration tables are empty,
 // so the first create/update attempt is the moment the missing-key
@@ -69,25 +74,15 @@ const notFound = (entity = 'integration') =>
 async function assertProjectMember(
   projectId: string,
   userId: string,
-): Promise<'owner' | 'admin' | 'member'> {
-  const [project] = await db
-    .select({ id: projects.id, ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('project');
-  if (project.ownerId === userId) return 'owner';
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-  if (!member) throw forbidden();
-  return member.role;
+): Promise<'admin' | 'member' | 'viewer'> {
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!access) throw notFound('project');
+  if (!access.role) throw forbidden();
+  return access.role;
 }
 
-function assertAdmin(role: 'owner' | 'admin' | 'member'): void {
-  if (role === 'member') throw forbidden();
+function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {
+  if (role !== 'admin') throw forbidden();
 }
 
 const environmentSchema = z.enum(integrationEnvironments);
@@ -97,6 +92,31 @@ const coolifyConfigSchema = z.object({
   resourceUuid: z.string().min(1).max(200),
   branch: z.string().min(1).max(200),
 });
+
+// Coolify's deploy target is BINDING-tier: two projects sharing one connection
+// (org-shared credential) each deploy their own Coolify resource, so
+// resourceUuid/branch live on binding.config (overlaid over connection.config
+// at dispatch — binding wins). Everything else (baseUrl) stays connection-tier
+// with the credential.
+const COOLIFY_BINDING_CONFIG_KEYS = ['resourceUuid', 'branch'] as const;
+
+/** Split a validated provider config into its connection-tier and binding-tier
+ *  halves. Non-coolify providers have no binding-tier fields today. */
+function splitProviderConfig(
+  provider: string,
+  config: Record<string, unknown>,
+): { connection: Record<string, unknown>; binding: Record<string, unknown> } {
+  if (provider !== 'coolify') return { connection: config, binding: {} };
+  const connection: Record<string, unknown> = { ...config };
+  const binding: Record<string, unknown> = {};
+  for (const key of COOLIFY_BINDING_CONFIG_KEYS) {
+    if (key in connection) {
+      binding[key] = connection[key];
+      delete connection[key];
+    }
+  }
+  return { connection, binding };
+}
 
 const coolifySecretsSchema = z.object({
   apiToken: z.string().min(8).max(2000),
@@ -153,18 +173,24 @@ const createSchema = z.discriminatedUnion('provider', [
     environment: environmentSchema,
     config: coolifyConfigSchema,
     secrets: coolifySecretsSchema,
+    // Present = mint the credential as ORG-owned (shared across the org's
+    // projects); must equal the project's own org and the caller must be an
+    // org admin. Absent = personal (user-owned), the historical default.
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('postman'),
     environment: environmentSchema.default('prod'),
     config: postmanConfigSchema,
     secrets: postmanSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('epodsystem'),
     environment: environmentSchema.default('prod'),
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
 ]);
 
@@ -199,6 +225,9 @@ function summarizeBinding(pair: BindingWithConnection) {
     provider: binding.provider as IntegrationProvider,
     environment: binding.environment as IntegrationEnvironment,
     config: effectiveConfig(pair),
+    // Raw binding-tier overrides so clients can tell a per-project value from
+    // one inherited off the shared connection (`config` is the merged view).
+    bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     active: binding.active && connection.active,
     lastHealthStatus: connection.lastHealthStatus,
     lastHealthAt: connection.lastHealthAt,
@@ -250,6 +279,69 @@ function broadcastIntegrationChanged(
   }
 }
 
+/** The create/bind 201 must not hang on a slow provider — past this the
+ *  response returns `health: null` and the probe result lands via the
+ *  adapter's own write + the next refetch (ISS-431). */
+const INITIAL_PROBE_TIMEOUT_MS = 5_000;
+
+/** Cap for the explicit connection Test (ISS-435) — matches the health
+ *  sweep's per-probe budget. */
+const TEST_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Best-effort immediate healthcheck after a binding is created or bound
+ * (ISS-429): the operator gets a REAL health state right away instead of an
+ * `unverified` card until someone presses Test. Adapter healthchecks persist
+ * health onto the connection (epodsystem additionally fills store identity
+ * into config), so callers should re-read the pair afterwards. Never throws —
+ * a failed probe is a valid result, and a crashed probe must not undo a
+ * successful create. Time-boxed: the adapter keeps running past the deadline
+ * (its result still persists), only the response stops waiting.
+ */
+async function runInitialHealthcheck(
+  pair: BindingWithConnection,
+): Promise<HealthCheckResult | null> {
+  const adapter = getAdapter(pair.binding.provider);
+  if (!adapter) return null;
+  try {
+    return await raceWithTimeout(
+      adapter.healthcheck(buildContextFromBinding(pair)),
+      INITIAL_PROBE_TIMEOUT_MS,
+    );
+  } catch {
+    // The adapter records its own failure states; a transport-level crash here
+    // simply leaves the connection `unverified`.
+    return null;
+  }
+}
+
+/**
+ * Shared tail of the two binding-creating endpoints (create + bind-existing,
+ * ISS-429/431): immediate probe, re-read for fresh health/config (the probe
+ * mutates the connection), broadcast, and the 201 payload.
+ */
+async function buildCreatedBindingResponse(
+  pair: BindingWithConnection,
+  integrationSecret: string,
+): Promise<{
+  integration: ReturnType<typeof summarizeBinding>;
+  integrationSecret: string;
+  health: HealthCheckResult | null;
+}> {
+  const health = await runInitialHealthcheck(pair);
+  let refreshed: BindingWithConnection | null | undefined;
+  try {
+    refreshed = await findBindingWithConnectionById(pair.binding.id);
+  } catch {
+    refreshed = null;
+  }
+  broadcastIntegrationChanged(pair.binding.projectId, {
+    bindingId: pair.binding.id,
+    connectionId: pair.connection.id,
+  });
+  return { integration: summarizeBinding(refreshed ?? pair), integrationSecret, health };
+}
+
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -290,29 +382,41 @@ integrationsRoutes.post(
     // Auto-mint a per-binding HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 
-    // Create the credential (connection, owned by the caller) then bind it into
-    // this project+env. Config lives on the connection; the binding carries the
-    // env + inbound HMAC. (Per-binding config overrides arrive with the shared-
-    // connection UX in a later epic issue.)
+    // Create the credential (connection) then bind it into this project+env.
+    // Connection-tier config (e.g. coolify baseUrl) lives on the connection;
+    // binding-tier deploy-target fields (coolify resourceUuid/branch) live on
+    // the binding so a later share to another project can override them.
+    // orgId present = org-owned credential: it must be the project's own
+    // org and the caller must be an org admin (org connections only bind
+    // within their org).
+    if (body.orgId) {
+      const access = await effectiveProjectRole(userId, projectId);
+      if (!access || access.orgId !== body.orgId) {
+        throw new HTTPException(409, {
+          message: 'org connection must belong to the project’s own org',
+          cause: { code: 'ORG_MISMATCH' },
+        });
+      }
+      if (!orgRoleAtLeast(access.orgRole, 'admin')) throw forbidden();
+    }
+    const tiers = splitProviderConfig(body.provider, body.config);
     const connection = await createConnection({
-      ownerId: userId,
+      ownerType: body.orgId ? 'org' : 'user',
+      ownerId: body.orgId ?? userId,
       provider: body.provider,
-      config: { ...body.config, environment: body.environment },
+      config: { ...tiers.connection, environment: body.environment },
       secrets: body.secrets,
     });
+    let binding: Awaited<ReturnType<typeof createBinding>>;
     try {
-      const binding = await createBinding({
+      binding = await createBinding({
         connectionId: connection.id,
         projectId,
         provider: body.provider,
         environment: body.environment,
+        config: tiers.binding,
         integrationSecret,
       });
-      broadcastIntegrationChanged(projectId, { bindingId: binding.id, connectionId: connection.id });
-      return c.json(
-        { integration: summarizeBinding({ binding, connection }), integrationSecret },
-        201,
-      );
     } catch (err) {
       // Roll the just-created connection back so a binding-unique collision
       // doesn't leave a dangling credential.
@@ -327,6 +431,12 @@ integrationsRoutes.post(
       }
       throw err;
     }
+    // Probe immediately so the new integration starts with real health (and
+    // epodsystem store identity) instead of an unverified card (ISS-429).
+    return c.json(
+      await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
+      201,
+    );
   },
 );
 
@@ -349,15 +459,43 @@ integrationsRoutes.patch(
     const patch = c.req.valid('json');
 
     // Re-validate the loose config against the existing provider so a PATCH can
-    // never strip the wrong provider's fields. Config lives on the connection.
+    // never strip the wrong provider's fields, then split it into tiers:
+    // coolify resourceUuid/branch are BINDING-scoped (the deploy target follows
+    // the project), the rest merges into the shared connection config.
     let mergedConfig: Record<string, unknown> | undefined;
+    let mergedBindingConfig: Record<string, unknown> | undefined;
     if (patch.config) {
       const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      mergedConfig = {
-        ...((connection.config ?? {}) as object),
-        ...(parsed.data as Record<string, unknown>),
-      };
+      const tiers = splitProviderConfig(
+        binding.provider,
+        parsed.data as Record<string, unknown>,
+      );
+      if (Object.keys(tiers.connection).length > 0) {
+        mergedConfig = {
+          ...((connection.config ?? {}) as object),
+          ...tiers.connection,
+        };
+      }
+      if (Object.keys(tiers.binding).length > 0) {
+        mergedBindingConfig = {
+          ...((binding.config ?? {}) as object),
+          ...tiers.binding,
+        };
+      }
+    }
+
+    // Connection-level fields (connection-tier config/secrets/active) of an
+    // ORG-owned credential are managed at the org tier — a project admin alone
+    // must not rotate or reconfigure a credential shared across the org's
+    // projects. Binding-tier deploy-target fields stay project-admin editable:
+    // they only affect THIS project's binding.
+    if (
+      connection.ownerType === 'org' &&
+      (mergedConfig !== undefined || patch.secrets !== undefined || patch.active !== undefined)
+    ) {
+      const access = await effectiveProjectRole(userId, projectId);
+      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
     }
 
     let mergedSecrets: Record<string, unknown> | null | undefined = undefined;
@@ -389,16 +527,20 @@ integrationsRoutes.patch(
       }
     }
 
-    // Config + secrets live on the connection; `active` toggles the binding
-    // (disabling resolution for this project without touching the credential).
+    // Connection-tier config + secrets live on the connection; binding-tier
+    // config (deploy target) + `active` live on the binding (disabling
+    // resolution for this project without touching the credential).
     if (mergedConfig !== undefined || mergedSecrets !== undefined) {
       const connPatch: Parameters<typeof updateConnection>[1] = {};
       if (mergedConfig !== undefined) connPatch.config = mergedConfig;
       if (mergedSecrets !== undefined) connPatch.secrets = mergedSecrets;
       await updateConnection(connection.id, connPatch);
     }
-    if (patch.active !== undefined) {
-      await updateBinding(binding.id, { active: patch.active });
+    if (mergedBindingConfig !== undefined || patch.active !== undefined) {
+      const bindingPatch: Parameters<typeof updateBinding>[1] = {};
+      if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
+      if (patch.active !== undefined) bindingPatch.active = patch.active;
+      await updateBinding(binding.id, bindingPatch);
     }
 
     const refreshed = await findBindingWithConnectionById(id);
@@ -572,7 +714,13 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
 
 const pExecFile = promisify(execFile);
 
-type CardStatus = 'connected' | 'attention' | 'error' | 'not_configured';
+type CardStatus =
+  | 'connected'
+  | 'attention'
+  | 'error'
+  | 'not_configured'
+  | 'disabled'
+  | 'unverified';
 
 interface StatusCard {
   key: string;
@@ -598,9 +746,12 @@ async function readGitRemote(repoPath: string): Promise<string | null> {
   }
 }
 
-function coolifyHealthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
-  if (!active) return 'not_configured';
-  if (!lastHealthStatus) return 'attention';
+function healthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
+  // The binding/connection exists but is switched off — distinct from
+  // not_configured (nothing set up at all). ISS-429.
+  if (!active) return 'disabled';
+  // Active but never health-checked: no signal is not the same as degraded.
+  if (!lastHealthStatus) return 'unverified';
   const s = lastHealthStatus.toLowerCase();
   if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
   if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'attention';
@@ -618,6 +769,69 @@ function toIso(d: Date | string | null): string | null {
 /** Adapter capabilities for a provider, for capability-aware card rendering. */
 function providerCapabilities(provider: IntegrationProvider) {
   return capabilitiesFor(getAdapter(provider));
+}
+
+/** Flattened binding+connection row the status cards render from. */
+interface ProviderRow {
+  provider: string;
+  environment: string;
+  config: Record<string, unknown>;
+  active: boolean;
+  lastHealthStatus: string | null;
+  lastHealthAt: Date | null;
+  breakerOpenedAt: Date | null;
+}
+
+/**
+ * Shared builder for the coolify/postman/epodsystem status cards (ISS-431) —
+ * the three blocks were ~95% identical; they differ only in env-keying, the
+ * never-checked wording, and provider-specific meta fields.
+ */
+function buildProviderCards(opts: {
+  rows: ProviderRow[];
+  provider: IntegrationProvider;
+  label: string;
+  /** Coolify is env-split by design, so even a single binding keys by env;
+   *  MCP providers keep the bare key unless a second binding appears (keeps
+   *  existing drill-ins stable, ISS-429). */
+  alwaysEnvKeyed: boolean;
+  neverCheckedDetail: string;
+  extraMeta?: (row: ProviderRow) => Record<string, unknown>;
+}): StatusCard[] {
+  const caps = providerCapabilities(opts.provider);
+  if (opts.rows.length === 0) {
+    return [
+      {
+        key: opts.provider,
+        label: opts.label,
+        status: 'not_configured',
+        detail: `no ${opts.label} integration configured`,
+        lastSyncAt: null,
+        configured: false,
+        meta: { capabilities: caps },
+      },
+    ];
+  }
+  const envKeyed = opts.alwaysEnvKeyed || opts.rows.length > 1;
+  return opts.rows.map((row) => ({
+    key: envKeyed ? `${opts.provider}:${row.environment}` : opts.provider,
+    label: envKeyed ? `${opts.label} (${row.environment})` : opts.label,
+    status: healthToStatus(row.lastHealthStatus, row.active),
+    detail: !row.active
+      ? 'integration disabled'
+      : row.lastHealthStatus
+        ? `last health: ${row.lastHealthStatus}`
+        : opts.neverCheckedDetail,
+    lastSyncAt: toIso(row.lastHealthAt),
+    configured: true,
+    meta: {
+      environment: row.environment,
+      breakerOpen: row.breakerOpenedAt !== null,
+      lastHealthStatus: row.lastHealthStatus,
+      capabilities: caps,
+      ...(opts.extraMeta?.(row) ?? {}),
+    },
+  }));
 }
 
 integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
@@ -681,112 +895,41 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
     meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
   });
 
-  // --- Coolify (one card per configured binding) ---
-  const coolifyRows = integrationRows.filter((r) => r.provider === 'coolify');
-  const coolifyCaps = providerCapabilities('coolify');
-  if (coolifyRows.length === 0) {
-    cards.push({
-      key: 'coolify',
+  // --- Provider cards: one card PER BINDING (ISS-429 — a disabled binding
+  // must not shadow an active one), built by the shared builder (ISS-431).
+  // Epodsystem meta carries only non-secret store identity — never the crmk_
+  // key. ---
+  cards.push(
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'coolify'),
+      provider: 'coolify',
       label: 'Coolify',
-      status: 'not_configured',
-      detail: 'no Coolify integration configured',
-      lastSyncAt: null,
-      configured: false,
-      meta: { capabilities: coolifyCaps },
-    });
-  } else {
-    for (const row of coolifyRows) {
-      cards.push({
-        key: `coolify:${row.environment}`,
-        label: `Coolify (${row.environment})`,
-        status: coolifyHealthToStatus(row.lastHealthStatus, row.active),
-        detail: row.lastHealthStatus
-          ? `last health: ${row.lastHealthStatus}`
-          : 'never health-checked',
-        lastSyncAt: toIso(row.lastHealthAt),
-        configured: true,
-        meta: {
-          environment: row.environment,
-          breakerOpen: row.breakerOpenedAt !== null,
-          lastHealthStatus: row.lastHealthStatus,
-          capabilities: coolifyCaps,
-        },
-      });
-    }
-  }
-
-  // --- Postman (ISS-336) — one card; reflects the active binding's last
-  // test-connection health, or 'not_configured' when absent. ---
-  const postmanRow = integrationRows.find((r) => r.provider === 'postman');
-  const postmanCaps = providerCapabilities('postman');
-  if (!postmanRow) {
-    cards.push({
-      key: 'postman',
+      alwaysEnvKeyed: true,
+      neverCheckedDetail: 'never health-checked',
+    }),
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'postman'),
+      provider: 'postman',
       label: 'Postman',
-      status: 'not_configured',
-      detail: 'no Postman integration configured',
-      lastSyncAt: null,
-      configured: false,
-      meta: { capabilities: postmanCaps },
-    });
-  } else {
-    const pmCfg = (postmanRow.config ?? {}) as { region?: string; mode?: string };
-    cards.push({
-      key: 'postman',
-      label: 'Postman',
-      status: coolifyHealthToStatus(postmanRow.lastHealthStatus, postmanRow.active),
-      detail: !postmanRow.active
-        ? 'integration disabled'
-        : postmanRow.lastHealthStatus
-          ? `last health: ${postmanRow.lastHealthStatus}`
-          : 'never test-connected',
-      lastSyncAt: toIso(postmanRow.lastHealthAt),
-      configured: true,
-      meta: {
-        region: pmCfg.region ?? 'us',
-        mode: pmCfg.mode ?? 'minimal',
-        lastHealthStatus: postmanRow.lastHealthStatus,
-        capabilities: postmanCaps,
+      alwaysEnvKeyed: false,
+      neverCheckedDetail: 'never test-connected',
+      extraMeta: (row) => {
+        const cfg = (row.config ?? {}) as { region?: string; mode?: string };
+        return { region: cfg.region ?? 'us', mode: cfg.mode ?? 'minimal' };
       },
-    });
-  }
-
-  // --- Epodsystem (ISS-387) — one card; reflects the active binding's last
-  // test-connection health, or 'not_configured' when absent. Carries only
-  // non-secret store identity in meta — never the crmk_ key. ---
-  const epodsystemRow = integrationRows.find((r) => r.provider === 'epodsystem');
-  const epodsystemCaps = providerCapabilities('epodsystem');
-  if (!epodsystemRow) {
-    cards.push({
-      key: 'epodsystem',
+    }),
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'epodsystem'),
+      provider: 'epodsystem',
       label: 'Epodsystem',
-      status: 'not_configured',
-      detail: 'no Epodsystem integration configured',
-      lastSyncAt: null,
-      configured: false,
-      meta: { capabilities: epodsystemCaps },
-    });
-  } else {
-    const epCfg = (epodsystemRow.config ?? {}) as { storeSlug?: string; storeName?: string };
-    cards.push({
-      key: 'epodsystem',
-      label: 'Epodsystem',
-      status: coolifyHealthToStatus(epodsystemRow.lastHealthStatus, epodsystemRow.active),
-      detail: !epodsystemRow.active
-        ? 'integration disabled'
-        : epodsystemRow.lastHealthStatus
-          ? `last health: ${epodsystemRow.lastHealthStatus}`
-          : 'never test-connected',
-      lastSyncAt: toIso(epodsystemRow.lastHealthAt),
-      configured: true,
-      meta: {
-        storeSlug: epCfg.storeSlug ?? null,
-        storeName: epCfg.storeName ?? null,
-        lastHealthStatus: epodsystemRow.lastHealthStatus,
-        capabilities: epodsystemCaps,
+      alwaysEnvKeyed: false,
+      neverCheckedDetail: 'never test-connected',
+      extraMeta: (row) => {
+        const cfg = (row.config ?? {}) as { storeSlug?: string; storeName?: string };
+        return { storeSlug: cfg.storeSlug ?? null, storeName: cfg.storeName ?? null };
       },
-    });
-  }
+    }),
+  );
 
   // --- Runners / devices online ---
   const totalRunners = runnerRows.length;
@@ -848,6 +991,113 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   return c.json({ cards });
 });
 
+// === MCP injection preview (ISS-429) ===
+
+/** One MCP-injection provider entry in the preview (mirrors contracts type). */
+interface McpServerPreviewEntry {
+  provider: IntegrationProvider;
+  serverName: string;
+  /** Binding id backing this entry — null for the synthetic not_configured row. */
+  bindingId: string | null;
+  environment: IntegrationEnvironment | null;
+  configured: boolean;
+  active: boolean;
+  willInject: boolean;
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed';
+  url: string | null;
+  headers: Record<string, string> | null;
+  lastHealthStatus: string | null;
+  lastHealthAt: string | null;
+}
+
+/** The providers whose adapters inject an mcpServers entry at dispatch time. */
+const MCP_PROVIDERS = ['postman', 'epodsystem'] as const;
+
+function buildMcpEntryFor(
+  provider: (typeof MCP_PROVIDERS)[number],
+  pair: BindingWithConnection,
+): Record<string, unknown> {
+  // Same builders the dispatch resolvers use — the URL can't drift from what a
+  // runner actually receives. The key argument is a placeholder; the headers
+  // are replaced wholesale below so secret bytes never reach the response.
+  return provider === 'postman'
+    ? buildPostmanMcpEntry(effectiveConfig(pair), '')
+    : buildEpodsystemMcpEntry(effectiveConfig(pair), '');
+}
+
+/**
+ * Render exactly what the dispatch-time resolvers will inject into a runner's
+ * `mcpServers` for this project — same builders, same active/secret filters,
+ * same first-active-binding pick — so the UI can show a truthful "these MCP
+ * servers reach your agents" panel without fabricating URLs client-side.
+ * `Authorization` is redacted BY CONSTRUCTION (the real key is never built
+ * into the preview entry).
+ */
+integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
+  const projectId = c.req.param('projectId');
+  const userId = c.get('userId');
+  await assertProjectMember(projectId, userId);
+
+  const pairs = await listBindingsForProject(projectId);
+  const servers: McpServerPreviewEntry[] = [];
+
+  for (const provider of MCP_PROVIDERS) {
+    const rows = pairs.filter((p) => p.binding.provider === provider);
+    if (rows.length === 0) {
+      servers.push({
+        provider,
+        serverName: provider,
+        bindingId: null,
+        environment: null,
+        configured: false,
+        active: false,
+        willInject: false,
+        reason: 'not_configured',
+        url: null,
+        headers: null,
+        lastHealthStatus: null,
+        lastHealthAt: null,
+      });
+      continue;
+    }
+
+    // The resolver injects ONE entry per provider key — the first row of the
+    // same active-bindings query. Resolve that pick here so a multi-binding
+    // project sees which binding actually wins (`shadowed` marks the losers).
+    const [resolverPick] = await listActiveBindingsForProjectProvider(projectId, provider);
+
+    for (const pair of rows) {
+      const active = pair.binding.active && pair.connection.active;
+      const hasSecrets = pair.connection.secretsEnc !== null;
+      const isPick = resolverPick?.binding.id === pair.binding.id;
+      const willInject = active && hasSecrets && isPick;
+      const entry = buildMcpEntryFor(provider, pair);
+      servers.push({
+        provider,
+        serverName: provider,
+        bindingId: pair.binding.id,
+        environment: pair.binding.environment as IntegrationEnvironment,
+        configured: true,
+        active,
+        willInject,
+        reason: willInject
+          ? 'ok'
+          : !active
+            ? 'disabled'
+            : !hasSecrets
+              ? 'no_credential'
+              : 'shadowed',
+        url: typeof entry.url === 'string' ? entry.url : null,
+        headers: willInject ? { Authorization: 'Bearer [redacted]' } : null,
+        lastHealthStatus: pair.connection.lastHealthStatus,
+        lastHealthAt: toIso(pair.connection.lastHealthAt),
+      });
+    }
+  }
+
+  return c.json({ servers });
+});
+
 // === Owner-scoped connection CRUD ===
 //
 // A connection is the credential, owned by a principal (a user today). Bindings
@@ -860,18 +1110,21 @@ const connectionCreateSchema = z.discriminatedUnion('provider', [
     displayName: z.string().min(1).max(200).optional(),
     config: coolifyConfigSchema,
     secrets: coolifySecretsSchema,
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('postman'),
     displayName: z.string().min(1).max(200).optional(),
     config: postmanConfigSchema,
     secrets: postmanSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('epodsystem'),
     displayName: z.string().min(1).max(200).optional(),
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
 ]);
 
@@ -882,15 +1135,23 @@ const connectionUpdateSchema = z.object({
   active: z.boolean().optional(),
 });
 
-async function loadOwnedConnection(
+async function loadManageableConnection(
   id: string,
   userId: string,
 ): Promise<IntegrationConnectionRow> {
   const connection = await findConnectionById(id);
-  // Treat a connection owned by someone else as not-found (don't leak existence).
-  if (!connection || connection.ownerType !== 'user' || connection.ownerId !== userId) {
-    throw notFound('connection');
+  if (!connection) throw notFound('connection');
+  if (connection.ownerType === 'user') {
+    // Treat a connection owned by someone else as not-found (don't leak existence).
+    if (connection.ownerId !== userId) throw notFound('connection');
+    return connection;
   }
+  // Org-owned: managing (update/rotate/delete/bind) requires org admin; a
+  // plain org member sees it in lists but reads a truthful 403 here, and a
+  // non-member reads not-found.
+  const orgRole = await loadOrgRole(connection.ownerId, userId);
+  if (!orgRole) throw notFound('connection');
+  if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
   return connection;
 }
 
@@ -899,7 +1160,7 @@ integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 integrationConnectionsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const rows = await listConnectionsForOwner(userId);
+  const rows = await listConnectionsForPrincipalUser(userId);
   return c.json({ items: rows.map(summarizeConnection) });
 });
 
@@ -912,9 +1173,16 @@ integrationConnectionsRoutes.post(
     const userId = c.get('userId');
     assertVaultConfigured();
     const body = c.req.valid('json');
+    // orgId present = an org-owned connection (shared across the org's
+    // projects); requires org admin. Absent = personal (user-owned).
+    if (body.orgId) {
+      const orgRole = await loadOrgRole(body.orgId, userId);
+      if (!orgRole) throw notFound('org');
+      if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
+    }
     const connection = await createConnection({
-      ownerType: 'user',
-      ownerId: userId,
+      ownerType: body.orgId ? 'org' : 'user',
+      ownerId: body.orgId ?? userId,
       provider: body.provider,
       displayName: body.displayName ?? null,
       config: body.config,
@@ -931,6 +1199,10 @@ integrationConnectionsRoutes.post(
 const bindExistingSchema = z.object({
   projectId: z.string().min(1),
   environment: environmentSchema,
+  // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
+  // can target a different Coolify resource per project. Connection-tier keys
+  // are validated then dropped — a bind must not shadow the shared baseUrl.
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 
 integrationConnectionsRoutes.post(
@@ -941,12 +1213,26 @@ integrationConnectionsRoutes.post(
   async (c) => {
     const id = c.req.param('id');
     const userId = c.get('userId');
-    // Owner-only: a connection owned by someone else reads as not-found.
-    const connection = await loadOwnedConnection(id, userId);
+    // user-owned: owner-only; org-owned: org admin (not-found for outsiders).
+    const connection = await loadManageableConnection(id, userId);
     const body = c.req.valid('json');
     // Admin on the target project (mirrors the create path's authorization).
     const role = await assertProjectMember(body.projectId, userId);
     assertAdmin(role);
+    // An org-owned connection is shareable only within its own org.
+    if (connection.ownerType === 'org') {
+      const [targetProject] = await db
+        .select({ orgId: projects.orgId })
+        .from(projects)
+        .where(eq(projects.id, body.projectId))
+        .limit(1);
+      if (!targetProject || targetProject.orgId !== connection.ownerId) {
+        throw new HTTPException(409, {
+          message: 'org connection can only bind to projects in its own org',
+          cause: { code: 'ORG_MISMATCH' },
+        });
+      }
+    }
 
     const provider = connection.provider as IntegrationProvider;
     // One active binding per (project, provider, env).
@@ -958,21 +1244,27 @@ integrationConnectionsRoutes.post(
       });
     }
 
+    // Optional per-project deploy-target overrides, validated against the
+    // provider's partial schema then reduced to binding-tier keys only.
+    let bindingConfig: Record<string, unknown> = {};
+    if (body.config) {
+      const parsed = configSchemaForProvider(provider).safeParse(body.config);
+      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
+    }
+
     // Auto-mint a per-binding HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
+    let binding: Awaited<ReturnType<typeof createBinding>>;
     try {
-      const binding = await createBinding({
+      binding = await createBinding({
         connectionId: id,
         projectId: body.projectId,
         provider,
         environment: body.environment,
+        config: bindingConfig,
         integrationSecret,
       });
-      broadcastIntegrationChanged(body.projectId, { bindingId: binding.id, connectionId: id });
-      return c.json(
-        { integration: summarizeBinding({ binding, connection }), integrationSecret },
-        201,
-      );
     } catch (err) {
       // No connection rollback here — we did not create one (contrast the create
       // path, which soft-deletes its just-minted connection on a binding clash).
@@ -986,15 +1278,63 @@ integrationConnectionsRoutes.post(
       }
       throw err;
     }
+    // Re-probe on bind so the target project starts from current health rather
+    // than whatever the connection last recorded (ISS-429).
+    return c.json(
+      await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
+      201,
+    );
   },
 );
 
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadOwnedConnection(id, userId);
+  await loadManageableConnection(id, userId);
   const pairs = await listBindingsForConnection(id);
   return c.json({ items: pairs.map(summarizeBinding) });
+});
+
+// ISS-435 — connection-scoped healthcheck for the workspace directory drawer.
+// Health lives on the connection, but an AdapterContext needs a binding
+// (project/env/inbound-HMAC scope), so probe through a representative ACTIVE
+// binding — oldest first, the same deterministic pick the health sweep and the
+// MCP resolvers use. The adapter persists the result onto the connection
+// itself, so every bound project's card reflects it on the next read.
+integrationConnectionsRoutes.post('/:id/test', async (c) => {
+  const id = c.req.param('id');
+  const userId = c.get('userId');
+  await loadManageableConnection(id, userId);
+
+  // listBindingsForConnection is newest-first; walk from the back for the
+  // oldest active binding (health-sweep / resolver ordering).
+  const pairs = await listBindingsForConnection(id);
+  const pair = [...pairs].reverse().find((p) => p.binding.active);
+  if (!pair) {
+    throw new HTTPException(404, {
+      message: 'connection has no active binding to probe through — share it with a project first',
+      cause: { code: 'NO_BINDING' },
+    });
+  }
+
+  const adapter = getAdapter(pair.binding.provider);
+  if (!adapter) {
+    throw new HTTPException(400, {
+      message: `no adapter registered for provider=${pair.binding.provider}`,
+      cause: { code: 'NO_ADAPTER' },
+    });
+  }
+  // Time-boxed like the health sweep — a blackholed provider must not pin the
+  // HTTP request open indefinitely. A timeout is reported as a truthful error
+  // result, not a 5xx (the adapter keeps running and persists its own outcome).
+  const result = await raceWithTimeout(
+    adapter.healthcheck(buildContextFromBinding(pair)),
+    TEST_PROBE_TIMEOUT_MS,
+  );
+  if (result === null) {
+    return c.json({ status: 'error', message: 'healthcheck timed out after 10s' });
+  }
+  return c.json(result);
 });
 
 integrationConnectionsRoutes.patch(
@@ -1005,7 +1345,7 @@ integrationConnectionsRoutes.patch(
   async (c) => {
     const id = c.req.param('id');
     const userId = c.get('userId');
-    const existing = await loadOwnedConnection(id, userId);
+    const existing = await loadManageableConnection(id, userId);
     const patch = c.req.valid('json');
 
     const connPatch: Parameters<typeof updateConnection>[1] = {};
@@ -1051,7 +1391,7 @@ integrationConnectionsRoutes.patch(
 integrationConnectionsRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadOwnedConnection(id, userId);
+  await loadManageableConnection(id, userId);
   // Cascade: bindings reference the connection with ON DELETE CASCADE, but we
   // only soft-delete here (active=false) so existing bindings stop resolving via
   // findActiveBinding's `connection.active` filter without dropping audit rows.

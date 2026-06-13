@@ -80,7 +80,7 @@ describe('GET /api/auth/me', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.id).toBe(userId);
     expect(body.email).toBe('u@example.com');
     expect(body.hasPassword).toBe(true);
@@ -108,7 +108,7 @@ describe('GET /api/auth/me', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.lastFreshAuthAt).toBe(stamp.toISOString());
   });
 
@@ -135,9 +135,9 @@ describe('GET /api/auth/me', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.hasPassword).toBe(false);
-    expect(body.oauthProviders.sort()).toEqual(['github', 'google']);
+    expect((body.oauthProviders as string[]).sort()).toEqual(['github', 'google']);
   });
 
   it('returns 401 when the token resolves to no user', async () => {
@@ -159,7 +159,7 @@ describe('GET /api/auth/me/preferences', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body).toEqual({
       theme: 'system',
       language: 'en',
@@ -178,7 +178,7 @@ describe('GET /api/auth/me/preferences', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.theme).toBe('dark');
     expect(body.language).toBe('vi');
   });
@@ -201,7 +201,7 @@ describe('PATCH /api/auth/me/preferences', () => {
       body: JSON.stringify({ theme: 'dark' }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.theme).toBe('dark');
     expect(dbInsert).toHaveBeenCalledTimes(1);
   });
@@ -217,7 +217,7 @@ describe('PATCH /api/auth/me/preferences', () => {
       body: JSON.stringify({ notifyOnMention: false }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.notifyOnMention).toBe(false);
     expect(dbInsert).toHaveBeenCalledTimes(1);
   });
@@ -233,7 +233,7 @@ describe('PATCH /api/auth/me/preferences', () => {
       body: JSON.stringify({ lastSeenWhatsNew: '0.2.14' }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.lastSeenWhatsNew).toBe('0.2.14');
     expect(dbInsert).toHaveBeenCalledTimes(1);
   });

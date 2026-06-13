@@ -12,7 +12,7 @@ import {
   taskStatuses,
   tasks,
 } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 
@@ -60,9 +60,6 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
   const [row] = await db
     .select({ userId: projectMembers.userId })
@@ -102,7 +99,7 @@ taskIssueRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     if (input.assigneeId) await assertAssigneeIsMember(issue.projectId, input.assigneeId);
 
@@ -163,7 +160,7 @@ taskIssueRoutes.get(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const rows = await db
       .select()
@@ -198,7 +195,7 @@ taskIssueRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     const existing = await db
       .select({ id: tasks.id, sortOrder: tasks.sortOrder })
@@ -275,7 +272,7 @@ taskRoutes.get(
 
     const task = await loadTask(taskId);
     const access = await loadProjectAccess(task.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     return c.json(task);
   },
@@ -296,7 +293,7 @@ taskRoutes.patch(
 
     const task = await loadTask(taskId);
     const access = await loadProjectAccess(task.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     if (patch.assigneeId) await assertAssigneeIsMember(task.projectId, patch.assigneeId);
 
@@ -380,7 +377,7 @@ taskRoutes.delete(
 
     const task = await loadTask(taskId);
     const access = await loadProjectAccess(task.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     await db.delete(tasks).where(eq(tasks.id, taskId));
 

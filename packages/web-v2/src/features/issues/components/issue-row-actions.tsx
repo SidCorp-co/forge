@@ -10,21 +10,22 @@
 // enum + every priority / complexity / assignee option, committing through the
 // same `actions.patch` / `actions.transition` mutations the screen passes down.
 
-import { useRouter } from "next/navigation";
 import {
   Avatar,
   Badge,
   Card,
   CardContent,
+  Checkbox,
   IconButton,
   Menu,
+  type MenuItem,
   MonoTag,
   PipelineTracker,
   StatusChip,
   TD,
   TR,
-  type MenuItem,
 } from "@/design";
+import { useRouter } from "next/navigation";
 import {
   allowedTransitions,
   complexityLabel,
@@ -43,14 +44,58 @@ import {
   type IssueRow,
   type ProjectMember,
 } from "../types";
-import { CostCell, DepBadges, type RowActions } from "./issue-table-row";
+import {
+  CostCell,
+  DepBadges,
+  type RowActions,
+  type RowSelection,
+} from "./issue-table-row";
 
-// A live agent state (running/queued/failed) takes over the chip — show the
-// execution status, not the static lifecycle label (ISS-366 D2). When idle we
-// pass the issue's TRUE lifecycle label so an Approved/Confirmed/Developed issue
-// no longer all read as the collapsed "Queued"/"Review" bucket.
+// The two status axes are SEPARATE chips (ISS-436): the issue chip always
+// shows the TRUE lifecycle label (an in-progress issue never reads as just
+// "Running"), and a live agent (running/queued/failed) adds a session-domain
+// chip beside it instead of replacing the label (reverses the ISS-366 D2
+// take-over, which made the lifecycle invisible whenever an agent was active).
 const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
   s === "running" || s === "queued" || s === "failed";
+
+/** Compact execution-state chip — rendered only while an agent is live. */
+function AgentChip({
+  agentStatus,
+}: { agentStatus: IssueRow["agentStatus"] }) {
+  if (!hasLiveAgent(agentStatus)) return null;
+  const status =
+    agentStatus === "running"
+      ? "running"
+      : agentStatus === "queued"
+        ? "queued"
+        : "failed";
+  return <StatusChip status={status} domain="session" size="sm" />;
+}
+
+/** ISS-436 merged status cell: lifecycle chip (+ live agent chip) over the
+ *  mini stage tracker — replaces the old separate Pipeline/Status columns,
+ *  which rendered the same `status`+`agentStatus` pair twice. */
+function StatusCell({ row }: { row: IssueRow }) {
+  const stage = statusToStage(row.status);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <StatusChip
+          status={statusToChip(row.status)}
+          label={statusLabel(row.status)}
+          size="sm"
+        />
+        <AgentChip agentStatus={row.agentStatus} />
+      </div>
+      <PipelineTracker
+        stage={stage}
+        status={statusToRun(row.status, row.agentStatus)}
+        variant="mini"
+      />
+    </div>
+  );
+}
 
 // Priority badge tone — quiet for low/none, warm for the urgent end.
 const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
@@ -63,12 +108,17 @@ const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
 
 /** Read-only priority pill. `none` collapses to a muted dash. */
 function PriorityCell({ priority }: { priority: IssuePriority }) {
-  if (priority === "none") return <span className="fg-caption text-subtle">—</span>;
-  return <Badge tone={PRIORITY_TONE[priority]}>{priorityLabel(priority)}</Badge>;
+  if (priority === "none")
+    return <span className="fg-caption text-subtle">—</span>;
+  return (
+    <Badge tone={PRIORITY_TONE[priority]}>{priorityLabel(priority)}</Badge>
+  );
 }
 
 /** Read-only complexity pill (was the cryptic "Cx" column). */
-function ComplexityCell({ complexity }: { complexity: IssueRow["complexity"] }) {
+function ComplexityCell({
+  complexity,
+}: { complexity: IssueRow["complexity"] }) {
   if (!complexity) return <span className="fg-caption text-subtle">—</span>;
   return <MonoTag>{complexityLabel(complexity)}</MonoTag>;
 }
@@ -84,30 +134,55 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
-  const items: MenuItem[] = [{ label: "Open issue", icon: "arrowRight", onSelect: open }];
+  const items: MenuItem[] = [
+    { label: "Open issue", icon: "arrowRight", onSelect: open },
+  ];
+
+  // Viewer = read-only: keep navigation, drop every mutation item (the server
+  // 403s them regardless — this is UX).
+  if (actions.canWrite === false) return items;
 
   // Only valid next states (mirrors core's runtime guard) so a pick can't 409
   // and silently snap back (ISS-308 E1).
   for (const s of allowedTransitions(row.status)) {
-    items.push({ label: `Status: ${statusLabel(s)}`, onSelect: () => actions.transition({ id: row.id, toStatus: s }) });
+    items.push({
+      label: `Status: ${statusLabel(s)}`,
+      onSelect: () => actions.transition({ id: row.id, toStatus: s }),
+    });
   }
   for (const p of ISSUE_PRIORITIES) {
     if (p === row.priority) continue;
-    items.push({ label: `Priority: ${priorityLabel(p)}`, onSelect: () => actions.patch({ id: row.id, body: { priority: p } }) });
+    items.push({
+      label: `Priority: ${priorityLabel(p)}`,
+      onSelect: () => actions.patch({ id: row.id, body: { priority: p } }),
+    });
   }
   for (const c of ISSUE_COMPLEXITIES) {
     if (c === row.complexity) continue;
-    items.push({ label: `Complexity: ${complexityLabel(c)}`, onSelect: () => actions.patch({ id: row.id, body: { complexity: c } }) });
+    items.push({
+      label: `Complexity: ${complexityLabel(c)}`,
+      onSelect: () => actions.patch({ id: row.id, body: { complexity: c } }),
+    });
   }
   if (row.complexity) {
-    items.push({ label: "Complexity: clear", onSelect: () => actions.patch({ id: row.id, body: { complexity: null } }) });
+    items.push({
+      label: "Complexity: clear",
+      onSelect: () => actions.patch({ id: row.id, body: { complexity: null } }),
+    });
   }
   for (const m of members ?? []) {
     if (m.userId === row.assigneeId) continue;
-    items.push({ label: `Assign: ${m.email}`, onSelect: () => actions.patch({ id: row.id, body: { assigneeId: m.userId } }) });
+    items.push({
+      label: `Assign: ${m.email}`,
+      onSelect: () =>
+        actions.patch({ id: row.id, body: { assigneeId: m.userId } }),
+    });
   }
   if (row.assigneeId) {
-    items.push({ label: "Unassign", onSelect: () => actions.patch({ id: row.id, body: { assigneeId: null } }) });
+    items.push({
+      label: "Unassign",
+      onSelect: () => actions.patch({ id: row.id, body: { assigneeId: null } }),
+    });
   }
   return items;
 }
@@ -150,18 +225,36 @@ export function IssueTableRow({
   slug,
   members,
   actions,
+  selection,
 }: {
   row: IssueRow;
   slug: string;
   members: ProjectMember[] | undefined;
   actions: RowActions;
+  selection?: RowSelection;
 }) {
   const router = useRouter();
-  const stage = statusToStage(row.status);
   const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
 
   return (
     <TR className="group">
+      {selection && (
+        <TD className="w-9 pr-0">
+          {/* Stop propagation so toggling never opens the issue. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only blocks bubbling; the Checkbox button is the control. */}
+          <span
+            className="inline-flex"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Checkbox
+              checked={selection.selected}
+              onChange={selection.onToggle}
+              disabled={actions.isPending}
+              ariaLabel={`Select ${row.displayId}`}
+            />
+          </span>
+        </TD>
+      )}
       <TD>
         <button
           type="button"
@@ -179,7 +272,9 @@ export function IssueTableRow({
           aria-label={`Open ${row.displayId}: ${row.title}`}
           className="block w-full rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
-          <span className="fg-body-sm block truncate text-fg group-hover:text-accent-text">{row.title}</span>
+          <span className="fg-body-sm block truncate text-fg group-hover:text-accent-text">
+            {row.title}
+          </span>
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
@@ -187,13 +282,7 @@ export function IssueTableRow({
         </div>
       </TD>
       <TD>
-        <PipelineTracker stage={stage} status={statusToRun(row.status, row.agentStatus)} variant="mini" />
-      </TD>
-      <TD>
-        <StatusChip
-          status={statusToChip(row.status, row.agentStatus)}
-          label={hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)}
-        />
+        <StatusCell row={row} />
       </TD>
       <TD>
         <PriorityCell priority={row.priority} />
@@ -202,12 +291,17 @@ export function IssueTableRow({
         <ComplexityCell complexity={row.complexity} />
       </TD>
       <TD className="text-right">
-        <CostCell id={row.id} />
+        <CostCell value={row.estimatedCost} />
       </TD>
       <TD>
         <div className="flex items-center gap-2">
-          <Avatar initials={initials(memberLabel(row.assigneeId, members))} size={22} />
-          <span className="fg-caption truncate text-muted">{memberLabel(row.assigneeId, members)}</span>
+          <Avatar
+            initials={initials(memberLabel(row.assigneeId, members))}
+            size={22}
+          />
+          <span className="fg-caption truncate text-muted">
+            {memberLabel(row.assigneeId, members)}
+          </span>
         </div>
       </TD>
       <TD className="text-right">
@@ -224,30 +318,51 @@ export function IssueMobileCard({
   slug,
   members,
   actions,
+  selection,
 }: {
   row: IssueRow;
   slug: string;
   members: ProjectMember[] | undefined;
   actions: RowActions;
+  selection?: RowSelection;
 }) {
   const router = useRouter();
-  const stage = statusToStage(row.status);
   const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
 
   return (
     <Card>
       <CardContent>
         <div className="flex items-start justify-between gap-3">
-          <button
-            type="button"
-            onClick={open}
-            aria-label={`Open ${row.displayId}: ${row.title}`}
-            className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-            <span className="fg-body-sm mt-1.5 block truncate text-fg">{row.title}</span>
-          </button>
-          <RowMenu row={row} members={members} actions={actions} open={open} side="bottom" />
+          <div className="flex min-w-0 items-start gap-2.5">
+            {selection && (
+              <span className="mt-0.5 inline-flex">
+                <Checkbox
+                  checked={selection.selected}
+                  onChange={selection.onToggle}
+                  disabled={actions.isPending}
+                  ariaLabel={`Select ${row.displayId}`}
+                />
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={open}
+              aria-label={`Open ${row.displayId}: ${row.title}`}
+              className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            >
+              <MonoTag hue="cobalt">{row.displayId}</MonoTag>
+              <span className="fg-body-sm mt-1.5 block truncate text-fg">
+                {row.title}
+              </span>
+            </button>
+          </div>
+          <RowMenu
+            row={row}
+            members={members}
+            actions={actions}
+            open={open}
+            side="bottom"
+          />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -256,25 +371,25 @@ export function IssueMobileCard({
         </div>
 
         <div className="mt-3">
-          <PipelineTracker stage={stage} status={statusToRun(row.status, row.agentStatus)} variant="mini" />
+          <StatusCell row={row} />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <StatusChip
-            status={statusToChip(row.status, row.agentStatus)}
-            size="sm"
-            label={hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)}
-          />
           <PriorityCell priority={row.priority} />
           <ComplexityCell complexity={row.complexity} />
           <span className="ml-auto">
-            <CostCell id={row.id} />
+            <CostCell value={row.estimatedCost} />
           </span>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          <Avatar initials={initials(memberLabel(row.assigneeId, members))} size={22} />
-          <span className="fg-caption truncate text-muted">{memberLabel(row.assigneeId, members)}</span>
+          <Avatar
+            initials={initials(memberLabel(row.assigneeId, members))}
+            size={22}
+          />
+          <span className="fg-caption truncate text-muted">
+            {memberLabel(row.assigneeId, members)}
+          </span>
         </div>
       </CardContent>
     </Card>

@@ -64,6 +64,14 @@ vi.mock('../jobs/dispatch-tick.js', () => ({
   dispatchTickForProject: vi.fn(async () => {}),
 }));
 
+// Org-level authz: stub the db-touching resolver; pure helpers
+// (assertProjectRole, projectRoleAtLeast) stay real.
+const projectAccess = vi.fn();
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
+}));
+
 const { transitionRoutes } = await import('./transition.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -82,6 +90,7 @@ beforeEach(() => {
   selectLimit.mockReset();
   updateReturning.mockReset();
   publish.mockReset();
+  projectAccess.mockReset();
   dependentsAwait.mockReset();
   dependentsAwait.mockResolvedValue([]);
 });
@@ -105,6 +114,7 @@ function queueAuthAndIssue(row: {
   reopenCount?: number;
   verified?: boolean;
   member?: boolean;
+  role?: 'admin' | 'member' | 'viewer';
   issSeq?: number;
 }) {
   // 1) assertEmailVerified select
@@ -121,8 +131,13 @@ function queueAuthAndIssue(row: {
       issSeq: row.issSeq ?? 1,
     },
   ]);
-  // 3) project membership lookup
-  selectLimit.mockResolvedValueOnce(row.member === false ? [] : [{ role: 'member' }]);
+  // 3) effective project access resolution
+  projectAccess.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role: row.member === false ? null : (row.role ?? 'member'),
+    orgRole: null,
+  });
 }
 
 describe('POST /api/issues/:id/transition', () => {
@@ -189,20 +204,18 @@ describe('POST /api/issues/:id/transition', () => {
     expect(body.details.max).toBe(5);
   });
 
-  it('403 OVERRIDE_DENIED when non-owner requests override', async () => {
+  it('403 OVERRIDE_DENIED when non-admin requests override', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5 });
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]);
+    queueAuthAndIssue({ status: 'closed', reopenCount: 5, role: 'member' });
     const res = await req({ toStatus: 'reopen', override: true }, token);
     expect(res.status).toBe(403);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('OVERRIDE_DENIED');
   });
 
-  it('200 when owner overrides the reopen cap', async () => {
+  it('200 when project admin overrides the reopen cap', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5 });
-    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]);
+    queueAuthAndIssue({ status: 'closed', reopenCount: 5, role: 'admin' });
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, status: 'reopen', reopenCount: 6, updatedAt: new Date() },
     ]);

@@ -11,6 +11,7 @@ import { HTTPException } from 'hono/http-exception';
 import { getCookie } from 'hono/cookie';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
+import { ensurePersonalOrg } from '../../orgs/service.js';
 import { oauthAccounts, users } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { setAuthCookie } from '../cookie.js';
@@ -170,6 +171,7 @@ async function findOrCreateUser(
       providerAccountId: identity.providerAccountId,
       email: identity.email,
     });
+    await ensurePersonalOrg(tx, user.id, identity.email!);
     return user;
   });
   logger.info({ userId: created.id, provider: cfg.id }, 'oauth: created new user');
@@ -263,11 +265,16 @@ async function handleReauthCallback(
   returnPath: string,
   appBase: string,
 ): Promise<Response> {
+  // `returnPath` may already carry a query string (web-v2 settings tabs are
+  // `/settings?tab=tokens`), so the reauth outcome param can't be blindly
+  // `?`-appended.
+  const withParam = (param: string): string =>
+    `${appBase}${returnPath}${returnPath.includes('?') ? '&' : '?'}${param}`;
+
   // `uid` rides inside the signed state cookie; missing means the cookie was
   // issued by an older /start flow without reauth metadata. Treat as a hard
   // mismatch — we will not silently fall back to login mode.
-  const mismatch = (): Response =>
-    c.redirect(`${appBase}${returnPath}?reauth_error=identity_mismatch`, 302);
+  const mismatch = (): Response => c.redirect(withParam('reauth_error=identity_mismatch'), 302);
 
   if (!uid) {
     logger.info({ provider: providerId }, 'oauth reauth: missing uid in state');
@@ -300,5 +307,5 @@ async function handleReauthCallback(
 
   // Important: do NOT setAuthCookie() here — the user is already logged in.
   // A successful reauth must not escalate to a new session.
-  return c.redirect(`${appBase}${returnPath}?reauth=ok`, 302);
+  return c.redirect(withParam('reauth=ok'), 302);
 }

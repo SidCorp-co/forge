@@ -17,12 +17,12 @@ import {
 //   1. Project config opts into handoffs for stage 'approved' / step 'plan'.
 //   2. A plan job runs; agent writes handoff via POST /api/issue-step-contexts,
 //      then reports completion with `summary: "...DONE"` via /api/jobs/:id/complete.
-//   3. The lifecycle hook (verifyHandoffOrSkip) confirms the row + flips job
-//      to `done`.
-//   4. Variant: agent emits DONE WITHOUT writing the row — job flips to
-//      `failed` with failureKind='handoff_not_written'.
-//   5. Variant: agent emits HANDOFF_GIVE_UP — flips to failed with
-//      handoff_validation_failed.
+//   3. Job finalizes as `done` on a clean exit (exitCode 0).
+//   4. Variant: agent emits DONE WITHOUT writing the row — job still finalizes
+//      as `done`. Handoff is best-effort context, NOT a server-side status
+//      gate (see lifecycle-routes.ts / finalize-done.ts).
+//   5. Variant: agent emits HANDOFF_GIVE_UP with a clean exit — still `done`;
+//      the trailing marker is not interpreted server-side.
 
 const DIM = 1536;
 
@@ -90,18 +90,18 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     );
   });
 
-  async function seedProjectWithHandoffsEnabled(opts: {
-    missingMarkerPolicy?: 'fail' | 'warn' | 'silent';
-  } = {}) {
+  async function seedProjectWithHandoffsEnabled(
+    opts: {
+      missingMarkerPolicy?: 'fail' | 'warn' | 'silent';
+    } = {},
+  ) {
     const user = await createTestUser(harness.db);
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`,
-    );
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     // Inject the handoff policy onto the project's agentConfig — the
     // verifier reads it from the same path the prompt builder consumes.
@@ -154,7 +154,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, title, status, priority, created_by_id)
       VALUES (${issueId}, ${args.projectId}, 'test issue', 'approved', 'medium',
-        (SELECT owner_id FROM projects WHERE id = ${args.projectId}))
+        (SELECT created_by FROM projects WHERE id = ${args.projectId}))
     `);
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step)
@@ -167,7 +167,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
       ) VALUES (
         ${jobId}, ${args.projectId}, ${issueId}, ${runId}, ${jobType}, 'running',
         ${args.deviceId},
-        (SELECT owner_id FROM projects WHERE id = ${args.projectId}),
+        (SELECT created_by FROM projects WHERE id = ${args.projectId}),
         1, now(),
         ${JSON.stringify({ stageStatus: 'approved' })}::jsonb
       )
@@ -224,9 +224,15 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     expect(rows[0]?.failure_kind).toBeNull();
   });
 
-  // ---------- Sad path: DONE without write ----------
+  // ---------- DONE without write — handoff is NOT a status gate ----------
 
-  it('emits DONE WITHOUT writing → flips to failed (handoff_not_written)', async () => {
+  // Step-handoff is best-effort context for the next step, deliberately NOT a
+  // server-side completion gate (lifecycle-routes.ts: exitCode 0 → done;
+  // finalize-done.ts comment "handoff is not a status gate"). A clean exit
+  // finalizes the job as `done` even when the agent skipped the handoff write —
+  // the next step falls back to raw issue fields. (Was previously asserted to
+  // fail with failureKind='handoff_not_written'; that gating was removed.)
+  it('emits DONE WITHOUT writing the handoff → still finalizes as done (no failure stamp)', async () => {
     const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled();
     const { jobId } = await createPipelineRunAndJob({ projectId, deviceId: device.id });
 
@@ -244,14 +250,17 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     const rows = await harness.db.execute(
       sql`SELECT status, failure_kind, failure_reason FROM jobs WHERE id = ${jobId}`,
     );
-    expect(rows[0]?.status).toBe('failed');
-    expect(rows[0]?.failure_kind).toBe('permanent');
-    expect(String(rows[0]?.failure_reason)).toMatch(/handoff_not_written/);
+    expect(rows[0]?.status).toBe('done');
+    expect(rows[0]?.failure_kind).toBeNull();
+    expect(rows[0]?.failure_reason).toBeNull();
   });
 
-  // ---------- Sad path: HANDOFF_GIVE_UP ----------
+  // ---------- HANDOFF_GIVE_UP marker — also NOT a status gate ----------
 
-  it('emits HANDOFF_GIVE_UP → flips to failed (handoff_validation_failed)', async () => {
+  // The HANDOFF_GIVE_UP marker is no longer interpreted server-side; a clean
+  // exitCode 0 still finalizes as `done` regardless of the summary's trailing
+  // marker. (Was previously asserted to fail with handoff_validation_failed.)
+  it('emits HANDOFF_GIVE_UP with exitCode 0 → still finalizes as done (marker not gated)', async () => {
     const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled();
     const { jobId } = await createPipelineRunAndJob({ projectId, deviceId: device.id });
 
@@ -269,10 +278,11 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     expect(completeRes.status).toBe(200);
 
     const rows = await harness.db.execute(
-      sql`SELECT status, failure_reason FROM jobs WHERE id = ${jobId}`,
+      sql`SELECT status, failure_kind, failure_reason FROM jobs WHERE id = ${jobId}`,
     );
-    expect(rows[0]?.status).toBe('failed');
-    expect(String(rows[0]?.failure_reason)).toMatch(/handoff_validation_failed/);
+    expect(rows[0]?.status).toBe('done');
+    expect(rows[0]?.failure_kind).toBeNull();
+    expect(rows[0]?.failure_reason).toBeNull();
   });
 
   // ---------- Missing marker + policy=warn ----------
@@ -293,9 +303,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     });
     expect(completeRes.status).toBe(200);
 
-    const rows = await harness.db.execute(
-      sql`SELECT status FROM jobs WHERE id = ${jobId}`,
-    );
+    const rows = await harness.db.execute(sql`SELECT status FROM jobs WHERE id = ${jobId}`);
     expect(rows[0]?.status).toBe('done');
   });
 
@@ -310,7 +318,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, title, status, priority, created_by_id)
       VALUES (${issueId}, ${projectId}, 't', 'approved', 'medium',
-        (SELECT owner_id FROM projects WHERE id = ${projectId}))
+        (SELECT created_by FROM projects WHERE id = ${projectId}))
     `);
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step)
@@ -321,7 +329,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
         device_id, created_by, attempts, dispatched_at, payload)
       VALUES (${jobId}, ${projectId}, ${issueId}, ${runId}, 'clarify', 'running',
         ${device.id},
-        (SELECT owner_id FROM projects WHERE id = ${projectId}),
+        (SELECT created_by FROM projects WHERE id = ${projectId}),
         1, now(), ${JSON.stringify({ stageStatus: 'approved' })}::jsonb)
     `);
 
@@ -332,9 +340,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     });
     expect(res.status).toBe(200);
 
-    const rows = await harness.db.execute(
-      sql`SELECT status FROM jobs WHERE id = ${jobId}`,
-    );
+    const rows = await harness.db.execute(sql`SELECT status FROM jobs WHERE id = ${jobId}`);
     expect(rows[0]?.status).toBe('done');
   });
 });

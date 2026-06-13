@@ -4,215 +4,109 @@ All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Style.** Every entry is read first by an end user, not a developer. Lead each bullet with a plain-language sentence describing what the user will see change; keep file paths, function names, and root-cause explanations on a separate italic `*Technical:*` sub-line. Full style guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
+**Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
-
-### Changed
-
-- **Opening an issue from the board now shows its key details and the most-used actions — status, priority, assignee, and "Open issue" — pinned at the top of the quick-open drawer, so you can review and act on it without scrolling.**
-  *Technical: New `IssueQuickActions` row composed from the issues-list inline-edit primitives (`StatusEdit`/`InlineSelect`) + the shared `usePatchIssue`/`useTransitionIssue` hooks, rendered sticky at the top of the web-v2 `RunDetail` SlideOver; `pipeline-board` re-derives the open drawer's issue from the live `['issues']` cache so an inline edit reflects immediately. Frontend-only, no API/contracts change (ISS-390). Merge 888b0ddd.*
-
-- **The project dashboard now uses the full screen width so cards fill wide displays instead of sitting in a narrow centered column, cutting down how far you have to scroll.**
-  *Technical: Removed the max-w-6xl centered clamp on `(workspace)/projects/[slug]/page.tsx` (now `PageContainer width="wide"`, 1720px) and reflowed the card grid `lg:grid-cols-2 → xl:grid-cols-3` at wide breakpoints to match the full-width Issues/board screens. Tablet/mobile single-column stack unchanged (ISS-389). Merge e372184b.*
-
-- **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
-  *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
-
-- **The agent Sessions list now has a more compact header and richer session rows (start time and cost), with the session detail showing an elevated task list.**
-  *Technical: Reworked web-v2 sessions-screen header (4 StatCards -> inline metric strip) + added Started/Cost columns (cost via a bounded per-page usage_records rollup in GET /api/agent-sessions); elevated the Agents & tasks section + task-count badge in the session detail.*
-
-- **The pipeline run view now shows which device a run is executing on (by name) and its retry history, and Cancel now reliably stops a run instead of letting it silently restart.**
-  *Technical: Part A: agent-sessions hydrator resolves deviceId→runner name (batch devices lookup, shared by list/search/detail); PipelineRunSummary gains jobs-sourced attempts[] + retrySummary {round/maxRounds/target} from the retry_of chain + payload._autoRetry; web-v2 run-detail renders a per-attempt timeline + round-robin badge. Part B: cancelPipelineRun atomically parks the linked issue at on_hold after the cascade (on_hold has no STATUS_TO_JOB_TYPE mapping → no auto-dispatch); orchestrator transition-subscriber guard blocks any non-user advance OUT of on_hold so the dying agent's termination-protocol can't silently re-dispatch — only a human Resume re-engages. Reuses the existing web-v2 on_hold banner + Resume CTA. Merge bf664dbf.*
-
-- **Postman and Epodsystem credential rotations now keep the previous key valid for 24h, matching Coolify, so in-flight requests don't fail mid-rotation.**
-  *Technical: Extract ROTATION_WINDOW_MS + mergeRotatedSecrets to a shared integrations helper; persist previousApiKey/previousTokenExpiresAt on apiKey-provider PATCH; add 401-fallback in postman/epodsystem clients gated by the expiry guard; extend scrubber to include previousApiKey.*
-
-### Fixed
-
-- **A pipeline could silently stall for about an hour when a job was dispatched to a runner that never picked it up — the dead job held the runner's only slot and blocked the next stage. The system now detects an unclaimed dispatch within a few minutes and recovers automatically (re-dispatching the work, or moving the issue on if it had already completed elsewhere).**
-  *Technical: new `reconcileNeverClaimedDispatches` pass in `pipeline/sweeper.ts`, run every minute inside `runPipelineSweep`. Reaps `jobs` in `status='dispatched'` with zero `job_events` (no `started` ack) older than `PIPELINE_NEVER_CLAIMED_MS` (default 3min), routing them through the shared `finalizeFailedJob` verify-first path. Closes the gap between `reconcileOrphanedJobs` (session-driven; blind to an unclaimed dispatch whose inherited `agent_session_id` is non-terminal) and `runStaleSweep`'s 60-min backstop — which let an orphan hold the cap=1 slot + block strict-sequential for ~4h (ISS-378).*
-
-- **A runner that genuinely finished its work no longer loses that work when its completion report races a server hiccup. If the job had been auto-failed by a timeout sweep in the meantime, the late "success" is now reconciled instead of rejected.**
-  *Technical: `POST /jobs/:id/complete` (lifecycle-routes.ts) — when an `exitCode=0` arrives for a job already `failed` with a server-written reap marker (`session_lost` / `dispatch_unclaimed` / `stale`) and NO retry descendant is queued/dispatched/running/done, CAS-flip `failed→done` and run the normal success side-effects instead of `409 INVALID_STATE`. The active-retry guard prevents double-advance; verify-first on any scheduled retry already no-ops once the issue advances (ISS-378; the ISS-360 outage discarded a merged PR this way).*
-
-- **CLI runners now pull skill updates pushed from Forge instead of silently running stale on-disk skills.**
-  *Technical: Cut runner-v0.2.15 to publish the already-present skill.sync WS handler (forge-runner-core daemon/dispatch + workspace/skill_sync) past the stale v0.2.14 channel; bumped Cargo workspace version 0.2.11→0.2.15 + lock regen so update --check (CURRENT_VERSION=env!(CARGO_PKG_VERSION)) settles. Tag runner-v0.2.15 + dev1 live verify are out-of-band. Merge a033c16.*
-
-- **Fixed the Issues screen so the top navigation progress bar no longer gets stuck part-way, list rows show each issue's real status, and linked/related issues are shown clearly instead of just an icon and a number.**
-  *Technical: route-progress.tsx must not gate completion on the global useIsFetching count or self-fire on replaceState URL-sync; list rows should render the true lifecycle status instead of the collapsed statusToChip bucket; DepBadges should surface linked issue IDs, not emoji+count only.*
-
-- **Pipeline jobs that fail mechanically (crash or non-zero exit) now automatically retry from the stage's entry point instead of getting stuck waiting for manual intervention.**
-  *Technical: Removed the manual-hold/on_hold-as-block model: finalizeFailedJob reverts issue.status to JOB_TYPE_ENTRY_STATUS so the orchestrator re-dispatches; budget-exhausted/non-retryable failures park at `waiting` + close the stuck pipeline_run; classifyVerdict treats in_progress as pending for code/fix (the ISS-34 no-op fix). manual_hold/manual_hold_until/failure_context columns dropped (migration 0099). Merge 25d1ad13.*
-
-### Added
-
-- **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
-  *Technical: `clarified` added to `issueStatuses` (migration 0093: CHECK constraint, `skill_registrations` stage moves confirmed→clarified + needs_info→confirmed, and a behavior-preserving `states.confirmed.enabled=false` backfill for projects without `autoClarify`). PIPELINE_STEPS re-wired (confirmed→clarify, clarified→plan; needs_info is human-gated again, registry v2). New `StageConfig.skipComplexities` folded into the soft-skip resolver (`resolveSkipTarget` complexity predicate, skip reason `complexity_skip`) so disabled-stage, missing-skill, and complexity skips share one chain + telemetry path. clarify promoted to a handoff-emitting step (`clarifyHandoff` schema; plan injects `[triage, clarify]`). Status added across contracts, web, web-v2 status maps.*
-
-- **Project Settings now has a Testing tab where project owners can set the staging URL, staging API URL, named testing links, and test login credentials (passwords masked with a reveal toggle) — no database access needed.**
-  *Technical: Frontend-only web-v2 Testing tab editing project.previewDeploy via existing owner-gated PATCH /api/projects/:id; preserves unknown jsonb keys, client-side URL/label validation mirrors previewDeployPatchSchema. Merge 105be93.*
-
-- **The Activity page now shows a live, cross-project feed of agent conversations — filter by source, intent, or quality rating, page through history, and open any entry to read the full query and reply with token and timing details.**
-  *Technical: New web-v2 `features/activity` (api/hooks/types/screen) consumes `GET /api/chat-logs` cross-project (no projectSlug). Built from the @/design kit; loading/empty/error via kit primitives. Usage represented as feed-derived token throughput; full per-project cost dashboard stays project-scoped (summary endpoint requires projectId). Queries keyed ['chat-logs']; replayOnReconnect invalidates it. Merge 0d0b673.*
-
-- **The project Automation page now has a working PM tab: view and edit the PM Agent's cadence, run triggers, and settings, and browse its decision audit log.**
-  *Technical: web-v2 automation feature gains a PM slice (types/api/hooks + PmScreen) backed by /api/projects/:projectId/pm/config (GET/PUT) and /pm/decisions (paginated); replaces the ComingSoon stub. Config edits are owner/admin-gated. Merge f52623b.*
-
-- **The v2 Runners screen now has a per-device detail panel — open any device from the Runners list to rename it, see its status and configuration (platform, agent version, last seen, git-push credential), and assign or adjust the project pools (runners) bound to it. This brings v2 to parity with the v1 device settings page.**
-  *Technical: web-v2 device-detail SlideOver in features/runners, opened by a per-row Manage action (no new route or sidebar item). Rename via PATCH /api/devices/:id; pools via GET /api/devices/:id/runners + POST/PATCH/DELETE /api/projects/:id/runners; reuses kit primitives + projects hooks. No core change (ISS-317). Merge 260a0e78.*
-
-- **Project owners can now manage members from the new web app's Project Settings → Members tab: see pending invitations (before the invitee accepts), cancel one and re-invite, and change an existing member's role between Member and Admin. This fixes the previous inability to remove someone after they had been invited. The owner row stays protected — no role-change or remove control.**
-  *Technical: web-v2 project-settings Members tab gains a Pending invitations list + cancel and an inline role-change Select, all owner-gated (canEdit). New owner/admin-gated GET & DELETE /api/projects/:id/members/invitations (revoke by validated ?email=, token never serialized) in packages/core; reuses existing PATCH /members/:userId (owner-role immutable). packages/web (v1) untouched. Merge 65b0cab.*
-
-- **Postman integration per-project: configure a Postman workspace + collection and API key in project settings, and the Postman MCP tools become available to agents/skills running for that project.**
-  *Technical: New provider='postman' on project_integrations (encrypted apiKey + workspace/collection config); a dispatch-time resolver renders it into the existing per-project mcpServers override (remote HTTP + Bearer) so CLI/desktop runners auto-inject the Postman MCP. forge_postman_target MCP tool exposes the write-target (workspace/collection) to skills without leaking the key.*
-
-- **Web v2: attach files to new issues via picker, drag-and-drop, or pasting a screenshot, and view them on the issue's Attachments section. Issue descriptions now use the full column width, and the session view has a wider conversation, a pinned context rail, and a tidier action bar.**
-  *Technical: web-v2 new-issue dialog sends inline base64 attachments[]; issue-detail renders an Attachments card via useAttachments; dropped the description max-w-[70ch] clamp; session thread widened (max-w-4xl xl:max-w-5xl), right rail made lg:sticky, Fork moved to overflow menu.*
-
-- **Project owners can now archive a project from Project Settings → Advanced (type-to-confirm the project name). Archived projects disappear from the project list and stop running new pipeline jobs, but keep all their issues, comments, runs, and sessions — and can be unarchived at any time to restore them.**
-  *Technical: Nullable projects.archived_at (migration 0092) + owner-gated POST /api/projects/:id/archive|unarchive; GET /api/projects excludes archived by default (?archived=1 to include); orchestrator.loadPipelineConfig returns cfg=null when archived. UI in web (Settings→Advanced) and web-v2 (Settings→Advanced tab).*
-
-- **The issue detail page now surfaces why an issue is stuck and who must act, shows live agent progress with a heartbeat indicator, and gives a per-stage summary of what each pipeline step produced along with its time and cost.**
-  *Technical: Adds BlockerBanner, LiveAgentPanel and per-stage StepArtifactCard components plus a clickable PipelineTracker spine to the web-v2 issue-detail screen, fed by existing pipelineHealth/failureContext/step-duration signals and the GET /api/issue-step-contexts handoff surface (ISS-377).*
-
-- **You can now hold or unhold an issue directly from the issue detail page, with a clear badge showing when an issue is on manual hold (dispatcher paused from picking up new jobs).**
-  *Technical: web-v2 issue detail: standalone manual-hold toggle in the Issue actions menu + manualHold badge, calling /issues/:id/manual-hold via the apiClient (separate from on_hold status transitions). Merge ef7902e.*
-
-- **The project dashboard is now an operator landing page: a KPI band, a needs-your-attention queue with one-click actions, live pipeline runs, open-issues-by-status and 7-day spend breakdowns, a runners summary, and upcoming schedules — each linking to where the detail lives.**
-  *Technical: Expanded web-v2 ProjectOverviewPage (app/(workspace)/projects/[slug]/page.tsx) into a mockup-driven card grid with a new features/project-dashboard namespace, reusing existing health/attention/pipeline-runs/step-durations/queue-stats/schedules hooks; trend charts + Pass-rate KPI degrade to 'coming soon' pending ISS-380.*
-
-- **Project dashboards can now show trends over time — cost, throughput/burndown, cycle time, queue wait, runner utilization, and cache hit rate — bucketed by day or hour, served by a new project metrics time-series API.**
-  *Technical: New GET /api/projects/:id/metrics/timeseries in packages/core (src/metrics) over six metrics, computed from usage_records, activity_log, jobs and the pipeline_run_step_durations view (no new collection); days capped 1..90, day|hour buckets, dense gap-filled series, owner/member auth. cache_hit_rate sourced from usage_records (deployed view lacks cache-token cols). health-routes avgCycleTimeDays work-start corrected to first in_progress/approved transition. Part 2 collection split to ISS-381. Merge 0804c77.*
-
-- **Pipeline **session groups** can now be viewed and configured from Project Settings → Pipeline → Configuration: create/rename/delete groups, assign each stage to at most one group via a dropdown, and see an always-visible "Ungrouped" bucket — no more hand-editing raw JSON through MCP/REST.**
-  *Technical: New session-groups editor (session-groups-card.tsx) in the v1 settings pipeline-config section; web PipelineConfig gains sessionGroups (Record<string,StageName[]>) + per-state StageConfig.sessionGroup, STAGE_NAMES adds needs_info (13-state parity). Save writes BOTH the full sessionGroups map and per-state states[x].sessionGroup. Backend updatePipelineConfig now delta-validates AUTO_STAGE_NEEDS_SKILL (only stages a patch transitions into enabled+auto need a skill), so a session-groups save no longer 409s on skill-less projects. Merge b055a03a (ISS-382).*
-
-- **Forge now has an in-app What's New feed and a browsable Help/Docs hub, with a nav badge that flags release notes you haven't seen yet — so you can follow changes and learn how to use Forge without leaving the app.**
-  *Technical: What's New feed (product-global release source + per-user last-seen nav badge) and Help/Docs hub reusing the ISS-305 docs API, help-button.tsx, and github-releases.ts; nav entry points wired in web and web-v2 (v2 docs hub already present).*
-
-- **Headless CLI runners can now host interactive chat sessions, so you no longer need the desktop app open to chat with an agent on a server.**
-  *Technical: Runner daemon handles the agent:start device-room frame and streams replies via PATCH /agent-sessions/:id, mirroring the desktop device-room contract; chat stays off the jobs table and the pipeline cap=1.*
-
-- **forge-runner devices now keep themselves up to date automatically — new releases are pulled and applied without anyone running an update command on each machine, and any in-flight job or chat finishes before the runner restarts.**
-  *Technical: Fixed the runner-distribution route so the self-updater manifest is reachable through the /api edge proxy (dual-mount + prefix-aware asset/install.sh URLs); manifest_url now derives {core}/api/install/latest.json. Auto-update defaults ON (serde default_auto) with config set update.auto + install.sh --no-auto-update opt-out; drain-to-idle (InflightGuard) before systemctl restart; periodic fetch-release re-ingest; /me/devices surfaces latestAgentVersion + agentOutdated with a web-v2 lagging badge. Merge 8d52bd4e.*
-
-- **Forge can now manage Epodsystem-powered websites (ecommerce, blog, landing) end-to-end: connect a store with an API key, then let the pipeline build changes on a draft theme, verify them, and publish to live.**
-  *Technical: New epodsystem MCP-injection integration cloned from the postman pattern (adapter/resolver/healthcheck + dispatcher inject), a website project kind with ecommerce/blog/landing domain templates, the forge_storefront_target MCP tool, 9 shop-* skills, skills-zip for remote runners, and a draft->main theme publish/rollback flow. crmk_ keys live only in the AES-256-GCM vault + dispatch payload — never DB jsonb/logs/API/build output. Merges 27882926 + b4745506.*
-
-- **You can now configure Epodsystem and Coolify integrations directly from the redesigned (web-v2) integrations surface, including connection testing, HMAC secret rotation with one-time reveal, and the production-deploy confirmation gate.**
-  *Technical: Frontend-only port of the v1 epodsystem-section/coolify-section into packages/web-v2/src/features/integrations; extends the v2 integrations api+hooks+types beyond Postman to generic create/update + rotateSecret/confirmProdDeploy/deliveries. Backend already complete. Full v1 retirement tracked separately in ISS-397.*
-
-- **Project agent settings (custom system prompt, chat provider and model) can now be viewed and edited in the new web-v2 interface.**
-  *Technical: New web-v2 features/app-config (api/hooks/types) + project-settings Agent tab, backed by GET/PUT /api/app-config/:projectId. Mirrors v1 Chat Agent (systemPromptOverride) + Providers/Tools (chatProviderId, chatModel). Antigravity/Device Integration dropped (v1 stubs); webhook/channels preview-only sections deferred (ISS-396). Merge dadac53f.*
-
-- **A redesigned Integrations directory shows each provider's real connection status, with an adaptive detail view for testing, rotating, and disconnecting a connection plus delivery logs where the provider supports them.**
-  *Technical: web-v2 integrations directory with a client-derived 4-state status machine (icon+text), capabilities-driven connection detail, read-only delivery-log viewer, and a render-layer secret-safety assertion (ADR 0013). Share/bind-existing tab, projects-using-connection list, Needs-reauth state, and delivery retry deferred to ISS-404 (F).*
-
-- **New API endpoints to share an existing integration connection with another project/environment without re-entering its credentials, list which projects a connection is bound to, and retry a failed integration delivery.**
-  *Technical: core: POST/GET /api/integration-connections/:id/bindings (bind-existing, no secrets, owner-only, 409 on provider+env clash) + POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/retry (re-dispatch failed outbound via enqueueCoolifyDispatch). Adds findDeliveryById, listBindingsForConnection; type-only @forge/contracts shapes. web UI is F3 (ISS-408). Merge 34e38ad9.*
-
-- **Integration connections now show a "needs re-authorization" status when their stored credential is rejected, so you know to re-enter it instead of seeing a generic error.**
-  *Technical: New needs_reauth value in the connection health-status set (free-form text column, no migration); widen the HealthStatus/IntegrationHealthResult literals + card-status mapping. OAuth-first connect deferred — no provider supports an app-install OAuth flow today.*
-
-- **You can now share an existing integration connection with another project from project settings, see which projects use a connection, retry failed webhook deliveries, and spot a connection that needs re-authorization — all without re-entering the credential.**
-  *Technical: web-v2 features/integrations: bindExistingConnection / listConnectionBindings / retryDelivery on api+hooks; the connection-detail drawer renders a projects-using-this-connection list; the delivery-log viewer adds a Retry button on failed outbound deliveries; a new needs_reauth derived state reads raw lastHealthStatus==='needs_reauth' (IntegrationCardStatus stays a 4-value contract; needs_reauth maps to attention). Core surfaces lastHealthStatus on coolify/postman/epodsystem card.meta. Merge baf3afb0.*
-
-- **The Agent chat panel now has a "New chat" button and a history switcher to browse past conversations, plus a recovery prompt to start fresh when a chat ends in a failed state.**
-  *Technical: web-v2 features/session/components/chat-screen.tsx: wire setActiveId via New-chat button + session-history dropdown; failed-session banner gated on classifySessionOutcome().bucket==='failed'. features/session/api.ts: add pageSize param to listByType (default 1, chat list passes ~20). Frontend-only, no backend change. Merge 2d006b62.*
-
-### Changed
-
-- **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
-  *Technical: renamed forge-admin-{runners,users,health}.ts → forge-{runners,collaborators,ops-health}.ts (tool names + exports + tests); folded forge_admin_projects' `archive` action into a new `forge_projects.archive` (forgeProjectsArchiveTool) and dropped its duplicate list/create; `forge_metrics.admin_step_durations` → `forge_metrics.step_durations`. server.ts registration + lib.ts/forge-projects.ts comments + web token copy (CreateTokenModal/TokenRow) updated. No auth change — all tools remain project-membership/role gated; no client referenced the old names. Follow-up: ISS-365 retires the now-vestigial PAT `admin` scope.*
-
-- **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
-  *Technical: web-v2 features/project-settings: nested /projects/[slug]/settings route (Basics/Repository/Pipeline/Labels/Members/Integrations tabs) wired to PATCH /projects/:id, GET|PATCH pipeline-config, and labels + members REST; owner-gated edits, secrets never rendered. Merge b62e3ef (ISS-316).*
-
-- **Workspace Settings now helps you connect MCP clients and control notification delivery: the MCP tab generates a ready-to-paste connection snippet for Claude CLI, Cursor, Cline, Zed, or any client and lets you test the connection live, while the Notifications tab adds a toggle to turn @mention alerts on or off — your choice is saved.**
-  *Technical: web-v2 features/settings: MCP tab (mcp-tab.tsx + mcp.ts) builds per-client snippets + a live JSON-RPC tools/list test against core /mcp, with the endpoint origin derived from NEXT_PUBLIC_API_URL (fixes cross-origin beta). Notifications toggle wired to GET/PATCH /api/auth/me/preferences; new user_preferences.notify_on_mention (migration 0090) gates the mention notification server-side. No secret echo, no new sidebar item. Merge b67e6cdc.*
-
-- **You can now create a new project right from the new web app — the Overview console button, the dashed "New Project" tile, and the project-switcher in the left rail all open a real create form (name, auto-derived slug, optional description) that creates the project on the backend and takes you straight to it. The old "Coming soon" placeholder is gone, and the new project shows up in the list immediately.**
-  *Technical: web-v2 features/projects: NewProjectDialog (kit SlideOver) wired to POST /api/projects via useCreateProject (invalidates ['projects'] for live refresh + navigates to /projects/:slug). Client validation mirrors createProjectSchema; inline SLUG_TAKEN (409) + form-level Banner via kit Field. All triggers + rail ?new=1 deep link share one dialog; home wrapped in Suspense. No new sidebar item, no feature flag. Merge dcbf0d0.*
-
-- **The issue detail page in the new web app is easier to read and act on: the primary action + state bar now stays pinned at the top while you scroll, the properties rail stays in view alongside it, the layout uses the full desktop width instead of a narrow centered column, the breadcrumb shows the project's name instead of its slug, status/priority/complexity show friendly labels instead of raw codes, the newest comment appears first, Open sessions is one click from the bar, and the cluttered Run step / Reopen header actions are gone (status changes stay available from the properties rail).**
-  *Technical: web-v2 issue-detail refactor: shared STATUS/PRIORITY/COMPLEXITY label maps + helpers in derive.ts; sticky top-0 action+state bar; sticky properties rail (lg:sticky top-20 self-start, max-h calc overflow-y-auto); breadcrumb project name from cached useProjects() (slug fallback); container max-w-[1600px] 2xl:1760px + widened rail track; reverse-chron top-level comments (copy sort); Open sessions promoted, Run step/Reopen removed. Merges 7f410a2 + 17f4381 (ISS-347).*
-
-- **Agent session detail pages in the new web app now render the full conversation — assistant text and tool calls in their original order — for pipeline and CLI-runner sessions that previously showed an empty "No messages yet" screen. The page also shows which device/runner the session is running on (name, platform, and online status) and surfaces "Open issue" as a primary action instead of hiding it in the overflow menu.**
-  *Technical: web-v2 session parser reads the canonical block shape and falls back to session.messages when /turns is empty; core messageRoleToTurnRole falls back to entry.type so derived sessions populate turn rows going forward. Merge c9ddd75.*
-
-- **The new web app now looks consistent across screens: every tabbed screen (Settings, Project Settings, Library, Automation, and Agents on mobile) shares the same tab strip and ?tab= deep links, and issue status, priority, and complexity show readable labels (e.g. "Medium", "Critical", "In progress") everywhere — lists, tables, mobile cards, and menus — not just the detail view.**
-  *Technical: web-v2: new ScreenTabs pattern unifies the tab-strip container (max-w-6xl + overflow-x-auto) across 5 screens; Settings/Project-Settings converge from #tab hash onto the shared useTabParam (?tab=). Issue row cells/menu + detail Tasks tab route through derive.ts label helpers (+ new TASK_STATUS_LABELS); dead duplicate IssueTableRow removed. Merge 427100d.*
-
-- **On the issues page you can now reach every issue — including closed and draft ones. Classic app: a one-click Select all in the status filter. v2 app: a Drafts tab and an All + drafts tab that shows everything (drafts included) in one list. The default view still hides AI-draft proposals until you opt in.**
-  *Technical: Discoverable draft/closed issues on both web surfaces. v1 (packages/web status-multi-select.tsx): sticky Select all / Clear header + honest trigger label ("Active (no drafts)" default, "All statuses" when full). v2 (packages/web-v2 derive.ts/issues-screen.tsx): "All" tab sends statusNot:['draft'] (closed shown), "Drafts" tab (status:['draft']), and "All + drafts" tab (no status filter => every issue incl. draft+closed). ISS-236 default (drafts hidden until opted in) preserved. Merges 7a4300a (v1) + 88dca6a + 6f9653e (v2).*
-
-- **The workspace landing page is now an Overview dashboard — KPIs, a needs-attention inbox, a work-distribution bar, spotlight projects, and recent activity — instead of a flat project list. The full project list moved to its own Projects page.**
-  *Technical: Frontend-only redesign of the /v2 landing route in packages/web-v2; new features/overview module built from existing hooks (no API/core changes), full ProjectsConsole relocated to /v2/projects. Merge fd0c759.*
-
-- **Opening the classic Overview now takes you to the redesigned workspace Overview (v2). Other classic screens are unchanged for now — screens move to the new UI one at a time.**
-  *Technical: Added a V2_MIGRATED_PATHS exact-match map + redirect branch to packages/web middleware, placed after the auth gate. Authed hits on a migrated v1 path redirect to its /v2 equivalent (proxy routes /v2/* to web-v2). First entry: /dashboard -> /v2. Each future screen = one map entry.*
-
-- **The new web app's navigation is now project-first: the project switcher is pinned at the top of the sidebar and opens on hover, click, or keyboard — with "View all" and "Create project" actions — and the project pages (Dashboard, Issues, Agents, Library, Automation) sit above the workspace links. The top bar now shows a breadcrumb (workspace → project → page) instead of a single title, while keeping ⌘K search, notifications, and New issue.**
-  *Technical: web-v2 nav-rail + nav-rail-compact reordered to project-first (PROJECT cluster above WORKSPACE); hover open/close timers lifted into WorkspaceShell and shared by the switcher + project-flyout; flyout gained View all + Create project (→ /projects, /projects?new=1) and re-anchored to the top; TopBar title replaced by the existing Breadcrumb primitive. Merge 1e6fb45 (ISS-358).*
-
-- **The new web app's navigation reads more clearly: breadcrumbs now reflect where you actually are instead of always starting with "Overview", the collapsed sidebar labels its Project and Workspace sections, and hovering the project switcher opens its panel cleanly without flicker. The Activity section is replaced by a new Usage screen that fills wide monitors with a full-width layout.**
-  *Technical: web-v2 follow-up to ISS-358: breadcrumb root derived from route context (Workspace/Overview, Workspace/<Page>, Projects/<Project>/<Page>); RailKicker tier labels in nav-rail-compact; switcher click-away catcher scoped to left-[232px] to stop flyout flicker; new PageContainer wide-layout standard (max-w-[1720px]) exported from @/design; /activity route + workspace ActivityScreen removed, replaced by /usage UsageScreen (sample data behind preview banner). Merge 4f5c85d.*
-
-- **Redesigned the Issues and Agents screens (web-v2): the project nav is now Dashboard/Issues/Agents/Library/Automation, the Issues list is a wide table whose "All" filter includes drafts, the issue-detail view is restored with Run/Pause/Reopen actions, and agent/session status is now visually distinct from issue status.**
-  *Technical: web-v2 frontend only: PROJECT_ITEMS trimmed to 5 (Pipeline folds into Issues, /pipeline still reachable via ⌘K); IssueFilter collapsed to all/active/review/blocked with all→{} (reverses ISS-236); removed doubled in-page Breadcrumb on issue-detail (shell TopBar owns it) — the reported regression; StatusChip gains domain:issue|session. Merge 8a6b476.*
-
-- **Issue relationships now display clearly: the detail rail shows distinct Parent, Subtasks, Duplicates, and Related sections, and the Issues list/cards show epic (subtask count) and subtask markers alongside the blocked-by/blocks badges.**
-  *Technical: web-v2: depCounts adds subtasks/hasParent from decompose edges; properties-rail splits the Related bucket and drops raw kind labels; IssueRefBadge gains an optional status tone dot.*
-
-- **You can now attach files to comments on the new issue-detail page: the comment and reply boxes accept a Choose-files button, drag-and-drop, and pasted screenshots (⌘/Ctrl+V), and each posted comment shows its attachments as image thumbnails or download links.**
-  *Technical: core GET /api/issues/:id/comments now joins comment_attachments into the tree (buildCommentTree takes an attachmentsByCommentId map; empty-ids guarded); web-v2 composer stages files against the comment allow-list (png/jpeg/gif/webp, pdf, text/plain, text/markdown — no video, ≤10 MB, ≤10/comment) then create-then-multipart-uploads each via POST /api/comments/:commentId/attachments; an upload failure toasts but keeps the posted comment. AttachmentGrid extracted to a shared AttachmentList used by both issue + comment attachments.*
-
-- **Redesigned the project Issues screen with a Board / List / Insights view switcher: a pipeline kanban, the full-featured issues list, and a new analytics view (per-stage counts, durations, cost, and throughput). The active view is shareable via the URL.**
-  *Technical: web-v2: issues-screen.tsx split into thin container + IssuesListView + new IssuesInsightsView; Board embeds PipelineBoard (new `embedded` prop); view state via useTabParam(?tab=); added median()/aggregateStageInsights() in pipeline/derive.ts. Frontend-only.*
-
-- **The Issues page now opens the redesigned interface with Board, List, and Insights views.**
-  *Technical: Legacy web /projects/:slug/issues routes (list, new, detail) now hand off to the web-v2 /v2 Issues experience (ISS-364 redesign). Merge 667a29d.*
-
-- **The Agents screen now shows a per-runner fleet overview with queue depth, surfaces each session's runner, live/stale state and failure reason with clickable issue and run links, warns when work is queued but no runner is online, and makes the Agent Chat panel collapsible so the session list can use the full width.**
-  *Technical: Reworked packages/web-v2 agents feature (agents-screen, sessions-screen) with a FleetRunnerStrip from queue-stats×useDevices, a unified deriveLiveness threshold aligned to the server zombie-sweep heartbeat bound, an on-demand chat dock persisted per user, and a new read-only GET /api/agent-sessions/:id/cost usage_records rollup.*
-
-- **The pipeline run timeline now makes Pause vs. Stop unambiguous — Pause shows it's finishing the current step before halting, a separate Stop control aborts the running agent immediately, and each step shows whether it resumed the same agent session or started fresh.**
-  *Technical: Pure frontend rework of RunDetail (web-v2 run-detail.tsx): transitional/halted pause states + distinct Stop wired to existing cancel; TimelineTab derives session-group continuity (resumed/fresh, group labels, connectors, operator detail) from agent_sessions metadata.sessionGroup + claudeSessionId + deviceId + status.*
-
-- **In Skill Studio, built-in skills are now read-only templates; to customize one for a project you create a project copy that shadows the built-in. The old per-project override/fork mechanism has been removed.**
-  *Technical: Removed forge_skills.override_set/override_delete MCP tools, the skills override REST routes, the project_skill_overrides table (+ drop migration), and the override-merge branch / isOverridden flag in effective.ts. forge_skills.list & effective now dedup by name (project shadows global, one row per name + shadowsGlobal marker).*
-
-- **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
-  *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
-
-- **The agent Sessions list now has a more compact header and richer session rows (start time and cost), with the session detail showing an elevated task list.**
-  *Technical: Reworked web-v2 sessions-screen header (4 StatCards -> inline metric strip) + added Started/Cost columns (cost via a bounded per-page usage_records rollup in GET /api/agent-sessions); elevated the Agents & tasks section + task-count badge in the session detail.*
-
-- **The pipeline run view now shows which device a run is executing on (by name) and its retry history, and Cancel now reliably stops a run instead of letting it silently restart.**
-  *Technical: Part A: agent-sessions hydrator resolves deviceId→runner name (batch devices lookup, shared by list/search/detail); PipelineRunSummary gains jobs-sourced attempts[] + retrySummary {round/maxRounds/target} from the retry_of chain + payload._autoRetry; web-v2 run-detail renders a per-attempt timeline + round-robin badge. Part B: cancelPipelineRun atomically parks the linked issue at on_hold after the cascade (on_hold has no STATUS_TO_JOB_TYPE mapping → no auto-dispatch); orchestrator transition-subscriber guard blocks any non-user advance OUT of on_hold so the dying agent's termination-protocol can't silently re-dispatch — only a human Resume re-engages. Reuses the existing web-v2 on_hold banner + Resume CTA. Merge bf664dbf.*
-
-### Removed
-
-### Fixed
-
-- **You can now create an issue directly from web-v2 (the “New issue” button opens a dialog), and clicking an agent session opens its detail view instead of 404ing. Issues and sessions now cross-link — open an issue's sessions, jump from a session back to its issue — and block/decompose relations show clickable ISS-X badges. Raw UUIDs no longer lead on the issue and session screens.**
-  *Technical: Added issuesApi.create + useCreateIssue + NewIssueDialog (?new=1 trigger); restored /projects/[slug]/agents/[sessionId] route + clickable session rows; repointed dead /sessions/:id hrefs to /agents/:id; enriched core GET /issues/:id/dependencies with both endpoints' displayId/title/status; shared IssueRefBadge.*
-
-- **Creating an issue in the web app now takes you straight to the new issue's detail page after you submit, instead of dropping you back on the issues list.**
-  *Technical: web/src/app/projects/[slug]/issues/new/page.tsx now router.push's to /projects/<slug>/issues/<displayId ?? id> on create success (V1 root surface), matching web-v2. Merge 119a7e1.*
-
-- **Agent sessions that completed normally are no longer mislabeled as 'failed' — pipeline steps that finish a run (such as test and release) now show a green done status, and previously mislabeled sessions are corrected automatically. The session detail view also gains cache-token counts, lifecycle timing, the repository path, an 'Agents & tasks' list of sub-agent and skill calls, and a 'Sessions for this issue' list.**
-  *Technical: core: cascadeCancelChildJobs maps close-reason 'pipeline_completed' to session status 'completed' (failureReason null), keeping pipeline_failed/cancelled as 'failed'; migration 0091 backfills existing (failed, pipeline_completed) rows. web-v2 session context-rail: cache tokens, timing, repoPath, deriveAgentTasks, sibling-session list. Per-session cost/model deferred to a usage_records join. Merge 84c3343.*
-
-- **Web v2 pages no longer show a duplicated page title (the section label in the top bar stacked on top of each page's own heading).**
-  *Technical: Stop the workspace TopBar from rendering the nav-section label as an <h1>; the page/screen header becomes the single title source. Single edit in (workspace)/layout.tsx.*
-
-### Security
-
-- **Deploy logs no longer expose environment secrets in plaintext.**
-  *Technical: Coolify deploy-log scrubber now redacts secret-shaped KEY=value lines (segment-match on PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS) and adds defense-in-depth around the build-stage .env dump. Touches @forge/observability scrubLogText + packages/core coolify/logs.ts; live-verified on forge-beta deploy ec8b1df2 (ISS-412). Merges 19e21c95, ec8b1df2.*
+- Pipeline jobs that hit a transient failure now retry and recover correctly instead of getting stuck in a loop where every retry immediately fails
+- The workspace Integrations page (your shared connections directory) is now on the left navigation rail instead of being reachable only through the command palette.
+- The shared Integrations directory now opens a detail panel for each connection where you can rename it, rotate its key, edit its config, run a live connection test, and jump straight to any project that uses it.
+- Issues screen: List is now the default view, board cards show the real issue/run status, the run panel reads top-down (header → tracker → controls), pinned views restore their filters and can be named, and the list gains Priority/Assignee filters with a single merged Status column.
+- The Issues list now shows each issue's cost immediately with the page load instead of trickling in per row.
+- The Issues list gains Draft and Done filter tabs, and cost figures are now accurate: Claude Fable 5 usage is no longer recorded at $0 and Opus 4.5–4.8 usage is no longer over-counted 3× (history corrected).
+- Per-issue cost now includes pipeline work run on CLI runners — previously it always showed —/$0 — and historical runs since mid-May are backfilled.
+- API requests made with a device token to user-only endpoints now return a clean 403 instead of a 500 error.
+- Decision, audit, and spike issues whose only deliverable is a write-up now flow through the pipeline to completion — they produce a durable in-repo proposal document instead of looping unresolved.
+- Scheduled and chat runs no longer stay stuck showing "running" indefinitely after they finish — a backstop now closes these job-less runs once their session is no longer live.
+- Operators can now cancel a single stuck pipeline job from the API or MCP — including jobs orphaned under an already-finished run — with each cancel recorded for audit.
+- Pipeline job, session, and run state changes now flow through one guarded path, eliminating a class of successful steps that were mislabeled as failed or cancelled (and existing mislabeled records were corrected).
+- People who sign in with GitHub, Google or SSO can now create API tokens — re-authentication goes through your sign-in provider instead of asking for a password you don't have.
+- The MCP settings tab now shows clearer connection errors with recovery hints, links to the API Tokens tab, submits the test on Enter, and highlights the token placeholder in the config snippet.
+- Jobs can no longer be left stranded under a finished pipeline run — the database now auto-closes such orphans, and existing stranded jobs were swept clean.
+- Stuck pipeline jobs are now caught by a single closed-loop monitor at each step (dispatch, claim, heartbeat, result) instead of overlapping background sweepers, so nothing hangs unnoticed.
+- Pipeline failures are now classified precisely (no more catch-all "unknown"): a Claude startup death fails over to another device immediately, and failures caused by the work itself stop retrying and ask for review instead of burning retries.
+- Runners verify the workspace (repo, git, push credentials, hooks) before taking a job, so credential or setup problems fail over fast instead of stalling a run for 40 minutes.
+- When a pipeline job does get stuck, Forge now raises a notification saying where it stalled, why, and what to do — and manual interventions per issue are tracked so they can be charted.
+- The project dashboard's Live runs panel now labels each run with its issue (or a clear run type) and shows the run's real cost instead of a generic label and $0.
+- Agent chat now saves your messages, continues a conversation across multiple turns, shows distinguishable titles in the history switcher instead of every chat reading "Chat", and keeps your typed message if a send fails so you can retry.
+- The project dashboard's live-run count no longer includes finished or stale runs, so it reflects genuinely active work.
+- You can now select multiple issues on the Issues list and bulk-update their status or priority at once.
+- The agent chat panel now widens to use more of the screen on large monitors instead of staying a narrow fixed drawer, while staying readable on small screens.
+
+## [0.3.0] - 2026-06-11
+
+Organizations arrive: a two-tier permission model (org + project roles), org-shared integration connections, email invitations, and a read-only viewer role.
+
+- Organizations: every project now lives in an org; each user gets a personal org automatically, and team orgs share projects and integration connections
+- Org roles (owner/admin/member): org owners and admins manage every project in their org without per-project invites; plain org members still need an invite per project
+- New read-only "viewer" project role for stakeholders who should see boards, runs and sessions without being able to change anything
+- Project settings, deletion and archiving now require an org owner/admin; invited project admins manage members, labels, runners and skills
+- API tokens: the admin scope is now actually enforced for administrative actions; existing tokens keep working unchanged
+- Integration connections can now be owned by an org and shared across all of its projects (bindable only within that org)
+- New Organizations tab in Settings to create orgs and manage their members — including the org's projects, shared connections and pending invitations
+- Add a teammate from your org to a project in one click — no email round trip; the email invite stays for people outside the org
+- Invite people who don't have a Forge account yet to an org by email; they accept after signing up (the invitation accept page is back)
+- Move a project to another organization from Advanced settings
+- Viewers no longer see editing controls anywhere (issue detail, board drawer, chat composers) and no longer receive the project API key
+- Org-shared credentials can only be changed by an org owner/admin — project admins see why instead of hitting an error
+- Filter the projects console by organization; team-org projects show their org on the card
+- New-project dialog lets you pick which organization the project belongs to
+- Integrations now show truthful per-project status, can be managed inside project settings, and unhealthy connections are re-probed automatically
+- Preview exactly which MCP servers will be injected into an agent run for a project
+
+## [0.2.12] - 2026-06-09
+
+The redesigned web app (v2) lands across Overview, Issues, issue detail, Integrations and Settings — plus agent-chat fixes, self-recovering pipelines, and auto-updating runners.
+
+- Fixed web agent chat returning "no online Claude client" even with a runner online — chat now picks an available runner (unified chat/schedule dispatch into one path)
+- Chat: agent chat now shows a clear inline error when a message can't be delivered, and no longer blocks sending when a runner is online
+- Pipeline now auto-recovers a job a runner accepted but never started (used to stall the next stage for ~1h)
+- A runner's late "success" is now reconciled instead of discarded when its report races a timeout sweep
+- Mechanically-failed pipeline jobs (crash / non-zero exit) now auto-retry from the stage start instead of waiting for manual intervention
+- Pipeline settings now name the stage blocking a save and why, with a persistent error instead of a toast that vanishes
+- CLI runners now pull skill updates pushed from Forge instead of running stale on-disk skills
+- Issues screen: top progress bar no longer sticks, rows show each issue's real status, and linked/related issues are shown clearly
+- Creating an issue now takes you straight to its detail page instead of back to the list
+- Agent sessions that completed normally are no longer mislabeled "failed"; existing mislabeled sessions are corrected automatically
+- Fixed the duplicated page title on web v2 screens
+- Pipeline reproduces a bug before planning: a new "clarified" stage reproduces/validates in a live environment and attaches evidence; trivial issues skip it automatically
+- Pipeline steps cleaned up when a run finishes now show a neutral "cleaned up" state instead of looking like failures
+- Pipeline run view now shows which runner a run is on (by name) and its retry history; Cancel now reliably stops a run
+- Pipeline run timeline now distinguishes Pause (finish current step, then halt) from Stop (abort now), and shows whether each step resumed or started a fresh agent
+- Agents screen: per-runner fleet overview with queue depth, per-session runner/state/failure with clickable links, and a collapsible chat dock
+- Headless CLI runners can now host interactive chat — no need to keep the desktop app open to chat on a server
+- forge-runner devices now auto-update to new releases, finishing any in-flight job or chat before restarting
+- Agent chat panel now has a "New chat" button, a history switcher, and a recovery prompt when a chat ends in failure
+- Agent session detail now renders the full conversation (text + tool calls in order) and shows which runner it ran on
+- Project dashboard is now an operator landing page (KPIs, needs-attention queue, live runs, spend, runners, schedules) and uses the full screen width
+- Project dashboards can now show trends over time (cost, throughput, cycle time, queue wait, runner utilization, cache hit rate)
+- Issues screen now has Board / List / Insights views, shareable by URL, and the list can reach closed and draft issues
+- Issue detail now surfaces why an issue is stuck and who must act, live agent progress, and a per-stage summary with time and cost
+- Issue detail is easier to read and act on: pinned action bar, sticky properties rail, full width, friendly labels, newest comment first
+- Issue relationships now show distinct Parent, Subtasks, Duplicates, and Related sections, with epic/subtask markers in the list
+- Issue quick-open drawer now pins status, priority, assignee, and "Open issue" at the top
+- You can now attach files to issues and comments via picker, drag-and-drop, or pasted screenshot, and view them inline
+- You can now hold or unhold an issue from its detail page, with a badge showing manual hold
+- You can now configure a project from the new web app (basics, repo, branches, pipeline, labels, members) and create projects from it
+- Project Settings now has a Testing tab for staging URLs and test login credentials (masked, with reveal) — no DB access needed
+- Project Settings now lets owners manage members and pending invitations and change a member's role
+- Pipeline session groups are now editable from Project Settings instead of hand-editing JSON
+- Project agent settings (system prompt, chat provider, model) can now be edited in the new web app
+- Project owners can now archive and unarchive a project; archived projects leave the list and stop running jobs but keep all data
+- Activity page now shows a live cross-project feed of agent conversations, filterable by source, intent, or rating
+- Automation page now has a working PM tab to edit the PM Agent's cadence and triggers and browse its decision log
+- v2 Runners screen now has a per-device detail panel to rename, inspect, and assign project pools
+- Workspace Settings now generates MCP connection snippets for common clients (with a live test) and adds an @mention notification toggle
+- Forge now has an in-app What's New feed and a Help/Docs hub, with a badge for release notes you haven't seen
+- Navigation is now project-first, with clearer breadcrumbs and a new Usage screen
+- Integrations directory redesigned to show each provider's real connection status, with test / rotate / disconnect and delivery logs
+- You can now share an existing integration connection with another project, see which projects use it, retry failed deliveries, and spot one that needs re-authorization
+- Forge can now manage Epodsystem-powered websites end-to-end: connect a store, build on a draft theme, verify, and publish to live
+- You can now configure Epodsystem and Coolify integrations, including connection testing, secret rotation, and the production-deploy confirmation gate
+- Postman integration per project: configure a workspace, collection, and key, and the Postman tools become available to that project's agents
+- Postman and Epodsystem credential rotations now keep the previous key valid for 24h so in-flight requests don't fail mid-rotation
+- Renamed the `forge_admin_*` MCP tools to plain project-scoped names (`forge_runners`, `forge_collaborators`, `forge_ops_health`); access is unchanged
+- Built-in skills are now read-only templates; customize one by creating a project copy that shadows it
+- Deploy logs no longer expose environment secrets in plaintext
 
 ## [0.2.11] - 2026-05-31
 

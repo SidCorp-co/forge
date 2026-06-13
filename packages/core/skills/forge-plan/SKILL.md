@@ -124,6 +124,17 @@ forge_issues → update → { documentId: "<id>", data: { plan: "<markdown plan>
 
 **For deep plans:** Be concrete about both **what** and **how** — file paths, function names, pattern references. The coding agent should be able to follow the plan step-by-step without re-exploring.
 
+#### No-code deliverables (decision / audit / spike)
+
+Some issues ship **no source code** — their only deliverable is a *decision* (a port-or-drop matrix, an architecture audit, a spike conclusion). With nothing to commit, the issue would stall: code produces no branch, review has no diff, test/release have nothing to merge or close — a re-dispatch loop.
+
+Make the decision a **mergeable artifact** instead. Plan an in-repo markdown document and treat it exactly like code:
+
+- Classify an issue as a no-code deliverable only when its acceptanceCriteria/goal is purely a decision/audit/spike write-up with **no** source, UI, API, or schema change. When in doubt, plan it as normal code — this is a narrow class, not a catch-all for "has some docs."
+- The deliverable is a doc at **`docs/proposals/<topic>.md`** (short, kebab, topic-focused), added to the index in `docs/proposals/README.md`. Name the exact path in the plan and outline the required sections so the coding step writes substantive content, not a stub.
+- This makes the change a **docs-only diff** (touches only `docs/**`, no `packages/**`), which flows code → review → test → release like any other change. The coding/review/test steps key off that mechanical signal, so a real decision becomes a durable, discoverable artifact rather than a comment that vanishes from the codebase.
+- Do **NOT** decompose a no-code deliverable (see Step 5.5). Recommended follow-ups (e.g. ports the decision endorses) spin off as **standalone** issues linked with a soft `related_to` — never as `decomposes` children, since a pure decision has nothing to integrate.
+
 ### Step 5.5: Decide whether to decompose (Complex epics only)
 
 For Complex issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, atomic release gating, and close cascade.
@@ -136,6 +147,7 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 
 **When NOT to decompose:**
 - Single-file changes, refactors localized to one module, bug fixes.
+- **No-code deliverables** (decision/audit/spike, docs-only — see above): never decompose, regardless of how many recommendations they contain. A pure decision has nothing to integrate; endorsed follow-ups become standalone `related_to` issues.
 - Items where one child's failure should not block siblings' release — the gate is atomic by design.
 - Nested decomposition (epic → epic → story). Single-level only for v1.
 

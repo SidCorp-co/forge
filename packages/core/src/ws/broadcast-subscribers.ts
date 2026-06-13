@@ -106,6 +106,23 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     // user) receives the prompt. The two publishes are intentional: the
     // user-room event drives the global notification badge; the project
     // event drives the in-context modal/banner.
+    // ISS-452 (I7) — fan pipeline wedges out to the project room too, so any
+    // operator with the project open sees the wedge banner (mirrors the
+    // pm_escalation pattern below). The user-room event above still drives
+    // the recipient's notification badge.
+    if (p.type === 'pipeline_wedge' && p.projectId) {
+      roomManager.publish(projectRoom(p.projectId), {
+        event: 'pipeline.wedge',
+        data: {
+          notificationId: p.notificationId,
+          projectId: p.projectId,
+          issueId: p.issueId,
+          title: p.title,
+          userId: p.userId,
+        },
+      });
+    }
+
     if (p.type === 'pm_escalation' && p.projectId) {
       roomManager.publish(projectRoom(p.projectId), {
         event: 'pm.escalation',

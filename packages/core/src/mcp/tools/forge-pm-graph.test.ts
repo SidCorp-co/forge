@@ -13,6 +13,7 @@ const queue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
 chain.from = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -39,6 +40,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -62,14 +65,14 @@ beforeEach(() => {
 describe('forge_pm.graph', () => {
   it('rejects non-member', async () => {
     const tool = forgePmGraphTool(ctx);
-    queue.push([{ ownerId: 'other' }], []); // assertDeviceOwnerIsMember
+    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // assertDeviceOwnerIsMember
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
   it('returns whole-project graph when rootIssueId omitted', async () => {
     const tool = forgePmGraphTool(ctx);
     queue.push(
-      [{ ownerId: OWNER_ID }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       [{ total: 2 }], // count() for totalNodes
       [
         { id: ROOT_ID, status: 'open', priority: 'medium', assigneeId: null, parentIssueId: null },
@@ -109,7 +112,7 @@ describe('forge_pm.graph', () => {
       parentIssueId: null,
     }));
     queue.push(
-      [{ ownerId: OWNER_ID }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       [{ total: 215 }], // count() — 15 more than the cap
       stubNodes, // capped nodes
       [], // no edges
@@ -127,7 +130,7 @@ describe('forge_pm.graph', () => {
   it('BFS expands to depth and dedupes edges with cycle', async () => {
     const tool = forgePmGraphTool(ctx);
     queue.push(
-      [{ ownerId: OWNER_ID }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       // depth 1: forward deps from ROOT
       [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }],
       // depth 1: reverse deps to ROOT (cycle: CHILD also blocks ROOT)
@@ -171,7 +174,7 @@ describe('forge_pm.graph', () => {
   it('accepts depth=5 at the input boundary', async () => {
     const tool = forgePmGraphTool(ctx);
     queue.push(
-      [{ ownerId: OWNER_ID }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       [],
       [],
       [],

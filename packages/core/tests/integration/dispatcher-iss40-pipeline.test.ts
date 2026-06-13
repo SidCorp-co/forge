@@ -89,8 +89,35 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
         'Issue', ${overrides.status ?? 'open'}, ${overrides.priority ?? 'medium'},
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
+    `);
+    return id;
+  }
+
+  // jobs.pipeline_run_id and agent_sessions.pipeline_run_id are NOT NULL
+  // (migration 0054). A run with NULL issue_id must use kind='system'/'pm'
+  // (pipeline_runs_issue_kind_chk); only kind='issue' may carry an issue_id.
+  async function insertPipelineRun(
+    projectId: string,
+    issueId: string | null,
+    kind: string,
+  ): Promise<string> {
+    // At most one OPEN issue-run per issue (`pipeline_runs_issue_open_uq`).
+    // A session + the job for the same issue must SHARE one run — reuse the
+    // existing open issue-run if present, otherwise insert a fresh one.
+    if (issueId && kind === 'issue') {
+      const existing = await harness.db.execute<{ id: string }>(sql`
+        SELECT id FROM pipeline_runs
+        WHERE issue_id = ${issueId} AND kind = 'issue' AND status IN ('running','paused')
+        LIMIT 1
+      `);
+      if (existing[0]?.id) return existing[0].id;
+    }
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${id}, ${projectId}, ${issueId ?? null}, ${kind}, 'running', now())
     `);
     return id;
   }
@@ -101,9 +128,14 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
   ): Promise<string> {
     const id = randomUUID();
     const metadata = args.issueId ? JSON.stringify({ issueId: args.issueId }) : '{}';
+    const pipelineRunId = await insertPipelineRun(
+      projectId,
+      args.issueId ?? null,
+      args.issueId ? 'issue' : 'system',
+    );
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, status, metadata)
-      VALUES (${id}, ${projectId}, ${args.status ?? 'queued'}, ${metadata}::jsonb)
+      INSERT INTO agent_sessions (id, project_id, status, metadata, pipeline_run_id)
+      VALUES (${id}, ${projectId}, ${args.status ?? 'queued'}, ${metadata}::jsonb, ${pipelineRunId})
     `);
     return id;
   }
@@ -117,12 +149,14 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
     } = {},
   ): Promise<string> {
     const id = randomUUID();
+    const kind = args.type === 'pm' ? 'pm' : args.issueId ? 'issue' : 'system';
+    const pipelineRunId = await insertPipelineRun(projectId, args.issueId ?? null, kind);
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, created_by, agent_session_id)
+      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, pipeline_run_id, created_by, agent_session_id)
       VALUES (
         ${id}, ${projectId}, ${args.issueId ?? null}, ${args.type ?? 'plan'},
-        'queued', '{}'::jsonb,
-        (SELECT owner_id FROM projects WHERE id = ${projectId}),
+        'queued', '{}'::jsonb, ${pipelineRunId},
+        (SELECT created_by FROM projects WHERE id = ${projectId}),
         ${args.agentSessionId ?? null}
       )
     `);
@@ -149,7 +183,7 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
 
   // ---------- L1 — issue_busy short-circuit -----------------------------
 
-  it('L1 issue_busy — when another running session shares the issueId, dispatcher returns skipped + writes failureReason', async () => {
+  it('L1 issue_busy — when another running session shares the issueId, dispatcher returns skipped and leaves the job queued', async () => {
     const { project } = await seedProject();
     const issueId = await insertIssue(project.id);
     // Another session for the same issue, already running
@@ -162,8 +196,8 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
     });
 
     const result = await mods.handleDispatch({ jobId: candidateJob });
+    // ISS-228 — a barrier skip no longer persists agent_sessions.failure_reason.
     expect(result).toBe('skipped');
-    expect(await getSessionFailureReason(candidateSession)).toBe('issue_busy');
 
     // Job stays queued (gate skips do not move jobs to failed).
     const [jobRow] = await harness.db.execute<{ status: string }>(sql`
@@ -174,7 +208,7 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
 
   // ---------- L2 — waiting_on_dep ---------------------------------------
 
-  it('L2 waiting_on_dep — when blocking parent is in_progress, dispatcher returns skipped + writes waitingOn metadata', async () => {
+  it('L2 waiting_on_dep — when blocking parent is in_progress, dispatcher returns skipped and leaves the job queued', async () => {
     const { project } = await seedProject();
     const parent = await insertIssue(project.id, { status: 'in_progress' });
     const child = await insertIssue(project.id);
@@ -184,15 +218,13 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
     const job = await insertJob(project.id, { issueId: child, agentSessionId: session });
 
     const result = await mods.handleDispatch({ jobId: job });
+    // ISS-228 — barrier skip persists no failure_reason / waitingOn metadata.
     expect(result).toBe('skipped');
-    expect(await getSessionFailureReason(session)).toBe('waiting_on_dep');
 
-    const rows = await harness.db.execute<{ metadata: Record<string, unknown> }>(sql`
-      SELECT metadata FROM agent_sessions WHERE id = ${session}
+    const [jobRow] = await harness.db.execute<{ status: string }>(sql`
+      SELECT status FROM jobs WHERE id = ${job}
     `);
-    const waitingOn = (rows[0]?.metadata as { waitingOn?: Array<{ issueId: string }> })?.waitingOn;
-    expect(waitingOn).toBeDefined();
-    expect(waitingOn?.[0]?.issueId).toBe(parent);
+    expect(jobRow?.status).toBe('queued');
   });
 
   it('L2 — passes once the blocking parent reaches `closed`', async () => {
@@ -217,21 +249,29 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
 
   // ---------- L3 — project_full -----------------------------------------
 
-  it('L3 project_full — when distinct running issues hit the cap, dispatcher returns skipped + project_full', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 2 });
+  it('L3 project_full — when distinct running issues hit the cap, dispatcher returns skipped and leaves the job queued', async () => {
+    // ISS-232 — project cap is hardcoded to 1; one running issue fills it.
+    const { project } = await seedProject();
     const a = await insertIssue(project.id);
-    const b = await insertIssue(project.id);
     const candidate = await insertIssue(project.id);
 
-    await insertSession(project.id, { issueId: a, status: 'running' });
-    await insertSession(project.id, { issueId: b, status: 'running' });
+    // A running JOB for issue `a` puts it in running_ids (the cap counts jobs).
+    await insertJob(project.id, { issueId: a });
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'running' WHERE issue_id = ${a}
+    `);
 
     const session = await insertSession(project.id, { issueId: candidate });
     const job = await insertJob(project.id, { issueId: candidate, agentSessionId: session });
 
     const result = await mods.handleDispatch({ jobId: job });
+    // ISS-228 — barrier skip persists no failure_reason.
     expect(result).toBe('skipped');
-    expect(await getSessionFailureReason(session)).toBe('project_full');
+
+    const [jobRow] = await harness.db.execute<{ status: string }>(sql`
+      SELECT status FROM jobs WHERE id = ${job}
+    `);
+    expect(jobRow?.status).toBe('queued');
   });
 
   // ---------- Gate ordering — L1 wins over L2/L3 ------------------------
@@ -250,9 +290,13 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
     const job = await insertJob(project.id, { issueId, agentSessionId: candidateSession });
 
     const result = await mods.handleDispatch({ jobId: job });
+    // ISS-228 — the dispatcher returns 'skipped' on the first failing gate
+    // but no longer persists the reason on the session. The job stays queued.
     expect(result).toBe('skipped');
-    // L1 wired BEFORE L2 → should report issue_busy.
-    expect(await getSessionFailureReason(candidateSession)).toBe('issue_busy');
+    const [jobRow] = await harness.db.execute<{ status: string }>(sql`
+      SELECT status FROM jobs WHERE id = ${job}
+    `);
+    expect(jobRow?.status).toBe('queued');
   });
 
   // ---------- PM job bypass --------------------------------------------

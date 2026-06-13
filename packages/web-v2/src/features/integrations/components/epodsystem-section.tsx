@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
   Badge,
+  type BadgeProps,
   Banner,
   Button,
   Card,
@@ -11,17 +11,23 @@ import {
   CardTitle,
   Field,
   Input,
-  type BadgeProps,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
   useIntegrationsList,
+  useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../hooks";
-import type { IntegrationSummary, IntegrationTestResult, ProviderConfig } from "../types";
+import type {
+  IntegrationSummary,
+  IntegrationTestResult,
+  ProviderConfig,
+} from "../types";
+import { ConnectionOwnerField } from "./connection-owner-field";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
@@ -35,9 +41,13 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
   if (existing.lastHealthStatus === "ok") {
     const name = (existing.config as ProviderConfig).storeName;
-    return { label: name ? `Connected to ${name}` : "Connected", tone: "green" };
+    return {
+      label: name ? `Connected to ${name}` : "Connected",
+      tone: "green",
+    };
   }
-  if (existing.lastHealthStatus === "error") return { label: "Invalid key", tone: "red" };
+  if (existing.lastHealthStatus === "error")
+    return { label: "Invalid key", tone: "red" };
   return { label: "Untested", tone: "neutral" };
 }
 
@@ -57,17 +67,24 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
   );
 
   const create = useCreateProviderIntegration(projectId);
+  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const remove = useDeleteProviderIntegration(projectId);
 
   const [apiKey, setApiKey] = useState("");
-  const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
+  const [testResult, setTestResult] = useState<IntegrationTestResult | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const keyRequired = !existing;
   const saving = create.isPending || update.isPending;
-  const canSave = (!keyRequired || apiKey.trim().length >= 8) && !saving;
+  // Org-shared credential: only an org owner/admin may rotate the stored key.
+  // Test + Delete stay enabled — they are binding-level (project admin OK).
+  const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
+  const canSave =
+    (!keyRequired || apiKey.trim().length >= 8) && !saving && !orgLocked;
   const badge = badgeFor(existing);
 
   async function handleSave() {
@@ -85,6 +102,7 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
           provider: "epodsystem",
           config: {},
           secrets: { apiKey: apiKey.trim() },
+          ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
       }
       setApiKey("");
@@ -110,7 +128,8 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
 
   function handleDelete() {
     if (!existing) return;
-    if (!window.confirm("Delete the Epodsystem integration for this project?")) return;
+    if (!window.confirm("Delete the Epodsystem integration for this project?"))
+      return;
     remove.mutate(existing.id);
   }
 
@@ -125,11 +144,19 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
       <CardContent>
         <div className="flex flex-col gap-4">
           <p className="fg-body-sm text-muted">
-            One Epodsystem store per project. Paste the <span className="font-mono">crmk_</span> API
-            key — the endpoint is fixed platform config, not entered here. Builds run on the draft
+            One Epodsystem store per project. Paste the{" "}
+            <span className="font-mono">crmk_</span> API key — the endpoint is
+            fixed platform config, not entered here. Builds run on the draft
             theme (staging); release promotes draft → main (production).
           </p>
 
+          {!existing && (
+            <ConnectionOwnerField
+              projectId={projectId}
+              value={ownerOrgId}
+              onChange={setOwnerOrgId}
+            />
+          )}
           <Field
             label={existing ? "API key" : "API key"}
             hint={
@@ -145,34 +172,60 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
               placeholder={existing ? "•••••••• (unchanged)" : "crmk_…"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
+              disabled={orgLocked}
             />
           </Field>
 
+          {orgLocked && (
+            <p className="fg-body-sm text-muted">
+              Org-shared credential — only an org owner/admin can change it.
+            </p>
+          )}
           {error && <Banner tone="danger">{error}</Banner>}
           {testResult &&
             (testResult.status === "ok" ? (
-              <Banner tone="success">{testResult.message ?? "Connection OK"}</Banner>
+              <Banner tone="success">
+                {testResult.message ?? "Connection OK"}
+              </Banner>
             ) : (
-              <Banner tone="danger">{testResult.message ?? "Connection failed"}</Banner>
+              <Banner tone="danger">
+                {testResult.message ?? "Connection failed"}
+              </Banner>
             ))}
 
           <div className="flex flex-wrap items-center gap-3 pt-1">
-            <Button variant="primary" onClick={handleSave} loading={saving} disabled={!canSave}>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              loading={saving}
+              disabled={!canSave}
+            >
               {existing ? "Save" : "Create integration"}
             </Button>
             {existing && (
-              <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
+              <Button
+                variant="secondary"
+                onClick={handleTest}
+                loading={test.isPending}
+              >
                 Test connection
               </Button>
             )}
             {existing && (
-              <Button variant="danger" icon="trash" loading={remove.isPending} onClick={handleDelete}>
+              <Button
+                variant="danger"
+                icon="trash"
+                loading={remove.isPending}
+                onClick={handleDelete}
+              >
                 Delete
               </Button>
             )}
           </div>
 
-          {existing && <ThemePanel config={existing.config as ProviderConfig} />}
+          {existing && (
+            <ThemePanel config={existing.config as ProviderConfig} />
+          )}
         </div>
       </CardContent>
     </Card>
@@ -192,7 +245,9 @@ function ThemePanel({ config }: { config: ProviderConfig }) {
   const scopes = config.scopes ?? null;
   const hasWildcard = scopes?.includes("*") ?? false;
   const missingScopes =
-    scopes && !hasWildcard ? REQUIRED_SCOPES.filter((s) => !scopes.includes(s)) : [];
+    scopes && !hasWildcard
+      ? REQUIRED_SCOPES.filter((s) => !scopes.includes(s))
+      : [];
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-subtle bg-sunken p-3">
@@ -201,26 +256,39 @@ function ThemePanel({ config }: { config: ProviderConfig }) {
         <dt className="text-subtle">Store</dt>
         <dd>
           {config.storeName ?? config.storeSlug ?? "— (run Test connection)"}
-          {config.storeId && <span className="text-subtle"> · #{config.storeId}</span>}
-          {config.orgId && <span className="text-subtle"> · org {config.orgId}</span>}
+          {config.storeId && (
+            <span className="text-subtle"> · #{config.storeId}</span>
+          )}
+          {config.orgId && (
+            <span className="text-subtle"> · org {config.orgId}</span>
+          )}
         </dd>
         <dt className="text-subtle">Domain</dt>
         <dd>{config.domain ?? "—"}</dd>
         <dt className="text-subtle">Theme (main / prod)</dt>
         <dd>
           {config.themeId ?? "—"}
-          {config.themeName && <span className="text-subtle"> · {config.themeName}</span>}
+          {config.themeName && (
+            <span className="text-subtle"> · {config.themeName}</span>
+          )}
         </dd>
         <dt className="text-subtle">Theme (draft / staging)</dt>
         <dd>{config.draftThemeId ?? "— (created at build time)"}</dd>
         <dt className="text-subtle">Commerce</dt>
-        <dd>{config.commerceEnabled == null ? "—" : config.commerceEnabled ? "enabled" : "disabled"}</dd>
+        <dd>
+          {config.commerceEnabled == null
+            ? "—"
+            : config.commerceEnabled
+              ? "enabled"
+              : "disabled"}
+        </dd>
         <dt className="text-subtle">Scopes</dt>
         <dd>{scopes ? (hasWildcard ? "full (*)" : scopes.join(", ")) : "—"}</dd>
       </dl>
       {missingScopes.length > 0 && (
         <Banner tone="attention">
-          Key is missing scope(s): <b>{missingScopes.join(", ")}</b> — builds/publish may fail.
+          Key is missing scope(s): <b>{missingScopes.join(", ")}</b> —
+          builds/publish may fail.
         </Banner>
       )}
       {storefrontUrl && (
@@ -234,8 +302,9 @@ function ThemePanel({ config }: { config: ProviderConfig }) {
         </a>
       )}
       <p className="fg-body-sm text-subtle">
-        Builds run on a draft theme (previewed via a token on this domain); publish (draft → live)
-        and rollback run through the website pipeline&apos;s release stage.
+        Builds run on a draft theme (previewed via a token on this domain);
+        publish (draft → live) and rollback run through the website
+        pipeline&apos;s release stage.
       </p>
     </div>
   );

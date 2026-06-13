@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CoolifyApiError, CoolifyClient } from './client.js';
 
 function makeFetch(handler: (req: { url: string; init: RequestInit }) => Response) {
-  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : (input as URL).toString();
     return handler({ url, init: init ?? {} });
   }) as unknown as typeof fetch;

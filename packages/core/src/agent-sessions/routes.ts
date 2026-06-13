@@ -11,7 +11,6 @@ import {
   agentSessions,
   devices,
   issues,
-  projectMembers,
   projects,
   usageRecords,
 } from '../db/schema.js';
@@ -22,6 +21,13 @@ import {
   broadcastTurnTruncated,
 } from './broadcast.js';
 import {
+  createChatSessionRow,
+  dispatchChatTurn,
+  noClaudeClient,
+  resolveChatDevice,
+} from './chat-turn.js';
+import { pageContextSchema } from './page-context.js';
+import {
   findTurnInSession,
   loadTurns,
   replaceMessageAt,
@@ -29,14 +35,19 @@ import {
   syncTurnsWithMessages,
   truncateTurnsAfter,
 } from './turns-helpers.js';
-import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess, type ProjectAccess } from '../lib/project-access.js';
+import {
+  assertProjectRole,
+  loadProjectAccess,
+  loadVisibleProjectIds,
+  projectRoleAtLeast,
+} from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
+import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import {
   DEFAULT_PIPELINE_HEALTH,
@@ -128,11 +139,6 @@ const forbidden = (message: string) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-function isOwnerOrAdmin(access: ProjectAccess, userId: string): boolean {
-  if (access.ownerId === userId) return true;
-  return access.role === 'owner' || access.role === 'admin';
-}
-
 /**
  * Extract a non-empty string prompt from a `messages[i].content` value. The
  * legacy schema lets `content` be either a string or an array of structured
@@ -183,49 +189,6 @@ agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 // Strapi parity), so core just resolves a device, persists the session row,
 // and publishes the right event into the device's room.
 
-// Bubble panel auto-injects which page (and which issue) the user is on so
-// the agent can ground its replies without the user typing "ISS-XX" by hand.
-const pageContextSchema = z
-  .object({
-    page: z.string().min(1).max(40),
-    issueId: z.uuid().optional(),
-    issueDisplayId: z.string().max(40).optional(),
-    issueTitle: z.string().max(500).optional(),
-    issueStatus: z.string().max(40).optional(),
-  })
-  .strict();
-
-type PageContext = z.infer<typeof pageContextSchema>;
-
-function formatPageContextLine(ctx: PageContext): string {
-  const sanitize = (s: string) => s.replace(/[\r\n\]]/g, ' ').replace(/'/g, '');
-  const parts: string[] = [`page=${sanitize(ctx.page)}`];
-  if (ctx.issueDisplayId) parts.push(sanitize(ctx.issueDisplayId));
-  if (ctx.issueTitle) parts.push(`'${sanitize(ctx.issueTitle)}'`);
-  if (ctx.issueStatus) parts.push(`status=${sanitize(ctx.issueStatus)}`);
-  return `[Context: ${parts.join(' ')}]`;
-}
-
-// Re-validate persisted pageContext on read — corrupt jsonb rows could feed
-// garbage into samePageContext / formatPageContextLine. safeParse failure is
-// treated as "no prior context" so the next turn re-prepends the header.
-function readPersistedPageContext(value: unknown): PageContext | null {
-  if (!value || typeof value !== 'object') return null;
-  const parsed = pageContextSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-function samePageContext(a: PageContext | null | undefined, b: PageContext): boolean {
-  if (!a) return false;
-  if (a.page !== b.page) return false;
-  // If both sides have an issueId, they must match. When one side is missing
-  // (the issue query hadn't resolved yet on the previous turn, or this turn),
-  // treat the same page as a match — otherwise we'd echo the [Context: …] line
-  // every time the issue data races into place.
-  if (a.issueId && b.issueId) return a.issueId === b.issueId;
-  return true;
-}
-
 const startBodySchema = z
   .object({
     projectSlug: z.string().min(1).max(120),
@@ -273,14 +236,11 @@ const promptBuiltBodySchema = z
     message: 'prompt or error required',
   });
 
-const MAX_RESUMABLE_CONTEXT = 600_000;
-
 async function loadProjectBySlug(slug: string) {
   const [row] = await db
     .select({
       id: projects.id,
       slug: projects.slug,
-      ownerId: projects.ownerId,
       repoPath: projects.repoPath,
       defaultDeviceId: projects.defaultDeviceId,
     })
@@ -288,55 +248,6 @@ async function loadProjectBySlug(slug: string) {
     .where(eq(projects.slug, slug))
     .limit(1);
   return row ?? null;
-}
-
-async function findResumableSessionForIssue(
-  issueId: string,
-  deviceId: string | null,
-): Promise<{
-  id: string;
-  claudeSessionId: string | null;
-  messages: unknown;
-  metadata: unknown;
-  usage: unknown;
-  startedAt: Date | null;
-} | null> {
-  const rows = await db
-    .select({
-      id: agentSessions.id,
-      claudeSessionId: agentSessions.claudeSessionId,
-      messages: agentSessions.messages,
-      metadata: agentSessions.metadata,
-      usage: agentSessions.usage,
-      status: agentSessions.status,
-      startedAt: agentSessions.startedAt,
-    })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(
-          // jsonb metadata.issueId equality is encoded as a JSONB ->> 'issueId' compare.
-          // We avoid heavy SQL fragments here — the session list per device is
-          // small enough that filtering in app code is fine.
-          agentSessions.id,
-          agentSessions.id,
-        ),
-        inArray(agentSessions.status, ['completed', 'idle']),
-      ),
-    )
-    .orderBy(desc(agentSessions.updatedAt))
-    .limit(20);
-
-  for (const r of rows) {
-    if (!r.claudeSessionId) continue;
-    const meta = r.metadata as { issueId?: string; deviceId?: string } | null;
-    if (meta?.issueId !== issueId) continue;
-    if (deviceId && meta?.deviceId !== deviceId) continue;
-    const usage = r.usage as { contextUsed?: number } | null;
-    if ((usage?.contextUsed ?? 0) > MAX_RESUMABLE_CONTEXT) continue;
-    return r as never;
-  }
-  return null;
 }
 
 agentSessionRoutes.post(
@@ -359,44 +270,21 @@ agentSessionRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
-    let deviceId: string | null = null;
-    // Whether an ONLINE Claude-capable client (desktop or a chat-capable
-    // runner) was found. `findAvailableDeviceForProject` only returns an online
-    // device; the `defaultDeviceId` fallback below may point at an offline one.
-    let onlineClient = false;
-    if (input.origin !== 'desktop') {
-      deviceId = await findAvailableDeviceForProject(project.id);
-      onlineClient = deviceId !== null;
-    }
-    if (!deviceId && project.defaultDeviceId) {
-      deviceId = project.defaultDeviceId;
-    }
-
-    // ISS-321 / ISS-420 — any non-desktop session (chat OR agent review/reindex)
-    // needs a live Claude-capable client: it's dispatched via `agent:start` /
-    // `agent:review` / `agent:reindex` to the device room, so with no online
-    // device it would be created `running` with no listener and hang silently
-    // forever (the sweeper only reaps pipeline/pm). Fail fast instead. Only
-    // desktop-origin sessions — where the desktop runs Claude locally — are
-    // exempt. (The desktop is the sole caller that creates agent sessions, and
-    // it always sends origin='desktop', so this does not regress review/reindex.)
-    if (input.origin !== 'desktop' && !onlineClient) {
-      throw new HTTPException(409, {
-        message:
-          'No online Claude client for this project. Open the desktop app or bring a chat-capable runner online, then try again.',
-        cause: { code: 'NO_CLAUDE_CLIENT' },
-      });
-    }
+    // Single device-resolution shared with /send + schedule: desktop runs
+    // Claude locally (no device); web/automation needs an online runner or 409.
+    // Without a live client a non-desktop session would be created `running`
+    // with no listener and hang forever (the sweeper only reaps pipeline/pm).
+    const client = await resolveChatDevice(
+      { projectId: project.id, deviceId: null, metadata: null },
+      input.origin,
+    );
+    if (!client.isLocal && !client.deviceId) throw noClaudeClient('project');
 
     const agentName = input.type ?? 'agent';
     const rawPrompt =
       input.prompt ?? (isReindex ? `${agentName}: Knowledge Reindex` : `${agentName}: Review`);
-    const effectivePrompt =
-      input.pageContext && !isAgentSession
-        ? `${formatPageContextLine(input.pageContext)}\n${rawPrompt}`
-        : rawPrompt;
 
     let title: string;
     if (isAgentSession) {
@@ -421,132 +309,44 @@ agentSessionRoutes.post(
         .slice(0, 120);
     }
 
-    // cwd for `claude` runs on the CHOSEN runner's box → prefer that runner's
-    // binding path; project.repoPath is only valid on the owner's own machine.
-    const bindingRepo = deviceId ? await resolveRunnerRepoPath(project.id, deviceId) : null;
-    const rp = resolveRepoPath(input.repoPath, bindingRepo ?? project.repoPath);
-    const now = Date.now();
-    const userMessage = { role: 'user', content: effectivePrompt, timestamp: now };
+    // ===== Agent review / reindex: a one-shot run with no follow-up turns, so
+    // it does NOT ride the chat-turn dispatcher — it publishes its own
+    // `agent:review` / `agent:reindex` event. Device resolution is still the
+    // shared `resolveChatDevice` above so it cannot drift from chat. =====
+    if (isAgentSession) {
+      const deviceId = client.deviceId;
+      const bindingRepo = deviceId ? await resolveRunnerRepoPath(project.id, deviceId) : null;
+      const rp = resolveRepoPath(input.repoPath, bindingRepo ?? project.repoPath);
+      const metadata: Record<string, unknown> = { type: input.type };
+      if (deviceId) metadata.deviceId = deviceId;
+      if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];
 
-    // Issue-triggered chats may resume an in-progress Claude CLI session.
-    if (
-      !isAgentSession &&
-      input.issueIds &&
-      input.issueIds.length === 1 &&
-      input.origin !== 'desktop' &&
-      deviceId &&
-      input.issueIds[0]
-    ) {
-      const firstIssueId = input.issueIds[0];
-      const resumable = await findResumableSessionForIssue(firstIssueId, deviceId);
-      if (resumable) {
-        // Resumable replays through /start but persists like /send: re-prepend
-        // the [Context: …] header only when page or issue changed since the
-        // previous turn so a long-lived chat doesn't echo it every reply.
-        const prevMeta = (resumable.metadata ?? {}) as Record<string, unknown> & {
-          pageContext?: unknown;
-        };
-        const lastPageContext = readPersistedPageContext(prevMeta.pageContext);
-        const shouldPrepend =
-          input.pageContext && !samePageContext(lastPageContext, input.pageContext);
-        const resumablePrompt = shouldPrepend
-          ? `${formatPageContextLine(input.pageContext as PageContext)}\n${rawPrompt}`
-          : rawPrompt;
-        const resumableUserMessage = { role: 'user', content: resumablePrompt, timestamp: now };
-        const prevMessages = Array.isArray(resumable.messages) ? resumable.messages : [];
-        const messages = [...prevMessages, resumableUserMessage];
-        const nowDate = new Date();
-        const resumableUpdates: Record<string, unknown> = {
-          status: 'running',
-          messages,
-          title,
-          startedAt: resumable.startedAt ?? nowDate,
-          lastHeartbeatAt: nowDate,
-          failureReason: null,
-          updatedAt: nowDate,
-        };
-        if (input.pageContext) {
-          resumableUpdates.metadata = { ...prevMeta, pageContext: input.pageContext };
-        }
-        const { updated, resumeSync } = await db.transaction(async (tx) => {
-          const [row] = await tx
-            .update(agentSessions)
-            .set(resumableUpdates)
-            .where(eq(agentSessions.id, resumable.id))
-            .returning();
-          if (!row) throw notFound('agent session not found');
-          // Materialize the appended user turn in the same transaction so the
-          // legacy blob and turn rows can never diverge if the insert throws.
-          const sync = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);
-          return { updated: row, resumeSync: sync };
-        });
-        for (const t of resumeSync.appended) {
-          broadcastTurnAppended(updated, t);
-        }
-
-        roomManager.publish(deviceRoom(deviceId), {
-          event: 'agent:send',
-          data: {
-            sessionId: updated.id,
-            message: resumablePrompt,
-            claudeSessionId: resumable.claudeSessionId,
+      const nowDate = new Date();
+      const userMessage = { role: 'user', content: rawPrompt, timestamp: nowDate.getTime() };
+      const interactiveRun = await openOneShotRun({ projectId: project.id, kind: 'interactive' });
+      const { inserted, startSync } = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(agentSessions)
+          .values({
+            projectId: project.id,
+            userId,
+            deviceId,
+            pipelineRunId: interactiveRun.id,
+            title,
+            status: 'running',
+            startedAt: nowDate,
+            lastHeartbeatAt: nowDate,
             repoPath: rp,
-            projectSlug: input.projectSlug,
-          },
-        });
-        broadcastSession(updated, 'agent-session.updated');
-        return c.json(updated);
-      }
-    }
+            messages: [userMessage] as never,
+            metadata: metadata as never,
+          })
+          .returning();
+        if (!row) throw new Error('agent_sessions: insert returned no row');
+        const sync = await syncTurnsWithMessages(row.id, [], [userMessage], tx);
+        return { inserted: row, startSync: sync };
+      });
+      for (const t of startSync.appended) broadcastTurnAppended(inserted, t);
 
-    const metadata: Record<string, unknown> = isAgentSession ? { type: input.type } : {};
-    if (deviceId) metadata.deviceId = deviceId;
-    if (input.issueIds?.length === 1 && input.issueIds[0]) {
-      metadata.issueId = input.issueIds[0];
-    }
-    // Agent (review/reindex) sessions skip the prepended [Context: …] line, so
-    // don't persist pageContext on metadata either — otherwise a follow-up
-    // /send would see a non-null lastPageContext and dedup against context the
-    // agent never actually saw.
-    if (input.pageContext && !isAgentSession) {
-      metadata.pageContext = input.pageContext;
-    }
-
-    // Interactive sessions start `running` (worker streams within seconds);
-    // stamp startedAt + heartbeat for parity with the pipeline path.
-    const nowDate = new Date();
-    // ISS-101 — every agent_session belongs to a pipeline_run. Interactive
-    // (user-driven) sessions get a one-shot 'interactive' run that's closed
-    // when the session terminates.
-    const interactiveRun = await openOneShotRun({ projectId: project.id, kind: 'interactive' });
-    const { inserted, startSync } = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(agentSessions)
-        .values({
-          projectId: project.id,
-          userId,
-          deviceId,
-          pipelineRunId: interactiveRun.id,
-          title,
-          status: 'running',
-          startedAt: nowDate,
-          lastHeartbeatAt: nowDate,
-          repoPath: rp,
-          messages: [userMessage] as never,
-          metadata: metadata as never,
-        })
-        .returning();
-      if (!row) throw new Error('agent_sessions: insert returned no row');
-      // Seed the per-turn table inside the same transaction so a failed turn
-      // insert rolls back the session row instead of leaving an orphan.
-      const sync = await syncTurnsWithMessages(row.id, [], [userMessage], tx);
-      return { inserted: row, startSync: sync };
-    });
-    for (const t of startSync.appended) {
-      broadcastTurnAppended(inserted, t);
-    }
-
-    {
       const auditIssueId = extractIssueId(inserted.metadata);
       if (auditIssueId) {
         await safeRecordActivity({
@@ -556,53 +356,49 @@ agentSessionRoutes.post(
           payload: { sessionId: inserted.id, title: inserted.title ?? null },
         });
       }
-    }
 
-    if (input.origin === 'desktop') {
-      // Desktop-originated sessions echo the user message to web subscribers.
-      roomManager.publish(projectRoom(project.id), {
-        event: 'agent:user-message',
-        data: { sessionId: inserted.id, content: effectivePrompt },
-      });
-    }
-
-    if (input.origin !== 'desktop' && deviceId) {
-      if (isAgentSession) {
-        const agentEvent = isReindex ? 'agent:reindex' : 'agent:review';
+      if (!client.isLocal && deviceId) {
         roomManager.publish(deviceRoom(deviceId), {
-          event: agentEvent,
-          data: {
-            sessionId: inserted.id,
-            repoPath: rp,
-            projectSlug: input.projectSlug,
-          },
-        });
-      } else {
-        let enriched = effectivePrompt;
-        if (!input.preBuilt) {
-          try {
-            const preamble = await buildChatPreamble(project.id);
-            enriched = preamble + effectivePrompt;
-          } catch {
-            // non-fatal — proceed with raw prompt
-          }
-        }
-        roomManager.publish(deviceRoom(deviceId), {
-          event: 'agent:start',
-          data: {
-            sessionId: inserted.id,
-            repoPath: rp,
-            prompt: enriched,
-            projectSlug: input.projectSlug,
-            preBuilt: input.preBuilt ?? false,
-            systemPrompt: TOOL_REFERENCE,
-          },
+          event: isReindex ? 'agent:reindex' : 'agent:review',
+          data: { sessionId: inserted.id, repoPath: rp, projectSlug: input.projectSlug },
         });
       }
+      broadcastSession(inserted, 'agent-session.created');
+      return c.json(inserted, 201);
     }
 
-    broadcastSession(inserted, 'agent-session.created');
-    return c.json(inserted, 201);
+    // ===== Interactive chat: create an empty row, then deliver turn #1 through
+    // the ONE shared dispatcher — identical to a /send follow-up. =====
+    const metadata: Record<string, unknown> = {};
+    if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];
+    const session = await createChatSessionRow({
+      projectId: project.id,
+      userId,
+      title,
+      repoPath: input.repoPath ?? null,
+      metadata: Object.keys(metadata).length ? metadata : null,
+    });
+    const updated = await dispatchChatTurn({
+      session,
+      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
+      client,
+      message: rawPrompt,
+      origin: input.origin ?? null,
+      pageContext: input.pageContext ?? null,
+      preBuilt: input.preBuilt ?? false,
+      broadcastEvent: 'agent-session.created',
+    });
+
+    const auditIssueId = extractIssueId(updated.metadata);
+    if (auditIssueId) {
+      await safeRecordActivity({
+        issueId: auditIssueId,
+        actor: { type: 'user', id: userId },
+        action: 'agent-session.created',
+        payload: { sessionId: updated.id, title: updated.title ?? null },
+      });
+    }
+    return c.json(updated, 201);
   },
 );
 
@@ -623,111 +419,34 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
       throw forbidden('not the session owner');
     }
 
-    // ISS-420 — a follow-up needs a live client to deliver `agent:send` to. The
-    // session is pinned to its original device; if that device is missing or
-    // offline the publish below is silently skipped and the turn hangs `running`
-    // forever. Fail fast (mirrors the `/start` NO_CLAUDE_CLIENT guard) instead of
-    // returning ok for an undeliverable message. Desktop runs Claude locally.
-    if (input.origin !== 'desktop') {
-      const pinnedDeviceId =
-        ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
-      const [pinnedDevice] = pinnedDeviceId
-        ? await db
-            .select({ status: devices.status })
-            .from(devices)
-            .where(eq(devices.id, pinnedDeviceId))
-            .limit(1)
-        : [];
-      if (pinnedDevice?.status !== 'online') {
-        throw new HTTPException(409, {
-          message:
-            'No online Claude client for this session. Open the desktop app or bring its runner online, then try again.',
-          cause: { code: 'NO_CLAUDE_CLIENT' },
-        });
-      }
-    }
+    // Resolve the client through the SHARED path: reuse the session's pinned
+    // device, else pick a fresh online runner (this is what fixes the web cold
+    // start — a session created empty via `POST /` has no pin, so the old
+    // pin-only guard 409'd forever). No online remote client → 409.
+    const client = await resolveChatDevice(session, input.origin);
+    if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
 
-    const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & {
-      pageContext?: unknown;
-    };
-    const lastPageContext = readPersistedPageContext(prevMeta.pageContext);
-    // Re-prepend the [Context: …] line only when the user has switched page or
-    // issue since the previous turn — otherwise every send would echo the same
-    // header to the agent.
-    const shouldPrepend =
-      input.pageContext && !samePageContext(lastPageContext, input.pageContext);
-    const decoratedMessage = shouldPrepend
-      ? `${formatPageContextLine(input.pageContext as PageContext)}\n${input.message}`
-      : input.message;
+    const [project] = await db
+      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+      .limit(1);
+    if (!project) throw notFound('project not found');
 
-    const prevMessages = Array.isArray(session.messages) ? session.messages : [];
-    const messages = [
-      ...prevMessages,
-      { role: 'user', content: decoratedMessage, timestamp: Date.now() },
-    ];
-    // Worker activity → CAS queued→running and bump heartbeat for the sweeper.
-    const sendNow = new Date();
-    const sendUpdates: Record<string, unknown> = {
-      messages: messages as never,
-      status: 'running',
-      lastHeartbeatAt: sendNow,
-      updatedAt: sendNow,
-    };
-    if (input.pageContext) {
-      sendUpdates.metadata = { ...prevMeta, pageContext: input.pageContext };
-    }
-    if (session.status === 'queued' || session.startedAt == null) {
-      sendUpdates.startedAt = sendNow;
-    }
-    const { updated, sendSync } = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(agentSessions)
-        .set(sendUpdates)
-        .where(eq(agentSessions.id, input.sessionId))
-        .returning();
-      if (!row) throw notFound('agent session not found');
-      const sync = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);
-      return { updated: row, sendSync: sync };
+    await dispatchChatTurn({
+      session,
+      project,
+      client,
+      message: input.message,
+      origin: input.origin ?? null,
+      pageContext: input.pageContext ?? null,
+      claudeSessionId: input.claudeSessionId ?? null,
     });
-    for (const t of sendSync.appended) {
-      broadcastTurnAppended(updated, t);
-    }
-
-    if (input.origin === 'desktop') {
-      roomManager.publish(projectRoom(updated.projectId), {
-        event: 'agent:user-message',
-        data: { sessionId: updated.id, content: decoratedMessage },
-      });
-    }
-
-    if (input.origin !== 'desktop') {
-      const meta = (updated.metadata ?? {}) as { deviceId?: string };
-      const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
-      if (targetDeviceId) {
-        const [project] = await db
-          .select({ slug: projects.slug })
-          .from(projects)
-          .where(eq(projects.id, updated.projectId))
-          .limit(1);
-        roomManager.publish(deviceRoom(targetDeviceId), {
-          event: 'agent:send',
-          data: {
-            sessionId: updated.id,
-            message: decoratedMessage,
-            claudeSessionId: input.claudeSessionId ?? updated.claudeSessionId ?? null,
-            repoPath: updated.repoPath ?? null,
-            projectSlug: project?.slug ?? null,
-          },
-        });
-      }
-    }
-
-    broadcastSession(updated, 'agent-session.updated');
     return c.json({ ok: true });
   },
 );
@@ -749,8 +468,8 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
       throw forbidden('not the session owner');
     }
 
@@ -807,8 +526,8 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
       throw forbidden('not the session owner');
     }
 
@@ -821,20 +540,22 @@ agentSessionRoutes.post(
     // CAS on the active statuses we observed: a worker write that lands
     // between the SELECT and this UPDATE will not be in queued/running
     // anymore, and we'd silently no-op rather than stomp it.
-    const [updated] = await db
-      .update(agentSessions)
-      .set({
-        status: 'failed',
+    const [updated] = await applyKernelTransition(db, {
+      entity: 'session',
+      to: 'failed',
+      set: {
         failureReason: 'user_cancelled',
         updatedAt: cancelNow,
-      })
-      .where(
-        and(
-          eq(agentSessions.id, id),
-          inArray(agentSessions.status, ['queued', 'running', 'idle']),
-        ),
-      )
-      .returning();
+      },
+      where: and(
+        eq(agentSessions.id, id),
+        inArray(agentSessions.status, ['queued', 'running', 'idle']),
+      ),
+      fromStatus: session.status,
+      reason: 'user_cancelled',
+      actor: { type: 'user', id: userId },
+      source: 'session-cancel',
+    });
     if (!updated) {
       // CAS lost — return the current row so the client can re-render.
       const [current] = await db
@@ -884,7 +605,7 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const meta = (session.metadata ?? {}) as { type?: string; issueId?: string };
     if (!meta.type || !PIPELINE_SESSION_TYPES.has(meta.type)) {
@@ -951,7 +672,7 @@ agentSessionRoutes.get(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const sessionMatch = sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid = ${id}`;
 
@@ -1017,7 +738,7 @@ agentSessionRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     // Group counts by deviceId × status. Devices without any active session
     // simply don't appear; the UI lists those via the standard devices API.
@@ -1066,10 +787,12 @@ agentSessionRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
+    assertProjectRole(access, 'admin', 'owner or admin role required');
 
-    const { sweepZombieSessions } = await import('../pipeline/sweeper.js');
-    const result = await sweepZombieSessions(new Date(), { projectId });
+    // ISS-449 — the loop monitor owns session reaps now; the sweeper's
+    // sweepZombieSessions was demoted to an alarm pass.
+    const { reapZombieSessions } = await import('../jobs/loop-monitor.js');
+    const result = await reapZombieSessions(new Date(), { projectId });
     return c.json(result);
   },
 );
@@ -1087,7 +810,7 @@ agentSessionRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const deviceId =
       (await findAvailableDeviceForProject(project.id)) ?? project.defaultDeviceId;
@@ -1150,7 +873,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const [updated] = await db
       .update(agentSessions)
@@ -1230,30 +953,21 @@ agentSessionRoutes.get(
 
     if (projectId) {
       const access = await loadProjectAccess(projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      if (!access.role) throw forbidden('not a project member');
       conditions.push(eq(agentSessions.projectId, projectId));
     } else if (deviceId) {
       conditions.push(eq(agentSessions.deviceId, deviceId));
     } else {
-      // Cross-project view: restrict to caller-visible projects
-      // (owned + member). Pattern mirrors packages/core/src/chat-logs/routes.ts.
-      const visible = await db
-        .selectDistinct({ id: projects.id })
-        .from(projects)
-        .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-        .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+      // Cross-project view: restrict to caller-visible projects (explicit
+      // membership of any role, or org owner/admin).
+      const visible = await loadVisibleProjectIds(userId);
 
       if (visible.length === 0) {
         setTotalCount(c, 0);
         return c.json([]);
       }
 
-      conditions.push(
-        inArray(
-          agentSessions.projectId,
-          visible.map((v) => v.id),
-        ),
-      );
+      conditions.push(inArray(agentSessions.projectId, visible));
     }
 
     if (status) conditions.push(eq(agentSessions.status, status));
@@ -1331,24 +1045,20 @@ agentSessionRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
-    // ISS-101 — interactive REST-create path: one-shot pipeline_run per session.
-    const run = await openOneShotRun({ projectId: input.projectId, kind: 'interactive' });
-    const [inserted] = await db
-      .insert(agentSessions)
-      .values({
-        projectId: input.projectId,
-        userId,
-        deviceId: input.deviceId ?? null,
-        pipelineRunId: run.id,
-        title: input.title ?? null,
-        repoPath: input.repoPath ?? null,
-        claudeSessionId: input.claudeSessionId ?? null,
-        metadata: (input.metadata as never) ?? null,
-      })
-      .returning();
-    if (!inserted) throw new Error('agent_sessions: insert returned no row');
+    // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
+    // through `POST /send` → the shared chat-turn dispatcher (which picks the
+    // device), so this path deliberately does NOT pin a device or dispatch.
+    const inserted = await createChatSessionRow({
+      projectId: input.projectId,
+      userId,
+      deviceId: input.deviceId ?? null,
+      title: input.title ?? null,
+      repoPath: input.repoPath ?? null,
+      claudeSessionId: input.claudeSessionId ?? null,
+      metadata: (input.metadata as Record<string, unknown> | null | undefined) ?? null,
+    });
 
     broadcastSession(inserted, 'agent-session.created');
 
@@ -1380,8 +1090,21 @@ agentSessionRoutes.get(
     const [row] = await db.select().from(agentSessions).where(eq(agentSessions.id, id)).limit(1);
     if (!row) throw notFound('agent session not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    // A CLI runner reads its own session back with a device token to use the
+    // persisted `messages` as the baseline its PATCH appends onto (ISS-462). The
+    // PATCH path already honors the device principal; GET must too, or the
+    // baseline fetch 403s, the runner falls back to an EMPTY baseline, and every
+    // turn's PATCH overwrites the whole array — dropping the user turn + all
+    // prior history. Scope a device to ONLY the session dispatched to it; users
+    // keep the project-membership check.
+    if (c.get('principal') === 'device') {
+      if (row.deviceId !== c.get('deviceId')) {
+        throw forbidden('device does not own this session');
+      }
+    } else {
+      const access = await loadProjectAccess(row.projectId, userId);
+      if (!access.role) throw forbidden('not a project member');
+    }
 
     return c.json(row);
   },
@@ -1416,7 +1139,14 @@ agentSessionRoutes.patch(
       }
     } else {
       const access = await loadProjectAccess(existing.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      assertProjectRole(access, 'member');
+      if (
+        existing.userId &&
+        existing.userId !== userId &&
+        !projectRoleAtLeast(access.role, 'admin')
+      ) {
+        throw forbidden('not the session owner');
+      }
     }
 
     const patchNow = new Date();
@@ -1553,8 +1283,8 @@ agentSessionRoutes.delete(
     // ISS-465 — owner-or-admin gate (was admin-only). A user can delete their
     // own chat; project owners/admins can delete any session.
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-    if (existing.userId && existing.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+    assertProjectRole(access, 'member');
+    if (existing.userId && existing.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
       throw forbidden('not the session owner');
     }
 
@@ -1585,7 +1315,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     broadcastSession(existing, `agent-session.relay.${event}`, { payload: data });
     return c.json({ relayed: true });
@@ -1613,7 +1343,7 @@ agentSessionRoutes.get(
     if (!row) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     return c.json(normalisePipelineControl(row.pipelineControl));
   },
@@ -1640,9 +1370,9 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    // Pause/resume is a privileged operation — only owner or admin role.
+    // Pause/resume is a privileged operation — effective admin only.
     // Plain members can read state but cannot mutate it.
-    if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
+    assertProjectRole(access, 'admin', 'owner or admin role required');
 
     const prev = existing.pipelineControl as PipelineControl | null;
     const merged = buildPipelineControl(prev, input, userId);
@@ -1702,7 +1432,7 @@ agentSessionRoutes.get(
     if (!row) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     return c.json((row.pipelineHealth as PipelineHealth | null) ?? DEFAULT_PIPELINE_HEALTH);
   },
@@ -1732,7 +1462,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const merged = buildPipelineHealth(existing.pipelineHealth as PipelineHealth | null, input);
 
@@ -1769,7 +1499,7 @@ agentSessionRoutes.get(
     if (!row) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     return c.json(row.pipelineTelemetry ?? null);
   },
@@ -1796,7 +1526,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const [updated] = await db
       .update(agentSessions)
@@ -1842,7 +1572,9 @@ async function ensureSessionMember(sessionId: string, userId: string) {
     .limit(1);
   if (!session) throw notFound('agent session not found');
   const access = await loadProjectAccess(session.projectId, userId);
-  if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+  // Reads are project-visible: any effective role (incl. viewer) may see the
+  // session. Mutating callers must additionally gate via assertProjectRole.
+  if (!access.role) throw forbidden('not a project member');
   return { session, access };
 }
 
@@ -1886,10 +1618,10 @@ agentSessionRoutes.patch(
     const { content, expectedEditedAt } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
-    if (session.userId && session.userId !== userId) {
-      const access = await loadProjectAccess(session.projectId, userId);
-      if (!isOwnerOrAdmin(access, userId)) throw forbidden('not the session owner');
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+      throw forbidden('not the session owner');
     }
 
     const turn = await findTurnInSession(id, turnId);
@@ -1960,10 +1692,10 @@ agentSessionRoutes.post(
     const { id, turnId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
-    if (session.userId && session.userId !== userId) {
-      const access = await loadProjectAccess(session.projectId, userId);
-      if (!isOwnerOrAdmin(access, userId)) throw forbidden('not the session owner');
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+      throw forbidden('not the session owner');
     }
 
     if (session.status === 'running') {
@@ -2056,7 +1788,8 @@ agentSessionRoutes.post(
     const { fromTurnId, title } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
     const turn = await findTurnInSession(id, fromTurnId);
     if (!turn) throw notFound('turn not found');
 
@@ -2130,7 +1863,8 @@ agentSessionRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
     const messages = Array.isArray(session.messages) ? session.messages : [];
     const firstUser = messages.find((m) => {
       return !!m && typeof m === 'object' && (m as { role?: string }).role === 'user';

@@ -83,23 +83,25 @@ describe('memory write/get/delete integration (Phase 0)', () => {
 
   async function seedMember(): Promise<{ userId: string; projectId: string; token: string }> {
     const user = await createTestUser(harness.db);
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`,
-    );
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     const token = await signUserToken(user.id);
     return { userId: user.id, projectId: project.id, token };
   }
 
-  function stubEmbedding(vec: number[]) {
+  function stubEmbedding(_vec?: number[]) {
+    // Content-dependent vector: distinct text → distinct (near-orthogonal)
+    // vector. Required since memory-v2 phase 2 — note/knowledge writes run
+    // semantic dedup, so a constant stub vector would make every write a
+    // near-duplicate (cosine 1.0) and collapse distinct rows into one.
     const fake = {
-      embed: vi.fn(async () => vec),
-      embedBatch: vi.fn(async () => [vec]),
+      embed: vi.fn(async (text: string) => deterministicVector(text)),
+      embedBatch: vi.fn(async (texts: string[]) => texts.map((t) => deterministicVector(t))),
       resetBreaker: () => undefined,
     };
     embeddingsMod.resetEmbeddingsClient(
@@ -201,7 +203,7 @@ describe('memory write/get/delete integration (Phase 0)', () => {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({
           projectId,
-          source: 'step_handoff',
+          source: 'note',
           sourceRef: 'run:R/step:plan/attempt:1',
           textContent: 'plan handoff text',
           metadata: { run_id: 'R', step: 'plan', attempt: 1 },
@@ -214,7 +216,7 @@ describe('memory write/get/delete integration (Phase 0)', () => {
 
       const rows = await harness.db.execute(sql`
         SELECT id, source, source_ref, text_content, metadata FROM memories
-        WHERE project_id = ${projectId} AND source = 'step_handoff'
+        WHERE project_id = ${projectId} AND source_ref = 'run:R/step:plan/attempt:1'
       `);
       expect(rows.length).toBe(1);
       expect(rows[0]?.text_content).toBe('plan handoff text');
@@ -253,7 +255,7 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       expect(rows[0]?.metadata).toMatchObject({ revised: true });
     });
 
-    it('truncates textContent > 8192 chars and reports truncated:true', async () => {
+    it('stores FULL textContent but flags truncated:true when > 8192 chars', async () => {
       const { projectId, token } = await seedMember();
       const longText = 'x'.repeat(10_000);
 
@@ -269,16 +271,18 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       });
       expect(res.status).toBe(201);
       const body = (await res.json()) as { truncated: boolean };
+      // memory-v2 phase 0: only the embed input is cut at 8192; the stored
+      // text_content is always the full string. `truncated` flags the cut.
       expect(body.truncated).toBe(true);
 
       const rows = await harness.db.execute(sql`
         SELECT length(text_content) AS n FROM memories
         WHERE project_id = ${projectId} AND source_ref = 'big'
       `);
-      expect(Number(rows[0]?.n)).toBe(8192);
+      expect(Number(rows[0]?.n)).toBe(10_000);
     });
 
-    it('503 EMBEDDING_UNAVAILABLE when the embedding service is down', async () => {
+    it('degraded write (201, embedding NULL) when the embedding service is down', async () => {
       const { projectId, token } = await seedMember();
       const { EmbeddingUnavailableError } = embeddingsMod;
       stubEmbeddingFailure(new EmbeddingUnavailableError('breaker open'));
@@ -293,13 +297,19 @@ describe('memory write/get/delete integration (Phase 0)', () => {
           textContent: 't',
         }),
       });
-      expect(res.status).toBe(503);
+      // memory-v2 phase 1: an embeddings OUTAGE no longer 503s. The row is
+      // stored without a vector (degraded:true) and the backfill job
+      // re-embeds it later; it is keyword-searchable immediately.
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { degraded: boolean };
+      expect(body.degraded).toBe(true);
 
-      // Row must NOT exist (strict mode: embed fail → no DB write).
       const rows = await harness.db.execute(sql`
-        SELECT COUNT(*)::int AS n FROM memories WHERE project_id = ${projectId}
+        SELECT embedding FROM memories
+        WHERE project_id = ${projectId} AND source_ref = 'down'
       `);
-      expect(Number(rows[0]?.n)).toBe(0);
+      expect(rows.length).toBe(1);
+      expect(rows[0]?.embedding).toBeNull();
     });
 
     it('concurrent UPSERT on the same natural key produces exactly 1 row', async () => {
@@ -399,19 +409,18 @@ describe('memory write/get/delete integration (Phase 0)', () => {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({
           projectId,
-          source: 'step_handoff',
-          sourceRef: 'h-1',
-          textContent: 't',
+          source: 'knowledge',
+          sourceRef: 'k-1',
+          textContent: 'a distinct convention',
         }),
       });
 
-      const res = await app.request(
-        `/api/memory?projectId=${projectId}&source=step_handoff`,
-        { headers: { authorization: `Bearer ${token}` } },
-      );
+      const res = await app.request(`/api/memory?projectId=${projectId}&source=knowledge`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
       const rows = (await res.json()) as Array<{ source: string }>;
       expect(rows.length).toBe(1);
-      expect(rows[0]?.source).toBe('step_handoff');
+      expect(rows[0]?.source).toBe('knowledge');
     });
   });
 

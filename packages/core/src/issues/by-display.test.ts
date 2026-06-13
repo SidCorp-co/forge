@@ -18,7 +18,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -79,8 +80,9 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: 'someone-else',
+      orgId: 'org-1',
       role: null,
+      orgRole: null,
     });
     const res = await buildApp().request(
       `/api/projects/${PROJECT_ID}/issues/by-display/ISS-1`,
@@ -93,8 +95,9 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     selectLimit.mockResolvedValueOnce([]); // issue lookup empty
 
@@ -109,8 +112,9 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     selectLimit.mockResolvedValueOnce([
       {

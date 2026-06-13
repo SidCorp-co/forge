@@ -33,6 +33,7 @@ import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
+import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { deviceLoginRoutes } from './devices/login-routes.js';
 import { registerDevicePrune } from './devices/prune.js';
 import {
@@ -50,6 +51,7 @@ import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
+import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
@@ -81,6 +83,10 @@ import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
+import { registerMemoryConsolidation } from './memory/consolidation.js';
+import { registerMemoryDecay } from './memory/decay.js';
+import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
+import { registerMemoryExtraction } from './memory/extraction.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
@@ -93,6 +99,8 @@ import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
+import { orgInvitationRoutes } from './orgs/invitations-routes.js';
+import { orgRoutes } from './orgs/routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
   pipelineAnalyticsRoutes,
@@ -136,8 +144,9 @@ import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/ru
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
-import { skillStudioRoutes } from './skills/studio-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
+import { skillSmokeVerifyRoutes } from './skills/smoke-verify-routes.js';
+import { skillStudioRoutes } from './skills/studio-routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
@@ -254,6 +263,7 @@ registerPipelineSentryBreadcrumbs(hooks);
 registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
 registerCiFixPatternLearner(hooks);
+registerMemoryExtraction(hooks);
 registerNotifyMentionsSubscriber(hooks);
 registerPmSubscribers(hooks);
 
@@ -306,6 +316,8 @@ app.route('/api/projects', projectHealthRoutes);
 // health-routes precedent and keep the static-before-param ordering intent.
 app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/orgs', orgRoutes);
+app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);
 app.route('/api/projects', docsRoutes);
@@ -313,6 +325,7 @@ app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
 app.route('/api/projects', skillStudioRoutes);
+app.route('/api/projects', skillSmokeVerifyRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);
@@ -403,6 +416,15 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const port = env.PORT;
 
+  // memory-v2 phase 0 — the memories.embedding column is vector(1536); a
+  // mismatched EMBEDDINGS_DIM would pass client-side validation and then fail
+  // (or silently corrupt) at insert time. Crash loudly at boot instead.
+  if (env.EMBEDDINGS_DIM !== MEMORY_EMBEDDING_DIM) {
+    throw new Error(
+      `EMBEDDINGS_DIM=${env.EMBEDDINGS_DIM} does not match the memories.embedding column dimension (${MEMORY_EMBEDDING_DIM}). Changing the embedding dimension requires a migration that rebuilds the column and re-embeds all rows.`,
+    );
+  }
+
   await startBoss();
   await assertVaultBootSafety();
   registerCoolifyAdapter();
@@ -427,7 +449,11 @@ if (isMain) {
   await registerDispatcher();
   await registerPmDispatcher();
   await registerStaleDetector();
+  await registerIntegrationsHealthSweep();
   await registerDeviceStaleDetector();
+  await registerEmbeddingBackfill();
+  await registerMemoryDecay();
+  await registerMemoryConsolidation();
   await registerDevicePrune();
   await registerRunnerStaleDetector();
   await registerRetentionSweeper();

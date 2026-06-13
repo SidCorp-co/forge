@@ -28,10 +28,18 @@ describe('ISS-196 pipeline_outbox trigger', () => {
   beforeAll(async () => {
     harness = await setupTestDatabase();
     process.env.DATABASE_URL = harness.url;
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+    process.env.SMTP_HOST ??= 'localhost';
+    process.env.SMTP_PORT ??= '1025';
+    process.env.SMTP_USER ??= 'test';
+    process.env.SMTP_PASS ??= 'test';
+    process.env.SMTP_FROM ??= 'test@example.com';
+    process.env.APP_BASE_URL ??= 'http://localhost:3000';
   });
 
   afterAll(async () => {
-    await harness.dispose();
+    if (harness) await harness.cleanup();
   });
 
   beforeEach(async () => {

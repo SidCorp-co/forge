@@ -33,7 +33,7 @@ describe('integration vault — AES-256-GCM', () => {
     const enc = encryptSecret('secret');
     // Flip one byte in the ciphertext body (past iv:12 + tag:16).
     const tampered = Buffer.from(enc);
-    tampered[28] = tampered[28] ^ 0xff;
+    tampered[28] = (tampered[28] ?? 0) ^ 0xff;
     expect(() => decryptSecret(tampered)).toThrow();
   });
 

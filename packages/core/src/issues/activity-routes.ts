@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
@@ -72,7 +72,7 @@ issueActivityRoutes.get(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const conditions = [eq(activityLog.issueId, issueId)];
     if (before) conditions.push(lt(activityLog.createdAt, before));
@@ -139,7 +139,7 @@ issueActivityRoutes.patch(
     if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
 
     const access = await loadProjectAccess(activity.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const previous = (activity.payload as Record<string, unknown> | null) ?? {};
     const nextPayload = {
@@ -183,9 +183,7 @@ issueActivityRoutes.delete(
     if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
 
     const access = await loadProjectAccess(activity.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     await db.delete(activityLog).where(eq(activityLog.id, activityId));
     return c.body(null, 204);
@@ -209,7 +207,7 @@ projectActivityRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const conditions = [eq(issues.projectId, projectId)];
     if (before) conditions.push(lt(activityLog.createdAt, before));

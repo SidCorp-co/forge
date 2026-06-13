@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
   Badge,
+  type BadgeProps,
   Banner,
   Button,
   Card,
@@ -12,14 +12,17 @@ import {
   Field,
   Input,
   SegmentedControl,
-  type BadgeProps,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useMemo, useState } from "react";
+import { ConnectionOwnerField } from "./connection-owner-field";
+import { ENV_OPTIONS } from "./status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
   useIntegrationsList,
+  useOrgConnectionLocked,
   useRotateIntegrationSecret,
   useTestIntegration,
   useUpdateProviderIntegration,
@@ -31,11 +34,6 @@ import type {
   ProviderConfig,
 } from "../types";
 
-const ENV_OPTIONS: { value: IntegrationEnvironment; label: string }[] = [
-  { value: "staging", label: "Staging" },
-  { value: "prod", label: "Production" },
-];
-
 interface BadgeView {
   label: string;
   tone: NonNullable<BadgeProps["tone"]>;
@@ -44,8 +42,10 @@ interface BadgeView {
 function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
   if (!existing.active) return { label: "Breaker open", tone: "red" };
-  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
-  if (existing.lastHealthStatus === "error") return { label: "Last deploy failed", tone: "red" };
+  if (existing.lastHealthStatus === "ok")
+    return { label: "Connected", tone: "green" };
+  if (existing.lastHealthStatus === "error")
+    return { label: "Last deploy failed", tone: "red" };
   return { label: "Untested", tone: "neutral" };
 }
 
@@ -63,14 +63,19 @@ export function CoolifySection({ projectId }: { projectId: string }) {
     () => (list.data?.items ?? []).filter((i) => i.provider === "coolify"),
     [list.data],
   );
-  const existing = useMemo(() => rows.find((i) => i.environment === env), [rows, env]);
+  const existing = useMemo(
+    () => rows.find((i) => i.environment === env),
+    [rows, env],
+  );
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Coolify deploy</CardTitle>
-          <Badge tone={badgeFor(existing).tone}>{badgeFor(existing).label}</Badge>
+          <Badge tone={badgeFor(existing).tone}>
+            {badgeFor(existing).label}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -101,8 +106,14 @@ interface EnvPanelProps {
   onRefetch: () => void;
 }
 
-function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPanelProps) {
+function EnvironmentPanel({
+  projectId,
+  environment,
+  existing,
+  onRefetch,
+}: EnvPanelProps) {
   const create = useCreateProviderIntegration(projectId);
+  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
   const remove = useDeleteProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
@@ -114,13 +125,34 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
   const [resourceUuid, setResourceUuid] = useState(cfg.resourceUuid ?? "");
   const [branch, setBranch] = useState(cfg.branch ?? "main");
   const [apiToken, setApiToken] = useState("");
-  const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
+  // The panel mounts before the list query resolves (key={env} only remounts on
+  // env switches), so re-seed the form when the existing row arrives — without
+  // this the fields stay blank over a configured integration and a Save would
+  // wipe its config with empty strings.
+  const [seededFor, setSeededFor] = useState(existing?.id ?? null);
+  if ((existing?.id ?? null) !== seededFor) {
+    setSeededFor(existing?.id ?? null);
+    setBaseUrl(cfg.baseUrl ?? "");
+    setResourceUuid(cfg.resourceUuid ?? "");
+    setBranch(cfg.branch ?? "main");
+  }
+  const [testResult, setTestResult] = useState<IntegrationTestResult | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   // Returned exactly once by create + rotate-secret; the server never re-emits it.
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
 
   const isProd = environment === "prod";
   const saving = create.isPending || update.isPending;
+  // Org-shared credential: only an org owner/admin may change the CONNECTION
+  // tier (base URL + token). The deploy target (resourceUuid/branch) is
+  // binding-tier and stays editable by a project admin, as do Test + Delete.
+  const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
+  // True when this project has no binding-level resourceUuid of its own and
+  // the value shown comes off the shared connection's config.
+  const bindingCfg = (existing?.bindingConfig ?? {}) as ProviderConfig;
+  const resourceInherited = Boolean(existing && !bindingCfg.resourceUuid && cfg.resourceUuid);
 
   async function handleSave() {
     setError(null);
@@ -128,11 +160,20 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
     setTestResult(null);
     try {
       if (existing) {
+        // resourceUuid/branch are binding-tier (per project) — always sendable
+        // by a project admin. baseUrl + token are connection-tier (shared) and
+        // org-gated, so an org-locked save must not include them (403).
+        const config: Record<string, unknown> = {};
+        if (resourceUuid.trim()) config.resourceUuid = resourceUuid.trim();
+        if (branch.trim()) config.branch = branch.trim();
+        if (!orgLocked && baseUrl.trim()) config.baseUrl = baseUrl.trim();
         await update.mutateAsync({
           id: existing.id,
           body: {
-            config: { baseUrl, resourceUuid, branch },
-            ...(apiToken.trim() ? { secrets: { apiToken: apiToken.trim() } } : {}),
+            config,
+            ...(apiToken.trim() && !orgLocked
+              ? { secrets: { apiToken: apiToken.trim() } }
+              : {}),
           },
         });
       } else {
@@ -145,6 +186,7 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
           environment,
           config: { baseUrl, resourceUuid, branch },
           secrets: { apiToken: apiToken.trim() },
+          ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
         // Surface the auto-minted HMAC secret once — the operator must paste it
         // into Coolify's webhook settings or inbound callbacks fail sig checks.
@@ -188,35 +230,62 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
 
   function handleDelete() {
     if (!existing) return;
-    if (!window.confirm(`Delete the ${environment} Coolify integration?`)) return;
+    if (!window.confirm(`Delete the ${environment} Coolify integration?`))
+      return;
     remove.mutate(existing.id);
   }
 
   return (
-    <div className={`flex flex-col gap-4 rounded-lg border p-4 ${isProd ? "border-red" : "border-subtle"}`}>
+    <div
+      className={`flex flex-col gap-4 rounded-lg border p-4 ${isProd ? "border-red" : "border-subtle"}`}
+    >
       <p className="fg-body-sm text-muted">
         {isProd
           ? "⚠ Production — manual confirmation gate before every deploy."
           : "Staging — auto-dispatch on release."}
       </p>
 
-      <Field label="Base URL" required>
+      {!existing && (
+        <ConnectionOwnerField
+          projectId={projectId}
+          value={ownerOrgId}
+          onChange={setOwnerOrgId}
+        />
+      )}
+      <Field
+        label="Base URL"
+        required
+        hint="Shared connection — applies to every project using this credential."
+      >
         <Input
           type="url"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="https://coolify.example.com"
+          disabled={orgLocked}
         />
       </Field>
-      <Field label="Resource UUID" required>
+      <Field
+        label="Resource UUID"
+        required
+        hint={
+          resourceInherited
+            ? "Per-project deploy target. Currently inherited from the shared connection — saving stores a project-level override."
+            : "Per-project deploy target — this project's Coolify application."
+        }
+      >
         <Input
           value={resourceUuid}
           onChange={(e) => setResourceUuid(e.target.value)}
           placeholder="application uuid from Coolify"
         />
       </Field>
-      <Field label="Branch" required>
-        <Input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="main" />
+      <Field label="Branch" required hint="Per-project — the branch this resource deploys from.">
+        <Input
+          value={branch}
+          onChange={(e) => setBranch(e.target.value)}
+          placeholder="main"
+        />
       </Field>
       <Field
         label="API token"
@@ -233,43 +302,75 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
           value={apiToken}
           onChange={(e) => setApiToken(e.target.value)}
           placeholder={existing ? "•••••••• (unchanged)" : "Coolify API token"}
+          disabled={orgLocked}
         />
       </Field>
 
+      {orgLocked && (
+        <p className="fg-body-sm text-muted">
+          Org-shared credential — only an org owner/admin can change the base URL or API token.
+          The deploy target (resource UUID + branch) is yours to configure per project.
+        </p>
+      )}
       {error && <Banner tone="danger">{error}</Banner>}
       {testResult &&
         (testResult.status === "ok" ? (
-          <Banner tone="success">{testResult.message ?? "Connection OK"}</Banner>
+          <Banner tone="success">
+            {testResult.message ?? "Connection OK"}
+          </Banner>
         ) : (
-          <Banner tone="danger">{testResult.message ?? "Connection failed"}</Banner>
+          <Banner tone="danger">
+            {testResult.message ?? "Connection failed"}
+          </Banner>
         ))}
 
       <div className="flex flex-wrap items-center gap-3">
+        {/* Save stays enabled under orgLocked — it then writes only the
+            binding-tier deploy target, which a project admin may change. */}
         <Button variant="primary" onClick={handleSave} loading={saving}>
           {existing ? "Save" : "Create integration"}
         </Button>
         {existing && (
-          <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
+          <Button
+            variant="secondary"
+            onClick={handleTest}
+            loading={test.isPending}
+          >
             Test connection
           </Button>
         )}
         {existing && (
-          <Button variant="secondary" onClick={handleRotate} loading={rotate.isPending}>
+          <Button
+            variant="secondary"
+            onClick={handleRotate}
+            loading={rotate.isPending}
+            disabled={orgLocked}
+          >
             Rotate webhook secret
           </Button>
         )}
         {existing && (
-          <Button variant="danger" icon="trash" loading={remove.isPending} onClick={handleDelete}>
+          <Button
+            variant="danger"
+            icon="trash"
+            loading={remove.isPending}
+            onClick={handleDelete}
+          >
             Delete
           </Button>
         )}
       </div>
 
       {revealedSecret && (
-        <SecretRevealBanner secret={revealedSecret} onDismiss={() => setRevealedSecret(null)} />
+        <SecretRevealBanner
+          secret={revealedSecret}
+          onDismiss={() => setRevealedSecret(null)}
+        />
       )}
 
-      {existing && <WebhookHint integrationSecretSet={existing.integrationSecretSet} />}
+      {existing && (
+        <WebhookHint integrationSecretSet={existing.integrationSecretSet} />
+      )}
 
       {isProd && existing && (
         <ProdConfirmBanner
@@ -282,7 +383,10 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
   );
 }
 
-function SecretRevealBanner({ secret, onDismiss }: { secret: string; onDismiss: () => void }) {
+function SecretRevealBanner({
+  secret,
+  onDismiss,
+}: { secret: string; onDismiss: () => void }) {
   const [copied, setCopied] = useState(false);
   async function handleCopy() {
     try {
@@ -298,10 +402,12 @@ function SecretRevealBanner({ secret, onDismiss }: { secret: string; onDismiss: 
       <div className="flex flex-col gap-2">
         <span className="fg-label">Webhook signing secret — shown once</span>
         <span className="fg-body-sm">
-          Copy this value into Coolify&apos;s webhook settings as the HMAC secret. Forge will not
-          show it again — rotate to issue a new one.
+          Copy this value into Coolify&apos;s webhook settings as the HMAC
+          secret. Forge will not show it again — rotate to issue a new one.
         </span>
-        <code className="block break-all rounded bg-sunken p-2 font-mono text-[11px]">{secret}</code>
+        <code className="block break-all rounded bg-sunken p-2 font-mono text-[11px]">
+          {secret}
+        </code>
         <div className="flex gap-2">
           <Button size="sm" onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
@@ -315,19 +421,24 @@ function SecretRevealBanner({ secret, onDismiss }: { secret: string; onDismiss: 
   );
 }
 
-function WebhookHint({ integrationSecretSet }: { integrationSecretSet: boolean }) {
+function WebhookHint({
+  integrationSecretSet,
+}: { integrationSecretSet: boolean }) {
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
       <span className="fg-label text-subtle">Inbound webhook</span>
       <span className="fg-body-sm">
-        Point Coolify at: <code className="font-mono">/api/webhooks/in/&lt;project-slug&gt;</code>
+        Point Coolify at:{" "}
+        <code className="font-mono">/api/webhooks/in/&lt;project-slug&gt;</code>
       </span>
       <span className="fg-body-sm">
-        Signature header: <code className="font-mono">X-Coolify-Signature-256</code> (sha256=…)
+        Signature header:{" "}
+        <code className="font-mono">X-Coolify-Signature-256</code> (sha256=…)
       </span>
       {!integrationSecretSet && (
         <span className="fg-body-sm text-red">
-          Signing secret missing — save this integration to mint one, then paste it into Coolify.
+          Signing secret missing — save this integration to mint one, then paste
+          it into Coolify.
         </span>
       )}
     </div>
@@ -348,15 +459,17 @@ function ProdConfirmBanner({
       <div className="flex flex-col gap-2">
         <span className="fg-label">Production approval gate</span>
         <span className="fg-body-sm">
-          Production deploys never auto-dispatch. Click confirm when ready to release the gate for
-          an in-flight pipeline run.
+          Production deploys never auto-dispatch. Click confirm when ready to
+          release the gate for an in-flight pipeline run.
         </span>
         <div>
           <Button size="sm" loading={pending} onClick={onConfirm}>
             Confirm production deploy
           </Button>
         </div>
-        <span className="font-mono text-[10px] text-subtle">integration: {integrationId}</span>
+        <span className="font-mono text-[10px] text-subtle">
+          integration: {integrationId}
+        </span>
       </div>
     </Banner>
   );

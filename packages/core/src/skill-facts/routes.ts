@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { jobTypes } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { listResolvedFacts } from '../prompt/facts/resolve.js';
 
@@ -33,7 +33,7 @@ skillFactsRoutes.get('/', requireAuth(), assertEmailVerified(), async (c) => {
 
   const userId = c.get('userId');
   const access = await loadProjectAccess(parsed.data.projectId, userId);
-  if (!access.role && access.ownerId !== userId) {
+  if (!access.role) {
     throw new HTTPException(403, { message: 'not a project member', cause: { code: 'FORBIDDEN' } });
   }
 

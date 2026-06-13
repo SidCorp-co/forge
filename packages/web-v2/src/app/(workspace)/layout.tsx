@@ -17,6 +17,7 @@ import {
   type Crumb,
 } from "@/design";
 import { cn } from "@/lib/utils/cn";
+import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
@@ -45,6 +46,11 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
   { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
+  // Promoted from SECONDARY_DESTINATIONS (ISS-433): since ISS-429/431 this is
+  // the owner CONNECTION DIRECTORY (manage shared credentials, enable/disable,
+  // projects-using-it) — a management surface, not a redundant status view, so
+  // it must be discoverable without ⌘K.
+  { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
 ];
 
 /** Destinations dropped from the rail to keep it minimal — still reachable via
@@ -53,7 +59,6 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
 const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
   { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
   { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
-  { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
   { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
 ];
@@ -101,6 +106,9 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
+  // Reactive query string so the pinned-tab bar can exact-match a pin's
+  // deep-link (ISS-436 — pathname-only matching lit up EVERY pin on the route).
+  const locationSearch = useLocationSearch();
   const { user, isLoading, logout } = useAuth();
   const { toast } = useToast();
   const { data: projects } = useProjects();
@@ -299,12 +307,17 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         : null,
     [railProject, projectMark, railConsole],
   );
+  // Derived from WORKSPACE_ITEMS so the compact and expanded rails can never
+  // drift (ISS-433 live-E2E caught this list as a stale hardcoded duplicate —
+  // it was missing the promoted Integrations row).
   const compactWorkspaceItems = useMemo<RailItem[]>(
-    () => [
-      { key: "overview", label: "Overview", icon: "grid", badge: attentionCount },
-      { key: "usage", label: "Usage", icon: "dollar" },
-      { key: "runners", label: "Runners", icon: "server" },
-    ],
+    () =>
+      WORKSPACE_ITEMS.map((it) => ({
+        key: it.key,
+        label: it.label,
+        icon: it.icon,
+        ...(it.key === "overview" ? { badge: attentionCount } : {}),
+      })),
     [attentionCount],
   );
   // Project tier with the Issues queue badge (= open issues). Agents would carry
@@ -676,7 +689,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
         <PinnedTabBar
           tabs={pinnedViews.views}
-          activeHref={pathname}
+          activeHref={`${pathname}${locationSearch}`}
           onSelect={(href) => router.push(href)}
           onRemove={pinnedViews.remove}
         />

@@ -1,53 +1,46 @@
-import { eq, sql } from 'drizzle-orm';
+/**
+ * DEMOTED (ISS-449 / ISS-442 C3) — stale-job ALARM, no longer a reaper.
+ *
+ * The loop monitor's result hop (`jobs/loop-monitor.ts` `reapResultMisses`)
+ * now owns the no-progress timeout: same predicate (dispatched/running, no
+ * `result` event, quiet past RESULT_QUIET_MINUTES), evaluated every minute on
+ * the pipeline-sweeper tick and reaped through `applyKernelTransition` +
+ * `finalizeFailedJob`. This 5-minute schedule remains ONLY as an assertion:
+ * a row still matching past the loop threshold PLUS a margin is a loop MISS,
+ * logged as `loop-miss` and surfaced as a `pipeline_wedge` — coverage proof
+ * during the cutover (deletion happens at the ISS-442 parent integration).
+ *
+ * The ALARM_MARGIN_MINUTES guard exists because this schedule is independent
+ * of the loop tick: a row crossing the 60-min threshold between loop ticks
+ * would otherwise race a false alarm. With the margin, only a row the loop
+ * has demonstrably had time to handle (and didn't) fires.
+ */
+
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { boss } from '../queue/boss.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
-import { finalizeFailedJob } from './finalize-failure.js';
+import { RESULT_QUIET_MINUTES } from './loop-monitor.js';
 
 export const STALE_DETECTOR_QUEUE = 'stale-job-detector';
-const STALE_THRESHOLD = "interval '60 minutes'";
 
-type StaleJobRow = {
+/** Extra quiet time past the loop's threshold before this alarm fires —
+ *  covers the loop's 1-minute tick cadence with slack. */
+const ALARM_MARGIN_MINUTES = 5;
+
+type StaleAlarmRow = {
   id: string;
   project_id: string;
-  attempts: number;
-  status: string;
-  type: string;
   issue_id: string | null;
-  agent_session_id: string | null;
-  dispatched_at: Date | null;
-  [key: string]: unknown;
 };
 
 /**
- * Find `dispatched`/`running` jobs whose latest job_event is older than 60
- * minutes (or whose dispatched_at is, if no events). Mark them failed and
- * route through the shared finalize tail (ISS-393) — verify-first retry
- * (device-rotated onto a fresh runner) or, when exhausted, park the issue at
- * `waiting` + reap the run. No progress is strong evidence the worker is
- * wedged; the retry engine's device rotation gives the next attempt a clean
- * runner rather than re-pinning the dead one.
- *
- * ISS-258 — `dispatched` is now covered. A runner that crashes between
- * dispatch and emitting `job_events:started` leaves the row in `dispatched`
- * with no events; the old sweeper filtered to `status='running'` and so
- * never reaped these rows. Combined with the cap=1 runner gate this stalled
- * the project queue indefinitely (Forge Dev 2026-05-27).
- *
- * `dispatched` jobs have no `job_events` rows yet, so the GREATEST clause
- * collapses to `j.dispatched_at` for them.
- *
- * Skip jobs that already emitted a `result` event — the runner reported
- * completion but the finalize path failed to flip `jobs.status='done'`.
- * That is a finalize-recovery problem, not a stale-runner problem; marking
- * it failed here is a false positive (Forge Dev 2026-05-27, release job of
- * ISS-258 itself — runner merged the PR, emitted result, then WS dropped
- * mid-finalize). Threshold also bumped from 5min → 60min because legitimate
- * forge-release/forge-code work can run >5min between event emissions on
- * heavy merges + test runs.
+ * Detect (do NOT reap) `dispatched`/`running` jobs whose latest job_event is
+ * older than the loop's result threshold + margin (or whose dispatched_at is,
+ * if no events), excluding jobs that already emitted a `result` event (those
+ * are finalize-drops, not stale runners — ISS-258 false-positive guard,
+ * preserved verbatim from the reaper era).
  */
 export async function runStaleSweep(): Promise<{
   failed: number;
@@ -56,17 +49,17 @@ export async function runStaleSweep(): Promise<{
   const t0 = Date.now();
   // ISS-280 — emit a sweep-start trace so a silently-unscheduled detector
   // (the registration is wired at index.ts, but a pg-boss schedule failure
-  // would otherwise be invisible) is detectable from logs alone. This is the
-  // slow 60-min backstop; the fast path is reconcileOrphanedJobs (sweeper.ts).
-  logger.debug('stale-job-detector: sweep start');
-  const stale = await db.execute<StaleJobRow>(
+  // would otherwise be invisible) is detectable from logs alone.
+  logger.debug('stale-job-detector: alarm sweep start');
+  const thresholdMinutes = RESULT_QUIET_MINUTES + ALARM_MARGIN_MINUTES;
+  const stale = await db.execute<StaleAlarmRow>(
     sql.raw(`
     WITH last_event AS (
       SELECT job_id, MAX(ts) AS max_ts
       FROM job_events
       GROUP BY job_id
     )
-    SELECT j.*
+    SELECT j.id, j.project_id, j.issue_id
     FROM jobs j
     LEFT JOIN last_event le ON le.job_id = j.id
     WHERE j.status IN ('dispatched', 'running')
@@ -75,53 +68,29 @@ export async function runStaleSweep(): Promise<{
         WHERE job_id = j.id AND kind = 'result'
       )
       AND GREATEST(COALESCE(le.max_ts, j.dispatched_at), j.dispatched_at) <
-          now() - ${STALE_THRESHOLD}
+          now() - interval '${thresholdMinutes} minutes'
   `),
   );
 
-  let failedCount = 0;
-
-  for (const row of stale) {
-    // CAS-flip to failed, then re-select the camelCase Drizzle row so the
-    // shared finalize tail (verify-first retry / park-to-waiting) runs against
-    // a typed JobRow rather than the raw snake_case sweep row.
-    const updated = await db.execute<StaleJobRow>(
-      sql.raw(`
-      UPDATE jobs
-      SET status = 'failed',
-          error = 'stale',
-          finished_at = now(),
-          failure_kind = 'transient',
-          failure_reason = 'runner stale (no progress / no started event for >60min)',
-          classifier_version = 1
-      WHERE id = '${row.id}' AND status IN ('dispatched', 'running')
-      RETURNING id
-    `),
-    );
-    if (!updated[0]) continue;
-    failedCount++;
-
-    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, row.id)).limit(1);
-    if (!jobRow) continue;
-
-    roomManager.publish(projectRoom(jobRow.projectId), {
-      event: 'job.failed',
-      data: { jobId: jobRow.id, status: 'failed', error: 'stale', reason: 'stale' },
-    });
-
-    try {
-      await finalizeFailedJob(jobRow, {
-        error: 'runner stale (no progress / no started event for >60min)',
+  if (stale.length > 0) {
+    logger.warn({ hop: 'result', entity: 'job', ids: stale.map((r) => r.id) }, 'loop-miss');
+    for (const row of stale) {
+      await emitPipelineWedge({
+        projectId: row.project_id,
+        issueId: row.issue_id,
+        hop: 'result',
+        entity: 'job',
+        entityId: row.id,
+        reason: `loop-miss: job quiet for >${thresholdMinutes}min and the result hop did not reap it`,
+        action:
+          'Inspect core logs for a thrown result-hop handler; if the job is genuinely wedged, use the single-job cancel escape hatch (forge_jobs cancel).',
       });
-    } catch (err) {
-      logger.error(
-        { err, jobId: jobRow.id, issueId: jobRow.issueId },
-        'stale-detector: finalizeFailedJob threw, job stays failed',
-      );
     }
   }
 
-  return { failed: failedCount, durationMs: Date.now() - t0 };
+  // `failed` retains its name for the result-shape consumers (logs/tests) but
+  // now counts ALARMED loop misses — this pass performs no terminal writes.
+  return { failed: stale.length, durationMs: Date.now() - t0 };
 }
 
 let registered = false;

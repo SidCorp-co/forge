@@ -24,9 +24,16 @@ const selectWhereLimit = vi.fn(() => ({ limit: selectLimit }));
 const whereResolver = vi.fn();
 const innerJoinWhere = vi.fn(() => whereResolver());
 const innerJoin = vi.fn(() => ({ where: innerJoinWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhereLimit,
+}));
 const selectFrom = vi.fn(() => ({
   where: selectWhereLimit,
   innerJoin,
+  leftJoin: selectLeftJoin,
 }));
 
 const insertValues = vi.fn(async () => undefined);
@@ -85,6 +92,11 @@ const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OWNER_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_ID = '33333333-3333-4333-8333-333333333333';
 
+/** Queue the single loadProjectAccess join row (projects ⨝ members ⨝ org members). */
+function queueAccess(memberRole: 'admin' | 'member' | 'viewer' | null, orgRole: string | null = null) {
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole, orgRole }]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -118,10 +130,9 @@ describe('memberRoutes — POST /:projectId/members/invite', () => {
 
   it('403 FORBIDDEN when caller is a regular member (not owner/admin)', async () => {
     const token = await signUserToken(OTHER_ID);
-    // 1: email verified, 2: loadProjectAndCallerRole → project, 3: member role lookup
+    // 1: email verified, 2: loadProjectAccess join row (plain member)
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+    queueAccess('member');
 
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/invite`, {
       method: 'POST',
@@ -136,10 +147,11 @@ describe('memberRoutes — POST /:projectId/members/invite', () => {
 
   it('201 on happy path — owner invites a non-member; returns token in test env', async () => {
     const token = await signUserToken(OWNER_ID);
-    // 1: email verified, 2: project, 3: caller member (owner), 4: inviter email, 5: existing user lookup (none)
+    // 1: email verified, 2: access (admin), 3: project name, 4: inviter email,
+    // 5: existing user lookup (none)
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'Acme', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    queueAccess('admin', 'owner');
+    selectLimit.mockResolvedValueOnce([{ name: 'Acme' }]);
     selectLimit.mockResolvedValueOnce([{ email: 'owner@example.com' }]);
     selectLimit.mockResolvedValueOnce([]); // no existing user with that email
 
@@ -169,8 +181,8 @@ describe('memberRoutes — POST /:projectId/members/invite', () => {
   it('409 ALREADY_MEMBER when target user is already a project member', async () => {
     const token = await signUserToken(OWNER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'Acme', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    queueAccess('admin', 'owner');
+    selectLimit.mockResolvedValueOnce([{ name: 'Acme' }]);
     selectLimit.mockResolvedValueOnce([{ email: 'owner@example.com' }]);
     selectLimit.mockResolvedValueOnce([{ id: OTHER_ID }]); // existing user
     selectLimit.mockResolvedValueOnce([{ userId: OTHER_ID }]); // already a member
@@ -190,27 +202,25 @@ describe('memberRoutes — POST /:projectId/members/invite', () => {
 });
 
 describe('memberRoutes — DELETE /:projectId/members/:userId', () => {
-  it('409 OWNER_REMOVAL_BLOCKED when target is the project owner', async () => {
+  it('404 NOT_FOUND when target has no membership row', async () => {
     const token = await signUserToken(OWNER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // target membership
+    queueAccess('admin', 'owner');
+    selectLimit.mockResolvedValueOnce([]); // target membership missing
 
-    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/${OWNER_ID}`, {
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/${OTHER_ID}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(404);
     const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('OWNER_REMOVAL_BLOCKED');
+    expect(body.code).toBe('NOT_FOUND');
   });
 
-  it('204 when owner removes a regular member', async () => {
+  it('204 when project admin removes a regular member', async () => {
     const token = await signUserToken(OWNER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    queueAccess('admin', 'owner');
     selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
 
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/${OTHER_ID}`, {
@@ -226,8 +236,7 @@ describe('memberRoutes — GET /:projectId/members/invitations', () => {
   it('200 with pending invitations (owner) — no token leaked, expired flag set', async () => {
     const token = await signUserToken(OWNER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    queueAccess('admin', 'owner');
     const past = new Date(Date.now() - 1000);
     const future = new Date(Date.now() + 60_000);
     whereResolver.mockResolvedValueOnce([
@@ -261,8 +270,7 @@ describe('memberRoutes — GET /:projectId/members/invitations', () => {
   it('403 FORBIDDEN when caller is a regular member', async () => {
     const token = await signUserToken(OTHER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+    queueAccess('member');
 
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/invitations`, {
       headers: { authorization: `Bearer ${token}` },
@@ -275,8 +283,7 @@ describe('memberRoutes — DELETE /:projectId/members/invitations', () => {
   it('204 when owner revokes a pending invitation', async () => {
     const token = await signUserToken(OWNER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    queueAccess('admin', 'owner');
     deleteReturning.mockResolvedValueOnce([{ token: 'tok-1' }]);
 
     const res = await buildApp().request(
@@ -290,8 +297,7 @@ describe('memberRoutes — DELETE /:projectId/members/invitations', () => {
   it('404 INVITATION_NOT_FOUND when no pending invitation matches', async () => {
     const token = await signUserToken(OWNER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    queueAccess('admin', 'owner');
     deleteReturning.mockResolvedValueOnce([]);
 
     const res = await buildApp().request(
@@ -306,8 +312,7 @@ describe('memberRoutes — DELETE /:projectId/members/invitations', () => {
   it('403 FORBIDDEN when caller is a regular member', async () => {
     const token = await signUserToken(OTHER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
-    selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+    queueAccess('member');
 
     const res = await buildApp().request(
       `/api/projects/${PROJECT_ID}/members/invitations?email=pending@example.com`,

@@ -35,7 +35,7 @@ describe('comments threading', () => {
     await createTestProjectMember(harness.db, {
       userId: owner.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     const issueRows = await harness.db.execute<{ id: string }>(sql`
       INSERT INTO issues (project_id, title, created_by_id)

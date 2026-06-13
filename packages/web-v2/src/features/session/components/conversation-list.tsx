@@ -71,9 +71,20 @@ interface ConversationListProps {
   /** id of the currently-resolved conversation, marked with ● in the list. */
   activeId: string | undefined;
   onPick: (s: SessionRow) => void;
+  /** Called when the currently-active conversation is archived/deleted, so the
+   *  screen can clear its resolved id instead of pointing at a gone row. */
+  onActiveRemoved?: () => void;
 }
 
-export function ConversationList({ open, onClose, projectId, rows, activeId, onPick }: ConversationListProps) {
+export function ConversationList({
+  open,
+  onClose,
+  projectId,
+  rows,
+  activeId,
+  onPick,
+  onActiveRemoved,
+}: ConversationListProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -143,11 +154,13 @@ export function ConversationList({ open, onClose, projectId, rows, activeId, onP
 
   const handleArchive = (s: SessionRow) => {
     archive.mutate({ id: s.id, archived: !showArchived, metadata: s.metadata });
+    if (s.id === activeId) onActiveRemoved?.();
   };
 
   const handleDelete = (s: SessionRow) => {
     if (!window.confirm(`Delete "${conversationTitle(s)}"? This can't be undone.`)) return;
     remove.mutate(s.id);
+    if (s.id === activeId) onActiveRemoved?.();
   };
 
   return (

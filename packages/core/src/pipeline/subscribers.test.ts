@@ -39,12 +39,14 @@ describe('registerActivitySubscribers', () => {
       priority: 'high',
       category: null,
       assigneeId: null,
+      reportedBy: null,
       labels: [],
     };
     await bus.emit('issueCreated', {
       issueId: ISSUE_ID,
       projectId: PROJECT_ID,
       actor: ACTOR,
+      status: 'open',
       snapshot,
     });
     expect(safeRecordActivity).toHaveBeenCalledWith({

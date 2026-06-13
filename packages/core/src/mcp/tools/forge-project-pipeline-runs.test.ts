@@ -29,7 +29,10 @@ const selectWhere = vi.fn(() => ({
   orderBy: selectOrderBy,
   groupBy: selectGroupBy,
 }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -60,6 +63,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -117,7 +122,7 @@ beforeEach(() => {
 describe('forge_project_pipeline_runs (action=list)', () => {
   it('returns runs filtered by issueId/status when device owner is member', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
     selectLimit.mockResolvedValueOnce([baseRun]); // runs query
 
     const result = (await tool.handler({
@@ -141,7 +146,7 @@ describe('forge_project_pipeline_runs (action=get)', () => {
   it('returns the run plus jobCounts', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
     selectGroupBy.mockResolvedValueOnce([
       { status: 'queued', count: 1 },
       { status: 'running', count: 2 },
@@ -176,12 +181,18 @@ describe('forge_project_pipeline_runs (action=get)', () => {
 describe('forge_project_pipeline_runs (action=pause/resume/cancel)', () => {
   function memberRunLookup() {
     selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+  }
+
+  /** pause/resume/cancel re-check WRITER access on the run's project. */
+  function writerCheck() {
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
   }
 
   it('pause delegates to the shared pure handler', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     memberRunLookup();
+    writerCheck();
     pauseSpy.mockResolvedValueOnce({ ...baseRun, status: 'paused' });
     const result = (await tool.handler({ action: 'pause', runId: RUN_ID })) as {
       run: { status: string };
@@ -193,6 +204,7 @@ describe('forge_project_pipeline_runs (action=pause/resume/cancel)', () => {
   it('resume delegates to the shared pure handler', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     memberRunLookup();
+    writerCheck();
     resumeSpy.mockResolvedValueOnce({ ...baseRun, status: 'running' });
     const result = (await tool.handler({ action: 'resume', runId: RUN_ID })) as {
       run: { status: string };
@@ -204,6 +216,7 @@ describe('forge_project_pipeline_runs (action=pause/resume/cancel)', () => {
   it('cancel returns the side-effect summary', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     memberRunLookup();
+    writerCheck();
     cancelSpy.mockResolvedValueOnce({
       run: { ...baseRun, status: 'cancelled' },
       cancelledJobIds: ['j1'],

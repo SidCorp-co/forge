@@ -20,7 +20,7 @@ Single trunk = `main`. **No `develop`, no `staging`, no long-lived release branc
 | Feature flags | Incomplete work merges behind `isEnabled('flagName')` (default off, env-controlled) |
 | Hot-fix | Same as feature: branch from main, merge back fast. No separate hotfix track. |
 | Revert culture | If `main` breaks, revert within 30 min. Don't push fix-forward unless revert is structurally impossible. |
-| Pre-push hook | `.githooks/pre-push` validates branch names + runs build + tests on packages with changed files. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
+| Pre-push hook | `.githooks/pre-push` — cheap guards only (warns on branch naming, hard-fails the tauri `bundle.active` guard). Builds/tests are opt-in: `PREPUSH_BUILD=1` / `PREPUSH_FULL=1`. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
 | Release tagging | Tag `vX.Y.Z` on commits when ready to ship. No release branch. |
 
 ### Branch naming — pick one scheme
@@ -46,22 +46,22 @@ Single trunk = `main`. **No `develop`, no `staging`, no long-lived release branc
 - ≤ 5 words, ≤ 50 chars. Total branch ≤ 60 chars.
 - **One issue per branch.** No multi-issue (`ISS-261-262-…`) — split into separate branches.
 
-The pre-push hook calls `scripts/check-branch-name.sh` to enforce this. Run it ad-hoc:
+The pre-push hook warns on violations (`scripts/check-branch-name.sh`); maintainers may ask you to rename before merge. Check a name ad-hoc:
 
 ```bash
 scripts/check-branch-name.sh                  # validates the current branch
 scripts/check-branch-name.sh feat/my-thing    # validates a name
 ```
 
-Full rationale + status-pipeline diagram + staging deploy details: [Trunk-Based Development guide](docs/guides/trunk-based-development.md).
+Full model: [Trunk-Based Development guide](docs/guides/trunk-based-development.md).
 
 ## Contribution workflow
 
 1. Fork the repo and create a branch from `main`. Pick a name from the
    [Branch naming](#branch-naming--pick-one-scheme) table above.
-2. Write code + tests. The pre-push hook gives fast local feedback (runs
-   `build` for the packages you touched; set `PREPUSH_FULL=1` to also run their
-   test suites). It is convenience, **not** the gate — CI is.
+2. Write code + tests. For local pre-flight, `PREPUSH_BUILD=1 git push` builds
+   the packages you touched (`PREPUSH_FULL=1` also runs their test suites).
+   The hook is convenience, **not** the gate — CI is.
 3. Commit using [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: add X` — new feature
    - `fix: Y` — bug fix

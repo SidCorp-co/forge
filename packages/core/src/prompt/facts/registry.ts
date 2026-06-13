@@ -66,7 +66,7 @@ const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Status LAST**, after all other work (commits, comments, handoff). Do NOT set \`merged_at\` or other derived fields by hand — \`merged_at\` is stamped automatically when you leave \`released\`.
 - **Branch discipline.** Run \`git branch --show-current\` + \`git status\` before any checkout. Branch from \`baseBranch\`: \`git checkout <baseBranch> && git pull && git checkout -b ISS-XX-short-title\`. Never switch branches mid-work.
 - **ISS-* branch is source of truth.** Kept alive through the pipeline. Squash-merges to \`productionBranch\` at release.
-- **Check in first.** Begin every step by calling \`forge_step_start\` (\`{ projectId, issueId, stage }\`) — it marks the issue in-flight when the step defines a working status (code/fix → \`in_progress\`) and returns your working bundle: full issue, comments, prior step handoffs, resolved \`branchConfig\`. Never assume data from the prompt. If the tool errors, fall back to \`forge_issues.get\` + \`forge_comments.list\` and set the working status yourself.
+- **Check in first.** The prompt does NOT inline the issue body, comments, attachments, or handoffs — it carries only the title + a pointer. Begin every step by calling \`forge_step_start\` (\`{ projectId, issueId, stage }\`) — it marks the issue in-flight when the step defines a working status (code/fix → \`in_progress\`) and returns your working bundle: full issue (with \`attachments[]\`), comments (each with \`attachments[]\`), prior step handoffs, resolved \`branchConfig\`. Never assume data from the prompt. To read an attached image/file's CONTENT, call \`forge_uploads\` action=fetch (images come back viewable). If the tool errors, fall back to \`forge_issues.get\` + \`forge_comments.list\` and set the working status yourself.
 
 ## Capture Learnings
 Only when you hit a reusable lesson — a project convention, a non-obvious gotcha, or a fix pattern that will help a DIFFERENT agent on a DIFFERENT issue. If it's specific to this issue, it belongs in \`sessionContext\`, not memory.
@@ -87,9 +87,10 @@ Merge with existing: increment sessionCount, append to arrays (skip duplicates),
 - Comments go to \`forge_comments.create\`, not to chat output.`;
 
 const TOOL_REFERENCE_TEXT = `## Tool Reference
-- **forge_step_start** — step check-in: marks the issue in-flight (when the step has a working status) and returns the bundle {issue, comments, handoffs, branchConfig} in one call. Idempotent; call FIRST on every step.
-- **forge_issues** — list/get/create/update issues. update.documentId is required. Writable: title, description, status, priority, category, complexity, acceptanceCriteria, plan, sessionContext, relations.
-- **forge_comments** — create requires issueDocumentId + body. list returns actor, body, isAI, timestamps.
+- **forge_step_start** — step check-in: marks the issue in-flight (when the step has a working status) and returns the bundle {issue (with attachments[]), comments (each with attachments[]), handoffs, branchConfig} in one call. Idempotent; call FIRST on every step.
+- **forge_issues** — list/get/create/update issues. get/update/transition return the issue with \`attachments[]\` ({id,name,mime,size,url}). update.documentId is required. Writable: title, description, status, priority, category, complexity, acceptanceCriteria, plan, sessionContext, relations.
+- **forge_comments** — create requires issueDocumentId + body. list returns actor, body, isAI, timestamps, and \`attachments[]\` per comment.
+- **forge_uploads** — attachment I/O. action=request mints a presigned upload URL (attach a file). action=fetch reads an EXISTING attachment by {target:"issue"|"comment", attachmentId} — images (png/jpeg/gif/webp) return as a viewable image block (vision), text/markdown inline; PDFs/video/oversized return metadata + download url only. Use fetch whenever an issue/comment references an attached image or file.
 - **forge_memory** — per-project semantic memory. \`.search({projectId, query, topK, sourceFilter?})\` → scored hits; \`.write({projectId, source, sourceRef, textContent, metadata?})\` upserts on (projectId, source, sourceRef); \`.get\` for natural-key lookups, \`.delete\` to remove. Sources: issue, comment, job, note, knowledge, decision, policy.
 - **forge_config** — read/write per-project settings: baseBranch, repoPath, productionBranch, agentPrompt, enabledSkills, conventions, knowledgeIndex.
 - **forge_skills** — list available skills + per-project enable/disable.`;

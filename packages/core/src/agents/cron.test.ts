@@ -22,7 +22,7 @@ function findString(node: unknown, target: string, depth = 0): boolean {
   return false;
 }
 
-const spawnMock = vi.fn(async () => ({ ok: true, jobId: 'pm-1' }) as const);
+const spawnMock = vi.fn(async (..._args: unknown[]) => ({ ok: true, jobId: 'pm-1' }) as const);
 vi.mock('../pm/spawner.js', () => ({
   spawnPmSession: (...args: unknown[]) => spawnMock(...(args as [unknown])),
 }));

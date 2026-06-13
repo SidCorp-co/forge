@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
   Badge,
   Banner,
@@ -15,10 +14,12 @@ import {
   Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
   useIntegrationsList,
+  useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../hooks";
@@ -29,6 +30,7 @@ import type {
   PostmanMode,
   PostmanRegion,
 } from "../types";
+import { ConnectionOwnerField } from "./connection-owner-field";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
 
@@ -79,26 +81,38 @@ export function PostmanSection({ projectId }: { projectId: string }) {
   );
 
   const create = useCreateProviderIntegration(projectId);
+  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const remove = useDeleteProviderIntegration(projectId);
 
   // Re-seed the form whenever the loaded integration identity changes.
   const [form, setForm] = useState<FormState>(() => initialForm(existing));
-  const [seededFor, setSeededFor] = useState<string | null>(existing?.id ?? null);
+  const [seededFor, setSeededFor] = useState<string | null>(
+    existing?.id ?? null,
+  );
   if ((existing?.id ?? null) !== seededFor) {
     setForm(initialForm(existing));
     setSeededFor(existing?.id ?? null);
   }
 
-  const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
+  const [testResult, setTestResult] = useState<IntegrationTestResult | null>(
+    null,
+  );
   const [testError, setTestError] = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
   const keyRequired = !existing; // a brand-new integration must carry a key
-  const canSave = (!keyRequired || form.apiKey.trim().length >= 8) && !create.isPending && !update.isPending;
+  // Org-shared credential: only an org owner/admin may change config/secrets/
+  // active. Test connection stays enabled (binding-level, project admin OK).
+  const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
+  const canSave =
+    (!keyRequired || form.apiKey.trim().length >= 8) &&
+    !create.isPending &&
+    !update.isPending &&
+    !orgLocked;
 
   async function handleSave() {
     setTestResult(null);
@@ -108,7 +122,9 @@ export function PostmanSection({ projectId }: { projectId: string }) {
         id: existing.id,
         body: {
           config: toConfig(form),
-          ...(form.apiKey.trim() ? { secrets: { apiKey: form.apiKey.trim() } } : {}),
+          ...(form.apiKey.trim()
+            ? { secrets: { apiKey: form.apiKey.trim() } }
+            : {}),
         },
       });
       setForm((f) => ({ ...f, apiKey: "" }));
@@ -118,6 +134,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
         environment: "prod",
         config: toConfig(form),
         secrets: { apiKey: form.apiKey.trim() },
+        ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
       setForm((f) => ({ ...f, apiKey: "" }));
     }
@@ -157,8 +174,9 @@ export function PostmanSection({ projectId }: { projectId: string }) {
       <CardContent>
         <div className="flex flex-col gap-4">
           <p className="fg-body-sm text-muted">
-            Store a Postman API key + write-target. When active, the official Postman MCP tools
-            are auto-injected into every agent/skill running for this project.
+            Store a Postman API key + write-target. When active, the official
+            Postman MCP tools are auto-injected into every agent/skill running
+            for this project.
           </p>
 
           <Field
@@ -176,10 +194,27 @@ export function PostmanSection({ projectId }: { projectId: string }) {
               placeholder={existing ? "•••••••• (unchanged)" : "PMAK-…"}
               value={form.apiKey}
               onChange={(e) => set("apiKey", e.target.value)}
+              disabled={orgLocked}
             />
           </Field>
 
-          <Field label="Workspace name" hint="The Postman workspace this project writes into.">
+          {orgLocked && (
+            <p className="fg-body-sm text-muted">
+              Org-shared credential — only an org owner/admin can change it.
+            </p>
+          )}
+
+          {!existing && (
+            <ConnectionOwnerField
+              projectId={projectId}
+              value={ownerOrgId}
+              onChange={setOwnerOrgId}
+            />
+          )}
+          <Field
+            label="Workspace name"
+            hint="The Postman workspace this project writes into."
+          >
             <Input
               value={form.workspaceName}
               onChange={(e) => set("workspaceName", e.target.value)}
@@ -195,7 +230,10 @@ export function PostmanSection({ projectId }: { projectId: string }) {
                 placeholder="(optional)"
               />
             </Field>
-            <Field label="Collection ID" hint="Optional — the collection to write.">
+            <Field
+              label="Collection ID"
+              hint="Optional — the collection to write."
+            >
               <Input
                 value={form.collectionId}
                 onChange={(e) => set("collectionId", e.target.value)}
@@ -237,16 +275,27 @@ export function PostmanSection({ projectId }: { projectId: string }) {
                 {testUser?.email ? ` (${testUser.email})` : ""}.
               </Banner>
             ) : (
-              <Banner tone="danger">{testResult.message ?? "Connection failed"}</Banner>
+              <Banner tone="danger">
+                {testResult.message ?? "Connection failed"}
+              </Banner>
             ))}
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="flex items-center gap-3">
-              <Button variant="primary" onClick={handleSave} loading={create.isPending || update.isPending} disabled={!canSave}>
+              <Button
+                variant="primary"
+                onClick={handleSave}
+                loading={create.isPending || update.isPending}
+                disabled={!canSave}
+              >
                 {existing ? "Save" : "Create integration"}
               </Button>
               {existing && (
-                <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
+                <Button
+                  variant="secondary"
+                  onClick={handleTest}
+                  loading={test.isPending}
+                >
                   Test connection
                 </Button>
               )}
@@ -255,7 +304,11 @@ export function PostmanSection({ projectId }: { projectId: string }) {
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2">
                   <span className="fg-body-sm text-muted">Enabled</span>
-                  <Toggle checked={existing.active} onChange={handleToggleActive} />
+                  <Toggle
+                    checked={existing.active}
+                    onChange={handleToggleActive}
+                    disabled={orgLocked}
+                  />
                 </label>
                 <Button
                   variant="danger"

@@ -1,4 +1,4 @@
-import { relations, sql } from 'drizzle-orm';
+import { type SQL, relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
@@ -190,13 +190,110 @@ export const refreshTokens = pgTable(
   }),
 );
 
+// === Organizations (org-level permission tier) ===
+//
+// Every project belongs to exactly ONE org (`projects.org_id` NOT NULL). Each
+// user gets a personal org at signup (and via the 0106 backfill); team orgs are
+// created explicitly. Org owner/admin derive an implicit project `admin` role
+// on every project in the org; org `member` derives NOTHING — project access
+// for plain members still requires a project_members row (or being in a
+// project of an org they admin). The single resolution rule lives in
+// `lib/authz.ts effectiveProjectRole` — do not re-implement it.
+
+export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
+export type OrgMemberRole = (typeof orgMemberRoles)[number];
+
+export const organizations = pgTable(
+  'organizations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull().unique(),
+    name: text('name').notNull(),
+    // Personal orgs are auto-created (one per user, partial-unique below),
+    // cannot be deleted, and are the default target for project creation.
+    isPersonal: boolean('is_personal').notNull().default(false),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    personalOwnerUq: uniqueIndex('organizations_personal_owner_uq')
+      .on(t.createdBy)
+      .where(sql`is_personal = true`),
+  }),
+);
+
+export const organizationMembers = pgTable(
+  'organization_members',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: orgMemberRoles }).notNull().default('member'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.orgId, t.userId] }),
+    userIdIdx: index('organization_members_user_id_idx').on(t.userId),
+  }),
+);
+
+export const orgInvitations = pgTable(
+  'org_invitations',
+  {
+    token: text('token').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    // 'owner' is never invitable — granting owner is an explicit in-app act.
+    role: text('role', { enum: orgMemberRoles }).notNull(),
+    inviterId: uuid('inviter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgEmailIdx: index('org_invitations_org_email_idx').on(t.orgId, t.email),
+    orgEmailPendingUq: uniqueIndex('org_invitations_org_email_pending_uq')
+      .on(t.orgId, t.email)
+      .where(sql`accepted_at IS NULL`),
+  }),
+);
+
+export const organizationsRelations = relations(organizations, ({ one, many }) => ({
+  creator: one(users, { fields: [organizations.createdBy], references: [users.id] }),
+  members: many(organizationMembers),
+  projects: many(projects),
+}));
+
+export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationMembers.orgId],
+    references: [organizations.id],
+  }),
+  user: one(users, { fields: [organizationMembers.userId], references: [users.id] }),
+}));
+
 export const projects = pgTable(
   'projects',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
-    ownerId: uuid('owner_id')
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    // Audit-only: who created the project. Carries NO authz semantics — the
+    // creator is granted a project_members `admin` row at create time and the
+    // effective role is always resolved via lib/authz.ts.
+    createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
@@ -222,7 +319,8 @@ export const projects = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    ownerIdIdx: index('projects_owner_id_idx').on(t.ownerId),
+    orgIdIdx: index('projects_org_id_idx').on(t.orgId),
+    createdByIdx: index('projects_created_by_idx').on(t.createdBy),
     apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
@@ -234,7 +332,9 @@ export const projects = pgTable(
 export const projectKinds = ['standard', 'website'] as const;
 export type ProjectKind = (typeof projectKinds)[number];
 
-export const projectMemberRoles = ['owner', 'admin', 'member'] as const;
+// Project roles (no `owner` — project "ownership" is an org concern; the org
+// owner/admin get implicit project `admin`). `viewer` is read-only.
+export const projectMemberRoles = ['admin', 'member', 'viewer'] as const;
 export type ProjectMemberRole = (typeof projectMemberRoles)[number];
 
 export const projectMembers = pgTable(
@@ -256,7 +356,8 @@ export const projectMembers = pgTable(
 );
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
-  owner: one(users, { fields: [projects.ownerId], references: [users.id] }),
+  organization: one(organizations, { fields: [projects.orgId], references: [organizations.id] }),
+  creator: one(users, { fields: [projects.createdBy], references: [users.id] }),
   members: many(projectMembers),
   defaultDevice: one(devices, {
     fields: [projects.defaultDeviceId],
@@ -448,6 +549,10 @@ export const jobTypes = [
   'fix',
   'custom',
   'pm',
+  // ISS-455 — skill smoke-verify canary (tier-2). Issue-less one-shot job on a
+  // 'system' pipeline_run; PASS/FAIL is read from the job's terminal status
+  // (which still flips only via applyKernelTransition, like every job).
+  'smoke',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 
@@ -533,6 +638,11 @@ export const jobs = pgTable(
     status: text('status', { enum: jobStatuses }).notNull().default('queued'),
     queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+    // ISS-449 (ISS-442 C3 / I3) — runner ACK: stamped when the runner
+    // explicitly claims the job (POST /jobs/:id/ack) or, as fallback, when its
+    // first job_event arrives. The loop monitor's dispatch→ack hop reaps
+    // dispatched rows that never get one.
+    ackedAt: timestamp('acked_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     exitCode: integer('exit_code'),
     error: text('error'),
@@ -549,13 +659,14 @@ export const jobs = pgTable(
     // jobs alongside interactive sessions. Bare uuid (no FK) to match the
     // notifications.agent_session_id pattern — adding the FK later is additive.
     agentSessionId: uuid('agent_session_id'),
-    // Pipeline self-healing (Phase H, ISS-306). Set when the job ends in
-    // `failed`. failureKind drives whether the issue-state sweeper should
-    // re-fire (transient/unknown) or escalate (permanent). classifierVersion
+    // Pipeline self-healing (Phase H, ISS-306; taxonomy rebuilt by ISS-450 /
+    // ISS-442 C4). Set when the job ends in `failed`. failureKind drives the
+    // per-class retry policy (code = no retry, transient-cc = immediate
+    // device failover, infra/timeout = bounded round-robin). classifierVersion
     // pins the classifier rules at write time so old rows survive future
     // pattern changes without silent reclassification.
     failureKind: text('failure_kind', {
-      enum: ['transient', 'permission', 'permanent', 'timeout', 'unknown'],
+      enum: ['code', 'infra', 'transient-cc', 'timeout'],
     }),
     failureReason: text('failure_reason'),
     failureMeta: jsonb('failure_meta'),
@@ -595,6 +706,11 @@ export const jobs = pgTable(
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)
       .where(sql`archive_path IS NULL AND finished_at IS NOT NULL`),
+    // ISS-455 — the smoke-verify report reads "latest canary per stage" for a
+    // project; the partial index keeps that read off the hot jobs rows.
+    smokeProjectQueuedIdx: index('jobs_smoke_project_queued_idx')
+      .on(t.projectId, t.queuedAt)
+      .where(sql`type = 'smoke'`),
   }),
 );
 
@@ -616,6 +732,10 @@ export const jobEventKinds = [
   'tool_result',
   'progress',
   'result',
+  // ISS-442 C0 — audited manual intervention (e.g. single-job cancel). `kind`
+  // is a plain text column, so this is additive with no migration; the
+  // interventions metric (C6) counts rows with this kind.
+  'intervention',
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];
 
@@ -634,6 +754,41 @@ export const jobEvents = pgTable(
   (t) => ({
     jobIdSeqIdx: uniqueIndex('job_events_job_id_seq_idx').on(t.jobId, t.seq),
     tsIdx: index('job_events_ts_idx').on(t.ts),
+  }),
+);
+
+// ISS-447 (ISS-442 C1, I2) — append-only audit of every TERMINAL status flip on
+// the three kernel tables (jobs / agent_sessions / pipeline_runs). Written by
+// the single chokepoint `lifecycle/transition.ts:applyKernelTransition`; one row
+// per flipped entity per transition. Queryable so the C6 interventions /
+// throughput metrics can count transitions by entity/reason/source without
+// scraping logs. `from_status` is the declared prior status (the CAS guard's
+// expected value); `actor_id` is a bare uuid (no FK) so a system/sweeper actor
+// with no principal records NULL without a join target.
+export const kernelTransitionEntities = ['job', 'session', 'run'] as const;
+export type KernelTransitionEntity = (typeof kernelTransitionEntities)[number];
+
+export const kernelTransitionActorTypes = ['user', 'system', 'runner', 'sweeper'] as const;
+export type KernelTransitionActorType = (typeof kernelTransitionActorTypes)[number];
+
+export const kernelTransitions = pgTable(
+  'kernel_transitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entity: text('entity', { enum: kernelTransitionEntities }).notNull(),
+    entityId: uuid('entity_id').notNull(),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    reason: text('reason'),
+    actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
+    actorId: uuid('actor_id'),
+    source: text('source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    entityIdx: index('kernel_transitions_entity_idx').on(t.entity, t.entityId),
+    createdAtIdx: index('kernel_transitions_created_at_idx').on(t.createdAt),
+    reasonIdx: index('kernel_transitions_reason_idx').on(t.reason),
   }),
 );
 
@@ -1201,6 +1356,17 @@ export type MemorySource = (typeof memorySources)[number];
 
 export const MEMORY_EMBEDDING_DIM = 1536;
 
+/**
+ * Postgres full-text search vector. Generated column — never written by the
+ * app; Postgres derives it from `text_content`. Read via `@@` / `ts_rank` in
+ * the keyword retrieval strategy (memory-v2 phase 1).
+ */
+const tsVector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
+
 export const memories = pgTable(
   'memories',
   {
@@ -1211,8 +1377,23 @@ export const memories = pgTable(
     source: text('source', { enum: memorySources }).notNull(),
     sourceRef: text('source_ref').notNull(),
     textContent: text('text_content').notNull(),
-    embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding').notNull(),
+    // Nullable since memory-v2 phase 1: a degraded write (embeddings outage)
+    // stores the row without a vector and the re-embed backfill fills it in.
+    // Semantic search filters `embedding IS NOT NULL`.
+    embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding'),
     metadata: jsonb('metadata').notNull().default({}),
+    // memory-v2 phase 2 usage tracking: bumped on semantic-search hits only
+    // (not natural-key gets) and read by the decay/consolidation jobs.
+    retrievalCount: integer('retrieval_count').notNull().default(0),
+    lastRetrievedAt: timestamp('last_retrieved_at', { withTimezone: true }),
+    // Soft delete for decay/consolidation. Archived rows are excluded from
+    // every read surface; hard purge happens after a further grace period.
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    // memory-v2 phase 1 keyword retrieval. GENERATED ALWAYS in Postgres
+    // (migration 0105) — drizzle must never include it in INSERT/UPDATE.
+    textSearch: tsVector('text_search').generatedAlwaysAs(
+      (): SQL => sql`to_tsvector('english', left(${memories.textContent}, 100000))`,
+    ),
     embeddedAt: timestamp('embedded_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1229,6 +1410,7 @@ export const memories = pgTable(
       'hnsw',
       sql`"embedding" vector_cosine_ops`,
     ),
+    textSearchIdx: index('memories_text_search_idx').using('gin', t.textSearch),
   }),
 );
 
@@ -1378,12 +1560,20 @@ export const usageRecords = pgTable(
     requestCount: integer('request_count').notNull().default(1),
     sessionId: text('session_id'),
     projectName: text('project_name'),
+    // ISS-439 — the job whose stored job_events this row was materialized from
+    // (CLI-runner path). Bare uuid (no FK, mirroring jobs.agent_session_id) so
+    // job retention/archival can't cascade-delete cost history. The partial
+    // unique index below makes it the idempotency key: a job's usage row is
+    // inserted ON CONFLICT DO NOTHING, so retries / sweeper-reaped terminals /
+    // re-running the backfill can never double-count.
+    jobId: uuid('job_id'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectRecordedIdx: index('usage_records_project_recorded_idx').on(t.projectId, t.recordedAt),
     sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
+    jobIdUq: uniqueIndex('usage_records_job_id_key').on(t.jobId).where(sql`job_id IS NOT NULL`),
   }),
 );
 
@@ -1431,6 +1621,9 @@ export const notificationTypes = [
   'agent_completed',
   'mention',
   'pm_escalation',
+  // ISS-452 (ISS-442 C6 / I7) — a loop-monitor hop miss / non-progressing
+  // pipeline state surfaced to the project owner (see pipeline/wedge.ts).
+  'pipeline_wedge',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 
@@ -1960,13 +2153,10 @@ export const pipelineOutbox = pgTable('pipeline_outbox', {
   lastError: text('last_error'),
 });
 
-// ISS-234 — Integration Framework foundation. project_integrations stores
-// one row per (project, provider, environment); secrets_enc holds the
-// AES-256-GCM ciphertext produced by src/integrations/vault.ts.
-//
-// integration_secret is the HMAC key adapters use to verify inbound
-// webhook callbacks — kept separate from projects.webhookSecret so each
-// adapter has scoped credentials.
+// ISS-234 — Integration Framework foundation. secrets_enc columns hold the
+// AES-256-GCM ciphertext produced by src/integrations/vault.ts; the legacy
+// project_integrations table was retired by ISS-410 (epic ISS-404, F5) in
+// favour of the integration_connections / integration_bindings model below.
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
     return 'bytea';
@@ -1975,41 +2165,6 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 
 export const integrationEnvironments = ['staging', 'prod'] as const;
 export type IntegrationEnvironment = (typeof integrationEnvironments)[number];
-
-export const projectIntegrations = pgTable(
-  'project_integrations',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    provider: text('provider').notNull(),
-    environment: text('environment', { enum: integrationEnvironments }).notNull(),
-    config: jsonb('config').notNull().default({}),
-    secretsEnc: bytea('secrets_enc'),
-    integrationSecret: text('integration_secret'),
-    active: boolean('active').notNull().default(true),
-    breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
-    lastHealthStatus: text('last_health_status'),
-    lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectProviderIdx: index('project_integrations_project_provider_idx').on(
-      t.projectId,
-      t.provider,
-    ),
-    activeProviderIdx: index('project_integrations_active_provider_idx')
-      .on(t.provider, t.active)
-      .where(sql`active = true`),
-    projectProviderEnvUq: uniqueIndex('project_integrations_project_provider_env_uq').on(
-      t.projectId,
-      t.provider,
-      t.environment,
-    ),
-  }),
-);
 
 export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
 export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
@@ -2021,17 +2176,8 @@ export const integrationDeliveries = pgTable(
   'integration_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Legacy link. Nullable since the ISS-399 cutover: new bindings created via
-    // the connection/binding CRUD have no backing project_integrations row, so
-    // post-cutover dispatches write binding_id only (project_integration_id
-    // stays populated on backfilled historical rows). Dropped entirely in the
-    // table-retirement issue (epic F).
-    projectIntegrationId: uuid('project_integration_id').references(
-      () => projectIntegrations.id,
-      { onDelete: 'cascade' },
-    ),
     // Connection/Binding model: the dispatch/read key after the ISS-399 cutover.
-    // Backfilled 1:1 from project_integration_id by migration 0101.
+    // The legacy project-integration link column was dropped by ISS-410 (epic F5).
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
@@ -2047,16 +2193,6 @@ export const integrationDeliveries = pgTable(
     completedAt: timestamp('completed_at', { withTimezone: true }),
   },
   (t) => ({
-    integrationCreatedIdx: index('integration_deliveries_integration_created_idx').on(
-      t.projectIntegrationId,
-      sql`${t.createdAt} DESC`,
-    ),
-    integrationStatusCreatedIdx: index('integration_deliveries_integration_status_created_idx')
-      .on(t.projectIntegrationId, t.status, sql`${t.createdAt} DESC`)
-      .where(sql`direction = 'outbound'`),
-    requestIdUq: uniqueIndex('integration_deliveries_request_id_uq')
-      .on(t.projectIntegrationId, t.requestId)
-      .where(sql`request_id IS NOT NULL`),
     bindingCreatedIdx: index('integration_deliveries_binding_created_idx').on(
       t.bindingId,
       sql`${t.createdAt} DESC`,
@@ -2069,19 +2205,7 @@ export const integrationDeliveries = pgTable(
   }),
 );
 
-export const projectIntegrationsRelations = relations(projectIntegrations, ({ one, many }) => ({
-  project: one(projects, {
-    fields: [projectIntegrations.projectId],
-    references: [projects.id],
-  }),
-  deliveries: many(integrationDeliveries),
-}));
-
 export const integrationDeliveriesRelations = relations(integrationDeliveries, ({ one }) => ({
-  integration: one(projectIntegrations, {
-    fields: [integrationDeliveries.projectIntegrationId],
-    references: [projectIntegrations.id],
-  }),
   binding: one(integrationBindings, {
     fields: [integrationDeliveries.bindingId],
     references: [integrationBindings.id],

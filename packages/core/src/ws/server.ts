@@ -1,4 +1,4 @@
-import type { IncomingMessage, Server as HttpServer } from 'node:http';
+import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
 import { and, eq } from 'drizzle-orm';
 import { type WebSocket, WebSocketServer } from 'ws';
@@ -7,6 +7,7 @@ import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
 import { devices, projectMembers, runners } from '../db/schema.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import {
   handleRunnerRegister,
   handleRunnerUnregister,
@@ -63,9 +64,7 @@ interface ProtocolMatch {
 // `Sec-WebSocket-Protocol` response header — otherwise the upgrade is
 // rejected client-side. Returns both the bearer token and the exact
 // protocol string we matched so the upgrade handler can echo it back.
-function parseProtocolToken(
-  header: string | string[] | undefined,
-): ProtocolMatch | undefined {
+function parseProtocolToken(header: string | string[] | undefined): ProtocolMatch | undefined {
   if (!header) return undefined;
   // Node's http parser collapses repeats into a single comma-joined string
   // but some runtimes hand back an array; handle both.
@@ -146,12 +145,8 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
   if (room.startsWith('project:')) {
     const projectId = room.slice('project:'.length);
     const userId = principal.type === 'user' ? principal.userId : principal.ownerId;
-    const [row] = await db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-      .limit(1);
-    return !!row;
+    const access = await effectiveProjectRole(userId, projectId);
+    return !!access?.role;
   }
   if (room.startsWith('device:')) {
     const deviceId = room.slice('device:'.length);
@@ -179,15 +174,9 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
     if (principal.type === 'device') {
       return row.deviceId === principal.deviceId;
     }
-    // user — must be a project member.
-    const [member] = await db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(
-        and(eq(projectMembers.projectId, row.projectId), eq(projectMembers.userId, principal.userId)),
-      )
-      .limit(1);
-    return !!member;
+    // user — must have an effective role on the runner's project.
+    const access = await effectiveProjectRole(principal.userId, row.projectId);
+    return !!access?.role;
   }
   return false;
 }
@@ -256,7 +245,11 @@ export function attachWs(server: AnyServer): void {
           if (!allowed) {
             try {
               ws.send(
-                JSON.stringify({ event: 'subscribe.denied', data: { room }, timestamp: new Date().toISOString() }),
+                JSON.stringify({
+                  event: 'subscribe.denied',
+                  data: { room },
+                  timestamp: new Date().toISOString(),
+                }),
               );
             } catch {
               // socket may be closed; ignore

@@ -16,6 +16,7 @@ import type {
   IntegrationSummary,
   IntegrationTestResult,
   IntegrationsStatus,
+  McpPreviewResponse,
   UpdateIntegrationInput,
 } from "./types";
 
@@ -23,6 +24,11 @@ export const integrationsApi = {
   /** `GET /api/projects/:projectId/integrations/status` — composed real status. */
   status: (projectId: string) =>
     apiClient<IntegrationsStatus>(`/projects/${projectId}/integrations/status`),
+
+  /** `GET .../integrations/mcp-preview` — exactly what the dispatch resolvers
+   *  will inject into a runner's `mcpServers` (redacted by construction). ISS-429. */
+  mcpPreview: (projectId: string) =>
+    apiClient<McpPreviewResponse>(`/projects/${projectId}/integrations/mcp-preview`),
 
   /** `GET /api/projects/:projectId/integrations` — bindings for the project
    *  (project-facing `BindingSummary` rows, projected from binding + connection). */
@@ -43,12 +49,15 @@ export const integrationsApi = {
 
   // === ISS-395 — generic provider CRUD (Coolify + Epodsystem) ===
 
-  /** `POST .../integrations` — create with a discriminated provider body. */
+  /** `POST .../integrations` — create with a discriminated provider body. The
+   *  server probes the new integration immediately (ISS-429) and returns the
+   *  result as `health` (null when the probe crashed at transport level). */
   create: (projectId: string, body: CreateIntegrationInput) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
-      `/projects/${projectId}/integrations`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
+    apiClient<{
+      integration: IntegrationSummary;
+      integrationSecret: string;
+      health?: IntegrationTestResult | null;
+    }>(`/projects/${projectId}/integrations`, { method: "POST", body: JSON.stringify(body) }),
 
   /** `PATCH .../integrations/:id` — update config/secrets/active. */
   update: (projectId: string, id: string, body: UpdateIntegrationInput) =>
@@ -117,6 +126,15 @@ export const integrationConnectionsApi = {
       method: "DELETE",
     }),
 
+  /** `POST /api/integration-connections/:id/test` — connection-scoped
+   *  healthcheck (ISS-435). The server probes through a representative active
+   *  binding and persists the result onto the connection; 404 `NO_BINDING`
+   *  when the connection isn't bound to any project yet. */
+  test: (id: string) =>
+    apiClient<IntegrationTestResult>(`/integration-connections/${id}/test`, {
+      method: "POST",
+    }),
+
   // === ISS-408 / F3 — bindings for a connection + bind-existing flow ===
 
   /** `GET /api/integration-connections/:id/bindings` — every (project, env)
@@ -131,8 +149,9 @@ export const integrationConnectionsApi = {
    *  integrationSecret }`; the freshly minted inbound HMAC `integrationSecret`
    *  is shown exactly once (matches the rotate-secret pattern). */
   bindExisting: (id: string, body: BindExistingConnectionRequest) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
-      `/integration-connections/${id}/bindings`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
+    apiClient<{
+      integration: IntegrationSummary;
+      integrationSecret: string;
+      health?: IntegrationTestResult | null;
+    }>(`/integration-connections/${id}/bindings`, { method: "POST", body: JSON.stringify(body) }),
 };

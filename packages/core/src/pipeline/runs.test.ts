@@ -67,6 +67,9 @@ vi.mock('../db/schema.js', () => ({
     currentStep: 'current_step',
     startedAt: 'started_at',
   },
+  // ISS-447 — applyKernelTransition writes the audit row into this table; the
+  // insert double below ignores the table identity, so a marker object suffices.
+  kernelTransitions: { name: 'kernel_transitions' },
 }));
 
 vi.mock('drizzle-orm', () => ({

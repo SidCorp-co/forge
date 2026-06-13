@@ -28,6 +28,7 @@ function makeThenable(): any {
   const p: any = {
     from: () => p,
     innerJoin: () => p,
+    leftJoin: () => p,
     where: () => p,
     orderBy: () => p,
     limit: () => p,
@@ -69,6 +70,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -86,9 +89,9 @@ function makeDeviceCtx() {
   };
 }
 
-/** Push the single-row result `loadDeviceProjectRole` reads for an owner. */
+/** Push the single effective-role row (lib/authz.ts) for a project member. */
 function pushMemberOk() {
-  resultQueue.push([{ ownerId: OWNER_ID }]);
+  resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
 /** A binding+connection pair as `listActiveBindingsForProjectProvider` returns. */
@@ -167,8 +170,7 @@ describe('forge_coolify_deploy → list', () => {
 
   it('rejects a non-member with FORBIDDEN', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    resultQueue.push([{ ownerId: 'someone-else' }]); // project owner mismatch
-    resultQueue.push([]); // no projectMembers row
+    resultQueue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // no effective role
     await expect(tool.handler({ action: 'list', projectId: PROJECT_ID })).rejects.toThrow(
       /FORBIDDEN/,
     );

@@ -25,18 +25,30 @@
  *     • retryAfter: Date | null extracted from
  *       `meta.headers['retry-after']` (RFC 7231) for the retry engine to
  *       honour rate limits before scheduling.
+ *   v3 — ISS-450 (ISS-442 C4 / I4) taxonomy rebuild. The `unknown` class is
+ *     ELIMINATED — every failure maps to exactly one of four kinds, each with
+ *     its own retry policy (see jobs/retry.ts):
+ *     • code         — the work itself is wrong (old `permanent`: content
+ *       filter, invalid_request, validation, billing/quota, unsupported
+ *       type). Retrying burns spend without changing the outcome → no retry.
+ *     • infra        — the environment failed, not the work (old `permission`
+ *       + old `transient`: auth/403, network, 5xx, rate limits, runner
+ *       offline, preflight failures). Bounded round-robin retry.
+ *     • transient-cc — Claude-CLI startup death (ISS-402 class: the session
+ *       died with ≤3 messages and no tool use, e.g. the skill-registration
+ *       "Unknown command" glitch). Same-device retries burn the whole budget
+ *       against a wedged CLI install → immediate different-device failover.
+ *     • timeout      — no progress past threshold. Bounded retry.
+ *     The pattern→bucket fallthrough (`unknown`) now lands on `infra` with
+ *     `meta.needsReview=true` so unclassified rows surface in the operator UI
+ *     instead of hiding behind a fifth class.
  */
 
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
-export const CLASSIFIER_VERSION = 2;
+export const CLASSIFIER_VERSION = 3;
 
-export type FailureKind =
-  | 'transient'
-  | 'permission'
-  | 'permanent'
-  | 'timeout'
-  | 'unknown';
+export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
 export interface ClassifyResult {
   kind: FailureKind;
@@ -80,6 +92,20 @@ const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\b429\b|\brate[ _-]?limit/i,
   /runner (offline|stale|disconnected)/i,
   /pg-?boss[ _-]?(error|timeout)/i,
+  // ISS-451 (C5) — runner pre-claim preflight failures (missing repo, bad git
+  // tree, unreachable push remote, missing hooks path) are environment
+  // problems by construction.
+  /\bpreflight[ _-]?failed\b/i,
+];
+
+// ISS-450 — the ISS-402 cc-startup-death signature, used only as a TEXT
+// fallback when the caller could not derive structured `signals` (the
+// preferred source). A Claude-CLI session that dies during startup retries
+// uselessly on the same device; `transient-cc` routes it to an immediate
+// different-device failover instead.
+const CC_STARTUP_PATTERNS: ReadonlyArray<RegExp> = [
+  /\bunknown command\b/i,
+  /skill[ _-]?registration/i,
 ];
 
 interface ClassifyInput {
@@ -89,16 +115,27 @@ interface ClassifyInput {
    * response: `{type:'error', error:{type:'invalid_request_error',...}}`).
    * May also carry `headers` from the provider response for Retry-After. */
   meta?: Record<string, unknown> | null | undefined;
+  /** ISS-450 — structured cc-startup-death signal derived from the job's
+   * event stream (preferred over the CC_STARTUP_PATTERNS text fallback).
+   * `diedBeforeFirstToolUse` = the job emitted zero tool_call events. */
+  signals?:
+    | {
+        diedBeforeFirstToolUse?: boolean;
+        sessionMessageCount?: number;
+      }
+    | null
+    | undefined;
 }
 
 /**
- * Classify a failure into transient / permission / permanent / timeout /
- * unknown plus a short human-readable reason and an optional Retry-After
- * timestamp. Always returns a verdict — never throws.
+ * Classify a failure into code / infra / transient-cc / timeout plus a short
+ * human-readable reason and an optional Retry-After timestamp. Always returns
+ * a verdict — never throws, never `unknown`.
  *
- * Match order: structured `meta.error.type` → PERMISSION → TIMEOUT →
- * PERMANENT → TRANSIENT → unknown. Permission/timeout precede the broader
- * permanent/transient buckets because their patterns are more specific.
+ * Match order: structured `meta.error.type` → cc-startup signal →
+ * PERMISSION (infra) → TIMEOUT → PERMANENT (code) → TRANSIENT (infra) →
+ * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
+ * the broader buckets because their patterns are more specific.
  */
 export function classifyFailure(input: ClassifyInput): ClassifyResult {
   const text = (input.error ?? '').trim();
@@ -108,24 +145,18 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
 
   const metaErrorType = readMetaErrorType(meta);
   if (metaErrorType) {
-    if (
-      metaErrorType === 'authentication_error' ||
-      metaErrorType === 'permission_error'
-    ) {
+    if (metaErrorType === 'authentication_error' || metaErrorType === 'permission_error') {
       return {
-        kind: 'permission',
+        kind: 'infra',
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
         version: CLASSIFIER_VERSION,
         retryAfter,
       };
     }
-    if (
-      metaErrorType === 'invalid_request_error' ||
-      metaErrorType === 'billing_error'
-    ) {
+    if (metaErrorType === 'invalid_request_error' || metaErrorType === 'billing_error') {
       return {
-        kind: 'permanent',
+        kind: 'code',
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
         version: CLASSIFIER_VERSION,
@@ -138,7 +169,7 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
       metaErrorType === 'api_error'
     ) {
       return {
-        kind: 'transient',
+        kind: 'infra',
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
         version: CLASSIFIER_VERSION,
@@ -147,10 +178,28 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
     }
   }
 
+  // ISS-450 — structured cc-startup-death signal (preferred source). The
+  // caller derives it from the job's event stream: the CLI spawned but died
+  // with ≤3 assistant messages and no tool use (ISS-402 skill-registration
+  // glitch class). Checked before the text passes so a generic error string
+  // from a startup death still routes to the immediate-failover policy.
+  if (
+    input.signals?.diedBeforeFirstToolUse === true &&
+    (input.signals.sessionMessageCount ?? 0) <= 3
+  ) {
+    return {
+      kind: 'transient-cc',
+      reason: 'cc-startup-death (≤3 msgs, no tool use)',
+      meta,
+      version: CLASSIFIER_VERSION,
+      retryAfter,
+    };
+  }
+
   for (const pat of PERMISSION_PATTERNS) {
     if (pat.test(text)) {
       return {
-        kind: 'permission',
+        kind: 'infra',
         reason: reasonExcerpt || 'permission (pattern match)',
         meta,
         version: CLASSIFIER_VERSION,
@@ -174,7 +223,7 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
   for (const pat of PERMANENT_PATTERNS) {
     if (pat.test(text)) {
       return {
-        kind: 'permanent',
+        kind: 'code',
         reason: reasonExcerpt || 'permanent (pattern match)',
         meta,
         version: CLASSIFIER_VERSION,
@@ -186,7 +235,7 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
   for (const pat of TRANSIENT_PATTERNS) {
     if (pat.test(text)) {
       return {
-        kind: 'transient',
+        kind: 'infra',
         reason: reasonExcerpt || 'transient (pattern match)',
         meta,
         version: CLASSIFIER_VERSION,
@@ -195,10 +244,25 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
     }
   }
 
+  for (const pat of CC_STARTUP_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'transient-cc',
+        reason: reasonExcerpt || 'cc-startup-death (pattern match)',
+        meta,
+        version: CLASSIFIER_VERSION,
+        retryAfter,
+      };
+    }
+  }
+
+  // No bucket matched. There is no `unknown` class anymore (I4): default to
+  // `infra` (bounded retry — the conservative choice) and flag the row for
+  // the operator UI so the pattern gap is visible instead of hidden.
   return {
-    kind: 'unknown',
+    kind: 'infra',
     reason: reasonExcerpt || 'unclassified',
-    meta,
+    meta: { ...(meta ?? {}), needsReview: true },
     version: CLASSIFIER_VERSION,
     retryAfter,
   };

@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { devicePlatforms, devices, pairingCodes, projects, runners } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -288,9 +288,7 @@ deviceUserRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) {
-      throw forbidden('not a project member');
-    }
+    assertProjectRole(access, 'member');
 
     // 5-minute TTL, server-minted. Retry on unique-violation (collision).
     const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MS);

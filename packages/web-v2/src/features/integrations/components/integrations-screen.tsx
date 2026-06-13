@@ -1,7 +1,17 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
-import { formatRelativeTime } from "@/lib/utils/format";
+// Workspace `/integrations` — the OWNER CONNECTION DIRECTORY (ISS-429).
+//
+// A connection is the credential (owned by the signed-in user); bindings link
+// it into projects. This page lists every connection the user owns — including
+// disabled ones — with truthful health and enable/disable shortcuts; clicking
+// a card opens the connection edit drawer (ISS-435: rename, replace key,
+// provider config, Test, per-project drill-through, remove). BINDING-scoped
+// management (environment, webhook rotate, delivery log, disconnect) lives in
+// project settings → Integrations (`ProjectIntegrationsPanel`); this page
+// deliberately does not duplicate it.
+
+import { useCallback, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -10,123 +20,176 @@ import {
   ErrorState,
   HelpButton,
   Icon,
-  type IconName,
-  Select,
+  PageContainer,
   Skeleton,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
-import { useIntegrationsStatus } from "../hooks";
-import { DIRECTORY_STATUS_META, deriveDirectoryStatus, isProviderCard } from "../derive";
-import type { StatusCard } from "../types";
-import { ConnectionDetailDrawer } from "./connection-detail-drawer";
+import { formatRelativeTime } from "@/lib/utils/format";
+import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { useConnectionBindings, useConnections, useUpdateConnection } from "../hooks";
+import { deriveConnectionStatus } from "../derive";
+import type { ConnectionSummary } from "../types";
+import { ConnectionEditDrawer } from "./connection-edit-drawer";
+import { DirectoryStatusPill, ENV_LABEL, PROVIDER_ICON, PROVIDER_LABEL } from "./status-pill";
 
-const PROVIDER_ICON: Record<string, IconName> = {
-  github: "github",
-  coolify: "server",
-  runners: "cpu",
-  postgres: "archive",
-  mcp: "command",
-  sentry: "shield",
-  claude: "agent",
-};
-
-function providerIcon(key: string): IconName {
-  return PROVIDER_ICON[key.split(":")[0] ?? key] ?? "link";
+function ConnectionStatusPill({ connection }: { connection: ConnectionSummary }) {
+  return <DirectoryStatusPill status={deriveConnectionStatus(connection)} />;
 }
 
-/** Status dot rendered as icon + text + tinted pill (never color-only — a11y).
- *  The directory state is derived client-side (ISS-402): a tripped breaker and
- *  the server `attention` bucket both read Degraded; no fabricated health. */
-function StatusPill({ card }: { card: StatusCard }) {
-  const m = DIRECTORY_STATUS_META[deriveDirectoryStatus(card)];
+/** "Projects using this connection" — fetched lazily once the row expands. */
+function ConnectionBindings({ connectionId }: { connectionId: string }) {
+  const bindingsQ = useConnectionBindings(connectionId);
+  const projectsQ = useProjectsIncludingArchived();
+
+  const projectNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of projectsQ.data ?? []) map.set(p.id, p.name);
+    return map;
+  }, [projectsQ.data]);
+
+  if (bindingsQ.isLoading) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Skeleton className="h-8 w-full" />
+      </div>
+    );
+  }
+  if (bindingsQ.isError) {
+    return (
+      <ErrorState message={formatApiError(bindingsQ.error)} onRetry={() => bindingsQ.refetch()} />
+    );
+  }
+  const items = bindingsQ.data?.items ?? [];
+  if (items.length === 0) {
+    return (
+      <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+        No projects use this connection yet. Share it from a project&apos;s settings →
+        Integrations.
+      </p>
+    );
+  }
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[12px] font-semibold"
-      style={{ color: m.fg, background: m.bg }}
-    >
-      <Icon name={m.icon} size={13} />
-      {m.label}
-    </span>
+    <ul className="flex flex-col gap-1.5">
+      {items.map((b) => (
+        <li
+          key={b.id}
+          className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2"
+        >
+          <span className="truncate text-fg">{projectNames.get(b.projectId) ?? b.projectId}</span>
+          <span className="fg-body-sm text-muted">{ENV_LABEL[b.environment] ?? b.environment}</span>
+          {!b.active && (
+            <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+              binding disabled
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
-function externalRepoUrl(card: StatusCard): string | null {
-  if (card.key !== "github") return null;
-  const remote = card.meta?.remoteUrl;
-  if (typeof remote === "string" && /^https?:\/\//.test(remote)) {
-    return remote.replace(/\.git$/, "");
-  }
-  return null;
-}
-
-function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
-  const lastSync = formatRelativeTime(card.lastSyncAt);
-  const repoUrl = externalRepoUrl(card);
-  const transport =
-    card.key === "github" && typeof card.meta?.transport === "string"
-      ? (card.meta.transport as string)
-      : null;
-  const clickable = Boolean(onOpen);
+function ConnectionCard({
+  connection,
+  onOpen,
+}: {
+  connection: ConnectionSummary;
+  onOpen: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const update = useUpdateConnection();
+  const checked = formatRelativeTime(connection.lastHealthAt);
+  const label =
+    connection.displayName ?? PROVIDER_LABEL[connection.provider] ?? connection.provider;
 
   return (
     <Card>
       <CardContent>
+        {/* The card body opens the edit drawer (ISS-435); inner buttons keep
+            their own actions via stopPropagation. div+role, not <button> —
+            the shortcuts inside are real buttons and can't nest. */}
         <div
-          className={`flex min-h-[120px] flex-col gap-2.5 ${clickable ? "cursor-pointer" : ""}`}
-          {...(clickable
-            ? {
-                role: "button",
-                tabIndex: 0,
-                "aria-label": `Manage ${card.label}`,
-                onClick: onOpen,
-                onKeyDown: (e: KeyboardEvent) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpen?.();
-                  }
-                },
-              }
-            : {})}
+          role="button"
+          tabIndex={0}
+          aria-label={`Manage connection ${label}`}
+          className="flex cursor-pointer flex-col gap-2.5 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          onClick={onOpen}
+          onKeyDown={(e) => {
+            // Only when the card ITSELF is focused — Enter/Space on the inner
+            // buttons/links must keep their native activation.
+            if (e.target !== e.currentTarget) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen();
+            }
+          }}
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-2">
-              <Icon name={providerIcon(card.key)} size={18} className="text-muted" />
-              <span className="fg-h3">{card.label}</span>
-            </span>
-            <StatusPill card={card} />
-          </div>
-
-          <p className="fg-body-sm text-muted">{card.detail}</p>
-
-          {transport && (
-            <p className="fg-body-sm text-subtle">
-              transport: <span className="font-mono">{transport}</span>
-            </p>
-          )}
-
-          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-            <span className="fg-body-sm text-subtle">
-              {lastSync ? `synced ${lastSync}` : "no sync data"}
-            </span>
-            {repoUrl ? (
-              <a
-                href={repoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Open repo
-                <Icon name="arrowRight" size={13} />
-              </a>
-            ) : clickable ? (
-              <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
-                Manage
-                <Icon name="arrowRight" size={13} />
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <Icon
+                name={PROVIDER_ICON[connection.provider] ?? "link"}
+                size={18}
+                className="shrink-0 text-muted"
+              />
+              <span className="fg-h3 truncate">{label}</span>
+              <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+                {PROVIDER_LABEL[connection.provider] ?? connection.provider}
               </span>
-            ) : null}
+            </span>
+            <ConnectionStatusPill connection={connection} />
           </div>
+
+          <p className="fg-body-sm text-muted">
+            {connection.lastHealthStatus
+              ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
+              : "never health-checked"}
+            {!connection.hasSecrets && " · no credential stored"}
+          </p>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+            >
+              {expanded ? "Hide projects" : "Projects using it"}
+            </Button>
+            <span className="ml-auto" />
+            {connection.active ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={update.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  update.mutate({ id: connection.id, body: { active: false } });
+                }}
+              >
+                Disable
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={update.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  update.mutate({ id: connection.id, body: { active: true } });
+                }}
+              >
+                Enable
+              </Button>
+            )}
+          </div>
+
+          {expanded && (
+            // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: stops bubbling only — the inner list has its own semantics
+            <div onClick={(e) => e.stopPropagation()}>
+              <ConnectionBindings connectionId={connection.id} />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -134,105 +197,69 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
 }
 
 export function IntegrationsScreen() {
-  const projects = useProjects();
-  const [projectId, setProjectId] = useState<string>("");
-
-  // Default the selector to the first project once the list loads.
-  useEffect(() => {
-    if (!projectId && projects.data && projects.data.length > 0) {
-      setProjectId(projects.data[0].id);
-    }
-  }, [projects.data, projectId]);
-
-  const status = useIntegrationsStatus(projectId || undefined);
-  const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
-
-  const options = useMemo(
-    () => (projects.data ?? []).map((p) => ({ value: p.id, label: p.name })),
-    [projects.data],
-  );
+  const connections = useConnections();
+  const items = connections.data?.items ?? [];
+  // Track the SELECTED ID and re-derive the row from the live query data, so
+  // the open drawer reflects every mutation (rename/health/active) without
+  // holding a stale snapshot. Stable onClose — SlideOver's focus effect keys
+  // on it, and a fresh identity per render would yank focus on every refetch.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = items.find((c) => c.id === selectedId) ?? null;
+  const closeDrawer = useCallback(() => setSelectedId(null), []);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-5 px-6 py-6">
+    <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="fg-h2">Integrations</h1>
+          <h1 className="fg-h2">Connections</h1>
           <p className="fg-body-sm text-muted">
-            Live connection status for this project&apos;s external services.
+            Credentials you own, shared across projects. Configure a project&apos;s integrations in
+            its settings → Integrations.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {options.length > 0 && (
-            <div className="w-[200px]">
-              <Select options={options} value={projectId} onChange={setProjectId} />
-            </div>
-          )}
-          <HelpButton
-            summary="A real-time view of the services this project depends on — GitHub, Coolify deploys, runners, Postgres, the MCP server, Sentry, and Claude. Each card shows a live status (icon + text, never color alone) and the last sync where one exists. Cards reflect only real backing data; providers with no signal show 'Not configured'."
-            actions={[
-              "Switch project with the selector to inspect another project",
-              "Open repo — jump to the GitHub remote (HTTPS remotes only)",
-            ]}
-            docPath="docs/guides/integrations.md"
-          />
-        </div>
+        <HelpButton
+          summary="A connection is a credential you own (Coolify token, Postman key, Epodsystem key). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
+          actions={[
+            "Click a card — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
+            "Disable / Enable — switch a credential off (every binding stops resolving) and back on",
+            "Binding-scoped settings (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
+          ]}
+          docPath="docs/guides/integrations.md"
+        />
       </div>
 
-      {projects.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
+      {connections.isLoading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-[148px] w-full" />
           ))}
         </div>
-      ) : projects.isError ? (
-        <ErrorState message={formatApiError(projects.error)} onRetry={() => projects.refetch()} />
-      ) : options.length === 0 ? (
+      ) : connections.isError ? (
+        <ErrorState
+          message={formatApiError(connections.error)}
+          onRetry={() => connections.refetch()}
+        />
+      ) : items.length === 0 ? (
         <Card>
           <CardContent>
             <EmptyState
-              title="No projects"
-              message="Create a project to see its integrations."
+              title="No connections yet"
+              message="Create one by configuring an integration in any project's settings → Integrations."
               mascot={false}
             />
           </CardContent>
         </Card>
-      ) : status.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-[148px] w-full" />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((c) => (
+            <ConnectionCard key={c.id} connection={c} onOpen={() => setSelectedId(c.id)} />
           ))}
         </div>
-      ) : status.isError ? (
-        <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
-      ) : (
-        <>
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
-              Refresh
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(status.data?.cards ?? []).map((card) => (
-              <IntegrationCard
-                key={card.key}
-                card={card}
-                onOpen={isProviderCard(card.key) ? () => setSelectedCard(card) : undefined}
-              />
-            ))}
-          </div>
-
-          {/* Drill-in: provider cards open an adaptive connection detail drawer
-              (config + Test/Rotate/Disconnect, plus delivery log when the
-              adapter declares hasDeliveryLog). ISS-402. */}
-          {projectId && (
-            <ConnectionDetailDrawer
-              projectId={projectId}
-              card={selectedCard}
-              onClose={() => setSelectedCard(null)}
-            />
-          )}
-        </>
       )}
-    </div>
+
+      {/* Mounted only while open so its queries (bindings, archived projects,
+          orgs) never fire as a side effect of rendering the directory. */}
+      {selected && <ConnectionEditDrawer connection={selected} onClose={closeDrawer} />}
+    </PageContainer>
   );
 }

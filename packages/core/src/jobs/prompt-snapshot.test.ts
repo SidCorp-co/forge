@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => {
-  const execute = vi.fn(async () => []);
+  const execute = vi.fn(async (..._args: unknown[]) => []);
   const update = vi.fn();
   return { db: { execute, update } };
 });
@@ -23,7 +23,7 @@ const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
 type AnyMock = ReturnType<typeof vi.fn>;
 
 function captureUpdateSet(): AnyMock {
-  const setSpy = vi.fn(() => ({ where: async () => undefined }));
+  const setSpy = vi.fn((..._args: unknown[]) => ({ where: async () => undefined }));
   // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
   (db as any).update.mockImplementation(() => ({ set: setSpy }));
   return setSpy;
@@ -73,7 +73,7 @@ describe('persistPromptSnapshot', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
     expect((db as any).update).toHaveBeenCalledTimes(1);
     expect(setSpy).toHaveBeenCalledTimes(1);
-    const setArg = setSpy.mock.calls[0][0];
+    const setArg = setSpy.mock.calls[0]?.[0];
     expect(setArg).toMatchObject({
       systemPromptHash: expectedHash,
       userPromptSnapshot: '/forge-plan iss-1',
@@ -93,7 +93,7 @@ describe('persistPromptSnapshot', () => {
       blocks: [],
       model: 'claude-opus-4-7',
     });
-    expect(setSpy.mock.calls[0][0]).toMatchObject({ modelUsed: 'claude-opus-4-7' });
+    expect(setSpy.mock.calls[0]?.[0]).toMatchObject({ modelUsed: 'claude-opus-4-7' });
   });
 
   it('swallows db errors and logs a warning (does not throw)', async () => {
@@ -137,8 +137,8 @@ describe('persistPromptSnapshot', () => {
       model: 'default',
     });
 
-    const hashA = setSpy.mock.calls[0][0].systemPromptHash;
-    const hashB = setSpy.mock.calls[1][0].systemPromptHash;
+    const hashA = setSpy.mock.calls[0]?.[0].systemPromptHash;
+    const hashB = setSpy.mock.calls[1]?.[0].systemPromptHash;
     expect(hashA).toBe(hashB);
   });
 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const stuckQueue: Array<Array<{ id: string; project_id: string; status: string; owner_id: string | null }>> = [];
+const stuckQueue: Array<Array<{ id: string; project_id: string; status: string; created_by: string | null }>> = [];
 const staleCountQueue: Array<Array<{ count: string | number }>> = [];
 
 const dbExecute = vi.fn(async (q: unknown) => {
@@ -59,8 +59,8 @@ beforeEach(() => {
 describe('reconciler', () => {
   it('re-enqueues each stuck issue and emits a Sentry breadcrumb', async () => {
     stuckQueue.push([
-      { id: 'iss-1', project_id: 'proj-1', status: 'confirmed', owner_id: 'owner-1' },
-      { id: 'iss-2', project_id: 'proj-1', status: 'approved', owner_id: 'owner-1' },
+      { id: 'iss-1', project_id: 'proj-1', status: 'confirmed', created_by: 'owner-1' },
+      { id: 'iss-2', project_id: 'proj-1', status: 'approved', created_by: 'owner-1' },
     ]);
     staleCountQueue.push([{ count: 0 }]);
 
@@ -83,7 +83,7 @@ describe('reconciler', () => {
 
   it('falls back to the <reconciler> sentinel id when project has no owner', async () => {
     stuckQueue.push([
-      { id: 'iss-3', project_id: 'proj-2', status: 'reopen', owner_id: null },
+      { id: 'iss-3', project_id: 'proj-2', status: 'reopen', created_by: null },
     ]);
     staleCountQueue.push([{ count: 0 }]);
 
@@ -113,8 +113,8 @@ describe('reconciler', () => {
 
   it('does not throw when reEnqueueForIssue throws — continues with the next row', async () => {
     stuckQueue.push([
-      { id: 'iss-4', project_id: 'proj-3', status: 'confirmed', owner_id: 'o' },
-      { id: 'iss-5', project_id: 'proj-3', status: 'confirmed', owner_id: 'o' },
+      { id: 'iss-4', project_id: 'proj-3', status: 'confirmed', created_by: 'o' },
+      { id: 'iss-5', project_id: 'proj-3', status: 'confirmed', created_by: 'o' },
     ]);
     staleCountQueue.push([{ count: 0 }]);
     reEnqueueMock.mockRejectedValueOnce(new Error('boom'));

@@ -1,19 +1,22 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
+import { materializeJobUsage } from '../usage-records/materialize.js';
+import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { JobCancelError, cancelJob } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
@@ -48,7 +51,12 @@ const failBodySchema = z
   })
   .strict();
 
-const ACTIVE_STATUSES = new Set(['queued', 'dispatched', 'running']);
+const cancelBodySchema = z
+  .object({
+    reason: z.string().max(500).optional(),
+  })
+  .strict();
+
 const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
 // ISS-378 — `jobs.error` markers written by the SERVER-side reapers (never by
@@ -65,6 +73,62 @@ async function loadJob(jobId: string) {
 }
 
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
+
+// ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
+// The runner calls this right after its pre-claim preflight passes (ISS-451)
+// and before spawning the agent; the first job_event batch doubles as a
+// fallback ack for older runners (events-routes.ts). Idempotent: a repeat
+// call (or a call racing the event fallback) keeps the first timestamp and
+// reports `acked:false`. A terminal job is NOT an error — the runner treats
+// ack as best-effort and must not abort the job over a late/lost ack.
+jobLifecycleDeviceRoutes.post(
+  '/:id/ack',
+  requireDevice(),
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const device = c.get('device');
+
+    const job = await loadJob(id);
+    if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
+
+    if (job.ackedAt) {
+      return c.json({
+        jobId: job.id,
+        status: job.status,
+        ackedAt: job.ackedAt.toISOString(),
+        acked: false,
+      });
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(jobs)
+      .set({ ackedAt: now })
+      .where(
+        and(eq(jobs.id, id), isNull(jobs.ackedAt), inArray(jobs.status, ['dispatched', 'running'])),
+      )
+      .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
+    if (!updated) {
+      // Terminal or concurrently acked — idempotent OK, report current state.
+      const fresh = await loadJob(id);
+      return c.json({
+        jobId: fresh.id,
+        status: fresh.status,
+        ackedAt: fresh.ackedAt ? fresh.ackedAt.toISOString() : null,
+        acked: false,
+      });
+    }
+    return c.json({
+      jobId: updated.id,
+      status: updated.status,
+      ackedAt: now.toISOString(),
+      acked: true,
+    });
+  },
+);
 
 jobLifecycleDeviceRoutes.post(
   '/:id/complete',
@@ -109,11 +173,16 @@ jobLifecycleDeviceRoutes.post(
         )
         .limit(1);
       if (activeRetry.length === 0) {
-        const [reclaimed] = await db
-          .update(jobs)
-          .set({ status: 'done', exitCode: 0, error: null, finishedAt: new Date() })
-          .where(and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)))
-          .returning();
+        const [reclaimed] = await applyKernelTransition(db, {
+          entity: 'job',
+          to: 'done',
+          set: { exitCode: 0, error: null, finishedAt: new Date() },
+          where: and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
+          fromStatus: 'failed',
+          reason: 'reconciled_late_complete',
+          actor: { type: 'runner', id: device.id },
+          source: 'lifecycle',
+        });
         if (reclaimed) {
           logger.warn(
             { jobId: reclaimed.id, reapedError: job.error },
@@ -122,6 +191,7 @@ jobLifecycleDeviceRoutes.post(
           if (reclaimed.agentSessionId) {
             void deriveSessionFinal(reclaimed.id, reclaimed.agentSessionId);
           }
+          void materializeJobUsage(reclaimed);
           await syncAgentSessionLifecycle(reclaimed, 'done');
           roomManager.publish(projectRoom(reclaimed.projectId), {
             event: 'job.completed',
@@ -159,16 +229,20 @@ jobLifecycleDeviceRoutes.post(
     // validated input object.
     const effectiveError: string | null = input.error ?? null;
 
-    let [updated] = await db
-      .update(jobs)
-      .set({
-        status,
+    let [updated] = await applyKernelTransition(db, {
+      entity: 'job',
+      to: status,
+      set: {
         exitCode: input.exitCode,
         error: effectiveError,
         finishedAt: new Date(),
-      })
-      .where(and(eq(jobs.id, id), eq(jobs.status, job.status)))
-      .returning();
+      },
+      where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
+      fromStatus: job.status,
+      reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
+      actor: { type: 'runner', id: device.id },
+      source: 'lifecycle',
+    });
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
@@ -179,6 +253,8 @@ jobLifecycleDeviceRoutes.post(
     if (updated.agentSessionId) {
       void deriveSessionFinal(updated.id, updated.agentSessionId);
     }
+    // ISS-439 — materialize the usage_records row from the stored job_events.
+    void materializeJobUsage(updated);
 
     // Step-handoff is best-effort context for the next step — NOT a completion
     // gate. A `done` job stays `done` whether or not the agent wrote its
@@ -202,7 +278,7 @@ jobLifecycleDeviceRoutes.post(
       if (resumePolicy === 'abort') {
         const [reclassified] = await db
           .update(jobs)
-          .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+          .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 3 })
           .where(eq(jobs.id, updated.id))
           .returning();
         if (reclassified) updated = reclassified;
@@ -282,15 +358,19 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    let [updated] = await db
-      .update(jobs)
-      .set({
-        status: 'failed',
+    let [updated] = await applyKernelTransition(db, {
+      entity: 'job',
+      to: 'failed',
+      set: {
         error: input.error,
         finishedAt: new Date(),
-      })
-      .where(and(eq(jobs.id, id), eq(jobs.status, job.status)))
-      .returning();
+      },
+      where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
+      fromStatus: job.status,
+      reason: input.error,
+      actor: { type: 'runner', id: device.id },
+      source: 'lifecycle',
+    });
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
@@ -298,6 +378,8 @@ jobLifecycleDeviceRoutes.post(
     if (updated.agentSessionId) {
       void deriveSessionFinal(updated.id, updated.agentSessionId);
     }
+    // ISS-439 — materialize the usage_records row from the stored job_events.
+    void materializeJobUsage(updated);
 
     // PR-5c — same resume-failed branching as the user-lifecycle path.
     let resumePolicy: 'fresh' | 'abort' | null = null;
@@ -313,7 +395,7 @@ jobLifecycleDeviceRoutes.post(
     if (resumePolicy === 'abort') {
       const [reclassified] = await db
         .update(jobs)
-        .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+        .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 3 })
         .where(eq(jobs.id, updated.id))
         .returning();
       if (reclassified) updated = reclassified;
@@ -352,66 +434,27 @@ jobLifecycleUserRoutes.post(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
-    if (!ACTIVE_STATUSES.has(job.status)) {
-      throw conflict('job is not cancellable', 'NOT_CANCELLABLE');
-    }
+    // Optional `{ reason }` body; tolerate an empty/absent body (the cancel
+    // button sends none) by defaulting to {} before schema-validating.
+    const rawBody = await c.req.json().catch(() => ({}));
+    const parsedBody = cancelBodySchema.safeParse(rawBody ?? {});
+    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
 
-    // Queued, no device yet → transition straight to cancelled.
-    if (job.status === 'queued') {
-      const [updated] = await db
-        .update(jobs)
-        .set({ status: 'cancelled', finishedAt: new Date(), cancellationRequested: true })
-        .where(and(eq(jobs.id, id), eq(jobs.status, 'queued')))
-        .returning();
-      if (!updated) throw conflict('job state changed mid-request', 'NOT_CANCELLABLE');
-
-      await syncAgentSessionLifecycle(updated, 'cancelled');
-
-      roomManager.publish(projectRoom(updated.projectId), {
-        event: 'job.cancelled',
-        data: { jobId: updated.id, status: 'cancelled' },
+    try {
+      const result = await cancelJob(id, {
+        actorUserId: userId,
+        reason: parsedBody.data.reason ?? 'manual cancel (REST)',
+        source: 'rest',
       });
-
-      // Cancelling a queued job frees a slot — re-tick.
-      void dispatchTickForProject(updated.projectId);
-
-      // ISS-164 — see /complete comment.
-      if (updated.issueId) {
-        await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
+      return c.json(result);
+    } catch (e) {
+      if (e instanceof JobCancelError) {
+        if (e.code === 'NOT_FOUND') throw notFound(e.message);
+        throw conflict(e.message, e.code);
       }
-
-      return c.json({
-        jobId: updated.id,
-        status: updated.status,
-        cancellationRequested: updated.cancellationRequested,
-      });
+      throw e;
     }
-
-    // Dispatched/running → mark request, push to device, let /complete finalize.
-    const [updated] = await db
-      .update(jobs)
-      .set({ cancellationRequested: true })
-      .where(eq(jobs.id, id))
-      .returning();
-    if (!updated) throw notFound('job not found');
-
-    if (updated.deviceId) {
-      roomManager.publish(deviceRoom(updated.deviceId), {
-        event: 'job.cancel',
-        data: { jobId: updated.id },
-      });
-    }
-    roomManager.publish(projectRoom(updated.projectId), {
-      event: 'job.cancelRequested',
-      data: { jobId: updated.id },
-    });
-
-    return c.json({
-      jobId: updated.id,
-      status: updated.status,
-      cancellationRequested: updated.cancellationRequested,
-    });
   },
 );

@@ -176,12 +176,36 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
  * (`pipeline/state-machine.ts`): the lifecycle is permissive — any state may
  * branch to needs_info / on_hold / reopen / forward — the ONLY hard rules are
  * (1) `draft` is never a transition target and (2) a `draft` may only be
- * promoted to `open` or discarded to `closed`. Filtering to this set stops the
- * menu from offering picks that 409 and silently snap back (ISS-308 E1).
+ * promoted to `open`, handed off direct-ship to `developed` (ISS-431 — work
+ * done outside the pipeline enters at the review gate), or discarded to
+ * `closed`. Filtering to this set stops the menu from offering picks that 409
+ * and silently snap back (ISS-308 E1).
  */
 export function allowedTransitions(from: IssueStatus): IssueStatus[] {
-  if (from === "draft") return ["open", "closed"];
+  if (from === "draft") return ["open", "developed", "closed"];
   return ISSUE_STATUSES.filter((s) => s !== from && s !== "draft");
+}
+
+/**
+ * Status targets valid for a BULK action — the intersection of
+ * `allowedTransitions()` across every selected row, preserving enum order. Only
+ * offering common-valid targets means a bulk pick can't mass-409 (mirrors the
+ * per-row ISS-308 E1 guard). Empty selection, or rows with no common target,
+ * → `[]` (the bulk bar then disables the Set-status control). ISS-463.
+ */
+export function bulkAllowedStatuses(rows: IssueRow[]): IssueStatus[] {
+  if (rows.length === 0) return [];
+  let common: IssueStatus[] | null = null;
+  for (const r of rows) {
+    const allowed = allowedTransitions(r.status);
+    if (common === null) {
+      common = allowed;
+    } else {
+      const allowedSet = new Set(allowed);
+      common = common.filter((s) => allowedSet.has(s));
+    }
+  }
+  return common ?? [];
 }
 
 export interface DepCounts {
@@ -219,21 +243,27 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
  *   core/issues/search.ts). ISS-360: "all issues" means all issues, drafts
  *   included; this intentionally reverses the ISS-236 "All excludes drafts"
  *   rule and removes the separate Drafts tab the reporter flagged as confusing.
+ * - draft: only drafts (ISS-438 — there was no way to see just drafts)
  * - active: the in-flight lifecycle band
  * - review: developed/deploying/testing/tested
  * - blocked: on_hold + needs_info (work parked / waiting on input)
+ * - done: shipped work (released + closed)
  */
 export function filterToStatusParams(filter: IssueFilter): {
   status?: IssueStatus[];
   statusNot?: IssueStatus[];
 } {
   switch (filter) {
+    case "draft":
+      return { status: ["draft"] };
     case "active":
       return { status: ["open", "confirmed", "clarified", "waiting", "approved", "in_progress", "reopen"] };
     case "review":
       return { status: ["developed", "deploying", "testing", "tested", "pass", "staging"] };
     case "blocked":
       return { status: ["on_hold", "needs_info"] };
+    case "done":
+      return { status: ["released", "closed"] };
     default:
       return {};
   }

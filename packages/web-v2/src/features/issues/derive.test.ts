@@ -6,6 +6,7 @@ import {
   PRIORITY_LABELS,
   STATUS_LABELS,
   allowedTransitions,
+  bulkAllowedStatuses,
   complexityLabel,
   deriveBlockerState,
   deriveCommentKind,
@@ -106,8 +107,47 @@ describe("allowedTransitions", () => {
     expect(from).toContain("on_hold");
     expect(from).toContain("reopen");
   });
-  it("restricts draft to promote or discard only", () => {
-    expect(allowedTransitions("draft")).toEqual(["open", "closed"]);
+  it("restricts draft to promote, direct-ship, or discard (ISS-431)", () => {
+    expect(allowedTransitions("draft")).toEqual(["open", "developed", "closed"]);
+  });
+});
+
+describe("bulkAllowedStatuses (ISS-463)", () => {
+  it("returns [] for an empty selection", () => {
+    expect(bulkAllowedStatuses([])).toEqual([]);
+  });
+  it("matches allowedTransitions when every row shares a status", () => {
+    const rows = [row({ id: "a", status: "approved" }), row({ id: "b", status: "approved" })];
+    expect(bulkAllowedStatuses(rows)).toEqual(allowedTransitions("approved"));
+  });
+  it("intersects allowed targets across mixed statuses", () => {
+    const rows = [row({ id: "a", status: "open" }), row({ id: "b", status: "approved" })];
+    const result = bulkAllowedStatuses(rows);
+    // a target is offered only if valid for BOTH rows
+    for (const s of result) {
+      expect(allowedTransitions("open")).toContain(s);
+      expect(allowedTransitions("approved")).toContain(s);
+    }
+    // never the current status of either row, never draft
+    expect(result).not.toContain("open");
+    expect(result).not.toContain("approved");
+    expect(result).not.toContain("draft");
+    // a commonly-valid target survives
+    expect(result).toContain("on_hold");
+  });
+  it("narrows hard when a draft row is in the mix (draft only allows open/developed/closed)", () => {
+    const rows = [row({ id: "a", status: "draft" }), row({ id: "b", status: "approved" })];
+    // draft allows [open, developed, closed]; approved excludes its own status
+    // but allows open/developed/closed → intersection is exactly those three.
+    expect(bulkAllowedStatuses(rows)).toEqual(["open", "developed", "closed"]);
+  });
+  it("preserves enum order in the result", () => {
+    const rows = [row({ id: "a", status: "open" }), row({ id: "b", status: "confirmed" })];
+    const result = bulkAllowedStatuses(rows);
+    const sorted = [...result].sort(
+      (x, y) => ISSUE_STATUSES.indexOf(x) - ISSUE_STATUSES.indexOf(y),
+    );
+    expect(result).toEqual(sorted);
   });
 });
 
@@ -195,6 +235,13 @@ describe("filterToStatusParams", () => {
   });
   it("blocked targets parked statuses", () => {
     expect(filterToStatusParams("blocked")).toEqual({ status: ["on_hold", "needs_info"] });
+  });
+  // ISS-438 — explicit Draft + Done buckets.
+  it("draft targets only drafts", () => {
+    expect(filterToStatusParams("draft")).toEqual({ status: ["draft"] });
+  });
+  it("done targets shipped work (released + closed)", () => {
+    expect(filterToStatusParams("done")).toEqual({ status: ["released", "closed"] });
   });
 });
 

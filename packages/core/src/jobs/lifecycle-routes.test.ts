@@ -51,11 +51,42 @@ const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// ISS-447 — the /complete, /fail and late-reclaim job flips now route through
+// applyKernelTransition(db, …), which writes the kernel_transitions audit row
+// on the same db handle right after the status UPDATE.
+const dbInsertValues = vi.fn(async () => undefined);
+const dbInsert = vi.fn(() => ({ values: dbInsertValues }));
+
+// ISS-442 C0 — cancelJob() runs the status flip + audit insert inside a
+// transaction (advisory-lock seq frontier via tx.execute). Mirror the db
+// chain on `tx`; `txUpdateReturning` is the cancel path's CAS result.
+const txUpdateReturning = vi.fn();
+const txUpdateWhere = vi.fn(() => ({ returning: txUpdateReturning }));
+const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
+// The intervention (job_events) insert passes a single object; ISS-447's
+// kernel_transitions audit insert passes an array of rows. Route them to
+// separate spies so the "exactly one intervention" assertion stays precise.
+const txInsertValues = vi.fn(async () => undefined);
+const txAuditValues = vi.fn(async () => undefined);
+const txExecute = vi.fn(async () => [{ max_seq: 0 }]);
+const tx = {
+  update: vi.fn(() => ({ set: txUpdateSet })),
+  insert: vi.fn(() => ({
+    values: (v: unknown) => (Array.isArray(v) ? txAuditValues(v) : txInsertValues(v)),
+  })),
+  execute: txExecute,
+};
+const dbTransaction = vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
+
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, update: dbUpdate },
+  db: { select: dbSelect, update: dbUpdate, insert: dbInsert, transaction: dbTransaction },
 }));
 
-const scheduleRetryMock = vi.fn(async () => ({ scheduled: false }));
+const scheduleRetryMock = vi.fn(
+  async (): Promise<{ scheduled: boolean; newJobId?: string; attempt?: number }> => ({
+    scheduled: false,
+  }),
+);
 vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
 }));
@@ -65,8 +96,14 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },
 }));
 
-vi.mock('../lib/project-access.js', () => ({
-  loadProjectAccess: vi.fn(async () => ({ projectId: 'p1', ownerId: 'u-1', role: 'owner' })),
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: vi.fn(async () => ({
+    projectId: 'p1',
+    orgId: 'org-1',
+    role: 'admin',
+    orgRole: 'owner',
+  })),
 }));
 
 // ISS-40 PR-E — lifecycle routes now fire-and-forget a per-project tick on
@@ -111,6 +148,8 @@ beforeEach(() => {
   scheduleRetryMock.mockResolvedValue({ scheduled: false });
   selectLimit.mockReset();
   updateReturning.mockReset();
+  txUpdateReturning.mockReset();
+  txExecute.mockResolvedValue([{ max_seq: 0 }]);
 });
 
 describe('POST /:id/complete (device)', () => {
@@ -303,8 +342,9 @@ describe('POST /:id/cancel (user)', () => {
   it('cancels a queued job directly (no WS to device)', async () => {
     const queuedJob = { ...jobRow, status: 'queued' as string, deviceId: null };
     selectLimit.mockResolvedValueOnce([verifiedUser]); // assertEmailVerified
-    selectLimit.mockResolvedValueOnce([queuedJob]); // loadJob
-    updateReturning.mockResolvedValueOnce([
+    selectLimit.mockResolvedValueOnce([queuedJob]); // loadJob (route authz)
+    selectLimit.mockResolvedValueOnce([queuedJob]); // cancelJob internal load
+    txUpdateReturning.mockResolvedValueOnce([
       { ...queuedJob, status: 'cancelled', cancellationRequested: true },
     ]);
 
@@ -321,12 +361,25 @@ describe('POST /:id/cancel (user)', () => {
     expect(json.cancellationRequested).toBe(true);
     // No device push for queued cancel
     expect(publishMock).not.toHaveBeenCalledWith('device:dev-1', expect.anything());
+    // ISS-442 C0 — exactly one audited intervention row, actor + reason recorded.
+    expect(txInsertValues).toHaveBeenCalledTimes(1);
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'intervention',
+        data: expect.objectContaining({
+          action: 'cancel',
+          source: 'rest',
+          previousStatus: 'queued',
+        }),
+      }),
+    );
   });
 
   it('marks cancellationRequested and pushes WS to device on running cancel', async () => {
     selectLimit.mockResolvedValueOnce([verifiedUser]); // assertEmailVerified
-    selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
-    updateReturning.mockResolvedValueOnce([{ ...jobRow, cancellationRequested: true }]);
+    selectLimit.mockResolvedValueOnce([jobRow]); // loadJob (route authz)
+    selectLimit.mockResolvedValueOnce([jobRow]); // cancelJob internal load
+    txUpdateReturning.mockResolvedValueOnce([{ ...jobRow, cancellationRequested: true }]);
 
     const app = buildApp();
     const r = await app.fetch(
@@ -351,7 +404,8 @@ describe('POST /:id/cancel (user)', () => {
 
   it('409 when job is already terminal', async () => {
     selectLimit.mockResolvedValueOnce([verifiedUser]); // assertEmailVerified
-    selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'done' }]); // loadJob
+    selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'done' }]); // loadJob (route authz)
+    selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'done' }]); // cancelJob internal load
 
     const app = buildApp();
     const r = await app.fetch(

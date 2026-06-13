@@ -10,12 +10,23 @@ import {
   devices,
   issues,
   labels,
+  organizationMembers,
+  organizations,
   projectKinds,
   projectMembers,
   projects,
   runners,
   skillRegistrations,
 } from '../db/schema.js';
+import {
+  assertOrgAccess,
+  assertOrgRoleOnProject,
+  assertProjectRole,
+  loadPersonalOrgId,
+  loadProjectAccess,
+  maxProjectRole,
+  orgDerivedProjectRole,
+} from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -51,6 +62,9 @@ export const createProjectSchema = z.object({
   // ISS-387 — project kind. `standard` (default) = code repo project;
   // `website` = an Epodsystem storefront project (git repo optional).
   kind: z.enum(projectKinds).optional(),
+  // Org tier — every project belongs to exactly one org. Omitted = the
+  // caller's personal org. Any org role (incl. member) may create projects.
+  orgId: z.uuid().optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -91,6 +105,9 @@ export const updateProjectSchema = z
     previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     stateContext: stateContextSchema.nullable().optional(),
+    // Move the project to another org. Requires org owner/admin on BOTH the
+    // current org (route gate) and the target org (checked in the handler).
+    orgId: z.uuid().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
@@ -112,23 +129,6 @@ const notFound = () =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-async function loadMembership(projectId: string, userId: string) {
-  const [project] = await db
-    .select({ id: projects.id, ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound();
-
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-
-  return { project, role: member?.role ?? null };
-}
-
 export const projectRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -141,8 +141,25 @@ projectRoutes.post(
     }
   }),
   async (c) => {
-    const { slug, name, description, kind } = c.req.valid('json');
+    const { slug, name, description, kind, orgId: requestedOrgId } = c.req.valid('json');
     const userId = c.get('userId');
+
+    // Resolve the target org: explicit orgId (caller must be an org member of
+    // any role) or the caller's personal org.
+    let orgId: string;
+    if (requestedOrgId) {
+      await assertOrgAccess(requestedOrgId, userId, 'member');
+      orgId = requestedOrgId;
+    } else {
+      const personal = await loadPersonalOrgId(userId);
+      if (!personal) {
+        throw new HTTPException(500, {
+          message: 'personal org missing — run migrations',
+          cause: { code: 'PERSONAL_ORG_MISSING' },
+        });
+      }
+      orgId = personal;
+    }
 
     try {
       const created = await db.transaction(async (tx) => {
@@ -151,7 +168,8 @@ projectRoutes.post(
           .values({
             slug,
             name,
-            ownerId: userId,
+            orgId,
+            createdBy: userId,
             apiKey: generateApiKey(),
             // ISS-274 — default the branch columns at create time so a new
             // project never resolves a null base/prod branch at pipeline time
@@ -167,7 +185,8 @@ projectRoutes.post(
             id: projects.id,
             slug: projects.slug,
             name: projects.name,
-            ownerId: projects.ownerId,
+            orgId: projects.orgId,
+            createdBy: projects.createdBy,
             apiKey: projects.apiKey,
             createdAt: projects.createdAt,
           });
@@ -179,7 +198,7 @@ projectRoutes.post(
         await tx.insert(projectMembers).values({
           userId,
           projectId: project.id,
-          role: 'owner',
+          role: 'admin',
         });
 
         return project;
@@ -206,31 +225,57 @@ projectRoutes.get('/', async (c) => {
   // the UI can't render archived state (see memory
   // `web:useProjectBySlug-omits-branch-fields`).
   const includeArchived = ['1', 'true'].includes((c.req.query('archived') ?? '').toLowerCase());
+  // Visible = explicit membership (any role) OR org owner/admin on the
+  // project's org (implicit admin) — same rule as lib/authz.ts.
   const rows = await db
-    .select({
+    .selectDistinctOn([projects.id], {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      ownerId: projects.ownerId,
-      role: projectMembers.role,
+      orgId: projects.orgId,
+      orgName: organizations.name,
+      orgIsPersonal: organizations.isPersonal,
+      createdBy: projects.createdBy,
+      memberRole: projectMembers.role,
+      orgRole: organizationMembers.role,
       apiKey: projects.apiKey,
       archivedAt: projects.archivedAt,
       createdAt: projects.createdAt,
     })
-    .from(projectMembers)
-    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .from(projects)
+    .innerJoin(organizations, eq(organizations.id, projects.orgId))
+    .leftJoin(
+      projectMembers,
+      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+    )
+    .leftJoin(
+      organizationMembers,
+      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+    )
     .where(
-      includeArchived
-        ? eq(projectMembers.userId, userId)
-        : and(eq(projectMembers.userId, userId), isNull(projects.archivedAt)),
+      and(
+        sql`${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin')`,
+        ...(includeArchived ? [] : [isNull(projects.archivedAt)]),
+      ),
     );
 
-  // apiKey is returned as-is — the caller is the project member (rows are
-  // joined through projectMembers.userId = me) and ADR 0013 documents that
-  // the key is embedded in the widget page anyway, so the threat model
-  // doesn't change by exposing it here. Redacting broke the desktop MCP
-  // install (key.length < 16 → 401) and the web widget snippet generator.
-  return c.json(rows);
+  // apiKey is returned as-is — the caller has effective access (ADR 0013
+  // documents the key is embedded in the widget page anyway). Redacting broke
+  // the desktop MCP install (key.length < 16 → 401) and the web widget
+  // snippet generator.
+  return c.json(
+    rows.map(({ memberRole, orgRole, apiKey, ...row }) => {
+      const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
+      return {
+        ...row,
+        // Viewer is read-only: the apiKey can pair MCP devices / install the
+        // widget (execution-grade), so it is withheld from the viewer tier.
+        apiKey: role === 'viewer' ? null : apiKey,
+        role,
+        orgRole: orgRole ?? null,
+      };
+    }),
+  );
 });
 
 projectRoutes.get(
@@ -242,15 +287,16 @@ projectRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { role } = await loadMembership(id, userId);
-    if (!role) throw forbidden('not a project member');
+    const access = await loadProjectAccess(id, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     const [project] = await db
       .select({
         id: projects.id,
         slug: projects.slug,
         name: projects.name,
-        ownerId: projects.ownerId,
+        orgId: projects.orgId,
+        createdBy: projects.createdBy,
         description: projects.description,
         repoPath: projects.repoPath,
         baseBranch: projects.baseBranch,
@@ -296,10 +342,13 @@ projectRoutes.get(
         and(eq(runners.projectId, id), eq(runners.type, 'claude-code'), eq(runners.host, 'device')),
       );
 
-    // apiKey returned as-is — caller passed loadMembership() above. See the
-    // GET / list comment for the same reasoning.
+    // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
+    // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
       ...project,
+      apiKey: access.role === 'viewer' ? null : project.apiKey,
+      role: access.role,
+      orgRole: access.orgRole,
       members,
       labels: labelRows,
       devicePool,
@@ -316,10 +365,8 @@ projectRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
-      throw forbidden('owner or admin required');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     // Retry on the partial unique index violation. With 192 bits of
     // entropy a collision is astronomical, but the `create` path already
@@ -371,12 +418,16 @@ projectRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    // Settings PATCH keeps the legacy owner-only strictness: org owner/admin,
+    // not a merely-invited project admin.
+    const access = await loadProjectAccess(id, userId);
+    assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     const updates: Record<string, unknown> = {};
+    if (patch.orgId !== undefined && patch.orgId !== access.orgId) {
+      await assertOrgAccess(patch.orgId, userId, 'admin');
+      updates.orgId = patch.orgId;
+    }
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
@@ -416,7 +467,8 @@ projectRoutes.patch(
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      ownerId: projects.ownerId,
+      orgId: projects.orgId,
+      createdBy: projects.createdBy,
       description: projects.description,
       repoPath: projects.repoPath,
       baseBranch: projects.baseBranch,
@@ -462,10 +514,8 @@ projectRoutes.post(
     const { deviceId, capabilities, repoPath, branch } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
-      throw forbidden('owner or admin required');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     const [device] = await db
       .select({
@@ -568,10 +618,8 @@ projectRoutes.patch(
     const { repoPath, branch, capabilities } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
-      throw forbidden('owner or admin required');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     const [runner] = await db
       .update(runners)
@@ -611,10 +659,8 @@ projectRoutes.delete(
     const { id, runnerId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
-      throw forbidden('owner or admin required');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     // Idempotent: 204 whether the runner existed or not, mirroring the old
     // PUT/DELETE /:id/devices/:deviceId contract.
@@ -632,10 +678,8 @@ projectRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     await db.delete(projects).where(eq(projects.id, id));
     return c.body(null, 204);
@@ -655,7 +699,8 @@ const ARCHIVE_PROJECTION = {
   id: projects.id,
   slug: projects.slug,
   name: projects.name,
-  ownerId: projects.ownerId,
+  orgId: projects.orgId,
+  createdBy: projects.createdBy,
   apiKey: projects.apiKey,
   archivedAt: projects.archivedAt,
   createdAt: projects.createdAt,
@@ -670,10 +715,8 @@ projectRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     // `coalesce(archived_at, now())` keeps the ORIGINAL archive timestamp when
     // re-archiving an already-archived project (idempotent), and only stamps
@@ -699,10 +742,8 @@ projectRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     const [updated] = await db
       .update(projects)
@@ -741,8 +782,8 @@ projectRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { role } = await loadMembership(id, userId);
-    if (!role) throw forbidden('not a project member');
+    const access = await loadProjectAccess(id, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     const [row] = await db
       .select({ agentConfig: projects.agentConfig })
@@ -781,10 +822,8 @@ projectRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    const access = await loadProjectAccess(id, userId);
+    assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     try {
       const result = await updatePipelineConfig({ projectId: id, patch });
@@ -836,8 +875,8 @@ projectRoutes.get(
     const { id, issueId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { role } = await loadMembership(id, userId);
-    if (!role) throw forbidden('not a project member');
+    const access = await loadProjectAccess(id, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     const [project] = await db
       .select({
@@ -894,6 +933,16 @@ projectRoutes.get(
 // the call after the project is already bootstrapped is a no-op.
 const bootstrapParamSchema = z.object({ id: z.uuid() });
 
+// ISS-453 — named skill template sets. Each entry is a stage→skill binding the
+// bootstrap materialises via clone-on-first-use. `forge-default` is derived
+// from STATUS_TO_JOB_TYPE so it reproduces the original inline loop exactly
+// (regression-safe); adding a set is a data entry here, not new code.
+const TEMPLATE_SETS: Record<string, ReadonlyArray<{ stage: string; skillName: string }>> = {
+  'forge-default': Object.entries(STATUS_TO_JOB_TYPE).flatMap(([status, mapping]) =>
+    mapping ? [{ stage: status, skillName: `forge-${mapping.type}` }] : [],
+  ),
+};
+
 const BALANCED_PRESET = {
   enabled: true,
   autoTriage: true,
@@ -909,6 +958,20 @@ const BALANCED_PRESET = {
   autoRelease: false,
 } as const;
 
+// ISS-453 — named pipelineConfig presets. Only `balanced` is wired today;
+// Stable/Aggressive plug in later as new entries (data only, no handler code).
+type PipelinePreset = Readonly<Record<keyof typeof BALANCED_PRESET, boolean>>;
+const PIPELINE_PRESETS: Record<string, PipelinePreset> = {
+  balanced: BALANCED_PRESET,
+};
+
+// Optional body — an absent/empty POST keeps today's defaults, so existing
+// callers (web bootstrap button, MCP) are unaffected.
+const bootstrapBodySchema = z.object({
+  templateSet: z.string().optional(),
+  preset: z.string().optional(),
+});
+
 projectRoutes.post(
   '/:id/skills/bootstrap',
   zValidator('param', bootstrapParamSchema, (result) => {
@@ -918,10 +981,23 @@ projectRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadMembership(id, userId);
-    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
-      throw forbidden('owner or admin role required');
+    // ISS-453 — the body is optional (an empty POST keeps the defaults), so
+    // it is parsed by hand instead of zValidator('json'), which rejects a
+    // bodyless request. Unknown names fail fast before any mutation.
+    const rawBody: unknown = await c.req.json().catch(() => ({}));
+    const parsedBody = bootstrapBodySchema.safeParse(rawBody ?? {});
+    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+    const templateSetName = parsedBody.data.templateSet ?? 'forge-default';
+    const presetName = parsedBody.data.preset ?? 'balanced';
+    const templateSet = TEMPLATE_SETS[templateSetName];
+    if (!templateSet) {
+      throw badRequest({ templateSet: `unknown template set '${templateSetName}'` });
     }
+    const preset = PIPELINE_PRESETS[presetName];
+    if (!preset) throw badRequest({ preset: `unknown preset '${presetName}'` });
+
+    const access = await loadProjectAccess(id, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
 
     // Already bootstrapped? Return current state, no mutation.
     const existing = await db
@@ -973,11 +1049,10 @@ projectRoutes.post(
       stage: string;
       registeredBy: string;
     }> = [];
-    for (const [status, mapping] of Object.entries(STATUS_TO_JOB_TYPE)) {
-      if (!mapping) continue;
-      const skillId = await resolveOrAdoptProjectSkill(id, `forge-${mapping.type}`);
+    for (const { stage, skillName } of templateSet) {
+      const skillId = await resolveOrAdoptProjectSkill(id, skillName);
       if (!skillId) continue;
-      toInsert.push({ projectId: id, skillId, stage: status, registeredBy: userId });
+      toInsert.push({ projectId: id, skillId, stage, registeredBy: userId });
     }
 
     if (toInsert.length === 0) {
@@ -989,15 +1064,16 @@ projectRoutes.post(
 
     await db.insert(skillRegistrations).values(toInsert);
 
-    // Apply the Balanced preset only when no pipelineConfig.enabled flag has
-    // been set yet — never clobber a user's deliberate config.
+    // Apply the selected preset (Balanced by default) only when no
+    // pipelineConfig.enabled flag has been set yet — never clobber a user's
+    // deliberate config.
     const shouldSetPreset = currentPipeline.enabled === undefined;
     if (shouldSetPreset) {
       const merged = {
         ...currentAc,
         pipelineConfig: {
           ...currentPipeline,
-          ...BALANCED_PRESET,
+          ...preset,
           states: defaultStatesConfig(),
         },
       };
@@ -1013,9 +1089,7 @@ projectRoutes.post(
     }
 
     const skillsBound = toInsert.length;
-    const pipelineEnabled = shouldSetPreset
-      ? BALANCED_PRESET.enabled
-      : currentPipeline.enabled === true;
+    const pipelineEnabled = shouldSetPreset ? preset.enabled : currentPipeline.enabled === true;
 
     return c.json(
       {

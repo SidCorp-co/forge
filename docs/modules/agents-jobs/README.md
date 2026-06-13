@@ -2,7 +2,7 @@
 
 Execution orchestration between the pipeline and devices: job queue, dispatch, execution, event streaming.
 
-> Sub-doc: [prompt-config.md](prompt-config.md) — SSOT system-prompt builder + per-state model/tools/mcp config + prompt hashing.
+> Sub-docs: [prompt-config.md](prompt-config.md) — SSOT system-prompt builder + per-state model/tools/mcp config + prompt hashing · [skill-facts.md](skill-facts.md) — versioned facts registry injected into the system prompt so skills stay business-logic-only.
 
 ## Overview
 

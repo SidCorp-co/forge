@@ -22,6 +22,9 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('../db/schema.js', () => ({
   agentSessions: 'agent_sessions-table',
   jobs: 'jobs-table',
+  // ISS-447 — applyKernelTransition writes the audit row here; the tx double's
+  // insert() ignores the table identity, so a marker string suffices.
+  kernelTransitions: 'kernel_transitions-table',
 }));
 
 vi.mock('../logger.js', () => ({ logger: { error: vi.fn(), info: vi.fn() } }));
@@ -49,11 +52,24 @@ function makeTx(cancelledJobRows: Array<Record<string, unknown>>) {
           capture.set = values;
           return chain;
         },
+        // ISS-447 — both axes now flow through applyKernelTransition, which
+        // always calls `.returning()`. The jobs chain returns the cancelled
+        // rows (so the session branch + audit run); the session chain returns
+        // the same ids so its audit insert fires too.
         where() {
-          return isJobs ? { returning: async () => cancelledJobRows } : Promise.resolve(undefined);
+          return {
+            returning: async () =>
+              isJobs
+                ? cancelledJobRows
+                : cancelledJobRows.map((r) => ({ id: r.agentSessionId })),
+          };
         },
       };
       return chain;
+    },
+    // applyKernelTransition writes one audit row per flipped entity.
+    insert() {
+      return { values: async () => undefined };
     },
   };
   return { tx, captures };
@@ -92,13 +108,22 @@ describe('cascadeCancelChildJobs — session-status mapping (ISS-352)', () => {
     expect(set?.failureReason).toBe('pipeline_cancelled');
   });
 
-  it('always cancels orphan jobs regardless of reason (no masking of cleanup)', async () => {
+  it('ISS-444: pipeline_completed resolves orphan jobs to done (success), not cancelled', async () => {
     const { tx, captures } = makeTx(jobRows);
     const res = await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_completed');
     const jobSet = captures.find((c) => c.table === 'jobs-table')?.set;
-    expect(jobSet?.status).toBe('cancelled');
+    expect(jobSet?.status).toBe('done');
+    expect(jobSet?.failureReason).toBeNull();
     expect(res.cancelledJobIds).toEqual(['job-1', 'job-2']);
     expect(res.abortedSessionIds).toEqual(['sess-1', 'sess-2']);
+  });
+
+  it('genuine cancel/fail closes still cancel orphan jobs', async () => {
+    const { tx, captures } = makeTx(jobRows);
+    await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_failed');
+    const jobSet = captures.find((c) => c.table === 'jobs-table')?.set;
+    expect(jobSet?.status).toBe('cancelled');
+    expect(jobSet?.failureReason).toBe('pipeline_failed');
   });
 
   it('skips the session update entirely when no jobs were cancelled', async () => {

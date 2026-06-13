@@ -20,7 +20,7 @@ const { errorHandler } = await import('./error.js');
 const { requestId } = await import('./request-id.js');
 
 function buildApp(minutes?: number) {
-  const app = new Hono();
+  const app = new Hono<{ Variables: { userId: string } }>();
   app.use('*', requestId());
   app.use('/gated', async (c, next) => {
     c.set('userId', 'user-1');
@@ -28,7 +28,7 @@ function buildApp(minutes?: number) {
   });
   app.use('/gated', requireFreshAuth(minutes));
   app.get('/gated', (c) => c.json({ ok: true }));
-  app.onError(errorHandler);
+  app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
   return app;
 }
 

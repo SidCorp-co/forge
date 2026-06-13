@@ -35,7 +35,7 @@ const updateWhere = vi.fn(() => {
   return thenable;
 });
 const updateSet = vi.fn(() => ({ where: updateWhere }));
-const updateMock = vi.fn(() => ({ set: updateSet }));
+const updateMock = vi.fn((..._args: unknown[]) => ({ set: updateSet }));
 
 // Tx proxy for manual-hold + plain-patch: `tx.update(...).set(...).where(...)`
 // resolves directly (no .returning), and `tx.insert(...).values({...})` is the
@@ -47,8 +47,8 @@ const updateMock = vi.fn(() => ({ set: updateSet }));
 // thenable-await and `.returning(...)`) for `tx.update` so status path mocks
 // stay in `updateReturning`. The withActorContext helper calls
 // `tx.execute(SELECT set_config(...))` first — `txExecute` is the noop stub.
-const txExecute = vi.fn(async () => undefined);
-const txInsertValues = vi.fn(async () => undefined);
+const txExecute = vi.fn(async (..._args: unknown[]) => undefined);
+const txInsertValues = vi.fn(async (..._args: unknown[]) => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
 // ISS-232 — `markMergedIfLeavingBase` issues a `tx.select(...).from
 // (projects)...` to resolve `mergeStates`. Stub it as an empty resolve so
@@ -105,7 +105,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -237,8 +238,9 @@ describe('PATCH /api/issues/batch', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_A,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
 
     const res = await buildApp().request('/api/issues/batch', {
@@ -274,8 +276,9 @@ describe('PATCH /api/issues/batch', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_A,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     // ISS2's status update returns its row.
     updateReturning.mockResolvedValueOnce([
@@ -328,9 +331,9 @@ describe('PATCH /api/issues/batch', () => {
     ]);
     projectAccess.mockImplementation(async (projectId: string) => {
       if (projectId === PROJECT_A) {
-        return { projectId, ownerId: USER_ID, role: 'member' };
+        return { projectId, orgId: 'org-1', role: 'member', orgRole: null };
       }
-      return { projectId, ownerId: 'other', role: null };
+      return { projectId, orgId: 'org-1', role: null, orgRole: null };
     });
 
     const res = await buildApp().request('/api/issues/batch', {
@@ -359,8 +362,9 @@ describe('PATCH /api/issues/batch', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_A,
-      ownerId: USER_ID,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     updateReturning.mockResolvedValueOnce([
       { id: ISS1, status: 'released', reopenCount: 0, updatedAt: new Date() },

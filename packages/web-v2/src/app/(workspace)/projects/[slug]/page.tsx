@@ -114,14 +114,14 @@ export default function ProjectOverviewPage() {
   const schedules = upcomingSchedules(schedulesQ.data);
 
   return (
-    <PageContainer width="wide" className="min-h-dvh">
+    <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-center gap-4">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
         <div className="flex-1">
           <h1 className="fg-h2">{project.name}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
-            <Badge tone={project.role === "owner" ? "accent" : "neutral"}>{project.role}</Badge>
+            <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{project.role ?? "org"}</Badge>
             {runsLive.length > 0 && (
               <span
                 className="fg-caption inline-flex items-center gap-1.5 font-semibold"

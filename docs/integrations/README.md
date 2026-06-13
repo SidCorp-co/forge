@@ -12,17 +12,7 @@ The shared machinery (registry, vault, delivery log, queue, adapter contract) is
 
 _Other platform-specific shapes will be documented here as they stabilize._
 
-## Planned documentation
-
-| Integration | Direction | Status |
-|-------------|-----------|--------|
-| GitHub Issues (webhook in) | Inbound | Supported generically, docs planned |
-| GitHub PR (status out) | Outbound | Planned v0.3 |
-| Sentry (error → issue) | Inbound | Supported generically, docs planned |
-| Stripe events | Inbound | Supported generically |
-| Slack / Discord notifications | Outbound | Planned v0.3 |
-| Cloudflare DNS (subdomain management) | Operational | Documented |
-| MCP client integrations (Claude Code, Cline, etc.) | Bidirectional | Documented in [../architecture/system-overview.md](../architecture/system-overview.md) |
+Inbound webhooks (GitHub, Sentry, Stripe, custom) are supported generically via [framework.md](framework.md#inbound-routing); platform-specific docs get added here as adapters ship. MCP client setup is in [../architecture/system-overview.md](../architecture/system-overview.md).
 
 ## How to add an integration doc
 

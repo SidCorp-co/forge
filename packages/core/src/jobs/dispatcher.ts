@@ -6,6 +6,7 @@ import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.j
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   recordDispatchBarrierSkip,
@@ -100,12 +101,12 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
   // see W2.3.2 PR notes.
   const budgetCheck = await checkMonthlyBudget(job);
   if (budgetCheck.action === 'pause') {
-    await db
-      .update(jobs)
-      .set({
-        status: 'failed',
+    await applyKernelTransition(db, {
+      entity: 'job',
+      to: 'failed',
+      set: {
         finishedAt: new Date(),
-        failureKind: 'permanent',
+        failureKind: 'code',
         failureReason: 'monthly_budget_exhausted',
         failureMeta: {
           spent: budgetCheck.spent,
@@ -113,8 +114,13 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
           stageStatus: budgetCheck.stageStatus,
         } as never,
         classifierVersion: 1,
-      })
-      .where(and(eq(jobs.id, job.id), eq(jobs.status, 'queued')));
+      },
+      where: and(eq(jobs.id, job.id), eq(jobs.status, 'queued')),
+      fromStatus: 'queued',
+      reason: 'monthly_budget_exhausted',
+      actor: { type: 'system' },
+      source: 'dispatcher',
+    });
     await hooks.emit('pipeline.budgetBreach', {
       projectId: job.projectId,
       stageStatus: budgetCheck.stageStatus ?? '',
@@ -363,15 +369,20 @@ async function dispatchViaRunner(
   // are not in RUNNER_CAPABILITIES so we skip the check for them.
   if (job.type !== 'pm' && !runnerSupportsJobType(runner.type as RunnerType, job.type as JobType)) {
     const errorMsg = `runner_unsupported_type:${runner.type}`;
-    await db
-      .update(jobs)
-      .set({
-        status: 'failed',
+    await applyKernelTransition(db, {
+      entity: 'job',
+      to: 'failed',
+      set: {
         error: errorMsg,
-        failureKind: 'permanent',
+        failureKind: 'code',
         failureReason: errorMsg,
-      })
-      .where(eq(jobs.id, job.id));
+      },
+      where: eq(jobs.id, job.id),
+      fromStatus: job.status,
+      reason: errorMsg,
+      actor: { type: 'system' },
+      source: 'dispatcher',
+    });
     logger.warn(
       { jobId: job.id, runnerType: runner.type, jobType: job.type },
       'dispatcher: runner does not support job type, failing permanently',
@@ -500,18 +511,26 @@ async function dispatchViaRunner(
     // (device-rotated onto a fresh runner) or, when the budget is exhausted,
     // parks the issue at `waiting` + reaps the run — never a silent no-op.
     const errorReason = result.errorReason ?? 'adapter dispatch failed';
-    const [updated] = await db
-      .update(jobs)
-      .set({
-        status: 'failed',
+    const [updated] = await applyKernelTransition(db, {
+      entity: 'job',
+      to: 'failed',
+      set: {
         finishedAt: new Date(),
         error: errorReason,
-        failureKind: 'unknown',
+        // ISS-450 — adapter dispatch failures are environment problems by
+        // construction (claim/spawn path); flag for review since no classifier
+        // pattern matched a structured cause.
+        failureKind: 'infra',
         failureReason: errorReason,
-        classifierVersion: 1,
-      })
-      .where(and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)))
-      .returning();
+        failureMeta: { needsReview: true } as never,
+        classifierVersion: 3,
+      },
+      where: and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)),
+      fromStatus: 'dispatched',
+      reason: errorReason,
+      actor: { type: 'system' },
+      source: 'dispatcher',
+    });
     await db
       .update(runners)
       .set({ lastError: errorReason, updatedAt: new Date() })

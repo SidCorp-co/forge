@@ -1,11 +1,11 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, jobEventKinds, jobEvents, jobs } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -76,9 +76,7 @@ jobEventsListRoutes.get(
     if (!job) throw notFound('job not found');
 
     const access = await loadProjectAccess(job.projectId, userId);
-    if (!access.role && access.ownerId !== userId) {
-      throw forbidden('not a project member');
-    }
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const whereClauses = [eq(jobEvents.jobId, jobId)];
     if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));
@@ -159,6 +157,19 @@ jobEventsRoutes.post(
       });
     }
 
+    // ISS-449 (I3) — fallback ack: the first event batch proves the runner
+    // claimed the job even when the explicit POST /:id/ack was lost or the
+    // runner predates it. Best-effort; the explicit ack (or a prior batch)
+    // wins via the isNull guard.
+    try {
+      await db
+        .update(jobs)
+        .set({ ackedAt: new Date() })
+        .where(and(eq(jobs.id, jobId), isNull(jobs.ackedAt)));
+    } catch (err) {
+      logger.warn({ err, jobId }, 'job-events: ack fallback stamp failed (continuing)');
+    }
+
     // Heartbeat sync: bump the linked agent_sessions row so the zombie sweeper
     // doesn't kill an in-flight pipeline job. CAS queued→running on first event
     // stamps startedAt; later batches bump lastHeartbeatAt only. Best-effort —
@@ -180,12 +191,7 @@ jobEventsRoutes.post(
             lastHeartbeatAt: heartbeatNow,
             updatedAt: heartbeatNow,
           })
-          .where(
-            and(
-              eq(agentSessions.id, job.agentSessionId),
-              eq(agentSessions.status, 'queued'),
-            ),
-          )
+          .where(and(eq(agentSessions.id, job.agentSessionId), eq(agentSessions.status, 'queued')))
           .returning({
             id: agentSessions.id,
             projectId: agentSessions.projectId,
@@ -194,13 +200,9 @@ jobEventsRoutes.post(
         if (flipped.length > 0) {
           const row = flipped[0];
           if (row) {
-            broadcastSessionEvent(
-              row.id,
-              row.projectId,
-              row.deviceId,
-              'agent-session.status',
-              { status: 'running' },
-            );
+            broadcastSessionEvent(row.id, row.projectId, row.deviceId, 'agent-session.status', {
+              status: 'running',
+            });
           }
         } else {
           // Already running (or terminal). Bump heartbeat only — guarded so we
@@ -209,10 +211,7 @@ jobEventsRoutes.post(
             .update(agentSessions)
             .set({ lastHeartbeatAt: heartbeatNow, updatedAt: heartbeatNow })
             .where(
-              and(
-                eq(agentSessions.id, job.agentSessionId),
-                eq(agentSessions.status, 'running'),
-              ),
+              and(eq(agentSessions.id, job.agentSessionId), eq(agentSessions.status, 'running')),
             );
         }
       } catch (err) {

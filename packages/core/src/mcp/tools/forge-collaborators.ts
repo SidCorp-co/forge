@@ -32,20 +32,13 @@ export const forgeCollaboratorsTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { users: [], total: 0 };
     }
 
-    // Candidate users = owners + members of the caller's visible projects.
-    const [ownerRows, memberUserRows] = await Promise.all([
-      db
-        .selectDistinct({ id: projects.ownerId })
-        .from(projects)
-        .where(inArray(projects.id, visibleIds)),
-      db
-        .selectDistinct({ id: projectMembers.userId })
-        .from(projectMembers)
-        .where(inArray(projectMembers.projectId, visibleIds)),
-    ]);
-    const candidateIds = [
-      ...new Set([...ownerRows.map((r) => r.id), ...memberUserRows.map((r) => r.id)]),
-    ];
+    // Candidate users = explicit members of the caller's visible projects
+    // (post-0106 every creator holds an explicit admin row, so nobody is lost).
+    const memberUserRows = await db
+      .selectDistinct({ id: projectMembers.userId })
+      .from(projectMembers)
+      .where(inArray(projectMembers.projectId, visibleIds));
+    const candidateIds = [...new Set(memberUserRows.map((r) => r.id))];
     if (candidateIds.length === 0) {
       return { users: [], total: 0 };
     }

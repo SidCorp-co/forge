@@ -111,6 +111,7 @@ describe('GET /api/projects/health', () => {
 
   it('200 with health rows including throughput from issue.statusChanged activity', async () => {
     authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }, { id: PROJECT_B_ID }]); // loadVisibleProjectIds
     queryQueue.push([
       { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
       { id: PROJECT_B_ID, slug: 'beta', name: 'Beta', agentConfig: { foo: 1 } },
@@ -148,6 +149,7 @@ describe('GET /api/projects/health', () => {
 
   it('200 with throughput=0 when no activity rows match (regression: empty result must not 500)', async () => {
     authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
     queryQueue.push([
       { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
     ]);
@@ -167,6 +169,7 @@ describe('GET /api/projects/health', () => {
 
   it('200 with additive rollups (liveRuns / runners / spend24h / members / lastActivityAt)', async () => {
     authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }, { id: PROJECT_B_ID }]); // loadVisibleProjectIds
     queryQueue.push([
       {
         id: PROJECT_A_ID,
@@ -248,6 +251,7 @@ describe('GET /api/projects/health', () => {
     // The db mock can't bind real Postgres, so assert the literal SQL shape:
     // it must say `IN (` and must NOT carry `ANY(` or `::uuid[]`.
     authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
     queryQueue.push([
       { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
     ]); // visibleProjects

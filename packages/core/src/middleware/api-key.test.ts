@@ -18,7 +18,7 @@ function buildApp() {
   const app = new Hono<{ Variables: import('./api-key.js').ApiKeyVars }>();
   app.use('/secure/*', requireProjectApiKey());
   app.get('/secure/echo', (c) => c.json({ project: c.get('project') }));
-  app.onError(errorHandler);
+  app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
   return app;
 }
 

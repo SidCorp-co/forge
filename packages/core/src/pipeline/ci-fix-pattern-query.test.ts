@@ -8,6 +8,8 @@ vi.mock('../embeddings/index.js', () => ({
 }));
 vi.mock('../memory/search.js', () => ({
   searchMemories: (...a: unknown[]) => searchMock(...(a as [])),
+  // Usage tracking (memory-v2 phase 2) is fire-and-forget from the query path.
+  touchMemories: async () => undefined,
 }));
 
 const { queryPreventivePatterns } = await import('./ci-fix-pattern-query.js');
