@@ -51,7 +51,7 @@ const cancelInputSchema = z
 export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_jobs.list',
   description:
-    'List jobs scoped to a project. Supports status/type/issueId filters. Requires device owner to be a project member.',
+    'List jobs scoped to a project. Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, status, type, issueId, limit } = listInputSchema.parse(args);
@@ -62,8 +62,42 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
     if (type) conds.push(eq(jobs.type, type));
     if (issueId) conds.push(eq(jobs.issueId, issueId));
 
+    // ISS-478 (sibling of ISS-428) — explicit body-free projection. NEVER
+    // `db.select()` here: the `payload`/`promptBlocks`/`failureMeta` jsonb plus
+    // the unbounded `userPromptSnapshot`/`error` text overflow the MCP token cap
+    // (~862K chars observed live) and crash fragile agents. Heavy fields stay in
+    // `.get`.
     const rows = await db
-      .select()
+      .select({
+        id: jobs.id,
+        projectId: jobs.projectId,
+        issueId: jobs.issueId,
+        pipelineRunId: jobs.pipelineRunId,
+        deviceId: jobs.deviceId,
+        runnerId: jobs.runnerId,
+        createdBy: jobs.createdBy,
+        type: jobs.type,
+        status: jobs.status,
+        queuedAt: jobs.queuedAt,
+        dispatchedAt: jobs.dispatchedAt,
+        ackedAt: jobs.ackedAt,
+        finishedAt: jobs.finishedAt,
+        exitCode: jobs.exitCode,
+        modelTier: jobs.modelTier,
+        attempts: jobs.attempts,
+        cancellationRequested: jobs.cancellationRequested,
+        retryOf: jobs.retryOf,
+        retryAfterAt: jobs.retryAfterAt,
+        agentSessionId: jobs.agentSessionId,
+        failureKind: jobs.failureKind,
+        failureReason: jobs.failureReason,
+        classifierVersion: jobs.classifierVersion,
+        systemPromptHash: jobs.systemPromptHash,
+        promptInputTokenEst: jobs.promptInputTokenEst,
+        modelUsed: jobs.modelUsed,
+        archivePath: jobs.archivePath,
+        createdAt: jobs.createdAt,
+      })
       .from(jobs)
       .where(and(...conds))
       .orderBy(desc(jobs.queuedAt))
