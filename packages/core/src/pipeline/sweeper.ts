@@ -361,8 +361,11 @@ async function alarmLoopMiss(
  *
  * This pass is the backstop: a run is reapable when it is a job-less
  * `system`/`interactive` run older than the heartbeat threshold (age guard so
- * a freshly-opened run is never touched) with NO live session — i.e. no linked
- * session in `queued|running|idle` whose heartbeat is still fresh. Any
+ * a freshly-opened run is never touched) with NO live session. A session counts
+ * as live when its heartbeat is fresh within the bare heartbeat floor, OR
+ * (ISS-442 device-aware grace) within a longer grace window while its device is
+ * still beating on the runner WS — so a long-but-alive agent that goes quiet
+ * between worker-side writes (parallel subagents) is not force-failed. Any
  * lingering non-terminal session is force-failed (`heartbeat_timeout`) and
  * broadcast first, then the run is closed through the shared
  * `closeRunIfOneShot` SSOT (CAS-guarded; cascade is a no-op with zero jobs).
@@ -383,6 +386,17 @@ export async function reapOrphanedOneShotRuns(
   const { heartbeatMs } = getZombieThresholds();
   // postgres-js rejects raw Date params; serialise to ISO before binding.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
+  // ISS-442 — a job-less agent (esp. a schedule audit fanning out parallel
+  // subagents) can go many minutes between worker-side writes while genuinely
+  // alive, so the bare 3-min heartbeat floor force-failed LIVE runs (the run
+  // closed mid-work; the still-running session was then orphaned by the
+  // terminal-run trigger). Add a device-aware grace: a session whose heartbeat
+  // is within DEVICE_GRACE *and* whose device is still beating on the runner WS
+  // (`runners.last_seen_at` fresh) counts as live. A dead/disconnected device
+  // still reaps on the bare heartbeat floor; a truly abandoned session reaps
+  // once even the grace lapses.
+  const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
+  const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 
   const candidates = await db.execute<{ id: string }>(sql`
@@ -398,7 +412,17 @@ export async function reapOrphanedOneShotRuns(
         SELECT 1 FROM agent_sessions s
         WHERE s.pipeline_run_id = r.id
           AND s.status IN ('queued', 'running', 'idle')
-          AND COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) >= ${cutoffIso}
+          AND (
+            COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) >= ${cutoffIso}
+            OR (
+              COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) >= ${graceCutoffIso}
+              AND EXISTS (
+                SELECT 1 FROM runners rn
+                WHERE rn.device_id = s.device_id
+                  AND rn.last_seen_at >= ${cutoffIso}
+              )
+            )
+          )
       )
       ${projectClause}
     ORDER BY r.started_at ASC
