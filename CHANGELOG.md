@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Agent chat now saves your messages, continues a conversation across multiple turns, shows distinguishable titles in the history switcher instead of every chat reading "Chat", and keeps your typed message if a send fails so you can retry.
 - The project dashboard's live-run count no longer includes finished or stale runs, so it reflects genuinely active work.
 - You can now select multiple issues on the Issues list and bulk-update their status or priority at once.
+- The agent chat panel now widens to use more of the screen on large monitors instead of staying a narrow fixed drawer, while staying readable on small screens.
 
 ## [0.3.0] - 2026-06-11
 
