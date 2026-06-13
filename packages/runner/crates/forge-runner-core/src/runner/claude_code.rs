@@ -70,6 +70,12 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
     }
     args.push("--mcp-config".into());
     args.push(mcp_path.into());
+    // The temp `--mcp-config` is authoritative for a job run. `--strict-mcp-config`
+    // makes Claude ignore the working-dir `.mcp.json` instead of merging it — so a
+    // provisioned repo's persistent `.mcp.json` (which also defines a `forge`
+    // server, for interactive use) never double-loads on top of this fresh-token
+    // temp config. See docs / ISS-466 follow-up.
+    args.push("--strict-mcp-config".into());
     if let Some(rid) = spec.resume_id.as_deref().filter(|s| !s.is_empty()) {
         args.push("--resume".into());
         args.push(rid.into());
