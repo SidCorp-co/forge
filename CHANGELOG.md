@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The project dashboard's Live runs panel now labels each run with its issue (or a clear run type) and shows the run's real cost instead of a generic label and $0.
 - Agent chat now saves your messages, continues a conversation across multiple turns, shows distinguishable titles in the history switcher instead of every chat reading "Chat", and keeps your typed message if a send fails so you can retry.
 - The project dashboard's live-run count no longer includes finished or stale runs, so it reflects genuinely active work.
+- You can now select multiple issues on the Issues list and bulk-update their status or priority at once.
 
 ## [0.3.0] - 2026-06-11
 
