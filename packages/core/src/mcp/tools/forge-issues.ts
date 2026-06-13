@@ -208,6 +208,32 @@ export function serialize(row: IssueRow): Record<string, unknown> {
   };
 }
 
+/**
+ * ISS-428 — body-free projection for the `list` (browse) surface. Returns only
+ * light scalar fields and OMITS the heavy bodies (`description`, `plan`,
+ * `acceptanceCriteria`, `suggestedSolution`, `sessionContext`, `ai*`,
+ * `releaseNotes`) so a list over many populated issues never overflows the MCP
+ * token cap. Heavy fields stay reachable per-issue via `action=get`. Do NOT
+ * widen this back to `serialize()`.
+ */
+function serializeListRow(row: IssueRow): Record<string, unknown> {
+  return {
+    documentId: row.id,
+    issueId: `ISS-${row.issSeq}`,
+    title: row.title,
+    status: row.status,
+    priority: row.priority,
+    category: row.category,
+    complexity: row.complexity,
+    assigneeId: row.assigneeId,
+    parentIssueId: row.parentIssueId,
+    reopenCount: row.reopenCount,
+    mergedAt: row.mergedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 export async function loadIssue(documentId: string): Promise<IssueRow> {
   const [row] = await db.select().from(issues).where(eq(issues.id, documentId)).limit(1);
   if (!row) throw new Error('NOT_FOUND: issue not found');
@@ -294,6 +320,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'CRUD for project issues. Actions: list, get, create, update, transition, ' +
     'createTask, listTasks, updateTask, deleteTask, mark_merged, unmark. ' +
+    'list returns a lightweight summary projection per issue (no description/' +
+    'plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*/releaseNotes) ' +
+    'to stay under the response token cap; fetch the full body with action=get. ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
     'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
     'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +
@@ -359,7 +388,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .orderBy(desc(issues.updatedAt))
           .limit(input.limit ?? 25);
 
-        return { issues: rows.map((r) => serialize(r as IssueRow)) };
+        return { issues: rows.map((r) => serializeListRow(r as IssueRow)) };
       }
 
       case 'get': {

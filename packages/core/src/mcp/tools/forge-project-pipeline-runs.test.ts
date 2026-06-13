@@ -33,10 +33,11 @@ const selectWhere = vi.fn(() => ({
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
+const selectSpy = vi.fn(() => ({ from: selectFrom }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
-    select: vi.fn(() => ({ from: selectFrom })),
+    select: selectSpy,
   },
 }));
 
@@ -139,6 +140,25 @@ describe('forge_project_pipeline_runs (action=list)', () => {
   it('rejects when projectId missing with BAD_REQUEST', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/BAD_REQUEST/);
+  });
+
+  // ISS-428 — list must project scalar columns only (no `metadata` jsonb) so a
+  // large list stays under the MCP response token cap.
+  it('projects scalar columns only and omits the metadata jsonb', async () => {
+    const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    selectLimit.mockResolvedValueOnce([baseRun]); // runs query
+
+    await tool.handler({ action: 'list', projectId: PROJECT_ID });
+
+    const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
+    const projection = lastCall?.[0] as Record<string, unknown> | undefined;
+    expect(projection).toBeDefined();
+    const keys = Object.keys(projection ?? {});
+    expect(keys).toContain('id');
+    expect(keys).toContain('status');
+    expect(keys).toContain('currentStep');
+    expect(keys).not.toContain('metadata');
   });
 });
 

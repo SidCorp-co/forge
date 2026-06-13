@@ -116,15 +116,38 @@ function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
   return out;
 }
 
+/**
+ * ISS-428 — body-free projection for the `list` (catalog) surface. Drops the
+ * heavy fields (`skillMd` body, `prompt`, `files`, `tools`, `manifest`,
+ * `changelog`, `localGuide`) that blow the MCP token cap; keeps the catalog
+ * metadata + dedup hints. Bodies stay reachable via forge_skills.get /
+ * forge_skills.effective.
+ */
+function toSkillListRow(row: SkillListRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    scope: row.scope,
+    projectId: row.projectId,
+    version: row.version,
+    contentHash: row.contentHash,
+    target: row.target,
+    evalScore: row.evalScore,
+    shadowsGlobal: row.shadowsGlobal,
+    shadowedGlobalSkillId: row.shadowedGlobalSkillId,
+  };
+}
+
 export const forgeSkillsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_skills.list',
   description:
-    'Catalog of skills visible to a project, deduped by name. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. Requires device owner to be a project member.',
+    'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
     await assertDeviceOwnerIsMember(device, projectId);
-    const skills = dedupSkillsByName(await listProjectSkills(projectId));
+    const skills = dedupSkillsByName(await listProjectSkills(projectId)).map(toSkillListRow);
     return { skills };
   },
 });
