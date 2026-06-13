@@ -74,8 +74,14 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
 
-    // Implemented in M1.
-    println!("• cred store   keychain + file fallback (M1)");
+    // Report the backend a read/write would actually resolve to right now, and
+    // warn when it's the plaintext file store (ISS-467 — was a hardcoded string).
+    let backend = cred_store::active_backend();
+    if matches!(backend, cred_store::Backend::File) {
+        println!("⚠ cred store   {backend} — set FORGE_RUNNER_CRED_STORE=keychain for OS-managed storage (macOS/Windows)");
+    } else {
+        println!("✔ cred store   {backend}");
+    }
 
     // Best-effort update check (3s budget — never blocks doctor).
     if let Some(url) = update::manifest_url(

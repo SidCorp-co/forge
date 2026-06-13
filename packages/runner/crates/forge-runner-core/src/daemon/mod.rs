@@ -60,6 +60,13 @@ pub async fn run(
     device_id: String,
     device_token: String,
 ) -> Result<()> {
+    // Surface which credential store the daemon resolved, so the journal makes
+    // recovery unambiguous (ISS-467) — interactive/headless/systemd contexts can
+    // otherwise disagree about where the token lives.
+    tracing::info!(
+        "[cred] device token store: {}",
+        crate::auth::cred_store::active_backend()
+    );
     let client = Arc::new(CoreClient::new(core_url.clone(), device_token.clone()));
     let runner = Arc::new(ClaudeCodeRunner::new(
         core_url.clone(),

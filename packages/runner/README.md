@@ -32,6 +32,35 @@ cargo build --release
 ./target/release/forge-runner start
 ```
 
+## Multiple instances on one machine (ISS-467)
+
+To run several runners on one box — e.g. one per Claude account for
+quota-failover — each must be a **distinct device**. Core dedups devices by
+`(owner, sha256(machine_id))` and **rotates the token in place**, so without a
+unique machine-id every `forge-runner login` from the same box collapses onto
+one device row and overwrites the others' tokens (which knocks the running
+daemons offline with `[ws] auth failed (401)`).
+
+Give each instance its own identity and config before its first `login`:
+
+```bash
+# Per instance (e.g. account ai006):
+export FORGE_RUNNER_MACHINE_ID=$(hostname)-ai006   # unique → distinct device row
+export XDG_CONFIG_HOME=$HOME/.config/forge-runner-ai006  # separate config.toml + credentials.json
+export FORGE_RUNNER_CRED_STORE=file                # deterministic token store across shell/systemd
+export CLAUDE_CONFIG_DIR=$HOME/.claude-ai006       # the account this instance runs as
+forge-runner login --core-url <url> --code <CODE>
+forge-runner bind <slug> --path <dir>
+forge-runner start
+```
+
+`FORGE_RUNNER_MACHINE_ID` must be set **before the first login** — it decides
+which device row the runner claims. For a systemd unit, put these in the unit's
+`Environment=` lines (one unit per instance) and disable `update.auto` if the
+instances share a single binary. A dead/rotated token no longer crash-loops the
+daemon: on `401` it logs loudly, backs off, and reconnects automatically once
+you re-`login` (no restart needed).
+
 ## Auto-update (ISS-392)
 
 The daemon checks `{core}/api/install/latest.json` ~30s after start and every 6h.
