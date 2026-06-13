@@ -208,6 +208,8 @@ describe('GET /api/projects/:id/pipeline-runs', () => {
         id: RUN_ID,
         projectId: PROJECT_ID,
         issueId: null,
+        issueRef: 'ISS-460',
+        issueTitle: 'Live run data',
         kind: 'issue',
         status: 'running',
         currentStep: null,
@@ -231,9 +233,16 @@ describe('GET /api/projects/:id/pipeline-runs', () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('7');
-    const body = (await res.json()) as Array<{ id: string; cost: { estimatedCost: number } }>;
+    const body = (await res.json()) as Array<{
+      id: string;
+      issueRef: string | null;
+      issueTitle: string | null;
+      cost: { estimatedCost: number };
+    }>;
     expect(body).toHaveLength(1);
     expect(body[0]!.cost.estimatedCost).toBe(1.23);
+    expect(body[0]!.issueRef).toBe('ISS-460');
+    expect(body[0]!.issueTitle).toBe('Live run data');
   });
 
   it('returns 403 when caller is not a project member', async () => {

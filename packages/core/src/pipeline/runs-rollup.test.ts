@@ -12,6 +12,7 @@ const stepsQueue: SelectQueue = [];
 const costQueue: SelectQueue = [];
 const runRowQueue: SelectQueue = [];
 const bulkCostQueue: SelectQueue = [];
+const issueQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
 
@@ -19,6 +20,7 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ _and: args }),
   eq: (...args: unknown[]) => ({ _eq: args }),
   asc: (...args: unknown[]) => ({ _asc: args }),
+  inArray: (...args: unknown[]) => ({ _inArray: args }),
   sql: ((strings: TemplateStringsArray, ...values: unknown[]) => {
     const obj = { _sql: strings.join('?'), values };
     return Object.assign(obj, { mapWith: () => obj });
@@ -71,6 +73,7 @@ vi.mock('../db/schema.js', () => ({
   },
   devices: { id: 'devices.id', name: 'devices.name' },
   pipelineRuns: { id: 'pipeline_runs.id' },
+  issues: { id: 'issues.id', issSeq: 'issues.iss_seq', title: 'issues.title' },
   usageRecords: {
     id: 'usage_records.id',
     estimatedCost: 'usage_records.estimated_cost',
@@ -91,16 +94,19 @@ vi.mock('../db/client.js', () => ({
         const isAgentSessions = String(tableKey).startsWith('agent_sessions');
         const isUsageRecords = String(tableKey).startsWith('usage_records');
         const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
+        const isIssues = String(tableKey).startsWith('issues');
 
         const result = isAgentSessions
           ? stepsQueue.shift()
           : isPipelineRuns
             ? runRowQueue.shift()
-            : isUsageRecords
-              ? nextSelectKind === 'bulkCost'
-                ? bulkCostQueue.shift()
-                : costQueue.shift()
-              : [];
+            : isIssues
+              ? issueQueue.shift()
+              : isUsageRecords
+                ? nextSelectKind === 'bulkCost'
+                  ? bulkCostQueue.shift()
+                  : costQueue.shift()
+                : [];
 
         return makeChain(Promise.resolve(result ?? []));
       },
@@ -129,6 +135,7 @@ beforeEach(() => {
   costQueue.length = 0;
   runRowQueue.length = 0;
   bulkCostQueue.length = 0;
+  issueQueue.length = 0;
   nextSelectKind = 'steps';
 });
 
@@ -136,6 +143,7 @@ const RUN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const PROJECT_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const SESS_A = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const SESS_B = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const ISSUE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
 const runRow = {
   id: RUN_ID,
@@ -267,5 +275,39 @@ describe('listItemsFromRows', () => {
     expect(item.cost.sampleCount).toBe(0);
     expect(item.id).toBe(RUN_ID);
     expect(item.startedAt).toBe('2026-05-12T00:00:00.000Z');
+  });
+
+  it('no issueId → issueRef/issueTitle null (and does not query issues)', async () => {
+    nextSelectKind = 'bulkCost';
+    bulkCostQueue.push([]);
+    const items = await listItemsFromRows([runRow]);
+    expect(items[0]!.issueRef).toBeNull();
+    expect(items[0]!.issueTitle).toBeNull();
+  });
+
+  it('ISS-460: maps cost (via agent_sessions rollup) and resolves issueRef/issueTitle', async () => {
+    nextSelectKind = 'bulkCost';
+    // loadCostByRunIds maps rows keyed on runId (now sourced from agent_sessions).
+    bulkCostQueue.push([
+      {
+        runId: RUN_ID,
+        estimatedCost: 0.42,
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        requests: 1,
+        sampleCount: 3,
+      },
+    ]);
+    issueQueue.push([{ id: ISSUE_ID, issSeq: 460, title: 'Live run data' }]);
+
+    const items = await listItemsFromRows([{ ...runRow, issueId: ISSUE_ID }]);
+    expect(items).toHaveLength(1);
+    const item = items[0]!;
+    expect(item.cost.estimatedCost).toBe(0.42);
+    expect(item.cost.sampleCount).toBe(3);
+    expect(item.issueRef).toBe('ISS-460');
+    expect(item.issueTitle).toBe('Live run data');
   });
 });

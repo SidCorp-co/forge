@@ -9,13 +9,14 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type PipelineRunKind,
   type PipelineRunStatus,
   agentSessions,
   devices,
+  issues,
   jobs,
   pipelineRuns,
   usageRecords,
@@ -86,6 +87,10 @@ export interface PipelineRunSummary {
   id: string;
   projectId: string;
   issueId: string | null;
+  /** ISS-460 — human ref (`ISS-<seq>`) of the run's issue; null for pm/system/interactive runs. */
+  issueRef: string | null;
+  /** ISS-460 — title of the run's issue; null when the run has no issue. */
+  issueTitle: string | null;
   kind: PipelineRunKind;
   status: PipelineRunStatus;
   currentStep: string | null;
@@ -186,9 +191,17 @@ async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
       requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
       sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
     })
+    // ISS-460 — usage_records.session_id is an agent_sessions.id (NOT a job id;
+    // verified beta ISS-308), so join through agent_sessions, scoped by the
+    // session's pipeline_run_id. Guard the ::uuid cast against non-uuid ids.
     .from(usageRecords)
-    .innerJoin(jobs, eq(jobs.id, sql`${usageRecords.sessionId}::uuid`))
-    .where(eq(jobs.pipelineRunId, runId));
+    .innerJoin(agentSessions, sql`${agentSessions.id} = ${usageRecords.sessionId}::uuid`)
+    .where(
+      and(
+        eq(agentSessions.pipelineRunId, runId),
+        sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$'`,
+      ),
+    );
 
   return row ?? EMPTY_COST;
 }
@@ -279,6 +292,9 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     id: row.id,
     projectId: row.projectId,
     issueId: row.issueId,
+    // ISS-460 — resolved by callers that join `issues`; default null here.
+    issueRef: null,
+    issueTitle: null,
     kind: row.kind,
     status: row.status,
     currentStep: row.currentStep,
@@ -288,19 +304,42 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
   };
 }
 
+/** ISS-460 — batch-resolve `{ issueRef, issueTitle }` for the given issue ids. */
+async function loadIssueRefs(
+  issueIds: string[],
+): Promise<Map<string, { issueRef: string | null; issueTitle: string | null }>> {
+  const out = new Map<string, { issueRef: string | null; issueTitle: string | null }>();
+  if (issueIds.length === 0) return out;
+  const rows = await db
+    .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
+    .from(issues)
+    .where(inArray(issues.id, issueIds));
+  for (const r of rows) {
+    out.set(r.id, {
+      issueRef: r.issSeq != null ? `ISS-${r.issSeq}` : null,
+      issueTitle: r.title ?? null,
+    });
+  }
+  return out;
+}
+
 /** Load a single run with steps + cost rolled up. Returns null if missing. */
 export async function loadPipelineRunSummary(runId: string): Promise<PipelineRunSummary | null> {
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   if (!row) return null;
 
-  const [steps, cost, attemptRollup] = await Promise.all([
+  const [steps, cost, attemptRollup, issueRefs] = await Promise.all([
     loadStepsForRun(runId),
     loadCostForRun(runId),
     loadAttemptsForRun(runId),
+    loadIssueRefs(row.issueId ? [row.issueId] : []),
   ]);
 
+  const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
   return {
     ...rowToListItem(row),
+    issueRef: ref?.issueRef ?? null,
+    issueTitle: ref?.issueTitle ?? null,
     steps,
     cost,
     attempts: attemptRollup.attempts,
@@ -318,7 +357,7 @@ async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineR
   if (runIds.length === 0) return out;
   const rows = await db
     .select({
-      runId: jobs.pipelineRunId,
+      runId: agentSessions.pipelineRunId,
       estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
       inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
       outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
@@ -330,10 +369,17 @@ async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineR
       requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
       sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
     })
+    // ISS-460 — join through agent_sessions (usage_records.session_id is an
+    // agent_sessions.id, not a job id; verified beta ISS-308). Guard the cast.
     .from(usageRecords)
-    .innerJoin(jobs, eq(jobs.id, sql`${usageRecords.sessionId}::uuid`))
-    .where(sql`${jobs.pipelineRunId} in ${runIds}`)
-    .groupBy(jobs.pipelineRunId);
+    .innerJoin(agentSessions, sql`${agentSessions.id} = ${usageRecords.sessionId}::uuid`)
+    .where(
+      and(
+        inArray(agentSessions.pipelineRunId, runIds),
+        sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$'`,
+      ),
+    )
+    .groupBy(agentSessions.pipelineRunId);
   for (const r of rows) {
     if (!r.runId) continue;
     out.set(r.runId, {
@@ -353,8 +399,20 @@ async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineR
 export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunListItem[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const costMap = await loadCostByRunIds(ids);
-  return rows.map((r) => ({ ...rowToListItem(r), cost: costMap.get(r.id) ?? EMPTY_COST }));
+  const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
+  const [costMap, issueRefs] = await Promise.all([
+    loadCostByRunIds(ids),
+    loadIssueRefs(issueIds),
+  ]);
+  return rows.map((r) => {
+    const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
+    return {
+      ...rowToListItem(r),
+      issueRef: ref?.issueRef ?? null,
+      issueTitle: ref?.issueTitle ?? null,
+      cost: costMap.get(r.id) ?? EMPTY_COST,
+    };
+  });
 }
 
 export { EMPTY_COST as PIPELINE_RUN_EMPTY_COST };
