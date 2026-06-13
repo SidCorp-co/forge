@@ -79,17 +79,23 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
+  // React Query's `mutate` is referentially stable across renders; the wrapping
+  // `mutation` object is NOT (new identity every render). Depend on `mutate`
+  // alone so the context value (and `setActiveOrg`) only changes identity when
+  // `orgs`/`activeOrg` change — otherwise consumers' effects keyed on
+  // `setActiveOrg` re-run every render and can storm React #185 (ISS-472).
+  const { mutate } = mutation;
   const value = useMemo<ActiveOrgContextValue>(
     () => ({
       orgs,
       activeOrg,
       activeOrgId: activeOrg?.id ?? null,
       setActiveOrg: (orgId: string) => {
-        if (orgId !== activeOrg?.id) mutation.mutate(orgId);
+        if (orgId !== activeOrg?.id) mutate(orgId);
       },
       isSingle: orgs.length <= 1,
     }),
-    [orgs, activeOrg, mutation],
+    [orgs, activeOrg, mutate],
   );
 
   return <ActiveOrgContext.Provider value={value}>{children}</ActiveOrgContext.Provider>;
