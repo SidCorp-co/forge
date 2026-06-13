@@ -31,6 +31,18 @@ const listInputSchema = z
   })
   .strict();
 
+// ISS-478 fix-forward — the body-free projection bounds per-ROW size but not
+// the TOTAL response. At the old default limit of 50, a real-history project
+// still produced ~52K chars and overflowed the MCP output cap, spilling to a
+// file (the very failure this issue fixes, just 16× smaller). So ALSO bound the
+// total response: a smaller default limit for the common no-arg call, plus a
+// hard char budget that trims rows from the tail (oldest first — the list is
+// ordered queuedAt desc) until the serialized payload fits. ~38K leaves
+// headroom under the observed spill threshold (40 rows/~41K fit, 50/~52K did
+// not).
+const DEFAULT_LIST_LIMIT = 25;
+const MAX_RESPONSE_CHARS = 38_000;
+
 const getInputSchema = z.object({ jobId: z.uuid() }).strict();
 
 const eventsInputSchema = z
@@ -51,7 +63,7 @@ const cancelInputSchema = z
 export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_jobs.list',
   description:
-    'List jobs scoped to a project. Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Requires device owner to be a project member.',
+    'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. A hard response-size cap trims the oldest rows when needed; when that happens the result carries truncated:true + a notice (narrow with filters or a smaller limit). Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, status, type, issueId, limit } = listInputSchema.parse(args);
@@ -101,9 +113,27 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
       .from(jobs)
       .where(and(...conds))
       .orderBy(desc(jobs.queuedAt))
-      .limit(limit ?? 50);
+      .limit(limit ?? DEFAULT_LIST_LIMIT);
 
-    return { jobs: rows };
+    // Hard total-response cap: trim from the tail (oldest) until the serialized
+    // payload fits MAX_RESPONSE_CHARS, so a large explicit `limit` (or a verbose
+    // run of jobs) can never spill to a file. Always keep at least one row.
+    let kept = rows;
+    while (kept.length > 1 && JSON.stringify({ jobs: kept }).length > MAX_RESPONSE_CHARS) {
+      kept = kept.slice(0, -1);
+    }
+
+    if (kept.length < rows.length) {
+      return {
+        jobs: kept,
+        truncated: true,
+        returned: kept.length,
+        requested: limit ?? DEFAULT_LIST_LIMIT,
+        notice: `Response truncated to the ${kept.length} most recent of ${rows.length} jobs to stay under the MCP output cap. Narrow with status/type/issueId filters or a smaller limit; fetch full job bodies via forge_jobs.get.`,
+      };
+    }
+
+    return { jobs: kept };
   },
 });
 

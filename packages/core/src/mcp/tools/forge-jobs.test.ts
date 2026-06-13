@@ -49,6 +49,7 @@ const { forgeJobsListTool, forgeJobsGetTool, forgeJobsEventsTool, forgeJobsCance
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
 const JOB_ID = '22222222-2222-4222-8222-222222222222';
+const JOB_ID2 = '2a2a2a2a-2a2a-4a2a-8a2a-2a2a2a2a2a2a';
 const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
@@ -159,6 +160,56 @@ describe('forge_jobs.list', () => {
     ]) {
       expect(keys).not.toContain(heavy);
     }
+  });
+
+  // ISS-478 fix-forward — the projection alone bounds per-row size but NOT the
+  // total response: at the old default limit of 50 a real-history project still
+  // produced ~52K chars and spilled to a file. The handler now trims from the
+  // tail to a hard char budget. Assert a large list is trimmed and the
+  // serialized result stays well under the live spill threshold.
+  it('caps the total response size and flags truncation for a large list', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    // 200 realistically-sized projected rows (every scalar column populated incl.
+    // a bounded failureReason) → well over the char budget before trimming.
+    const fatRows = Array.from({ length: 200 }, (_, i) => ({
+      ...baseJobRow,
+      id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      failureReason: `transient runner failover after dispatch attempt ${i} (row padding to a realistic width)`,
+    }));
+    selectLimit.mockResolvedValueOnce(fatRows);
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, limit: 200 })) as {
+      jobs: Array<{ id: string }>;
+      truncated?: boolean;
+      returned?: number;
+      requested?: number;
+    };
+
+    // Trimmed below the requested 200, flagged, and serialized well under the
+    // ~45K live spill threshold.
+    expect(result.truncated).toBe(true);
+    expect(result.jobs.length).toBeLessThan(200);
+    expect(result.returned).toBe(result.jobs.length);
+    expect(result.requested).toBe(200);
+    expect(JSON.stringify(result).length).toBeLessThan(45_000);
+    // Newest-first order preserved: the kept rows are the head of the input.
+    expect(result.jobs[0]?.id).toBe(fatRows[0]?.id);
+  });
+
+  // A small list (under budget) returns the plain shape — no truncation noise.
+  it('returns the plain { jobs } shape when under the size budget', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    selectLimit.mockResolvedValueOnce([baseJobRow, { ...baseJobRow, id: JOB_ID2 }]); // jobs query
+
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      jobs: Array<{ id: string }>;
+      truncated?: boolean;
+    };
+
+    expect(result.jobs).toHaveLength(2);
+    expect(result.truncated).toBeUndefined();
   });
 });
 
