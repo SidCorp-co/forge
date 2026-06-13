@@ -181,12 +181,17 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // so the chrome label + console never lie about where you are. setActiveOrg
   // self-guards on no-op and persists via /me/preferences. Keyed on the
   // project's orgId so deep-linking to any project-tier route re-scopes too.
-  const { activeOrgId, setActiveOrg } = useActiveOrg();
+  const { orgs, activeOrgId, setActiveOrg } = useActiveOrg();
   useEffect(() => {
-    if (activeProject?.orgId && activeProject.orgId !== activeOrgId) {
-      setActiveOrg(activeProject.orgId);
+    // Only re-scope to an org the caller actually belongs to. activeOrg can
+    // never resolve to an org outside `orgs`, so attempting to switch to one
+    // would persist a preference that resolves straight back — leaving the
+    // guard permanently true and storming setActiveOrg (ISS-472).
+    const target = activeProject?.orgId;
+    if (target && target !== activeOrgId && orgs.some((o) => o.id === target)) {
+      setActiveOrg(target);
     }
-  }, [activeProject?.orgId, activeOrgId, setActiveOrg]);
+  }, [activeProject?.orgId, activeOrgId, orgs, setActiveOrg]);
 
   // Remember the last project visited so the rail can keep showing a project
   // context (mark + tier) even on workspace screens — no vanishing block.
