@@ -74,8 +74,21 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
 
-    // Implemented in M1.
-    println!("• cred store   keychain + file fallback (M1)");
+    // Report the backend a read/write would actually resolve to right now
+    // (ISS-467 — was a hardcoded string). The plaintext-file warning only makes
+    // sense where a keychain alternative exists: on Linux the file store is the
+    // only backend (keychain is cfg(macos/windows)), so flagging it there is a
+    // false alarm — report it informationally instead.
+    let backend = cred_store::active_backend();
+    match backend {
+        cred_store::Backend::File => {
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            println!("⚠ cred store   {backend} — set FORGE_RUNNER_CRED_STORE=keychain for OS-managed storage");
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            println!("• cred store   {backend} (only backend on this platform)");
+        }
+        _ => println!("✔ cred store   {backend}"),
+    }
 
     // Best-effort update check (3s budget — never blocks doctor).
     if let Some(url) = update::manifest_url(

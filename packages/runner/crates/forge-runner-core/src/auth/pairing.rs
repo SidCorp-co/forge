@@ -40,11 +40,22 @@ pub fn default_device_name() -> String {
         .unwrap_or_else(|| "forge-runner".to_string())
 }
 
-/// Stable per-machine identity. Reads systemd's `/etc/machine-id` (falling back
-/// to D-Bus's `/var/lib/dbus/machine-id`). The server hashes it before storage,
-/// so sending it raw is fine. `None` when neither file exists (e.g. macOS) — the
-/// server then keeps its legacy always-insert pairing behaviour.
+/// Stable per-machine identity. The server dedups devices by
+/// `(owner, sha256(machine_id))` and rotates the token in place, so two runners
+/// sharing one machine-id collapse onto a single device row. Set
+/// `FORGE_RUNNER_MACHINE_ID` (unique, non-empty) to run several instances as
+/// distinct devices on one box (ISS-467); when unset, falls back to systemd's
+/// `/etc/machine-id` (then D-Bus's `/var/lib/dbus/machine-id`). The server
+/// hashes it before storage, so sending it raw is fine. `None` when no source
+/// resolves (e.g. macOS) — the server then keeps its legacy always-insert
+/// pairing behaviour.
 pub fn machine_id() -> Option<String> {
+    if let Ok(v) = std::env::var("FORGE_RUNNER_MACHINE_ID") {
+        let v = v.trim();
+        if !v.is_empty() {
+            return Some(v.to_string());
+        }
+    }
     for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
         if let Ok(s) = std::fs::read_to_string(path) {
             let v = s.trim();

@@ -147,10 +147,20 @@ pub async fn connect(
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("401") {
-                    tracing::error!("[ws] auth failed (401) — re-pair with `forge-runner login`");
-                    break;
+                    // Don't exit the process here — that left systemd to
+                    // fast-restart every RestartSec with the same dead token
+                    // (ISS-467). Stay up, log loudly, and fall through to the
+                    // jittered backoff. Recovery is handled by the daemon's
+                    // credential-watch task: when a fresh `forge-runner login`
+                    // writes a new token it triggers a single controlled restart
+                    // that rebuilds every client (WS + HTTP) with it.
+                    tracing::error!(
+                        "[ws] auth failed (401) — re-pair with `forge-runner login`; \
+                         the daemon auto-restarts to apply new credentials once you do"
+                    );
+                } else {
+                    tracing::warn!("[ws] connect error: {msg}");
                 }
-                tracing::warn!("[ws] connect error: {msg}");
             }
         }
 
