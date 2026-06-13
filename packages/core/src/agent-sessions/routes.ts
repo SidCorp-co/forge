@@ -1077,8 +1077,21 @@ agentSessionRoutes.get(
     const [row] = await db.select().from(agentSessions).where(eq(agentSessions.id, id)).limit(1);
     if (!row) throw notFound('agent session not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    // A CLI runner reads its own session back with a device token to use the
+    // persisted `messages` as the baseline its PATCH appends onto (ISS-462). The
+    // PATCH path already honors the device principal; GET must too, or the
+    // baseline fetch 403s, the runner falls back to an EMPTY baseline, and every
+    // turn's PATCH overwrites the whole array — dropping the user turn + all
+    // prior history. Scope a device to ONLY the session dispatched to it; users
+    // keep the project-membership check.
+    if (c.get('principal') === 'device') {
+      if (row.deviceId !== c.get('deviceId')) {
+        throw forbidden('device does not own this session');
+      }
+    } else {
+      const access = await loadProjectAccess(row.projectId, userId);
+      if (!access.role) throw forbidden('not a project member');
+    }
 
     return c.json(row);
   },

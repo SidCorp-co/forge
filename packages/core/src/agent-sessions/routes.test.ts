@@ -57,6 +57,15 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
 
+// A CLI runner authenticates the chat write-back / baseline-read with a device
+// token. Stub verification so a non-JWT bearer resolves to a device principal
+// (ISS-462 GET /:id device-scoped read). Defaults to null (rejected); tests opt
+// in via verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID }).
+const verifyDeviceTokenMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
+vi.mock('../auth/deviceToken.js', () => ({
+  verifyDeviceToken: (token: unknown) => verifyDeviceTokenMock(token),
+}));
+
 // ISS-321 — POST /start resolves a Claude-capable device via device-pool.
 // Mock it so the no-online-client guard can be exercised deterministically.
 const findAvailableDeviceMock = vi.fn(async (_projectId: string) => null as string | null);
@@ -125,6 +134,8 @@ beforeEach(() => {
   projectAccessMock.mockReset();
   visibleIdsMock.mockReset();
   visibleIdsMock.mockResolvedValue([]);
+  verifyDeviceTokenMock.mockReset();
+  verifyDeviceTokenMock.mockResolvedValue(null);
   whereResults.length = 0;
 });
 
@@ -362,6 +373,61 @@ describe('POST /api/agent-sessions/:id/pipeline-control', () => {
       },
     );
     expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/agent-sessions/:id (chat baseline read — ISS-462)', () => {
+  // Regression: the runner fetches the persisted `messages` as the baseline its
+  // PATCH appends onto. If GET 403s a device principal, the baseline falls back
+  // to empty and every turn's PATCH overwrites the whole array — dropping the
+  // user turn + all prior history (the reopened Bug 1).
+  it('200 returns the full row (incl. messages baseline) for the owning device', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    const messages = [
+      { role: 'user', content: 'How many files are in this repo?', timestamp: 1 },
+      { type: 'assistant', content: '3', timestamp: 2 },
+    ];
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, messages },
+    ]);
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: 'Bearer device-token-xyz' },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { messages: unknown[] };
+    expect(json.messages).toHaveLength(2);
+    // The persisted user turn must survive the read so the runner can merge onto it.
+    expect((json.messages[0] as { role?: string }).role).toBe('user');
+    // A device read must NOT take the user-membership path.
+    expect(projectAccessMock).not.toHaveBeenCalled();
+  });
+
+  it('403 when a device reads a session dispatched to a different device', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: '99999999-9999-4999-8999-999999999999',
+        messages: [],
+      },
+    ]);
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: 'Bearer device-token-xyz' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('200 for a project member (user principal) still works', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, messages: [] },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
   });
 });
 
