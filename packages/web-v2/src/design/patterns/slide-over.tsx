@@ -8,7 +8,9 @@ export interface SlideOverProps {
   onClose: () => void;
   title?: ReactNode;
   children: ReactNode;
-  width?: number;
+  /** Drawer width. A number is treated as pixels; a string is used verbatim as
+      a CSS length (e.g. `clamp(560px, 60vw, 1024px)` for a responsive drawer). */
+  width?: number | string;
 }
 
 const FOCUSABLE =
@@ -18,6 +20,7 @@ const FOCUSABLE =
     navigating away. Esc to close, focus trapped inside, focus returns to the
     trigger on close. Backdrop blur signals background dismissal. */
 export function SlideOver({ open, onClose, title, children, width = 480 }: SlideOverProps) {
+  const slideOverWidth = typeof width === "number" ? `${width}px` : width;
   const panelRef = useRef<HTMLElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
 
@@ -67,7 +70,7 @@ export function SlideOver({ open, onClose, title, children, width = 480 }: Slide
         role="dialog"
         aria-modal="true"
         className="forge-slide flex h-full w-full max-w-[100vw] flex-col border-l border-line bg-surface shadow-lg sm:w-[var(--slide-over-w)]"
-        style={{ "--slide-over-w": `${width}px` } as CSSProperties}
+        style={{ "--slide-over-w": slideOverWidth } as CSSProperties}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">

@@ -228,7 +228,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8">
+        <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
           {isFailed && (
             <div className="mb-6">
               <Banner

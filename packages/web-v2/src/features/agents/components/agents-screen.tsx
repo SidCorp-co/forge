@@ -80,7 +80,10 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
           open={chatOpen}
           onClose={() => setChatOpen(false)}
           title="Agent chat"
-          width={560}
+          // Responsive width: scales up on wide screens (~768px @1280, ~864px
+          // @1440, capped 1024px @≥1707) instead of a fixed sliver; floor 560px
+          // keeps tablet behaviour and <sm stays full-width (SlideOver). ISS-464.
+          width="clamp(560px, 60vw, 1024px)"
         >
           <ChatScreen projectId={scope.projectId} />
         </SlideOver>
