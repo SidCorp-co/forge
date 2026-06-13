@@ -336,7 +336,9 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
           </div>
           {canWrite ? (
             <Composer
-              onSend={(message) => send.mutate({ sessionId, message })}
+              onSend={async (message) => {
+                await send.mutateAsync({ sessionId, message });
+              }}
               busy={live || send.isPending}
               disabled={!session.deviceId}
             />

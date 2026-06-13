@@ -6,7 +6,12 @@ import { Button, Textarea } from "@/design";
 import { type KeyboardEvent, useState } from "react";
 
 interface ComposerProps {
-  onSend: (message: string) => void;
+  /**
+   * Deliver the message. MUST reject (throw) on failure — the composer clears
+   * the input only when this resolves, so a failed send keeps the typed text
+   * for retry instead of discarding it (ISS-462).
+   */
+  onSend: (message: string) => Promise<void>;
   /** Disable input entirely (e.g. no device available). */
   disabled?: boolean;
   /** Send is in flight / the agent is busy. */
@@ -32,10 +37,17 @@ export function Composer({
   const [value, setValue] = useState("");
   const canSend = !disabled && !busy && value.trim().length > 0;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSend) return;
-    onSend(value.trim());
-    setValue("");
+    const text = value.trim();
+    try {
+      await onSend(text);
+      // Clear only on success — a thrown send (e.g. 409 no online runner)
+      // leaves the typed text in place so the user can retry (ISS-462).
+      setValue("");
+    } catch {
+      // Keep the text; the parent surfaces the error (Banner + toast).
+    }
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
