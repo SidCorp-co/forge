@@ -229,6 +229,51 @@ pub async fn run(
         });
     }
 
+    // Credential-watch loop (ISS-467): a fresh `forge-runner login` rotates the
+    // device token in the cred store, but the HTTP `CoreClient` and the WS were
+    // built with the token captured at startup and can't swap it in place. When
+    // the stored token changes from what we booted with, drain in-flight work
+    // and exit — systemd's `Restart=always` relaunches us and `start` rebuilds
+    // every client (WS + HTTP) with the new token. This fires ONLY on an actual
+    // change (never on a still-dead token with no re-login), so it can't become
+    // the old 401 fast-restart hammer; the WS backoff covers the dead window.
+    {
+        let startup_token = device_token.clone();
+        let inflight = inflight.clone();
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
+            tick.tick().await; // skip the immediate tick
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {}
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+                // Only act on a confirmed, changed token. None/Err (a transient
+                // read during the atomic rename, or a cleared store) is left
+                // alone so a blip never triggers a restart.
+                if let Ok(Some(current)) = crate::auth::cred_store::load_device_token() {
+                    if current != startup_token {
+                        tracing::warn!(
+                            "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
+                        );
+                        let mut waited = 0u64;
+                        while inflight.load(Ordering::Acquire) != 0 && waited < DRAIN_TIMEOUT_SECS {
+                            tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS))
+                                .await;
+                            waited += DRAIN_POLL_SECS;
+                        }
+                        tracing::warn!("[cred] restarting to pick up new credentials");
+                        // Exit 0 → systemd Restart=always relaunches THIS unit
+                        // (name-agnostic, so it works for multi-instance
+                        // forge-runner-<id> units too).
+                        std::process::exit(0);
+                    }
+                }
+            }
+        });
+    }
+
     // Heartbeat loop.
     {
         let client = client.clone();

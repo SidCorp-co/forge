@@ -58,8 +58,10 @@ forge-runner start
 which device row the runner claims. For a systemd unit, put these in the unit's
 `Environment=` lines (one unit per instance) and disable `update.auto` if the
 instances share a single binary. A dead/rotated token no longer crash-loops the
-daemon: on `401` it logs loudly, backs off, and reconnects automatically once
-you re-`login` (no restart needed).
+daemon: on `401` it logs loudly and backs off instead of exiting into a
+fixed-interval restart loop. When you re-`login`, the daemon detects the new
+token (within ~30s) and performs a single controlled restart to apply it across
+every client (WebSocket + HTTP) — no manual `systemctl restart` needed.
 
 ## Auto-update (ISS-392)
 

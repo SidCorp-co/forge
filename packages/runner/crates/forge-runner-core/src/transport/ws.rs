@@ -47,19 +47,9 @@ pub async fn connect(
             break;
         }
 
-        // Reload the device token on every connect attempt so a fresh
-        // `forge-runner login` (which rewrites the cred store) is picked up by
-        // the RUNNING daemon without a restart — this is what lets the 401 path
-        // below self-heal. Fall back to the token captured at startup if the
-        // store read is empty/errors (ISS-467).
-        let token = match crate::auth::cred_store::load_device_token() {
-            Ok(Some(t)) => t,
-            _ => cfg.device_token.clone(),
-        };
-
         let request = match cfg.url.as_str().into_client_request() {
             Ok(mut req) => {
-                if let Ok(v) = format!("Bearer {token}").parse() {
+                if let Ok(v) = format!("Bearer {}", cfg.device_token).parse() {
                     req.headers_mut().insert(header::AUTHORIZATION, v);
                 }
                 req
@@ -157,14 +147,16 @@ pub async fn connect(
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("401") {
-                    // Don't exit the process (that left systemd to fast-restart
-                    // every RestartSec with the same dead token — ISS-467).
-                    // Stay up, log loudly, and fall through to the jittered
-                    // backoff; the token is reloaded on the next attempt, so a
-                    // fresh `forge-runner login` recovers us without a restart.
+                    // Don't exit the process here — that left systemd to
+                    // fast-restart every RestartSec with the same dead token
+                    // (ISS-467). Stay up, log loudly, and fall through to the
+                    // jittered backoff. Recovery is handled by the daemon's
+                    // credential-watch task: when a fresh `forge-runner login`
+                    // writes a new token it triggers a single controlled restart
+                    // that rebuilds every client (WS + HTTP) with it.
                     tracing::error!(
                         "[ws] auth failed (401) — re-pair with `forge-runner login`; \
-                         retrying with backoff (no restart needed once re-paired)"
+                         the daemon auto-restarts to apply new credentials once you do"
                     );
                 } else {
                     tracing::warn!("[ws] connect error: {msg}");
