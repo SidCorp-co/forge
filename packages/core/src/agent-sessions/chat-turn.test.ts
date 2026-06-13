@@ -36,6 +36,11 @@ vi.mock('../lib/chat-preamble.js', () => ({
   TOOL_REFERENCE: '<tool-reference>',
 }));
 
+const resolveProjectDefaultMcpServers = vi.fn(async () => ({ playwright: { type: 'stdio' } }));
+vi.mock('../jobs/stage-overrides.js', () => ({
+  resolveProjectDefaultMcpServers: (id: string) => resolveProjectDefaultMcpServers(id),
+}));
+
 const publishSpy = vi.fn((..._args: unknown[]) => 1);
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: publishSpy } }));
 vi.mock('../ws/rooms.js', () => ({
@@ -140,6 +145,9 @@ describe('dispatchChatTurn', () => {
     expect(data.systemPrompt).toBe('<tool-reference>');
     expect(String(data.prompt)).toContain('hello');
     expect(String(data.prompt)).toContain('[Preamble]');
+    // Project-default MCP servers (e.g. playwright) are seeded into the cold turn.
+    expect(data.mcpServersOverride).toEqual({ playwright: { type: 'stdio' } });
+    expect(resolveProjectDefaultMcpServers).toHaveBeenCalledWith(PROJECT.id);
   });
 
   it('warm session (claudeSessionId set) → agent:send, no system prompt', async () => {
@@ -160,6 +168,9 @@ describe('dispatchChatTurn', () => {
     expect(data.message).toBe('again');
     expect(data.claudeSessionId).toBe('c-1');
     expect(data.systemPrompt).toBeUndefined();
+    // Each follow-up re-spawns `claude` with a fresh `--mcp-config`, so the
+    // project-default MCP servers must ride on `agent:send` too.
+    expect(data.mcpServersOverride).toEqual({ playwright: { type: 'stdio' } });
   });
 
   it('local (desktop) → mirrors agent:user-message, no device dispatch', async () => {

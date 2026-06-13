@@ -54,6 +54,8 @@ struct StartFrame {
     system_prompt: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    mcp_servers_override: Option<serde_json::Value>,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -68,6 +70,8 @@ struct SendFrame {
     project_slug: Option<String>,
     #[serde(default)]
     repo_path: Option<String>,
+    #[serde(default)]
+    mcp_servers_override: Option<serde_json::Value>,
 }
 
 /// Resolved per-turn parameters fed into one `claude` invocation.
@@ -79,6 +83,7 @@ struct Turn {
     system_prompt: Option<String>,
     model: Option<String>,
     resume_id: Option<String>,
+    mcp_servers_override: Option<serde_json::Value>,
 }
 
 /// Resolve the working dir for a chat turn. Core already sends `repoPath` on the
@@ -125,6 +130,7 @@ pub async fn handle_start(
             system_prompt: f.system_prompt,
             model: f.model,
             resume_id: None,
+            mcp_servers_override: f.mcp_servers_override,
         },
     )
     .await
@@ -155,6 +161,7 @@ pub async fn handle_send(
             system_prompt: None,
             model: None,
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
+            mcp_servers_override: f.mcp_servers_override,
         },
     )
     .await
@@ -201,7 +208,7 @@ async fn run_turn(
         allowed_tools: None,
         permission_mode: None,
         timeout_seconds: None,
-        mcp_servers_override: None,
+        mcp_servers_override: turn.mcp_servers_override.clone(),
         worktree_branch: None,
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.clone()),

@@ -35,6 +35,7 @@ import {
   syncTurnsWithMessages,
   truncateTurnsAfter,
 } from './turns-helpers.js';
+import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
 import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
 import { setTotalCount } from '../lib/pagination.js';
 import {
@@ -1927,6 +1928,10 @@ agentSessionRoutes.post(
         .from(projects)
         .where(eq(projects.id, inserted.projectId))
         .limit(1);
+      // Seed the project-default MCP servers (e.g. playwright) into the rerun's
+      // fresh interactive Claude turn, mirroring `dispatchChatTurn` — without
+      // this the re-spawned `claude` only sees the `forge` MCP. Best-effort `{}`.
+      const mcpServersOverride = await resolveProjectDefaultMcpServers(inserted.projectId);
       roomManager.publish(deviceRoom(targetDeviceId), {
         event: 'agent:start',
         data: {
@@ -1935,6 +1940,7 @@ agentSessionRoutes.post(
           prompt,
           projectSlug: project?.slug ?? null,
           preBuilt: false,
+          mcpServersOverride,
         },
       });
     }

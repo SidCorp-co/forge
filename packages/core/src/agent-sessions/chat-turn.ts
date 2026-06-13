@@ -8,6 +8,7 @@ import {
   resolveRepoPath,
   resolveRunnerRepoPath,
 } from '../lib/device-pool.js';
+import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -269,6 +270,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const target = deviceId as string;
+  // Seed the project-default MCP servers (e.g. playwright) into every chat turn.
+  // Each turn re-spawns `claude` with a fresh `--mcp-config`, so the follow-up
+  // (`agent:send`) needs it as much as the cold start. Best-effort: returns `{}`
+  // (harmless) when the project has no `pipelineConfig.mcpServers` configured.
+  const mcpServersOverride = await resolveProjectDefaultMcpServers(project.id);
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   if (!claudeSessionId) {
     // First turn — fresh Claude session: carry the tool reference + project preamble.
@@ -289,6 +295,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         projectSlug: project.slug,
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
+        mcpServersOverride,
       },
     });
   } else {
@@ -301,6 +308,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         claudeSessionId,
         repoPath,
         projectSlug: project.slug,
+        mcpServersOverride,
       },
     });
   }
