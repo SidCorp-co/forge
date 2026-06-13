@@ -8,6 +8,7 @@
 // rename / revoke); project membership (admin) gates the writes here.
 
 import {
+	Badge,
 	Banner,
 	Button,
 	Card,
@@ -41,6 +42,7 @@ import {
 	useInitPairing,
 	useProjectRunners,
 	useReprovision,
+	useSetDefaultDevice,
 	useSetGitCredential,
 	useUnassignDeviceFromProject,
 } from "../hooks";
@@ -307,10 +309,18 @@ function RunnerRow({
 	runner,
 	projectId,
 	canEdit,
+	isPrimary,
+	onSetPrimary,
+	settingPrimary,
 }: {
 	runner: ProjectRunner;
 	projectId: string;
 	canEdit: boolean;
+	/** True when this device is the project's primary (defaultDeviceId). */
+	isPrimary: boolean;
+	/** Set this device as primary (deviceId), or clear (null). */
+	onSetPrimary: (deviceId: string | null) => void;
+	settingPrimary: boolean;
 }) {
 	const reprovision = useReprovision(projectId);
 	const unassign = useUnassignDeviceFromProject(projectId);
@@ -325,6 +335,14 @@ function RunnerRow({
 					<span className="truncate font-semibold text-fg">
 						{runner.deviceName ?? "Unknown device"}
 					</span>
+					{isPrimary && (
+						<Badge tone="accent">
+							<span className="inline-flex items-center gap-1">
+								<Icon name="star" size={11} />
+								Primary
+							</span>
+						</Badge>
+					)}
 					{runner.platform && <MonoTag>{runner.platform}</MonoTag>}
 					<HealthDot
 						health={provisionHealth(runner.provisionStatus)}
@@ -357,6 +375,28 @@ function RunnerRow({
 						</span>
 					) : (
 						<span className="inline-flex items-center gap-1">
+							{runner.deviceId &&
+								(isPrimary ? (
+									<Button
+										variant="ghost"
+										size="sm"
+										icon="star"
+										loading={settingPrimary}
+										onClick={() => onSetPrimary(null)}
+									>
+										Unset primary
+									</Button>
+								) : (
+									<Button
+										variant="ghost"
+										size="sm"
+										icon="star"
+										loading={settingPrimary}
+										onClick={() => onSetPrimary(runner.deviceId as string)}
+									>
+										Set primary
+									</Button>
+								))}
 							{runner.deviceId && (
 								<Button
 									variant="ghost"
@@ -536,6 +576,8 @@ export function ProjectRunnersScreen({
 	useRoom(projectRoom(projectId));
 	const project = useProject(projectId);
 	const runners = useProjectRunners(projectId);
+	const setDefault = useSetDefaultDevice(projectId);
+	const defaultDeviceId = project.data?.defaultDeviceId ?? null;
 
 	const rows = runners.data ?? [];
 	const assignedDeviceIds = useMemo(
@@ -609,6 +651,9 @@ export function ProjectRunnersScreen({
 									runner={r}
 									projectId={projectId}
 									canEdit={!!canEdit}
+									isPrimary={!!r.deviceId && r.deviceId === defaultDeviceId}
+									onSetPrimary={(id) => setDefault.mutate(id)}
+									settingPrimary={setDefault.isPending}
 								/>
 							))}
 						</div>

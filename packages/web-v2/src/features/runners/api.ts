@@ -105,4 +105,15 @@ export const runnersApi = {
 		apiClient<void>(`/projects/${projectId}/git-credential`, {
 			method: "DELETE",
 		}),
+
+	/**
+	 * `PATCH /api/projects/:id` — set the project's primary (default) device.
+	 * `null` clears it. Dispatch prefers this device first, then standby runners.
+	 * Org owner/admin only (server-gated).
+	 */
+	setDefaultDevice: (projectId: string, deviceId: string | null) =>
+		apiClient<{ id: string }>(`/projects/${projectId}`, {
+			method: "PATCH",
+			body: JSON.stringify({ defaultDeviceId: deviceId }),
+		}),
 };
