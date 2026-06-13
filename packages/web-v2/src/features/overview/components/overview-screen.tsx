@@ -18,6 +18,8 @@ import { useRouter } from 'next/navigation';
 import { EmptyState, ErrorState, PageContainer, ProjectCardSkeleton } from '@/design';
 import { useActivity } from '@/features/activity/hooks';
 import { useAttention } from '@/features/attention/hooks';
+import { useActiveOrg } from '@/features/orgs/active-org';
+import { workspaceTotals } from '@/features/projects/derive';
 import { useProjectHealth, useProjectsConsole } from '@/features/projects/hooks';
 import { formatApiError } from '@/lib/api/error';
 import {
@@ -37,9 +39,26 @@ const ACTIVITY_LIMIT = 8;
 
 export function OverviewScreen() {
   const router = useRouter();
-  const { items, totals, isLoading, isError, error, refetch } = useProjectsConsole();
+  const { items: allItems, isLoading, isError, error, refetch } = useProjectsConsole();
   const health = useProjectHealth();
   const attention = useAttention();
+  // Hard-scope the dashboard to the active org (ISS-470) so `/` isn't an
+  // implicit "all organizations" view that contradicts the org-centric model.
+  // null activeOrgId only while orgs load → show all for one tick.
+  const { activeOrg, activeOrgId } = useActiveOrg();
+  const items = useMemo(
+    () => allItems.filter((p) => !activeOrgId || p.orgId === activeOrgId),
+    [allItems, activeOrgId],
+  );
+  const totals = useMemo(() => workspaceTotals(items), [items]);
+  // Health rollups are per-project — scope them to the in-scope project ids so
+  // KPIs + work distribution reflect the active org only.
+  const scopedHealth = useMemo(() => {
+    if (!health.data) return health.data;
+    const ids = new Set(items.map((p) => p.id));
+    return health.data.filter((r) => ids.has(r.id));
+  }, [health.data, items]);
+  const orgLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
   // `pageSize` only narrows the page; the key stays under the `['chat-logs']`
   // prefix the event-router invalidates, so live refresh is preserved.
   const activity = useActivity({ pageSize: ACTIVITY_LIMIT });
@@ -50,12 +69,12 @@ export function OverviewScreen() {
   useEffect(() => setNow(Date.now()), []);
 
   const kpis = useMemo(
-    () => workspaceKpis(totals, items, health.data),
-    [totals, items, health.data],
+    () => workspaceKpis(totals, items, scopedHealth),
+    [totals, items, scopedHealth],
   );
   const distribution = useMemo(
-    () => groupWorkBuckets(aggregateStatusDistribution(health.data)),
-    [health.data],
+    () => groupWorkBuckets(aggregateStatusDistribution(scopedHealth)),
+    [scopedHealth],
   );
   const spotlight = useMemo(() => pickSpotlightProjects(items, SPOTLIGHT_LIMIT), [items]);
   const activityRows = useMemo(
@@ -91,11 +110,18 @@ export function OverviewScreen() {
   }
 
   if (items.length === 0) {
+    // Distinguish a brand-new workspace (no projects anywhere) from an active
+    // org that simply has none yet (other orgs may hold projects).
+    const hasAnyProjects = allItems.length > 0;
     return (
       <PageContainer className="grid min-h-[60vh] place-items-center">
         <EmptyState
-          title="Welcome to Forge"
-          message="Create your first project to start shipping issues through the pipeline. Your workspace dashboard fills in as work flows."
+          title={hasAnyProjects ? `No projects in ${orgLabel ?? 'this organization'} yet` : 'Welcome to Forge'}
+          message={
+            hasAnyProjects
+              ? 'Create a project in this organization, or switch organizations from the chrome to see others.'
+              : 'Create your first project to start shipping issues through the pipeline. Your workspace dashboard fills in as work flows.'
+          }
           action={{ label: 'New project', onClick: () => router.push('/projects?new=1') }}
         />
       </PageContainer>
@@ -106,9 +132,9 @@ export function OverviewScreen() {
     <PageContainer className="flex flex-col gap-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="fg-h2">Overview</h1>
+          <h1 className="fg-h2">Overview{orgLabel ? ` · ${orgLabel}` : ''}</h1>
           <p className="fg-body-sm mt-0.5 text-muted">
-            Everything that needs you, across every project you can see.
+            Everything that needs you across {orgLabel ?? 'your organization'}.
           </p>
         </div>
       </header>

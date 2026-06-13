@@ -8,6 +8,7 @@
 //   • a static, non-interactive label when the user has a single org (AC5).
 // Two variants match the two rail widths; `expanded` is also used in the mobile
 // drawer. Presentational beyond the context read — no data fetching of its own.
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/design/icons/icon";
 import { Menu, type MenuItem } from "@/design/patterns/menu";
@@ -36,6 +37,8 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
       icon: o.id === activeOrg.id ? ("check" as const) : undefined,
       onSelect: () => setActiveOrg(o.id),
     })),
+    // Org home (ISS-470) — the active org's projects + members, one click away.
+    { label: "Organization home", icon: "grid", onSelect: () => router.push("/org") },
     { label: "Manage organizations", icon: "settings", onSelect: () => router.push("/settings?tab=orgs") },
   ];
 
@@ -62,13 +65,18 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
         {label}
       </span>
     );
-    // Single org → a static, non-interactive marker (AC5). No menu, no chevron.
+    // Single org → no menu/chevron, but still a link to the org home so the
+    // user can reach the org's projects + members (ISS-470, AC7 — no dead-end).
     if (isSingle) {
       return (
-        <div className="flex w-[60px] flex-col items-center pb-1 pt-[5px]" aria-label={`Organization: ${label}`}>
+        <Link
+          href="/org"
+          className="flex w-[60px] flex-col items-center rounded-md pb-1 pt-[5px] transition-colors hover:bg-hover"
+          aria-label={`Organization: ${label}`}
+        >
           {glyph}
           {labelEl}
-        </div>
+        </Link>
       );
     }
     return (
@@ -111,9 +119,13 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
   );
   if (isSingle) {
     return (
-      <div className={rowClass} aria-label={`Organization: ${label}`}>
+      <Link
+        href="/org"
+        className={cn(rowClass, "transition-colors hover:bg-hover")}
+        aria-label={`Organization: ${label}`}
+      >
         {rowInner}
-      </div>
+      </Link>
     );
   }
   return (

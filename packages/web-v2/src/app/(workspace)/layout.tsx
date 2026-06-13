@@ -25,7 +25,7 @@ import { useProjects, useProjectsConsole } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
-import { ActiveOrgProvider } from "@/features/orgs/active-org";
+import { ActiveOrgProvider, useActiveOrg } from "@/features/orgs/active-org";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
@@ -175,6 +175,18 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     () => (slug ? projects?.find((p) => p.slug === slug) ?? null : null),
     [projects, slug],
   );
+
+  // Cross-org navigation consistency (ISS-470, AC6): opening a project that
+  // belongs to a different org re-scopes the workspace to that project's org,
+  // so the chrome label + console never lie about where you are. setActiveOrg
+  // self-guards on no-op and persists via /me/preferences. Keyed on the
+  // project's orgId so deep-linking to any project-tier route re-scopes too.
+  const { activeOrgId, setActiveOrg } = useActiveOrg();
+  useEffect(() => {
+    if (activeProject?.orgId && activeProject.orgId !== activeOrgId) {
+      setActiveOrg(activeProject.orgId);
+    }
+  }, [activeProject?.orgId, activeOrgId, setActiveOrg]);
 
   // Remember the last project visited so the rail can keep showing a project
   // context (mark + tier) even on workspace screens — no vanishing block.

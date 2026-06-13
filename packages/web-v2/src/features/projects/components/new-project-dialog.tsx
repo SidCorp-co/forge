@@ -15,6 +15,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Banner, Button, Field, Input, Select, SlideOver, Textarea } from '@/design';
+import { useActiveOrg } from '@/features/orgs/active-org';
 import { useOrgs } from '@/features/orgs/hooks';
 import { useUpdateProject } from '@/features/project-settings/hooks';
 import type { ProjectUpdateInput } from '@/features/project-settings/types';
@@ -41,10 +42,13 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [slug, setSlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
   const [description, setDescription] = useState('');
-  // Target org — '' = the caller's personal org (server default).
+  // Target org — '' = the caller's personal org (server default). Defaults to
+  // the active org (ISS-470): a team org preselects its id, Personal → ''.
   const [orgId, setOrgId] = useState('');
   const orgsQ = useOrgs();
   const teamOrgs = (orgsQ.data ?? []).filter((o) => !o.isPersonal);
+  const { activeOrg } = useActiveOrg();
+  const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
 
   // Step 2 — "Set up pipeline" (ISS-453). `created` non-null flips the wizard.
@@ -65,7 +69,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setSlug('');
       setSlugEdited(false);
       setDescription('');
-      setOrgId('');
+      setOrgId(defaultOrgId);
       setErrors({});
       setCreated(null);
       setRepoPath('');
