@@ -3,6 +3,7 @@
 import {
   BoardRowSkeleton,
   Button,
+  Checkbox,
   EmptyState,
   ErrorState,
   Input,
@@ -52,6 +53,7 @@ import {
   type IssuePriority,
   type IssueSort,
 } from "../types";
+import { BulkActionBar } from "./bulk-action-bar";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
 
@@ -239,6 +241,43 @@ export function IssuesListView({
     canWrite,
   };
 
+  // ── Bulk selection (ISS-463) — page-scoped Set of issue ids ────────────────
+  // Selection is reset whenever the visible result set changes (filter / search
+  // / sort / page), so "select all" never silently spans pages and stale ids
+  // can't leak into a bulk apply. Disabled entirely for viewers (canWrite).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const bulkEnabled = canWrite;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [q, filter, priority, assignee, sort, page]);
+
+  const toggleRow = useCallback((id: string, next: boolean) => {
+    setSelected((prev) => {
+      const copy = new Set(prev);
+      if (next) copy.add(id);
+      else copy.delete(id);
+      return copy;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  const pageIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const selectedCount = useMemo(
+    () => pageIds.filter((id) => selected.has(id)).length,
+    [pageIds, selected],
+  );
+  const allOnPageSelected = pageIds.length > 0 && selectedCount === pageIds.length;
+  const someOnPageSelected = selectedCount > 0 && !allOnPageSelected;
+  const toggleAllOnPage = useCallback(
+    (next: boolean) => setSelected(next ? new Set(pageIds) : new Set()),
+    [pageIds],
+  );
+  const selectedRows = useMemo(
+    () => rows.filter((r) => selected.has(r.id)),
+    [rows, selected],
+  );
+
   const isFiltered = q !== "" || filter !== "all" || !!priority || !!assignee;
 
   return (
@@ -343,6 +382,10 @@ export function IssuesListView({
         </div>
       </div>
 
+      {bulkEnabled && (
+        <BulkActionBar selectedRows={selectedRows} onCleared={clearSelection} />
+      )}
+
       {issuesQ.isLoading && (
         <div className="overflow-hidden rounded-lg border border-line bg-surface">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -393,6 +436,16 @@ export function IssuesListView({
                   <Table>
                     <THead>
                       <TR>
+                        {bulkEnabled && (
+                          <TH className="w-9 pr-0">
+                            <Checkbox
+                              checked={allOnPageSelected}
+                              indeterminate={someOnPageSelected}
+                              onChange={toggleAllOnPage}
+                              ariaLabel="Select all issues on this page"
+                            />
+                          </TH>
+                        )}
                         <TH>ID</TH>
                         <TH>Issue</TH>
                         {/* ISS-436: ONE status column — lifecycle chip + live
@@ -415,6 +468,14 @@ export function IssuesListView({
                           slug={slug}
                           members={membersQ.data}
                           actions={actions}
+                          selection={
+                            bulkEnabled
+                              ? {
+                                  selected: selected.has(row.id),
+                                  onToggle: (next) => toggleRow(row.id, next),
+                                }
+                              : undefined
+                          }
                         />
                       ))}
                     </TBody>
@@ -441,6 +502,14 @@ export function IssuesListView({
                       slug={slug}
                       members={membersQ.data}
                       actions={actions}
+                      selection={
+                        bulkEnabled
+                          ? {
+                              selected: selected.has(row.id),
+                              onToggle: (next) => toggleRow(row.id, next),
+                            }
+                          : undefined
+                      }
                     />
                   ))}
                 </div>

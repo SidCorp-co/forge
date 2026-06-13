@@ -15,6 +15,7 @@ import {
   Badge,
   Card,
   CardContent,
+  Checkbox,
   IconButton,
   Menu,
   type MenuItem,
@@ -43,7 +44,12 @@ import {
   type IssueRow,
   type ProjectMember,
 } from "../types";
-import { CostCell, DepBadges, type RowActions } from "./issue-table-row";
+import {
+  CostCell,
+  DepBadges,
+  type RowActions,
+  type RowSelection,
+} from "./issue-table-row";
 
 // The two status axes are SEPARATE chips (ISS-436): the issue chip always
 // shows the TRUE lifecycle label (an in-progress issue never reads as just
@@ -219,17 +225,36 @@ export function IssueTableRow({
   slug,
   members,
   actions,
+  selection,
 }: {
   row: IssueRow;
   slug: string;
   members: ProjectMember[] | undefined;
   actions: RowActions;
+  selection?: RowSelection;
 }) {
   const router = useRouter();
   const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
 
   return (
     <TR className="group">
+      {selection && (
+        <TD className="w-9 pr-0">
+          {/* Stop propagation so toggling never opens the issue. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only blocks bubbling; the Checkbox button is the control. */}
+          <span
+            className="inline-flex"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Checkbox
+              checked={selection.selected}
+              onChange={selection.onToggle}
+              disabled={actions.isPending}
+              ariaLabel={`Select ${row.displayId}`}
+            />
+          </span>
+        </TD>
+      )}
       <TD>
         <button
           type="button"
@@ -293,11 +318,13 @@ export function IssueMobileCard({
   slug,
   members,
   actions,
+  selection,
 }: {
   row: IssueRow;
   slug: string;
   members: ProjectMember[] | undefined;
   actions: RowActions;
+  selection?: RowSelection;
 }) {
   const router = useRouter();
   const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
@@ -306,17 +333,29 @@ export function IssueMobileCard({
     <Card>
       <CardContent>
         <div className="flex items-start justify-between gap-3">
-          <button
-            type="button"
-            onClick={open}
-            aria-label={`Open ${row.displayId}: ${row.title}`}
-            className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-            <span className="fg-body-sm mt-1.5 block truncate text-fg">
-              {row.title}
-            </span>
-          </button>
+          <div className="flex min-w-0 items-start gap-2.5">
+            {selection && (
+              <span className="mt-0.5 inline-flex">
+                <Checkbox
+                  checked={selection.selected}
+                  onChange={selection.onToggle}
+                  disabled={actions.isPending}
+                  ariaLabel={`Select ${row.displayId}`}
+                />
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={open}
+              aria-label={`Open ${row.displayId}: ${row.title}`}
+              className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            >
+              <MonoTag hue="cobalt">{row.displayId}</MonoTag>
+              <span className="fg-body-sm mt-1.5 block truncate text-fg">
+                {row.title}
+              </span>
+            </button>
+          </div>
           <RowMenu
             row={row}
             members={members}

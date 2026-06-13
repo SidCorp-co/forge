@@ -29,6 +29,13 @@ export interface RowActions {
   canWrite?: boolean;
 }
 
+/** Per-row bulk-selection state (ISS-463). When omitted the row renders no
+ *  selection checkbox (viewers / non-bulk contexts). */
+export interface RowSelection {
+  selected: boolean;
+  onToggle: (next: boolean) => void;
+}
+
 // Option lists keep the raw enum `value` (server contract) but show humanized
 // labels (`PRIORITY_LABELS`/`COMPLEXITY_LABELS` from derive). Imported by both
 // the table and the properties rail, so both render professional text.

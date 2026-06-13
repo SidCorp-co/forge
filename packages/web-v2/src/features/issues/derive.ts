@@ -186,6 +186,28 @@ export function allowedTransitions(from: IssueStatus): IssueStatus[] {
   return ISSUE_STATUSES.filter((s) => s !== from && s !== "draft");
 }
 
+/**
+ * Status targets valid for a BULK action — the intersection of
+ * `allowedTransitions()` across every selected row, preserving enum order. Only
+ * offering common-valid targets means a bulk pick can't mass-409 (mirrors the
+ * per-row ISS-308 E1 guard). Empty selection, or rows with no common target,
+ * → `[]` (the bulk bar then disables the Set-status control). ISS-463.
+ */
+export function bulkAllowedStatuses(rows: IssueRow[]): IssueStatus[] {
+  if (rows.length === 0) return [];
+  let common: IssueStatus[] | null = null;
+  for (const r of rows) {
+    const allowed = allowedTransitions(r.status);
+    if (common === null) {
+      common = allowed;
+    } else {
+      const allowedSet = new Set(allowed);
+      common = common.filter((s) => allowedSet.has(s));
+    }
+  }
+  return common ?? [];
+}
+
 export interface DepCounts {
   blockedBy: number;
   blocks: number;

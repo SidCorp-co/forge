@@ -9,10 +9,11 @@
 //   members→ ['project', projectId, 'members']
 // Any other prefix → WS-driven invalidation silently no-ops.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, issuesApi } from "./api";
-import type { IssueRow, IssueSearchOpts, IssueStatus } from "./types";
+import type { IssuePriority, IssueRow, IssueSearchOpts, IssueStatus } from "./types";
 
 /**
  * Create an issue in `projectId`. On success invalidates `['issues']` so the
@@ -118,4 +119,68 @@ export function useTransitionIssue() {
 export function useRunPipelineStep() {
   return useIssueMutation((args: { id: string; stage?: string }) =>
     issuesApi.runPipelineStep(args.id, args.stage), { successMessage: "Pipeline step queued" });
+}
+
+// ─── Bulk update (ISS-463) ──────────────────────────────────────────────────
+
+/** A single field to apply across many issues. */
+export type BulkUpdate =
+  | { kind: "status"; toStatus: IssueStatus }
+  | { kind: "priority"; priority: IssuePriority };
+
+/** Outcome tally of a bulk apply. `skipped` = the server rejected the change
+ *  with 409 (invalid transition / no-op / stale) — surfaced, not failed. */
+export interface BulkSummary {
+  updated: number;
+  skipped: number;
+  failed: number;
+}
+
+/** Max concurrent requests per wave — a no-limit selection shouldn't open 100
+ *  sockets at once. */
+const BULK_CHUNK = 8;
+
+/**
+ * Apply ONE field change (status or priority) to many issues at once. Fans out
+ * over the SAME endpoints the per-row kebab uses — status → transition (409 =
+ * skipped), priority → patch — in bounded chunks via `Promise.allSettled`, then
+ * tallies ONCE and invalidates `['issues']` (+ each touched `['issue', id]`)
+ * ONCE, with a single summary toast. Deliberately NOT built on
+ * `useIssueMutation` (which would fire N toasts + N invalidations). ISS-463.
+ */
+export function useBulkUpdateIssues() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation<BulkSummary, unknown, { ids: string[]; update: BulkUpdate }>({
+    mutationFn: async ({ ids, update }) => {
+      const summary: BulkSummary = { updated: 0, skipped: 0, failed: 0 };
+      const apply = (id: string) =>
+        update.kind === "status"
+          ? issuesApi.transition(id, update.toStatus)
+          : issuesApi.patch(id, { priority: update.priority });
+      for (let i = 0; i < ids.length; i += BULK_CHUNK) {
+        const results = await Promise.allSettled(ids.slice(i, i + BULK_CHUNK).map(apply));
+        for (const r of results) {
+          if (r.status === "fulfilled") summary.updated++;
+          else if (r.reason instanceof ApiError && r.reason.status === 409) summary.skipped++;
+          else summary.failed++;
+        }
+      }
+      return summary;
+    },
+    onSuccess: (summary, { ids }) => {
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      for (const id of ids) qc.invalidateQueries({ queryKey: ["issue", id] });
+      const parts = [`${summary.updated} updated`];
+      if (summary.skipped) parts.push(`${summary.skipped} skipped`);
+      if (summary.failed) parts.push(`${summary.failed} failed`);
+      toast({
+        title: parts.join(" · "),
+        tone: summary.failed > 0 ? "error" : "success",
+      });
+    },
+    onError: (err) => {
+      toast({ title: "Bulk update failed", description: formatApiError(err), tone: "error" });
+    },
+  });
 }
