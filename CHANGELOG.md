@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pipeline failures are now classified precisely (no more catch-all "unknown"): a Claude startup death fails over to another device immediately, and failures caused by the work itself stop retrying and ask for review instead of burning retries.
 - Runners verify the workspace (repo, git, push credentials, hooks) before taking a job, so credential or setup problems fail over fast instead of stalling a run for 40 minutes.
 - When a pipeline job does get stuck, Forge now raises a notification saying where it stalled, why, and what to do — and manual interventions per issue are tracked so they can be charted.
+- The project dashboard's Live runs panel now labels each run with its issue (or a clear run type) and shows the run's real cost instead of a generic label and $0.
 
 ## [0.3.0] - 2026-06-11
 
