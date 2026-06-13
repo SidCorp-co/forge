@@ -59,7 +59,7 @@ export function Composer({
 
   return (
     <div className="sticky bottom-0 z-10 border-t border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
-      <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
+      <div className="mx-auto flex w-full max-w-3xl items-end gap-2 xl:max-w-4xl">
         <Textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
