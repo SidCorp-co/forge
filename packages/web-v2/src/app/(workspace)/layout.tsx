@@ -197,6 +197,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     }
     const target = activeProject?.orgId;
     if (!target) return; // project row not resolved yet — don't mark as handled
+    // `orgs` (useOrgs) and `projects` (useProjects) are independent parallel
+    // queries with no ordering guarantee. If projects wins the cold-load race,
+    // `orgs` is still [] and membership can't be decided yet — don't mark the
+    // slug handled, so the effect retries once orgs arrives. Otherwise a
+    // cross-org deep-link would skip the re-scope permanently (ISS-476 review).
+    if (orgs.length === 0) return;
     if (slug === lastScopedSlugRef.current) return; // same project: don't fight a manual switch
     lastScopedSlugRef.current = slug;
     // Only re-scope to an org the caller actually belongs to (ISS-472: an org
