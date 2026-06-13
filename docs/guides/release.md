@@ -6,7 +6,7 @@ How Forge Beta (Tauri desktop app) gets built, signed, published, surfaced on `/
 
 ## TL;DR
 
-Use the release skill: bumps every version file in lockstep, promotes `## [Unreleased]` CHANGELOG → `## [X.Y.Z]`, tags, pushes, with atomic preflight rejecting version mismatches.
+Use the release skill for the **desktop** app: bumps the desktop version files in lockstep, promotes `## [Unreleased]` CHANGELOG → `## [X.Y.Z]`, tags `vX.Y.Z`, pushes, with atomic preflight rejecting version mismatches. **Runner** and **cloud** version independently — see [Versioning](#versioning) for the three domains and when to bump N1.N2.N3.
 
 ```bash
 /forge-cut-release X.Y.Z --headline "..."
@@ -14,7 +14,7 @@ Use the release skill: bumps every version file in lockstep, promotes `## [Unrel
 .claude/skills/forge-cut-release/scripts/cut-release.sh X.Y.Z
 ```
 
-- Never bump by hand — files must move together ([Versioning](#versioning)); manual edits drift.
+- Never hand-bump the desktop files — they must move together ([Versioning](#versioning)); manual edits drift the updater.
 - Pushing the `vX.Y.Z` tag triggers `.github/workflows/release.yml`. ~15-20 min later:
   - Draft GitHub Release created, notes from `CHANGELOG.md`.
   - `tauri-action@v0` builds + signs + uploads on macOS (Intel + ARM), Windows, Linux.
@@ -76,25 +76,77 @@ Without these: builds succeed but SmartScreen shows *"Windows protected your PC"
 
 ## Versioning
 
-- Pre-`1.0` semver — `v0.X.Y` while in alpha.
-- Tags must match `v*.*.*` exactly (workflow trigger pattern).
-- Pre-release suffix (`v0.1.16-rc.1`) marks GitHub Release as pre-release automatically.
+Forge ships **three independently-versioned artifacts**. They are NOT one shared
+monorepo number — each has its own release cadence, tag, and version files. A
+change to one never bumps another (so a runner release can't downgrade the
+desktop version, and a cloud deploy doesn't force a desktop release).
 
-Whole monorepo shares one version. The `cut-release.sh` script (in the maintainer's `forge-cut-release` skill, not shipped in this repo) bumps these in lockstep — canonical set:
+### The three version domains
 
-| File | Field |
-|---|---|
-| `package.json` (root) | `version` |
-| `packages/core/package.json` | `version` |
-| `packages/contracts/package.json` | `version` |
-| `packages/observability/package.json` | `version` |
-| `packages/web-v2/package.json` | `version` |
-| `packages/dev/package.json` | `version` |
-| `packages/dev/src-tauri/tauri.conf.json` | `version` |
-| `packages/dev/src-tauri/Cargo.toml` | `[package].version` |
-| `packages/runner/Cargo.toml` | `[workspace.package].version` |
+| Domain | What | How it ships | Tag | Version files (the domain owns these) |
+|---|---|---|---|---|
+| **desktop** | Tauri app (`packages/dev`) | `release.yml` builds + signs bundles; in-app updater | `vX.Y.Z` | `packages/dev/package.json`, `packages/dev/src-tauri/tauri.conf.json`, `packages/dev/src-tauri/Cargo.toml` |
+| **runner** | headless CLI daemon (`packages/runner`) | `runner-release.yml` builds binaries; install.sh + auto-update channel | `runner-vX.Y.Z` | `packages/runner/Cargo.toml` (`[workspace.package].version`) |
+| **cloud** | core + web-v2 (forge-beta) | continuous deploy from `main` via Coolify | *(none — commit-identified)* | `package.json` (root), `packages/core`, `packages/contracts`, `packages/observability`, `packages/web-v2` `version` |
 
-Preflight is **atomic**: after bumping runs `jq -r .version <all json files> | sort -u`, aborts unless one line — a mismatch can never reach a tag (mismatch also breaks the in-app updater, so the gate is hard not advisory). Hence `/forge-cut-release` over hand-editing.
+- **desktop** + **runner** are tag-driven releases (CI builds an artifact). The
+  tauri version files MUST stay in sync (updater verifies); `forge-cut-release`
+  enforces that atomically.
+- **cloud** has no build artifact — it's identified by `SOURCE_COMMIT`, deployed
+  on every push to `main`. Its `version` is **display-only** (`forge_version`),
+  bumped independently when you want to mark a notable cloud release (edit the 5
+  files together; an optional `web-vX.Y.Z` tag may mark the commit — no CI). It
+  is never bumped by the desktop release.
+- All three are independent: e.g. desktop `0.3.x`, runner `0.4.x`, cloud `0.3.x`
+  can legitimately coexist.
+
+### When to bump N1.N2.N3 (per domain — SemVer)
+
+Each domain's version is `MAJOR.MINOR.PATCH`. Bump the element by the **most
+significant** kind of change in the release:
+
+| Element | Bump when… | Post-1.0 | Currently (0.x) |
+|---|---|---|---|
+| **N1** MAJOR | the artifact's contract breaks (see below) | → N1, reset N2/N3 to 0 | held at **0** until the artifact declares a stable 1.0 contract |
+| **N2** MINOR | a new backward-compatible capability is added | → N2, reset N3 to 0 | **breaking OR new capability** → N2 |
+| **N3** PATCH | only backward-compatible fixes / internal changes | → N3 | fixes only → N3 |
+
+> **Pre-1.0 rule (where we are now):** while MAJOR = `0`, SemVer treats the API as
+> unstable, so **both** breaking changes and new capabilities bump **N2**; only
+> pure fixes bump **N3**. (Example: provisioning was a new capability → runner
+> `0.3.0` → `0.4.0`.) Promote a domain to `1.0.0` only when committing to its
+> contract stability; after that, breaking → N1.
+
+**What "breaking" means per domain:**
+- **desktop** — a data-dir / config / updater-state migration that an installed
+  user can't roll back through.
+- **runner** — a core⇄runner wire-protocol or auth change incompatible with an
+  older core, or a CLI / `config.toml` change that requires manual user action.
+- **cloud** — a `packages/contracts` REST/WS change that breaks an existing
+  client (desktop, runner, or web) it must serve.
+
+### Cutting each release
+
+- **desktop:** `/forge-cut-release X.Y.Z --headline "..."` → bumps the 3 desktop
+  files in lockstep, promotes CHANGELOG, tags `vX.Y.Z`, pushes. Atomic preflight:
+  `jq -r .version <desktop json> | sort -u` must be one line (a mismatch breaks
+  the updater, so the gate is hard). It does **not** touch runner or cloud files.
+- **runner:** bump `packages/runner/Cargo.toml` `[workspace.package].version`
+  (the runner's `agentVersion` = `CARGO_PKG_VERSION`, which drives auto-update),
+  `cargo build` to refresh `Cargo.lock`, commit, then `git tag runner-vX.Y.Z &&
+  git push origin runner-vX.Y.Z` → `runner-release.yml`.
+- **cloud:** deployed by commit; bump the 5 cloud `version` fields together only
+  to mark a notable release (display-only).
+
+### CHANGELOG
+
+There is **one** `CHANGELOG.md`, keyed to the **desktop** release `## [X.Y.Z]`
+(it feeds the desktop in-app updater + GitHub Release). Runner and cloud releases
+do not get their own `## [...]` sections — note runner-facing changes in the
+`runner-vX.Y.Z` GitHub Release body, and cloud changes in commit/PR history.
+
+Tags must match their pattern exactly (`v*.*.*` / `runner-v*`). A pre-release
+suffix (`v0.3.1-rc.1`) marks the GitHub Release as pre-release automatically.
 
 ## CHANGELOG
 
