@@ -131,6 +131,25 @@ export interface HookPayloads {
     actorUserId: string;
     stage: string | null;
   };
+  // A (device × project) runner was bound/re-provisioned. The WS bridge wakes
+  // the device room with `provision.request` (best-effort) so an online device
+  // pulls promptly; the durable source of truth is the `queued` row the device
+  // pulls via GET /api/devices/me/provisions. Carries no secret — the device
+  // pulls the (decrypted, single-use) SSH key + clone target itself.
+  runnerProvisionRequested: {
+    projectId: string;
+    deviceId: string;
+    runnerId: string;
+  };
+  // A device reported provision progress; bridge to the project room so web's
+  // runner views update the live stepper.
+  runnerProvisionStatus: {
+    projectId: string;
+    runnerId: string;
+    deviceId: string;
+    status: string;
+    detail: string | null;
+  };
   // v1 EPIC 6 — fired when a project skill override is created, updated, or
   // deleted. The WS broadcaster bridges this to the `skill.updated` event in
   // the project room so the web Skills page can invalidate its cache and the

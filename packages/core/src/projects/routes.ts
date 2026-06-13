@@ -30,6 +30,7 @@ import {
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { hooks } from '../pipeline/hooks.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -98,6 +99,7 @@ export const updateProjectSchema = z
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     repoPath: z.string().trim().max(500).nullable().optional(),
+    repoUrl: z.string().trim().max(500).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
     productionBranch: z.string().trim().max(100).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
@@ -299,6 +301,7 @@ projectRoutes.get(
         createdBy: projects.createdBy,
         description: projects.description,
         repoPath: projects.repoPath,
+        repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
         defaultDeviceId: projects.defaultDeviceId,
@@ -431,6 +434,7 @@ projectRoutes.patch(
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
+    if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
@@ -471,6 +475,7 @@ projectRoutes.patch(
       createdBy: projects.createdBy,
       description: projects.description,
       repoPath: projects.repoPath,
+      repoUrl: projects.repoUrl,
       baseBranch: projects.baseBranch,
       productionBranch: projects.productionBranch,
       defaultDeviceId: projects.defaultDeviceId,
@@ -500,6 +505,44 @@ const createRunnerBodySchema = z
     branch: z.string().trim().max(100).nullable().optional(),
   })
   .strict();
+
+// Project-centric runner list — the device pools serving THIS project, with
+// device identity + live provision status. Powers the project Runners screen
+// (the inverse of the device-centric GET /api/devices/:id/runners). Any member.
+projectRoutes.get(
+  '/:id/runners',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+    const access = await loadProjectAccess(id, userId);
+    assertProjectRole(access, 'viewer', 'project member required');
+
+    const rows = await db
+      .select({
+        runnerId: runners.id,
+        deviceId: runners.deviceId,
+        deviceName: devices.name,
+        platform: devices.platform,
+        deviceStatus: devices.status,
+        runnerStatus: runners.status,
+        repoPath: runners.repoPath,
+        branch: runners.branch,
+        lastSeenAt: runners.lastSeenAt,
+        provisionStatus: runners.provisionStatus,
+        provisionDetail: runners.provisionDetail,
+        provisionedAt: runners.provisionedAt,
+      })
+      .from(runners)
+      .leftJoin(devices, eq(devices.id, runners.deviceId))
+      .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')))
+      .orderBy(runners.createdAt);
+
+    return c.json(rows);
+  },
+);
 
 projectRoutes.post(
   '/:id/runners',
@@ -537,6 +580,7 @@ projectRoutes.post(
     const status: 'online' | 'offline' =
       device.status === 'online' && device.lastSeenAt ? 'online' : 'offline';
 
+    const now = new Date();
     const [runner] = await db
       .insert(runners)
       .values({
@@ -549,16 +593,24 @@ projectRoutes.post(
         ...(repoPath !== undefined ? { repoPath } : {}),
         ...(branch !== undefined ? { branch } : {}),
         status,
+        // Queue workspace provisioning — the device picks this up on its next
+        // GET /api/devices/me/provisions (online or whenever it reconnects).
+        provisionStatus: 'queued',
+        provisionRequestedAt: now,
       })
       .onConflictDoUpdate({
         target: [runners.projectId, runners.deviceId, runners.type],
         targetWhere: sql`device_id IS NOT NULL`,
         set: {
           status,
-          updatedAt: new Date(),
+          updatedAt: now,
           ...(capabilities ? { capabilities } : {}),
           ...(repoPath !== undefined ? { repoPath } : {}),
           ...(branch !== undefined ? { branch } : {}),
+          // Re-bind re-queues provisioning (path/url may have changed).
+          provisionStatus: 'queued',
+          provisionDetail: null,
+          provisionRequestedAt: now,
         },
       })
       .returning({
@@ -587,6 +639,16 @@ projectRoutes.post(
       newStatus: runner.status,
       reason: 'bind',
     });
+
+    // Wake the device room so an online device pulls its queued provision now;
+    // an offline device picks it up from the `queued` row on reconnect.
+    if (runner.deviceId) {
+      await hooks.emit('runnerProvisionRequested', {
+        projectId: runner.projectId,
+        deviceId: runner.deviceId,
+        runnerId: runner.id,
+      });
+    }
 
     return c.json(runner, 201);
   },

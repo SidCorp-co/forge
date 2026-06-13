@@ -84,6 +84,46 @@ pub fn write_git_credential(cred: &GitCredential) -> Result<String> {
         .unwrap_or_else(|| format!("git push enabled for https://{}", cred.host)))
 }
 
+/// Dir holding per-project SSH deploy keys delivered during provision.
+pub fn ssh_keys_dir() -> Result<PathBuf> {
+    let dir = dirs_next::config_dir()
+        .ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))?;
+    Ok(dir.join("forge-runner").join("keys"))
+}
+
+/// Write a project's git SSH private key to a `0600` file and return its path.
+/// One key per project (`keys/<projectId>`); rewritten on each provision so a
+/// rotated server-side key takes effect. The caller wires it into git via
+/// [`ssh_command`] (clone env + repo-local `core.sshCommand`).
+pub fn write_project_ssh_key(project_id: &str, private_key: &str) -> Result<PathBuf> {
+    let dir = ssh_keys_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    restrict_dir(&dir);
+    let path = dir.join(project_id);
+    // OpenSSH refuses a key file without a trailing newline.
+    let body = if private_key.ends_with('\n') {
+        private_key.to_string()
+    } else {
+        format!("{private_key}\n")
+    };
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, body.as_bytes())?;
+    restrict_file(&tmp);
+    std::fs::rename(&tmp, &path)?;
+    restrict_file(&path);
+    Ok(path)
+}
+
+/// The `GIT_SSH_COMMAND` / `core.sshCommand` value pinning git to one key.
+/// `IdentitiesOnly` stops ssh-agent keys leaking in; `accept-new` trusts the
+/// host on first contact without a prompt (runners are unattended).
+pub fn ssh_command(key_path: &std::path::Path) -> String {
+    format!(
+        "ssh -i {} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new",
+        key_path.display()
+    )
+}
+
 #[cfg(unix)]
 fn restrict_file(p: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;

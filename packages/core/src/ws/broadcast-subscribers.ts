@@ -190,6 +190,30 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     }
   });
 
+  // Provision request → wake the device room so an online device pulls its
+  // queued provision promptly. Best-effort only: an offline device misses this
+  // and picks the `queued` row up on its next GET /api/devices/me/provisions.
+  bus.on('runnerProvisionRequested', (p) => {
+    roomManager.publish(deviceRoom(p.deviceId), {
+      event: 'provision.request',
+      data: { projectId: p.projectId, runnerId: p.runnerId },
+    });
+  });
+
+  // Device reported provision progress → project room live stepper.
+  bus.on('runnerProvisionStatus', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'runner.provision',
+      data: {
+        runnerId: p.runnerId,
+        deviceId: p.deviceId,
+        projectId: p.projectId,
+        status: p.status,
+        detail: p.detail,
+      },
+    });
+  });
+
   // ISS-118 — skill_registrations changes affect the per-project skill
   // bindings that downstream clients (web Skills tab, dev runner) derive
   // from the pipeline registry. Broadcast `pipeline.registry_changed` so

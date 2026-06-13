@@ -11,6 +11,7 @@ export interface ProjectUpdateInput {
   name?: string;
   description?: string | null;
   repoPath?: string | null;
+  repoUrl?: string | null;
   baseBranch?: string | null;
   productionBranch?: string | null;
   previewDeploy?: PreviewDeployConfig | null;

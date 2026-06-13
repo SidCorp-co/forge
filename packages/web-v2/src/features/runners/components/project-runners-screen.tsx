@@ -1,0 +1,613 @@
+"use client";
+
+// Project-centric Runners screen (`/projects/[slug]/runners`). The project is
+// the primary control surface: configure the repo URL + deploy key, assign
+// devices, and watch each device's workspace provision (clone → skills → mcp)
+// as a live stepper. Workspace-level `/runners` is the device-global roll-up
+// (pair / rename / revoke); project membership (admin) gates the writes here.
+
+import {
+	Banner,
+	Button,
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+	EmptyState,
+	ErrorState,
+	Field,
+	HealthDot,
+	HelpButton,
+	Icon,
+	Input,
+	MonoTag,
+	PageContainer,
+	Select,
+	Skeleton,
+} from "@/design";
+import { useUpdateProject } from "@/features/project-settings/hooks";
+import { useProject } from "@/features/projects/hooks";
+import { formatApiError } from "@/lib/api/error";
+import { formatRelativeTime } from "@/lib/utils/format";
+import { projectRoom } from "@/lib/ws/rooms";
+import { useRoom } from "@/lib/ws/use-room";
+import { useMemo, useState } from "react";
+import {
+	useAssignDeviceToProject,
+	useDeleteGitCredential,
+	useDevices,
+	useGitCredential,
+	useInitPairing,
+	useProjectRunners,
+	useReprovision,
+	useSetGitCredential,
+	useUnassignDeviceFromProject,
+} from "../hooks";
+import {
+	PROVISION_LABEL,
+	PROVISION_STEPS,
+	type ProjectRunner,
+	type ProvisionStatus,
+	provisionHealth,
+} from "../types";
+
+function CopyButton({
+	value,
+	label = "Copy",
+}: { value: string; label?: string }) {
+	const [copied, setCopied] = useState(false);
+	return (
+		<Button
+			variant="ghost"
+			size="sm"
+			icon={copied ? "check" : "link"}
+			onClick={() => {
+				void navigator.clipboard?.writeText(value).then(() => {
+					setCopied(true);
+					setTimeout(() => setCopied(false), 1500);
+				});
+			}}
+		>
+			{copied ? "Copied" : label}
+		</Button>
+	);
+}
+
+/** Repo URL + deploy-key card. Both optional — absent => manual folder setup. */
+function GitConfigCard({
+	projectId,
+	repoUrl,
+	canEdit,
+}: {
+	projectId: string;
+	repoUrl: string | null;
+	canEdit: boolean;
+}) {
+	const update = useUpdateProject(projectId);
+	const cred = useGitCredential(projectId);
+	const setCred = useSetGitCredential(projectId);
+	const delCred = useDeleteGitCredential(projectId);
+	const [url, setUrl] = useState(repoUrl ?? "");
+	const [paste, setPaste] = useState("");
+	const [showPaste, setShowPaste] = useState(false);
+
+	const urlDirty = url.trim() !== (repoUrl ?? "");
+	const credData = cred.data;
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>Git access</CardTitle>
+				<HelpButton
+					summary="Optional. Set the repo URL + a deploy key so any device assigned to this project auto-clones and pushes — add the key once, scale to every runner. Leave blank to set folders up by hand."
+					actions={[
+						"Set the SSH clone URL (git@host:org/repo.git)",
+						"Generate a deploy key, then add the public key to your repo's deploy keys",
+						"Or paste an existing private key",
+					]}
+				/>
+			</CardHeader>
+			<CardContent>
+				<div className="flex flex-col gap-5">
+					<div className="flex items-end gap-2">
+						<div className="flex-1">
+							<Field
+								label="Repo URL"
+								hint="SSH clone URL. A newly-assigned device clones from here when its folder is missing."
+							>
+								<Input
+									value={url}
+									onChange={(e) => setUrl(e.target.value)}
+									placeholder="git@github.com:org/repo.git"
+									disabled={!canEdit}
+									spellCheck={false}
+									maxLength={500}
+								/>
+							</Field>
+						</div>
+						<Button
+							variant="secondary"
+							icon="check"
+							loading={update.isPending}
+							disabled={!canEdit || !urlDirty}
+							onClick={() => update.mutate({ repoUrl: url.trim() || null })}
+						>
+							Save
+						</Button>
+					</div>
+
+					<div className="border-t border-line-subtle pt-4">
+						<span className="fg-label">Deploy key</span>
+						{cred.isLoading ? (
+							<Skeleton className="mt-2 h-20 w-full" />
+						) : credData?.configured ? (
+							<div className="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-sunken p-3">
+								<div className="flex items-center justify-between gap-2">
+									<span className="inline-flex items-center gap-1.5 text-[13px] text-fg">
+										<Icon
+											name="check"
+											size={14}
+											className="text-[color:var(--green-600)]"
+										/>
+										{credData.source === "forge_generated"
+											? "Forge-generated"
+											: "User-provided"}{" "}
+										key
+									</span>
+									{credData.fingerprint && (
+										<MonoTag>{credData.fingerprint}</MonoTag>
+									)}
+								</div>
+								<div className="flex items-center justify-between gap-2">
+									<code className="min-w-0 flex-1 truncate font-mono text-[12px] text-subtle">
+										{credData.publicKey}
+									</code>
+									<CopyButton
+										value={credData.publicKey}
+										label="Copy public key"
+									/>
+								</div>
+								<p className="fg-body-sm text-subtle">
+									Add this public key to your repo&apos;s deploy keys (write
+									access) so runners can clone + push.
+								</p>
+								{canEdit && (
+									<div className="flex justify-end">
+										<Button
+											variant="ghost"
+											size="sm"
+											icon="trash"
+											loading={delCred.isPending}
+											onClick={() => delCred.mutate()}
+										>
+											Remove key
+										</Button>
+									</div>
+								)}
+							</div>
+						) : (
+							<div className="mt-2 flex flex-col gap-3">
+								<p className="fg-body-sm text-subtle">
+									No deploy key. Generate one (recommended) or paste an existing
+									private key. Without a key, devices use whatever git auth they
+									already have.
+								</p>
+								{canEdit && (
+									<div className="flex flex-wrap items-center gap-2">
+										<Button
+											variant="primary"
+											size="sm"
+											icon="plus"
+											loading={setCred.isPending}
+											onClick={() => setCred.mutate({ mode: "generate" })}
+										>
+											Generate keypair
+										</Button>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setShowPaste((s) => !s)}
+										>
+											Paste existing key
+										</Button>
+									</div>
+								)}
+								{showPaste && canEdit && (
+									<div className="flex flex-col gap-2 rounded-lg border border-dashed border-line-strong p-3">
+										<textarea
+											value={paste}
+											onChange={(e) => setPaste(e.target.value)}
+											placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n…"}
+											spellCheck={false}
+											rows={5}
+											className="w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-[12px] text-fg"
+										/>
+										<div className="flex justify-end">
+											<Button
+												variant="primary"
+												size="sm"
+												loading={setCred.isPending}
+												disabled={paste.trim().length === 0}
+												onClick={() =>
+													setCred.mutate(
+														{ mode: "provide", privateKey: paste },
+														{
+															onSuccess: () => {
+																setPaste("");
+																setShowPaste(false);
+															},
+														},
+													)
+												}
+											>
+												Save key
+											</Button>
+										</div>
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
+
+/** Horizontal step row reflecting one runner's provision lifecycle. */
+function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
+	const status = runner.provisionStatus;
+	if (!status) {
+		return <span className="fg-body-sm text-subtle">Not provisioned</span>;
+	}
+	if (status === "needs_manual_setup" || status === "failed") {
+		return (
+			<Banner tone={status === "failed" ? "attention" : "info"}>
+				<span className="font-semibold">{PROVISION_LABEL[status]}.</span>{" "}
+				{runner.provisionDetail ?? "See the device logs for details."}
+			</Banner>
+		);
+	}
+	const activeIdx = PROVISION_STEPS.indexOf(status);
+	return (
+		<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+			{PROVISION_STEPS.map((step, i) => {
+				const done = i < activeIdx || status === "ready";
+				const active = i === activeIdx && status !== "ready";
+				return (
+					<span key={step} className="inline-flex items-center gap-1.5">
+						<HealthDot
+							health={done ? "healthy" : active ? "idle" : "idle"}
+							withLabel={false}
+						/>
+						<span
+							className={
+								done
+									? "fg-caption text-fg"
+									: active
+										? "fg-caption font-semibold text-accent"
+										: "fg-caption text-subtle"
+							}
+						>
+							{PROVISION_LABEL[step]}
+						</span>
+						{i < PROVISION_STEPS.length - 1 && (
+							<Icon name="arrowRight" size={11} className="text-subtle" />
+						)}
+					</span>
+				);
+			})}
+		</div>
+	);
+}
+
+/** One assigned device row + its provision stepper + actions. */
+function RunnerRow({
+	runner,
+	projectId,
+	canEdit,
+}: {
+	runner: ProjectRunner;
+	projectId: string;
+	canEdit: boolean;
+}) {
+	const reprovision = useReprovision(projectId);
+	const unassign = useUnassignDeviceFromProject(projectId);
+	const [confirmRemove, setConfirmRemove] = useState(false);
+	const online = runner.deviceStatus === "online";
+
+	return (
+		<div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
+			<div className="flex items-center justify-between gap-2">
+				<div className="flex min-w-0 items-center gap-2">
+					<HealthDot health={online ? "healthy" : "idle"} withLabel={false} />
+					<span className="truncate font-semibold text-fg">
+						{runner.deviceName ?? "Unknown device"}
+					</span>
+					{runner.platform && <MonoTag>{runner.platform}</MonoTag>}
+					<HealthDot
+						health={provisionHealth(runner.provisionStatus)}
+						withLabel={false}
+					/>
+				</div>
+				{canEdit &&
+					(confirmRemove ? (
+						<span className="inline-flex items-center gap-1.5">
+							<Button
+								variant="danger"
+								size="sm"
+								icon="trash"
+								loading={unassign.isPending}
+								onClick={() =>
+									unassign.mutate(runner.runnerId, {
+										onSettled: () => setConfirmRemove(false),
+									})
+								}
+							>
+								Remove
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setConfirmRemove(false)}
+							>
+								Cancel
+							</Button>
+						</span>
+					) : (
+						<span className="inline-flex items-center gap-1">
+							{runner.deviceId && (
+								<Button
+									variant="ghost"
+									size="sm"
+									icon="rerun"
+									loading={reprovision.isPending}
+									onClick={() =>
+										reprovision.mutate({
+											deviceId: runner.deviceId as string,
+											repoPath: runner.repoPath,
+										})
+									}
+								>
+									Re-provision
+								</Button>
+							)}
+							<Button
+								variant="ghost"
+								size="sm"
+								icon="trash"
+								onClick={() => setConfirmRemove(true)}
+							>
+								Unassign
+							</Button>
+						</span>
+					))}
+			</div>
+
+			<ProvisionStepper runner={runner} />
+
+			<div className="flex items-center justify-between gap-2 text-subtle">
+				<span className="fg-caption truncate">
+					{runner.repoPath ? (
+						<code>{runner.repoPath}</code>
+					) : (
+						"no repo path set"
+					)}
+				</span>
+				<span className="fg-caption flex-none">
+					{formatRelativeTime(runner.lastSeenAt, { emptyLabel: "never seen" })}
+				</span>
+			</div>
+		</div>
+	);
+}
+
+/** Assign an already-paired device, or pair one inline (it then appears here). */
+function AssignDevice({
+	projectId,
+	defaultRepoPath,
+	assignedDeviceIds,
+}: {
+	projectId: string;
+	defaultRepoPath: string | null;
+	assignedDeviceIds: Set<string>;
+}) {
+	const devices = useDevices();
+	const assign = useAssignDeviceToProject(projectId);
+	const initPairing = useInitPairing();
+	const [deviceId, setDeviceId] = useState("");
+	const [repoPath, setRepoPath] = useState(defaultRepoPath ?? "");
+
+	const available = useMemo(
+		() =>
+			(devices.data ?? []).filter(
+				(d) => d.status !== "revoked" && !assignedDeviceIds.has(d.id),
+			),
+		[devices.data, assignedDeviceIds],
+	);
+
+	const options = [
+		{ value: "", label: "Select a paired device…" },
+		...available.map((d) => ({
+			value: d.id,
+			label: `${d.name} (${d.platform})`,
+		})),
+	];
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>Add a device</CardTitle>
+			</CardHeader>
+			<CardContent>
+				<div className="flex flex-col gap-4">
+					<div className="grid gap-3 sm:grid-cols-2">
+						<Field label="Device">
+							<Select
+								options={options}
+								value={deviceId}
+								onChange={setDeviceId}
+							/>
+						</Field>
+						<Field
+							label="Repo path"
+							hint="Absolute path on that device — typed manually."
+						>
+							<Input
+								value={repoPath}
+								onChange={(e) => setRepoPath(e.target.value)}
+								placeholder={defaultRepoPath ?? "/abs/path/on/the/device"}
+								spellCheck={false}
+							/>
+						</Field>
+					</div>
+					<div className="flex justify-end">
+						<Button
+							variant="primary"
+							icon="plus"
+							loading={assign.isPending}
+							disabled={!deviceId}
+							onClick={() =>
+								assign.mutate(
+									{ deviceId, repoPath: repoPath.trim() || null },
+									{ onSuccess: () => setDeviceId("") },
+								)
+							}
+						>
+							Assign &amp; provision
+						</Button>
+					</div>
+
+					<div className="rounded-lg border border-dashed border-line-strong p-3">
+						<span className="fg-label">No device yet? Pair one</span>
+						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
+							<code className="font-mono text-[13px] text-fg">
+								forge-runner login
+							</code>
+							<CopyButton value="forge-runner login" />
+						</div>
+						<p className="fg-body-sm mt-1.5 text-subtle">
+							Run it on the device, approve in the browser — it appears in the
+							picker above, then assign it here. Or{" "}
+							<button
+								type="button"
+								className="text-accent hover:underline"
+								onClick={() => initPairing.mutate("forge-runner")}
+							>
+								generate a pairing code
+							</button>
+							{initPairing.data && (
+								<>
+									{" "}
+									— code{" "}
+									<span className="font-mono font-semibold">
+										{initPairing.data.pairing_code}
+									</span>
+									, approve at{" "}
+									<a
+										href={initPairing.data.verify_url}
+										className="text-accent hover:underline"
+									>
+										{initPairing.data.verify_url}
+									</a>
+								</>
+							)}
+							.
+						</p>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
+
+export function ProjectRunnersScreen({
+	projectId,
+	canEdit,
+}: {
+	projectId: string;
+	canEdit: boolean;
+}) {
+	useRoom(projectRoom(projectId));
+	const project = useProject(projectId);
+	const runners = useProjectRunners(projectId);
+
+	const rows = runners.data ?? [];
+	const assignedDeviceIds = useMemo(
+		() =>
+			new Set(rows.map((r) => r.deviceId).filter((id): id is string => !!id)),
+		[rows],
+	);
+
+	return (
+		<PageContainer className="flex flex-col gap-5">
+			<div className="flex items-center justify-between gap-3">
+				<div>
+					<h1 className="fg-h2">Runners</h1>
+					<p className="fg-body-sm text-muted">
+						Devices that run this project&apos;s pipeline jobs. Status &amp;
+						provisioning update live.
+					</p>
+				</div>
+				<HelpButton
+					summary="Assign paired devices to this project. Each gets its own checkout; with a repo URL + deploy key, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
+					actions={[
+						"Set Git access (repo URL + deploy key) for hands-off provisioning",
+						"Assign a device — watch it clone → sync skills → ready",
+						"Manage devices account-wide on the Runners page",
+					]}
+				/>
+			</div>
+
+			<GitConfigCard
+				projectId={projectId}
+				repoUrl={project.data?.repoUrl ?? null}
+				canEdit={!!canEdit}
+			/>
+
+			{canEdit && (
+				<AssignDevice
+					projectId={projectId}
+					defaultRepoPath={project.data?.repoPath ?? null}
+					assignedDeviceIds={assignedDeviceIds}
+				/>
+			)}
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Assigned devices</CardTitle>
+				</CardHeader>
+				<CardContent>
+					{runners.isLoading ? (
+						<div className="flex flex-col gap-2">
+							<Skeleton className="h-28 w-full" />
+							<Skeleton className="h-28 w-full" />
+						</div>
+					) : runners.isError ? (
+						<ErrorState
+							message={formatApiError(runners.error)}
+							onRetry={() => runners.refetch()}
+						/>
+					) : rows.length === 0 ? (
+						<EmptyState
+							title="No devices assigned"
+							message="Assign a paired device above to start running this project's jobs."
+							mascot={false}
+						/>
+					) : (
+						<div className="flex flex-col gap-3">
+							{rows.map((r) => (
+								<RunnerRow
+									key={r.runnerId}
+									runner={r}
+									projectId={projectId}
+									canEdit={!!canEdit}
+								/>
+							))}
+						</div>
+					)}
+				</CardContent>
+			</Card>
+		</PageContainer>
+	);
+}

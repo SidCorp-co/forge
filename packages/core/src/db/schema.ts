@@ -305,6 +305,10 @@ export const projects = pgTable(
     repoPath: text('repo_path'),
     baseBranch: text('base_branch'),
     productionBranch: text('production_branch'),
+    // Per-project git clone URL (SSH form, e.g. git@github.com:org/repo.git).
+    // Optional: when set with a project git credential, a freshly-assigned
+    // device auto-clones here during provision; absent => manual folder setup.
+    repoUrl: text('repo_url'),
     defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
       onDelete: 'set null',
     }),
@@ -836,6 +840,21 @@ export const runnerHosts = ['device', 'remote'] as const;
 export type RunnerHost = (typeof runnerHosts)[number];
 
 export const runnerStatuses = ['online', 'offline', 'draining', 'disabled'] as const;
+
+// Per (device × project) workspace provisioning lifecycle. `queued` waits for an
+// offline device; the runner walks cloning → syncing_skills → writing_mcp →
+// ready. `needs_manual_setup` is the graceful degrade when there's no clone URL/
+// key and the folder is missing (user sets it up by hand); `failed` is an error.
+export const runnerProvisionStatuses = [
+  'queued',
+  'cloning',
+  'syncing_skills',
+  'writing_mcp',
+  'ready',
+  'needs_manual_setup',
+  'failed',
+] as const;
+export type RunnerProvisionStatus = (typeof runnerProvisionStatuses)[number];
 export type RunnerStatus = (typeof runnerStatuses)[number];
 
 export const runners = pgTable(
@@ -860,6 +879,18 @@ export const runners = pgTable(
     status: text('status', { enum: runnerStatuses }).notNull().default('offline'),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     lastError: text('last_error'),
+    // Per (device × project) workspace provisioning state. NULL = not yet
+    // provisioned / legacy row. The runner advances this via the device
+    // provision-status report; web renders it as a live stepper. `queued` is
+    // the offline hand-off — a device that's offline picks the job up on next
+    // connect (pull model), so bind never blocks on device presence.
+    provisionStatus: text('provision_status', { enum: runnerProvisionStatuses }),
+    // Human-readable last detail (clone error, "folder missing", skill count…).
+    provisionDetail: text('provision_detail'),
+    // When the current provision request was enqueued (queue ordering + re-run).
+    provisionRequestedAt: timestamp('provision_requested_at', { withTimezone: true }),
+    // When provision last reached a terminal `ready`.
+    provisionedAt: timestamp('provisioned_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -2162,6 +2193,42 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
     return 'bytea';
   },
 });
+
+// Per-project git SSH credential (optional). A deploy-key-style keypair shared
+// by every device bound to the project — generate once, add the public key to
+// the repo, and any number of runners can clone/push without per-device setup.
+// `forge_generated` => Forge minted the ed25519 pair (private encrypted here,
+// public surfaced for the user to add as a deploy key); `user_provided` => the
+// user pasted their own private key (encrypted the same way). The private key
+// is delivered to a runner once over the wire during provision (mirrors the
+// ISS-305 git-credential side-channel) and never re-read in plaintext server-side.
+export const projectGitCredentialSources = ['forge_generated', 'user_provided'] as const;
+export type ProjectGitCredentialSource = (typeof projectGitCredentialSources)[number];
+
+export const projectGitCredentials = pgTable('project_git_credentials', {
+  // 1:1 with the project — PK is the FK so a project has at most one credential.
+  projectId: uuid('project_id')
+    .primaryKey()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  source: text('source', { enum: projectGitCredentialSources }).notNull(),
+  // Non-secret OpenSSH public key line ("ssh-ed25519 AAAA… forge-<slug>").
+  publicKey: text('public_key').notNull(),
+  // Vault-encrypted (<iv:12><tag:16><ct>) OpenSSH private key — same format as
+  // integration_connections.secrets_enc; decrypt only at provision dispatch.
+  privateKeyEnc: bytea('private_key_enc').notNull(),
+  // Non-secret SHA256 fingerprint for display ("SHA256:…").
+  fingerprint: text('fingerprint'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const projectGitCredentialsRelations = relations(projectGitCredentials, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectGitCredentials.projectId],
+    references: [projects.id],
+  }),
+}));
 
 export const integrationEnvironments = ['staging', 'prod'] as const;
 export type IntegrationEnvironment = (typeof integrationEnvironments)[number];

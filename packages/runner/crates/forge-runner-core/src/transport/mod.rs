@@ -14,6 +14,7 @@ pub mod events;
 pub mod frames;
 pub mod heartbeat;
 pub mod lifecycle;
+pub mod provision;
 pub mod runners;
 pub mod skills;
 pub mod ws;

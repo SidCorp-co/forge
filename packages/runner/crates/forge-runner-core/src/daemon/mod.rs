@@ -265,6 +265,27 @@ pub async fn run(
     ));
 
     let cfg = Arc::new(cfg);
+
+    // Workspace-provisioning sweep. Runs once at startup then periodically so a
+    // device that was offline when a project was assigned catches up on its own;
+    // the `provision.request` WS event below makes a fresh bind prompt. Server
+    // only returns `queued` rows, so this is a no-op once everything is ready.
+    {
+        let (client, cfg) = (client.clone(), cfg.clone());
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(90));
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        crate::workspace::provision::run_pending(&client, &cfg).await;
+                    }
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
+
     let mut cancel_rx = cancel_rx.clone();
     loop {
         tokio::select! {
@@ -321,6 +342,16 @@ pub async fn run(
                         tokio::spawn(async move {
                             if let Err(e) = dispatch::handle_skill_sync(&client, &cfg, frame.data).await {
                                 tracing::warn!("[skill.sync] {e}");
+                            }
+                        });
+                    }
+                    "provision.request" => {
+                        // Wake → run the pending-provision sweep (server returns
+                        // only `queued` rows, so this provisions the requested one).
+                        let (client, cfg) = (client.clone(), cfg.clone());
+                        tokio::spawn(async move {
+                            if let Err(e) = crate::workspace::provision::handle_request(&client, &cfg).await {
+                                tracing::warn!("[provision] {e}");
                             }
                         });
                     }

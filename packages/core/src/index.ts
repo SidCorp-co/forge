@@ -130,6 +130,7 @@ import {
 import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
 import { pmRoutes } from './pm/routes.js';
 import { registerPmSubscribers } from './pm/subscribers.js';
+import { gitCredentialRoutes } from './projects/git-credential-routes.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
@@ -315,6 +316,10 @@ app.route('/api/projects', projectHealthRoutes);
 // not collide with projectRoutes' `GET /:id`, but mount before it to mirror the
 // health-routes precedent and keep the static-before-param ordering intent.
 app.route('/api/projects', projectMetricsRoutes);
+// Per-project git SSH deploy-key CRUD. Deep `/:projectId/git-credential` path
+// does not collide with projectRoutes' `GET /:id`; mount before it to keep the
+// static/deep-before-param ordering intent.
+app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/orgs', orgRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);

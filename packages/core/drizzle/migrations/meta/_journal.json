@@ -827,6 +827,13 @@
       "when": 1784246400000,
       "tag": "0119_jobs_smoke_type",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1784332800000,
+      "tag": "0120_project_device_provisioning",
+      "breakpoints": true
     }
   ]
 }
