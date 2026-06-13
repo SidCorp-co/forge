@@ -23,9 +23,11 @@ import { ChatScreen } from "@/features/session/components/chat-screen";
 type AgentsTab = "sessions" | "chat";
 
 const TAB_VALUES = ["sessions", "chat"] as const;
+// ISS-465 — relabel the chat surface "My conversations" so it reads as the
+// human-friendly interactive surface; the Sessions table remains the ops view.
 const TABS: TabItem[] = [
   { value: "sessions", label: "Sessions" },
-  { value: "chat", label: "Chat" },
+  { value: "chat", label: "My conversations" },
 ];
 
 export interface AgentsScreenProps {
@@ -79,7 +81,7 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
         <SlideOver
           open={chatOpen}
           onClose={() => setChatOpen(false)}
-          title="Agent chat"
+          title="My conversations"
           // Responsive width: scales up on wide screens (~768px @1280, ~864px
           // @1440, capped 1024px @≥1707) instead of a fixed sliver; floor 560px
           // keeps tablet behaviour and <sm stays full-width (SlideOver). ISS-464.

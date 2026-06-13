@@ -10,6 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
+import type { SessionMetadata } from "@/features/sessions/types";
 import {
   type CreateSessionOpts,
   type EditTurnOpts,
@@ -114,6 +115,67 @@ export function useCreateSession() {
   return useMutation({
     mutationFn: (opts: CreateSessionOpts) => sessionApi.create(opts),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-sessions"] }),
+    onError,
+  });
+}
+
+// ISS-465 — conversation management mutations. Each invalidates the
+// ['agent-sessions'] family (the chat history list query is keyed
+// ['agent-sessions','chat',projectId], so the prefix matches) AND the
+// ['agent-session', id] detail family.
+
+/** Rename a conversation via PATCH title. */
+export function useRenameSession() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const onError = useToastError();
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => sessionApi.rename(id, title),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+      qc.invalidateQueries({ queryKey: ["agent-session", vars.id] });
+      toast({ title: "Renamed", tone: "success" });
+    },
+    onError,
+  });
+}
+
+/** Soft-archive / unarchive a conversation via PATCH metadata. */
+export function useArchiveSession() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const onError = useToastError();
+  return useMutation({
+    mutationFn: ({
+      id,
+      archived,
+      metadata,
+    }: {
+      id: string;
+      archived: boolean;
+      metadata: SessionMetadata | null;
+    }) => sessionApi.setArchived(id, archived, metadata),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+      qc.invalidateQueries({ queryKey: ["agent-session", vars.id] });
+      toast({ title: vars.archived ? "Archived" : "Restored", tone: "success" });
+    },
+    onError,
+  });
+}
+
+/** Hard-delete a conversation (owner-or-admin gated server-side). */
+export function useDeleteSession() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const onError = useToastError();
+  return useMutation({
+    mutationFn: (id: string) => sessionApi.remove(id),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+      qc.invalidateQueries({ queryKey: ["agent-session", id] });
+      toast({ title: "Deleted", tone: "success" });
+    },
     onError,
   });
 }

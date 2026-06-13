@@ -94,13 +94,38 @@ export const sessionApi = {
       }),
     }),
 
+  /** `PATCH /:id` with just `title` — rename a conversation (ISS-465). */
+  rename: (id: string, title: string) =>
+    apiClient<SessionRow>(`/agent-sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+
+  /**
+   * `PATCH /:id` writing `metadata: { ...existing, archived }` — soft-archive
+   * a chat (ISS-465). Caller MUST pass the row's current `metadata` so
+   * existing keys (type: 'agent', issueId, deviceId, …) are preserved — the
+   * server replaces the whole jsonb object.
+   */
+  setArchived: (id: string, archived: boolean, metadata: SessionMetadata | null) =>
+    apiClient<SessionRow>(`/agent-sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ metadata: { ...(metadata ?? {}), archived } }),
+    }),
+
+  /** `DELETE /:id` — hard-delete (owner or admin only, ISS-465). */
+  remove: (id: string) =>
+    apiClient<void>(`/agent-sessions/${id}`, { method: "DELETE" }),
+
   /**
    * `GET /api/agent-sessions?projectId=&metadataType=agent` — list interactive
    * `agent` sessions for a project (latest first), for the Chat resume-or-create
-   * bootstrap.
+   * bootstrap. Pass `archived=true` to read the archived set (ISS-465); the
+   * default omits the param so the server excludes archived chats.
    */
-  listByType: (projectId: string, metadataType: string, pageSize = 1) => {
+  listByType: (projectId: string, metadataType: string, pageSize = 1, archived?: boolean) => {
     const params = new URLSearchParams({ projectId, metadataType, pageSize: String(pageSize), page: "1" });
+    if (archived === true) params.set("archived", "true");
     return apiClientList<SessionRow>(`/agent-sessions?${params}`);
   },
 };

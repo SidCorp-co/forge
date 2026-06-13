@@ -74,6 +74,11 @@ const listQuerySchema = z
     // Optional jsonb filter on `metadata.issueId` — used by the issue detail
     // "Agent Sessions" tab to scope the list to a single issue.
     issueId: z.uuid().optional(),
+    // ISS-465 archive filter. Default excludes metadata.archived='true' so
+    // archived chats drop out of the active history without affecting
+    // pipeline/pm rows (whose metadata has no `archived` key — IS DISTINCT
+    // FROM keeps them). Pass ?archived=true to read the archived set.
+    archived: z.enum(['true', 'false']).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
   })
@@ -940,7 +945,7 @@ agentSessionRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, deviceId, status, metadataType, issueId, page, pageSize } =
+    const { projectId, deviceId, status, metadataType, issueId, archived, page, pageSize } =
       c.req.valid('query');
     const userId = c.get('userId');
 
@@ -971,6 +976,14 @@ agentSessionRoutes.get(
     }
     if (issueId) {
       conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
+    }
+    // ISS-465 — default to excluding archived chats (metadata.archived='true').
+    // `IS DISTINCT FROM` keeps rows whose metadata has no `archived` key, so
+    // pipeline/pm rows and unarchived chats stay in the active list.
+    if (archived === 'true') {
+      conditions.push(sql`${agentSessions.metadata}->>'archived' = 'true'`);
+    } else {
+      conditions.push(sql`(${agentSessions.metadata}->>'archived') IS DISTINCT FROM 'true'`);
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -1255,14 +1268,25 @@ agentSessionRoutes.delete(
     const userId = c.get('userId');
 
     const [existing] = await db
-      .select({ id: agentSessions.id, projectId: agentSessions.projectId, deviceId: agentSessions.deviceId, status: agentSessions.status })
+      .select({
+        id: agentSessions.id,
+        projectId: agentSessions.projectId,
+        deviceId: agentSessions.deviceId,
+        userId: agentSessions.userId,
+        status: agentSessions.status,
+      })
       .from(agentSessions)
       .where(eq(agentSessions.id, id))
       .limit(1);
     if (!existing) throw notFound('agent session not found');
 
+    // ISS-465 — owner-or-admin gate (was admin-only). A user can delete their
+    // own chat; project owners/admins can delete any session.
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    assertProjectRole(access, 'member');
+    if (existing.userId && existing.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+      throw forbidden('not the session owner');
+    }
 
     await db.delete(agentSessions).where(eq(agentSessions.id, id));
     broadcastSession(existing, 'agent-session.deleted');

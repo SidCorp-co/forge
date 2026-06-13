@@ -512,3 +512,59 @@ describe('POST /api/agent-sessions/desktop/status', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('DELETE /api/agent-sessions/:id — owner-or-admin (ISS-465)', () => {
+  it('allows the session owner to delete their own session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: null, userId: USER_ID, status: 'idle' },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(204);
+    const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
+    expect(events).toContain('agent-session.deleted');
+  });
+
+  it('rejects a non-owner plain member with 403', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: 'some-other-user',
+        status: 'idle',
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('allows an admin to delete any session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: 'some-other-user',
+        status: 'idle',
+      },
+    ]);
+    // Admin role — access.role='admin' even though they don't own the session.
+    projectAccessAsOwner();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(204);
+  });
+});

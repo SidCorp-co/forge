@@ -1,13 +1,20 @@
 "use client";
 
+// Single-assistant Chat surface (`/projects/[slug]/agent`). Reuses the same
+// conversation primitives as the run thread — Conversation + Composer + the
+// `['agent-session', …]` hooks — but lighter: no pipeline rail, no fork/rerun.
+// Bootstrap = resume the latest interactive `agent` session for the project,
+// else create one on first send (ISS-292). ISS-465 adds explicit "draft" mode
+// so "New chat" no longer leaves a ghost row, plus rename/archive/delete via
+// the conversation-list panel.
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AgentWorking,
   Banner,
   Button,
   EmptyState,
   ErrorState,
-  Menu,
-  type MenuItem,
   ProjectLoader,
   StatusChip,
   useElapsed,
@@ -19,18 +26,9 @@ import {
   deriveStage,
   statusToChip,
 } from "@/features/sessions/types";
-import type { SessionRow } from "@/features/sessions/types";
 import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useQuery } from "@tanstack/react-query";
-// Single-assistant Chat surface (`/projects/[slug]/agent`). Reuses the same
-// conversation primitives as the run thread — Conversation + Composer + the
-// `['agent-session', …]` hooks — but lighter: no pipeline rail, no fork/rerun.
-// Bootstrap = resume the latest interactive `agent` session for the project,
-// else create one on first send (ISS-292).
-import { useMemo, useState } from "react";
 import { sessionApi } from "../api";
 import {
   useCreateSession,
@@ -44,36 +42,9 @@ import {
 import { parseTurns } from "../types";
 import { Composer, ReadOnlyComposerNote } from "./composer";
 import { Conversation } from "./conversation";
+import { ConversationList, EditableTitle } from "./conversation-list";
 
 const AGENT_TYPE = "agent";
-
-/**
- * Snippet of a session's first user message, for legacy rows that predate
- * server-side auto-titling (still titled null/"Chat"). The list endpoint
- * returns the full row including `messages`, so this works without an extra
- * fetch. Returns undefined when there's no usable user text (ISS-462).
- */
-function sessionPreview(s: SessionRow): string | undefined {
-  const msgs = Array.isArray(s.messages) ? s.messages : [];
-  for (const m of msgs) {
-    if (!m || typeof m !== "object") continue;
-    if ((m as { role?: string }).role !== "user") continue;
-    const content = (m as { content?: unknown }).content;
-    const text =
-      typeof content === "string"
-        ? content
-        : Array.isArray(content)
-          ? content
-              .map((b) =>
-                typeof b === "string" ? b : ((b as { text?: string })?.text ?? ""),
-              )
-              .join(" ")
-          : "";
-    const clean = text.replace(/\s+/g, " ").trim();
-    if (clean) return clean.length > 48 ? `${clean.slice(0, 47)}…` : clean;
-  }
-  return undefined;
-}
 
 export function ChatScreen({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
@@ -84,7 +55,8 @@ export function ChatScreen({ projectId }: { projectId: string }) {
     projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
 
   // Resume the latest interactive agent session for this project, and list a
-  // page of recent ones to drive the history switcher (ISS-421).
+  // page of recent ones to drive the history switcher (ISS-421). Archived
+  // chats are excluded server-side (ISS-465).
   const latestQ = useQuery({
     queryKey: ["agent-sessions", "chat", projectId],
     queryFn: () => sessionApi.listByType(projectId, AGENT_TYPE, 20),
@@ -92,8 +64,14 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   });
 
   const [activeId, setActiveId] = useState<string | undefined>();
+  // ISS-465 — explicit "draft" state so "New chat" doesn't fall through to
+  // recentSessions[0]. A draft never touches the server; the send-path lazy-
+  // creates the row on first message (handleSend).
+  const [draft, setDraft] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const recentSessions = latestQ.data?.items ?? [];
-  const resolvedId = activeId ?? recentSessions[0]?.id;
+  const resolvedId = draft ? undefined : activeId ?? recentSessions[0]?.id;
 
   const sessionQ = useSession(resolvedId);
   const turnsQ = useSessionTurns(resolvedId);
@@ -124,33 +102,33 @@ export function ChatScreen({ projectId }: { projectId: string }) {
       : undefined;
   const isFailed = outcome?.bucket === "failed";
 
-  // Start a fresh chat WITHOUT deleting the current one. useCreateSession's
-  // onSuccess invalidates ['agent-sessions'], which prefix-matches this list
-  // query, so the history switcher refetches with the new session.
-  // No `title` on create — the server auto-titles the session from the first
-  // user message (ISS-462); passing "Chat" would defeat that placeholder guard.
-  const handleNewChat = async () => {
-    const created = await create.mutateAsync({
-      projectId,
-      metadata: { type: AGENT_TYPE },
-    });
-    setActiveId(created.id);
+  // Start a fresh draft chat — no server row until the user sends a message
+  // (ISS-465). useSendMessage's onSuccess will invalidate ['agent-sessions']
+  // so the history rail picks up the new session once it materialises.
+  const handleNewChat = () => {
+    setDraft(true);
+    setActiveId(undefined);
+    setHistoryOpen(false);
   };
 
-  const historyItems: MenuItem[] = recentSessions.map((s) => {
-    const title =
-      s.title?.trim() && s.title !== "Chat"
-        ? s.title
-        : (sessionPreview(s) ?? "New chat");
-    const when = formatRelativeTime(s.updatedAt);
-    return {
-      label: `${s.id === resolvedId ? "● " : ""}${title}${when ? ` · ${when}` : ""}`,
-      onSelect: () => setActiveId(s.id),
-    };
-  });
+  const handlePick = (id: string) => {
+    setDraft(false);
+    setActiveId(id);
+    setHistoryOpen(false);
+  };
+
+  // Archiving/deleting the CURRENTLY-resolved conversation would leave a stale
+  // `activeId` (or a default-resolved row) pointing at a gone/hidden row →
+  // ErrorState. Fall back to a clean draft so the screen resolves to the next
+  // recent chat or the empty state (review follow-up, ISS-465).
+  const handleActiveRemoved = () => {
+    setActiveId(undefined);
+    setDraft(false);
+  };
 
   // `await`s the send so a failure rejects up into the Composer, which then
-  // keeps the typed text for retry (ISS-462) instead of clearing it.
+  // keeps the typed text for retry (ISS-462) instead of clearing it. No `title`
+  // on create — the server auto-titles from the first user message (ISS-462).
   const handleSend = async (message: string) => {
     let id = resolvedId;
     if (!id) {
@@ -159,6 +137,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         metadata: { type: AGENT_TYPE },
       });
       id = created.id;
+      setDraft(false);
       setActiveId(id);
     }
     await send.mutateAsync({ sessionId: id, message });
@@ -190,7 +169,15 @@ export function ChatScreen({ projectId }: { projectId: string }) {
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-8">
         <div className="min-w-0">
-          <h1 className="fg-h2">Agent chat</h1>
+          {/* Title row: editable per-conversation title once a real row exists.
+              In draft / no-conversation state, fall back to the section label. */}
+          {session ? (
+            <h1 className="fg-h2 truncate">
+              <EditableTitle session={session} />
+            </h1>
+          ) : (
+            <h1 className="fg-h2">My conversations</h1>
+          )}
           <p className="fg-body-sm mt-1 text-muted">
             Ask the agent anything about this project.
           </p>
@@ -204,24 +191,28 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               domain="session"
             />
           )}
-          {historyItems.length > 1 && (
-            <Menu
-              align="right"
-              items={historyItems}
-              trigger={
-                <Button variant="secondary" size="sm" icon="clock">
-                  History
-                </Button>
-              }
+          <div className="relative">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="clock"
+              onClick={() => setHistoryOpen((v) => !v)}
+              aria-expanded={historyOpen}
+              aria-haspopup="dialog"
+            >
+              History
+            </Button>
+            <ConversationList
+              open={historyOpen}
+              onClose={() => setHistoryOpen(false)}
+              projectId={projectId}
+              rows={recentSessions}
+              activeId={resolvedId}
+              onPick={(s) => handlePick(s.id)}
+              onActiveRemoved={handleActiveRemoved}
             />
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="plus"
-            loading={create.isPending}
-            onClick={handleNewChat}
-          >
+          </div>
+          <Button variant="secondary" size="sm" icon="plus" onClick={handleNewChat}>
             New chat
           </Button>
         </div>
@@ -234,13 +225,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               <Banner
                 tone="danger"
                 action={
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon="plus"
-                    loading={create.isPending}
-                    onClick={handleNewChat}
-                  >
+                  <Button variant="secondary" size="sm" icon="plus" onClick={handleNewChat}>
                     Start new chat
                   </Button>
                 }

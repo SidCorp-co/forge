@@ -119,6 +119,24 @@ const FILTER_LABEL: Record<SessionFilter, string> = {
   attention: "Attention",
 };
 
+// ISS-465 — kind dimension on top of the status filter. Defaults to "all" so
+// existing readers see the same set; explicit "Runs" / "Chats" labels separate
+// pipeline/pm sessions from interactive chats (already discriminated server-
+// side by metadata.type, here just presentation).
+type KindFilter = "all" | "runs" | "chats";
+const KIND_FILTERS: KindFilter[] = ["all", "runs", "chats"];
+const KIND_LABEL: Record<KindFilter, string> = {
+  all: "All kinds",
+  runs: "Runs",
+  chats: "Chats",
+};
+
+function matchesKind(kind: KindFilter, row: SessionRow): boolean {
+  if (kind === "all") return true;
+  const k = sessionKind(row);
+  return kind === "runs" ? k === "pipeline" : k === "chat";
+}
+
 function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSessionDisplayStatus): boolean {
   switch (filter) {
     case "running":
@@ -147,6 +165,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const sessionsQ = useSessions({ projectId });
   const projectsQ = useProjects();
   const [filter, setFilter] = useState<SessionFilter>("all");
+  // ISS-465 — kind dimension (Runs vs Chats); presentation-only.
+  const [kind, setKind] = useState<KindFilter>("all");
 
   // Resolve each row's project slug (id → slug) so session rows can link to the
   // project-scoped detail + issue routes at both tiers.
@@ -182,8 +202,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
   const rows = useMemo(() => {
     const all = sessionsQ.data?.items ?? [];
-    return issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
-  }, [sessionsQ.data, issueFilter]);
+    const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
+    // ISS-465 — kind dimension applies BEFORE the status filter so the status
+    // counts reflect the chosen kind ("3 Running chats" vs "3 Running runs").
+    return issueFiltered.filter((r) => matchesKind(kind, r));
+  }, [sessionsQ.data, issueFilter, kind]);
 
   // Derive once per render so display status, stats, and filters all agree.
   const now = Date.now();
@@ -242,6 +265,27 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     label: `${FILTER_LABEL[f]} ${counts[f]}`,
   }));
 
+  // ISS-465 — kind dimension; counts come from the unfiltered (issue-scoped)
+  // set so switching tabs shows the true population in each.
+  const kindRows = useMemo(() => {
+    const all = sessionsQ.data?.items ?? [];
+    return issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
+  }, [sessionsQ.data, issueFilter]);
+  const kindCounts: Record<KindFilter, number> = {
+    all: kindRows.length,
+    runs: 0,
+    chats: 0,
+  };
+  for (const r of kindRows) {
+    const k = sessionKind(r);
+    if (k === "pipeline") kindCounts.runs += 1;
+    else kindCounts.chats += 1;
+  }
+  const kindOptions: SegmentOption<KindFilter>[] = KIND_FILTERS.map((k) => ({
+    value: k,
+    label: `${KIND_LABEL[k]} ${kindCounts[k]}`,
+  }));
+
   const actions = { cancel, retry, rerun, abort };
 
   return (
@@ -297,7 +341,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         </div>
       )}
 
-      <div className="mb-4 overflow-x-auto">
+      <div className="mb-4 flex flex-wrap gap-3 overflow-x-auto">
+        <SegmentedControl options={kindOptions} value={kind} onChange={setKind} />
         <SegmentedControl options={filterOptions} value={filter} onChange={setFilter} />
       </div>
 
