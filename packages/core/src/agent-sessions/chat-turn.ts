@@ -38,6 +38,29 @@ import { syncTurnsWithMessages } from './turns-helpers.js';
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
 /**
+ * Derive a session title from the first user message (ISS-462): collapse all
+ * whitespace/newlines to single spaces, trim, cap at 80 chars (ellipsised).
+ * Returns '' for blank input so the caller can skip titling. Always fed the
+ * RAW user text — never the `[Context: …]`-decorated prompt.
+ */
+export function deriveChatTitle(raw: string): string {
+  const collapsed = raw.replace(/\s+/g, ' ').trim();
+  if (!collapsed) return '';
+  return collapsed.length > 80 ? `${collapsed.slice(0, 79)}…` : collapsed;
+}
+
+/**
+ * A session title is "placeholder" when it carries no human-meaningful value —
+ * null/blank, or the literal "Chat" the web bootstrap used to stamp on create.
+ * Auto-titling only ever replaces a placeholder, so a user-renamed session
+ * (or a fork/rerun derived title) is never clobbered.
+ */
+function isPlaceholderTitle(title: string | null | undefined): boolean {
+  const t = title?.trim();
+  return !t || t === 'Chat';
+}
+
+/**
  * The 409 a caller throws when a REMOTE chat turn has no online Claude client.
  * `scope` only changes the user-facing wording (a brand-new turn references the
  * project; a follow-up references the session) — same code `NO_CLAUDE_CLIENT`.
@@ -209,6 +232,17 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   if (deviceId) nextMeta.deviceId = deviceId;
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
   updates.metadata = nextMeta;
+
+  // Auto-title a brand-new, still-untitled session from its first user message
+  // (ISS-462) so the history switcher can tell conversations apart instead of
+  // showing a wall of "Chat". Strict guard — FIRST turn only AND title still a
+  // placeholder — so a follow-up turn or a user-renamed session is never
+  // overwritten. Uses the RAW message (not `decoratedMessage`) to keep the
+  // `[Context: …]` header out of the title.
+  if (prevMessages.length === 0 && isPlaceholderTitle(session.title)) {
+    const derived = deriveChatTitle(args.message);
+    if (derived) updates.title = derived;
+  }
 
   const { updated, sync } = await db.transaction(async (tx) => {
     const [row] = await tx

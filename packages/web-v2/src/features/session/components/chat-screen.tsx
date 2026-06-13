@@ -19,7 +19,9 @@ import {
   deriveStage,
   statusToChip,
 } from "@/features/sessions/types";
+import type { SessionRow } from "@/features/sessions/types";
 import { formatApiError } from "@/lib/api/error";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useQuery } from "@tanstack/react-query";
@@ -44,6 +46,34 @@ import { Composer, ReadOnlyComposerNote } from "./composer";
 import { Conversation } from "./conversation";
 
 const AGENT_TYPE = "agent";
+
+/**
+ * Snippet of a session's first user message, for legacy rows that predate
+ * server-side auto-titling (still titled null/"Chat"). The list endpoint
+ * returns the full row including `messages`, so this works without an extra
+ * fetch. Returns undefined when there's no usable user text (ISS-462).
+ */
+function sessionPreview(s: SessionRow): string | undefined {
+  const msgs = Array.isArray(s.messages) ? s.messages : [];
+  for (const m of msgs) {
+    if (!m || typeof m !== "object") continue;
+    if ((m as { role?: string }).role !== "user") continue;
+    const content = (m as { content?: unknown }).content;
+    const text =
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content
+              .map((b) =>
+                typeof b === "string" ? b : ((b as { text?: string })?.text ?? ""),
+              )
+              .join(" ")
+          : "";
+    const clean = text.replace(/\s+/g, " ").trim();
+    if (clean) return clean.length > 48 ? `${clean.slice(0, 47)}…` : clean;
+  }
+  return undefined;
+}
 
 export function ChatScreen({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
@@ -97,32 +127,41 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   // Start a fresh chat WITHOUT deleting the current one. useCreateSession's
   // onSuccess invalidates ['agent-sessions'], which prefix-matches this list
   // query, so the history switcher refetches with the new session.
+  // No `title` on create — the server auto-titles the session from the first
+  // user message (ISS-462); passing "Chat" would defeat that placeholder guard.
   const handleNewChat = async () => {
     const created = await create.mutateAsync({
       projectId,
-      title: "Chat",
       metadata: { type: AGENT_TYPE },
     });
     setActiveId(created.id);
   };
 
-  const historyItems: MenuItem[] = recentSessions.map((s) => ({
-    label: `${s.id === resolvedId ? "● " : ""}${s.title?.trim() || `Chat ${s.id.slice(0, 8)}`}`,
-    onSelect: () => setActiveId(s.id),
-  }));
+  const historyItems: MenuItem[] = recentSessions.map((s) => {
+    const title =
+      s.title?.trim() && s.title !== "Chat"
+        ? s.title
+        : (sessionPreview(s) ?? "New chat");
+    const when = formatRelativeTime(s.updatedAt);
+    return {
+      label: `${s.id === resolvedId ? "● " : ""}${title}${when ? ` · ${when}` : ""}`,
+      onSelect: () => setActiveId(s.id),
+    };
+  });
 
+  // `await`s the send so a failure rejects up into the Composer, which then
+  // keeps the typed text for retry (ISS-462) instead of clearing it.
   const handleSend = async (message: string) => {
     let id = resolvedId;
     if (!id) {
       const created = await create.mutateAsync({
         projectId,
-        title: "Chat",
         metadata: { type: AGENT_TYPE },
       });
       id = created.id;
       setActiveId(id);
     }
-    send.mutate({ sessionId: id, message });
+    await send.mutateAsync({ sessionId: id, message });
   };
 
   const busy = live || send.isPending || create.isPending;

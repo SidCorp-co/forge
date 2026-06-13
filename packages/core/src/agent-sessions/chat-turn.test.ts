@@ -47,8 +47,9 @@ vi.mock('./broadcast.js', () => ({
   broadcastSession: vi.fn(),
   broadcastTurnAppended: vi.fn(),
 }));
+const syncTurnsSpy = vi.fn(async () => ({ appended: [], truncatedFromTurnIndex: null }));
 vi.mock('./turns-helpers.js', () => ({
-  syncTurnsWithMessages: vi.fn(async () => ({ appended: [], truncatedFromTurnIndex: null })),
+  syncTurnsWithMessages: (...args: unknown[]) => syncTurnsSpy(...(args as [])),
 }));
 vi.mock('../pipeline/runs.js', () => ({
   openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
@@ -179,5 +180,71 @@ describe('dispatchChatTurn', () => {
       ([, env]) => (env as { event: string }).event === 'agent:start',
     );
     expect(started).toBeUndefined();
+  });
+
+  it('persists the user turn (syncTurnsWithMessages) before dispatch (Bug 1 guard)', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession(),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'hello',
+    });
+    expect(syncTurnsSpy).toHaveBeenCalledTimes(1);
+    const [, prev, next] = syncTurnsSpy.mock.calls[0] as unknown as [
+      string,
+      unknown[],
+      Array<Record<string, unknown>>,
+    ];
+    expect(prev).toEqual([]);
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ role: 'user', content: 'hello' });
+    // The user turn is materialized as part of the same update that flips the
+    // session to running — never after dispatch.
+    const updates = updateSet.mock.calls[0]![0] as { messages: unknown[]; status: string };
+    expect(updates.status).toBe('running');
+    expect(updates.messages).toHaveLength(1);
+  });
+
+  it('auto-titles a first turn on an untitled "Chat" session from the raw message (Bug 3)', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession({ title: 'Chat' }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: '  What files   are\nin this repo?  ',
+    });
+    const updates = updateSet.mock.calls[0]![0] as { title?: string };
+    expect(updates.title).toBe('What files are in this repo?');
+  });
+
+  it('does NOT title a follow-up turn (claudeSessionId set)', async () => {
+    updateReturning.mockResolvedValueOnce([
+      baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
+    ]);
+    await dispatchChatTurn({
+      session: baseSession({
+        title: 'Chat',
+        claudeSessionId: 'c-1',
+        messages: [{ role: 'user', content: 'first' }],
+      }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'second message',
+    });
+    const updates = updateSet.mock.calls[0]![0] as { title?: string };
+    expect(updates.title).toBeUndefined();
+  });
+
+  it('does NOT overwrite a user-renamed title on the first turn', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession({ title: 'My important chat' }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'hello there',
+    });
+    const updates = updateSet.mock.calls[0]![0] as { title?: string };
+    expect(updates.title).toBeUndefined();
   });
 });
