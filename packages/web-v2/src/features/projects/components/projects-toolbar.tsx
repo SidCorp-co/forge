@@ -1,6 +1,7 @@
 'use client';
 
 // Console toolbar: search · sort · Cards⇄List · New project.
+import Link from 'next/link';
 import { Button, Input, SegmentedControl, Select, type SegmentOption } from '@/design';
 import type { ProjectSort, ProjectView } from '../types';
 
@@ -52,16 +53,24 @@ export function ProjectsToolbar({
         onChange={(e) => onQuery(e.target.value)}
       />
       {orgs.length > 1 && (
-        <Select
-          className="w-[180px]"
-          options={[
-            { value: '', label: 'All organizations' },
-            ...orgs.map((o) => ({ value: o.id, label: o.isPersonal ? 'Personal' : o.name })),
-          ]}
-          value={orgId ?? ''}
-          onChange={(v) => onOrgId(v === '' ? null : v)}
-          aria-label="Filter by organization"
-        />
+        <>
+          <Select
+            className="w-[180px]"
+            options={[
+              { value: '', label: 'All organizations' },
+              ...orgs.map((o) => ({ value: o.id, label: o.isPersonal ? 'Personal' : o.name })),
+            ]}
+            value={orgId ?? ''}
+            onChange={(v) => onOrgId(v === '' ? null : v)}
+            aria-label="Filter by organization"
+          />
+          <Link
+            href="/settings?tab=orgs"
+            className="fg-body-sm text-accent hover:underline"
+          >
+            Manage organizations
+          </Link>
+        </>
       )}
       <Select
         className="w-[188px]"

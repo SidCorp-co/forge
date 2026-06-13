@@ -21,19 +21,11 @@ import type { ProjectUpdateInput } from '@/features/project-settings/types';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/providers/toast-provider';
+import { SLUG_RE, slugify } from '@/lib/slug';
 import { useBootstrapProject, useCreateProject } from '../hooks';
 import type { BootstrapResult, CreatedProject } from '../types';
 
-/** Name → slug: lowercase, non-alphanumerics → hyphens, collapse + trim. */
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
-}
-
-const SLUG_RE = /^[a-z0-9-]+$/;
+export { slugify };
 
 export interface NewProjectDialogProps {
   open: boolean;
