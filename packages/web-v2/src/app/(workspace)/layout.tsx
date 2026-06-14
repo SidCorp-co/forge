@@ -219,15 +219,51 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     if (slug && slug !== lastSlug) setLastSlug(slug);
   }, [slug, lastSlug, setLastSlug]);
 
+  // Leave project context on a MANUAL cross-org switch (ISS-480). When the rail
+  // switcher flips the active org to one that does NOT own the open project, the
+  // workspace must stop showing the old org's project — otherwise the rail lies
+  // (ORGANIZATION = new org, PROJECT = old org's project). We gate on the
+  // PREVIOUS org so this never collides with the ISS-470 AC6 follow-on-open flow,
+  // which ends with activeOrgId === the just-opened project's org:
+  //   • Open cross-org project: slug changes first with org unchanged → the
+  //     `prevOrg === activeOrgId` guard early-returns; the follow-effect then
+  //     sets org = project.orgId → this re-runs but now project.orgId ===
+  //     activeOrgId → early-returns. Never leaves.
+  //   • Manual switch away: org transitions while slug is stable and the project
+  //     is foreign → leave once.
+  // No setActiveOrg here, so ISS-476 stays intact (no extra PATCH, no revert,
+  // no React #185).
+  const prevOrgRef = useRef(activeOrgId);
+  useEffect(() => {
+    const prevOrg = prevOrgRef.current;
+    prevOrgRef.current = activeOrgId;
+    if (prevOrg === activeOrgId) return; // org unchanged (incl. AC6 set-to-match)
+    if (prevOrg == null) return; // initial null→org resolution is not a user switch — AC6 re-scope owns it (ISS-480 review)
+    if (!slug || !activeProject) return; // not in a resolved project — fallback handles the rail
+    if (activeProject.orgId === activeOrgId) return; // switched INTO the project's org → stay (AC2)
+    // Switched to an org that does not own the open project → exit project context.
+    setLastSlug(null); // drop the org-agnostic persisted slug so it can't resurrect
+    router.push("/projects"); // org-scoped console; shows the empty state for 0-project orgs
+  }, [activeOrgId, slug, activeProject, router, setLastSlug]);
+
+  // Rail/switcher project lists are scoped to the active org (ISS-480) so the
+  // rail never surfaces a project from a non-active org. The `!activeOrgId ||`
+  // guard keeps the pre-resolve / single-org render coherent (mirrors the ⌘K
+  // filter below).
+  const scopedProjects = useMemo(
+    () => (projects ?? []).filter((p) => !activeOrgId || p.orgId === activeOrgId),
+    [projects, activeOrgId],
+  );
+
   // The project the rail renders: the one you're in, else the last visited, else
   // your first (pinned-first) project. Lets you re-enter a project from anywhere.
   const railSlug = useMemo(() => {
     if (slug) return slug;
-    const list = projects ?? [];
+    const list = scopedProjects;
     if (lastSlug && list.some((p) => p.slug === lastSlug)) return lastSlug;
     const pinnedFirst = list.find((p) => pinnedIds.has(p.id));
     return pinnedFirst?.slug ?? list[0]?.slug ?? null;
-  }, [slug, lastSlug, projects, pinnedIds]);
+  }, [slug, lastSlug, scopedProjects, pinnedIds]);
   const railProject = useMemo(
     () => (railSlug ? projects?.find((p) => p.slug === railSlug) ?? null : null),
     [projects, railSlug],
@@ -317,20 +353,23 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const projectsConsole = useProjectsConsole();
   const switcherProjects = useMemo<SwitcherProject[]>(
     () =>
-      projectsConsole.items.map((p) => {
-        const g = projectGlyph(p.id);
-        return {
-          id: p.id,
-          slug: p.slug,
-          name: p.name,
-          initials: projectInitials(p.name),
-          tint: g.tint,
-          ink: g.ink,
-          liveRuns: p.liveRuns,
-          pinned: p.pinned,
-        };
-      }),
-    [projectsConsole.items],
+      projectsConsole.items
+        // Scope the rail switcher to the active org (ISS-480).
+        .filter((p) => !activeOrgId || p.orgId === activeOrgId)
+        .map((p) => {
+          const g = projectGlyph(p.id);
+          return {
+            id: p.id,
+            slug: p.slug,
+            name: p.name,
+            initials: projectInitials(p.name),
+            tint: g.tint,
+            ink: g.ink,
+            liveRuns: p.liveRuns,
+            pinned: p.pinned,
+          };
+        }),
+    [projectsConsole.items, activeOrgId],
   );
   const railConsole = useMemo(
     () => (railSlug ? projectsConsole.items.find((p) => p.slug === railSlug) ?? null : null),
@@ -445,13 +484,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const commands: Command[] = useMemo(() => {
     const out: Command[] = [];
 
-    // ISS-477 — scope project results to the active org so ⌘K never surfaces
-    // projects from another org while one is selected (matches every other
-    // SPACE-tier surface). The `!activeOrgId ||` guard keeps the pre-resolve and
-    // single-org cases coherent.
-    const scopedProjects = (projects ?? []).filter(
-      (p) => !activeOrgId || p.orgId === activeOrgId,
-    );
+    // ISS-477 — ⌘K project results are scoped to the active org (reuses the
+    // component-level `scopedProjects`) so the palette never surfaces projects
+    // from another org while one is selected (matches every other SPACE surface).
 
     // Recent — recently-viewed entities.
     for (const r of recents) {
@@ -579,7 +614,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     });
 
     return out;
-  }, [router, slug, activeProject, projects, activeOrgId, recents, pinnedViews.views, pinnedIds, toast]);
+  }, [router, slug, activeProject, scopedProjects, activeOrgId, recents, pinnedViews.views, pinnedIds, toast]);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">
@@ -686,7 +721,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-              {(projects ?? []).map((p) => {
+              {scopedProjects.map((p) => {
                 const g = projectGlyph(p.id);
                 const active = p.slug === slug;
                 return (
@@ -705,7 +740,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   </button>
                 );
               })}
-              {(projects ?? []).length === 0 && (
+              {scopedProjects.length === 0 && (
                 <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
               )}
             </div>
