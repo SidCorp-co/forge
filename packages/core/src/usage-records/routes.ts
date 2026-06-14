@@ -195,10 +195,14 @@ usageRecordRoutes.get(
     const [row] = await db.select().from(usageRecords).where(eq(usageRecords.id, id)).limit(1);
     if (!row) throw notFound('usage record not found');
 
-    if (row.projectId) {
-      const access = await loadProjectAccess(row.projectId, userId);
-      assertProjectRole(access, 'viewer', 'not a project member');
-    }
+    // null-projectId rows are the internal/global pool — never disclosed via
+    // this user-facing route (404, same shape as a missing row, so it is not
+    // an enumeration oracle). Internal writers read them off the DB directly,
+    // not over HTTP (ISS-492).
+    if (!row.projectId) throw notFound('usage record not found');
+
+    const access = await loadProjectAccess(row.projectId, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     return c.json(row);
   },
@@ -213,10 +217,14 @@ usageRecordRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    if (input.projectId) {
-      const access = await loadProjectAccess(input.projectId, userId);
-      assertProjectRole(access, 'member', 'not a project member');
+    // A projectId is required on this user-facing route: without it any caller
+    // could create unscoped null-project (global-pool) rows. Internal writers
+    // use materializeJobUsage (direct DB insert), not this HTTP route (ISS-492).
+    if (!input.projectId) {
+      throw badRequest({ projectId: 'required' });
     }
+    const access = await loadProjectAccess(input.projectId, userId);
+    assertProjectRole(access, 'member', 'not a project member');
 
     const cost =
       input.estimatedCost ??
