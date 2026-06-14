@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type IssueStatus, type JobType, projects } from '../../db/schema.js';
 import { listBindingsForProject } from '../../integrations/store.js';
+import { getIntegrationUsage } from '../../integrations/usage-registry.js';
 import type { RESERVED_PROJECT_FACT_KEYS } from '../../projects/project-facts.js';
 import {
   CANONICAL_LADDER,
@@ -58,23 +59,16 @@ interface IntegrationRow {
   lastHealthStatus: string | null;
 }
 
-// How an agent should use each connected integration. Listing only the
-// connected providers keeps the guide accurate; the agent then knows which
-// tool to reach for which task.
-const INTEGRATION_USAGE: Record<string, string> = {
-  coolify: 'Deploy / redeploy and poll deployment status via the `forge_coolify_deploy` tool.',
-  postman:
-    'Run API collections / target requests via `forge_postman_target` and the `mcp__postman__*` tools.',
-  epodsystem:
-    'Read store + theme context via `forge_storefront_target` and customize the storefront via the `mcp__epodsystem__*` shop tools. Always build on the DRAFT theme; publishing promotes draft → main.',
-};
-
+// Per-integration usage hints come from the data-driven registry
+// (`integrations/usage-registry.ts`) so adding an integration never edits this
+// rendering code. Listing only the connected providers keeps the guide
+// accurate; the agent then knows which tool to reach for which task.
 function renderIntegrations(rows: IntegrationRow[]): string {
   if (rows.length === 0) {
     return '## Project integrations\nNo external integrations are connected to this project.';
   }
   const lines = rows.map((r) => {
-    const hint = INTEGRATION_USAGE[r.provider] ?? 'Project-specific integration.';
+    const hint = getIntegrationUsage(r.provider);
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
     return `- **${r.provider}** [${r.environment}]${health} — ${hint}`;
   });
