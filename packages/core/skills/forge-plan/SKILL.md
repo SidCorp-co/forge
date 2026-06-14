@@ -161,7 +161,8 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 
 2. For each created child, add a `decomposes` dependency edge with the parent as the `from` side via the MCP tool:
    ```
-   forge_pm_set_dependency → {
+   forge_project_pm → {
+     action: "set_dependency",
      projectId: "<projectId>",
      fromIssueId: "<parentId>",
      toIssueId:   "<childId>",
@@ -172,7 +173,8 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 
    **If the parent's plan declares sibling-blocks ordering** (e.g., Sub 2 must wait for Sub 1 to ship before its `forge-triage` dispatches), add those edges immediately after creating all children:
    ```
-   forge_pm_set_dependency → {
+   forge_project_pm → {
+     action: "set_dependency",
      projectId: "<projectId>",
      fromIssueId: "<sub1Id>",    // the issue that ships FIRST
      toIssueId:   "<sub2Id>",    // the issue that WAITS
@@ -195,7 +197,7 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 - Parent → `closed` forces any non-closed children to `closed` (clean-up when the epic is abandoned).
 
 **Verifying sibling-blocks edges took effect (ISS-131 breadcrumb):**
-The L2 dispatcher gate evaluates `blocks` parents at dispatch time for every job type (not just `release`). When a downstream child's `forge-triage` job is queued behind a non-terminal blocker, the child's `agent_sessions` row stays at `status='queued'` with `failure_reason='waiting_on_dep'` and `metadata.waitingOn` listing the blocking parents. If after cascade-approve you see every child's `forge-triage` immediately dispatch in parallel, the most likely cause is that `forge_pm_set_dependency` never ran or threw silently — go back and re-call it for each declared blocks edge.
+The L2 dispatcher gate evaluates `blocks` parents at dispatch time for every job type (not just `release`). When a downstream child's `forge-triage` job is queued behind a non-terminal blocker, the child's `agent_sessions` row stays at `status='queued'` with `failure_reason='waiting_on_dep'` and `metadata.waitingOn` listing the blocking parents. If after cascade-approve you see every child's `forge-triage` immediately dispatch in parallel, the most likely cause is that `forge_project_pm (set_dependency)` never ran or threw silently — go back and re-call it for each declared blocks edge.
 
 ### Step 6: Validate the Plan
 
