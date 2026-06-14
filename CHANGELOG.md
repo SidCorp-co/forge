@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Switching your active organization now re-scopes the whole workspace: the projects console shows only that org's projects (with its name as the scope label), New project defaults to it, a new org home shows the org's projects and members, and opening a project from another org switches you into it.
 - Fixed a crash ("This page couldn't load") on the project settings page and other project-tier pages caused by an infinite render loop after switching organizations.
 - Switching your active organization now works from every screen — including while you're inside a project. Previously the org switcher silently snapped back to the current project's org.
+- Workspace surfaces — runners, sessions, attention, ops, integrations, usage and global search — now show only the organization you have selected, so switching organizations re-scopes the whole workspace instead of leaking data from your other orgs.
 
 ## [0.3.0] - 2026-06-11
 
