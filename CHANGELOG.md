@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed a crash ("This page couldn't load") on the project settings page and other project-tier pages caused by an infinite render loop after switching organizations.
 - Switching your active organization now works from every screen — including while you're inside a project. Previously the org switcher silently snapped back to the current project's org.
 - Workspace surfaces — runners, sessions, attention, ops, integrations, usage and global search — now show only the organization you have selected, so switching organizations re-scopes the whole workspace instead of leaking data from your other orgs.
+- Agent chat messages now render markdown — bold, headings, lists, code blocks, links and tables display formatted instead of as raw markdown source.
 
 ## [0.3.0] - 2026-06-11
 
