@@ -12,6 +12,7 @@ import {
   devices,
   issues,
   projects,
+  runners,
   usageRecords,
 } from '../db/schema.js';
 import {
@@ -918,22 +919,51 @@ agentSessionRoutes.get(
   }),
   async (c) => {
     const { deviceId, projectSlug } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    // Non-revealing default: any caller without ownership/membership of the
+    // queried target gets `connected:false` and cannot tell a real offline
+    // device/slug from one that exists in another tenant (ISS-492).
+    const notConnected = () => c.json({ data: { connected: false } });
 
     if (deviceId) {
       const [row] = await db
-        .select({ status: devices.status })
+        .select({ status: devices.status, ownerId: devices.ownerId })
         .from(devices)
         .where(eq(devices.id, deviceId))
         .limit(1);
-      return c.json({ data: { connected: row?.status === 'online' } });
+      if (!row) return notConnected();
+
+      // Reveal the real liveness bit only to the device owner, or to a caller
+      // who shares a project this device serves as a runner.
+      let allowed = row.ownerId === userId;
+      if (!allowed) {
+        const visible = await loadVisibleProjectIds(userId);
+        if (visible.length > 0) {
+          const [served] = await db
+            .select({ id: runners.id })
+            .from(runners)
+            .where(and(eq(runners.deviceId, deviceId), inArray(runners.projectId, visible)))
+            .limit(1);
+          allowed = served !== undefined;
+        }
+      }
+      if (!allowed) return notConnected();
+
+      return c.json({ data: { connected: row.status === 'online' } });
     }
 
     if (!projectSlug) {
-      return c.json({ data: { connected: false } });
+      return notConnected();
     }
 
     const project = await loadProjectBySlug(projectSlug);
-    if (!project) return c.json({ data: { connected: false } });
+    if (!project) return notConnected();
+
+    // Gate membership before confirming the slug has a live device — otherwise
+    // the response is a slug-existence + liveness oracle for other tenants.
+    const access = await loadProjectAccess(project.id, userId).catch(() => null);
+    if (!access?.role) return notConnected();
 
     const available = await findAvailableDeviceForProject(project.id);
     return c.json({ data: { connected: available !== null } });
@@ -957,7 +987,18 @@ agentSessionRoutes.get(
       if (!access.role) throw forbidden('not a project member');
       conditions.push(eq(agentSessions.projectId, projectId));
     } else if (deviceId) {
+      // Scope a deviceId listing to caller-visible projects, like the
+      // cross-project branch below — otherwise any authenticated user could
+      // dump every session (incl. full messages[]) for a device across all
+      // tenants (ISS-492). agentSessions.projectId is NOT NULL, so this fully
+      // scopes the rows.
+      const visible = await loadVisibleProjectIds(userId);
+      if (visible.length === 0) {
+        setTotalCount(c, 0);
+        return c.json([]);
+      }
       conditions.push(eq(agentSessions.deviceId, deviceId));
+      conditions.push(inArray(agentSessions.projectId, visible));
     } else {
       // Cross-project view: restrict to caller-visible projects (explicit
       // membership of any role, or org owner/admin).

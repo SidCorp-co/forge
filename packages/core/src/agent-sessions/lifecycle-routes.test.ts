@@ -78,10 +78,11 @@ vi.mock('../pipeline/runs.js', () => ({
 
 // Org-level authz: stub the db-touching resolvers; pure helpers stay real.
 const projectAccessMock = vi.fn();
+const loadVisibleProjectIdsMock = vi.fn(async () => [] as string[]);
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccessMock(...args),
-  loadVisibleProjectIds: vi.fn(async () => []),
+  loadVisibleProjectIds: (...args: unknown[]) => loadVisibleProjectIdsMock(...(args as [])),
 }));
 
 const { agentSessionRoutes } = await import('./routes.js');
@@ -653,10 +654,11 @@ describe('GET /api/agent-sessions/desktop/status', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns connected=true when deviceId is online', async () => {
+  it('returns connected=true when deviceId is online and caller owns the device', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([{ status: 'online' }]);
+    // ISS-492: device row now carries ownerId; owner sees the real bit.
+    selectLimit.mockResolvedValueOnce([{ status: 'online', ownerId: USER_ID }]);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -667,10 +669,10 @@ describe('GET /api/agent-sessions/desktop/status', () => {
     expect(body.data.connected).toBe(true);
   });
 
-  it('returns connected=false when deviceId is offline', async () => {
+  it('returns connected=false when deviceId is offline and caller owns the device', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
+    selectLimit.mockResolvedValueOnce([{ status: 'offline', ownerId: USER_ID }]);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -681,7 +683,26 @@ describe('GET /api/agent-sessions/desktop/status', () => {
     expect(body.data.connected).toBe(false);
   });
 
-  it('returns connected=true when projectSlug has an online pool device', async () => {
+  it('ISS-492: deviceId owned by another tenant → non-revealing connected=false', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    // Online device owned by someone else; caller shares no project (runners
+    // lookup returns no row). Must not reveal the real online bit.
+    selectLimit
+      .mockResolvedValueOnce([{ status: 'online', ownerId: 'someone-else' }]) // device
+      .mockResolvedValueOnce([]); // runners visibility join — no shared project
+    loadVisibleProjectIdsMock.mockResolvedValueOnce([PROJECT_ID]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/desktop/status?deviceId=${DEVICE_ID}`, { token }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { connected: boolean } };
+    expect(body.data.connected).toBe(false);
+  });
+
+  it('returns connected=true when projectSlug has an online pool device and caller is a member', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
     selectLimit.mockResolvedValueOnce([
@@ -693,6 +714,7 @@ describe('GET /api/agent-sessions/desktop/status', () => {
         defaultDeviceId: null,
       },
     ]);
+    projectAccessMock.mockResolvedValueOnce({ role: 'member' });
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
 
     const app = buildApp();
@@ -704,7 +726,7 @@ describe('GET /api/agent-sessions/desktop/status', () => {
     expect(body.data.connected).toBe(true);
   });
 
-  it('returns connected=false when projectSlug has no online device', async () => {
+  it('returns connected=false when projectSlug has no online device (caller is a member)', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
     selectLimit.mockResolvedValueOnce([
@@ -716,7 +738,26 @@ describe('GET /api/agent-sessions/desktop/status', () => {
         defaultDeviceId: null,
       },
     ]);
+    projectAccessMock.mockResolvedValueOnce({ role: 'member' });
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/agent-sessions/desktop/status?projectSlug=apiflow', { token }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { connected: boolean } };
+    expect(body.data.connected).toBe(false);
+  });
+
+  it('ISS-492: projectSlug of a non-member tenant → non-revealing connected=false', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT_ID, slug: 'apiflow', ownerId: 'someone-else', repoPath: null, defaultDeviceId: null },
+    ]);
+    projectAccessMock.mockResolvedValueOnce({ role: null }); // not a member
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID); // would be online, but gated
 
     const app = buildApp();
     const res = await app.fetch(

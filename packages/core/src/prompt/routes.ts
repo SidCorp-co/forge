@@ -85,8 +85,13 @@ promptRoutes.post(
       { step: body.state as JobType, override: systemPromptOverride },
     );
 
+    // Scope the issue lookup to body.projectId (the caller is gated as a member
+    // above): an issueId belonging to a DIFFERENT project resolves to null and
+    // 404s below instead of leaking that issue's content (ISS-492).
     const issueSnapshot =
-      body.issueId !== undefined ? await loadIssueSnapshot(body.issueId) : null;
+      body.issueId !== undefined
+        ? await loadIssueSnapshot(body.issueId, body.projectId)
+        : null;
     if (body.issueId !== undefined && !issueSnapshot) {
       throw notFound('issue not found');
     }
