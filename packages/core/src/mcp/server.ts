@@ -32,19 +32,15 @@ import {
 } from './tools/forge-metrics.js';
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
-import {
-  forgePipelineRunsCancelTool,
-  forgePipelineRunsGetTool,
-  forgePipelineRunsListTool,
-  forgePipelineRunsPauseTool,
-  forgePipelineRunsResumeTool,
-} from './tools/forge-pipeline-runs.js';
-import { forgePmDispatchTool } from './tools/forge-pm-dispatch.js';
-import { forgePmGraphTool } from './tools/forge-pm-graph.js';
-import { forgePmRunnerLoadTool } from './tools/forge-pm-runner-load.js';
+// ISS-483 §E#3: the forge_pipeline_runs_* / forge_pm_* standalone shims are
+// superseded by the forge_project_pipeline_runs / forge_project_pm action
+// dispatchers. Removed the 9 shims with zero references (repo + every project's
+// skills audited). Two are retained because skills/recipes still call them by
+// name: forge_pipeline_runs_get (forge-skill-audit) + forge_pm_set_dependency
+// (forge-plan + .forge/knowledge.json). The per-action HANDLERS still live in
+// their files and are reused by the dispatchers.
+import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
-import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
-import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
@@ -230,11 +226,7 @@ export function createMcpServer(ctx: McpContext): Server {
     // immediately after so `tools/list` order remains stable for callers
     // that pin to the existing position.
     forgeProjectPipelineRunsTool(ctx),
-    forgePipelineRunsListTool(ctx),
     forgePipelineRunsGetTool(ctx),
-    forgePipelineRunsPauseTool(ctx),
-    forgePipelineRunsResumeTool(ctx),
-    forgePipelineRunsCancelTool(ctx),
     forgeProjectsListTool(ctx),
     forgeProjectsCreateTool(ctx),
     forgeOrgsListTool(ctx),
@@ -243,12 +235,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeProjectsGetTool(ctx),
     forgeProjectsArchiveTool(ctx),
     forgeProjectPmTool(ctx),
-    forgePmSnapshotTool(ctx),
-    forgePmGraphTool(ctx),
-    forgePmRunnerLoadTool(ctx),
-    forgePmDispatchTool(ctx),
     forgePmSetDependencyTool(ctx),
-    forgePmWriteDecisionTool(ctx),
     forgeHealthTool(ctx.device),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
