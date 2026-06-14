@@ -40,7 +40,7 @@ When the issue has a plan and triage/plan comments from Forge AI:
 3. `forge_config → get` to read `baseBranch`, then `git checkout <baseBranch> && git pull && git checkout -b ISS-XX-short-title`
 4. Set `in_progress`
 5. Follow plan step-by-step — read each file as you reach it in the plan, edit, move on
-6. Run build (`npm run build`) — catch compile/type errors
+6. Build the affected package(s) — infer the build command from the repo (the package's build script / toolchain); catch compile/type errors
 7. Test API (if plan has API Test Plan) — curl affected endpoints, verify responses. Skip for frontend-only.
 8. Review (tiered — see below) — catch logic bugs
 9. Fix any review findings, re-build, re-test

@@ -90,11 +90,11 @@ For each finding:
 ## Build + Test Before Push
 
 After all fixes applied:
-1. `npm run build` — verify no compile errors
+1. Build the affected package(s) — infer the build command from the repo — verify no compile errors
 2. If API endpoints were changed: curl affected endpoints to verify responses
 3. Fix any failures before pushing
 
-Frontend testing is handled by QA (forge-test) against the preview deployment — don't run vitest for frontend-only fixes.
+Frontend testing is handled by QA (forge-test) against the preview deployment — don't run the frontend unit-test runner for frontend-only fixes.
 
 ## Commit Convention
 

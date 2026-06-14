@@ -76,8 +76,8 @@ Either way:
 
 ## Step 8: Build
 
-Run build to catch compile/type errors before review:
-- `npm run build` from the correct package directory
+Run the project's build to catch compile/type errors before review:
+- Infer the build command from the repo (the affected package's build script / toolchain) and run it from the correct package directory
 - Fix any build errors before proceeding
 - This catches issues that would fail CI later
 
