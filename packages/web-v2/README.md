@@ -53,7 +53,7 @@ src/
 ## Run
 
 ```bash
-pnpm --filter web-v2 dev      # http://localhost:3100  → redirects to /kit
+pnpm --filter web-v2 dev      # http://localhost:3100  → Overview dashboard
 ```
 
-Open **`/kit`** to preview every primitive and pattern.
+`/` renders the Overview dashboard. Open **`/kit`** for the component gallery (every primitive and pattern).

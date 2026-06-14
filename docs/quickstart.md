@@ -61,7 +61,7 @@ Wait ~30 seconds for services to become healthy.
 2. **Verify your email** (required before creating your first project) — click the link in the email.
 3. Create a project. Note its slug (used when pairing a device).
 
-> Admin ops (user list, device list, audit log, projects) live at `/admin` in the web app (`/admin` redirects to `/admin/users`).
+> Operational/admin views live under `/ops` (ops health), `/runners` (device & runner fleet), and `/org` + Settings → Organizations (members & roles); general settings under `/settings`.
 
 ## 3. Pair a device
 

@@ -23,6 +23,7 @@ Connection = authenticated principal (`user` or `device`). Principals join *room
 | `user:<userId>` | the principal IS that user (or its owning user, for devices) |
 | `device:<deviceId>` | principal owns the device, or IS the device |
 | `runner:<runnerId>` | runner's device or a member of runner's project |
+| `global` | any authenticated principal (no project membership) — instance-wide fan-out; `ws/rooms.ts` exports `globalRoom()` / `GLOBAL_ROOM` |
 
 **Client → server** (JSON, one frame each):
 
@@ -49,7 +50,7 @@ Event names dot-cased (`issue.updated`, not `issue:updated`). Categories and roo
 | `notification.*`, `user.preferencesChanged` | `user:<id>` | broadcast-subscribers |
 | `job.*` (incl. `job.event` with `seq`) | `project:<id>` (and `device:<id>` for assignment) | `jobs/lifecycle-routes.ts`, `jobs/events-routes.ts`, `jobs/dispatcher.ts` |
 | `runner.*`, `device.status`, `pipeline.*` | `project:<id>` / `device:<id>` / `runner:<id>` | `runners/`, `devices/` |
-| `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `runners/adapters/claude-code.ts` |
+| `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `agent-sessions/routes.ts`, `agent-sessions/chat-turn.ts`, `pipeline/runs-cascade.ts` (`runners/adapters/claude-code.ts` publishes `job.assigned`) |
 
 - Authoritative list: grep `roomManager.publish` in `packages/core/src/`.
 - Payloads typed by publishing module — read the call site, don't derive from this doc.

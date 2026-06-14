@@ -16,7 +16,7 @@ Trigger: external system (GitHub, Sentry, custom) POSTs to `/api/webhooks/in/<pr
    → [../modules/skills/README.md](../modules/skills/README.md)
 5. **[agents-jobs]** device POSTs JobEvents in 500ms batches as Claude emits stdout / tool calls / diffs.
 6. **[issues-pipeline]** on job `complete`, if triage checks pass, issue advances to `confirmed`; if `autoPlan` enabled, next job enqueued.
-7. Loop the registry steps: triage → (clarify if needed) → plan → code → review → test (auto-walks tested → pass → staging → released) → release.
+7. Loop the registry steps: triage → clarify → plan → code → review → test → release (reopen → fix on failure). The test step merges to the target branch, deploys, and live-verifies, advancing testing → released directly — there is no separate tested → pass → staging walk.
 8. **[issues-pipeline]** on `released`, final status. Webhook-out fires if configured.
 
 Cross-cutting:
