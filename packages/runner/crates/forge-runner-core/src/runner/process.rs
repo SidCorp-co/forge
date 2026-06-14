@@ -6,6 +6,7 @@
 //! this targets native Linux/macOS first. Windows falls back to a bare
 //! `claude` invocation.
 
+use std::process::ExitStatus;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -59,7 +60,11 @@ pub fn build_command(args: &[String], repo_path: &str) -> Command {
 }
 
 /// SIGTERM the process group, then SIGKILL after 5s. On Windows, `taskkill /T`.
-pub async fn graceful_kill(child: &mut Child) {
+///
+/// Returns the child's [`ExitStatus`] when it could be reaped (carrying the
+/// exit code / terminating signal), so callers can derive a precise
+/// failure reason. `None` if the wait failed.
+pub async fn graceful_kill(child: &mut Child) -> Option<ExitStatus> {
     #[cfg(target_os = "windows")]
     {
         if let Some(pid) = child.id() {
@@ -67,7 +72,7 @@ pub async fn graceful_kill(child: &mut Child) {
                 .args(["/F", "/T", "/PID", &pid.to_string()])
                 .output();
         }
-        let _ = child.wait().await;
+        return child.wait().await.ok();
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -78,16 +83,16 @@ pub async fn graceful_kill(child: &mut Child) {
         if let Some(pid) = child.id() {
             let pgid = Pid::from_raw(-(pid as i32));
             let _ = kill(pgid, Signal::SIGTERM);
-            if tokio::time::timeout(Duration::from_secs(5), child.wait())
-                .await
-                .is_err()
-            {
-                let _ = kill(pgid, Signal::SIGKILL);
-                let _ = child.wait().await;
+            match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
+                Ok(status) => status.ok(),
+                Err(_) => {
+                    let _ = kill(pgid, Signal::SIGKILL);
+                    child.wait().await.ok()
+                }
             }
         } else {
             let _ = child.kill().await;
-            let _ = child.wait().await;
+            child.wait().await.ok()
         }
     }
 }

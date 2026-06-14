@@ -6,6 +6,7 @@
 //! frame straight onto the right process.
 
 use std::collections::HashMap;
+use std::process::ExitStatus;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,6 +28,145 @@ struct Session {
 }
 
 type Sessions = Arc<Mutex<HashMap<String, Session>>>;
+
+/// Grace period after the definitive `{type:result}` marker for the CLI to
+/// exit on its own before we kill it + report terminal. Guards the
+/// hang-after-result bug (anthropics/claude-code#25629).
+const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
+
+/// Signals captured from the claude stream + process exit, written
+/// incrementally by the reader/completion tasks so they survive a reader abort
+/// and let us emit a precise, diagnosable failure reason.
+#[derive(Default)]
+struct Outcome {
+    /// `Some(true/false)` once a `{type:result}` event arrived (`!is_error`).
+    succeeded: Option<bool>,
+    /// Usage-limit message, if detected mid-stream.
+    usage_limit: Option<String>,
+    /// True once a `{type:result}` event was seen (the definitive done marker).
+    result_seen: bool,
+    /// Error detail from a `{type:result}` with `is_error=true`.
+    result_error: Option<String>,
+    /// MCP servers that did NOT reach a connected status at `system/init`.
+    mcp_failed: Vec<String>,
+    /// Captured child exit status (carries exit code / terminating signal).
+    exit: Option<ExitStatus>,
+}
+
+/// Split an [`ExitStatus`] into `(exit_code, terminating_signal)`.
+#[cfg(unix)]
+fn split_exit(status: &ExitStatus) -> (Option<i32>, Option<i32>) {
+    use std::os::unix::process::ExitStatusExt;
+    (status.code(), status.signal())
+}
+
+#[cfg(not(unix))]
+fn split_exit(status: &ExitStatus) -> (Option<i32>, Option<i32>) {
+    (status.code(), None)
+}
+
+/// From a `{type:result}` event with `is_error=true`, extract a short detail
+/// string (`subtype: message`).
+fn result_error_detail(json: &Value) -> String {
+    let subtype = json.get("subtype").and_then(Value::as_str).unwrap_or("error");
+    let msg = json
+        .get("result")
+        .and_then(Value::as_str)
+        .or_else(|| json.get("error").and_then(Value::as_str))
+        .unwrap_or("");
+    let msg: String = msg.chars().take(300).collect();
+    if msg.is_empty() {
+        subtype.to_string()
+    } else {
+        format!("{subtype}: {msg}")
+    }
+}
+
+/// From a `system`/`init` stream event, return the MCP servers that did NOT
+/// reach a connected status (`name(status)`). `None` if `json` is not a
+/// system event carrying `mcp_servers` (so the caller keeps looking); an empty
+/// vec means all servers connected.
+fn mcp_failed_servers(json: &Value) -> Option<Vec<String>> {
+    if json.get("type").and_then(Value::as_str) != Some("system") {
+        return None;
+    }
+    let servers = json.get("mcp_servers").and_then(Value::as_array)?;
+    let failed = servers
+        .iter()
+        .filter_map(|s| {
+            let name = s.get("name").and_then(Value::as_str)?;
+            let status = s.get("status").and_then(Value::as_str).unwrap_or("");
+            // Claude reports "connected" on success; treat anything else
+            // (failed / needs-auth / pending / empty) as not-connected.
+            if status.eq_ignore_ascii_case("connected") {
+                None
+            } else {
+                Some(format!("{name}({status})"))
+            }
+        })
+        .collect::<Vec<_>>();
+    Some(failed)
+}
+
+/// Build a precise, diagnosable failure reason for an abnormal claude exit.
+/// Pure + unit-tested. Returns a bracketed token (matched by core's
+/// `failure-classifier`) plus human-readable detail. Only called on the
+/// non-usage-limit / non-resume-failed failure path.
+fn classify_failure_reason(
+    exit_code: Option<i32>,
+    signal: Option<i32>,
+    result_seen: bool,
+    result_error: Option<&str>,
+    mcp_failed: &[String],
+    stderr: &str,
+) -> String {
+    let stderr = stderr.trim();
+    let tail = || -> String { stderr.chars().take(400).collect() };
+
+    // 1. A result event that reported is_error — most precise.
+    if let Some(msg) = result_error {
+        let msg: String = msg.chars().take(400).collect();
+        return format!("[RESULT_ERROR] {msg}");
+    }
+    // 2. MCP server(s) failed to connect at startup — environment/infra.
+    if !mcp_failed.is_empty() {
+        let servers = mcp_failed.join(", ");
+        let extra = if stderr.is_empty() {
+            String::new()
+        } else {
+            format!(" — {}", tail())
+        };
+        return format!("[MCP_INIT_FAILED] {servers} did not connect at startup{extra}");
+    }
+    // 3. Killed by a signal (SIGKILL/OOM, SIGTERM, …).
+    if let Some(sig) = signal {
+        let extra = if stderr.is_empty() {
+            String::new()
+        } else {
+            format!(" — {}", tail())
+        };
+        return format!("[SIGNAL_KILLED] signal={sig}{extra}");
+    }
+    // 4. Non-empty stderr (none of the above) — pass the raw CLI text through
+    //    so core's existing patterns (invalid_request / 5xx / 429 / …) can
+    //    still match a real provider error.
+    if !stderr.is_empty() {
+        return tail();
+    }
+    // 5. No result event — the CLI exited before producing a result
+    //    (cc-startup-death class).
+    if !result_seen {
+        return match exit_code {
+            Some(0) => {
+                "[NO_RESULT_CLEAN_EXIT] claude exited 0 before emitting a result event".to_string()
+            }
+            Some(code) => format!("[NO_RESULT_EXIT] exitCode={code}, no result event"),
+            None => "[NO_RESULT_EXIT] no exit code, no result event".to_string(),
+        };
+    }
+    // 6. Degenerate fallback (result seen, not is_error, yet not succeeded).
+    "[NO_RESULT_EXIT] terminal with no success signal".to_string()
+}
 
 pub struct ClaudeCodeRunner {
     core_url: String,
@@ -53,6 +193,10 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
         "--output-format".into(),
         "stream-json".into(),
         "--verbose".into(),
+        // Emit partial-message + subagent stream events so a quiet-but-busy
+        // fan-out session keeps producing stdout (liveness) and the runner
+        // sees every event (ISS-479).
+        "--include-partial-messages".into(),
         "--permission-mode".into(),
         mode.into(),
     ];
@@ -197,8 +341,12 @@ impl Runner for ClaudeCodeRunner {
         );
 
         // Shared outcome written incrementally so it survives a reader abort.
-        let outcome: Arc<Mutex<(Option<bool>, Option<String>)>> =
-            Arc::new(Mutex::new((None, None)));
+        let outcome: Arc<Mutex<Outcome>> = Arc::new(Mutex::new(Outcome::default()));
+
+        // Notified once when the reader sees the definitive `{type:result}`
+        // marker, so the completion task can report terminal immediately
+        // (ISS-479 terminal-on-result) instead of inferring it from silence.
+        let result_notify = Arc::new(tokio::sync::Notify::new());
 
         // stderr → string.
         let stderr_handle = tokio::spawn(async move {
@@ -212,11 +360,13 @@ impl Runner for ClaudeCodeRunner {
             let tx = tx.clone();
             let sessions = self.sessions.clone();
             let outcome = outcome.clone();
+            let result_notify = result_notify.clone();
             let job_id = job_id.clone();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stdout).lines();
                 let mut got_sid = false;
                 let mut got_limit = false;
+                let mut got_init = false;
                 while let Ok(Some(line)) = lines.next_line().await {
                     let Ok(json) = serde_json::from_str::<Value>(&line) else {
                         continue;
@@ -230,9 +380,22 @@ impl Runner for ClaudeCodeRunner {
                             got_sid = true;
                         }
                     }
+                    if !got_init {
+                        if let Some(failed) = mcp_failed_servers(&json) {
+                            got_init = true;
+                            if failed.is_empty() {
+                                tracing::debug!("[claude] job={job_id} all MCP servers connected");
+                            } else {
+                                tracing::warn!(
+                                    "[claude] job={job_id} MCP servers not connected: {failed:?}"
+                                );
+                                outcome.lock().await.mcp_failed = failed;
+                            }
+                        }
+                    }
                     if !got_limit {
                         if let Some(msg) = detect_usage_limit(&json) {
-                            outcome.lock().await.1 = Some(msg);
+                            outcome.lock().await.usage_limit = Some(msg);
                             got_limit = true;
                         }
                     }
@@ -241,7 +404,16 @@ impl Runner for ClaudeCodeRunner {
                             .get("is_error")
                             .and_then(Value::as_bool)
                             .unwrap_or(true);
-                        outcome.lock().await.0 = Some(!is_error);
+                        {
+                            let mut o = outcome.lock().await;
+                            o.succeeded = Some(!is_error);
+                            o.result_seen = true;
+                            if is_error {
+                                o.result_error = Some(result_error_detail(&json));
+                            }
+                        }
+                        // Definitive done marker — wake the completion task.
+                        result_notify.notify_one();
                     }
                     if tx.send(RunnerEvent::Stdout(json)).await.is_err() {
                         break;
@@ -251,7 +423,8 @@ impl Runner for ClaudeCodeRunner {
         };
 
         // Completion task: race reader-EOF vs child-exit (MCP grandchildren can
-        // hold the pipe open), then reap, classify, and emit Done/Failed.
+        // hold the pipe open) vs the definitive `{type:result}` marker, then
+        // reap, classify, and emit Done/Failed.
         let sessions = self.sessions.clone();
         let job_id_task = job_id.clone();
         tokio::spawn(async move {
@@ -259,48 +432,80 @@ impl Runner for ClaudeCodeRunner {
             let mut reader = reader;
             let exit_poll = {
                 let sessions = sessions.clone();
+                let outcome = outcome.clone();
                 let job_id = job_id.clone();
                 async move {
                     loop {
-                        {
+                        // Snapshot try_wait WITHOUT holding the sessions lock
+                        // across the outcome lock (avoids a lock-order cycle).
+                        let polled = {
                             let mut s = sessions.lock().await;
                             match s.get_mut(&job_id).and_then(|x| x.child.as_mut()) {
                                 Some(child) => match child.try_wait() {
-                                    Ok(Some(_)) | Err(_) => break,
-                                    Ok(None) => {}
+                                    Ok(Some(status)) => Some(Some(status)), // exited
+                                    Err(_) => Some(None),                   // give up
+                                    Ok(None) => None,                       // still running
                                 },
-                                None => break,
+                                None => Some(None),
                             }
+                        };
+                        match polled {
+                            Some(Some(status)) => {
+                                outcome.lock().await.exit = Some(status);
+                                break;
+                            }
+                            Some(None) => break,
+                            None => {}
                         }
                         tokio::time::sleep(Duration::from_millis(200)).await;
                     }
                 }
             };
 
+            let on_result = {
+                let result_notify = result_notify.clone();
+                async move { result_notify.notified().await }
+            };
+
             match timeout {
                 Some(d) => tokio::select! {
                     _ = &mut reader => {}
                     _ = exit_poll => { let _ = tokio::time::timeout(Duration::from_secs(2), &mut reader).await; }
+                    _ = on_result => { let _ = tokio::time::timeout(RESULT_EXIT_GRACE, &mut reader).await; }
                     _ = tokio::time::sleep(d) => { tracing::warn!("[claude] job={job_id} timed out"); }
                 },
                 None => tokio::select! {
                     _ = &mut reader => {}
                     _ = exit_poll => { let _ = tokio::time::timeout(Duration::from_secs(2), &mut reader).await; }
+                    _ = on_result => { let _ = tokio::time::timeout(RESULT_EXIT_GRACE, &mut reader).await; }
                 },
             }
             reader.abort();
 
-            let (succeeded_opt, usage_limit) = {
-                let o = outcome.lock().await;
-                (o.0, o.1.clone())
+            // Reap the child + group, capturing its exit status if the
+            // exit-poll branch didn't already.
+            let killed_exit = if let Some(s) = sessions.lock().await.get_mut(&job_id) {
+                if let Some(mut child) = s.child.take() {
+                    graceful_kill(&mut child).await
+                } else {
+                    None
+                }
+            } else {
+                None
             };
 
-            // Reap the child + group.
-            if let Some(s) = sessions.lock().await.get_mut(&job_id) {
-                if let Some(mut child) = s.child.take() {
-                    graceful_kill(&mut child).await;
-                }
-            }
+            let (succeeded_opt, usage_limit, result_seen, result_error, mcp_failed, polled_exit) = {
+                let o = outcome.lock().await;
+                (
+                    o.succeeded,
+                    o.usage_limit.clone(),
+                    o.result_seen,
+                    o.result_error.clone(),
+                    o.mcp_failed.clone(),
+                    o.exit,
+                )
+            };
+            let outcome_exit = polled_exit.or(killed_exit);
 
             let stderr = tokio::time::timeout(Duration::from_secs(3), stderr_handle)
                 .await
@@ -353,12 +558,18 @@ impl Runner for ClaudeCodeRunner {
                     })
                     .await;
             } else {
-                let body = stderr.trim();
-                let error = if body.is_empty() {
-                    "Agent completed with errors".to_string()
-                } else {
-                    body.chars().take(500).collect()
+                let (exit_code, signal) = match outcome_exit {
+                    Some(ref st) => split_exit(st),
+                    None => (None, None),
                 };
+                let error = classify_failure_reason(
+                    exit_code,
+                    signal,
+                    result_seen,
+                    result_error.as_deref(),
+                    &mcp_failed,
+                    &stderr,
+                );
                 let _ = tx
                     .send(RunnerEvent::Failed {
                         error,
@@ -396,5 +607,91 @@ impl Runner for ClaudeCodeRunner {
             .ok()
             .and_then(|s| s.get(session).map(|x| x.status))
             .unwrap_or(RunnerStatus::Idle)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn killed_by_signal_reports_signal_token() {
+        let r = classify_failure_reason(None, Some(9), false, None, &[], "");
+        assert!(r.starts_with("[SIGNAL_KILLED]"), "{r}");
+        assert!(r.contains("signal=9"), "{r}");
+    }
+
+    #[test]
+    fn clean_exit_without_result_is_no_result_clean_exit() {
+        let r = classify_failure_reason(Some(0), None, false, None, &[], "");
+        assert!(r.starts_with("[NO_RESULT_CLEAN_EXIT]"), "{r}");
+    }
+
+    #[test]
+    fn nonzero_exit_without_result_is_no_result_exit() {
+        let r = classify_failure_reason(Some(1), None, false, None, &[], "");
+        assert!(r.starts_with("[NO_RESULT_EXIT]"), "{r}");
+        assert!(r.contains("exitCode=1"), "{r}");
+    }
+
+    #[test]
+    fn mcp_init_failure_reports_mcp_token() {
+        let failed = vec!["forge(failed)".to_string()];
+        let r = classify_failure_reason(Some(0), None, false, None, &failed, "");
+        assert!(r.starts_with("[MCP_INIT_FAILED]"), "{r}");
+        assert!(r.contains("forge(failed)"), "{r}");
+    }
+
+    #[test]
+    fn result_error_reports_result_token() {
+        let r = classify_failure_reason(Some(0), None, true, Some("error_max_turns: hit cap"), &[], "");
+        assert!(r.starts_with("[RESULT_ERROR]"), "{r}");
+        assert!(r.contains("error_max_turns"), "{r}");
+    }
+
+    #[test]
+    fn nonempty_stderr_passes_through_for_existing_pattern_match() {
+        // Real provider error text should pass through untokenized so core's
+        // existing classifier patterns can match it.
+        let r = classify_failure_reason(Some(1), None, false, None, &[], "  invalid_request_error: bad  ");
+        assert_eq!(r, "invalid_request_error: bad");
+    }
+
+    #[test]
+    fn signal_wins_over_stderr_passthrough() {
+        let r = classify_failure_reason(None, Some(9), false, None, &[], "some noise");
+        assert!(r.starts_with("[SIGNAL_KILLED]"), "{r}");
+        assert!(r.contains("some noise"), "{r}");
+    }
+
+    #[test]
+    fn mcp_init_parse_flags_unconnected_servers() {
+        let init = json!({
+            "type": "system",
+            "subtype": "init",
+            "mcp_servers": [
+                { "name": "forge", "status": "failed" },
+                { "name": "playwright", "status": "connected" }
+            ]
+        });
+        let failed = mcp_failed_servers(&init).expect("system event");
+        assert_eq!(failed, vec!["forge(failed)".to_string()]);
+    }
+
+    #[test]
+    fn mcp_init_parse_all_connected_is_empty() {
+        let init = json!({
+            "type": "system",
+            "subtype": "init",
+            "mcp_servers": [ { "name": "forge", "status": "connected" } ]
+        });
+        assert_eq!(mcp_failed_servers(&init), Some(vec![]));
+    }
+
+    #[test]
+    fn non_system_event_is_ignored_by_mcp_parse() {
+        let assistant = json!({ "type": "assistant", "message": {} });
+        assert_eq!(mcp_failed_servers(&assistant), None);
     }
 }

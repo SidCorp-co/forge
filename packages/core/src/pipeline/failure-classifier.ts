@@ -42,11 +42,23 @@
  *     The pattern→bucket fallthrough (`unknown`) now lands on `infra` with
  *     `meta.needsReview=true` so unclassified rows surface in the operator UI
  *     instead of hiding behind a fifth class.
+ *   v4 — ISS-479 explicit runner failureReason tokens. forge-runner-core now
+ *     emits a bracketed token for previously-opaque abnormal exits (the old
+ *     "Agent completed with errors" catch-all). These tokens are AUTHORITATIVE
+ *     — checked before the cc-startup message-count heuristic — because the
+ *     runner observed the actual exit:
+ *       • [MCP_INIT_FAILED] / [SIGNAL_KILLED] → infra (environment / OOM /
+ *         host, not the work).
+ *       • [NO_RESULT_CLEAN_EXIT] / [NO_RESULT_EXIT] → transient-cc (the CLI
+ *         exited before producing a result — startup-death class → immediate
+ *         different-device failover).
+ *       • [RESULT_ERROR] → falls through to the message patterns below so a
+ *         real provider error in the detail still routes to code/infra.
  */
 
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
-export const CLASSIFIER_VERSION = 3;
+export const CLASSIFIER_VERSION = 4;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -178,6 +190,23 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
     }
   }
 
+  // ISS-479 — explicit runner failureReason tokens are AUTHORITATIVE: the
+  // runner observed the actual process exit, so its verdict beats the
+  // message-count heuristic below (e.g. an MCP-init failure dies with no tool
+  // use, which the heuristic would mislabel transient-cc; the runner says
+  // infra). [RESULT_ERROR] intentionally returns null here so the provider
+  // message in its detail still flows to the PERMANENT/TRANSIENT patterns.
+  const runnerKind = classifyRunnerToken(text);
+  if (runnerKind) {
+    return {
+      kind: runnerKind,
+      reason: reasonExcerpt,
+      meta,
+      version: CLASSIFIER_VERSION,
+      retryAfter,
+    };
+  }
+
   // ISS-450 — structured cc-startup-death signal (preferred source). The
   // caller derives it from the job's event stream: the CLI spawned but died
   // with ≤3 assistant messages and no tool use (ISS-402 skill-registration
@@ -266,6 +295,21 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
     version: CLASSIFIER_VERSION,
     retryAfter,
   };
+}
+
+/**
+ * ISS-479 — map an explicit forge-runner-core failureReason token to a kind.
+ * Returns null when no runner token is present (incl. [RESULT_ERROR], whose
+ * detail is left to the message patterns).
+ */
+function classifyRunnerToken(text: string): FailureKind | null {
+  if (text.includes('[MCP_INIT_FAILED]') || text.includes('[SIGNAL_KILLED]')) {
+    return 'infra';
+  }
+  if (text.includes('[NO_RESULT_CLEAN_EXIT]') || text.includes('[NO_RESULT_EXIT]')) {
+    return 'transient-cc';
+  }
+  return null;
 }
 
 function readMetaErrorType(meta: Record<string, unknown> | null): string | null {
