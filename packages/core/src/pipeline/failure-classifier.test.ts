@@ -3,9 +3,48 @@ import { CLASSIFIER_VERSION, classifyFailure } from './failure-classifier.js';
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(3);
+    expect(CLASSIFIER_VERSION).toBe(4);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
+  });
+
+  describe('ISS-479 — explicit runner failureReason tokens', () => {
+    it('routes [MCP_INIT_FAILED] to infra', () => {
+      const r = classifyFailure({ error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup' });
+      expect(r.kind).toBe('infra');
+    });
+
+    it('routes [SIGNAL_KILLED] to infra (OOM/host)', () => {
+      const r = classifyFailure({ error: '[SIGNAL_KILLED] signal=9' });
+      expect(r.kind).toBe('infra');
+    });
+
+    it('routes [NO_RESULT_CLEAN_EXIT] to transient-cc (startup death → failover)', () => {
+      const r = classifyFailure({
+        error: '[NO_RESULT_CLEAN_EXIT] claude exited 0 before emitting a result event',
+      });
+      expect(r.kind).toBe('transient-cc');
+    });
+
+    it('routes [NO_RESULT_EXIT] to transient-cc', () => {
+      const r = classifyFailure({ error: '[NO_RESULT_EXIT] exitCode=1, no result event' });
+      expect(r.kind).toBe('transient-cc');
+    });
+
+    it('the runner token wins over the cc-startup message-count heuristic', () => {
+      // An MCP-init death also looks like diedBeforeFirstToolUse; the explicit
+      // runner token must still route it to infra, not transient-cc.
+      const r = classifyFailure({
+        error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
+        signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 1 },
+      });
+      expect(r.kind).toBe('infra');
+    });
+
+    it('[RESULT_ERROR] falls through to message patterns (invalid_request → code)', () => {
+      const r = classifyFailure({ error: '[RESULT_ERROR] invalid_request_error: bad input' });
+      expect(r.kind).toBe('code');
+    });
   });
 
   it('classifies content-filter blocks as code (was permanent)', () => {
