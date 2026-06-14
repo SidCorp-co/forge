@@ -26,6 +26,7 @@ import {
   TR,
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
+import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
 import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -144,7 +145,12 @@ export function RunnersScreen() {
   const { user } = useAuth();
   // Live pending→approved + revoke ride the owner's user room.
   useRoom(user?.id ? userRoom(user.id) : null);
-  const devices = useDevices();
+  // ISS-477 — scope the fleet to the active org's projects. A device is bound to
+  // an org via a project runner, so an org with zero projects shows zero devices.
+  // Unbound (just-paired, not yet assigned) devices appear under no org scope —
+  // pair, then assign the device to a project to see it here.
+  const { activeOrgId } = useActiveOrg();
+  const devices = useDevices(activeOrgId);
   const revoke = useRevokeDevice();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -190,7 +196,7 @@ export function RunnersScreen() {
           ) : rows.length === 0 ? (
             <EmptyState
               title="No devices yet"
-              message="Pair your first runner with the command above to start accepting jobs."
+              message="Pair a runner with the command above, then assign it to a project in this organization to see it here."
               mascot={false}
             />
           ) : (

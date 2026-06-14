@@ -11,8 +11,13 @@ import type {
 } from "./types";
 
 export const runnersApi = {
-	/** `GET /api/me/devices` — the caller's paired devices. */
-	listDevices: () => apiClient<DeviceRow[]>(`/me/devices`),
+	/**
+	 * `GET /api/me/devices` — the caller's paired devices. ISS-477: pass `orgId`
+	 * to scope to devices bound (via a runner) to a project in that org; omit it
+	 * for the full owner-scoped list (device-name resolution on sessions, etc.).
+	 */
+	listDevices: (orgId?: string) =>
+		apiClient<DeviceRow[]>(orgId ? `/me/devices?orgId=${encodeURIComponent(orgId)}` : `/me/devices`),
 
 	/** `PATCH /api/devices/:id` — rename a device (owner only). */
 	renameDevice: (id: string, name: string) =>

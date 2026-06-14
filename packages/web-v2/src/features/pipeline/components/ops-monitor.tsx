@@ -31,7 +31,7 @@ import {
   Tabs,
 } from "@/design";
 import { deriveHealth } from "@/features/projects/derive";
-import { useProjectHealth, useProjects } from "@/features/projects/hooks";
+import { useOrgScopedProjects, useProjectHealth } from "@/features/projects/hooks";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -69,13 +69,30 @@ export function OpsMonitor() {
     }
   }, []);
 
-  const projectsQ = useProjects();
+  // ISS-477 — scope the whole monitor to the active org's projects. The health
+  // rollup (AC #4) filters by project id; the step-duration/throughput rows also
+  // carry `projectId`, so we client-filter them too for a coherent active-org
+  // view (Monitor/Progress/Runs). Note: those aggregates are fetched with a
+  // server-side window/top-N, so the org-scoped slice is best-effort — a true
+  // org-aggregate endpoint is a documented follow-up.
+  const { projects, projectIds, isLoading: projectsLoading, error: projectsError } =
+    useOrgScopedProjects();
   const healthQ = useProjectHealth();
   const durationsQ = useStepDurations({ days: 7 });
   const throughputQ = useThroughput({ days: 30 });
 
-  const projects = projectsQ.data ?? [];
-  const health = healthQ.data ?? [];
+  const health = useMemo(
+    () => (healthQ.data ?? []).filter((h) => projectIds.has(h.id)),
+    [healthQ.data, projectIds],
+  );
+  const durations = useMemo(
+    () => (durationsQ.data ?? []).filter((r) => projectIds.has(r.projectId)),
+    [durationsQ.data, projectIds],
+  );
+  const throughput = useMemo(
+    () => (throughputQ.data ?? []).filter((r) => projectIds.has(r.projectId)),
+    [throughputQ.data, projectIds],
+  );
   const nameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of projects) m.set(p.id, p.name);
@@ -83,22 +100,19 @@ export function OpsMonitor() {
     return m;
   }, [projects, health]);
 
-  if (projectsQ.isLoading || healthQ.isLoading) {
+  if (projectsLoading || healthQ.isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ProjectLoader label="loading ops…" />
       </div>
     );
   }
-  if (projectsQ.isError || healthQ.isError) {
+  if (projectsError || healthQ.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
-          message={formatApiError(projectsQ.error ?? healthQ.error)}
-          onRetry={() => {
-            projectsQ.refetch();
-            healthQ.refetch();
-          }}
+          message={formatApiError(projectsError ?? healthQ.error)}
+          onRetry={() => healthQ.refetch()}
         />
       </div>
     );
@@ -134,18 +148,18 @@ export function OpsMonitor() {
       </div>
 
       <div className="pt-5">
-        {tab === "monitor" && <MonitorTab health={health} durations={durationsQ.data} />}
+        {tab === "monitor" && <MonitorTab health={health} durations={durations} />}
         {tab === "progress" && (
           <ProgressTab
-            throughput={throughputQ.data}
-            durations={durationsQ.data}
+            throughput={throughput}
+            durations={durations}
             loading={throughputQ.isLoading || durationsQ.isLoading}
           />
         )}
         {tab === "health" && <HealthTab health={health} />}
         {tab === "runs" && (
           <RunsTab
-            durations={durationsQ.data}
+            durations={durations}
             loading={durationsQ.isLoading}
             isError={durationsQ.isError}
             onRetry={() => durationsQ.refetch()}

@@ -13,6 +13,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -25,6 +26,8 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { useActiveOrg } from "@/features/orgs/active-org";
+import { useOrgs } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useUpdateConnection } from "../hooks";
 import { deriveConnectionStatus } from "../derive";
@@ -90,9 +93,12 @@ function ConnectionBindings({ connectionId }: { connectionId: string }) {
 
 function ConnectionCard({
   connection,
+  ownerLabel,
   onOpen,
 }: {
   connection: ConnectionSummary;
+  /** ISS-477 — which principal owns this credential ("Personal" or an org name). */
+  ownerLabel: string;
   onOpen: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -134,6 +140,9 @@ function ConnectionCard({
               <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
                 {PROVIDER_LABEL[connection.provider] ?? connection.provider}
               </span>
+              <Badge tone={connection.ownerType === "org" ? "accent" : "neutral"}>
+                {ownerLabel}
+              </Badge>
             </span>
             <ConnectionStatusPill connection={connection} />
           </div>
@@ -198,7 +207,30 @@ function ConnectionCard({
 
 export function IntegrationsScreen() {
   const connections = useConnections();
-  const items = connections.data?.items ?? [];
+  const { activeOrg } = useActiveOrg();
+  const orgsQ = useOrgs();
+  const orgNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of orgsQ.data ?? []) m.set(o.id, o.name);
+    return m;
+  }, [orgsQ.data]);
+  // ISS-477 — scope the directory to the active org: a personal org shows the
+  // user's own (`ownerType:'user'`) credentials; a team org shows credentials
+  // it owns. Connections from other orgs (or another principal) never appear.
+  const items = useMemo(() => {
+    const all = connections.data?.items ?? [];
+    if (!activeOrg) return all;
+    return all.filter((c) =>
+      activeOrg.isPersonal
+        ? c.ownerType === "user"
+        : c.ownerType === "org" && c.ownerId === activeOrg.id,
+    );
+  }, [connections.data, activeOrg]);
+  const ownerLabel = useCallback(
+    (c: ConnectionSummary) =>
+      c.ownerType === "org" ? orgNameById.get(c.ownerId) ?? "Organization" : "Personal",
+    [orgNameById],
+  );
   // Track the SELECTED ID and re-derive the row from the live query data, so
   // the open drawer reflects every mutation (rename/health/active) without
   // holding a stale snapshot. Stable onClose — SlideOver's focus effect keys
@@ -252,7 +284,12 @@ export function IntegrationsScreen() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((c) => (
-            <ConnectionCard key={c.id} connection={c} onOpen={() => setSelectedId(c.id)} />
+            <ConnectionCard
+              key={c.id}
+              connection={c}
+              ownerLabel={ownerLabel(c)}
+              onOpen={() => setSelectedId(c.id)}
+            />
           ))}
         </div>
       )}
