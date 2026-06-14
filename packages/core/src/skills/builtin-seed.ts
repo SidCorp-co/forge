@@ -59,9 +59,9 @@ export interface SeedOptions {
 }
 
 // Builtin skill directories are seeded by name prefix. `forge-` = the core
-// pipeline skills; `shop-` = the ISS-387 Epodsystem storefront skills wired
-// into the `website` domain templates.
-const BUILTIN_SKILL_PREFIXES = ['forge-', 'shop-'] as const;
+// pipeline skills. (The `shop-` Epodsystem storefront family was removed —
+// see migration 0122_drop_shop_skills.)
+const BUILTIN_SKILL_PREFIXES = ['forge-'] as const;
 
 function defaultSkillsRoot(): string {
   // Resolves to `<pkg-root>/skills` whether running from `src/skills/` (dev,
