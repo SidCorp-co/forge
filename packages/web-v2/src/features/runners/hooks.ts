@@ -6,14 +6,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { runnersApi } from "./api";
 
 /**
- * The caller's devices. Keyed `['devices','me']` — exactly the key the WS
- * event-router invalidates on `device.login`/`device.paired`/`device.revoked`,
- * so pending→approved and revoke reflect live with no extra wiring.
+ * The caller's devices. Keyed `['devices','me', orgId ?? null]` — a child of
+ * `['devices','me']`, so the WS event-router (which invalidates the
+ * `['devices','me']` PREFIX on `device.login`/`device.paired`/`device.revoked`
+ * and reconnect) still refreshes every variant; pending→approved and revoke
+ * reflect live with no extra wiring. ISS-477: pass `orgId` to scope the Runners
+ * surface to the active org's devices; omit it (sessions/attention name
+ * resolution) for the full owner-scoped list.
  */
-export function useDevices() {
+export function useDevices(orgId?: string | null) {
 	return useQuery({
-		queryKey: ["devices", "me"],
-		queryFn: () => runnersApi.listDevices(),
+		queryKey: ["devices", "me", orgId ?? null],
+		queryFn: () => runnersApi.listDevices(orgId ?? undefined),
 	});
 }
 

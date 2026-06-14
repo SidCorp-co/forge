@@ -34,7 +34,7 @@ import {
   type MenuItem,
   type SegmentOption,
 } from "@/design";
-import { useProject, useProjects } from "@/features/projects/hooks";
+import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import { formatApiError } from "@/lib/api/error";
@@ -164,6 +164,9 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const issueFilter = scope?.issueId;
   const sessionsQ = useSessions({ projectId });
   const projectsQ = useProjects();
+  // ISS-477 — at the workspace tier scope rows to the active org's projects. The
+  // project tier (scope.projectId set) already targets one project, so leave it.
+  const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
   const [filter, setFilter] = useState<SessionFilter>("all");
   // ISS-465 — kind dimension (Runs vs Chats); presentation-only.
   const [kind, setKind] = useState<KindFilter>("all");
@@ -203,10 +206,12 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const rows = useMemo(() => {
     const all = sessionsQ.data?.items ?? [];
     const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
+    // ISS-477 — workspace tier: keep only sessions whose project is in the active org.
+    const scoped = projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
     // ISS-465 — kind dimension applies BEFORE the status filter so the status
     // counts reflect the chosen kind ("3 Running chats" vs "3 Running runs").
-    return issueFiltered.filter((r) => matchesKind(kind, r));
-  }, [sessionsQ.data, issueFilter, kind]);
+    return scoped.filter((r) => matchesKind(kind, r));
+  }, [sessionsQ.data, issueFilter, kind, projectId, orgProjectIds]);
 
   // Derive once per render so display status, stats, and filters all agree.
   const now = Date.now();
@@ -269,8 +274,9 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   // set so switching tabs shows the true population in each.
   const kindRows = useMemo(() => {
     const all = sessionsQ.data?.items ?? [];
-    return issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
-  }, [sessionsQ.data, issueFilter]);
+    const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
+    return projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
+  }, [sessionsQ.data, issueFilter, projectId, orgProjectIds]);
   const kindCounts: Record<KindFilter, number> = {
     all: kindRows.length,
     runs: 0,
@@ -290,8 +296,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
   return (
     <PageContainer className="min-h-dvh">
-      {/* Workspace tier: subscribe to every visible project room for live updates. */}
-      {!projectId && projectsQ.data?.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
+      {/* Workspace tier: subscribe to every active-org project room for live updates. */}
+      {!projectId && orgProjects.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
 
       {/* Compact header (ISS-391): title + the four headline metrics collapsed
           into a single inline summary strip (was a 4-card grid that ate a tall

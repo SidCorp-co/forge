@@ -10,6 +10,7 @@
 // already touches, or live updates silently no-op.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { useActiveOrg } from '@/features/orgs/active-org';
 import { projectApi } from './api';
 import { mergeProjects, workspaceTotals } from './derive';
 import { usePinnedProjects } from './pins';
@@ -18,6 +19,7 @@ import type {
   CreatedProject,
   CreateProjectInput,
   ProjectConsoleItem,
+  ProjectListItem,
   WorkspaceTotals,
 } from './types';
 
@@ -27,6 +29,38 @@ export function useProjects() {
     queryKey: ['projects'],
     queryFn: () => projectApi.list(),
   });
+}
+
+/**
+ * ISS-477 — the shared org-scoping foundation. Every SPACE-tier surface (runners,
+ * sessions, attention, ops, integrations, ⌘K search) filters its data to the
+ * active org's projects via this hook, reusing the same `orgId` on `/api/projects`
+ * rows the projects console / Overview already scope by (ISS-470). The
+ * `!activeOrgId ||` guard keeps the initial render (before the active org
+ * resolves) and single-org/personal users coherent — an unfiltered-then-scoped
+ * view rather than a flash-empty dead-end. `projectIds`/`projectSlugs` are the
+ * membership sets surfaces filter their rows against. The `activeOrgId` memo deps
+ * mean every consumer re-scopes live the instant the switcher flips (AC #8/#13).
+ */
+export interface OrgScopedProjects {
+  projects: ProjectListItem[];
+  projectIds: Set<string>;
+  projectSlugs: Set<string>;
+  activeOrgId: string | null;
+  isLoading: boolean;
+  error: unknown;
+}
+
+export function useOrgScopedProjects(): OrgScopedProjects {
+  const { activeOrgId } = useActiveOrg();
+  const q = useProjects();
+  const projects = useMemo(
+    () => (q.data ?? []).filter((p) => !activeOrgId || p.orgId === activeOrgId),
+    [q.data, activeOrgId],
+  );
+  const projectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
+  const projectSlugs = useMemo(() => new Set(projects.map((p) => p.slug)), [projects]);
+  return { projects, projectIds, projectSlugs, activeOrgId, isLoading: q.isLoading, error: q.error };
 }
 
 /**

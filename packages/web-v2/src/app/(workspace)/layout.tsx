@@ -445,6 +445,14 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const commands: Command[] = useMemo(() => {
     const out: Command[] = [];
 
+    // ISS-477 — scope project results to the active org so ⌘K never surfaces
+    // projects from another org while one is selected (matches every other
+    // SPACE-tier surface). The `!activeOrgId ||` guard keeps the pre-resolve and
+    // single-org cases coherent.
+    const scopedProjects = (projects ?? []).filter(
+      (p) => !activeOrgId || p.orgId === activeOrgId,
+    );
+
     // Recent — recently-viewed entities.
     for (const r of recents) {
       out.push({
@@ -457,7 +465,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     }
 
     // Pinned — pinned projects + pinned views.
-    for (const p of projects ?? []) {
+    for (const p of scopedProjects) {
       if (!pinnedIds.has(p.id)) continue;
       out.push({
         label: p.name,
@@ -508,7 +516,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       keywords: "projects list console go to",
       onRun: () => router.push("/projects"),
     });
-    for (const p of projects ?? []) {
+    for (const p of scopedProjects) {
       out.push({
         label: `Switch to ${p.name}`,
         icon: "folder",
@@ -571,7 +579,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     });
 
     return out;
-  }, [router, slug, activeProject, projects, recents, pinnedViews.views, pinnedIds, toast]);
+  }, [router, slug, activeProject, projects, activeOrgId, recents, pinnedViews.views, pinnedIds, toast]);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">

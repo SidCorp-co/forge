@@ -18,7 +18,7 @@ import {
 import { cmpVersion } from '../install/fetch-release.js';
 import { getLatestRunnerVersion } from '../install/routes.js';
 import { decryptSecret } from '../integrations/vault.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -110,22 +110,50 @@ deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
 deviceOwnerRoutes.get('/me/devices', async (c) => {
   const userId = c.get('userId');
-  const rows = await db
-    .select({
-      id: devices.id,
-      name: devices.name,
-      platform: devices.platform,
-      agentVersion: devices.agentVersion,
-      status: devices.status,
-      lastSeenAt: devices.lastSeenAt,
-      pairedAt: devices.pairedAt,
-      capabilities: devices.capabilities,
-      gitCredentialRef: devices.gitCredentialRef,
-      createdAt: devices.createdAt,
-    })
-    .from(devices)
-    .where(eq(devices.ownerId, userId))
-    .orderBy(desc(devices.pairedAt));
+  // ISS-477 — optional org scope. The Runners surface passes `?orgId=` so it
+  // shows only devices bound (via a runner) to a project in the active org;
+  // every other caller (sessions/attention device-name resolution) omits it and
+  // keeps the full owner-scoped list. `devices` has no org column — a device
+  // belongs to an org only through `devices → runners(device_id) →
+  // projects.org_id`, so an org with zero projects yields zero devices. Unbound
+  // (paired-but-unassigned) devices have no runner row and so appear under no org
+  // scope — they remain visible in the unfiltered (no-orgId) list.
+  const orgIdParam = c.req.query('orgId');
+  let orgId: string | undefined;
+  if (orgIdParam !== undefined) {
+    const parsed = z.uuid().safeParse(orgIdParam);
+    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+    orgId = parsed.data;
+    // Member is the floor: any org member may see the org's runner fleet.
+    await assertOrgAccess(orgId, userId, 'member');
+  }
+
+  const deviceCols = {
+    id: devices.id,
+    name: devices.name,
+    platform: devices.platform,
+    agentVersion: devices.agentVersion,
+    status: devices.status,
+    lastSeenAt: devices.lastSeenAt,
+    pairedAt: devices.pairedAt,
+    capabilities: devices.capabilities,
+    gitCredentialRef: devices.gitCredentialRef,
+    createdAt: devices.createdAt,
+  };
+
+  const rows = orgId
+    ? await db
+        .selectDistinct(deviceCols)
+        .from(devices)
+        .innerJoin(runners, eq(runners.deviceId, devices.id))
+        .innerJoin(projects, eq(projects.id, runners.projectId))
+        .where(and(eq(devices.ownerId, userId), eq(projects.orgId, orgId)))
+        .orderBy(desc(devices.pairedAt))
+    : await db
+        .select(deviceCols)
+        .from(devices)
+        .where(eq(devices.ownerId, userId))
+        .orderBy(desc(devices.pairedAt));
   // ISS-392 — annotate each device with the latest published runner version so
   // the dashboard can flag devices lagging behind. `latestAgentVersion` is null
   // when no release is published (RUNNER_RELEASE_DIR unset / empty); in that

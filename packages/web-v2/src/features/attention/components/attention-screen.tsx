@@ -17,7 +17,7 @@ import {
   PageContainer,
   ProjectLoader,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -105,8 +105,25 @@ function Group({
 
 export function AttentionScreen() {
   const router = useRouter();
-  const { view, total, isLoading, isError, error, refetch } = useAttention();
-  const { data: projects } = useProjects();
+  const { view, isLoading, isError, error, refetch } = useAttention();
+  // ISS-477 — scope the inbox to the active org's projects. Items carrying a
+  // `projectSlug` outside the active org are dropped; items without one (e.g.
+  // offline runners) are kept so device-level alerts never silently vanish.
+  const { projects, projectSlugs } = useOrgScopedProjects();
+  const keep = (it: AttentionItem) => !it.projectSlug || projectSlugs.has(it.projectSlug);
+  const scoped = {
+    needsReview: view.needsReview.filter(keep),
+    awaitingInput: view.awaitingInput.filter(keep),
+    mentions: view.mentions.filter(keep),
+    failedJobs: view.failedJobs.filter(keep),
+    offlineRunners: view.offlineRunners.filter(keep),
+  };
+  const total =
+    scoped.needsReview.length +
+    scoped.awaitingInput.length +
+    scoped.mentions.length +
+    scoped.failedJobs.length +
+    scoped.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
 
@@ -128,8 +145,8 @@ export function AttentionScreen() {
 
   return (
     <PageContainer className="flex min-h-dvh flex-col">
-      {/* Cross-project live fan-out so attention updates arrive over WS. */}
-      {(projects ?? []).map((p) => (
+      {/* Active-org live fan-out so attention updates arrive over WS. */}
+      {projects.map((p) => (
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
@@ -147,11 +164,11 @@ export function AttentionScreen() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          <Group title="Needs review" items={view.needsReview} onOpen={open} />
-          <Group title="Awaiting input" items={view.awaitingInput} onOpen={open} />
-          <Group title="Mentions" items={view.mentions} onOpen={open} />
-          <Group title="Failed jobs" items={view.failedJobs} onOpen={open} />
-          <Group title="Offline runners" items={view.offlineRunners} onOpen={open} />
+          <Group title="Needs review" items={scoped.needsReview} onOpen={open} />
+          <Group title="Awaiting input" items={scoped.awaitingInput} onOpen={open} />
+          <Group title="Mentions" items={scoped.mentions} onOpen={open} />
+          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
+          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
         </div>
       )}
     </PageContainer>

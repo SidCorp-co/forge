@@ -431,6 +431,14 @@ describe('GET /api/me/devices', () => {
     expect(body).toHaveLength(1);
     expect(body[0]?.id).toBe('dev-1');
   });
+
+  // ISS-477 — optional org scope. A malformed orgId is rejected before any org
+  // access check or DB join runs.
+  it('rejects a non-uuid orgId with 400', async () => {
+    const app = buildApp();
+    const res = await app.fetch(req('/api/me/devices?orgId=not-a-uuid', { token: 'user-jwt' }));
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('PATCH /api/devices/:id', () => {
