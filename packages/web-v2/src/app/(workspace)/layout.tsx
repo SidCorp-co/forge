@@ -238,6 +238,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     const prevOrg = prevOrgRef.current;
     prevOrgRef.current = activeOrgId;
     if (prevOrg === activeOrgId) return; // org unchanged (incl. AC6 set-to-match)
+    if (prevOrg == null) return; // initial null→org resolution is not a user switch — AC6 re-scope owns it (ISS-480 review)
     if (!slug || !activeProject) return; // not in a resolved project — fallback handles the rail
     if (activeProject.orgId === activeOrgId) return; // switched INTO the project's org → stay (AC2)
     // Switched to an org that does not own the open project → exit project context.
