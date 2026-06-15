@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Agent chat messages now render markdown — bold, headings, lists, code blocks, links and tables display formatted instead of as raw markdown source.
 - Switching your active organization now also leaves the previous org's project — the project switcher and navigation no longer stay stuck on a project from the org you switched away from.
 - Closed cross-tenant data leaks where certain API requests could return another organization's issue content, agent-session history, or device status by supplying a foreign resource ID.
+- Settings → Pipeline now has a visual Session Groups editor: choose which pipeline stages share one Claude session, with a one-click recommended default and a resume-failure policy.
 
 ## [0.3.0] - 2026-06-11
 
