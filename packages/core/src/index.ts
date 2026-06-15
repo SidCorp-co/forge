@@ -44,8 +44,6 @@ import {
 } from './devices/routes.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
-import { docsRoutes } from './docs/routes.js';
-import { platformDocsRoutes } from './docs/platform-routes.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
@@ -326,8 +324,6 @@ app.route('/api/orgs', orgRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);
-app.route('/api/projects', docsRoutes);
-app.route('/api/docs', platformDocsRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);

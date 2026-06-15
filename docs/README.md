@@ -2,6 +2,15 @@
 
 Forge documentation, organized by purpose.
 
+> **Scope — this tree is INTERNAL.** `docs/` is engineering/contributor
+> documentation (architecture, RFCs, proposals, threat models, module design,
+> release/branching). It is **never** served to product users and **never**
+> shipped into the app image. **End-user product docs** (how to *use* Forge —
+> getting started, pair a runner, manage an org, troubleshoot) live in
+> [`packages/web-v2/content/help/`](../packages/web-v2/content/help/) and are
+> bundled into the web build. Do **not** put user-facing guides here, and do
+> **not** put internal docs there.
+
 ## If you are an AI coding session — read in this order
 
 0. **System map (30-second overview).** Load [system.graph.json](system.graph.json) — nodes + edges describing planes, services, modules, and their dependencies. Use this to orient yourself before touching anything. Validated against [system.graph.schema.json](system.graph.schema.json).

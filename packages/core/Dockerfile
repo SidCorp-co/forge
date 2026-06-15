@@ -35,10 +35,10 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /prod/core ./
-# NOTE: Forge's repo `docs/` is INTERNAL engineering documentation (architecture,
-# RFCs, threat models, module design) — it is deliberately NOT shipped into the
-# image and NOT served to end users. End-user product docs are a separate,
-# curated set (see docs/help/, once authored) and only THAT will be COPY'd here.
+# NOTE: the repo `docs/` tree is INTERNAL engineering documentation and is
+# deliberately NOT shipped here or served to users. End-user product docs live
+# in packages/web-v2/content/help and are bundled into the WEB build — the core
+# image serves no documentation.
 
 EXPOSE 8080
 

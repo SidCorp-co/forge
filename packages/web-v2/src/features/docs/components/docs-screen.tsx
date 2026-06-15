@@ -1,22 +1,24 @@
 "use client";
 
+// Forge end-user docs (`/docs`). Content is authored in
+// `packages/web-v2/content/help/*.md` and bundled at build time into
+// `help-content.generated.ts` (see scripts/gen-help-content.mjs) — no backend,
+// no filesystem read, no API. Internal engineering docs (repo `docs/`) are NOT
+// here and are never served to users.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
   EmptyState,
-  ErrorState,
   HelpButton,
   Icon,
   Input,
   Markdown,
   PageContainer,
-  Skeleton,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
-import { usePlatformDocContent, usePlatformDocsTree } from "../hooks";
-import type { DocNode, TocEntry } from "../types";
+import { HELP_DOCS, type HelpDoc } from "../help-content.generated";
+import type { TocEntry } from "../types";
 
 function slugify(text: string): string {
   return text
@@ -24,44 +26,6 @@ function slugify(text: string): string {
     .trim()
     .replace(/[^\w]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-/** Flatten the tree to its file paths (for search). */
-function flattenFiles(nodes: DocNode[], out: string[] = []): string[] {
-  for (const n of nodes) {
-    if (n.type === "file") out.push(n.path);
-    if (n.children) flattenFiles(n.children, out);
-  }
-  return out;
-}
-
-/** Human-friendly label for a tree node: drop the extension, de-kebab, Title
- *  Case. Leaves acronym-style names (README, CHANGELOG) intact. */
-function prettyLabel(name: string): string {
-  return name
-    .replace(/\.(md|mdx)$/i, "")
-    .split(/[-_]/)
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(" ");
-}
-
-/** Friendly default landing doc: prefer quickstart/README/index, else the
- *  first file in tree order. */
-function defaultDoc(nodes: DocNode[]): string | null {
-  const files = flattenFiles(nodes);
-  const prefer = [
-    "docs/quickstart.md",
-    "quickstart.md",
-    "README.md",
-    "docs/README.md",
-    "docs/index.md",
-    "index.md",
-  ];
-  for (const p of prefer) {
-    const hit = files.find((f) => f.toLowerCase() === p.toLowerCase());
-    if (hit) return hit;
-  }
-  return files[0] ?? null;
 }
 
 /** Derive an h1–h3 table of contents from the raw markdown (skips fenced code). */
@@ -84,108 +48,66 @@ function deriveToc(markdown: string): TocEntry[] {
   return toc;
 }
 
-function TreeNode({
-  node,
-  depth,
-  selected,
-  onSelect,
-}: {
-  node: DocNode;
-  depth: number;
-  selected: string | null;
-  onSelect: (path: string) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  if (node.type === "dir") {
-    return (
-      <li>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] font-semibold text-muted hover:bg-hover"
-          style={{ paddingLeft: 8 + depth * 12 }}
-          aria-expanded={open}
-        >
-          <Icon name={open ? "chevronDown" : "chevronRight"} size={13} />
-          <Icon name="folder" size={13} />
-          {prettyLabel(node.name)}
-        </button>
-        {open && node.children && (
-          <ul>
-            {node.children.map((c) => (
-              <TreeNode
-                key={c.path}
-                node={c}
-                depth={depth + 1}
-                selected={selected}
-                onSelect={onSelect}
-              />
-            ))}
-          </ul>
-        )}
-      </li>
-    );
+// Stable section order; anything else falls to the end alphabetically.
+const SECTION_ORDER = ["Getting started", "Guides", "Concepts", "Reference", "Troubleshooting"];
+
+interface Section {
+  name: string;
+  docs: HelpDoc[];
+}
+
+function groupSections(docs: HelpDoc[]): Section[] {
+  const by = new Map<string, HelpDoc[]>();
+  for (const d of docs) {
+    const list = by.get(d.section) ?? [];
+    list.push(d);
+    by.set(d.section, list);
   }
-  const active = selected === node.path;
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onSelect(node.path)}
-        aria-current={active ? "page" : undefined}
-        className={
-          active
-            ? "flex w-full items-center gap-1.5 rounded-md bg-hover px-2 py-1 text-left text-[13px] font-semibold text-fg"
-            : "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-muted hover:bg-hover hover:text-fg"
-        }
-        style={{ paddingLeft: 8 + depth * 12 }}
-      >
-        <Icon name="book" size={13} className="flex-none text-subtle" />
-        <span className="truncate">{prettyLabel(node.name)}</span>
-      </button>
-    </li>
-  );
+  return [...by.entries()]
+    .map(([name, list]) => ({
+      name,
+      docs: list.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)),
+    }))
+    .sort((a, b) => {
+      const ia = SECTION_ORDER.indexOf(a.name);
+      const ib = SECTION_ORDER.indexOf(b.name);
+      if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      return a.name.localeCompare(b.name);
+    });
 }
 
 export function DocsScreen() {
-  // Deep-link target: `?path=docs/foo.md` (e.g. from a HelpButton "Learn more").
-  // Seeds the initial selection so the linked doc opens directly.
   const searchParams = useSearchParams();
-  const initialPath = searchParams.get("path");
-  const [selected, setSelected] = useState<string | null>(initialPath);
+  const sections = useMemo(() => groupSections(HELP_DOCS), []);
+  const firstSlug = sections[0]?.docs[0]?.slug ?? null;
+
+  // `?path=<slug>` deep-link (e.g. from a HelpButton "Learn more").
+  const deepLink = searchParams.get("path");
+  const [selected, setSelected] = useState<string | null>(
+    deepLink && HELP_DOCS.some((d) => d.slug === deepLink) ? deepLink : firstSlug,
+  );
   const [query, setQuery] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Forge's own platform docs — global, served from the deployment (not a
-  // project repo). See core docs/platform-routes.ts.
-  const tree = usePlatformDocsTree();
-  const doc = usePlatformDocContent(selected || undefined);
-
-  // Land on a friendly default (quickstart/README) once the tree loads.
-  useEffect(() => {
-    if (!selected && tree.data?.items) {
-      const first = defaultDoc(tree.data.items);
-      if (first) setSelected(first);
-    }
-  }, [tree.data, selected]);
-
-  const toc = useMemo(() => (doc.data?.content ? deriveToc(doc.data.content) : []), [doc.data]);
+  const doc = useMemo(() => HELP_DOCS.find((d) => d.slug === selected) ?? null, [selected]);
+  const toc = useMemo(() => (doc ? deriveToc(doc.body) : []), [doc]);
 
   const searchMatches = useMemo(() => {
-    if (!query.trim() || !tree.data?.items) return null;
     const q = query.trim().toLowerCase();
-    return flattenFiles(tree.data.items).filter((p) => p.toLowerCase().includes(q));
-  }, [query, tree.data]);
+    if (!q) return null;
+    return HELP_DOCS.filter(
+      (d) => d.title.toLowerCase().includes(q) || d.body.toLowerCase().includes(q),
+    );
+  }, [query]);
 
-  // Assign heading ids after the markdown renders so the TOC can scroll-link.
+  // Assign heading ids after render so the TOC can scroll-link.
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
-    const headings = el.querySelectorAll("h1, h2, h3");
-    headings.forEach((h) => {
+    for (const h of el.querySelectorAll("h1, h2, h3")) {
       h.id = slugify(h.textContent ?? "");
-    });
-  }, [doc.data]);
+    }
+  }, [doc]);
 
   function scrollToHeading(slug: string) {
     const target = document.getElementById(slug);
@@ -194,27 +116,34 @@ export function DocsScreen() {
     target.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   }
 
+  function docButtonClass(active: boolean) {
+    return active
+      ? "flex w-full items-center gap-1.5 rounded-md bg-hover px-2 py-1 text-left text-[13px] font-semibold text-fg"
+      : "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-muted hover:bg-hover hover:text-fg";
+  }
+
   return (
     <PageContainer className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="fg-h2">Docs</h1>
-          <p className="fg-body-sm text-muted">Forge documentation.</p>
+          <p className="fg-body-sm text-muted">Guides for using Forge.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <HelpButton
-            summary="Forge's own documentation — quickstart, guides, architecture, and module references, plus top-level files (README, CHANGELOG). Pick a file from the tree, read it in the center pane, and jump around with the table of contents."
-            actions={[
-              "Search filters the file tree by path",
-              "Click a TOC entry to jump to that heading",
-            ]}
-          />
-        </div>
+        <HelpButton
+          summary="How to use Forge — getting started, pairing a runner, managing your organization, and troubleshooting. Pick a page from the left, read it in the center, and jump around with the table of contents."
+          actions={["Search filters the page list", "Click a TOC entry to jump to that heading"]}
+        />
       </div>
 
-      {
+      {HELP_DOCS.length === 0 ? (
+        <Card>
+          <CardContent>
+            <EmptyState title="No docs" message="No help pages are available." mascot={false} />
+          </CardContent>
+        </Card>
+      ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_220px]">
-          {/* Tree + search */}
+          {/* Sidebar + search */}
           <Card>
             <CardContent>
               <div className="flex flex-col gap-2">
@@ -225,55 +154,45 @@ export function DocsScreen() {
                   placeholder="Search docs"
                   aria-label="Search docs"
                 />
-                {tree.isLoading ? (
-                  <div className="flex flex-col gap-1.5 pt-1">
-                    <Skeleton className="h-6 w-full" />
-                    <Skeleton className="h-6 w-full" />
-                    <Skeleton className="h-6 w-3/4" />
-                  </div>
-                ) : tree.isError ? (
-                  <ErrorState message={formatApiError(tree.error)} onRetry={() => tree.refetch()} />
-                ) : (tree.data?.items.length ?? 0) === 0 ? (
-                  <EmptyState
-                    title="No docs"
-                    message="No Forge documentation is available on this deployment."
-                    mascot={false}
-                  />
-                ) : searchMatches ? (
+                {searchMatches ? (
                   <ul className="flex flex-col gap-0.5 pt-1" aria-label="Search results">
                     {searchMatches.length === 0 ? (
                       <li className="fg-body-sm px-2 py-1 text-subtle">No matches</li>
                     ) : (
-                      searchMatches.map((p) => (
-                        <li key={p}>
+                      searchMatches.map((d) => (
+                        <li key={d.slug}>
                           <button
                             type="button"
-                            onClick={() => setSelected(p)}
-                            className={
-                              selected === p
-                                ? "flex w-full items-center gap-1.5 rounded-md bg-hover px-2 py-1 text-left text-[13px] font-semibold text-fg"
-                                : "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-muted hover:bg-hover hover:text-fg"
-                            }
+                            onClick={() => setSelected(d.slug)}
+                            className={docButtonClass(selected === d.slug)}
                           >
                             <Icon name="book" size={13} className="flex-none text-subtle" />
-                            <span className="truncate">{p}</span>
+                            <span className="truncate">{d.title}</span>
                           </button>
                         </li>
                       ))
                     )}
                   </ul>
                 ) : (
-                  <ul className="flex flex-col gap-0.5 pt-1" aria-label="Docs tree">
-                    {tree.data?.items.map((n) => (
-                      <TreeNode
-                        key={n.path}
-                        node={n}
-                        depth={0}
-                        selected={selected}
-                        onSelect={setSelected}
-                      />
+                  <nav className="flex flex-col gap-3 pt-1" aria-label="Docs">
+                    {sections.map((s) => (
+                      <div key={s.name} className="flex flex-col gap-0.5">
+                        <span className="fg-overline px-2 py-1 font-mono text-subtle">{s.name}</span>
+                        {s.docs.map((d) => (
+                          <button
+                            key={d.slug}
+                            type="button"
+                            onClick={() => setSelected(d.slug)}
+                            aria-current={selected === d.slug ? "page" : undefined}
+                            className={docButtonClass(selected === d.slug)}
+                          >
+                            <Icon name="book" size={13} className="flex-none text-subtle" />
+                            <span className="truncate">{d.title}</span>
+                          </button>
+                        ))}
+                      </div>
                     ))}
-                  </ul>
+                  </nav>
                 )}
               </div>
             </CardContent>
@@ -282,43 +201,26 @@ export function DocsScreen() {
           {/* Content pane */}
           <Card>
             <CardContent>
-              {!selected ? (
+              {!doc ? (
                 <EmptyState
-                  title="Select a doc"
-                  message="Pick a file from the tree to start reading."
+                  title="Select a page"
+                  message="Pick a page from the left to start reading."
                   mascot={false}
                 />
-              ) : doc.isLoading ? (
-                <div className="flex flex-col gap-2">
-                  <Skeleton className="h-7 w-1/2" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-2/3" />
-                </div>
-              ) : doc.isError ? (
-                <ErrorState message={formatApiError(doc.error)} onRetry={() => doc.refetch()} />
               ) : (
                 <div ref={contentRef} style={{ maxWidth: "72ch" }} className="mx-auto">
-                  {doc.data?.path && (
-                    <nav
-                      aria-label="Breadcrumb"
-                      className="fg-caption mb-5 flex flex-wrap items-center gap-1.5 text-subtle"
-                    >
-                      {doc.data.path.split("/").map((seg, i, arr) => (
-                        <span
-                          key={arr.slice(0, i + 1).join("/")}
-                          className="flex items-center gap-1.5"
-                        >
-                          {i > 0 && <span aria-hidden className="text-line-strong">/</span>}
-                          <span className={i === arr.length - 1 ? "text-muted" : undefined}>
-                            {prettyLabel(seg)}
-                          </span>
-                        </span>
-                      ))}
-                    </nav>
-                  )}
-                  <Markdown variant="prose" docBasePath={doc.data?.path}>
-                    {doc.data?.content ?? ""}
+                  <nav
+                    aria-label="Breadcrumb"
+                    className="fg-caption mb-5 flex flex-wrap items-center gap-1.5 text-subtle"
+                  >
+                    <span>{doc.section}</span>
+                    <span aria-hidden className="text-line-strong">
+                      /
+                    </span>
+                    <span className="text-muted">{doc.title}</span>
+                  </nav>
+                  <Markdown variant="prose" docBasePath={doc.slug}>
+                    {doc.body}
                   </Markdown>
                 </div>
               )}
@@ -345,7 +247,7 @@ export function DocsScreen() {
             )}
           </div>
         </div>
-      }
+      )}
     </PageContainer>
   );
 }

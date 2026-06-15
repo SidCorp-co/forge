@@ -6,7 +6,6 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 
 | Guide | Covers |
 |-------|--------|
-| [runners.md](runners.md) | Set up the `forge-runner` daemon on a machine, pair it as a device, assign it to a project, and run jobs |
 | [trunk-based-development.md](trunk-based-development.md) | Branching model, naming, pre-push hook, who ships how (contributors + maintainers; the pipeline has its own docs) |
 | [release.md](release.md) | Cutting a release |
 | [integrations.md](integrations.md) | Wiring external integrations |

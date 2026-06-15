@@ -15,16 +15,16 @@ import { cn } from "@/lib/utils/cn";
 
 const LINK_CLASS = "text-[color:var(--link)] underline underline-offset-2 hover:opacity-80";
 
-/** A relative link to another markdown doc (not http(s)/mailto/anchor). */
+/** A relative link to another doc page (not scheme:/protocol-relative/absolute/
+ *  anchor). Covers slug links (`pair-a-runner`) and legacy `.md` links. */
 function isRelativeDocLink(href: string): boolean {
-  if (/^(https?:|mailto:|#|\/)/i.test(href)) return false;
-  return /\.mdx?($|[#?])/i.test(href);
+  return !/^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(href);
 }
 
-/** Resolve a relative `.md` href against the current doc's path → a repo-root
- *  POSIX path the Docs viewer can open via `?path=`. */
+/** Resolve a relative doc href against the current doc's slug → a slug the Docs
+ *  viewer can open via `?path=`. Tolerates a legacy `.md` extension. */
 function resolveDocPath(baseFile: string, href: string): string {
-  const clean = href.split(/[#?]/)[0];
+  const clean = href.split(/[#?]/)[0].replace(/\.mdx?$/i, "");
   const baseDir = baseFile.includes("/") ? baseFile.slice(0, baseFile.lastIndexOf("/")) : "";
   const segs = `${baseDir ? `${baseDir}/` : ""}${clean}`.split("/");
   const out: string[] = [];
