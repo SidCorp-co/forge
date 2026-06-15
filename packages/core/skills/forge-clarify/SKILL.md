@@ -148,67 +148,7 @@ forge_issues → update → { documentId: "<id>", data: { status: "clarified" } 
 
 ## Comment Formats
 
-### Bug — Reproduced
-
-```markdown
-**Clarify** — Reproduced: <one-line summary>
-
-**Environment:** <URL tested>
-**Reproduced:** Yes
-
-**Steps Verified:**
-1. <step> → ✅ <observation>
-2. <step> → ❌ <error/unexpected behavior>
-
-**Root Cause Hypothesis:** <what the code-level issue likely is>
-**Evidence:** See attached screenshots
-```
-
-### Bug — Cannot Reproduce
-
-```markdown
-**Clarify** — Could not reproduce: <one-line summary>
-
-**Environment:** <URL tested>
-**Reproduced:** No
-
-**Attempted:**
-1. <step> → <what happened instead>
-
-**Questions:**
-- <specific question about environment/data/user role/timing>
-```
-
-→ Status: `needs_info`
-
-### Feature — Clear
-
-```markdown
-**Clarify** — UX validated: <one-line summary>
-
-**Current State:** <what exists now>
-**Desired State:** <what should change, from issue description>
-**Existing Patterns:** <similar UI patterns already in the app>
-**Evidence:** See attached screenshots of current state
-```
-
-### Feature — Ambiguous
-
-```markdown
-**Clarify** — UX ambiguous: <one-line summary>
-
-**Current State:** <what exists now>
-**Ambiguities:**
-- <specific question about desired behavior/appearance>
-```
-
-→ Status: `needs_info`
-
-### Auto-Skip (Simple)
-
-```markdown
-**Clarify** — Auto-clarified (Simple issue, no UX verification needed)
-```
+Use the per-outcome templates (Bug reproduced / cannot-reproduce, Feature clear / ambiguous, Auto-skip) in `references/comment-formats.md` — each carries the **Confidence** line and, for features, the restated **Intent**.
 
 ## Clarify-specific output reminder
 

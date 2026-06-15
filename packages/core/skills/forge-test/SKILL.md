@@ -139,7 +139,7 @@ Drive `testUrl` with the project's wired browser MCP. Test in two passes — a f
 - Watch the console: any error thrown during the flow is a FAIL even if the screen looks fine.
 
 **Pass B — UX & accessibility quality bar (every screen the change touches):**
-Run the **Pass-B quality checklist** (at the end of this skill) over each affected screen. The bar is "would you ship this to a user", not "does the element exist". Cover, and record a verdict for each:
+Run the **Pass-B quality checklist** (`references/ui-quality-checklist.md`) over each affected screen. The bar is "would you ship this to a user", not "does the element exist". Cover, and record a verdict for each:
 - **Responsive** — re-check the flow at narrow / medium / wide viewports; layout must not break, overflow, or hide primary actions at the narrow width.
 - **States** — exercise the **empty, loading, and error** states of any list / form / async surface the change touches — not just the happy path. A missing empty/error state is a FAIL.
 - **Accessibility** — every new interactive element reachable and operable by keyboard alone; icon-only controls and inputs have accessible labels; text legible and not conveyed by colour alone.
@@ -184,7 +184,7 @@ Report format:
 **Verdict:** PASS / FAIL
 ```
 
-`Source` ∈ `AC #N` / `Plan` / `Review` / `Regression` / `UX` / `A11y` / `Responsive`. See `references/result-format.md` for full template and failure detail format, and the **Pass-B quality checklist** at the end of this skill for the quality bar.
+`Source` ∈ `AC #N` / `Plan` / `Review` / `Regression` / `UX` / `A11y` / `Responsive`. See `references/result-format.md` for full template and failure detail format, and `references/ui-quality-checklist.md` for the Pass-B quality bar.
 
 ### Step 9: Set Status
 
@@ -192,41 +192,6 @@ Report format:
 
 - **All pass** → `forge_issues → update → { data: { status: "tested" } }`
 - **Any fail** → `forge_issues → update → { data: { status: "reopen" } }` + detailed failure report with actionable info for forge-fix
-
-## Pass-B quality checklist (UI/UX & accessibility)
-
-Run over **each screen the issue adds or modifies** — not the whole app. Every box is a potential FAIL row. The bar is "would a user accept this", not "does the element render". Match the app's existing patterns; when unsure, copy what comparable screens already do rather than inventing.
-
-**1. Functional integrity**
-- No console errors during the flow; no broken/overlapping/clipped layout; no missing styles or blank sections.
-
-**2. Responsive** (re-run the flow at each width)
-- Narrow ~375px: single column, no horizontal scroll, primary actions reachable.
-- Medium ~768px and wide ~1280px+: layout adapts, content uses space sensibly, lines readable.
-- Tap/click targets not tiny or overlapping on narrow.
-
-**3. States** (exercise, don't assume)
-- Empty: meaningful empty state (message + next action), not a blank box or lone spinner.
-- Loading: visible indication, no frozen page, minimal layout shift when data lands.
-- Error: human message + a way to recover (retry/dismiss), never a silent failure or raw stack.
-- Form validation: inline, near the field, at/before submit — not only a generic toast.
-
-**4. Accessibility (WCAG 2.1 AA, scoped to the change)**
-- Keyboard: every new interactive element reachable via Tab and operable with Enter/Space; logical, visible focus.
-- Focus management: dialogs/menus trap focus on open and restore it on close.
-- Labels: icon-only buttons have an accessible name; every input has a label.
-- Status regions announced (`role="status"`/`aria-live`); contrast ~4.5:1 (3:1 large); state never by colour alone.
-
-**5. Role / tenant correctness** (if the project has roles/tenants)
-- Re-check each affected screen as each role in scope: controls a role may not use are hidden/disabled, not merely unenforced.
-- No other tenant's/user's data appears anywhere on the screen (lists, dropdowns, counts, autocomplete).
-
-**6. Design consistency (anti-"generic placeholder")**
-- Spacing/typography/colour use existing scale/tokens — no ad-hoc values or one-off styles.
-- New components match comparable existing ones; heading hierarchy not skipped/faked.
-- No unintended "AI default" tells: stray purple/indigo gradients, oversized uniform padding, heavy layered shadows, generic hero blocks unrelated to content.
-
-For each problem, add a report row tagged `UX`/`A11y`/`Responsive` with the **specific** observation (what, where, which width/state/role) so forge-fix can act without rediscovering it; attach a screenshot of visual failures. Summarise clean dimensions in one line in the Verification section — don't pad the table with green rows for untouched surfaces.
 
 ## Test-specific output reminder
 
