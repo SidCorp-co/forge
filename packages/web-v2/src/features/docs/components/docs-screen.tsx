@@ -12,12 +12,10 @@ import {
   Input,
   Markdown,
   PageContainer,
-  Select,
   Skeleton,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
-import { useDocContent, useDocsTree } from "../hooks";
+import { usePlatformDocContent, usePlatformDocsTree } from "../hooks";
 import type { DocNode, TocEntry } from "../types";
 
 function slugify(text: string): string {
@@ -133,34 +131,18 @@ function TreeNode({
 }
 
 export function DocsScreen() {
-  const projects = useProjects();
   // Deep-link target: `?path=docs/foo.md` (e.g. from a HelpButton "Learn more").
   // Seeds the initial selection so the linked doc opens directly.
   const searchParams = useSearchParams();
   const initialPath = searchParams.get("path");
-  const [projectId, setProjectId] = useState<string>("");
   const [selected, setSelected] = useState<string | null>(initialPath);
   const [query, setQuery] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
-  const prevProjectId = useRef<string>("");
 
-  useEffect(() => {
-    if (!projectId && projects.data && projects.data.length > 0) {
-      setProjectId(projects.data[0].id);
-    }
-  }, [projects.data, projectId]);
-
-  // Reset the selected doc when the user switches project — but NOT on the
-  // initial project resolution, so a `?path=` deep-link survives first load.
-  useEffect(() => {
-    if (prevProjectId.current && prevProjectId.current !== projectId) {
-      setSelected(null);
-    }
-    prevProjectId.current = projectId;
-  }, [projectId]);
-
-  const tree = useDocsTree(projectId || undefined);
-  const doc = useDocContent(projectId || undefined, selected || undefined);
+  // Forge's own platform docs — global, served from the deployment (not a
+  // project repo). See core docs/platform-routes.ts.
+  const tree = usePlatformDocsTree();
+  const doc = usePlatformDocContent(selected || undefined);
 
   // Default to the first file once the tree loads.
   useEffect(() => {
@@ -169,11 +151,6 @@ export function DocsScreen() {
       if (first) setSelected(first);
     }
   }, [tree.data, selected]);
-
-  const projectOptions = useMemo(
-    () => (projects.data ?? []).map((p) => ({ value: p.id, label: p.name })),
-    [projects.data],
-  );
 
   const toc = useMemo(() => (doc.data?.content ? deriveToc(doc.data.content) : []), [doc.data]);
 
@@ -205,16 +182,11 @@ export function DocsScreen() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="fg-h2">Docs</h1>
-          <p className="fg-body-sm text-muted">Project documentation from the repo.</p>
+          <p className="fg-body-sm text-muted">Forge documentation.</p>
         </div>
         <div className="flex items-center gap-2">
-          {projectOptions.length > 0 && (
-            <div className="w-[200px]">
-              <Select options={projectOptions} value={projectId} onChange={setProjectId} />
-            </div>
-          )}
           <HelpButton
-            summary="Browse this project's markdown docs — top-level files (README, CLAUDE, CHANGELOG) plus everything under docs/. Pick a file from the tree, read it in the center pane, and jump around with the table of contents."
+            summary="Forge's own documentation — quickstart, guides, architecture, and module references, plus top-level files (README, CHANGELOG). Pick a file from the tree, read it in the center pane, and jump around with the table of contents."
             actions={[
               "Search filters the file tree by path",
               "Click a TOC entry to jump to that heading",
@@ -223,15 +195,7 @@ export function DocsScreen() {
         </div>
       </div>
 
-      {projects.isLoading ? (
-        <Skeleton className="h-[420px] w-full" />
-      ) : projectOptions.length === 0 ? (
-        <Card>
-          <CardContent>
-            <EmptyState title="No projects" message="Create a project to browse its docs." mascot={false} />
-          </CardContent>
-        </Card>
-      ) : (
+      {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_220px]">
           {/* Tree + search */}
           <Card>
@@ -255,7 +219,7 @@ export function DocsScreen() {
                 ) : (tree.data?.items.length ?? 0) === 0 ? (
                   <EmptyState
                     title="No docs"
-                    message="This project has no markdown docs in its repo."
+                    message="No Forge documentation is available on this deployment."
                     mascot={false}
                   />
                 ) : searchMatches ? (
@@ -345,7 +309,7 @@ export function DocsScreen() {
             )}
           </div>
         </div>
-      )}
+      }
     </PageContainer>
   );
 }

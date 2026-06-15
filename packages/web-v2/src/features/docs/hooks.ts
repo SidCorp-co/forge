@@ -20,3 +20,20 @@ export function useDocContent(projectId: string | undefined, path: string | unde
     enabled: !!projectId && !!path,
   });
 }
+
+/** Forge's platform docs tree (global `/docs` nav). Keyed `['docs','platform','tree']`. */
+export function usePlatformDocsTree() {
+  return useQuery({
+    queryKey: ["docs", "platform", "tree"],
+    queryFn: () => docsApi.platformTree(),
+  });
+}
+
+/** One platform doc's markdown. Keyed `['docs','platform','content',path]`. */
+export function usePlatformDocContent(path: string | undefined) {
+  return useQuery({
+    queryKey: ["docs", "platform", "content", path],
+    queryFn: () => docsApi.platformContent(path as string),
+    enabled: !!path,
+  });
+}

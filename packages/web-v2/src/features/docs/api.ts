@@ -12,4 +12,11 @@ export const docsApi = {
     apiClient<DocContent>(
       `/projects/${projectId}/docs/content?path=${encodeURIComponent(path)}`,
     ),
+
+  /** `GET /api/docs` — Forge's own platform docs tree (global, no project). */
+  platformTree: () => apiClient<DocsTree>(`/docs`),
+
+  /** `GET /api/docs/content?path=…` — one Forge platform doc's markdown. */
+  platformContent: (path: string) =>
+    apiClient<DocContent>(`/docs/content?path=${encodeURIComponent(path)}`),
 };
