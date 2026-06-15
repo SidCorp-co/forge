@@ -6,6 +6,7 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 
 | Guide | Covers |
 |-------|--------|
+| [runners.md](runners.md) | Set up the `forge-runner` daemon on a machine, pair it as a device, assign it to a project, and run jobs |
 | [trunk-based-development.md](trunk-based-development.md) | Branching model, naming, pre-push hook, who ships how (contributors + maintainers; the pipeline has its own docs) |
 | [release.md](release.md) | Cutting a release |
 | [integrations.md](integrations.md) | Wiring external integrations |
@@ -16,10 +17,8 @@ The Diátaxis quickstart lives at [../quickstart.md](../quickstart.md).
 
 | Guide | Status | Audience |
 |-------|--------|----------|
-| Pair a device | Planned | First-time users — overlaps with quickstart, expanded detail |
 | Author a custom skill | Planned | Users who want to extend pipeline with domain-specific agents |
 | Integrate a webhook source (GitHub, Sentry, custom) | Planned | Self-hosters connecting external event sources |
-| Set up a CI runner as a device | Planned | Teams running jobs on headless boxes |
 | Migrate from the agent-session model (pre-v0.1) | Planned | Early adopters upgrading |
 | Backup and restore Postgres (incl. `pgvector` embeddings) | Planned | Operators |
 | Debug a failing job | Planned | Anyone hitting a stuck job |
