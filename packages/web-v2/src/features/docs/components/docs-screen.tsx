@@ -26,18 +26,6 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** First file node in DFS order — the default selection. */
-function firstFile(nodes: DocNode[]): string | null {
-  for (const n of nodes) {
-    if (n.type === "file") return n.path;
-    if (n.children) {
-      const found = firstFile(n.children);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
 /** Flatten the tree to its file paths (for search). */
 function flattenFiles(nodes: DocNode[], out: string[] = []): string[] {
   for (const n of nodes) {
@@ -45,6 +33,35 @@ function flattenFiles(nodes: DocNode[], out: string[] = []): string[] {
     if (n.children) flattenFiles(n.children, out);
   }
   return out;
+}
+
+/** Human-friendly label for a tree node: drop the extension, de-kebab, Title
+ *  Case. Leaves acronym-style names (README, CHANGELOG) intact. */
+function prettyLabel(name: string): string {
+  return name
+    .replace(/\.(md|mdx)$/i, "")
+    .split(/[-_]/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/** Friendly default landing doc: prefer quickstart/README/index, else the
+ *  first file in tree order. */
+function defaultDoc(nodes: DocNode[]): string | null {
+  const files = flattenFiles(nodes);
+  const prefer = [
+    "docs/quickstart.md",
+    "quickstart.md",
+    "README.md",
+    "docs/README.md",
+    "docs/index.md",
+    "index.md",
+  ];
+  for (const p of prefer) {
+    const hit = files.find((f) => f.toLowerCase() === p.toLowerCase());
+    if (hit) return hit;
+  }
+  return files[0] ?? null;
 }
 
 /** Derive an h1–h3 table of contents from the raw markdown (skips fenced code). */
@@ -91,7 +108,7 @@ function TreeNode({
         >
           <Icon name={open ? "chevronDown" : "chevronRight"} size={13} />
           <Icon name="folder" size={13} />
-          {node.name}
+          {prettyLabel(node.name)}
         </button>
         {open && node.children && (
           <ul>
@@ -124,7 +141,7 @@ function TreeNode({
         style={{ paddingLeft: 8 + depth * 12 }}
       >
         <Icon name="book" size={13} className="flex-none text-subtle" />
-        <span className="truncate">{node.name}</span>
+        <span className="truncate">{prettyLabel(node.name)}</span>
       </button>
     </li>
   );
@@ -144,10 +161,10 @@ export function DocsScreen() {
   const tree = usePlatformDocsTree();
   const doc = usePlatformDocContent(selected || undefined);
 
-  // Default to the first file once the tree loads.
+  // Land on a friendly default (quickstart/README) once the tree loads.
   useEffect(() => {
     if (!selected && tree.data?.items) {
-      const first = firstFile(tree.data.items);
+      const first = defaultDoc(tree.data.items);
       if (first) setSelected(first);
     }
   }, [tree.data, selected]);
@@ -282,8 +299,25 @@ export function DocsScreen() {
                 <ErrorState message={formatApiError(doc.error)} onRetry={() => doc.refetch()} />
               ) : (
                 <div ref={contentRef} style={{ maxWidth: "72ch" }} className="mx-auto">
-                  <p className="fg-overline mb-3 font-mono text-subtle">{doc.data?.path}</p>
-                  <Markdown>{doc.data?.content ?? ""}</Markdown>
+                  {doc.data?.path && (
+                    <nav
+                      aria-label="Breadcrumb"
+                      className="fg-caption mb-5 flex flex-wrap items-center gap-1.5 text-subtle"
+                    >
+                      {doc.data.path.split("/").map((seg, i, arr) => (
+                        <span
+                          key={arr.slice(0, i + 1).join("/")}
+                          className="flex items-center gap-1.5"
+                        >
+                          {i > 0 && <span aria-hidden className="text-line-strong">/</span>}
+                          <span className={i === arr.length - 1 ? "text-muted" : undefined}>
+                            {prettyLabel(seg)}
+                          </span>
+                        </span>
+                      ))}
+                    </nav>
+                  )}
+                  <Markdown variant="prose">{doc.data?.content ?? ""}</Markdown>
                 </div>
               )}
             </CardContent>
