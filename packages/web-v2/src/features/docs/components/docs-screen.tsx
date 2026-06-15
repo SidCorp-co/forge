@@ -143,8 +143,8 @@ export function DocsScreen() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_220px]">
-          {/* Sidebar + search */}
-          <Card>
+          {/* Sidebar + search — sticky alongside the scrolling content */}
+          <Card className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
             <CardContent>
               <div className="flex flex-col gap-2">
                 <Input
