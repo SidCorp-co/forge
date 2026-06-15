@@ -65,11 +65,13 @@ If category is `bug`:
 
 If category is not `bug`:
 
-1. **Navigate to the area being changed** in Chrome
-2. **Screenshot the current state** of the UI
+1. **Navigate to the area being changed** in the live environment (browser, or the API/CLI surface for headless projects)
+2. **Capture the current state** — screenshot the UI, or the current API response/schema — so the plan step has a baseline
 3. **Compare** with any mockups/designs in issue attachments
-4. **Identify existing UX patterns** in the same area (button styles, layouts, interactions)
+4. **Identify existing UX/API patterns** in the same area (button styles, layouts, interactions; or contract shape, auth, error semantics) — the change should match these, and note the expected empty/loading/error states the feature will need
 5. **Check for ambiguities** — does the issue description fully specify the desired outcome?
+
+6. **Restate the intent** so plan/code don't re-derive it from a one-line title — capture: **Outcome** (what the user can do/see after) · **User/role** · **Why now** · **Success** (how we'd know — ties to acceptanceCriteria) · **Constraint** (must-respect limits) · **Out of scope**. Where the issue is silent on a dimension, state your best assumption so it surfaces for correction instead of being buried.
 
 ### Step 4: Draft Release Notes
 
@@ -131,10 +133,14 @@ forge_comments → create → {
 }
 ```
 
-**Set status LAST** (triggers the plan step):
+**Confidence gate — decide the exit by how sure you are, not by gut feel.** State a one-line hypothesis of what the issue wants plus a **confidence 0–100%** in the clarify comment. Calibrate it: *"Can I predict how the reporter would react to the next three questions I'd ask?"* If yes, confidence is high; if you'd be guessing, it isn't.
 
-- If clear (bug reproduced, or UX validated) → `clarified`
-- If ambiguous (cannot reproduce, or UX unclear) → `needs_info`
+- **High confidence (≈85%+)** — bug reproduced, OR feature intent validated and the restate has no load-bearing gaps → `clarified`.
+- **Below the bar** — cannot reproduce, OR an implementation-changing dimension is unresolved (which surface, which role, what "done" means, a binding constraint) → `needs_info`. Don't pass a coin-flip issue to plan; a wrong assumption here burns a whole plan→code→review round-trip.
+
+When you set `needs_info`, ask **specific questions that each carry your best guess**, e.g. *"Should the export include archived items? My assumption: no, only active — confirm?"* — the reporter reacts to a concrete proposal (fast) and you commit to a testable prediction.
+
+**Set status LAST** (triggers the plan step):
 
 ```
 forge_issues → update → { documentId: "<id>", data: { status: "clarified" } }

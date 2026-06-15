@@ -44,6 +44,7 @@ When the issue has a plan and triage/plan comments from Forge AI:
 7. Test API (if plan has API Test Plan) — curl affected endpoints, verify responses. Skip for frontend-only.
 8. Review (tiered — see below) — catch logic bugs
 9. Fix any review findings, re-build, re-test
+9.5. Simplify the diff (quality-only pass — see Tiered Review below; preserve behavior, stay inside the diff)
 10. Commit
 11. Push:
     - **local-only mode** — push ISS-* branch only. **Do NOT** merge to baseBranch. **Do NOT** call `forge_coolify_deploy`.
@@ -73,13 +74,22 @@ Everything else (branch discipline, status transition, sessionContext) is identi
 
 Review effort should match the risk. Over-reviewing trivial changes wastes tokens.
 
-| Complexity | Review | Simplifier |
+| Complexity | Review (find bugs) | Simplify (clean, quality-only) |
 |-----------|--------|------------|
-| **Simple** | Self-review: read your diff, check for obvious mistakes | Skip |
-| **Medium** | Quick review agent: Bug-severity only, skip style | Skip |
-| **Complex** | Full review agent: Bug + Minor findings | Run simplifier |
+| **Simple** | Self-review: read your diff, check for obvious mistakes | Skip — simplifying a trivial diff is over-engineering |
+| **Medium** | Quick review agent: Bug-severity only, skip style | Self pass: skim your diff for obvious reuse / altitude wins |
+| **Complex** | Full review agent: Bug + Minor findings | Run the simplifier subagent |
 
 Complexity comes from the triage comment (extracted in Step 2 of the workflow).
+
+### Simplify pass (quality only — separate from bug review)
+
+Simplify happens HERE, in the code lane, because it *modifies* code — the independent review step is report-only and never simplifies. Run it AFTER fixing review findings and BEFORE push, so review and QA see the clean version. Two hard rails:
+
+1. **Preserve behavior exactly** — simplify is reuse / naming / altitude cleanup, not a redesign and not a bug hunt. If you can't explain why a piece of existing code is there, leave it (Chesterton's Fence) — don't delete what you don't understand.
+2. **Stay inside the diff** — only simplify code this issue already touches. No adjacent refactors, no "while I'm here" cleanups; that breaks scope discipline and balloons the review surface.
+
+Bug-hunting is the opposite concern and lives elsewhere — your self-review above for obvious mistakes, and the independent gate in forge-review. Keep the two mindsets apart: a simplify pass must not start rewriting logic.
 
 ## Pipeline vs Standalone
 
