@@ -35,12 +35,10 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /prod/core ./
-# Forge's own platform docs (the global `/docs` nav, served by
-# docs/platform-routes.ts). `pnpm deploy` only ships packages/core's files, so
-# COPY the repo-root docs tree + top-level guides straight from the build
-# context. resolveDocsRoot() defaults to cwd (/app) → reads /app/docs.
-COPY docs ./docs
-COPY README.md CHANGELOG.md ./
+# NOTE: Forge's repo `docs/` is INTERNAL engineering documentation (architecture,
+# RFCs, threat models, module design) — it is deliberately NOT shipped into the
+# image and NOT served to end users. End-user product docs are a separate,
+# curated set (see docs/help/, once authored) and only THAT will be COPY'd here.
 
 EXPOSE 8080
 
