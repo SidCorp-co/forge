@@ -317,7 +317,9 @@ export function DocsScreen() {
                       ))}
                     </nav>
                   )}
-                  <Markdown variant="prose">{doc.data?.content ?? ""}</Markdown>
+                  <Markdown variant="prose" docBasePath={doc.data?.path}>
+                    {doc.data?.content ?? ""}
+                  </Markdown>
                 </div>
               )}
             </CardContent>

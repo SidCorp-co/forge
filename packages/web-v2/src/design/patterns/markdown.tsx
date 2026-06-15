@@ -6,23 +6,66 @@
 // image/link srcs are mapped through `coreFileUrl` so comment-embedded
 // attachments (`![](…/download)`) resolve against the core origin.
 
+import { useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { coreFileUrl } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 
-// Shared renderers — identical across variants (link/image src mapping).
-const linkRenderer: Components["a"] = ({ href, children }) => (
-  <a
-    href={href ? coreFileUrl(href) : undefined}
-    target="_blank"
-    rel="noreferrer noopener"
-    className="text-[color:var(--link)] underline underline-offset-2 hover:opacity-80"
-  >
-    {children}
-  </a>
-);
+const LINK_CLASS = "text-[color:var(--link)] underline underline-offset-2 hover:opacity-80";
+
+/** A relative link to another markdown doc (not http(s)/mailto/anchor). */
+function isRelativeDocLink(href: string): boolean {
+  if (/^(https?:|mailto:|#|\/)/i.test(href)) return false;
+  return /\.mdx?($|[#?])/i.test(href);
+}
+
+/** Resolve a relative `.md` href against the current doc's path → a repo-root
+ *  POSIX path the Docs viewer can open via `?path=`. */
+function resolveDocPath(baseFile: string, href: string): string {
+  const clean = href.split(/[#?]/)[0];
+  const baseDir = baseFile.includes("/") ? baseFile.slice(0, baseFile.lastIndexOf("/")) : "";
+  const segs = `${baseDir ? `${baseDir}/` : ""}${clean}`.split("/");
+  const out: string[] = [];
+  for (const s of segs) {
+    if (s === "" || s === ".") continue;
+    if (s === "..") out.pop();
+    else out.push(s);
+  }
+  return out.join("/");
+}
+
+// Shared renderers — identical across variants (external link / image mapping).
+function renderExternalLink(href: string | undefined, children: ReactNode) {
+  return (
+    <a
+      href={href ? coreFileUrl(href) : undefined}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={LINK_CLASS}
+    >
+      {children}
+    </a>
+  );
+}
+
+const linkRenderer: Components["a"] = ({ href, children }) => renderExternalLink(href, children);
+
+/** Link renderer for the Docs viewer: relative `.md` links navigate inside the
+ *  viewer (`/docs?path=…`); everything else falls back to the external one. */
+function makeDocLinkRenderer(docBasePath: string): Components["a"] {
+  return ({ href, children }) => {
+    if (href && isRelativeDocLink(href)) {
+      return (
+        <a href={`/docs?path=${encodeURIComponent(resolveDocPath(docBasePath, href))}`} className={LINK_CLASS}>
+          {children}
+        </a>
+      );
+    }
+    return renderExternalLink(href, children);
+  };
+}
 
 const imgRenderer: Components["img"] = ({ src, alt }) => (
   // biome-ignore lint/a11y/useAltText: alt is forwarded from markdown
@@ -130,11 +173,17 @@ export interface MarkdownProps {
   className?: string;
   /** `compact` (default) for inline embeds; `prose` for long-form doc reading. */
   variant?: "compact" | "prose";
+  /** Current doc's repo-root path. When set, relative `.md` links resolve to
+   *  in-viewer navigation (`/docs?path=…`) instead of the external core origin. */
+  docBasePath?: string;
 }
 
 /** Render trusted-ish markdown (issue descriptions, comments, plans, docs). */
-export function Markdown({ children, className, variant = "compact" }: MarkdownProps): ReactNode {
-  const components = variant === "prose" ? proseComponents : compactComponents;
+export function Markdown({ children, className, variant = "compact", docBasePath }: MarkdownProps): ReactNode {
+  const components = useMemo<Components>(() => {
+    const base = variant === "prose" ? proseComponents : compactComponents;
+    return docBasePath ? { ...base, a: makeDocLinkRenderer(docBasePath) } : base;
+  }, [variant, docBasePath]);
   return (
     <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
