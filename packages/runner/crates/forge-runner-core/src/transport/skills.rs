@@ -16,12 +16,19 @@ use serde::{Deserialize, Serialize};
 
 /// One file under a skill folder. `SKILL.md` is carried separately in
 /// `skill_md`; everything else (`references/`, `scripts/`, …) lives here.
+fn default_encoding() -> String {
+    "utf8".to_string()
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillFile {
     pub path: String,
     pub content: String,
-    /// `"utf8"` or `"base64"`.
+    /// `"utf8"` or `"base64"`. Defaults to `"utf8"` when the server omits it —
+    /// a missing `encoding` must not fail-decode the whole project's sync
+    /// (the write path treats anything but `"base64"` as plain text anyway).
+    #[serde(default = "default_encoding")]
     pub encoding: String,
 }
 

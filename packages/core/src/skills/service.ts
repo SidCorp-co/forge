@@ -19,6 +19,22 @@ export interface SkillFileInput {
 }
 
 /**
+ * Default a file's `encoding` to 'utf8' when the caller omits it. The REST
+ * route defaults via zod, but the MCP tools call this service directly — and a
+ * file persisted with no `encoding` makes the runner's skill-content decode
+ * fail (its `SkillFile.encoding` is a required string), which silently aborts
+ * the WHOLE project sync. Normalize at the service chokepoint so both the REST
+ * and MCP surfaces can never store an encoding-less file.
+ */
+function normalizeSkillFiles(files: SkillFileInput[]): SkillFileInput[] {
+  return files.map((f) => ({
+    path: f.path,
+    content: f.content,
+    encoding: f.encoding ?? 'utf8',
+  }));
+}
+
+/**
  * Pure-ish helpers shared between the F2 REST routes and the F4 MCP tools.
  * None of these check authorization — callers must verify membership/role
  * before invoking.
@@ -310,7 +326,7 @@ export interface CreateProjectSkillInput {
 }
 
 export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
-  const files = input.files ?? [];
+  const files = normalizeSkillFiles(input.files ?? []);
   const contentHash = hashSkillBody(input.skillMd, files);
   const [inserted] = (await db
     .insert(skills)
@@ -361,7 +377,9 @@ export async function updateProjectSkill(
     updates.prompt = patch.skillMd;
   }
   if (patch.target !== undefined) updates.target = patch.target;
-  if (patch.files !== undefined) updates.files = patch.files;
+  const normalizedFiles =
+    patch.files !== undefined ? normalizeSkillFiles(patch.files) : undefined;
+  if (normalizedFiles !== undefined) updates.files = normalizedFiles;
   if (patch.localGuide !== undefined) updates.localGuide = patch.localGuide;
   if (patch.skillMd !== undefined || patch.files !== undefined) {
     const canonicalSkillMd = patch.skillMd ?? existing.skillMd ?? existing.prompt;
@@ -369,7 +387,7 @@ export async function updateProjectSkill(
       updates.skillMd = canonicalSkillMd;
       updates.prompt = canonicalSkillMd;
     }
-    updates.contentHash = hashSkillBody(canonicalSkillMd, patch.files ?? existing.files);
+    updates.contentHash = hashSkillBody(canonicalSkillMd, normalizedFiles ?? existing.files);
     updates.version = (existing.version ?? 1) + 1;
   }
   const [updated] = (await db
