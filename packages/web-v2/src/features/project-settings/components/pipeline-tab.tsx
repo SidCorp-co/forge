@@ -38,6 +38,7 @@ import {
 import { usableSkillOptions, type UsableSkillOption } from "@/features/skills/types";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
+import { SessionGroupsSection } from "./session-groups-section";
 import {
   STEP_TOGGLE_KEYS,
   STEP_TOGGLE_LABELS,
@@ -366,6 +367,9 @@ export function PipelineTab({
 
         {/* Project-default MCP servers — round-trips the full fetched config. */}
         <McpServersSection projectId={projectId} config={server} canEdit={canEdit} />
+
+        {/* Session groups — round-trips the full fetched config. */}
+        <SessionGroupsSection projectId={projectId} config={server} canEdit={canEdit} />
       </CardContent>
     </Card>
   );

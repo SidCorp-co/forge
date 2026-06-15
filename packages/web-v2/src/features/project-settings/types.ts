@@ -110,6 +110,16 @@ export interface PipelineConfig {
    * and integration servers (postman/epodsystem) layering on top.
    */
   mcpServers?: Record<string, unknown>;
+  /**
+   * Named session groups: `group → the issue STATUSES whose jobs share one
+   * Claude CLI session (resumed via `--resume`). This is only a DECLARATION —
+   * the dispatcher reads continuity from each `states[<status>].sessionGroup`,
+   * so the editor must keep both in sync (see `session-groups-section.tsx`).
+   * Mirrors `sessionGroupsSchema` in core `pipeline/pipeline-config-schema.ts`.
+   */
+  sessionGroups?: Record<string, string[]>;
+  /** What to do when a session resume fails (device gone / prior failed). */
+  onResumeFail?: "fresh" | "abort";
   [key: string]: unknown;
 }
 
@@ -201,4 +211,105 @@ export function toggleEnabled(value: unknown): boolean {
     return Boolean((value as { enabled?: unknown }).enabled);
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Session groups (ISS-494)
+// ---------------------------------------------------------------------------
+
+/**
+ * The pipeline STATUSES a session group can contain — the 8 statuses that
+ * dispatch a job, labelled by the step that runs there. Members of a
+ * `sessionGroups` entry MUST be `STAGE_NAMES` (issue statuses), NOT tracker
+ * step-names: a group is a set of statuses whose jobs resume one Claude
+ * session. Cross-app parity: mirrors the dispatchable rows of `PIPELINE_STEPS`
+ * in core `pipeline/registry.ts` (status → jobType). Statuses with no job
+ * (needs_info, tested, pass, staging, deploying) are intentionally omitted —
+ * grouping them has no effect on session continuity.
+ */
+export const SESSION_GROUP_STAGES: ReadonlyArray<{ status: string; label: string }> = [
+  { status: "open", label: "Triage" },
+  { status: "confirmed", label: "Clarify" },
+  { status: "clarified", label: "Plan" },
+  { status: "approved", label: "Code" },
+  { status: "developed", label: "Review" },
+  { status: "testing", label: "Test" },
+  { status: "reopen", label: "Fix" },
+  { status: "released", label: "Release" },
+];
+
+/** status → friendly step label (falls back to the raw status). */
+export const SESSION_GROUP_STAGE_LABELS: Record<string, string> = Object.fromEntries(
+  SESSION_GROUP_STAGES.map((s) => [s.status, s.label]),
+);
+
+export function sessionGroupStageLabel(status: string): string {
+  return SESSION_GROUP_STAGE_LABELS[status] ?? status;
+}
+
+/**
+ * One-click recommended grouping (AC#4): planning-phase steps share a session,
+ * build-phase steps share another. `fix` (status `reopen`) is left ungrouped so
+ * it never shares with `code` (status `approved`) — they branch off the same
+ * base and racing them risks merge conflicts.
+ */
+export const SUGGESTED_SESSION_GROUPS: Record<string, string[]> = {
+  planning: ["open", "confirmed", "clarified"],
+  build: ["approved", "developed", "testing", "released"],
+};
+
+/** The two statuses whose jobs (code @ approved, fix @ reopen) must not share a
+ *  group — used for the non-blocking merge-conflict warning. */
+export const CODE_STATUS = "approved";
+export const FIX_STATUS = "reopen";
+
+/** `onResumeFail` choices surfaced in the editor. */
+export const ON_RESUME_FAIL_OPTIONS: ReadonlyArray<{ value: "fresh" | "abort"; label: string; hint: string }> = [
+  { value: "fresh", label: "Start fresh", hint: "Retry without --resume — a brand-new Claude session." },
+  { value: "abort", label: "Abort job", hint: "Fail the job so an operator can investigate." },
+];
+
+const SESSION_GROUP_NAME_MAX = 64;
+
+/**
+ * Client-side mirror of core `sessionGroupsSchema` + the cross-field
+ * `superRefine`: group names are 1–64 chars and unique; each group has ≥1
+ * member; each status belongs to at most one group. Returns human-readable
+ * error strings (empty array = valid). The backend stays the source of truth;
+ * this just blocks an obviously-invalid PATCH before it round-trips.
+ */
+export function validateSessionGroups(groups: Record<string, string[]>): string[] {
+  const errors: string[] = [];
+  const names = Object.keys(groups);
+  const seenNames = new Set<string>();
+  const statusOwner = new Map<string, string>();
+
+  for (const rawName of names) {
+    const name = rawName.trim();
+    if (name.length === 0) {
+      errors.push("Group names cannot be empty.");
+    } else if (name.length > SESSION_GROUP_NAME_MAX) {
+      errors.push(`Group name "${name}" exceeds ${SESSION_GROUP_NAME_MAX} characters.`);
+    }
+    if (seenNames.has(rawName)) {
+      errors.push(`Duplicate group name "${rawName}".`);
+    }
+    seenNames.add(rawName);
+
+    const members = groups[rawName] ?? [];
+    if (members.length === 0) {
+      errors.push(`Group "${rawName || "(unnamed)"}" needs at least one stage.`);
+    }
+    for (const status of members) {
+      const prior = statusOwner.get(status);
+      if (prior && prior !== rawName) {
+        errors.push(
+          `Stage "${sessionGroupStageLabel(status)}" is in more than one group ("${prior}" and "${rawName}").`,
+        );
+      }
+      statusOwner.set(status, rawName);
+    }
+  }
+
+  return errors;
 }
