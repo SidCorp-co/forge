@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Switching your active organization now also leaves the previous org's project — the project switcher and navigation no longer stay stuck on a project from the org you switched away from.
 - Closed cross-tenant data leaks where certain API requests could return another organization's issue content, agent-session history, or device status by supplying a foreign resource ID.
 - Settings → Pipeline now has a visual Session Groups editor: choose which pipeline stages share one Claude session, with a one-click recommended default and a resume-failure policy.
+- Skill Studio now distinguishes always-on platform meta skills (served live) from disk-synced pipeline skills, and no longer shows misleading sync status for them.
 
 ## [0.3.0] - 2026-06-11
 
