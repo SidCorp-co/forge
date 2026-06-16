@@ -31,6 +31,9 @@ export type PatPrincipal = {
   tokenId: string;
   scopes: readonly string[];
   projectIds: readonly string[] | null;
+  // ISS-497 — non-null = project-level token bound to exactly this project
+  // (slug-omitted default AND auth fence). NULL = user-level (unchanged).
+  boundProjectId: string | null;
 };
 
 export type DevicePrincipal = { kind: 'device'; device: Device };
@@ -61,10 +64,7 @@ export type PrincipalVars = {
  *   - `invalidToken` → `…, error="invalid_token"` — Bearer token shape is
  *     valid but the token itself was rejected by verify*.
  */
-const unauth = (
-  message: string,
-  options?: { invalidToken?: boolean; invalidRequest?: boolean },
-) =>
+const unauth = (message: string, options?: { invalidToken?: boolean; invalidRequest?: boolean }) =>
   new HTTPException(401, {
     message,
     cause: {
@@ -217,6 +217,7 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
         tokenId: row.id,
         scopes: row.scopes,
         projectIds: row.projectIds ?? null,
+        boundProjectId: row.boundProjectId ?? null,
       });
       await next();
       return;

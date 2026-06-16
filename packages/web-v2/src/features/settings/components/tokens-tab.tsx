@@ -22,6 +22,7 @@ import {
   Field,
   Input,
   MonoTag,
+  Select,
   Skeleton,
   SlideOver,
   Table,
@@ -32,6 +33,7 @@ import {
   TR,
 } from "@/design";
 import { reauthStartUrl } from "@/features/auth/oauth-api";
+import { useProjects } from "@/features/projects/hooks";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useAuth } from "@/providers/auth-provider";
@@ -76,6 +78,7 @@ const REAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 export function TokensTab() {
   const tokensQ = useTokens();
+  const projectsQ = useProjects();
   const create = useCreateToken();
   const revoke = useRevokeToken();
   const reauth = useReauth();
@@ -90,7 +93,21 @@ export function TokensTab() {
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<PatScope[]>(["read"]);
   const [expiresAt, setExpiresAt] = useState("");
+  // ISS-497 — "" = None (user-level); a project id = bind the token to it.
+  const [boundProjectId, setBoundProjectId] = useState("");
   const [errors, setErrors] = useState<{ name?: string; scopes?: string }>({});
+
+  const projects = projectsQ.data ?? [];
+  const projectsById = new Map(projects.map((p) => [p.id, p]));
+  const projectOptions = [
+    { value: "", label: "None — user-level / all my projects" },
+    ...projects.map((p) => ({ value: p.id, label: `${p.name} (${p.slug})` })),
+  ];
+  /** Human level label for a token row: "User-level" or "Project: <slug>". */
+  function levelLabel(t: PatToken): string {
+    if (!t.boundProjectId) return "User-level";
+    return `Project: ${projectsById.get(t.boundProjectId)?.slug ?? t.boundProjectId.slice(0, 8)}`;
+  }
 
   // One-time plaintext reveal.
   const [revealed, setRevealed] = useState<PatTokenCreated | null>(null);
@@ -125,10 +142,16 @@ export function TokensTab() {
     if (ok) {
       if (raw) {
         try {
-          const draft = JSON.parse(raw) as { name?: string; scopes?: PatScope[]; expiresAt?: string };
+          const draft = JSON.parse(raw) as {
+            name?: string;
+            scopes?: PatScope[];
+            expiresAt?: string;
+            boundProjectId?: string;
+          };
           setName(draft.name ?? "");
           if (draft.scopes?.length) setScopes(draft.scopes);
           setExpiresAt(draft.expiresAt ?? "");
+          setBoundProjectId(draft.boundProjectId ?? "");
         } catch {
           // corrupt draft — start clean
         }
@@ -151,7 +174,7 @@ export function TokensTab() {
   function startSsoReauth(provider: string) {
     const input = buildInput();
     if (!input) return;
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ name, scopes, expiresAt }));
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ name, scopes, expiresAt, boundProjectId }));
     window.location.href = reauthStartUrl(provider, RETURN_PATH);
   }
 
@@ -173,6 +196,7 @@ export function TokensTab() {
       name: name.trim(),
       scopes,
       ...(expiresAt ? { expiresAt: new Date(expiresAt).toISOString() } : {}),
+      ...(boundProjectId ? { boundProjectId } : {}),
     };
   }
 
@@ -180,6 +204,7 @@ export function TokensTab() {
     setName("");
     setScopes(["read"]);
     setExpiresAt("");
+    setBoundProjectId("");
     setErrors({});
   }
 
@@ -262,6 +287,23 @@ export function TokensTab() {
 
             <Field label="Expires" hint="Optional. Leave blank for a non-expiring token.">
               <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+            </Field>
+
+            <Field
+              label="Bind to a project"
+              hint={
+                projectsQ.isLoading
+                  ? "Loading your projects…"
+                  : "Optional. A project-level token works only against the chosen project, and MCP clients can drop the X-Forge-Project-Slug header."
+              }
+            >
+              <Select
+                options={projectOptions}
+                value={boundProjectId}
+                onChange={setBoundProjectId}
+                disabled={projectsQ.isLoading}
+                placeholder={projectsQ.isLoading ? "Loading…" : "None — user-level"}
+              />
             </Field>
 
             {needsReauth && hasPassword && (
@@ -363,6 +405,7 @@ export function TokensTab() {
                 <THead>
                   <TR>
                     <TH>Name</TH>
+                    <TH>Level</TH>
                     <TH>Prefix</TH>
                     <TH>Scopes</TH>
                     <TH>Expires</TH>
@@ -372,7 +415,13 @@ export function TokensTab() {
                 </THead>
                 <TBody>
                   {tokens.map((t) => (
-                    <TokenRow key={t.id} token={t} onRevoke={() => revoke.mutate(t.id)} pending={revoke.isPending} />
+                    <TokenRow
+                      key={t.id}
+                      token={t}
+                      level={levelLabel(t)}
+                      onRevoke={() => revoke.mutate(t.id)}
+                      pending={revoke.isPending}
+                    />
                   ))}
                 </TBody>
               </Table>
@@ -382,6 +431,7 @@ export function TokensTab() {
                 <TokenMobileCard
                   key={t.id}
                   token={t}
+                  level={levelLabel(t)}
                   onRevoke={() => revoke.mutate(t.id)}
                   pending={revoke.isPending}
                 />
@@ -397,6 +447,16 @@ export function TokensTab() {
             <p className="fg-body-sm text-muted">
               Copy this token now — it won&apos;t be shown again.
             </p>
+            {revealed.boundProjectId && (
+              <p className="fg-body-sm text-muted">
+                This is a project-level token bound to{" "}
+                <span className="font-medium text-fg">
+                  {projectsById.get(revealed.boundProjectId)?.slug ?? "the selected project"}
+                </span>
+                . MCP clients can omit the <code className="font-mono">X-Forge-Project-Slug</code>{" "}
+                header — calls resolve to this project automatically.
+              </p>
+            )}
             <div className="rounded-md border border-line bg-sunken p-3">
               <code className="block break-all font-mono text-[13px] text-fg">
                 {revealed.plaintext}
@@ -431,10 +491,12 @@ function ScopeBadges({ scopes }: { scopes: PatScope[] }) {
 
 function TokenRow({
   token,
+  level,
   onRevoke,
   pending,
 }: {
   token: PatToken;
+  level: string;
   onRevoke: () => void;
   pending: boolean;
 }) {
@@ -444,6 +506,9 @@ function TokenRow({
       <TD className="font-medium text-fg">
         {token.name}
         {revoked && <span className="fg-caption ml-2">(revoked)</span>}
+      </TD>
+      <TD>
+        <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
       </TD>
       <TD>
         <MonoTag>{token.prefix}…</MonoTag>
@@ -470,10 +535,12 @@ function TokenRow({
 
 function TokenMobileCard({
   token,
+  level,
   onRevoke,
   pending,
 }: {
   token: PatToken;
+  level: string;
   onRevoke: () => void;
   pending: boolean;
 }) {
@@ -489,6 +556,7 @@ function TokenMobileCard({
             </p>
             <div className="mt-1.5 flex items-center gap-1.5">
               <MonoTag>{token.prefix}…</MonoTag>
+              <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
             </div>
           </div>
           <Button

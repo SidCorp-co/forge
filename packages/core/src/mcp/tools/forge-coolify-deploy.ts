@@ -36,10 +36,11 @@ import {
 } from '../../pipeline/release-coolify.js';
 import {
   type ContextScopedMcpToolFactory,
+  type McpContext,
   assertPrincipalIsMember,
-  resolveProjectIdFromSlug,
-  zodToMcpSchema,
   assertPrincipalIsWriter,
+  resolveEffectiveProjectId,
+  zodToMcpSchema,
 } from './lib.js';
 
 const inputSchema = z
@@ -54,9 +55,8 @@ const inputSchema = z
 
 type Input = z.infer<typeof inputSchema>;
 
-async function resolveProjectId(input: Input, projectSlug: string | null): Promise<string> {
-  if (input.projectId) return input.projectId;
-  return resolveProjectIdFromSlug(projectSlug);
+async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
+  return resolveEffectiveProjectId(ctx, input.projectId);
 }
 
 /**
@@ -78,10 +78,7 @@ async function activeCoolifyIntegrations(projectId: string) {
   }));
 }
 
-export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
-  principal,
-  projectSlug,
-}) => ({
+export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
   description:
     'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs. ' +
@@ -113,10 +110,11 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
+    const { principal } = ctx;
 
     switch (input.action) {
       case 'list': {
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
         const rows = await activeCoolifyIntegrations(projectId);
         return {
@@ -131,7 +129,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
       }
 
       case 'deploy': {
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
 
         // issueId present → run-tracked deploy (unchanged): resolve the issue's
@@ -195,7 +193,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
       }
 
       case 'status': {
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
         const rows = await activeCoolifyIntegrations(projectId);
         const scoped = input.integrationId
@@ -219,7 +217,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
       }
 
       case 'logs': {
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
 
         // Resolve the integration row. Explicit integrationId wins; otherwise

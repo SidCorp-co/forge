@@ -40,12 +40,12 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
       ? principal.device
       : stubDeviceForPat(principal.userId, principal.tokenId);
   const projectSlug = c.req.header('x-forge-project-slug') ?? null;
-  const requestId =
-    c.req.header('x-request-id') ?? c.req.header('cf-ray') ?? crypto.randomUUID();
+  // ISS-497 — a project-level PAT carries its bound project; thread it so the
+  // effective-project resolver and metaProjectId() share one answer.
+  const boundProjectId = principal.kind === 'pat' ? principal.boundProjectId : null;
+  const requestId = c.req.header('x-request-id') ?? c.req.header('cf-ray') ?? crypto.randomUUID();
   const ip =
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
-    c.req.header('x-real-ip') ??
-    null;
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null;
   const userAgent = c.req.header('user-agent') ?? null;
 
   // ISS-145 — per-request collector for deprecated legacy tool names. Shim
@@ -57,6 +57,7 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
     principal,
     device,
     projectSlug,
+    boundProjectId,
     requestId,
     ip,
     userAgent,

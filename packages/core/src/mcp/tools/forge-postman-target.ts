@@ -12,15 +12,12 @@
  */
 
 import { z } from 'zod';
-import {
-  effectiveConfig,
-  listActiveBindingsForProjectProvider,
-} from '../../integrations/store.js';
 import type { PostmanConfig } from '../../integrations/postman/types.js';
+import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
-  resolveProjectIdFromSlug,
+  resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -32,10 +29,7 @@ const inputSchema = z
 
 type Input = z.infer<typeof inputSchema>;
 
-export const forgePostmanTargetTool: ContextScopedMcpToolFactory = ({
-  principal,
-  projectSlug,
-}) => ({
+export const forgePostmanTargetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_postman_target',
   description:
     "Return the project's Postman write-target so a skill knows WHERE to write its " +
@@ -48,8 +42,8 @@ export const forgePostmanTargetTool: ContextScopedMcpToolFactory = ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args) as Input;
-    const projectId = input.projectId ?? (await resolveProjectIdFromSlug(projectSlug));
-    await assertPrincipalIsMember(principal, projectId);
+    const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+    await assertPrincipalIsMember(ctx.principal, projectId);
 
     const [pair] = await listActiveBindingsForProjectProvider(projectId, 'postman');
     if (!pair) return { configured: false };
