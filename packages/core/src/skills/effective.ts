@@ -232,39 +232,13 @@ export async function resolveRegisteredEffectiveSkills(
 
 /**
  * Platform-managed META skills: global, user-invocable tooling (not bound to a
- * pipeline stage) that Forge owns and keeps current on every project. Unlike
- * ordinary stage skills — which are project shadows the platform NEVER
- * force-syncs (NT2) — these auto-install and auto-update down to projects on
- * each sync, because they are read-only platform guidance, not per-project
- * customisations. A project can opt out (`pipelineConfig.syncManagedSkills =
- * false`); a project that ADOPTS one (creates a same-name project skill) owns
- * its copy from then on and the global stops overriding it.
+ * pipeline stage) that Forge owns and serves LIVE as MCP prompts (see
+ * `resolveManagedMetaPrompts`) — the always-latest, zero-disk-sync channel.
+ * They are NOT installed into the device manifest; a session connected to the
+ * Forge MCP server reads them as prompts. A project that ADOPTS one (creates a
+ * same-name project skill) owns its copy and serves that instead.
  */
 export const MANAGED_META_SKILLS: readonly string[] = ['forge-skills'];
-
-/**
- * The device-install set: the registered project skills PLUS the platform
- * managed-meta skills (unless the project opted out). This is the one place the
- * "globals never install" rule (Rule 2) is relaxed — and only for the small,
- * platform-owned managed-meta set, never for stage skills. A managed-meta skill
- * resolves to the project's own copy if it adopted one (catalog dedup: project
- * wins), else to the global template, which then auto-updates on each sync.
- */
-export async function resolveInstallableSkills(
-  projectId: string,
-  opts?: { syncManagedSkills?: boolean },
-): Promise<EffectiveSkill[]> {
-  const registered = await resolveRegisteredEffectiveSkills(projectId);
-  if (opts?.syncManagedSkills === false || MANAGED_META_SKILLS.length === 0) {
-    return registered;
-  }
-  const present = new Set(registered.map((s) => s.name));
-  const catalog = await resolveRawEffectiveSkillsForProject(projectId);
-  const managed = catalog.filter(
-    (s) => MANAGED_META_SKILLS.includes(s.name) && !present.has(s.name),
-  );
-  return [...registered, ...managed];
-}
 
 export interface ManagedMetaPrompt {
   name: string;

@@ -4,27 +4,15 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { deviceSkills, projects, runners } from '../db/schema.js';
+import { deviceSkills, runners } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import {
   loadDeviceSkillStatus,
   loadProjectSkillSyncStatus,
-  resolveInstallableSkills,
+  resolveRegisteredEffectiveSkills,
 } from '../skills/effective.js';
-
-/** Read the project's opt-out for platform-managed meta-skill auto-sync (default ON). */
-async function projectSyncsManagedSkills(projectId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const pipeline = ((row?.agentConfig ?? {}) as { pipelineConfig?: { syncManagedSkills?: boolean } })
-    .pipelineConfig;
-  return pipeline?.syncManagedSkills !== false;
-}
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -115,8 +103,7 @@ deviceSkillRoutes.get(
     const { projectId, includeFiles } = c.req.valid('query');
     await assertDeviceBoundToProject(device.id, projectId);
 
-    const syncManagedSkills = await projectSyncsManagedSkills(projectId);
-    const entries = await resolveInstallableSkills(projectId, { syncManagedSkills });
+    const entries = await resolveRegisteredEffectiveSkills(projectId);
     const withFiles = truthy(includeFiles);
 
     const skills = entries.map((e) =>
@@ -160,10 +147,9 @@ deviceSkillRoutes.get(
     const { projectId } = c.req.valid('query');
     await assertDeviceBoundToProject(device.id, projectId);
 
-    const syncManagedSkills = await projectSyncsManagedSkills(projectId);
-    const entries = await resolveInstallableSkills(projectId, { syncManagedSkills });
+    const entries = await resolveRegisteredEffectiveSkills(projectId);
     const entry = entries.find((e) => e.skillId === skillId);
-    if (!entry) throw notFound('skill not installable for project');
+    if (!entry) throw notFound('skill not registered to project');
 
     return c.json({
       skillId: entry.skillId,
