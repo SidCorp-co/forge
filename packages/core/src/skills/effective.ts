@@ -266,6 +266,51 @@ export async function resolveInstallableSkills(
   return [...registered, ...managed];
 }
 
+export interface ManagedMetaPrompt {
+  name: string;
+  description: string;
+  body: string;
+}
+
+/**
+ * The managed-meta skills as MCP PROMPTS — served live from Forge MCP so any
+ * session connected to the Forge MCP server gets the current meta guidance with
+ * zero disk sync (the always-latest channel; complements the disk install).
+ * Resolves the project's adopted copy if it exists, else the global template.
+ * `projectId === null` (no project header) → the global bodies.
+ */
+export async function resolveManagedMetaPrompts(
+  projectId: string | null,
+): Promise<ManagedMetaPrompt[]> {
+  if (MANAGED_META_SKILLS.length === 0) return [];
+  const names = [...MANAGED_META_SKILLS];
+  const scopeCond = projectId
+    ? or(eq(skills.scope, 'global'), and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)))
+    : eq(skills.scope, 'global');
+  const rows = await db
+    .select({
+      name: skills.name,
+      description: skills.description,
+      scope: skills.scope,
+      skillMd: skills.skillMd,
+      prompt: skills.prompt,
+    })
+    .from(skills)
+    .where(and(inArray(skills.name, names), scopeCond));
+
+  // Project copy wins over the global template, by name.
+  const byName = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) {
+    const cur = byName.get(r.name);
+    if (!cur || (r.scope === 'project' && cur.scope === 'global')) byName.set(r.name, r);
+  }
+  return [...byName.values()].map((r) => ({
+    name: r.name,
+    description: r.description ?? '',
+    body: globalEffectiveMd(r),
+  }));
+}
+
 export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing';
 
 export interface DeviceSkillStatusEntry {

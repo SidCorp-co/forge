@@ -1,6 +1,13 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
+import { resolveManagedMetaPrompts } from '../skills/effective.js';
+import { resolveProjectIdFromSlug } from './tools/lib.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import { toToolCallContent } from './tool-result.js';
 import {
@@ -242,8 +249,36 @@ export function createMcpServer(ctx: McpContext): Server {
 
   const server = new Server(
     { name: '@forge/core', version: pkg.version },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, prompts: {} } },
   );
+
+  // Managed META skills (forge-skills …) served live as MCP prompts — the
+  // always-latest, zero-disk-sync channel. Any session connected to Forge MCP
+  // sees the current meta guidance; no install, no shadow-freeze. Project-scoped
+  // by the X-Forge-Project-Slug header (falls back to the global bodies).
+  const metaProjectId = async (): Promise<string | null> => {
+    if (!ctx.projectSlug) return null;
+    try {
+      return await resolveProjectIdFromSlug(ctx.projectSlug);
+    } catch {
+      return null;
+    }
+  };
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    const prompts = await resolveManagedMetaPrompts(await metaProjectId());
+    return { prompts: prompts.map((p) => ({ name: p.name, description: p.description })) };
+  });
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const prompts = await resolveManagedMetaPrompts(await metaProjectId());
+    const p = prompts.find((x) => x.name === request.params.name);
+    if (!p) throw new Error(`unknown prompt: ${request.params.name}`);
+    return {
+      description: p.description,
+      messages: [{ role: 'user' as const, content: { type: 'text' as const, text: p.body } }],
+    };
+  });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map((t) => ({
