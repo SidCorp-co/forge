@@ -74,19 +74,27 @@ forge_issues → get → { documentId: "<related docId>" }
 - If a sibling is on the same branch but NOT at `released` → **stop**. Post comment: "Cannot merge — ISS-XX on same branch is still at `<status>`. Release both together or wait."
 - If all siblings on the branch are at `released` → proceed, will close all of them at the end.
 
-### Step 4: Find the ISS-* Branch
+### Step 4: Is a merge even needed? (single-branch / already-merged guard — do this FIRST)
+
+**Re-merging a branch that is already on the production branch produces an empty commit that fails, so the release never completes and the stage re-dispatches forever. Guard against it before touching git.**
 
 ```bash
 git fetch origin
-git branch -r --list 'origin/ISS-*' | grep <issue-number>
 ```
 
-If no ISS-* branch found (Simple+staging issues that merged directly to baseBranch during forge-code):
-- Code is already on baseBranch. Check if baseBranch ≠ productionBranch.
-- If different: merge baseBranch to productionBranch (but this may pull in other issues' commits — see Step 5 audit).
-- If same: code is already on production. Skip merge, just deploy.
+**SKIP the merge (Steps 5–6) and go straight to Step 7 when EITHER holds:**
+- **Single-branch project — `productionBranch == baseBranch`** (e.g. both `main`). forge-code already merged the ISS-* branch into the base/production branch during the code stage to deploy it for testing, so the code is **already on production**. There is nothing left to merge.
+- **Already an ancestor of production** — the branch is already merged:
+  ```bash
+  git merge-base --is-ancestor origin/ISS-XX-short-title origin/<productionBranch> && echo ALREADY_MERGED
+  ```
+  If it prints `ALREADY_MERGED` (exit 0), skip the merge.
 
-### Step 5: Diff Audit
+Otherwise (a real two-branch gitflow where the code is NOT yet on production) → continue to Step 5 + Step 6.
+
+If there is no ISS-* branch AND the code is not on production → nothing to release: post a comment and set `reopen`, stop.
+
+### Step 5: Diff Audit (only when a merge is needed)
 
 Before merging, compare what will land on production:
 
@@ -99,7 +107,9 @@ Check the changed files against the issue's `plan` field (affected files list). 
 - Post a warning comment listing the unexpected files
 - Still proceed (the code passed review + QA), but flag it for visibility
 
-### Step 6: Squash Merge to Production
+### Step 6: Squash Merge to Production (only when a merge is needed)
+
+Skip this entirely if Step 4 said the code is already on production.
 
 ```bash
 git checkout <productionBranch>
@@ -111,7 +121,7 @@ git push origin <productionBranch>
 
 Squash merge creates one clean atomic commit per issue on the production branch. All intermediate commits (implementation + fixes + review cycles) are collapsed.
 
-If merge conflict → post comment with conflict details, set `reopen`, stop.
+If merge conflict → post comment with conflict details, set `reopen`, stop. If `git commit` reports **nothing to commit**, the branch was already merged — do NOT loop: treat it as already-on-production and continue to Step 7.
 
 ### Step 7: Deploy (if Coolify configured)
 
@@ -147,7 +157,7 @@ Decision tree:
   *Technical: <technical>*    ← only emit this second line when `technical` is non-empty
 ```
 
-Use `awk`/`sed` to find the `## [Unreleased]` heading, the matching `### <section>` sub-heading (creating it if absent), and insert the bullet at the top of that sub-list so the most recent entry sits first. Commit the CHANGELOG bump on the production branch as part of the merge commit — do NOT create a separate commit.
+Use `awk`/`sed` to find the `## [Unreleased]` heading, the matching `### <section>` sub-heading (creating it if absent), and insert the bullet at the top of that sub-list so the most recent entry sits first. **If you ran a merge (Step 6),** fold the CHANGELOG bump into that merge commit — no separate commit. **If you skipped the merge (already on production / single-branch),** commit the CHANGELOG bump on its own directly to the production branch and push it (`git commit -m "docs(changelog): ISS-XX <topic>" && git push origin <productionBranch>`).
 
 Style: present-tense, one short sentence, no trailing period after the bold (`**…**`) text is fine. Don't include `ISS-XX` IDs or PR references — those live in git history.
 
