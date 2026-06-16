@@ -6,6 +6,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
+import { FORGE_MCP_INSTRUCTIONS } from './instructions.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { resolveProjectIdFromSlug } from './tools/lib.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
@@ -249,7 +250,7 @@ export function createMcpServer(ctx: McpContext): Server {
 
   const server = new Server(
     { name: '@forge/core', version: pkg.version },
-    { capabilities: { tools: {}, prompts: {} } },
+    { capabilities: { tools: {}, prompts: {} }, instructions: FORGE_MCP_INSTRUCTIONS },
   );
 
   // Managed META skills (forge-skills …) served live as MCP prompts — the
