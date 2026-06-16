@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { MANAGED_META_SKILLS } from './effective.js';
 import {
   createProjectSkill,
   deleteProjectSkill,
@@ -121,7 +122,12 @@ skillCrudRoutes.get(
       .where(and(...conditions))
       .orderBy(asc(skills.name));
 
-    return c.json(rows);
+    // Tag platform-managed META skills (forge-skills…) so the Skill Studio UI
+    // can render them as MCP-served live prompts — NOT disk-synced skills (no
+    // sync-status, no stage registration). Computed from the core constant, by
+    // name, so both the global template and any project-adopted copy carry it.
+    const metaNames = new Set<string>(MANAGED_META_SKILLS);
+    return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
   },
 );
 

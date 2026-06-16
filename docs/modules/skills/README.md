@@ -118,6 +118,21 @@ Global skills are **read-only default templates**; a project customizes one by c
 - `skills/effective.ts` dedups by name (**project wins**) → one row per name plus a `shadowsGlobal` marker; `forge_skills.list`/`effective` surface it.
 - **Removed**: `forge_skills.override_set`/`override_delete`, REST `override-routes.ts`, the `projectSkillOverrides` table, and the override-merge `isOverridden` branch. Shadow-by-name only.
 
+## Skill delivery: stage (disk) vs meta (MCP-served)
+
+Two distinct delivery channels — do not conflate them:
+
+| Channel | Skills | How delivered | Disk sync / device status? | Bound to a stage? |
+|---------|--------|---------------|----------------------------|-------------------|
+| **Stage** (disk) | the registered pipeline + custom skills | runner pulls `resolveRegisteredEffectiveSkills` (registered project-scoped skills only) → `.claude/skills` | yes — deterministic, shadowable, has per-device sync-status | yes |
+| **Meta** (MCP-served) | `forge-skills` and any other `MANAGED_META_SKILLS` | served LIVE as MCP **prompts** from the Forge MCP server — zero disk, always-latest | **no** — never installed to disk, no device sync-status | no (user-invocable) |
+
+- `MANAGED_META_SKILLS` (`packages/core/src/skills/effective.ts`) is the list of meta-skill names; add a name there to serve a new meta builtin everywhere.
+- `resolveManagedMetaPrompts(projectId)` resolves each meta skill's body per project (a project-adopted copy wins over the global template; `null` projectId → global).
+- Forge MCP server (`packages/core/src/mcp/server.ts`) advertises the `prompts: {}` capability and answers `ListPrompts`/`GetPrompt`, project-scoped via the `X-Forge-Project-Slug` header.
+- The meta disk-install path (with a `pipelineConfig.syncManagedSkills` opt-out) was added then **removed** — MCP-serve replaced it. `syncManagedSkills` no longer exists; do **not** reintroduce it.
+- `GET /api/skills` tags each row with `managedMeta` (computed from `MANAGED_META_SKILLS`, by name) so the **Skill Studio** UI renders meta skills as MCP-served (no sync-status, no stage-registration), with a source label of *Platform default* (global) vs *Project-adopted* (a same-name project copy exists).
+
 ## Future (v0.2+)
 
 - Skill library UI: search, install, rate, version

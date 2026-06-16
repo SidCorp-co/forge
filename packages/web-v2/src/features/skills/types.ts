@@ -71,6 +71,12 @@ export interface SkillRow {
   skillMd: string | null;
   /** Supporting files in the skill folder (default []). */
   files: SkillFile[];
+  /** True when this is a platform-managed META skill (`forge-skills`…) served
+   *  LIVE as an MCP prompt — NOT disk-synced. Such skills have no device
+   *  sync-status and are not bound to a pipeline stage. The list endpoint
+   *  computes it from core's `MANAGED_META_SKILLS`; older responses omit it,
+   *  so treat a missing value as `false`. */
+  managedMeta?: boolean;
   updatedAt: string;
   createdAt: string;
 }
