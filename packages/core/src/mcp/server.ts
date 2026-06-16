@@ -6,10 +6,9 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
-import { FORGE_MCP_INSTRUCTIONS } from './instructions.js';
-import { resolveManagedMetaPrompts } from '../skills/effective.js';
-import { resolveProjectIdFromSlug } from './tools/lib.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
+import { resolveManagedMetaPrompts } from '../skills/effective.js';
+import { FORGE_MCP_INSTRUCTIONS } from './instructions.js';
 import { toToolCallContent } from './tool-result.js';
 import {
   forgeAgentSessionsGetTool,
@@ -83,6 +82,7 @@ import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
+import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
 import type { McpContext } from './tools/lib.js';
 
 /**
@@ -257,13 +257,18 @@ export function createMcpServer(ctx: McpContext): Server {
   // always-latest, zero-disk-sync channel. Any session connected to Forge MCP
   // sees the current meta guidance; no install, no shadow-freeze. Project-scoped
   // by the X-Forge-Project-Slug header (falls back to the global bodies).
+  // ISS-497 — a project-level PAT (boundProjectId) resolves to its bound
+  // project with no header, so a bound token sees its project's meta prompts;
+  // same precedence (slug > boundProjectId) as the tool resolver.
   const metaProjectId = async (): Promise<string | null> => {
-    if (!ctx.projectSlug) return null;
-    try {
-      return await resolveProjectIdFromSlug(ctx.projectSlug);
-    } catch {
-      return null;
+    if (ctx.projectSlug) {
+      try {
+        return await resolveProjectIdFromSlug(ctx.projectSlug);
+      } catch {
+        return null;
+      }
     }
+    return ctx.boundProjectId ?? null;
   };
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
@@ -330,11 +335,15 @@ export function createMcpServer(ctx: McpContext): Server {
       }
     }
 
-    // PAT projectIds allowlist — enforce before the tool runs so we 404
-    // (NOT 403) when the caller probes a project outside their scope.
-    if (principal.kind === 'pat' && principal.projectIds !== null) {
+    // PAT effective-allowlist — enforce before the tool runs so we 404
+    // (NOT 403) when the caller probes a project outside their scope. For a
+    // project-level token (boundProjectId) this fences the explicit-arg path
+    // to the bound project; the slug-resolved path is fenced inside the
+    // assertPrincipalIs* helpers (ISS-497).
+    if (principal.kind === 'pat') {
+      const allow = patEffectiveProjectIds(principal);
       const target = auditBase.projectId;
-      if (target && !principal.projectIds.includes(target)) {
+      if (allow !== null && target && !allow.includes(target)) {
         writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
         return {
           content: [{ type: 'text', text: 'NOT_FOUND: project not found or not accessible' }],

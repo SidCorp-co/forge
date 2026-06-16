@@ -24,10 +24,11 @@ import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type ContextScopedMcpToolFactory,
+  type McpContext,
   assertPrincipalIsMember,
-  resolveProjectIdFromSlug,
-  zodToMcpSchema,
   assertPrincipalIsWriter,
+  resolveEffectiveProjectId,
+  zodToMcpSchema,
 } from './lib.js';
 
 /**
@@ -302,9 +303,8 @@ async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
   return row as TaskRow;
 }
 
-async function resolveProjectId(input: Input, projectSlug: string | null): Promise<string> {
-  if (input.projectId) return input.projectId;
-  return resolveProjectIdFromSlug(projectSlug);
+async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
+  return resolveEffectiveProjectId(ctx, input.projectId);
 }
 
 function parseDate(value: string, field: string): Date {
@@ -351,11 +351,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { device, principal, projectSlug } = ctx;
+    const { device, principal } = ctx;
 
     switch (input.action) {
       case 'list': {
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
 
         const conds = [eq(issues.projectId, projectId)];
@@ -400,7 +400,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'create': {
         if (!input.data?.title) throw new Error('BAD_REQUEST: data.title is required for create');
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
 
         // ISS-130 — narrow allow-list for entry status. `open` is the normal

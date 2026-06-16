@@ -15,14 +15,11 @@
 import { z } from 'zod';
 import { epodsystemEndpoint } from '../../integrations/epodsystem/endpoints.js';
 import type { EpodsystemConfig } from '../../integrations/epodsystem/types.js';
-import {
-  effectiveConfig,
-  listActiveBindingsForProjectProvider,
-} from '../../integrations/store.js';
+import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
-  resolveProjectIdFromSlug,
+  resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -34,10 +31,7 @@ const inputSchema = z
 
 type Input = z.infer<typeof inputSchema>;
 
-export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = ({
-  principal,
-  projectSlug,
-}) => ({
+export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_storefront_target',
   description:
     "Return the project's Epodsystem storefront target so a shop skill knows WHICH store " +
@@ -53,8 +47,8 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args) as Input;
-    const projectId = input.projectId ?? (await resolveProjectIdFromSlug(projectSlug));
-    await assertPrincipalIsMember(principal, projectId);
+    const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+    await assertPrincipalIsMember(ctx.principal, projectId);
 
     const [pair] = await listActiveBindingsForProjectProvider(projectId, 'epodsystem');
     if (!pair) return { configured: false };

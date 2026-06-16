@@ -38,6 +38,9 @@ export interface MintPatInput {
   name: string;
   scopes?: string[] | undefined;
   projectIds?: string[] | null | undefined;
+  // ISS-497 — bind the token to exactly one project (project-level token).
+  // Mutually exclusive with a multi-project `projectIds` (enforced at the REST layer).
+  boundProjectId?: string | null | undefined;
   expiresAt?: Date | null | undefined;
   rateLimitMax?: number | null | undefined;
 }
@@ -63,10 +66,7 @@ async function hashPatPlaintext(plaintext: string): Promise<string> {
 let dummyHashPromise: Promise<string> | null = null;
 function getDummyHash(): Promise<string> {
   if (!dummyHashPromise) {
-    dummyHashPromise = argon2.hash(
-      `__pat_dummy__${env.PAT_PEPPER}__${Date.now()}`,
-      ARGON2_OPTIONS,
-    );
+    dummyHashPromise = argon2.hash(`__pat_dummy__${env.PAT_PEPPER}__${Date.now()}`, ARGON2_OPTIONS);
   }
   return dummyHashPromise;
 }
@@ -85,6 +85,7 @@ export async function mintPat(input: MintPatInput): Promise<MintedPat> {
       tokenPrefix,
       scopes: input.scopes ?? ['read', 'write'],
       projectIds: input.projectIds ?? null,
+      boundProjectId: input.boundProjectId ?? null,
       expiresAt: input.expiresAt ?? null,
       rateLimitMax: input.rateLimitMax ?? null,
     })
@@ -117,10 +118,7 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
       and(
         eq(personalAccessTokens.tokenPrefix, prefix),
         isNull(personalAccessTokens.revokedAt),
-        or(
-          isNull(personalAccessTokens.expiresAt),
-          gt(personalAccessTokens.expiresAt, sql`now()`),
-        ),
+        or(isNull(personalAccessTokens.expiresAt), gt(personalAccessTokens.expiresAt, sql`now()`)),
       ),
     );
 
@@ -216,12 +214,7 @@ export async function revokeAllPatsForUser(
   const result = await db
     .update(personalAccessTokens)
     .set({ revokedAt: sql`now()` })
-    .where(
-      and(
-        eq(personalAccessTokens.userId, userId),
-        isNull(personalAccessTokens.revokedAt),
-      ),
-    )
+    .where(and(eq(personalAccessTokens.userId, userId), isNull(personalAccessTokens.revokedAt)))
     .returning({ id: personalAccessTokens.id });
   if (result.length > 0) {
     console.info(`[pat] revoked ${result.length} PAT(s) for user ${userId} reason=${reason}`);
@@ -238,7 +231,9 @@ export interface RotatePatInput {
 /**
  * Rotate a PAT — mint a fresh plaintext, revoke the old row immediately.
  * Returns null if the (id, userId) pair does not match. The new row
- * carries over `name`/`scopes`/`projectIds`/`rateLimitMax` from the old.
+ * carries over `name`/`scopes`/`projectIds`/`boundProjectId`/`rateLimitMax`
+ * from the old — the project binding is a property of token identity, not
+ * the secret, so it survives rotation.
  *
  * The rename/revoke + insert run in a single transaction so a failed mint
  * cannot leave the user with a revoked old PAT and no replacement.
@@ -275,6 +270,7 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
         tokenPrefix,
         scopes: existing.scopes,
         projectIds: existing.projectIds,
+        boundProjectId: existing.boundProjectId,
         expiresAt: input.expiresAt ?? existing.expiresAt,
         rateLimitMax: existing.rateLimitMax,
       })
@@ -290,11 +286,6 @@ export async function countActivePatsForUser(userId: string): Promise<number> {
   const rows = await db
     .select({ id: personalAccessTokens.id })
     .from(personalAccessTokens)
-    .where(
-      and(
-        eq(personalAccessTokens.userId, userId),
-        isNull(personalAccessTokens.revokedAt),
-      ),
-    );
+    .where(and(eq(personalAccessTokens.userId, userId), isNull(personalAccessTokens.revokedAt)));
   return rows.length;
 }

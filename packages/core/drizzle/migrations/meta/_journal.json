@@ -848,6 +848,13 @@
       "when": 1784505600000,
       "tag": "0122_drop_shop_skills",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1784592000000,
+      "tag": "0123_pat_bound_project_id",
+      "breakpoints": true
     }
   ]
 }

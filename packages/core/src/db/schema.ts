@@ -475,6 +475,9 @@ export const personalAccessTokens = pgTable(
     scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
     // NULL = inherit user's project memberships (global PAT). Non-null = strict allowlist.
     projectIds: uuid('project_ids').array(),
+    // ISS-497 — project-level token: NULL = user-level (today's behavior, zero backfill);
+    // set = bound to exactly this project (slug-omitted default AND auth fence).
+    boundProjectId: uuid('bound_project_id').references(() => projects.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),

@@ -14,7 +14,7 @@ import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
-  resolveProjectIdFromSlug,
+  resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -141,7 +141,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
       return formatBaseResponse(row);
     }
 
-    const projectId = input.projectId ?? (await resolveProjectIdFromSlug(ctx.projectSlug));
+    const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
     await assertPrincipalIsMember(ctx.principal, projectId);
 
     const row = await readProjectConfig(projectId);
