@@ -8,6 +8,8 @@ Threats + mitigations for the PAT auth path alongside legacy device-token on `/m
 - Dispatcher (`require-pat-or-device.ts`) picks path by prefix, sets `c.get('principal')` = `{ kind: 'device'; device } | { kind: 'pat'; userId; tokenId; scopes; projectIds }`.
 - PAT CRUD under `/api/pat`, requires user JWT (cookie/Bearer). PATs cannot mint PATs — browser/web login required first.
 
+> **Proposed (not yet implemented):** a second, optional **project-level** token bound to one project at mint time, so `X-Forge-Project-Slug` becomes optional and a conflicting explicit project is rejected `NOT_FOUND`. The binding is modeled as a real fence (behaves as `projectIds = [boundProjectId]`), so the T1 mitigations below still hold. Design: [../proposals/mcp-project-scoped-tokens.md](../proposals/mcp-project-scoped-tokens.md).
+
 ## Threats and mitigations
 
 ### T1 — Cross-tenant read via stolen or mis-issued PAT
