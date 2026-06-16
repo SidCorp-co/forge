@@ -51,6 +51,12 @@ pub fn write(
 /// can talk to Forge out of the box. Distinct from [`write`], which is the
 /// per-job temp config (it also merges integration overrides with fresh tokens).
 ///
+/// READ-MERGE, not overwrite: any servers a human (or another tool) added to an
+/// existing `.mcp.json` are preserved; only the `forge` entry is upserted
+/// (overridden on key collision). A missing/empty file is created fresh; a file
+/// that exists but isn't valid JSON / isn't an object is left untouched and an
+/// error is returned, so we never clobber a user's hand-written config.
+///
 /// The file carries the device token, so we add it to `.git/info/exclude` (NOT
 /// the tracked `.gitignore`) to guarantee it's never committed. Idempotent.
 pub fn write_persistent(
@@ -60,20 +66,47 @@ pub fn write_persistent(
     project_slug: &str,
 ) -> Result<()> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
-    let doc = serde_json::json!({
-        "mcpServers": {
-            "forge": {
-                "type": "http",
-                "url": mcp_url,
-                "headers": {
-                    "Authorization": format!("Bearer {device_token}"),
-                    "X-Forge-Project-Slug": project_slug
-                }
-            }
+    let forge_server = serde_json::json!({
+        "type": "http",
+        "url": mcp_url,
+        "headers": {
+            "Authorization": format!("Bearer {device_token}"),
+            "X-Forge-Project-Slug": project_slug
         }
     });
+
+    let path = repo_path.join(".mcp.json");
+
+    // Start from the existing doc when present so other servers survive. A
+    // malformed existing file is a refuse-to-clobber situation, not a reset.
+    let mut doc = match std::fs::read_to_string(&path) {
+        Ok(existing) if !existing.trim().is_empty() => {
+            serde_json::from_str::<Value>(&existing).map_err(|e| {
+                Error::Other(format!(
+                    ".mcp.json exists but is not valid JSON ({e}); refusing to overwrite — fix or remove it, then re-provision"
+                ))
+            })?
+        }
+        _ => serde_json::json!({}),
+    };
+    let root = doc.as_object_mut().ok_or_else(|| {
+        Error::Other(".mcp.json top-level value is not an object; refusing to overwrite".into())
+    })?;
+
+    // Ensure `mcpServers` is an object, then upsert `forge` (override on collision).
+    let servers = root
+        .entry("mcpServers")
+        .or_insert_with(|| serde_json::json!({}));
+    if !servers.is_object() {
+        *servers = serde_json::json!({});
+    }
+    servers
+        .as_object_mut()
+        .expect("mcpServers coerced to object above")
+        .insert("forge".to_string(), forge_server);
+
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
-    std::fs::write(repo_path.join(".mcp.json"), body)?;
+    std::fs::write(&path, body)?;
     ensure_git_excluded(repo_path, ".mcp.json");
     Ok(())
 }
@@ -96,4 +129,81 @@ fn ensure_git_excluded(repo_path: &Path, entry: &str) {
         "\n"
     };
     let _ = std::fs::write(&exclude, format!("{current}{sep}{entry}\n"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp_repo(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge-mcp-persist-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn read_doc(repo: &Path) -> Value {
+        let s = std::fs::read_to_string(repo.join(".mcp.json")).unwrap();
+        serde_json::from_str(&s).unwrap()
+    }
+
+    #[test]
+    fn creates_fresh_when_missing() {
+        let repo = tmp_repo("fresh");
+        write_persistent(&repo, "https://core.example/", "tok", "proj").unwrap();
+        let doc = read_doc(&repo);
+        let forge = &doc["mcpServers"]["forge"];
+        assert_eq!(forge["type"], "http");
+        assert_eq!(forge["url"], "https://core.example/mcp");
+        assert_eq!(forge["headers"]["Authorization"], "Bearer tok");
+        assert_eq!(forge["headers"]["X-Forge-Project-Slug"], "proj");
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn preserves_other_servers_and_upserts_forge() {
+        let repo = tmp_repo("merge");
+        std::fs::write(
+            repo.join(".mcp.json"),
+            r#"{"mcpServers":{"playwright":{"type":"stdio","command":"npx"}}}"#,
+        )
+        .unwrap();
+        write_persistent(&repo, "https://core.example", "tok", "proj").unwrap();
+        let doc = read_doc(&repo);
+        // user's server survives untouched
+        assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
+        // forge added
+        assert_eq!(doc["mcpServers"]["forge"]["url"], "https://core.example/mcp");
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn overrides_existing_forge() {
+        let repo = tmp_repo("override");
+        std::fs::write(
+            repo.join(".mcp.json"),
+            r#"{"mcpServers":{"forge":{"type":"http","url":"https://stale/mcp"},"other":{"x":1}}}"#,
+        )
+        .unwrap();
+        write_persistent(&repo, "https://fresh.example", "tok2", "proj2").unwrap();
+        let doc = read_doc(&repo);
+        assert_eq!(doc["mcpServers"]["forge"]["url"], "https://fresh.example/mcp");
+        assert_eq!(doc["mcpServers"]["forge"]["headers"]["Authorization"], "Bearer tok2");
+        assert_eq!(doc["mcpServers"]["other"]["x"], 1);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn refuses_to_clobber_malformed_file() {
+        let repo = tmp_repo("malformed");
+        std::fs::write(repo.join(".mcp.json"), "{ not json").unwrap();
+        let err = write_persistent(&repo, "https://core.example", "tok", "proj").unwrap_err();
+        assert!(format!("{err}").contains("not valid JSON"));
+        // original content left intact
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".mcp.json")).unwrap(),
+            "{ not json"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
 }
