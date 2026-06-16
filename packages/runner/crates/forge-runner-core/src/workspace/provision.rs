@@ -9,7 +9,8 @@
 //!   3. clones the repo if the folder is missing (degrades to `needs_manual_setup`
 //!      when there's no repo URL / the clone can't authenticate),
 //!   4. seeds `.claude/skills/`,
-//!   5. writes a persistent `.mcp.json` (Forge MCP),
+//!   5. writes a persistent `.mcp.json` (Forge MCP) + Forge orientation
+//!      (`.forge/orientation.md` + a fixed `CLAUDE.md` pointer),
 //! reporting each stage back so web renders a live stepper. Best-effort by
 //! contract — a failure reports `failed`/`needs_manual_setup`, never panics.
 
@@ -22,6 +23,7 @@ use crate::error::Result;
 use crate::mcp;
 use crate::transport::provision::{self, Provision};
 use crate::transport::CoreClient;
+use crate::workspace::orientation;
 use crate::workspace::skill_sync;
 
 /// Pull all queued provisions and process them sequentially (one device, low
@@ -114,12 +116,17 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         Err(e) => tracing::warn!("[provision] skill sync failed: {e}"),
     }
 
-    // 5. Persistent MCP config.
+    // 5. Persistent MCP config + Forge orientation (.forge/orientation.md +
+    // CLAUDE.md pointer). Both folded under the `writing_mcp` step — neither is a
+    // hard failure, so we log and press on to `ready`.
     report(client, &p.runner_id, "writing_mcp", None).await;
     if let Err(e) =
         mcp::config::write_persistent(&repo_path, client.base(), client.device_token(), &p.slug)
     {
         tracing::warn!("[provision] write .mcp.json failed: {e}");
+    }
+    if let Err(e) = orientation::write_orientation(&repo_path, &p.project_id, &p.slug) {
+        tracing::warn!("[provision] write orientation failed: {e}");
     }
 
     report(client, &p.runner_id, "ready", None).await;
