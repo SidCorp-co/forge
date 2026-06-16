@@ -333,6 +333,10 @@ export const pipelineConfigSchema = z
     onResumeFail: z.enum(['fresh', 'abort']).optional(),
     // ISS-232 — git-aware L2 dependency gate config.
     mergeStates: mergeStatesSchema.optional(),
+    // Platform-managed META skills (forge-skills etc.) auto-install + auto-update
+    // to this project on each device sync. Default ON. Set false to opt out (the
+    // UI toggle writes this) — stage skills are unaffected either way.
+    syncManagedSkills: z.boolean().optional(),
     // Project-default MCP servers seeded into EVERY job's temp `--mcp-config`
     // (forge-runner --strict-mcp-config makes Claude ignore the runner box's
     // own MCP config, so the project must declare the secret-free servers it

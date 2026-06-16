@@ -31,7 +31,7 @@ vi.mock('../db/client.js', () => ({
 
 // The resolver is exercised by effective.test.ts; here we only assert the auth
 // gates fire before it would ever run.
-const resolveRegisteredEffectiveSkills = vi.fn(async () => [
+const resolveInstallableSkills = vi.fn(async () => [
   {
     skillId: 's-1',
     name: 'forge-code',
@@ -44,7 +44,7 @@ const resolveRegisteredEffectiveSkills = vi.fn(async () => [
   },
 ]);
 vi.mock('../skills/effective.js', () => ({
-  resolveRegisteredEffectiveSkills: () => resolveRegisteredEffectiveSkills(),
+  resolveInstallableSkills: () => resolveInstallableSkills(),
   loadDeviceSkillStatus: vi.fn(async () => []),
   loadProjectSkillSyncStatus: vi.fn(async () => ({ devices: [], skills: [] })),
 }));
@@ -91,11 +91,12 @@ describe('GET /api/devices/me/skills', () => {
       headers: { authorization: 'Bearer good' },
     });
     expect(res.status).toBe(403);
-    expect(resolveRegisteredEffectiveSkills).not.toHaveBeenCalled();
+    expect(resolveInstallableSkills).not.toHaveBeenCalled();
   });
 
   it('200 manifest when bound', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: 'run-1' }]); // bound
+    selectLimit.mockResolvedValueOnce([{ id: 'run-1' }]); // bound (assertDeviceBoundToProject)
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]); // project row (projectSyncsManagedSkills)
     const res = await buildApp().request(`/api/devices/me/skills?projectId=${PROJECT_ID}`, {
       headers: { authorization: 'Bearer good' },
     });
