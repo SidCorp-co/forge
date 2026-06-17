@@ -47,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Settings → Pipeline now has a visual Session Groups editor: choose which pipeline stages share one Claude session, with a one-click recommended default and a resume-failure policy.
 - Skill Studio now distinguishes always-on platform meta skills (served live) from disk-synced pipeline skills, and no longer shows misleading sync status for them.
 - You can now create project-scoped API tokens bound to a single project, so MCP clients can drop the X-Forge-Project-Slug header.
+- You can now attach files (images, PDFs, text) to messages in My Conversations, and the agent can read them in its reply.
 
 ## [0.3.0] - 2026-06-11
 
