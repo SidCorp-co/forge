@@ -221,6 +221,139 @@ export function toggleEnabled(value: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Per-stage mode (Auto / Manual / Skip) — one selector replacing the old
+// on/off toggle. Collapses the three backend knobs a stage actually depends on
+// (the `autoX` toggle, `states[x].enabled`, `states[x].mode`) into one choice:
+//   Auto   = pipeline auto-dispatches the stage's skill.
+//            → autoX:true,  states[x] = { enabled:true,  mode:"auto"   }
+//   Manual = stage waits for a human (gate); only a human fires/advances it.
+//            → autoX:false, states[x] = { enabled:true,  mode:"manual" }
+//   Skip   = stage is bypassed; the pipeline soft-skips to the next stage.
+//            → autoX:false, states[x] = { enabled:false }
+// Mirrors the dispatch gate in core `pipeline/orchestrator.ts` (a stage
+// auto-runs only when cfg.enabled && states[x].enabled!==false &&
+// states[x].mode!=="manual" && the autoX toggle is on).
+// ---------------------------------------------------------------------------
+
+export type StageMode = "auto" | "manual" | "skip";
+
+type StageStateEntry = { enabled?: boolean; mode?: "auto" | "manual"; [k: string]: unknown };
+type StagesMap = Record<string, StageStateEntry | undefined>;
+
+function statesOf(cfg: PipelineConfig): StagesMap {
+  return ((cfg.states as StagesMap | undefined) ?? {}) as StagesMap;
+}
+
+/**
+ * Checkpoint statuses with NO pipeline skill (no `autoX` toggle, nothing to
+ * auto-run). They only ever park (a human gate) or skip — never "Auto". Ordered
+ * by where they sit in the lifecycle ladder so the Pipeline tab can interleave
+ * them between the job stages. Mirrors the gaps in core `PIPELINE_STEPS`.
+ */
+export const CHECKPOINT_STAGES: { status: string; label: string; hint: string }[] = [
+  { status: "deploying", label: "Deploy", hint: "developed → testing · checkpoint" },
+  { status: "tested", label: "Tested", hint: "testing → pass · checkpoint" },
+  { status: "pass", label: "Pass", hint: "tested → staging · checkpoint" },
+  { status: "staging", label: "Staging / preview", hint: "pass → released · checkpoint" },
+];
+
+/** Ordered render ladder for the Pipeline tab: job stages interleaved with checkpoints. */
+export const PIPELINE_LADDER: (
+  | { kind: "job"; toggle: StepToggleKey }
+  | { kind: "checkpoint"; status: string }
+)[] = [
+  { kind: "job", toggle: "autoTriage" },
+  { kind: "job", toggle: "autoClarify" },
+  { kind: "job", toggle: "autoPlan" },
+  { kind: "job", toggle: "autoCode" },
+  { kind: "job", toggle: "autoReview" },
+  { kind: "checkpoint", status: "deploying" },
+  { kind: "job", toggle: "autoTest" },
+  { kind: "checkpoint", status: "tested" },
+  { kind: "checkpoint", status: "pass" },
+  { kind: "checkpoint", status: "staging" },
+  { kind: "job", toggle: "autoRelease" },
+  { kind: "job", toggle: "autoFix" },
+];
+
+/** Derive the 3-way mode for a JOB stage (has an autoX toggle + a skill). */
+export function deriveJobStageMode(
+  cfg: PipelineConfig,
+  toggleKey: StepToggleKey,
+  status: string,
+): StageMode {
+  const sc = statesOf(cfg)[status];
+  if (sc?.enabled === false) return "skip";
+  if (sc?.mode === "manual") return "manual";
+  // `autoX` off parks the stage (waits for a human) — same effect as manual.
+  if (!toggleEnabled(cfg[toggleKey])) return "manual";
+  return "auto";
+}
+
+/** Derive the mode for a CHECKPOINT stage — only "manual" (park) or "skip". */
+export function deriveCheckpointMode(cfg: PipelineConfig, status: string): "manual" | "skip" {
+  return statesOf(cfg)[status]?.enabled === false ? "skip" : "manual";
+}
+
+/** Flip a toggle's `enabled` while preserving its object form ({enabled,runner,model}). */
+function withToggleEnabled(existing: unknown, enabled: boolean): unknown {
+  if (existing && typeof existing === "object") return { ...(existing as object), enabled };
+  return enabled;
+}
+
+function mergeStateEntry(
+  cfg: PipelineConfig,
+  status: string,
+  patch: StageStateEntry,
+): StagesMap {
+  const states = statesOf(cfg);
+  return { ...states, [status]: { ...(states[status] ?? {}), ...patch } };
+}
+
+/** Apply a 3-way mode to a JOB stage → a new PipelineConfig (autoX + states[status]). */
+export function applyJobStageMode(
+  cfg: PipelineConfig,
+  toggleKey: StepToggleKey,
+  status: string,
+  mode: StageMode,
+): PipelineConfig {
+  if (mode === "auto") {
+    return {
+      ...cfg,
+      [toggleKey]: withToggleEnabled(cfg[toggleKey], true),
+      states: mergeStateEntry(cfg, status, { enabled: true, mode: "auto" }),
+    };
+  }
+  if (mode === "manual") {
+    return {
+      ...cfg,
+      [toggleKey]: withToggleEnabled(cfg[toggleKey], false),
+      states: mergeStateEntry(cfg, status, { enabled: true, mode: "manual" }),
+    };
+  }
+  return {
+    ...cfg,
+    [toggleKey]: withToggleEnabled(cfg[toggleKey], false),
+    states: mergeStateEntry(cfg, status, { enabled: false }),
+  };
+}
+
+/** Apply a mode to a CHECKPOINT stage (manual = park / skip = bypass). */
+export function applyCheckpointMode(
+  cfg: PipelineConfig,
+  status: string,
+  mode: "manual" | "skip",
+): PipelineConfig {
+  return {
+    ...cfg,
+    states:
+      mode === "manual"
+        ? mergeStateEntry(cfg, status, { enabled: true, mode: "manual" })
+        : mergeStateEntry(cfg, status, { enabled: false }),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Session groups (ISS-494)
 // ---------------------------------------------------------------------------
 
