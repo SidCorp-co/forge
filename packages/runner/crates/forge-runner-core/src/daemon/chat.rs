@@ -167,9 +167,15 @@ async fn stage_attachments(
 }
 
 /// Append a trailing section to the prompt pointing claude at the local files,
-/// so it `Read`s them (image vision + text/PDF) within the turn.
+/// so it `Read`s them (image vision + text/PDF) within the turn. When the user
+/// sent files with no caption (files-only turn), seed a default instruction so
+/// claude has something to act on instead of an empty prompt.
 fn augment_prompt(prompt: &str, paths: &[PathBuf]) -> String {
-    let mut out = String::from(prompt);
+    let mut out = if prompt.trim().is_empty() {
+        String::from("The user attached the following file(s) with no message. Look at each and describe / summarize its contents.")
+    } else {
+        String::from(prompt)
+    };
     out.push_str(
         "\n\n[Attached files — read each with the Read tool; these are local paths on this machine]\n",
     );

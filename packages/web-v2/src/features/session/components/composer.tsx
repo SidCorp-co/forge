@@ -228,6 +228,9 @@ export function Composer({
                 ref={fileInputRef}
                 type="file"
                 multiple
+                // Hint the native picker toward the allow-list (acceptFiles still
+                // re-validates every pick; `accept` is advisory, not a guarantee).
+                accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/markdown,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md"
                 className="hidden"
                 onChange={onPick}
               />

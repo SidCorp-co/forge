@@ -90,6 +90,13 @@ agentSessionAttachmentRoutes.post(
     const { sessionId } = c.req.valid('param');
     await authorizeSession(c, sessionId);
 
+    // Upload is a user-only action (the web composer). A device principal has no
+    // userId, and session_attachments.uploader_id is NOT NULL — reject rather
+    // than crash on the insert. Runners only ever GET (download), never POST.
+    if (c.get('principal') === 'device') {
+      throw forbidden('device principals cannot upload chat attachments');
+    }
+
     const body = await c.req.parseBody();
     const file = body['file'];
     if (!(file instanceof File)) throw badRequest('missing "file" field');
@@ -103,7 +110,7 @@ agentSessionAttachmentRoutes.post(
         mime,
         bytes: buffer,
         uploaderId: c.get('userId'),
-        uploaderDeviceId: c.get('principal') === 'device' ? (c.get('deviceId') ?? null) : null,
+        uploaderDeviceId: null,
       });
       return c.json(persisted, 201);
     } catch (err) {
