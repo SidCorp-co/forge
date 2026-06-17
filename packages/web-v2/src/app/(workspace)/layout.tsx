@@ -11,11 +11,13 @@ import {
   NotificationsMenu,
   PinnedTabBar,
   ProjectMark,
+  SlideOver,
   Icon,
   type NavItem,
   type Command,
   type Crumb,
 } from "@/design";
+import { ChatScreen } from "@/features/session/components/chat-screen";
 import { cn } from "@/lib/utils/cn";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -139,6 +141,15 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  // Global Agent Chat dock (ISS-500): the "Ask agent" affordance lives in the
+  // header so a conversation can be opened from any screen. The open/closed
+  // state is owned here (single source) and persisted per tab — reusing the key
+  // + `syncTabs: false` that the in-Agents-screen dock used (ISS-378 AC#7), so a
+  // tab that had it open keeps it; opening it in one tab must not pop it open in
+  // every other tab.
+  const [chatOpen, setChatOpen] = usePersistedState("web-v2:agents-chat-open", false, {
+    syncTabs: false,
+  });
   const mainRef = useRef<HTMLElement>(null);
   // Hover-open coordination for the expanded-rail project switcher: the trigger
   // (NavRail) and the panel (ProjectFlyout) are siblings, so the open + close
@@ -761,6 +772,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
                 ? router.push(`/projects/${slug}/issues?new=1`)
                 : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" })
             }
+            askAgentActive={chatOpen}
+            onAskAgent={() =>
+              railProject
+                ? setChatOpen((v) => !v)
+                : toast({ title: "Ask agent", description: "Open a project to ask the agent.", tone: "info" })
+            }
             scrolled={scrolled}
           />
           {notificationsOpen && (
@@ -778,6 +795,21 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             </>
           )}
         </div>
+
+        {/* Global Agent Chat dock (ISS-500) — opened from the header "Ask agent"
+            action, scoped to the active (or last-visited) project so it works
+            from any screen. Mounted once here; the Agents screen no longer hosts
+            its own desktop dock. */}
+        {railProject && (
+          <SlideOver
+            open={chatOpen}
+            onClose={() => setChatOpen(false)}
+            title="My conversations"
+            width="clamp(560px, 60vw, 1024px)"
+          >
+            <ChatScreen projectId={railProject.id} />
+          </SlideOver>
+        )}
 
         <PinnedTabBar
           tabs={pinnedViews.views}

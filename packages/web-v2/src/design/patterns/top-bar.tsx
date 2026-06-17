@@ -24,6 +24,10 @@ export interface TopBarProps {
   onCommandPalette?: () => void;
   onNotifications?: () => void;
   onNewIssue?: () => void;
+  /** Opens the global Agent Chat dock. Renders an "Ask agent" action when set. */
+  onAskAgent?: () => void;
+  /** Highlights the Ask-agent action as active while the chat dock is open. */
+  askAgentActive?: boolean;
   /** Opens the mobile nav drawer. Renders a hamburger button below `md`. */
   onMenu?: () => void;
   /** Global display density. Renders a Comfortable/Compact toggle when set. */
@@ -41,6 +45,8 @@ export function TopBar({
   onCommandPalette,
   onNotifications,
   onNewIssue,
+  onAskAgent,
+  askAgentActive = false,
   onMenu,
   density,
   onDensityChange,
@@ -110,6 +116,18 @@ export function TopBar({
             </span>
           )}
         </button>
+        {onAskAgent && (
+          <Button
+            variant={askAgentActive ? "primary" : "secondary"}
+            size="sm"
+            icon="agent"
+            onClick={onAskAgent}
+            aria-label="Ask agent"
+          >
+            {/* Icon-only below sm so the header doesn't wrap at 375px (ISS-308 C2). */}
+            <span className="hidden sm:inline">Ask agent</span>
+          </Button>
+        )}
         {/* Icon-only below sm so the header doesn't wrap at 375px (ISS-308 C2). */}
         <Button variant="primary" size="sm" icon="plus" onClick={onNewIssue} aria-label="New issue">
           <span className="hidden sm:inline">New issue</span>
