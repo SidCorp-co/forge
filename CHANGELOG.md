@@ -48,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Skill Studio now distinguishes always-on platform meta skills (served live) from disk-synced pipeline skills, and no longer shows misleading sync status for them.
 - You can now create project-scoped API tokens bound to a single project, so MCP clients can drop the X-Forge-Project-Slug header.
 - You can now attach files (images, PDFs, text) to messages in My Conversations, and the agent can read them in its reply.
+- You can now start an agent conversation from the "Ask agent" button in the global app header — no need to open the Agents screen first.
 
 ## [0.3.0] - 2026-06-11
 
