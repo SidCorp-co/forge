@@ -1925,6 +1925,49 @@ export const agentSessionTurnsRelations = relations(agentSessionTurns, ({ one })
   }),
 }));
 
+// ISS-499 — files a user attaches to an interactive chat turn ("My
+// conversations"). Mirrors `comment_attachments` (user notNull, device
+// nullable audit shape). The runner auth-downloads these to a local path so
+// claude can Read them (image vision + text/PDF) within the turn.
+export const sessionAttachments = pgTable(
+  'session_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => agentSessions.id, { onDelete: 'cascade' }),
+    uploaderId: uuid('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    // Populated when the uploader was a device principal (MCP path); null for
+    // user-principal uploads (REST multipart from web-v2).
+    uploaderDeviceId: uuid('uploader_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    path: text('path').notNull(),
+    mime: text('mime').notNull(),
+    size: integer('size').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionIdx: index('session_attachments_session_id_idx').on(t.sessionId),
+    uploaderDeviceIdx: index('session_attachments_uploader_device_id_idx').on(t.uploaderDeviceId),
+  }),
+);
+
+export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one }) => ({
+  session: one(agentSessions, {
+    fields: [sessionAttachments.sessionId],
+    references: [agentSessions.id],
+  }),
+  uploader: one(users, { fields: [sessionAttachments.uploaderId], references: [users.id] }),
+  uploaderDevice: one(devices, {
+    fields: [sessionAttachments.uploaderDeviceId],
+    references: [devices.id],
+  }),
+}));
+
 // v1 EPIC 5 (ISS-274) — per-project chat/runtime config. One row per project,
 // upserted via PUT /api/app-config/:projectId. `chatProviderId` is free-form
 // text until EPIC 1 (ISS-270) ships the chat-provider registry that validates

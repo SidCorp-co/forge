@@ -66,6 +66,16 @@ export type CanonicalBlock =
  * Stored at `agent_session_turns.content.value` (turns path) or directly in
  * `agent_sessions.messages` (messages fallback).
  */
+/** A file attached to a chat user turn (ISS-499). Same `{id,name,mime,size,url}`
+ * shape the shared `AttachmentList` renderer accepts. */
+export interface SessionAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
+}
+
 export interface MessageEntry {
   id?: string;
   role?: "user" | "assistant" | "tool" | "system";
@@ -77,6 +87,8 @@ export interface MessageEntry {
   contentBlocks?: ContentBlock[];
   /** Ordered canonical blocks (CLI-runner shape). */
   blocks?: CanonicalBlock[];
+  /** Files the user attached to this turn (ISS-499); persisted on the user message. */
+  attachments?: SessionAttachment[];
 }
 
 export type TurnRole = "user" | "assistant" | "tool";
@@ -120,6 +132,8 @@ export interface ConversationItem {
   text: string;
   /** Ordered render blocks (kind === 'agent'). */
   blocks: RenderBlock[];
+  /** Files attached to a user prompt (ISS-499); empty for agent turns. */
+  attachments: SessionAttachment[];
   timestamp?: number;
   editedAt: string | null;
 }
@@ -309,7 +323,8 @@ export function parseTurns(turns: TurnRow[]): ConversationItem[] {
     const role = turn.role;
     if (role === "user") {
       const text = entryText(entry.content);
-      if (!text) continue;
+      const attachments = entry.attachments ?? [];
+      if (!text && attachments.length === 0) continue;
       items.push({
         id: turn.id,
         turnId: turn.id,
@@ -318,6 +333,7 @@ export function parseTurns(turns: TurnRow[]): ConversationItem[] {
         kind: "prompt",
         text,
         blocks: [],
+        attachments,
         timestamp: entry.timestamp,
         editedAt: turn.editedAt,
       });
@@ -332,6 +348,7 @@ export function parseTurns(turns: TurnRow[]): ConversationItem[] {
         kind: "agent",
         text: "",
         blocks,
+        attachments: [],
         timestamp: entry.timestamp,
         editedAt: turn.editedAt,
       });
@@ -357,7 +374,8 @@ export function parseMessages(messages: unknown[]): ConversationItem[] {
     const id = entry.id ?? `msg-${index}`;
     if (role === "user") {
       const text = entryText(entry.content);
-      if (!text) return;
+      const attachments = entry.attachments ?? [];
+      if (!text && attachments.length === 0) return;
       items.push({
         id,
         turnId: "",
@@ -366,6 +384,7 @@ export function parseMessages(messages: unknown[]): ConversationItem[] {
         kind: "prompt",
         text,
         blocks: [],
+        attachments,
         timestamp: entry.timestamp,
         editedAt: null,
       });
@@ -380,6 +399,7 @@ export function parseMessages(messages: unknown[]): ConversationItem[] {
         kind: "agent",
         text: "",
         blocks,
+        attachments: [],
         timestamp: entry.timestamp,
         editedAt: null,
       });

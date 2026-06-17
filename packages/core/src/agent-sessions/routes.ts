@@ -201,18 +201,29 @@ const startBodySchema = z
     type: z.string().max(80).optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
+    // ISS-499 — session attachments to attach to the first turn.
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
   .strict();
 
 const sendBodySchema = z
   .object({
     sessionId: z.uuid(),
-    message: z.string().min(1).max(40_000),
+    // ISS-499 — empty allowed when attachmentIds are present (files-only send,
+    // e.g. attach a screenshot with no caption); the refine below enforces that
+    // a turn carries either text or at least one attachment.
+    message: z.string().max(40_000),
     claudeSessionId: z.string().max(500).nullable().optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
+    // ISS-499 — session attachments to attach to this turn.
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
-  .strict();
+  .strict()
+  .refine((d) => d.message.trim().length > 0 || (d.attachmentIds?.length ?? 0) > 0, {
+    message: 'message or attachmentIds required',
+    path: ['message'],
+  });
 
 const abortBodySchema = z
   .object({
@@ -388,6 +399,7 @@ agentSessionRoutes.post(
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,
       preBuilt: input.preBuilt ?? false,
+      attachmentIds: input.attachmentIds,
       broadcastEvent: 'agent-session.created',
     });
 
@@ -448,6 +460,7 @@ agentSessionRoutes.post(
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,
       claudeSessionId: input.claudeSessionId ?? null,
+      attachmentIds: input.attachmentIds,
     });
     return c.json({ ok: true });
   },

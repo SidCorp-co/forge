@@ -6,6 +6,7 @@
 // text / tool / todos blocks with a streaming caret on the live tail.
 import { useState } from "react";
 import { Button, Icon, StreamingText } from "@/design";
+import { AttachmentList } from "@/features/issues/components/attachment-list";
 import type { AgentTodo, ConversationItem } from "../types";
 import { ToolCard } from "./tool-card";
 
@@ -107,6 +108,11 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
           <p className="fg-body whitespace-pre-wrap text-on-accent">{item.text}</p>
         )}
       </div>
+      {!editing && item.attachments.length > 0 && (
+        <div className="mt-2 flex max-w-[88%] justify-end sm:max-w-[80%]">
+          <AttachmentList rows={item.attachments} />
+        </div>
+      )}
       {!editing && !readOnly && (
         <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(item.text); setEditing(true); }} className="min-h-11">

@@ -2,7 +2,14 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { commentAttachments, comments, issueAttachments, issues } from '../../db/schema.js';
+import {
+  agentSessions,
+  commentAttachments,
+  comments,
+  issueAttachments,
+  issues,
+  sessionAttachments,
+} from '../../db/schema.js';
 import { getStorage } from '../../storage/index.js';
 import {
   UPLOAD_TICKET_TTL_MS,
@@ -26,7 +33,7 @@ const inputSchema = z
     action: z.enum(['request', 'fetch']),
     data: z
       .object({
-        target: z.enum(['issue', 'comment']),
+        target: z.enum(['issue', 'comment', 'session']),
         // request: the file to upload
         targetId: z.uuid().optional(),
         name: z.string().trim().min(1).max(200).optional(),
@@ -84,6 +91,16 @@ async function loadCommentProjectId(commentId: string): Promise<string> {
   return row.projectId;
 }
 
+async function loadSessionProjectId(sessionId: string): Promise<string> {
+  const [row] = await db
+    .select({ projectId: agentSessions.projectId })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  if (!row) throw new Error('NOT_FOUND: session not found');
+  return row.projectId;
+}
+
 interface AttachmentForFetch {
   name: string;
   mime: string;
@@ -94,9 +111,30 @@ interface AttachmentForFetch {
 }
 
 async function loadAttachmentForFetch(
-  target: 'issue' | 'comment',
+  target: 'issue' | 'comment' | 'session',
   attachmentId: string,
 ): Promise<AttachmentForFetch> {
+  if (target === 'session') {
+    const [row] = await db
+      .select({
+        name: sessionAttachments.name,
+        mime: sessionAttachments.mime,
+        size: sessionAttachments.size,
+        path: sessionAttachments.path,
+        sessionId: sessionAttachments.sessionId,
+        projectId: agentSessions.projectId,
+      })
+      .from(sessionAttachments)
+      .innerJoin(agentSessions, eq(agentSessions.id, sessionAttachments.sessionId))
+      .where(eq(sessionAttachments.id, attachmentId))
+      .limit(1);
+    if (!row) throw new Error('NOT_FOUND: attachment not found');
+    const { sessionId, ...rest } = row;
+    return {
+      ...rest,
+      url: `/api/agent-sessions/${sessionId}/attachments/${attachmentId}/download`,
+    };
+  }
   if (target === 'issue') {
     const [row] = await db
       .select({
@@ -135,15 +173,15 @@ const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown']);
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_uploads',
   description:
-    'Upload (action=request) or READ (action=fetch) an issue/comment attachment.\n' +
+    'Upload (action=request) or READ (action=fetch) an issue/comment/session attachment.\n' +
     'action=request — mint a short-lived, single-use upload URL WITHOUT base64-inlining ' +
-    'bytes through the model context (presigned-URL pattern). data={target:"issue"|"comment", ' +
+    'bytes through the model context (presigned-URL pattern). data={target:"issue"|"comment"|"session", ' +
     'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. Returns {uploadId, method:"PUT", ' +
     'uploadUrl, uploadPath, expiresIn (~300s), maxBytes}. Upload out-of-band with NO auth ' +
     'header: `curl -X PUT -T <localPath> "<uploadUrl>"` (if uploadUrl is null, prepend your ' +
     'Forge API origin to uploadPath). The PUT returns the attachment {id,name,mime,size,url}.\n' +
     "action=fetch — read an EXISTING attachment's content so you can analyze it. " +
-    'data={target:"issue"|"comment", attachmentId:<uuid from any attachments[].id>}. Images ' +
+    'data={target:"issue"|"comment"|"session", attachmentId:<uuid from any attachments[].id>}. Images ' +
     '(png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot); text/markdown ' +
     'return inline as text. PDFs/video and oversized files (> inline cap) return metadata + the ' +
     'download url only (not inlined). Use this whenever an issue/comment references an attached ' +
@@ -225,7 +263,9 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const projectId =
       target === 'issue'
         ? await loadIssueProjectId(targetId)
-        : await loadCommentProjectId(targetId);
+        : target === 'session'
+          ? await loadSessionProjectId(targetId)
+          : await loadCommentProjectId(targetId);
     await assertPrincipalIsWriter(principal, projectId);
 
     const mime = input.data.mime ?? mimeFromName(name);
