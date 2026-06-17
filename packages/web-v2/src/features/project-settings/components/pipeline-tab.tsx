@@ -54,7 +54,9 @@ import {
   CHECKPOINT_STAGES,
   deriveCheckpointMode,
   deriveJobStageMode,
+  isCheckpointConfigured,
   PIPELINE_LADDER,
+  PRIMARY_CHECKPOINT,
   STEP_TOGGLE_LABELS,
   type PipelineConfig,
   type StageMode,
@@ -230,6 +232,13 @@ export function PipelineTab({
   const server = cfgQ.data?.pipelineConfig ?? {};
   const masterEnabled = draft.enabled !== false;
 
+  // Keep the ladder tidy: always show the canonical `staging` gate, but only
+  // surface the legacy checkpoints (deploying/tested/pass) for projects that
+  // deliberately configured them (a manual gate or a skip). Decided from the
+  // saved config so rows don't flicker mid-edit.
+  const checkpointVisible = (status: string) =>
+    status === PRIMARY_CHECKPOINT || isCheckpointConfigured(server, status);
+
   const dirty =
     (server.enabled !== false) !== masterEnabled ||
     PIPELINE_LADDER.some((row) =>
@@ -286,8 +295,9 @@ export function PipelineTab({
         <p className="fg-body-sm mb-1 text-muted">
           Pick how each stage runs. <b>Auto</b> = the pipeline runs it automatically. <b>Manual</b>{" "}
           = the issue stops here and waits for a human to advance it (an approval gate). <b>Skip</b>{" "}
-          = the stage is bypassed and the pipeline jumps to the next one. Checkpoints (Deploy /
-          Tested / Pass / Staging) have no skill — they can only gate or skip.
+          = the stage is bypassed and the pipeline jumps to the next one. <b>Staging</b> is the
+          pre-production checkpoint (gate or skip — no skill); other checkpoints appear only if this
+          project uses them.
         </p>
         {libraryHref && (
           <p className="fg-caption mb-4">
@@ -329,6 +339,7 @@ export function PipelineTab({
           />
           {PIPELINE_LADDER.map((row) => {
             if (row.kind === "checkpoint") {
+              if (!checkpointVisible(row.status)) return null;
               const meta = CHECKPOINT_STAGES.find((c) => c.status === row.status);
               if (!meta) return null;
               const mode = deriveCheckpointMode(draft, row.status);

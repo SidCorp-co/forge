@@ -295,6 +295,21 @@ export function deriveCheckpointMode(cfg: PipelineConfig, status: string): "manu
   return statesOf(cfg)[status]?.enabled === false ? "skip" : "manual";
 }
 
+/**
+ * A checkpoint is "in use" only when a project gave it a deliberate (non-default)
+ * config — an explicit skip (`enabled:false`) or a manual gate (`mode:"manual"`).
+ * A default `{ enabled:true, mode:"auto" }` (or absent) checkpoint is noise, so
+ * the Pipeline tab hides it. `staging` is always shown (the canonical gate), so
+ * this only gates the legacy `deploying`/`tested`/`pass` rows.
+ */
+export function isCheckpointConfigured(cfg: PipelineConfig, status: string): boolean {
+  const sc = statesOf(cfg)[status];
+  return sc?.enabled === false || sc?.mode === "manual";
+}
+
+/** The checkpoint always surfaced as the canonical pre-production gate. */
+export const PRIMARY_CHECKPOINT = "staging";
+
 /** Flip a toggle's `enabled` while preserving its object form ({enabled,runner,model}). */
 function withToggleEnabled(existing: unknown, enabled: boolean): unknown {
   if (existing && typeof existing === "object") return { ...(existing as object), enabled };
