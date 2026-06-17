@@ -7,6 +7,10 @@ export interface SegmentOption<T extends string> {
   value: T;
   label?: string;
   icon?: IconName;
+  /** Render this option dimmed + non-selectable (e.g. "Auto" on a no-skill stage). */
+  disabled?: boolean;
+  /** Native title tooltip explaining why it's disabled. */
+  title?: string;
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -28,10 +32,16 @@ export function SegmentedControl<T extends string>({
           <button
             key={opt.value}
             type="button"
-            onClick={() => onChange?.(opt.value)}
+            disabled={opt.disabled}
+            title={opt.title}
+            onClick={() => !opt.disabled && onChange?.(opt.value)}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-[13px] font-semibold transition-colors duration-[120ms]",
-              active ? "bg-surface text-fg shadow-xs" : "text-muted hover:text-fg",
+              opt.disabled
+                ? "cursor-not-allowed text-muted opacity-50"
+                : active
+                  ? "bg-surface text-fg shadow-xs"
+                  : "text-muted hover:text-fg",
             )}
           >
             {opt.icon && <Icon name={opt.icon} size={15} />}

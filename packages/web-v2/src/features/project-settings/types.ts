@@ -85,6 +85,7 @@ export const STEP_TOGGLE_KEYS = [
   "autoCode",
   "autoReview",
   "autoTest",
+  "autoStage",
   "autoFix",
   "autoRelease",
 ] as const;
@@ -193,9 +194,15 @@ export const STEP_TOGGLE_LABELS: Record<
   },
   autoTest: {
     label: "Auto test",
-    hint: "testing → released",
+    hint: "testing → pass",
     stage: "testing",
     skillName: "forge-test",
+  },
+  autoStage: {
+    label: "Deploy staging",
+    hint: "pass → staging",
+    stage: "pass",
+    skillName: "forge-staging",
   },
   autoFix: {
     label: "Auto fix",
@@ -253,8 +260,7 @@ function statesOf(cfg: PipelineConfig): StagesMap {
 export const CHECKPOINT_STAGES: { status: string; label: string; hint: string }[] = [
   { status: "deploying", label: "Deploy", hint: "developed → testing · checkpoint" },
   { status: "tested", label: "Tested", hint: "testing → pass · checkpoint" },
-  { status: "pass", label: "Pass", hint: "tested → staging · checkpoint" },
-  { status: "staging", label: "Staging / preview", hint: "pass → released · checkpoint" },
+  { status: "staging", label: "Staging / preview", hint: "approval gate · awaiting release" },
 ];
 
 /** Ordered render ladder for the Pipeline tab: job stages interleaved with checkpoints. */
@@ -270,7 +276,7 @@ export const PIPELINE_LADDER: (
   { kind: "checkpoint", status: "deploying" },
   { kind: "job", toggle: "autoTest" },
   { kind: "checkpoint", status: "tested" },
-  { kind: "checkpoint", status: "pass" },
+  { kind: "job", toggle: "autoStage" },
   { kind: "checkpoint", status: "staging" },
   { kind: "job", toggle: "autoRelease" },
   { kind: "job", toggle: "autoFix" },

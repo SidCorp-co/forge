@@ -39,6 +39,7 @@ export const REGISTRY_JOB_TYPES = [
   'code',
   'review',
   'test',
+  'staging',
   'release',
   'fix',
   'custom',
@@ -56,6 +57,7 @@ export const REGISTRY_STEP_TOGGLE_KEYS = [
   'autoCode',
   'autoReview',
   'autoTest',
+  'autoStage',
   'autoFix',
   'autoRelease',
 ] as const;

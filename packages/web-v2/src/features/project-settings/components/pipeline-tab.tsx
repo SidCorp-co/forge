@@ -69,7 +69,10 @@ const JOB_MODE_OPTIONS: SegmentOption<StageMode>[] = [
   { value: "skip", label: "Skip" },
 ];
 
+// Checkpoints have no skill, so "Auto" is shown for a uniform control but
+// disabled (nothing to auto-run) — only Manual (hold) / Skip are selectable.
 const CHECKPOINT_MODE_OPTIONS: SegmentOption<StageMode>[] = [
+  { value: "auto", label: "Auto", disabled: true, title: "No skill at this stage — nothing to auto-run" },
   { value: "manual", label: "Manual" },
   { value: "skip", label: "Skip" },
 ];

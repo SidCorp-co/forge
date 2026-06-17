@@ -167,7 +167,9 @@ export const userPromptPolicySchema = z
       .object({
         enabled: z.boolean().default(false),
         injectFromSteps: z
-          .array(z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'release', 'fix']))
+          .array(
+            z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'stage', 'release', 'fix']),
+          )
           .default([]),
         fallbackToRawIssueFieldIfMissing: z.boolean().default(true),
         requireHandoffWrite: z.boolean().default(true),
@@ -317,6 +319,7 @@ export const pipelineConfigSchema = z
     autoCode: stepToggleSchema.optional(),
     autoReview: stepToggleSchema.optional(),
     autoTest: stepToggleSchema.optional(),
+    autoStage: stepToggleSchema.optional(),
     autoFix: stepToggleSchema.optional(),
     autoRelease: stepToggleSchema.optional(),
     // ISS-232 Phase 3 — `maxConcurrentIssues` was removed. The per-project

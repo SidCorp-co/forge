@@ -10,7 +10,7 @@
 
 import type { IssueStatus, JobType, RunnerType } from '../db/schema.js';
 
-export const PIPELINE_REGISTRY_VERSION = 3;
+export const PIPELINE_REGISTRY_VERSION = 4;
 
 // `workingStatus` — the in-flight status the step's agent flips the issue to
 // when it BEGINS work (via `forge_step_start`), so the board shows in-flight
@@ -66,6 +66,18 @@ export const PIPELINE_STEPS = [
     skillName: 'forge-test',
     workingStatus: null,
   },
+  // Staging-deploy step: triggers at `pass` (QA passed), deploys the ISS-* change
+  // to the staging/preview env, then advances to `staging`. `staging` itself has
+  // NO step — it's the natural human approval gate (parks; the reconciler ignores
+  // no-step statuses, so it never loops). Work-that-advances at `pass`, gate at
+  // `staging`: keeps "deploy" and "approve" cleanly separated.
+  {
+    status: 'pass',
+    jobType: 'staging',
+    toggle: 'autoStage',
+    skillName: 'forge-staging',
+    workingStatus: null,
+  },
   {
     status: 'reopen',
     jobType: 'fix',
@@ -113,8 +125,8 @@ export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map
 // it; without the entry the dispatcher would permanently fail the job as
 // `runner_unsupported_type`.
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify', 'smoke'],
-  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify', 'smoke'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke'],
+  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke'],
 };
 
 export interface JobTypeMapping {

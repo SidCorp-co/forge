@@ -559,6 +559,11 @@ export const jobTypes = [
   'code',
   'review',
   'test',
+  // Canonical staging-deploy step (status `pass` → deploy to the staging/preview
+  // env, advance to `staging`). jobType `staging` keeps the forge-${jobType}
+  // convention (skill `forge-staging`, which already exists). `staging` the
+  // ISSUE STATUS stays a no-step approval gate — distinct enum from this jobType.
+  'staging',
   'release',
   'fix',
   'custom',

@@ -608,6 +608,7 @@ describe('db/schema — jobs', () => {
       'code',
       'review',
       'test',
+      'staging',
       'release',
       'fix',
       'custom',

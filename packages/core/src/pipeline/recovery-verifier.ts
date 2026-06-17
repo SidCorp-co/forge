@@ -48,6 +48,7 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   code: ['developed'],
   review: ['testing', 'reopen'],
   test: ['released', 'reopen', 'tested', 'pass'],
+  staging: ['staging', 'reopen'],
   fix: ['developed'],
   release: ['released', 'closed'],
   custom: [],
