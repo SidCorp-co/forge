@@ -34,7 +34,7 @@ import { notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { createNotification } from '../notifications/routes.js';
 
-export type WedgeHop = 'ack' | 'claim' | 'heartbeat' | 'result';
+export type WedgeHop = 'ack' | 'claim' | 'heartbeat' | 'result' | 'dispatch';
 
 export interface PipelineWedgeEvent {
   projectId: string;

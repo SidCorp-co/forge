@@ -100,6 +100,7 @@ const {
   alarmNeverClaimedDispatches,
   reapOrphanedOneShotRuns,
   reapOrphanedIssueRuns,
+  detectStalledDependencies,
 } = await import('./sweeper.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
@@ -233,7 +234,12 @@ describe('alarmOrphanedJobs — demoted to alarm-only (was ISS-280 reconcile)', 
       'loop-miss',
     );
     expect(emitWedgeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ hop: 'heartbeat', entity: 'job', entityId: 'orphan-1', issueId: 'i1' }),
+      expect.objectContaining({
+        hop: 'heartbeat',
+        entity: 'job',
+        entityId: 'orphan-1',
+        issueId: 'i1',
+      }),
     );
   });
 });
@@ -444,5 +450,57 @@ describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {
     const result = await runPipelineSweep();
     expect(result.queueSnapshots).toBe(0);
     expect(result).toHaveProperty('backstopProjects');
+  });
+});
+
+describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
+  const stalledRow = {
+    job_id: '11111111-1111-4111-8111-111111111111',
+    project_id: '22222222-2222-4222-8222-222222222222',
+    job_type: 'code',
+    issue_id: '33333333-3333-4333-8333-333333333333',
+    blocker_id: '44444444-4444-4444-8444-444444444444',
+    blocker_status: 'staging',
+    kind: 'blocks',
+    queued_secs: 7200,
+  };
+
+  it('emits a deduped dispatch-hop wedge per parked-blocker deadlock', async () => {
+    dbExecute.mockResolvedValueOnce([stalledRow]);
+    const res = await detectStalledDependencies(new Date());
+    expect(res.detected).toBe(1);
+    expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+    expect(emitWedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hop: 'dispatch',
+        entity: 'job',
+        entityId: stalledRow.job_id,
+        issueId: stalledRow.issue_id,
+        projectId: stalledRow.project_id,
+      }),
+    );
+  });
+
+  it('dedupes multiple rows for the same job (two blockers → one wedge)', async () => {
+    dbExecute.mockResolvedValueOnce([
+      stalledRow,
+      { ...stalledRow, blocker_id: '55555555-5555-4555-8555-555555555555' },
+    ]);
+    const res = await detectStalledDependencies(new Date());
+    expect(res.detected).toBe(1);
+    expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('no rows → no wedge, detected 0', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    const res = await detectStalledDependencies(new Date());
+    expect(res.detected).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
+  });
+
+  it('swallows a query error (best-effort, returns 0)', async () => {
+    dbExecute.mockRejectedValueOnce(new Error('boom'));
+    const res = await detectStalledDependencies(new Date());
+    expect(res.detected).toBe(0);
   });
 });

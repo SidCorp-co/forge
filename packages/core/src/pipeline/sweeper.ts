@@ -76,6 +76,11 @@ export interface IssueRunReapResult {
   reaped: number;
 }
 
+export interface StallDetectResult {
+  // pipeline_wedge notifications emitted for never-clearing dependency deadlocks.
+  detected: number;
+}
+
 export interface SweepResult {
   durationMs: number;
   /** ISS-449 — the primary closed-loop pass (reaps). */
@@ -87,6 +92,8 @@ export interface SweepResult {
   orphanedOneShotRuns: OneShotRunReapResult;
   /** ISS-461 — issue runs closed because their backing issue is terminal (reaps). */
   orphanedIssueRuns: IssueRunReapResult;
+  /** ISS-442 — dependency deadlocks surfaced (a gate that will never clear). */
+  stalledDependencies: StallDetectResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -112,6 +119,13 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   // predating that wiring) leaks the run `running`/`paused` forever and inflates
   // the dashboard live-run count. Run-axis backstop; still an ACTIVE reaper.
   const orphanedIssueRuns = await reapOrphanedIssueRuns(now);
+  // ISS-442 — surface dependency deadlocks the dispatcher can't resolve: a job
+  // queued past the grace window whose `blocks`/`decomposes` blocker is parked
+  // (merged_at NULL, not closed, no active job to ever stamp it). Static config
+  // validation can't catch a no-op skill on an enabled+auto merge stage, so this
+  // runtime pass is the backstop (anhome-class wedge). Detect + escalate only —
+  // never mutates state (operator fixes mergeStates or marks the blocker merged).
+  const stalledDependencies = await detectStalledDependencies(now);
   const backstopProjects = await runDispatcherBackstop();
   // ISS-381 (2.2) — snapshot per-project queue depth. Best-effort: a failure
   // here must never abort the tick or block the heartbeat below.
@@ -129,9 +143,107 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     neverClaimedDispatches,
     orphanedOneShotRuns,
     orphanedIssueRuns,
+    stalledDependencies,
     backstopProjects,
     queueSnapshots,
   };
+}
+
+/**
+ * Grace window before a still-queued, dependency-blocked job is treated as a
+ * deadlock rather than a normal wait. Long by design: a legit blocker can take
+ * a while to merge. Override with `FORGE_STALL_GRACE_MS`.
+ */
+const STALL_GRACE_MS = (() => {
+  const env = Number(process.env.FORGE_STALL_GRACE_MS);
+  return Number.isFinite(env) && env > 0 ? env : 45 * 60_000;
+})();
+
+type StalledRow = {
+  job_id: string;
+  project_id: string;
+  job_type: string;
+  issue_id: string;
+  blocker_id: string;
+  blocker_status: string;
+  kind: string;
+  queued_secs: number;
+};
+
+/**
+ * ISS-442 — detect dependency deadlocks the dispatcher will never resolve and
+ * surface them via `emitPipelineWedge` (deduped per job, fans out to the owner,
+ * feeds the interventions metric). A job is deadlocked when it has sat `queued`
+ * past {@link STALL_GRACE_MS} and its gate's blocker is PARKED: `merged_at` is
+ * NULL, the blocker isn't `closed`, and the blocker has NO active job that could
+ * ever advance it to stamp `merged_at`. Mirrors the `blockedBy` /
+ * `decomposeChildrenPending` predicates in `jobs/dispatch-gates.ts` (same
+ * job-type scoping) plus the parked-blocker condition. Detection only — never
+ * mutates state. Best-effort: never throws (returns 0 on error).
+ */
+export async function detectStalledDependencies(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<StallDetectResult> {
+  try {
+    const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();
+    const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
+
+    const rows = await db.execute<StalledRow>(sql`
+      SELECT j.id AS job_id, j.project_id, j.type AS job_type, j.issue_id::text AS issue_id,
+             p.id::text AS blocker_id, p.status AS blocker_status, d.kind,
+             extract(epoch FROM (now() - j.queued_at))::int AS queued_secs
+      FROM jobs j
+      JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+      JOIN issue_dependencies d ON (
+            (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
+         OR (d.kind = 'decomposes' AND d.from_issue_id = j.issue_id
+             AND j.type IN ('code','review','test','fix'))
+      )
+      JOIN issues p ON p.id = (CASE WHEN d.kind = 'blocks' THEN d.from_issue_id ELSE d.to_issue_id END)
+      WHERE j.status = 'queued'
+        AND j.issue_id IS NOT NULL
+        AND j.queued_at < ${cutoffIso}
+        AND r.status = 'running'
+        AND (d.valid_until IS NULL OR d.valid_until > now())
+        AND p.merged_at IS NULL
+        AND p.status <> 'closed'
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs bj
+          WHERE bj.issue_id = p.id
+            AND bj.status IN ('queued','dispatched','running')
+        )
+        ${projectClause}
+      ORDER BY j.queued_at ASC
+      LIMIT 100
+    `);
+
+    const seen = new Set<string>();
+    let detected = 0;
+    for (const row of rows) {
+      if (seen.has(row.job_id)) continue;
+      seen.add(row.job_id);
+      const mins = Math.round(row.queued_secs / 60);
+      const rel = row.kind === 'blocks' ? 'blocked by' : 'decomposes — waiting on child';
+      await emitPipelineWedge({
+        projectId: row.project_id,
+        issueId: row.issue_id,
+        hop: 'dispatch',
+        entity: 'job',
+        entityId: row.job_id,
+        reason: `'${row.job_type}' job queued ${mins}m, ${rel} ${row.blocker_id} which is parked at status='${row.blocker_status}' (merged_at NULL, no active job). The dependency gate keys on merged_at, which only stamps when the blocker leaves its mergeStates.baseBranch — so this gate will never clear on its own.`,
+        action: `Fix the blocker's merge point: Settings → Pipeline → "Merge points" (set baseBranch to the stage where it actually merges), or mark the blocker merged (forge_issues mark_merged) if it is genuinely done.`,
+      });
+      detected++;
+    }
+    if (detected > 0) {
+      logger.warn({ detected }, 'pipeline-sweeper: dependency deadlocks surfaced');
+    }
+    return { detected };
+  } catch (err) {
+    logger.error({ err }, 'pipeline-sweeper: stall detection pass failed (skipped)');
+    return { detected: 0 };
+  }
 }
 
 /**
