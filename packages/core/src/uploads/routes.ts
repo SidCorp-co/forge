@@ -4,6 +4,10 @@ import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
+  SessionAttachmentError,
+  persistSessionAttachment,
+} from '../agent-sessions/attachment-service.js';
+import {
   AttachmentError as CommentAttachmentError,
   persistCommentAttachment,
 } from '../comments/attachment-service.js';
@@ -60,30 +64,45 @@ uploadRoutes.put(
       const bytes = Buffer.from(await c.req.arrayBuffer());
       if (bytes.length === 0) throw badRequest('empty file', 'EMPTY_FILE');
 
-      const persisted =
-        ticket.targetType === 'issue'
-          ? await persistIssueAttachment({
-              issueId: ticket.targetId,
-              name: ticket.name,
-              mime: ticket.mime,
-              bytes,
-              uploaderId: ticket.uploaderId,
-            })
-          : await persistCommentAttachment({
-              commentId: ticket.targetId,
-              name: ticket.name,
-              mime: ticket.mime,
-              bytes,
-              uploaderId: ticket.uploaderId,
-              uploaderDeviceId: ticket.uploaderDeviceId,
-            });
+      let persisted: unknown;
+      if (ticket.targetType === 'issue') {
+        persisted = await persistIssueAttachment({
+          issueId: ticket.targetId,
+          name: ticket.name,
+          mime: ticket.mime,
+          bytes,
+          uploaderId: ticket.uploaderId,
+        });
+      } else if (ticket.targetType === 'session') {
+        persisted = await persistSessionAttachment({
+          sessionId: ticket.targetId,
+          name: ticket.name,
+          mime: ticket.mime,
+          bytes,
+          uploaderId: ticket.uploaderId,
+          uploaderDeviceId: ticket.uploaderDeviceId,
+        });
+      } else {
+        persisted = await persistCommentAttachment({
+          commentId: ticket.targetId,
+          name: ticket.name,
+          mime: ticket.mime,
+          bytes,
+          uploaderId: ticket.uploaderId,
+          uploaderDeviceId: ticket.uploaderDeviceId,
+        });
+      }
 
       return c.json(persisted, 201);
     } catch (err) {
       // The bytes never landed — re-open the ticket so the holder can retry
       // with the same URL instead of having to mint a new one.
       await releaseUploadTicket(uploadId);
-      if (err instanceof IssueAttachmentError || err instanceof CommentAttachmentError) {
+      if (
+        err instanceof IssueAttachmentError ||
+        err instanceof CommentAttachmentError ||
+        err instanceof SessionAttachmentError
+      ) {
         throw badRequest(err.message, err.code);
       }
       throw err;

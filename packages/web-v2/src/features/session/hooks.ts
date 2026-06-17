@@ -52,11 +52,34 @@ function useToastError() {
     toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
 }
 
+/**
+ * Send a chat turn, optionally with staged files (ISS-499). Files are uploaded
+ * sequentially to the turn's session FIRST (multipart), then their ids ride the
+ * `send` as `attachmentIds`. A per-file upload failure toasts but does not abort
+ * the send — the message still goes with whatever uploaded (mirrors the comment
+ * attachment flow). `opts.sessionId` is the resolved session id.
+ */
 export function useSendMessage(id: string) {
   const invalidate = useInvalidateSession(id);
   const onError = useToastError();
+  const { toast } = useToast();
   return useMutation({
-    mutationFn: (opts: SendOpts) => sessionApi.send(opts),
+    mutationFn: async ({ files, ...opts }: SendOpts & { files?: File[] }) => {
+      const ids: string[] = [...(opts.attachmentIds ?? [])];
+      for (const file of files ?? []) {
+        try {
+          const att = await sessionApi.uploadAttachment(opts.sessionId, file);
+          ids.push(att.id);
+        } catch (err) {
+          toast({
+            title: "An attachment failed to upload",
+            description: `${file.name}: ${formatApiError(err)}`,
+            tone: "error",
+          });
+        }
+      }
+      return sessionApi.send({ ...opts, attachmentIds: ids.length ? ids : undefined });
+    },
     onSuccess: invalidate,
     onError,
   });

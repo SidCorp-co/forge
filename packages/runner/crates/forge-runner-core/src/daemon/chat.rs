@@ -19,6 +19,7 @@
 //! so it cannot consume the pipeline `job.assigned` cap. It has its own
 //! `chat_max_concurrent` budget (a semaphore owned by the daemon).
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -39,6 +40,17 @@ use crate::transport::CoreClient;
 /// resulting `turn.appended` broadcast at 100ms so this stays cheap.
 const FLUSH_INTERVAL: Duration = Duration::from_millis(750);
 
+/// A file attached to a chat turn (ISS-499). Core sends these on the
+/// `agent:start` / `agent:send` frame; `url` is a core-relative download path
+/// the runner pulls with its device token (the download route is auth-gated).
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct AttachmentRef {
+    id: String,
+    name: String,
+    url: String,
+}
+
 /// `agent:start` payload (the chat START command from core).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +68,8 @@ struct StartFrame {
     model: Option<String>,
     #[serde(default)]
     mcp_servers_override: Option<serde_json::Value>,
+    #[serde(default)]
+    attachments: Option<Vec<AttachmentRef>>,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -72,6 +86,8 @@ struct SendFrame {
     repo_path: Option<String>,
     #[serde(default)]
     mcp_servers_override: Option<serde_json::Value>,
+    #[serde(default)]
+    attachments: Option<Vec<AttachmentRef>>,
 }
 
 /// Resolved per-turn parameters fed into one `claude` invocation.
@@ -84,6 +100,85 @@ struct Turn {
     model: Option<String>,
     resume_id: Option<String>,
     mcp_servers_override: Option<serde_json::Value>,
+    /// Temp dir holding this turn's downloaded attachments; removed after the
+    /// turn completes. `None` when the turn carried no attachments.
+    attachment_dir: Option<PathBuf>,
+}
+
+/// Download a turn's attachments to a fresh temp dir, authenticated with the
+/// runner's device token (the download route is auth-gated — `WebFetch` can't
+/// pull anonymously). Returns `(staged_dir, local_paths)`. Best-effort: a file
+/// that fails to download is logged and skipped, never fatal to the turn.
+async fn stage_attachments(
+    client: &CoreClient,
+    session_id: &str,
+    refs: &[AttachmentRef],
+) -> Option<(PathBuf, Vec<PathBuf>)> {
+    if refs.is_empty() {
+        return None;
+    }
+    let dir = std::env::temp_dir().join(format!("forge-attach-{session_id}-{}", Uuid::new_v4()));
+    if let Err(e) = tokio::fs::create_dir_all(&dir).await {
+        tracing::warn!("[chat {session_id}] attach: mkdir failed: {e}");
+        return None;
+    }
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for att in refs {
+        let url = client.url(&att.url);
+        let bytes = match client
+            .http()
+            .get(&url)
+            .bearer_auth(client.device_token())
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => match r.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("[chat {session_id}] attach {}: read body: {e}", att.name);
+                    continue;
+                }
+            },
+            Ok(r) => {
+                tracing::warn!("[chat {session_id}] attach {}: http {}", att.name, r.status());
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!("[chat {session_id}] attach {}: {e}", att.name);
+                continue;
+            }
+        };
+        // Keep the original extension (claude infers image type from it) and
+        // prefix with a short id slice so same-named files don't collide.
+        let safe = att.name.replace(['/', '\\'], "_");
+        let prefix = &att.id[..att.id.len().min(8)];
+        let path = dir.join(format!("{prefix}_{safe}"));
+        if let Err(e) = tokio::fs::write(&path, &bytes).await {
+            tracing::warn!("[chat {session_id}] attach {}: write: {e}", att.name);
+            continue;
+        }
+        paths.push(path);
+    }
+    if paths.is_empty() {
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        return None;
+    }
+    Some((dir, paths))
+}
+
+/// Append a trailing section to the prompt pointing claude at the local files,
+/// so it `Read`s them (image vision + text/PDF) within the turn.
+fn augment_prompt(prompt: &str, paths: &[PathBuf]) -> String {
+    let mut out = String::from(prompt);
+    out.push_str(
+        "\n\n[Attached files — read each with the Read tool; these are local paths on this machine]\n",
+    );
+    for p in paths {
+        out.push_str("- ");
+        out.push_str(&p.to_string_lossy());
+        out.push('\n');
+    }
+    out
 }
 
 /// Resolve the working dir for a chat turn. Core already sends `repoPath` on the
@@ -118,6 +213,11 @@ pub async fn handle_start(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| Error::Other("agent:start has no prompt".into()))?;
     let repo_path = resolve_repo(cfg, f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let staged = stage_attachments(client, &f.session_id, f.attachments.as_deref().unwrap_or(&[])).await;
+    let (prompt, attachment_dir) = match staged {
+        Some((dir, paths)) => (augment_prompt(&prompt, &paths), Some(dir)),
+        None => (prompt, None),
+    };
     run_turn(
         client,
         runner,
@@ -131,6 +231,7 @@ pub async fn handle_start(
             model: f.model,
             resume_id: None,
             mcp_servers_override: f.mcp_servers_override,
+            attachment_dir,
         },
     )
     .await
@@ -148,13 +249,18 @@ pub async fn handle_send(
     let f: SendFrame =
         serde_json::from_value(data).map_err(|e| Error::Other(format!("bad agent:send: {e}")))?;
     let repo_path = resolve_repo(cfg, f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let staged = stage_attachments(client, &f.session_id, f.attachments.as_deref().unwrap_or(&[])).await;
+    let (prompt, attachment_dir) = match staged {
+        Some((dir, paths)) => (augment_prompt(&f.message, &paths), Some(dir)),
+        None => (f.message, None),
+    };
     run_turn(
         client,
         runner,
         sem,
         Turn {
             session_id: f.session_id,
-            prompt: f.message,
+            prompt,
             repo_path,
             project_slug: f.project_slug,
             // No system prompt on follow-ups — `--resume` keeps the original.
@@ -162,6 +268,7 @@ pub async fn handle_send(
             model: None,
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
             mcp_servers_override: f.mcp_servers_override,
+            attachment_dir,
         },
     )
     .await
@@ -219,11 +326,24 @@ async fn run_turn(
         let msg = format!("failed to start chat turn: {e}");
         tracing::error!("[chat {session_id}] {msg}");
         let _ = patch_failed(client, &session_id, &[], None, &msg).await;
+        cleanup_attachments(turn.attachment_dir.as_deref()).await;
         return Ok(());
     }
 
     consume(client, &session_id, rx).await;
+    // Best-effort temp cleanup — runs even on a failed turn (consume always
+    // returns). Leaking a temp dir is harmless but we don't want to accumulate.
+    cleanup_attachments(turn.attachment_dir.as_deref()).await;
     Ok(())
+}
+
+/// Remove a turn's staged-attachment temp dir (best-effort).
+async fn cleanup_attachments(dir: Option<&std::path::Path>) {
+    if let Some(dir) = dir {
+        if let Err(e) = tokio::fs::remove_dir_all(dir).await {
+            tracing::debug!("[chat] attach cleanup {}: {e}", dir.display());
+        }
+    }
 }
 
 /// Drain the runner event stream for one chat turn, streaming the assistant

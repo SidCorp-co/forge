@@ -129,7 +129,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   // `await`s the send so a failure rejects up into the Composer, which then
   // keeps the typed text for retry (ISS-462) instead of clearing it. No `title`
   // on create — the server auto-titles from the first user message (ISS-462).
-  const handleSend = async (message: string) => {
+  const handleSend = async (message: string, files: File[] = []) => {
     let id = resolvedId;
     if (!id) {
       const created = await create.mutateAsync({
@@ -140,7 +140,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
       setDraft(false);
       setActiveId(id);
     }
-    await send.mutateAsync({ sessionId: id, message });
+    await send.mutateAsync({ sessionId: id, message, files });
   };
 
   const busy = live || send.isPending || create.isPending;
@@ -278,6 +278,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
           onSend={handleSend}
           busy={busy}
           placeholder="Message the agent…"
+          allowAttachments
         />
       ) : (
         <ReadOnlyComposerNote />

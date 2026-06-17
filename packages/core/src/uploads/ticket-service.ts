@@ -1,4 +1,5 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { ALLOWED_MIMES as SESSION_ALLOWED_MIMES } from '../agent-sessions/attachment-service.js';
 import { ALLOWED_MIMES as COMMENT_ALLOWED_MIMES } from '../comments/attachment-service.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -8,7 +9,7 @@ import { ALLOWED_MIMES as ISSUE_ALLOWED_MIMES } from '../issues/attachment-servi
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
-export type UploadTargetType = 'issue' | 'comment';
+export type UploadTargetType = 'issue' | 'comment' | 'session';
 
 export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED';
 
@@ -45,7 +46,9 @@ export interface CreateUploadTicketInput {
 }
 
 function allowedMimesFor(targetType: UploadTargetType): ReadonlySet<string> {
-  return targetType === 'issue' ? ISSUE_ALLOWED_MIMES : COMMENT_ALLOWED_MIMES;
+  if (targetType === 'issue') return ISSUE_ALLOWED_MIMES;
+  if (targetType === 'session') return SESSION_ALLOWED_MIMES;
+  return COMMENT_ALLOWED_MIMES;
 }
 
 /**

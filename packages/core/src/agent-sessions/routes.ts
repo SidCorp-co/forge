@@ -201,6 +201,8 @@ const startBodySchema = z
     type: z.string().max(80).optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
+    // ISS-499 — session attachments to attach to the first turn.
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
   .strict();
 
@@ -211,6 +213,8 @@ const sendBodySchema = z
     claudeSessionId: z.string().max(500).nullable().optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
+    // ISS-499 — session attachments to attach to this turn.
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
   .strict();
 
@@ -388,6 +392,7 @@ agentSessionRoutes.post(
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,
       preBuilt: input.preBuilt ?? false,
+      attachmentIds: input.attachmentIds,
       broadcastEvent: 'agent-session.created',
     });
 
@@ -448,6 +453,7 @@ agentSessionRoutes.post(
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,
       claudeSessionId: input.claudeSessionId ?? null,
+      attachmentIds: input.attachmentIds,
     });
     return c.json({ ok: true });
   },
