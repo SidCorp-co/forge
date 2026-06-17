@@ -39,6 +39,7 @@ import { usableSkillOptions, type UsableSkillOption } from "@/features/skills/ty
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
 import { SessionGroupsSection } from "./session-groups-section";
+import { MergeStatesSection } from "./merge-states-section";
 import {
   STEP_TOGGLE_KEYS,
   STEP_TOGGLE_LABELS,
@@ -370,6 +371,9 @@ export function PipelineTab({
 
         {/* Session groups — round-trips the full fetched config. */}
         <SessionGroupsSection projectId={projectId} config={server} canEdit={canEdit} />
+
+        {/* Merge points (mergeStates) — round-trips the full fetched config. */}
+        <MergeStatesSection projectId={projectId} config={server} canEdit={canEdit} />
       </CardContent>
     </Card>
   );

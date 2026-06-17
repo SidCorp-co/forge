@@ -8,6 +8,7 @@ import {
 } from '../db/schema.js';
 import type { StagesConfig } from './state-machine.js';
 import { validateStatesConfig } from './state-machine.js';
+import { resolveMergeStates } from '../issues/merged-at.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -30,6 +31,7 @@ export type PipelineConfigErrorCode =
   | 'AUTO_STAGE_NEEDS_SKILL'
   | 'MISSING_SKILL_FOR_ENABLED_STAGE'
   | 'DEAD_END_CONFIG'
+  | 'MERGE_STATE_DISABLED'
   | 'PROJECT_NOT_FOUND';
 
 export class PipelineConfigError extends Error {
@@ -224,6 +226,18 @@ export async function updatePipelineConfig(
           { unreachable: dead.unreachable },
         );
       }
+      // `merged_at` (the column the blocks/decomposes L2 gate keys on) is only
+      // stamped when an issue transitions OUT of `mergeStates.baseBranch`
+      // (see issues/merged-at.ts). If that stage is DISABLED the transition can
+      // never happen, so every dependent wedges forever (silent). Reject it.
+      const baseMergeState = resolveMergeStates(nextPipeline).baseBranch;
+      if (mergedStates?.[baseMergeState]?.enabled === false) {
+        throw new PipelineConfigError(
+          'MERGE_STATE_DISABLED',
+          `mergeStates.baseBranch '${baseMergeState}' is a disabled stage — merged_at can never stamp, so every blocks/decomposes dependent wedges. Point baseBranch at the enabled stage where the merge actually completes (e.g. 'testing'/'developed').`,
+          { baseBranch: baseMergeState },
+        );
+      }
       nextDoc.pipelineConfig = nextPipeline;
     }
     const subkey = JSON.stringify(nextDoc);
@@ -251,8 +265,42 @@ export async function updatePipelineConfig(
   // Those stages auto-skip cleanly at runtime via STAGE_FORWARD; surface
   // the behaviour so operators aren't surprised when issues breeze past.
   const warnings = await computeStageWithoutSkillWarnings(projectId, pipelineConfig);
+  const parkWarning = computeMergeStateParkWarning(pipelineConfig);
+  if (parkWarning) {
+    warnings.push(parkWarning);
+    logger.warn({ projectId, warning: parkWarning }, 'mergeStates baseBranch may never stamp merged_at');
+  }
 
   return { pipelineConfig, warnings };
+}
+
+const STEP_BY_STATUS = new Map<string, (typeof PIPELINE_STEPS)[number]>(
+  PIPELINE_STEPS.map((s) => [s.status, s]),
+);
+
+/**
+ * Non-blocking advisory: `merged_at` only stamps when an issue transitions OUT
+ * of `mergeStates.baseBranch`. If that stage can't auto-advance — it's `manual`,
+ * or its pipeline-step auto-toggle (e.g. `autoRelease`) is off — issues PARK
+ * there and `merged_at` never stamps, so `blocks`/`decomposes` dependents wedge
+ * silently (the anhome/sid-desk class of bug). We can't statically detect a
+ * no-op skill that fails to advance an enabled+auto stage, so this is a warning
+ * (paired with the settings-UI surface), not a hard reject — the runtime stall
+ * detector is the backstop for the cases config can't reveal.
+ */
+export function computeMergeStateParkWarning(cfg: PipelineConfig): string | null {
+  const base = resolveMergeStates(cfg).baseBranch as string;
+  const sc = (cfg.states as Record<string, { mode?: string; enabled?: boolean } | undefined>)?.[
+    base
+  ];
+  if (sc?.mode === 'manual') {
+    return `mergeStates.baseBranch '${base}' is a manual stage — the pipeline won't auto-leave it, so merged_at never stamps and blocks/decomposes dependents will wedge. Point baseBranch at the stage where the merge auto-completes.`;
+  }
+  const step = STEP_BY_STATUS.get(base);
+  if (step && (cfg as Record<string, unknown>)[step.toggle] === false) {
+    return `mergeStates.baseBranch '${base}' maps to the '${step.jobType}' step whose auto-toggle '${step.toggle}' is off — that stage never dispatches/advances, so merged_at never stamps and blocks/decomposes dependents will wedge.`;
+  }
+  return null;
 }
 
 const PIPELINE_STEPS_STAGES = new Set<string>(PIPELINE_STEPS.map((s) => s.status));

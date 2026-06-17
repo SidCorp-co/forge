@@ -895,6 +895,7 @@ projectRoutes.patch(
         switch (err.code) {
           case 'OPEN_LOCKED_ON':
           case 'DEAD_END_CONFIG':
+          case 'MERGE_STATE_DISABLED':
             throw new HTTPException(400, {
               message: err.message,
               cause: { code: err.code, details: err.details },

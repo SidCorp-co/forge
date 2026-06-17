@@ -34,7 +34,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { PipelineConfigError, updatePipelineConfig } = await import(
+const { PipelineConfigError, updatePipelineConfig, computeMergeStateParkWarning } = await import(
   './pipeline-config-service.js'
 );
 
@@ -159,5 +159,48 @@ describe('PipelineConfigError', () => {
       {},
     );
     expect(err.code).toBe('MISSING_SKILL_FOR_ENABLED_STAGE');
+  });
+});
+
+describe('computeMergeStateParkWarning — silent-wedge advisory', () => {
+  it('warns when baseBranch is a manual stage', () => {
+    const w = computeMergeStateParkWarning({
+      enabled: true,
+      mergeStates: { baseBranch: 'staging', productionBranch: 'released' },
+      states: { staging: { mode: 'manual', enabled: true } },
+    } as never);
+    expect(w).toMatch(/manual stage/);
+    expect(w).toMatch(/staging/);
+  });
+
+  it("warns when baseBranch's step auto-toggle is off (e.g. released + autoRelease:false)", () => {
+    const w = computeMergeStateParkWarning({
+      enabled: true,
+      autoRelease: false,
+      mergeStates: { baseBranch: 'released', productionBranch: 'released' },
+      states: {},
+    } as never);
+    expect(w).toMatch(/autoRelease/);
+  });
+
+  it('no warning when baseBranch auto-advances (testing + autoTest on)', () => {
+    expect(
+      computeMergeStateParkWarning({
+        enabled: true,
+        autoTest: true,
+        mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
+        states: {},
+      } as never),
+    ).toBeNull();
+  });
+
+  it('no warning for default released when autoRelease is unset (treated as on)', () => {
+    expect(
+      computeMergeStateParkWarning({
+        enabled: true,
+        mergeStates: { baseBranch: 'released', productionBranch: 'released' },
+        states: {},
+      } as never),
+    ).toBeNull();
   });
 });

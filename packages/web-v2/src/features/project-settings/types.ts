@@ -120,6 +120,13 @@ export interface PipelineConfig {
   sessionGroups?: Record<string, string[]>;
   /** What to do when a session resume fails (device gone / prior failed). */
   onResumeFail?: "fresh" | "abort";
+  /**
+   * The pipeline STATE whose exit stamps `issues.merged_at` — the column the
+   * `blocks`/`decomposes` dependency gate keys on. Must be a stage the pipeline
+   * actually transitions out of (the merge point), else dependents wedge.
+   * Mirrors `mergeStatesSchema` in core `pipeline/pipeline-config-schema.ts`.
+   */
+  mergeStates?: { baseBranch?: string; productionBranch?: string };
   [key: string]: unknown;
 }
 
