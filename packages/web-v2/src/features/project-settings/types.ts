@@ -296,15 +296,15 @@ export function deriveCheckpointMode(cfg: PipelineConfig, status: string): "manu
 }
 
 /**
- * A checkpoint is "in use" only when a project gave it a deliberate (non-default)
- * config — an explicit skip (`enabled:false`) or a manual gate (`mode:"manual"`).
- * A default `{ enabled:true, mode:"auto" }` (or absent) checkpoint is noise, so
- * the Pipeline tab hides it. `staging` is always shown (the canonical gate), so
- * this only gates the legacy `deploying`/`tested`/`pass` rows.
+ * A legacy checkpoint (deploying/tested/pass) is surfaced ONLY when it's an
+ * active manual gate (`mode:"manual"`) — e.g. dodgeprint's `tested`. A skipped
+ * (`enabled:false`) or default `{enabled:true,mode:"auto"}` checkpoint carries no
+ * behaviour worth a row, so the Pipeline tab hides it. `staging` is shown
+ * separately (always — the canonical pre-production gate), so this only governs
+ * the legacy rows.
  */
-export function isCheckpointConfigured(cfg: PipelineConfig, status: string): boolean {
-  const sc = statesOf(cfg)[status];
-  return sc?.enabled === false || sc?.mode === "manual";
+export function isCheckpointGated(cfg: PipelineConfig, status: string): boolean {
+  return statesOf(cfg)[status]?.mode === "manual";
 }
 
 /** The checkpoint always surfaced as the canonical pre-production gate. */

@@ -54,7 +54,7 @@ import {
   CHECKPOINT_STAGES,
   deriveCheckpointMode,
   deriveJobStageMode,
-  isCheckpointConfigured,
+  isCheckpointGated,
   PIPELINE_LADDER,
   PRIMARY_CHECKPOINT,
   STEP_TOGGLE_LABELS,
@@ -232,12 +232,13 @@ export function PipelineTab({
   const server = cfgQ.data?.pipelineConfig ?? {};
   const masterEnabled = draft.enabled !== false;
 
-  // Keep the ladder tidy: always show the canonical `staging` gate, but only
-  // surface the legacy checkpoints (deploying/tested/pass) for projects that
-  // deliberately configured them (a manual gate or a skip). Decided from the
-  // saved config so rows don't flicker mid-edit.
+  // Keep the ladder tidy: always show the canonical `staging` gate, but surface
+  // the legacy checkpoints (deploying/tested/pass) ONLY when a project actively
+  // gates on them (mode:"manual" — e.g. dodgeprint's `tested`). Skipped or
+  // default checkpoints stay hidden. Decided from the saved config so rows don't
+  // flicker mid-edit.
   const checkpointVisible = (status: string) =>
-    status === PRIMARY_CHECKPOINT || isCheckpointConfigured(server, status);
+    status === PRIMARY_CHECKPOINT || isCheckpointGated(server, status);
 
   const dirty =
     (server.enabled !== false) !== masterEnabled ||
