@@ -29,6 +29,16 @@ export function SlideOver({ open, onClose, title, children, width = 480, fitBody
   const slideOverWidth = typeof width === "number" ? `${width}px` : width;
   const panelRef = useRef<HTMLElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  // Keep onClose current without putting it in the effect deps. Callers pass an
+  // inline `() => setOpen(false)` (a fresh identity every render), so depending
+  // on onClose would re-run the focus trap on EVERY parent re-render — and each
+  // run steals focus back to the first focusable (the header Close button). With
+  // the ISS-504 notification queries re-rendering the workspace layout on every
+  // pipeline/issue event, that yanked focus out of the drawer's composer on each
+  // render ("click → blink → lose focus, can't type", ISS-506). Run the trap only
+  // on open-state transitions.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -38,7 +48,7 @@ export function SlideOver({ open, onClose, title, children, width = 480, fitBody
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === "Tab" && panel) {
@@ -62,7 +72,7 @@ export function SlideOver({ open, onClose, title, children, width = 480, fitBody
       document.removeEventListener("keydown", onKey);
       restoreRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (
