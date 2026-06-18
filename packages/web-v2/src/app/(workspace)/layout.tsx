@@ -32,6 +32,13 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import {
+  useNotifications,
+  useUnreadCount,
+  useMarkRead,
+  useMarkAllRead,
+} from "@/features/notifications/hooks";
+import { toNotificationItem } from "@/features/notifications/map";
+import {
   useSidebar,
   useRecents,
   usePinnedViews,
@@ -129,6 +136,33 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // What's New nav badge — shown when the newest changelog entry is unseen.
   const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
 
+  // Header notification bell (ISS-504). Workspace-global: list + unread count
+  // are scoped to the current user server-side. Realtime is free — the WS
+  // event-router invalidates these exact query keys on notification.created.
+  const notificationsQuery = useNotifications();
+  const { data: unread } = useUnreadCount();
+  const markRead = useMarkRead();
+  const markAllRead = useMarkAllRead();
+  const notificationRows = useMemo(
+    () => notificationsQuery.data?.items ?? [],
+    [notificationsQuery.data],
+  );
+  const notificationItems = useMemo(
+    () => notificationRows.map(toNotificationItem),
+    [notificationRows],
+  );
+  const onSelectNotification = useCallback(
+    (id: string) => {
+      const row = notificationRows.find((n) => n.id === id);
+      if (row && !row.read) markRead.mutate(id);
+      setNotificationsOpen(false);
+      if (!row?.issueId || !row.projectId) return; // mark-read only, no dead-end
+      const target = projects?.find((p) => p.id === row.projectId);
+      if (target) router.push(`/projects/${target.slug}/issues/${row.issueId}`);
+    },
+    [notificationRows, markRead, projects, router],
+  );
+
   // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
   // to /login (which also makes logout() "return here" effective). While the
   // session is still hydrating we render the shell rather than flash a redirect.
@@ -180,6 +214,16 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileNavOpen]);
+
+  // Esc closes the notifications dropdown (AC11 — always dismissable).
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setNotificationsOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [notificationsOpen]);
 
   const slug = activeSlug(pathname);
   const activeProject = useMemo(
@@ -767,6 +811,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onMenu={() => setMobileNavOpen(true)}
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
+            notificationCount={unread?.count ?? 0}
             onNewIssue={() =>
               slug
                 ? router.push(`/projects/${slug}/issues?new=1`)
@@ -790,7 +835,14 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
                 onClick={() => setNotificationsOpen(false)}
               />
               <div className="absolute right-4 top-[52px] z-50">
-                <NotificationsMenu items={[]} />
+                <NotificationsMenu
+                  items={notificationItems}
+                  loading={notificationsQuery.isLoading}
+                  error={notificationsQuery.isError}
+                  onRetry={() => notificationsQuery.refetch()}
+                  onSelect={onSelectNotification}
+                  onMarkAllRead={() => markAllRead.mutate()}
+                />
               </div>
             </>
           )}
