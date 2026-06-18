@@ -208,6 +208,11 @@ export interface HookPayloads {
     projectId: string | null;
     type: string;
     title: string;
+    // ISS-510 — body + severity + auto-resolve key carried so the WS bridge can
+    // populate a toast (title + body, tone from severity) without a re-read.
+    body?: string | null;
+    severity?: string | null;
+    resolutionKey?: string | null;
     issueId: string | null;
     agentSessionId: string | null;
     // Epic 5 (ISS-21): set when `type === 'pm_escalation'` so the WS bridge

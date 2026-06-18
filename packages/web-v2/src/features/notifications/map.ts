@@ -25,6 +25,20 @@ function typeLabel(type: string): string {
 
 /** Red for trouble, amber for review gates, green for done, cobalt otherwise. */
 function hueFor(row: NotificationRow): NotificationItem["hue"] {
+  // ISS-510 — derive from the explicit contract severity when present.
+  switch (row.severity) {
+    case "error":
+      return "red";
+    case "warning":
+      return "amber";
+    case "success":
+      return "green";
+    case "info":
+      return "cobalt";
+    default:
+      break;
+  }
+  // Fallback for legacy rows (pre-ISS-510) with no severity: sniff title/type.
   const t = `${row.title} ${row.type}`.toLowerCase();
   if (row.type === "pipeline_wedge" || t.includes("reopen") || t.includes("fail")) return "red";
   if (t.includes("tested") || t.includes("waiting") || t.includes("review")) return "amber";

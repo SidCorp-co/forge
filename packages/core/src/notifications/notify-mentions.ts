@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
-import { createNotification } from './routes.js';
+import { emitNotification } from './emit.js';
 
 /**
  * Wire mention fan-out: when `commentMentioned` fires, insert one
@@ -52,7 +52,7 @@ export function registerNotifyMentionsSubscriber(bus: HooksBus): void {
     for (const userId of p.mentionedUserIds) {
       if (userId === actorId) continue;
       try {
-        await createNotification({
+        await emitNotification({
           userId,
           projectId: p.projectId,
           type: 'mention',

@@ -1685,6 +1685,15 @@ export const notifications = pgTable(
     title: text('title').notNull(),
     body: text('body'),
     read: boolean('read').notNull().default(false),
+    // ISS-510 — per-event severity (from the `@forge/contracts` notification
+    // contract) drives toast tone + bell hue. Nullable: legacy rows predate it.
+    severity: text('severity'),
+    // ISS-510 — auto-resolve linkage. A problem notification carries a stable
+    // per-condition key (e.g. `issue:<id>:status`); when the condition clears
+    // (issue reaches a healthy status) the resolver marks every matching unread
+    // row read and stamps `resolvedAt`. Both nullable — most rows carry neither.
+    resolutionKey: text('resolution_key'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
     // agent_session_id is intentionally a bare uuid (no FK) until the agent_sessions
     // table lands in a later B2 migration — adding the FK then is additive.
@@ -1698,6 +1707,11 @@ export const notifications = pgTable(
       t.createdAt,
     ),
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
+    // ISS-510 — resolver lookup: unread rows for a given resolution key.
+    resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(
+      t.resolutionKey,
+      t.read,
+    ),
   }),
 );
 

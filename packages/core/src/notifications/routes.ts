@@ -1,4 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
+import type { NotificationType } from '@forge/contracts';
 import { and, count, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -176,11 +177,18 @@ notificationRoutes.delete(
 export async function createNotification(input: {
   userId: string;
   projectId?: string | null;
-  type: 'issue_status_changed' | 'comment_added' | 'agent_completed' | 'mention' | 'pipeline_wedge';
+  type: NotificationType;
   title: string;
   body?: string | null;
   issueId?: string | null;
   agentSessionId?: string | null;
+  // ISS-510 — severity + auto-resolve linkage, persisted and forwarded to the
+  // `notificationCreated` hook so the WS bridge can carry tone to clients.
+  severity?: string | null;
+  resolutionKey?: string | null;
+  // Set for `pm_escalation` so the project-room bridge can deep-link the
+  // decision without re-reading the notification body (Epic 5 / ISS-21).
+  decisionId?: string | null;
 }): Promise<{ id: string } | null> {
   // Delivery preference gate: a user can opt out of `mention` notifications via
   // `user_preferences.notify_on_mention` (Settings → Notifications). Default is
@@ -204,6 +212,8 @@ export async function createNotification(input: {
       type: input.type,
       title: input.title,
       body: input.body ?? null,
+      severity: input.severity ?? null,
+      resolutionKey: input.resolutionKey ?? null,
       issueId: input.issueId ?? null,
       agentSessionId: input.agentSessionId ?? null,
     })
@@ -217,8 +227,12 @@ export async function createNotification(input: {
     projectId: input.projectId ?? null,
     type: input.type,
     title: input.title,
+    body: input.body ?? null,
+    severity: input.severity ?? null,
+    resolutionKey: input.resolutionKey ?? null,
     issueId: input.issueId ?? null,
     agentSessionId: input.agentSessionId ?? null,
+    decisionId: input.decisionId ?? null,
   });
 
   return { id: row.id };

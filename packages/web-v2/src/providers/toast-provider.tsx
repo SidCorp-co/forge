@@ -42,7 +42,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex flex-col gap-2.5">
         {items.map((t) => (
           <div key={t.id} className="pointer-events-auto">
-            <Toast {...t} onClose={() => remove(t.id)} />
+            <Toast
+              {...t}
+              // A clickable toast dismisses itself after its action runs.
+              onClick={
+                t.onClick
+                  ? () => {
+                      t.onClick?.();
+                      remove(t.id);
+                    }
+                  : undefined
+              }
+              onClose={() => remove(t.id)}
+            />
           </div>
         ))}
       </div>
