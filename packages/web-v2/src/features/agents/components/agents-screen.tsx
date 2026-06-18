@@ -46,14 +46,18 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
   const sessionsScope = { projectId: scope.projectId, ...(issueId ? { issueId } : {}) };
 
   return (
-    <div className="flex min-h-full flex-col">
-      {/* Mobile: single-pane tabs. */}
-      <div className="md:hidden">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Mobile: single-pane tabs. A bounded flex column so the Chat tab (now
+          `h-full` with one internal scroll region, ISS-506) gets a definite
+          height; Sessions keeps its own `min-h-dvh` page-scroll behavior. */}
+      <div className="flex min-h-0 flex-1 flex-col md:hidden">
         <ScreenTabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AgentsTab)} />
         {tab === "sessions" ? (
           <SessionsScreen scope={sessionsScope} />
         ) : (
-          <ChatScreen projectId={scope.projectId} />
+          <div className="min-h-0 flex-1">
+            <ChatScreen projectId={scope.projectId} />
+          </div>
         )}
       </div>
 
