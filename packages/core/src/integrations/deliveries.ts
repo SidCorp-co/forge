@@ -145,6 +145,31 @@ export async function findLastOutbound(
   return rows[0] ?? null;
 }
 
+/**
+ * Most recent outbound delivery for a specific deploy target (matched on the
+ * jsonb `payload.targetId`). Powers the per-target `status` view so an operator
+ * can see each app (backend / frontend) of a multi-target integration
+ * independently. Returns null when that target has never been dispatched.
+ */
+export async function findLastOutboundForTarget(
+  bindingId: string,
+  targetId: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'outbound'),
+        sql`${integrationDeliveries.payload}->>'targetId' = ${targetId}`,
+      ),
+    )
+    .orderBy(desc(integrationDeliveries.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /** Looks up a single delivery by its primary key. Returns the row or null. */
 export async function findDeliveryById(
   id: string,

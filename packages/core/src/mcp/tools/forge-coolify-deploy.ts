@@ -27,7 +27,7 @@ import { z } from 'zod';
 import { fetchCoolifyDeploymentLogs } from '../../integrations/coolify/adapter.js';
 import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
-import { findLastOutbound } from '../../integrations/deliveries.js';
+import { findLastOutbound, findLastOutboundForTarget } from '../../integrations/deliveries.js';
 import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
 import {
   dispatchCoolifyDeployDirect,
@@ -82,24 +82,34 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
   description:
     'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs. ' +
+    'MODEL: one integration = one project+ENVIRONMENT binding (staging vs prod are SEPARATE ' +
+    'integrations). Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
+    'application (e.g. a split backend + frontend, or a worker), deployed TOGETHER. A single deploy ' +
+    'FANS OUT to every target of the integration (one Coolify build per target); the pipeline run is ' +
+    'marked done only when EVERY target webhook reports success, and FAILS on the first target ' +
+    'failure. So if an app (e.g. the backend) is not deploying, check it is CONFIGURED as a target on ' +
+    'that integration (project settings → Integrations) — Forge only deploys the targets the ' +
+    'integration holds. ' +
     'list: active Coolify integrations for the project (id, environment, targets[]={id,label,' +
     'resourceUuid}, lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
-    'deploy: issueId is OPTIONAL. With issueId — run-tracked deploy: resolves the ' +
-    "issue's latest pipeline run and enqueues via the SAME path as the release " +
-    'auto-subscriber (the Coolify webhook then advances that run). Without issueId — ' +
-    'run-less resource redeploy: resolves the target integration like the logs action ' +
-    '(explicit integrationId, else the single active Coolify integration, else BAD_REQUEST ' +
-    'when multiple exist) and dispatches with no run attached (the webhook records the ' +
-    'delivery but advances no pipeline). Each call is its own dispatch ' +
-    '(per-attempt requestId) and Coolify force-rebuilds, so re-deploying after a ' +
-    'branch fix actually fires a fresh build. ' +
-    'prod integrations honor the human-confirm gate: returns pendingHumanConfirm:true and does ' +
-    'NOT dispatch until confirmed via the confirm-prod-deploy endpoint. ' +
-    'status: latest outbound delivery per integration (or a specific integrationId): ' +
-    'deploymentUuid, status, breakerOpen, createdAt. ' +
+    'Inspect targets[] to confirm every app you expect (BE+FE) is present. ' +
+    'deploy: issueId is OPTIONAL; dispatches ALL targets of the resolved integration. With issueId — ' +
+    "run-tracked deploy: resolves the issue's latest pipeline run and enqueues via the SAME path as " +
+    'the release auto-subscriber (each target webhook then advances that run; run completes when all ' +
+    'targets succeed). Without issueId — run-less resource redeploy: resolves the target integration ' +
+    'like the logs action (explicit integrationId, else the single active Coolify integration, else ' +
+    'BAD_REQUEST when multiple exist) and dispatches with no run attached (webhooks record deliveries ' +
+    'but advance no pipeline). Each call is its own dispatch (per-attempt requestId, suffixed per ' +
+    'target) and Coolify force-rebuilds, so re-deploying after a branch fix fires fresh builds. ' +
+    'prod integrations honor the human-confirm gate (unless the project sets ' +
+    'pipelineConfig.autoProdDeploy): returns pendingHumanConfirm:true and does NOT dispatch until ' +
+    'confirmed via the confirm-prod-deploy endpoint. ' +
+    'status: latest outbound delivery PER TARGET for the integration(s) (or a specific integrationId): ' +
+    'deploymentUuid, status, breakerOpen, createdAt — expect one row per target. ' +
     'logs: fetch the Coolify build/deploy log for a deployment and return it scrubbed + tailed. ' +
-    "Resolves deploymentUuid from the explicit deploymentUuid param, else the integration's last " +
-    'outbound delivery. Requires integrationId when multiple active Coolify integrations exist. ' +
+    'Resolves deploymentUuid from the explicit deploymentUuid param, else the most recent outbound ' +
+    'delivery (across the integration targets) — pass deploymentUuid to target a specific app/target. ' +
+    'Requires integrationId when multiple active Coolify integrations exist. ' +
     'Secrets (Authorization/Cookie/X-Api-Key headers, token/apiKey/password/jwt fields, tokenized ' +
     "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
     'preserved. Returns { integrationId, deploymentUuid, status, logs, truncated }; on a Coolify API ' +
@@ -203,20 +213,48 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
         const scoped = input.integrationId
           ? rows.filter((r) => r.id === input.integrationId)
           : rows;
-        const deliveries = await Promise.all(
-          scoped.map(async (row) => {
-            const last = await findLastOutbound(row.id);
-            const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
-            return {
-              integrationId: row.id,
-              environment: row.environment,
-              deploymentUuid: response?.deployment_uuid ?? null,
-              status: last?.status ?? null,
-              breakerOpen: row.breakerOpenedAt !== null,
-              createdAt: last?.createdAt ?? null,
-            };
-          }),
-        );
+        // One row PER TARGET (backend / frontend / …) so an operator can see
+        // each app of a multi-target integration independently. Legacy/empty
+        // targets fall back to a single integration-level row.
+        const deliveries = (
+          await Promise.all(
+            scoped.map(async (row) => {
+              const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
+              if (targets.length === 0) {
+                const last = await findLastOutbound(row.id);
+                const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
+                return [
+                  {
+                    integrationId: row.id,
+                    environment: row.environment,
+                    targetId: null,
+                    targetLabel: null,
+                    deploymentUuid: response?.deployment_uuid ?? null,
+                    status: last?.status ?? null,
+                    breakerOpen: row.breakerOpenedAt !== null,
+                    createdAt: last?.createdAt ?? null,
+                  },
+                ];
+              }
+              return Promise.all(
+                targets.map(async (t) => {
+                  const last = await findLastOutboundForTarget(row.id, t.id);
+                  const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
+                  return {
+                    integrationId: row.id,
+                    environment: row.environment,
+                    targetId: t.id,
+                    targetLabel: t.label,
+                    deploymentUuid: response?.deployment_uuid ?? null,
+                    status: last?.status ?? null,
+                    breakerOpen: row.breakerOpenedAt !== null,
+                    createdAt: last?.createdAt ?? null,
+                  };
+                }),
+              );
+            }),
+          )
+        ).flat();
         return { deliveries };
       }
 
