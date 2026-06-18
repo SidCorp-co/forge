@@ -39,6 +39,10 @@ import {
 } from "@/features/notifications/hooks";
 import { toNotificationItem } from "@/features/notifications/map";
 import {
+  type DeliveryNotification,
+  useNotificationDelivery,
+} from "@/features/notifications/use-notification-delivery";
+import {
   useSidebar,
   useRecents,
   usePinnedViews,
@@ -162,6 +166,21 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     },
     [notificationRows, markRead, projects, router],
   );
+
+  // Realtime delivery bridge (ISS-510): toast + browser channels for incoming
+  // `notification.created` events. Mounted here so a click reuses the same
+  // mark-read + deep-link path as the bell. The persistent bell itself updates
+  // via the event-router's query invalidation — independent of this hook.
+  const onDeliveryNavigate = useCallback(
+    (n: DeliveryNotification) => {
+      markRead.mutate(n.notificationId);
+      if (!n.issueId || !n.projectId) return;
+      const target = projects?.find((p) => p.id === n.projectId);
+      if (target) router.push(`/projects/${target.slug}/issues/${n.issueId}`);
+    },
+    [markRead, projects, router],
+  );
+  useNotificationDelivery(onDeliveryNavigate);
 
   // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
   // to /login (which also makes logout() "return here" effective). While the

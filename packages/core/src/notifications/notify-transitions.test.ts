@@ -9,8 +9,14 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
 
+// notify-transitions routes through emit.ts (ISS-510), which delegates to the
+// mocked createNotification — so assertions on createNotification still hold,
+// and we additionally see the severity/resolutionKey emit.ts/notify add.
 const createNotification = vi.fn(async () => ({ id: 'notif-1' }));
 vi.mock('./routes.js', () => ({ createNotification }));
+
+const resolveNotifications = vi.fn(async () => 0);
+vi.mock('./auto-resolve.js', () => ({ resolveNotifications }));
 
 const { registerTransitionNotifications } = await import('./notify-transitions.js');
 const { HooksBus } = await import('../pipeline/hooks.js');
@@ -45,6 +51,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   createNotification.mockResolvedValue({ id: 'notif-1' });
+  resolveNotifications.mockResolvedValue(0);
 });
 
 describe('notify-transitions', () => {
@@ -81,6 +88,42 @@ describe('notify-transitions', () => {
     await bus.emit('transition', transition('in_progress') as never);
     expect(selectLimit).not.toHaveBeenCalled();
     expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  it('sets error severity + a status resolution key on reopen', async () => {
+    queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 11, title: 'Regressed' });
+    const bus = makeBus();
+    await bus.emit('transition', transition('reopen') as never);
+    expect(createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: 'error',
+        resolutionKey: `issue:${ISSUE_ID}:status`,
+      }),
+    );
+  });
+
+  it('sets warning severity but NO resolution key on tested (informational gate)', async () => {
+    queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 12, title: 'Ready' });
+    const bus = makeBus();
+    await bus.emit('transition', transition('tested') as never);
+    expect(createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: 'warning', resolutionKey: null }),
+    );
+  });
+
+  it('auto-resolves the status problem notification on a healthy transition', async () => {
+    // `developed` is healthy but NOT in NOTIFY_ON_STATUS: it clears the problem
+    // notification without creating a new one.
+    const bus = makeBus();
+    await bus.emit('transition', transition('developed') as never);
+    expect(resolveNotifications).toHaveBeenCalledWith(`issue:${ISSUE_ID}:status`);
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-resolve for a non-healthy, non-listed status', async () => {
+    const bus = makeBus();
+    await bus.emit('transition', transition('in_progress') as never);
+    expect(resolveNotifications).not.toHaveBeenCalled();
   });
 
   it('skips self-notify when the actor is the recipient', async () => {
