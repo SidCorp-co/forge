@@ -35,9 +35,8 @@ N = number of implementation commits (exclude previous review/fix commits).
 
 ### 2. Load Relevant Skills
 
-Detect tech stack from changed files, then load only what applies:
-- Strapi files (`content-types/`, `controllers/`, `services/`) → read `.claude/skills/strapi/SKILL.md`
-- Next.js files (`app/`, `components/`, `next/` imports) → read `.claude/skills/nextjs/SKILL.md`
+Detect the stack from the changed files, then load only what applies:
+- Load any matching `.claude/skills/*/SKILL.md` that exists for the detected stack — don't assume a framework.
 - Also read `forge/.forge/lessons.md` if it exists — past gotchas to check against
 
 ### 3. Review along five axes

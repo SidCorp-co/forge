@@ -52,7 +52,7 @@ forge_issues → get → { documentId: "<id>" }
 forge_config → get → {}
 ```
 
-Verify status is `released`. Read `productionBranch` from config (fallback: `master`). Read `baseBranch` from config (fallback: `main`).
+Verify status is `released`. Read `productionBranch` and `baseBranch` from config; never default to a literal branch — if either is null, ABORT and surface the missing config.
 
 ### Step 2: Confirm Git State
 

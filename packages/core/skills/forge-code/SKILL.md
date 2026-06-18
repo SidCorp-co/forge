@@ -65,7 +65,7 @@ Read `references/workflow.md` for the full step-by-step including standalone mod
 When the plan calls for a **no-code deliverable** — the issue's output is a decision/audit/spike write-up, not source — the implementation is the document itself, created on the ISS-* branch like any other change:
 
 1. Write the artifact at the planned `docs/proposals/<topic>.md` path and add/refresh its row in `docs/proposals/README.md`. Make it substantive (the actual decision, rationale, and any matrix/recommendations) — a stub will (correctly) be rejected at review.
-2. **Skip the build/test matrix.** The mechanical gate is the diff: if `git diff --name-only <baseBranch>..HEAD` touches **only `docs/**`** (no `packages/**`), there is nothing to compile or unit-test — the document is the deliverable. If the diff touches any `packages/**` file, it is NOT docs-only — run the normal build + test + review path.
+2. **Skip the build/test matrix.** The mechanical gate is the diff: derive whether this is a source vs docs change from the repo's own structure. If `git diff --name-only <baseBranch>..HEAD` touches **only docs/prose** (no source/code paths), there is nothing to compile or unit-test — the document is the deliverable. If the diff touches any source file, it is NOT docs-only — run the normal build + test + review path.
 3. Commit Conventional with a docs scope (e.g. `docs(proposals): ISS-XX <topic>`), body `Resolves ISS-XX`, push the ISS-* branch, comment, set status as usual. Review reads the prose as the reviewable content; it does not treat a docs diff as "nothing to review."
 
 Everything else (branch discipline, status transition, sessionContext) is identical to a normal change.

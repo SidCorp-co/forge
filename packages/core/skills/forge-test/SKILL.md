@@ -123,7 +123,7 @@ If this is a reopen cycle, extract FAIL items from the previous QA report. These
 ### Step 6: Test Backend API
 
 For each backend-related test case:
-- Authenticate with appropriate test credential via `POST {testApiUrl}/api/auth/local`
+- Authenticate via the project's login flow using credentials from `previewDeploy.testCredentials` (match by label); don't hardcode the auth endpoint — it varies by stack
 - Construct requests against `testApiUrl`
 - Use WebFetch or curl to hit endpoints
 - Verify: status codes, response shape, data correctness

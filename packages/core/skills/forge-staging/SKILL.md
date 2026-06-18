@@ -50,7 +50,7 @@ forge_issues → get → { documentId: "<id>" }
 forge_config → get → {}
 ```
 
-Read: `baseBranch` from project config (default: `main`).
+Read: `baseBranch` from project config; never default to a literal branch — if null, ABORT.
 
 Verify status is `pass`. If not, stop.
 

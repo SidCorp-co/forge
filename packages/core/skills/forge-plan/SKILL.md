@@ -87,7 +87,7 @@ Read: .forge/knowledge.json
 ```
 
 Use it to:
-- Look up `paths` to find exact file locations (e.g., `paths.frontend-feature` → `web/src/features/{domain}/`)
+- Look up `paths` to find exact file locations — infer affected paths from the repo's own structure / knowledge.json `paths` (e.g. a `paths.frontend-feature` entry → the project's feature directory), don't assume a fixed layout
 - Check `domains` to identify which content types are involved
 - Check `recipes` — if a recipe matches the issue type (new endpoint, new page, new tool), it provides the implementation steps template
 - Reference `conventions` for naming and state management patterns
@@ -95,7 +95,7 @@ Use it to:
 Then use targeted Glob to confirm the files exist and find exact paths:
 
 ```
-Glob: packages/<package>/src/**/*<keyword>*
+Glob: <source-root from knowledge.json paths>/**/*<keyword>*
 ```
 
 ### Step 4: Explore (Depth Depends on Tier)
@@ -132,7 +132,7 @@ Make the decision a **mergeable artifact** instead. Plan an in-repo markdown doc
 
 - Classify an issue as a no-code deliverable only when its acceptanceCriteria/goal is purely a decision/audit/spike write-up with **no** source, UI, API, or schema change. When in doubt, plan it as normal code — this is a narrow class, not a catch-all for "has some docs."
 - The deliverable is a doc at **`docs/proposals/<topic>.md`** (short, kebab, topic-focused), added to the index in `docs/proposals/README.md`. Name the exact path in the plan and outline the required sections so the coding step writes substantive content, not a stub.
-- This makes the change a **docs-only diff** (touches only `docs/**`, no `packages/**`), which flows code → review → test → release like any other change. The coding/review/test steps key off that mechanical signal, so a real decision becomes a durable, discoverable artifact rather than a comment that vanishes from the codebase.
+- This makes the change a **docs-only diff** (touches only docs/prose, no source paths — derived from the repo's own structure), which flows code → review → test → release like any other change. The coding/review/test steps key off that mechanical signal, so a real decision becomes a durable, discoverable artifact rather than a comment that vanishes from the codebase.
 - Do **NOT** decompose a no-code deliverable (see Step 5.5). Recommended follow-ups (e.g. ports the decision endorses) spin off as **standalone** issues linked with a soft `related_to` — never as `decomposes` children, since a pure decision has nothing to integrate.
 
 ### Step 5.5: Decide whether to decompose (Complex epics only)

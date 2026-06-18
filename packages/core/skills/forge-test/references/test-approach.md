@@ -41,12 +41,7 @@ Use `testApiUrl` (resolved from issue `previewApiUrl` or project `stagingApiUrl`
 
 **Tools:** WebFetch for simple requests, `Bash` (curl) for complex ones (custom headers, multipart).
 
-**Authentication:** Get a token first with the appropriate test credential:
-```bash
-curl -s -X POST "$TEST_API_URL/api/auth/local" \
-  -H "Content-Type: application/json" \
-  -d '{"identifier":"user@example.com","password":"..."}' | jq -r '.jwt'
-```
+**Authentication:** Authenticate via the project's own login flow using credentials from `previewDeploy.testCredentials` (match by label). Don't hardcode the auth endpoint — it varies by stack; infer the login request shape from the project's API/knowledge, obtain a token/session, then attach it to subsequent requests.
 
 **Multi-role testing:** When the issue involves role-based behavior, authenticate with each relevant role and verify:
 - The role that SHOULD see the feature → sees it
