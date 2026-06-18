@@ -27,20 +27,27 @@ describe("statusDonut", () => {
     });
     expect(d.total).toBe(17);
     const byKey = Object.fromEntries(d.segments.map((s) => [s.key, s.count]));
-    expect(byKey.running).toBe(3); // in_progress + testing
-    expect(byKey.review).toBe(3); // developed
-    expect(byKey.queued).toBe(1); // approved
-    expect(byKey.blocked).toBe(1); // reopen
-    expect(byKey.triage).toBe(4); // open
-    expect(byKey.done).toBe(5); // released
+    // ISS-509 — buckets fold by semantic tone. in_progress + testing +
+    // developed + reopen are all `active` (cobalt); reopen is NO LONGER a red
+    // "blocked" segment — it now matches its in-progress chip + the overview bar.
+    expect(byKey.active).toBe(7); // in_progress(2) + testing(1) + developed(3) + reopen(1)
+    expect(byKey.queued).toBe(5); // approved(1) + open(4) (neutral)
+    expect(byKey.done).toBe(5); // released (success)
     // pct sums to 100 across non-empty segments
     expect(d.segments.reduce((n, s) => n + s.pct, 0)).toBeCloseTo(100, 5);
   });
 
   it("drops empty buckets and reports active stage count", () => {
     const d = statusDonut({ open: 2, in_progress: 1 });
-    expect(d.segments.map((s) => s.key)).toEqual(["running", "triage"]);
+    expect(d.segments.map((s) => s.key)).toEqual(["active", "queued"]);
     expect(d.activeStageCount).toBe(2); // triage + code stages
+  });
+
+  it("never paints an issue-status segment with the failure(red) tone", () => {
+    // Only a failed JOB/session is red; no issue STATUS bucket uses red — this
+    // is the ISS-509 fix for reopen/on_hold/needs_info shown as alarm-red.
+    const d = statusDonut({ reopen: 1, on_hold: 1, needs_info: 1 });
+    expect(d.segments.every((s) => !s.color.includes("red"))).toBe(true);
   });
 
   it("handles empty/undefined distribution", () => {

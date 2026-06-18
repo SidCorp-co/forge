@@ -5,6 +5,7 @@
 //
 // Everything here re-composes data already fetched by the existing
 // `useProjectsConsole` / `useProjectHealth` hooks. No new data sources.
+import { TONE_META, type SemanticTone } from '@/design/status';
 import type { ProjectConsoleItem, ProjectHealthRow, WorkspaceTotals } from '@/features/projects/types';
 import { isAttention } from '@/features/projects/derive';
 
@@ -37,18 +38,21 @@ export interface WorkBucket {
 }
 
 /**
- * Workspace work buckets, in pipeline order. We deliberately fold the 18 issue
- * statuses into 6 meaningful "where does the work sit" buckets and EXCLUDE the
- * terminal `closed`/`draft` statuses — including them would let long-closed work
- * dominate the bar and drown out the in-flight signal the overview is for.
+ * Workspace work buckets, in pipeline order. ISS-509: buckets are grouped by
+ * SEMANTIC TONE and colored from `TONE_META` (one source of truth) — so a status
+ * lands on the SAME color here as in its chip and in the project-dashboard donut
+ * (e.g. `reopen` is `active`/cobalt in all three; `on_hold` is calm `blocked`
+ * ink, NOT red). The terminal `closed`/`draft` statuses are still EXCLUDED —
+ * including them would let long-closed work dominate the bar and drown out the
+ * in-flight signal the overview is for. `waiting`/`needs_info` (a human must act)
+ * split out of the old red "Blocked" lump into their own `attention` bucket.
  */
-const BUCKET_DEFS: ReadonlyArray<Omit<WorkBucket, 'count'>> = [
-  { key: 'backlog', label: 'Backlog', color: 'var(--ink-400)', statuses: ['open', 'confirmed'] },
-  { key: 'planning', label: 'Planning', color: 'var(--cobalt-500)', statuses: ['clarified', 'waiting', 'approved'] },
-  { key: 'progress', label: 'In progress', color: 'var(--accent)', statuses: ['in_progress', 'reopen'] },
-  { key: 'review', label: 'Review & QA', color: 'var(--amberw-500)', statuses: ['developed', 'deploying', 'testing', 'tested'] },
-  { key: 'ready', label: 'Ready to ship', color: 'var(--green-500)', statuses: ['pass', 'staging', 'released'] },
-  { key: 'blocked', label: 'Blocked', color: 'var(--red-500)', statuses: ['on_hold', 'needs_info'] },
+const BUCKET_DEFS: ReadonlyArray<Omit<WorkBucket, 'count' | 'color'> & { tone: SemanticTone }> = [
+  { key: 'queued', label: 'Queued', tone: 'neutral', statuses: ['open', 'confirmed', 'clarified', 'approved'] },
+  { key: 'progress', label: 'In progress', tone: 'active', statuses: ['in_progress', 'reopen', 'developed', 'deploying', 'testing'] },
+  { key: 'attention', label: 'Needs attention', tone: 'attention', statuses: ['waiting', 'needs_info'] },
+  { key: 'ready', label: 'Ready to ship', tone: 'success', statuses: ['tested', 'pass', 'staging', 'released'] },
+  { key: 'blocked', label: 'On hold', tone: 'blocked', statuses: ['on_hold'] },
 ];
 
 /**
@@ -66,7 +70,8 @@ export function groupWorkBuckets(dist: Record<string, number>): {
     let count = 0;
     for (const s of def.statuses) count += dist[s] ?? 0;
     total += count;
-    return { ...def, count };
+    const { tone, ...rest } = def;
+    return { ...rest, color: TONE_META[tone].dot, count };
   });
   return { buckets, total };
 }

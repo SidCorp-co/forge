@@ -22,7 +22,8 @@ interface StepArtifactCardProps {
 
 const STATE_META: Record<StageCellState, { dot: string; label: string }> = {
   done: { dot: "var(--green-500)", label: "Done" },
-  current: { dot: "var(--accent)", label: "Current" },
+  // ISS-509 — current stage uses the pipeline-active (cobalt) token, not flame.
+  current: { dot: "var(--pipeline-active)", label: "Current" },
   pending: { dot: "var(--border-default)", label: "Pending" },
   error: { dot: "var(--red-500)", label: "Failed" },
 };
