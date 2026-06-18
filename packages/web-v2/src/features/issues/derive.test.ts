@@ -23,7 +23,9 @@ import {
   statusToChip,
   statusToRun,
   statusToStage,
+  statusToTone,
 } from "./derive";
+import { STATUS_KEY_TONE } from "@/design/status";
 import { ISSUE_COMPLEXITIES, ISSUE_PRIORITIES, ISSUE_STATUSES } from "./types";
 import type {
   IssueDependencies,
@@ -94,6 +96,33 @@ describe("statusToChip", () => {
     expect(statusToChip("pass")).toBe("passed");
     expect(statusToChip("released")).toBe("done");
     expect(statusToChip("on_hold")).toBe("paused");
+  });
+});
+
+describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => {
+  it("is total over every IssueStatus", () => {
+    for (const s of ISSUE_STATUSES) {
+      expect(statusToTone(s), s).toBeDefined();
+    }
+  });
+
+  it("equals the tone of the status's chip (so chip + dashboard agree)", () => {
+    for (const s of ISSUE_STATUSES) {
+      expect(statusToTone(s), s).toBe(STATUS_KEY_TONE[statusToChip(s)]);
+    }
+  });
+
+  it("never resolves a benign / blocked / idle status to the failure tone", () => {
+    // No ISSUE status is a real failure — only a failed job/session is red.
+    for (const s of ISSUE_STATUSES) {
+      expect(statusToTone(s), s).not.toBe("failure");
+    }
+  });
+
+  it("reconciles the statuses that used to disagree across dashboards", () => {
+    expect(statusToTone("reopen")).toBe("active"); // was red "blocked/failed" on one dashboard
+    expect(statusToTone("on_hold")).toBe("blocked"); // calm ink, NOT red
+    expect(statusToTone("needs_info")).toBe("attention"); // amber, a human must act
   });
 });
 

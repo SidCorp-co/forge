@@ -6,6 +6,7 @@
 // NO new data sources (ISS-379). Kept pure so the aggregation is unit-tested in
 // `derive.test.ts` without rendering anything.
 import { type StageKey, stageColor } from "@/design/stages";
+import { TONE_META, type SemanticTone } from "@/design/status";
 import type { AttentionView } from "@/features/attention/types";
 import { jobTypeToStage, statusToStage } from "@/features/pipeline/derive";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
@@ -18,25 +19,32 @@ import type { QueueStats } from "@/features/sessions/types";
  * Open-issues-by-status donut (AC#4)
  * ------------------------------------------------------------------ */
 
-export type StatusBucketKey = "running" | "review" | "queued" | "blocked" | "triage" | "done";
+export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "done";
 
 /**
- * Display buckets for the status donut, in legend order. Every one of the 18
- * issue statuses maps into exactly one bucket so the donut total always equals
- * the sum of `statusDistribution`.
+ * Display buckets for the status donut, in legend order. ISS-509: buckets are
+ * grouped by SEMANTIC TONE and colored from `TONE_META` (one source of truth),
+ * so a status lands on the SAME tone here as in its chip and in the overview
+ * work-distribution bar. This reconciles the old disagreement where `reopen`
+ * was a red "Blocked / failed" segment here but an in-progress segment on the
+ * overview, and where `on_hold`/`needs_info` were painted the alarm-red of a
+ * real failure: now `reopen` is `active`, `on_hold` is calm `blocked` ink, and
+ * `needs_info`/`waiting` are `attention` amber. No issue STATUS maps to the red
+ * `failure` tone — only a failed job/session does. Every one of the 18 statuses
+ * maps into exactly one bucket so the donut total equals the sum of
+ * `statusDistribution`.
  */
 const STATUS_BUCKETS: ReadonlyArray<{
   key: StatusBucketKey;
   label: string;
-  color: string;
+  tone: SemanticTone;
   statuses: readonly string[];
 }> = [
-  { key: "running", label: "Running", color: "var(--cobalt-500)", statuses: ["in_progress", "deploying", "testing", "staging"] },
-  { key: "review", label: "In review", color: "var(--amberw-500)", statuses: ["developed", "tested", "pass"] },
-  { key: "queued", label: "Queued", color: "var(--ink-400)", statuses: ["approved", "clarified", "waiting"] },
-  { key: "blocked", label: "Blocked / failed", color: "var(--red-500)", statuses: ["reopen", "on_hold", "needs_info"] },
-  { key: "triage", label: "Triage", color: "var(--stage-triage)", statuses: ["open", "confirmed", "draft"] },
-  { key: "done", label: "Done", color: "var(--green-500)", statuses: ["released", "closed"] },
+  { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen", "developed", "deploying", "testing"] },
+  { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["waiting", "needs_info"] },
+  { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved", "draft"] },
+  { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },
+  { key: "done", label: "Done", tone: "success", statuses: ["tested", "pass", "staging", "released", "closed"] },
 ];
 
 export interface DonutSegment {
@@ -62,7 +70,7 @@ export function statusDonut(dist: Record<string, number> | undefined): StatusDon
   const total = Object.values(d).reduce((a, b) => a + b, 0);
   const segments = STATUS_BUCKETS.map((b) => {
     const count = b.statuses.reduce((n, s) => n + (d[s] ?? 0), 0);
-    return { key: b.key, label: b.label, color: b.color, count, pct: total > 0 ? (count / total) * 100 : 0 };
+    return { key: b.key, label: b.label, color: TONE_META[b.tone].dot, count, pct: total > 0 ? (count / total) * 100 : 0 };
   }).filter((s) => s.count > 0);
 
   const stages = new Set<StageKey>();

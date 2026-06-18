@@ -61,6 +61,10 @@
   --green-50:  #E8F5EF;  --green-500: #1F9D6B;  --green-600: #168256;
   --amberw-50: #FDF2DD;  --amberw-500:#E8920C;  --amberw-600:#C6790A;  --amberw-700:#9C5F08;
   --red-50:    #FCEBE9;  --red-500:   #D6453B;  --red-600:   #B5332A;
+  /* ISS-509 — SLATE: the `infra` tone (runner offline / down). A cool, dimmed
+     blue-grey, deliberately distinct from failure-red AND attention-amber so an
+     offline runner never reads as a code failure. */
+  --slate-50:  #EDF0F4;  --slate-500: #6A7585;  --slate-600: #515B6B;
 
   /* ============================================================
      SEMANTIC TOKENS — reference these in components
@@ -98,6 +102,11 @@
   --stage-review:  #E8920C;
   --stage-test:    #1F9D6B;
   --stage-release: #5A616E;
+
+  /* ISS-509 — the pipeline "active" bead / progress fill. Its OWN token (cobalt,
+     = the `active` tone) so it stops sharing the flame `--accent` with primary
+     buttons and the "In progress" distribution bar. */
+  --pipeline-active: var(--cobalt-500);
 
   /* ===== RADII ===== */
   --r-xs: 4px;

@@ -4,16 +4,35 @@
 // mentions), caps the list so the dashboard stays dense, and links each row to
 // its source. Empty → a quiet "all clear" state.
 import { Card, CardContent, Icon, type IconName, MonoTag } from '@/design';
+import { TONE_META, type SemanticTone } from '@/design/status';
 import { formatRelativeTime } from '@/features/projects/derive';
 import type { AttentionItem, AttentionKind, AttentionView } from '@/features/attention/types';
 
-const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
-  failed_job: { label: 'Failed', icon: 'alert', fg: 'var(--red-600)', bg: 'var(--red-50)' },
-  needs_review: { label: 'Review', icon: 'check', fg: 'var(--cobalt-700)', bg: 'var(--cobalt-50)' },
-  awaiting_input: { label: 'Awaiting', icon: 'clock', fg: 'var(--amberw-600)', bg: 'var(--amberw-50)' },
-  runner_offline: { label: 'Offline', icon: 'server', fg: 'var(--red-600)', bg: 'var(--red-50)' },
-  mention: { label: 'Mention', icon: 'mail', fg: 'var(--cobalt-700)', bg: 'var(--cobalt-50)' },
+// ISS-509: each attention kind resolves to a semantic tone, so a real `failed`
+// job (failure/red) and an `offline` runner (infra/slate) are no longer the
+// SAME red — the screenshot-1 regression. `needs_review` (open the diff) is the
+// `active` tone, `awaiting_input` (a human owes input) is `attention` amber, so
+// the two human-action rows stay distinct too.
+const KIND_TONE: Record<AttentionKind, SemanticTone> = {
+  failed_job: 'failure',
+  needs_review: 'active',
+  awaiting_input: 'attention',
+  runner_offline: 'infra',
+  mention: 'neutral',
 };
+
+const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
+  failed_job: { label: 'Failed', icon: 'alert', ...toneColors('failed_job') },
+  needs_review: { label: 'Review', icon: 'check', ...toneColors('needs_review') },
+  awaiting_input: { label: 'Awaiting', icon: 'clock', ...toneColors('awaiting_input') },
+  runner_offline: { label: 'Offline', icon: 'server', ...toneColors('runner_offline') },
+  mention: { label: 'Mention', icon: 'mail', ...toneColors('mention') },
+};
+
+function toneColors(kind: AttentionKind): { fg: string; bg: string } {
+  const t = TONE_META[KIND_TONE[kind]];
+  return { fg: t.fg, bg: t.bg };
+}
 
 const MAX_ROWS = 6;
 

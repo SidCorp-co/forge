@@ -19,7 +19,10 @@ function Bead({ state, size = 26 }: { state: BeadState; size?: number }) {
   const ring = size > 18 ? 5 : 3;
   const styles: Record<BeadState, React.CSSProperties> = {
     done: { background: "var(--green-500)", border: "2px solid var(--green-500)" },
-    active: { background: "var(--accent)", border: "2px solid var(--accent)", boxShadow: `0 0 0 ${ring}px var(--flame-100)` },
+    // ISS-509 — the active bead uses its own --pipeline-active (cobalt) token so
+    // it no longer shares the flame --accent with primary buttons / the
+    // "In progress" bar; the halo follows in cobalt-100.
+    active: { background: "var(--pipeline-active)", border: "2px solid var(--pipeline-active)", boxShadow: `0 0 0 ${ring}px var(--cobalt-100)` },
     error: { background: "var(--red-500)", border: "2px solid var(--red-500)", boxShadow: `0 0 0 ${ring}px var(--red-50)` },
     todo: { background: "var(--bg-surface)", border: "2px solid var(--border-default)" },
   };
@@ -95,11 +98,11 @@ export function PipelineTracker({
             className="h-full rounded-pill transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{
               width: `${pct}%`,
-              background: isErr ? "var(--red-500)" : status === "done" ? "var(--green-500)" : "var(--accent)",
+              background: isErr ? "var(--red-500)" : status === "done" ? "var(--green-500)" : "var(--pipeline-active)",
             }}
           />
-          {/* active run → a flame sliver sweeps to signal "in progress, % unknown" */}
-          {status === "running" && <span className="forge-indeterminate" style={{ background: "var(--accent)" }} />}
+          {/* active run → a cobalt sliver sweeps to signal "in progress, % unknown" */}
+          {status === "running" && <span className="forge-indeterminate" style={{ background: "var(--pipeline-active)" }} />}
         </div>
       </div>
     );
@@ -123,7 +126,7 @@ export function PipelineTracker({
               fontWeight: st === "active" || isSelected ? 700 : 500,
               color:
                 st === "active"
-                  ? "var(--accent-text)"
+                  ? "var(--cobalt-700)"
                   : st === "done"
                     ? "var(--green-600)"
                     : st === "error"

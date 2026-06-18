@@ -354,7 +354,8 @@ function stepDot(status: PipelineRunStepSummary["status"]): DotState {
 
 const DOT_COLOR: Record<DotState, string> = {
   done: "var(--green-500)",
-  running: "var(--accent)",
+  // ISS-509 — running uses the pipeline-active (cobalt) token, not flame --accent.
+  running: "var(--pipeline-active)",
   error: "var(--red-500)",
   todo: "var(--border-strong)",
 };

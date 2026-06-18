@@ -3,7 +3,7 @@
 // counts, filter → server params, client grouping, comment-kind heuristic.
 
 import { STAGES, STAGE_INDEX, type StageKey } from "@/design/stages";
-import type { StatusKey } from "@/design/status";
+import { STATUS_KEY_TONE, type SemanticTone, type StatusKey } from "@/design/status";
 import { ISSUE_STATUSES } from "./types";
 import type {
   CommentKind,
@@ -168,6 +168,19 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
     default:
       return "queued";
   }
+}
+
+/**
+ * Map an issue lifecycle status to a semantic TONE (ISS-509). Defined as
+ * `tone(statusToChip(status))` — the base chip mapping, no live-agent override —
+ * so a status's tone is IDENTICAL in its chip and in every dashboard bucket that
+ * folds it (the overview work-distribution bar + the project-dashboard donut
+ * both color through this). Total over all 18 `IssueStatus`es, and NO benign /
+ * blocked / idle status resolves to the `failure` tone (guarded in
+ * `derive.test.ts`).
+ */
+export function statusToTone(status: IssueStatus): SemanticTone {
+  return STATUS_KEY_TONE[statusToChip(status)];
 }
 
 /**
