@@ -52,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Project Settings → Integrations now shows Coolify as a single card with per-environment (Production/Staging) rows instead of two duplicate-looking cards.
 - A notification bell in the header now shows your pipeline and issue events in real time, with an unread count and one-click navigation to the related issue or run.
 - Fixed the "My conversations" agent-chat drawer so the message box can always be clicked and typed into.
+- Status colors are now consistent across the whole app, so each color reliably means one thing and different states no longer look the same.
 
 ## [0.3.0] - 2026-06-11
 
