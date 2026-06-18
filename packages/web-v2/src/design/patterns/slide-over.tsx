@@ -11,6 +11,12 @@ export interface SlideOverProps {
   /** Drawer width. A number is treated as pixels; a string is used verbatim as
       a CSS length (e.g. `clamp(560px, 60vw, 1024px)` for a responsive drawer). */
   width?: number | string;
+  /** Fit the body to the drawer instead of the default scrolling/padded body.
+      When `true` the body is a bounded `flex` column with no scroll + no padding
+      so the child owns its own single internal scroll region and bottom bar
+      (e.g. ChatScreen — avoids a nested double-scroll, ISS-506). Default `false`
+      preserves every existing consumer (RunDetail, project flyout, …). */
+  fitBody?: boolean;
 }
 
 const FOCUSABLE =
@@ -19,7 +25,7 @@ const FOCUSABLE =
 /** Right-hand drawer — context/detail (e.g. RunDetail) opens here rather than
     navigating away. Esc to close, focus trapped inside, focus returns to the
     trigger on close. Backdrop blur signals background dismissal. */
-export function SlideOver({ open, onClose, title, children, width = 480 }: SlideOverProps) {
+export function SlideOver({ open, onClose, title, children, width = 480, fitBody = false }: SlideOverProps) {
   const slideOverWidth = typeof width === "number" ? `${width}px` : width;
   const panelRef = useRef<HTMLElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -84,7 +90,11 @@ export function SlideOver({ open, onClose, title, children, width = 480 }: Slide
             <Icon name="x" size={18} />
           </button>
         </header>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        {fitBody ? (
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        )}
       </aside>
     </div>
   );

@@ -1,8 +1,11 @@
 "use client";
 
 import { Banner, Button, Icon, IconButton, Textarea } from "@/design";
-// Sticky message composer — Textarea + Send. Enter sends, Shift+Enter inserts a
-// newline. Shared by the run thread + Chat. ≥44px touch targets, sticky bottom.
+// Message composer — Textarea + Send. Enter sends, Shift+Enter inserts a
+// newline. Shared by the run thread + Chat. ≥44px touch targets. Pinned with
+// `position: sticky` by default (the page-scroll run thread); the bounded "My
+// conversations" drawer passes `sticky={false}` for a flow-positioned bottom
+// bar (ISS-506).
 // With `allowAttachments` (the "My conversations" Chat surface, ISS-499) it also
 // stages files: attach button + preview chips + remove + image paste. The run
 // thread leaves it off, so its UI is unchanged.
@@ -48,12 +51,29 @@ interface ComposerProps {
   placeholder?: string;
   /** Enable file attachment UI (Chat / "My conversations" only, ISS-499). */
   allowAttachments?: boolean;
+  /**
+   * Pin the band with `position: sticky` (default — the run-thread page-scroll
+   * surface). The bounded "My conversations" drawer passes `false` so the band
+   * is a normal flow-positioned `flex-none` bottom bar: a cross-scroll-boundary
+   * sticky inside the drawer desynced paint vs. hit-test, leaving the composer
+   * visible but unclickable in some browsers/zoom levels (ISS-506).
+   */
+  sticky?: boolean;
+}
+
+/** Band wrapper styling shared by the Composer + the read-only note. `sticky`
+    (default) keeps the page-scroll run-thread behavior; `false` flattens it into
+    an opaque flow-positioned bottom bar for the bounded drawer (ISS-506). */
+function bandClass(sticky: boolean, pad: string): string {
+  return sticky
+    ? `sticky bottom-0 z-10 border-t border-line bg-app/95 backdrop-blur ${pad}`
+    : `flex-none border-t border-line bg-app ${pad}`;
 }
 
 /** Rendered in place of the Composer for project viewers (read-only role). */
-export function ReadOnlyComposerNote() {
+export function ReadOnlyComposerNote({ sticky = true }: { sticky?: boolean }) {
   return (
-    <div className="sticky bottom-0 z-10 border-t border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-6">
+    <div className={bandClass(sticky, "px-4 py-4 sm:px-6")}>
       <p className="fg-body-sm text-center text-muted">Read-only access</p>
     </div>
   );
@@ -65,6 +85,7 @@ export function Composer({
   busy,
   placeholder = "Send a message…",
   allowAttachments = false,
+  sticky = true,
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -169,7 +190,7 @@ export function Composer({
 
   return (
     <div
-      className="sticky bottom-0 z-10 border-t border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6"
+      className={bandClass(sticky, "px-4 py-3 sm:px-6")}
       onPaste={allowAttachments ? onPaste : undefined}
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 xl:max-w-4xl">

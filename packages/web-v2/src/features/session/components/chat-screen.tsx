@@ -147,7 +147,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   if (latestQ.isLoading) {
     return (
-      <div className="grid min-h-dvh place-items-center">
+      <div className="grid h-full min-h-0 place-items-center py-12">
         <ProjectLoader label="loading chat…" />
       </div>
     );
@@ -155,7 +155,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   if (latestQ.isError) {
     return (
-      <div className="grid min-h-dvh place-items-center px-4">
+      <div className="grid h-full min-h-0 place-items-center px-4 py-12">
         <ErrorState
           title="Couldn't load chat"
           message={formatApiError(latestQ.error)}
@@ -166,8 +166,8 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-8">
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex flex-none items-center gap-3 border-b border-line bg-app/95 px-4 py-4 sm:px-8">
         <div className="min-w-0">
           {/* Title row: editable per-conversation title once a real row exists.
               In draft / no-conversation state, fall back to the section label. */}
@@ -218,7 +218,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
           {isFailed && (
             <div className="mb-6">
@@ -279,9 +279,10 @@ export function ChatScreen({ projectId }: { projectId: string }) {
           busy={busy}
           placeholder="Message the agent…"
           allowAttachments
+          sticky={false}
         />
       ) : (
-        <ReadOnlyComposerNote />
+        <ReadOnlyComposerNote sticky={false} />
       )}
     </div>
   );

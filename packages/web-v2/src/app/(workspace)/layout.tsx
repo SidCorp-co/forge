@@ -858,6 +858,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onClose={() => setChatOpen(false)}
             title="My conversations"
             width="clamp(560px, 60vw, 1024px)"
+            fitBody
           >
             <ChatScreen projectId={railProject.id} />
           </SlideOver>
