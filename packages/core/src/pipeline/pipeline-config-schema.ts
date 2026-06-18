@@ -248,7 +248,16 @@ export type StatesConfig = z.infer<typeof statesConfigSchema>;
 
 export function defaultStatesConfig(): Record<StageName, StageConfig> {
   return Object.fromEntries(
-    STAGE_NAMES.map((s) => [s, { enabled: true, mode: 'auto' as const }]),
+    STAGE_NAMES.map((s) => [
+      s,
+      // `tested` is the production approval GATE — `manual` by default so the
+      // pipeline PARKS for a human before release. Flip to `auto` for full
+      // auto-ship. Every other stage runs automatically.
+      {
+        enabled: true,
+        mode: s === 'tested' ? ('manual' as const) : ('auto' as const),
+      },
+    ]),
   ) as Record<StageName, StageConfig>;
 }
 
@@ -319,7 +328,6 @@ export const pipelineConfigSchema = z
     autoCode: stepToggleSchema.optional(),
     autoReview: stepToggleSchema.optional(),
     autoTest: stepToggleSchema.optional(),
-    autoStage: stepToggleSchema.optional(),
     autoFix: stepToggleSchema.optional(),
     autoRelease: stepToggleSchema.optional(),
     // ISS-232 Phase 3 — `maxConcurrentIssues` was removed. The per-project

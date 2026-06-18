@@ -1188,7 +1188,10 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .states;
     expect(Object.keys(states).sort()).toEqual(EXPECTED_DEFAULT_STAGES);
     for (const key of Object.keys(states)) {
-      expect(states[key]).toEqual({ enabled: true, mode: 'auto' });
+      // `tested` is the production approval GATE — manual by default so the
+      // pipeline parks for a human before release; every other stage is auto.
+      const expectedMode = key === 'tested' ? 'manual' : 'auto';
+      expect(states[key]).toEqual({ enabled: true, mode: expectedMode });
     }
   });
 

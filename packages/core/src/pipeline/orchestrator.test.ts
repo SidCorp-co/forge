@@ -685,12 +685,15 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('walks a two-stage disabled chain one hop at a time (developed → testing → pass)', async () => {
+  it('walks a two-stage disabled chain one hop at a time (developed → testing → tested gate)', async () => {
     cfgResolved({
       enabled: true,
       states: {
         developed: { enabled: false },
         testing: { enabled: false },
+        // `tested` is the manual release gate — the walk anchors here (never
+        // auto-skips a manual stage), parking the issue for a human.
+        tested: { mode: 'manual' },
       },
     });
     nextSelect.mockResolvedValueOnce([
@@ -704,7 +707,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     // status history — AC #4 requires a breadcrumb per skip transition.
     expect(applyTransitionMock).toHaveBeenCalledTimes(2);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
-    expect(applyTransitionMock.mock.calls[1]?.[1]).toBe('pass');
+    expect(applyTransitionMock.mock.calls[1]?.[1]).toBe('tested');
     // ISS-239 — two categories per hop, so 4 breadcrumbs total for a 2-hop chain.
     expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(4);
     // ISS-239 — per-hop skipChain entries.
@@ -716,7 +719,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     });
     expect(appendSkipChainEntryMock.mock.calls[1]?.[1]).toMatchObject({
       from: 'testing',
-      to: 'pass',
+      to: 'tested',
       reason: 'stage_disabled',
     });
     expect(dbInsert).not.toHaveBeenCalled();
@@ -822,9 +825,9 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
 
   it('does not pause via ISS-238 guard when the landing stage has its own missing skill (cap path)', async () => {
     // No skills at all. autoSkip walks the chain to the first non-skippable
-    // anchor (`closed` for the released chain, `approved` for the open chain).
-    // For payload.to = 'pass', the chain is pass → staging → released → closed.
-    // `closed` is non-skippable → anchors there. No cap fires.
+    // anchor (`closed`). For payload.to = 'pass' (a retired/legacy drain
+    // status), the chain is pass → released → closed. `closed` is
+    // non-skippable → anchors there. No cap fires.
     cfgResolved({ enabled: true });
     resolverStagesMock.mockResolvedValueOnce(new Set<string>());
     nextSelect.mockResolvedValueOnce([
@@ -834,13 +837,12 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     const bus = makeBus();
     await bus.emit('transition', transition({ from: 'testing', to: 'pass' }) as never);
 
-    expect(applyTransitionMock).toHaveBeenCalledTimes(3);
+    expect(applyTransitionMock).toHaveBeenCalledTimes(2);
     expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual([
-      'staging',
       'released',
       'closed',
     ]);
-    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(3);
+    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(2);
     expect(postSkipChainCappedCommentMock).not.toHaveBeenCalled();
   });
 

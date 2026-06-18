@@ -19,9 +19,12 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   in_progress: ['developed', 'deploying', 'reopen', 'on_hold'],
   developed: ['deploying', 'reopen', 'on_hold'],
   deploying: ['testing', 'reopen', 'on_hold'],
-  testing: ['tested', 'pass', 'reopen', 'on_hold'],
-  tested: ['pass', 'reopen', 'on_hold'],
-  pass: ['staging', 'reopen', 'on_hold'],
+  testing: ['tested', 'reopen', 'on_hold'],
+  // `tested` is the production approval GATE: QA passed, a human advances it
+  // to `released`. `pass`/`staging` are retired from the happy path (kept in
+  // the enum + matrix only so a legacy issue parked there can drain forward).
+  tested: ['released', 'reopen', 'on_hold'],
+  pass: ['released', 'reopen', 'on_hold'],
   staging: ['released', 'reopen', 'on_hold'],
   released: ['closed', 'on_hold'],
   closed: ['reopen'],
@@ -101,9 +104,13 @@ export const STAGE_FORWARD: Partial<Record<IssueStatus, IssueStatus>> = {
   confirmed: 'clarified',
   clarified: 'approved',
   developed: 'testing',
-  testing: 'pass',
-  tested: 'pass',
-  pass: 'staging',
+  // Canonical happy-path ends at the `tested` release GATE, then `released`.
+  // The former `pass → staging` deploy hop is retired; `pass`/`staging` are
+  // kept only as drain edges so a legacy issue still parked there flushes
+  // forward to `released` instead of wedging.
+  testing: 'tested',
+  tested: 'released',
+  pass: 'released',
   staging: 'released',
   // deploying sits between developed and testing in the lifecycle
   // (developed → deploying → testing), so skipping it lands on testing.
@@ -192,6 +199,12 @@ function classifySkippable(
   opts: ResolveSkipOpts | undefined,
 ): SkipReason | null {
   if (states?.[stage]?.enabled === false) return 'stage_disabled';
+  // GATE (first-class): a `mode:'manual'` stage is a deliberate human gate.
+  // Never auto-skip past it — even with no registered skill the issue must
+  // PARK here for a human to advance it. Without this, an enabled no-skill
+  // status that sits in STAGE_FORWARD (e.g. the `tested` release gate) is
+  // classified `missing_skill` and skipped, silently defeating the gate.
+  if (states?.[stage]?.mode === 'manual') return null;
   if (opts?.hasSkill && !opts.hasSkill(stage)) return 'missing_skill';
   if (opts?.complexityMatches?.(stage)) return 'complexity_skip';
   return null;

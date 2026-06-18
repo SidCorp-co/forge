@@ -10,7 +10,7 @@
 
 import type { IssueStatus, JobType, RunnerType } from '../db/schema.js';
 
-export const PIPELINE_REGISTRY_VERSION = 4;
+export const PIPELINE_REGISTRY_VERSION = 5;
 
 // `workingStatus` — the in-flight status the step's agent flips the issue to
 // when it BEGINS work (via `forge_step_start`), so the board shows in-flight
@@ -66,18 +66,11 @@ export const PIPELINE_STEPS = [
     skillName: 'forge-test',
     workingStatus: null,
   },
-  // Staging-deploy step: triggers at `pass` (QA passed), deploys the ISS-* change
-  // to the staging/preview env, then advances to `staging`. `staging` itself has
-  // NO step — it's the natural human approval gate (parks; the reconciler ignores
-  // no-step statuses, so it never loops). Work-that-advances at `pass`, gate at
-  // `staging`: keeps "deploy" and "approve" cleanly separated.
-  {
-    status: 'pass',
-    jobType: 'staging',
-    toggle: 'autoStage',
-    skillName: 'forge-staging',
-    workingStatus: null,
-  },
+  // NOTE: the former `pass` / forge-staging "staging-deploy" step was retired.
+  // Staging deploy now happens inside forge-code, and the single production
+  // approval GATE is the `tested` status (default `mode:'manual'`; see
+  // `state-machine.ts` classifySkippable + defaultStatesConfig). `pass`/`staging`
+  // remain in the status enum for back-compat but have NO pipeline step.
   {
     status: 'reopen',
     jobType: 'fix',

@@ -57,7 +57,6 @@ export const REGISTRY_STEP_TOGGLE_KEYS = [
   'autoCode',
   'autoReview',
   'autoTest',
-  'autoStage',
   'autoFix',
   'autoRelease',
 ] as const;
