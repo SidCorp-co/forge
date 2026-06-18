@@ -66,8 +66,8 @@ const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 // The intervention (job_events) insert passes a single object; ISS-447's
 // kernel_transitions audit insert passes an array of rows. Route them to
 // separate spies so the "exactly one intervention" assertion stays precise.
-const txInsertValues = vi.fn(async () => undefined);
-const txAuditValues = vi.fn(async () => undefined);
+const txInsertValues = vi.fn(async (_v?: unknown) => undefined);
+const txAuditValues = vi.fn(async (_v?: unknown) => undefined);
 const txExecute = vi.fn(async () => [{ max_seq: 0 }]);
 const tx = {
   update: vi.fn(() => ({ set: txUpdateSet })),

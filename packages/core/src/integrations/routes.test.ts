@@ -134,8 +134,7 @@ const VALID_BODY = {
   environment: 'staging',
   config: {
     baseUrl: 'https://coolify.example.com',
-    resourceUuid: 'res-abc-123',
-    branch: 'main',
+    targets: [{ label: 'Backend', resourceUuid: 'res-abc-123' }],
   },
   secrets: { apiToken: 'tok-abcdef12' },
 };
@@ -146,6 +145,7 @@ const TEST_KEY_B64 = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 const ORIGINAL_KEY = process.env.INTEGRATION_MASTER_KEY;
 
 afterEach(() => {
+  // biome-ignore lint/performance/noDelete: assigning undefined to process.env coerces to the string "undefined"
   if (ORIGINAL_KEY === undefined) delete process.env.INTEGRATION_MASTER_KEY;
   else process.env.INTEGRATION_MASTER_KEY = ORIGINAL_KEY;
 });
@@ -159,6 +159,7 @@ beforeEach(() => {
 
 describe('POST /api/projects/:projectId/integrations — vault guard', () => {
   it('503 VAULT_NOT_CONFIGURED when INTEGRATION_MASTER_KEY is unset', async () => {
+    // biome-ignore lint/performance/noDelete: assigning undefined to process.env coerces to the string "undefined"
     delete process.env.INTEGRATION_MASTER_KEY;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
@@ -528,8 +529,8 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
   });
 });
 
-// === Coolify config tier split — resourceUuid/branch are BINDING-tier (per
-// project), baseUrl stays CONNECTION-tier with the credential. ===
+// === Coolify config tier split — `targets` is BINDING-tier (per project),
+// baseUrl stays CONNECTION-tier with the credential. ===
 
 describe('coolify config tier split (binding-scoped deploy target)', () => {
   function mockCoolifyPair(connOverrides: Record<string, unknown> = {}) {
@@ -552,8 +553,6 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
         provider: 'coolify',
         config: {
           baseUrl: 'https://coolify.example',
-          resourceUuid: 'res-legacy',
-          branch: 'main',
           environment: 'staging',
         },
         secretsEnc: Buffer.from('enc'),
@@ -568,7 +567,7 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     });
   }
 
-  it('PATCH — resourceUuid/branch land on the binding, baseUrl on the connection', async () => {
+  it('PATCH — targets land on the binding, baseUrl on the connection', async () => {
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
@@ -577,7 +576,13 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     updateBinding.mockResolvedValueOnce({ id: 'int-cl' });
 
     const res = await patch(token, 'int-cl', {
-      config: { baseUrl: 'https://new.example', resourceUuid: 'res-2', branch: 'dev' },
+      config: {
+        baseUrl: 'https://new.example',
+        targets: [
+          { label: 'Backend', resourceUuid: 'res-be' },
+          { label: 'Frontend', resourceUuid: 'res-fe' },
+        ],
+      },
     });
     expect(res.status).toBe(200);
 
@@ -587,17 +592,21 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
       { config: Record<string, unknown> },
     ];
     expect(connPatch.config.baseUrl).toBe('https://new.example');
-    // The legacy connection-level resourceUuid stays untouched — the new value
-    // must NOT leak into the shared connection config.
-    expect(connPatch.config.resourceUuid).toBe('res-legacy');
+    // Targets must NOT leak into the shared connection config.
+    expect(connPatch.config.targets).toBeUndefined();
 
     expect(updateBinding).toHaveBeenCalledTimes(1);
     const [bindId, bindPatch] = updateBinding.mock.calls[0] as [
       string,
-      { config: Record<string, unknown> },
+      { config: { targets: Array<{ id: string; label: string; resourceUuid: string }> } },
     ];
     expect(bindId).toBe('int-cl');
-    expect(bindPatch.config).toEqual({ resourceUuid: 'res-2', branch: 'dev' });
+    // Server fills a stable id per target; assert label + uuid + id presence.
+    expect(bindPatch.config.targets).toEqual([
+      expect.objectContaining({ label: 'Backend', resourceUuid: 'res-be' }),
+      expect.objectContaining({ label: 'Frontend', resourceUuid: 'res-fe' }),
+    ]);
+    expect(bindPatch.config.targets[0]?.id).toBeTypeOf('string');
   });
 
   it('PATCH — org-locked project admin CAN set the per-project deploy target', async () => {
@@ -615,11 +624,18 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     mockCoolifyPair({ ownerType: 'org', ownerId: 'org-1' });
     updateBinding.mockResolvedValueOnce({ id: 'int-cl' });
 
-    const res = await patch(token, 'int-cl', { config: { resourceUuid: 'res-mine' } });
+    const res = await patch(token, 'int-cl', {
+      config: { targets: [{ label: 'App', resourceUuid: 'res-mine' }] },
+    });
     expect(res.status).toBe(200);
     expect(updateConnection).not.toHaveBeenCalled();
-    const [, bindPatch] = updateBinding.mock.calls[0] as [string, { config: object }];
-    expect(bindPatch.config).toEqual({ resourceUuid: 'res-mine' });
+    const [, bindPatch] = updateBinding.mock.calls[0] as [
+      string,
+      { config: { targets: Array<{ label: string; resourceUuid: string }> } },
+    ];
+    expect(bindPatch.config.targets).toEqual([
+      expect.objectContaining({ label: 'App', resourceUuid: 'res-mine' }),
+    ]);
   });
 
   it('PATCH — org-locked project admin still CANNOT touch the shared baseUrl (403)', async () => {
@@ -640,7 +656,7 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     expect(updateBinding).not.toHaveBeenCalled();
   });
 
-  it('POST create — connection gets baseUrl, binding gets resourceUuid/branch', async () => {
+  it('POST create — connection gets baseUrl, binding gets targets', async () => {
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
@@ -662,7 +678,7 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
       projectId: PROJECT_ID,
       provider: 'coolify',
       environment: 'staging',
-      config: { resourceUuid: VALID_BODY.config.resourceUuid, branch: 'main' },
+      config: { targets: [{ id: 't-1', label: 'Backend', resourceUuid: 'res-abc-123' }] },
       integrationSecret: 'whsec_xxx',
       active: true,
       createdAt: new Date(),
@@ -677,11 +693,12 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
       baseUrl: VALID_BODY.config.baseUrl,
       environment: 'staging',
     });
-    const bindArg = createBinding.mock.calls[0]?.[0] as { config: Record<string, unknown> };
-    expect(bindArg.config).toEqual({
-      resourceUuid: VALID_BODY.config.resourceUuid,
-      branch: VALID_BODY.config.branch,
-    });
+    const bindArg = createBinding.mock.calls[0]?.[0] as {
+      config: { targets: Array<{ id: string; label: string; resourceUuid: string }> };
+    };
+    expect(bindArg.config.targets).toEqual([
+      expect.objectContaining({ label: 'Backend', resourceUuid: 'res-abc-123' }),
+    ]);
   });
 });
 
@@ -697,7 +714,7 @@ function ownedConnection(overrides: Record<string, unknown> = {}) {
     ownerId: USER_ID,
     provider: 'coolify',
     displayName: null,
-    config: { baseUrl: 'https://coolify.example.com', resourceUuid: 'res-1', branch: 'main' },
+    config: { baseUrl: 'https://coolify.example.com' },
     secretsEnc: Buffer.from('enc'),
     active: true,
     lastHealthStatus: null,
@@ -775,7 +792,7 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
       projectId: PROJECT_ID,
       provider: 'coolify',
       environment: 'staging',
-      config: { resourceUuid: 'res-b', branch: 'release' },
+      config: { targets: [{ id: 't-b', label: 'App', resourceUuid: 'res-b' }] },
       integrationSecret: 'whsec_x',
       active: true,
       createdAt: new Date(),
@@ -786,12 +803,20 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     const res = await bindReq(token, CONN_ID, {
       projectId: PROJECT_ID,
       environment: 'staging',
-      config: { baseUrl: 'https://other.example.com', resourceUuid: 'res-b', branch: 'release' },
+      config: {
+        baseUrl: 'https://other.example.com',
+        targets: [{ label: 'App', resourceUuid: 'res-b' }],
+      },
     });
     expect(res.status).toBe(201);
-    const arg = createBinding.mock.calls[0]?.[0] as { config: Record<string, unknown> };
+    const arg = createBinding.mock.calls[0]?.[0] as {
+      config: { targets: Array<{ label: string; resourceUuid: string }>; baseUrl?: string };
+    };
     // baseUrl must NOT shadow the shared connection endpoint per-binding.
-    expect(arg.config).toEqual({ resourceUuid: 'res-b', branch: 'release' });
+    expect(arg.config.baseUrl).toBeUndefined();
+    expect(arg.config.targets).toEqual([
+      expect.objectContaining({ label: 'App', resourceUuid: 'res-b' }),
+    ]);
   });
 
   it('409 — provider+env clash on an existing active binding', async () => {

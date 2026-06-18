@@ -313,6 +313,7 @@ describe('forge_comments tool', () => {
           tokenId: '55555555-5555-4555-8555-555555555555',
           scopes: ['read', 'write'],
           projectIds,
+          boundProjectId: null,
         },
         device: fakeDevice,
         projectSlug: null,

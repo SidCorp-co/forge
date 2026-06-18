@@ -191,6 +191,7 @@ describe('forge_agent_sessions.get', () => {
           tokenId: '88888888-8888-4888-8888-888888888888',
           scopes: ['read', 'write'],
           projectIds,
+          boundProjectId: null,
         },
         device: fakeDevice,
         projectSlug: null,

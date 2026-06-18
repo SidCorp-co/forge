@@ -59,6 +59,7 @@ function buildPatCtx(scopes: readonly string[], projectIds: string[] | null = nu
       tokenId: TOKEN_ID,
       scopes,
       projectIds,
+      boundProjectId: null,
     },
     device: fakeDevice,
     projectSlug: null,

@@ -65,11 +65,17 @@ describe('effectiveConfig', () => {
   it('overlays binding.config on top of connection.config (binding wins)', () => {
     const cfg = effectiveConfig(
       makePair({
-        connectionConfig: { baseUrl: 'https://c', resourceUuid: 'from-conn', branch: 'main' },
-        bindingConfig: { resourceUuid: 'from-binding' },
+        connectionConfig: {
+          baseUrl: 'https://c',
+          targets: [{ id: 'c', label: 'Conn', resourceUuid: 'from-conn' }],
+        },
+        bindingConfig: { targets: [{ id: 'b', label: 'Bind', resourceUuid: 'from-binding' }] },
       }),
     );
-    expect(cfg).toEqual({ baseUrl: 'https://c', resourceUuid: 'from-binding', branch: 'main' });
+    expect(cfg).toEqual({
+      baseUrl: 'https://c',
+      targets: [{ id: 'b', label: 'Bind', resourceUuid: 'from-binding' }],
+    });
   });
 });
 

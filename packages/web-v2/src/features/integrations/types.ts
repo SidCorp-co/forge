@@ -10,6 +10,7 @@
 import type {
   CoolifyConfigInput,
   CoolifySecretsInput,
+  CoolifyTargetInput,
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
   IntegrationHealthResult,
@@ -27,6 +28,7 @@ export type {
   ConfirmProdDeployResult,
   IntegrationEnvironment,
   CoolifyConfigInput,
+  CoolifyTargetInput,
   CoolifySecretsInput,
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
@@ -102,8 +104,7 @@ export interface IntegrationTestResult extends IntegrationHealthResult {
 export interface ProviderConfig {
   // coolify
   baseUrl?: string;
-  resourceUuid?: string;
-  branch?: string;
+  targets?: CoolifyTargetInput[];
   // postman
   workspaceId?: string;
   workspaceName?: string;

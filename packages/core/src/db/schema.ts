@@ -2400,8 +2400,8 @@ export const integrationBindings = pgTable(
     // without a join. Always equals the parent connection's provider.
     provider: text('provider').notNull(),
     environment: text('environment', { enum: integrationEnvironments }).notNull(),
-    // Per-binding overrides (e.g. coolify resourceUuid/branch). Overlaid on top
-    // of connection.config at dispatch time.
+    // Per-binding overrides (e.g. coolify `targets[]` deploy apps). Overlaid on
+    // top of connection.config at dispatch time.
     config: jsonb('config').notNull().default({}),
     // Per-binding HMAC secret for inbound webhook signature verification — an
     // inbound webhook is project+env scoped, so this stays on the binding.

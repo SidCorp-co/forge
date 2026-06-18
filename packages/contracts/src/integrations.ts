@@ -173,11 +173,22 @@ export interface ConfirmProdDeployResult {
 
 // === Provider config / secret inputs ===
 
-/** Coolify non-secret config (`connection.config`). */
+/** One Coolify deploy target (a single application UUID). `id` is server-assigned
+ *  when omitted; a write replaces the whole `targets` array. */
+export interface CoolifyTargetInput {
+  id?: string;
+  label: string;
+  resourceUuid: string;
+}
+
+/**
+ * Coolify config. `baseUrl` is connection-tier (shared credential); `targets`
+ * is binding-tier (per project+environment) and may list several applications
+ * (e.g. a split backend + frontend) that deploy together.
+ */
 export interface CoolifyConfigInput {
   baseUrl: string;
-  resourceUuid: string;
-  branch: string;
+  targets: CoolifyTargetInput[];
 }
 export interface CoolifySecretsInput {
   apiToken: string;
@@ -294,9 +305,9 @@ export interface ConnectionUpdateInput {
 export interface BindExistingConnectionRequest {
   projectId: string;
   environment: IntegrationEnvironment;
-  /** Optional binding-tier overrides (coolify resourceUuid/branch) so the
-   *  shared connection targets a different deploy resource in this project.
-   *  Connection-tier keys (baseUrl) are dropped server-side. */
+  /** Optional binding-tier overrides (coolify `targets[]`) so the shared
+   *  connection deploys different apps in this project. Connection-tier keys
+   *  (baseUrl) are dropped server-side. */
   config?: Record<string, unknown>;
 }
 

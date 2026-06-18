@@ -32,6 +32,7 @@ function makeThenable(): any {
     where: () => p,
     orderBy: () => p,
     limit: () => p,
+    // biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await — the mock must be thenable
     then: (resolve: (v: unknown) => void) => resolve(resultQueue.shift() ?? []),
   };
   return p;
@@ -105,7 +106,14 @@ function pair(
   } = {},
 ) {
   return {
-    binding: { id, environment, projectId: PROJECT_ID, provider: 'coolify', config: {}, active: true },
+    binding: {
+      id,
+      environment,
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      config: {},
+      active: true,
+    },
     connection: {
       id,
       provider: 'coolify',
@@ -127,11 +135,14 @@ beforeEach(() => {
 });
 
 describe('forge_coolify_deploy → list', () => {
-  it('maps active integrations including breakerOpen + resourceUuid', async () => {
+  it('maps active integrations including breakerOpen + targets', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      pair(STAGING_INT, 'staging', { config: { resourceUuid: 'res-staging' }, lastHealthStatus: 'ok' }),
+      pair(STAGING_INT, 'staging', {
+        config: { targets: [{ id: 't-be', label: 'Backend', resourceUuid: 'res-staging' }] },
+        lastHealthStatus: 'ok',
+      }),
       pair(PROD_INT, 'prod', { breakerOpenedAt: new Date() }),
     ]);
 
@@ -139,7 +150,7 @@ describe('forge_coolify_deploy → list', () => {
       integrations: Array<{
         id: string;
         environment: string;
-        resourceUuid: string | null;
+        targets: Array<{ id: string; label: string; resourceUuid: string }>;
         breakerOpen: boolean;
       }>;
     };
@@ -148,12 +159,12 @@ describe('forge_coolify_deploy → list', () => {
     expect(result.integrations[0]).toMatchObject({
       id: STAGING_INT,
       environment: 'staging',
-      resourceUuid: 'res-staging',
+      targets: [{ id: 't-be', label: 'Backend', resourceUuid: 'res-staging' }],
       breakerOpen: false,
     });
     expect(result.integrations[1]).toMatchObject({
       environment: 'prod',
-      resourceUuid: null,
+      targets: [],
       breakerOpen: true,
     });
   });
@@ -308,7 +319,10 @@ describe('forge_coolify_deploy → status', () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      pair(STAGING_INT, 'staging', { config: { resourceUuid: 'res-staging' }, lastHealthStatus: 'ok' }),
+      pair(STAGING_INT, 'staging', {
+        config: { targets: [{ id: 't-be', label: 'Backend', resourceUuid: 'res-staging' }] },
+        lastHealthStatus: 'ok',
+      }),
     ]);
     findLastOutboundSpy.mockResolvedValueOnce({
       status: 'ok',

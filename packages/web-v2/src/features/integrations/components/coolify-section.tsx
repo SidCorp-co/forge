@@ -28,6 +28,7 @@ import {
   useUpdateProviderIntegration,
 } from "../hooks";
 import type {
+  CoolifyTargetInput,
   IntegrationEnvironment,
   IntegrationSummary,
   IntegrationTestResult,
@@ -121,20 +122,22 @@ function EnvironmentPanel({
   const rotate = useRotateIntegrationSecret(projectId);
 
   const cfg = (existing?.config ?? {}) as ProviderConfig;
+  const seedTargets = (): CoolifyTargetInput[] =>
+    cfg.targets && cfg.targets.length > 0
+      ? cfg.targets.map((t) => ({ id: t.id, label: t.label, resourceUuid: t.resourceUuid }))
+      : [{ label: "", resourceUuid: "" }];
   const [baseUrl, setBaseUrl] = useState(cfg.baseUrl ?? "");
-  const [resourceUuid, setResourceUuid] = useState(cfg.resourceUuid ?? "");
-  const [branch, setBranch] = useState(cfg.branch ?? "main");
+  const [targets, setTargets] = useState<CoolifyTargetInput[]>(seedTargets);
   const [apiToken, setApiToken] = useState("");
   // The panel mounts before the list query resolves (key={env} only remounts on
   // env switches), so re-seed the form when the existing row arrives — without
   // this the fields stay blank over a configured integration and a Save would
-  // wipe its config with empty strings.
+  // wipe its config with empty values.
   const [seededFor, setSeededFor] = useState(existing?.id ?? null);
   if ((existing?.id ?? null) !== seededFor) {
     setSeededFor(existing?.id ?? null);
     setBaseUrl(cfg.baseUrl ?? "");
-    setResourceUuid(cfg.resourceUuid ?? "");
-    setBranch(cfg.branch ?? "main");
+    setTargets(seedTargets());
   }
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(
     null,
@@ -149,23 +152,44 @@ function EnvironmentPanel({
   // tier (base URL + token). The deploy target (resourceUuid/branch) is
   // binding-tier and stays editable by a project admin, as do Test + Delete.
   const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
-  // True when this project has no binding-level resourceUuid of its own and
-  // the value shown comes off the shared connection's config.
+  // True when this project has no binding-level targets of its own and the
+  // values shown are inherited off the shared connection's config.
   const bindingCfg = (existing?.bindingConfig ?? {}) as ProviderConfig;
-  const resourceInherited = Boolean(existing && !bindingCfg.resourceUuid && cfg.resourceUuid);
+  const targetsInherited = Boolean(
+    existing && !(bindingCfg.targets && bindingCfg.targets.length > 0) && cfg.targets?.length,
+  );
+
+  function updateTarget(idx: number, patch: Partial<CoolifyTargetInput>) {
+    setTargets((prev) => prev.map((t, i) => (i === idx ? { ...t, ...patch } : t)));
+  }
+  function addTarget() {
+    setTargets((prev) => [...prev, { label: "", resourceUuid: "" }]);
+  }
+  function removeTarget(idx: number) {
+    setTargets((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
+  }
 
   async function handleSave() {
     setError(null);
     setRevealedSecret(null);
     setTestResult(null);
+    const cleanTargets = targets
+      .map((t) => ({
+        ...(t.id ? { id: t.id } : {}),
+        label: t.label.trim(),
+        resourceUuid: t.resourceUuid.trim(),
+      }))
+      .filter((t) => t.label && t.resourceUuid);
+    if (cleanTargets.length === 0) {
+      setError("Add at least one deploy target (label + resource UUID).");
+      return;
+    }
     try {
       if (existing) {
-        // resourceUuid/branch are binding-tier (per project) — always sendable
-        // by a project admin. baseUrl + token are connection-tier (shared) and
-        // org-gated, so an org-locked save must not include them (403).
-        const config: Record<string, unknown> = {};
-        if (resourceUuid.trim()) config.resourceUuid = resourceUuid.trim();
-        if (branch.trim()) config.branch = branch.trim();
+        // `targets` is binding-tier (per project) — always sendable by a project
+        // admin. baseUrl + token are connection-tier (shared) and org-gated, so
+        // an org-locked save must not include them (403).
+        const config: Record<string, unknown> = { targets: cleanTargets };
         if (!orgLocked && baseUrl.trim()) config.baseUrl = baseUrl.trim();
         await update.mutateAsync({
           id: existing.id,
@@ -184,7 +208,7 @@ function EnvironmentPanel({
         const res = await create.mutateAsync({
           provider: "coolify",
           environment,
-          config: { baseUrl, resourceUuid, branch },
+          config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
           ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
@@ -245,73 +269,111 @@ function EnvironmentPanel({
           : "Staging — auto-dispatch on release."}
       </p>
 
-      {!existing && (
-        <ConnectionOwnerField
-          projectId={projectId}
-          value={ownerOrgId}
-          onChange={setOwnerOrgId}
-        />
-      )}
-      <Field
-        label="Base URL"
-        required
-        hint="Shared connection — applies to every project using this credential."
-      >
-        <Input
-          type="url"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="https://coolify.example.com"
-          disabled={orgLocked}
-        />
-      </Field>
-      <Field
-        label="Resource UUID"
-        required
-        hint={
-          resourceInherited
-            ? "Per-project deploy target. Currently inherited from the shared connection — saving stores a project-level override."
-            : "Per-project deploy target — this project's Coolify application."
-        }
-      >
-        <Input
-          value={resourceUuid}
-          onChange={(e) => setResourceUuid(e.target.value)}
-          placeholder="application uuid from Coolify"
-        />
-      </Field>
-      <Field label="Branch" required hint="Per-project — the branch this resource deploys from.">
-        <Input
-          value={branch}
-          onChange={(e) => setBranch(e.target.value)}
-          placeholder="main"
-        />
-      </Field>
-      <Field
-        label="API token"
-        hint={
-          existing
-            ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
-            : "Coolify API token. Stored encrypted; never shown again."
-        }
-        required={!existing}
-      >
-        <Input
-          type="password"
-          autoComplete="new-password"
-          value={apiToken}
-          onChange={(e) => setApiToken(e.target.value)}
-          placeholder={existing ? "•••••••• (unchanged)" : "Coolify API token"}
-          disabled={orgLocked}
-        />
-      </Field>
-
-      {orgLocked && (
+      {/* ── Section 1: SHARED CREDENTIAL (connection-tier) ─────────────── */}
+      <fieldset className="flex flex-col gap-3 rounded-md border border-subtle bg-sunken/40 p-3">
+        <legend className="fg-label px-1 text-subtle">
+          Coolify server · shared credential
+        </legend>
         <p className="fg-body-sm text-muted">
-          Org-shared credential — only an org owner/admin can change the base URL or API token.
-          The deploy target (resource UUID + branch) is yours to configure per project.
+          One Coolify server + API token, reused by every project bound to this
+          connection. Forge calls it to trigger deploys (Forge → Coolify).
         </p>
-      )}
+        {!existing && (
+          <ConnectionOwnerField
+            projectId={projectId}
+            value={ownerOrgId}
+            onChange={setOwnerOrgId}
+          />
+        )}
+        <Field label="Base URL" required>
+          <Input
+            type="url"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://coolify.example.com"
+            disabled={orgLocked}
+          />
+        </Field>
+        <Field
+          label="API token"
+          hint={
+            existing
+              ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
+              : "Coolify API token. Stored encrypted; never shown again."
+          }
+          required={!existing}
+        >
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={apiToken}
+            onChange={(e) => setApiToken(e.target.value)}
+            placeholder={existing ? "•••••••• (unchanged)" : "Coolify API token"}
+            disabled={orgLocked}
+          />
+        </Field>
+        {orgLocked && (
+          <p className="fg-body-sm text-muted">
+            Org-shared credential — only an org owner/admin can change the base
+            URL or API token. The deploy targets below are yours to configure per
+            project.
+          </p>
+        )}
+      </fieldset>
+
+      {/* ── Section 2: DEPLOY TARGETS (binding-tier, per project+env) ───── */}
+      <fieldset className="flex flex-col gap-3 rounded-md border border-subtle p-3">
+        <legend className="fg-label px-1 text-subtle">
+          Deploy targets · this project · {environment}
+        </legend>
+        <p className="fg-body-sm text-muted">
+          The Coolify application(s) this project deploys for {environment}. Add
+          one row per app — e.g. a separate backend and frontend; they deploy
+          together and the pipeline only completes once all succeed.
+          {targetsInherited
+            ? " Currently inherited from the shared connection — saving stores project-level targets."
+            : ""}
+        </p>
+        {targets.map((t, idx) => (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional + reorder-free
+            key={t.id ?? idx}
+            className="flex items-end gap-2"
+          >
+            <div className="w-40 shrink-0">
+              {idx === 0 && <span className="fg-label mb-1 block text-subtle">Label</span>}
+              <Input
+                value={t.label}
+                onChange={(e) => updateTarget(idx, { label: e.target.value })}
+                placeholder="Backend"
+              />
+            </div>
+            <div className="flex-1">
+              {idx === 0 && (
+                <span className="fg-label mb-1 block text-subtle">Resource UUID</span>
+              )}
+              <Input
+                value={t.resourceUuid}
+                onChange={(e) => updateTarget(idx, { resourceUuid: e.target.value })}
+                placeholder="application uuid from Coolify"
+              />
+            </div>
+            <Button
+              variant="ghost"
+              icon="trash"
+              aria-label="Remove target"
+              disabled={targets.length <= 1}
+              onClick={() => removeTarget(idx)}
+            />
+          </div>
+        ))}
+        <div>
+          <Button variant="secondary" size="sm" icon="plus" onClick={addTarget}>
+            Add target
+          </Button>
+        </div>
+      </fieldset>
+
       {error && <Banner tone="danger">{error}</Banner>}
       {testResult &&
         (testResult.status === "ok" ? (

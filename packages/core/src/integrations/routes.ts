@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq } from 'drizzle-orm';
@@ -87,18 +87,27 @@ function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {
 
 const environmentSchema = z.enum(integrationEnvironments);
 
+// A deploy target = one Coolify application. `id` is server-assigned when
+// omitted (a stable key mapping an outbound deploy to its inbound webhook).
+const coolifyTargetSchema = z
+  .object({
+    id: z.string().min(1).max(64).optional(),
+    label: z.string().min(1).max(100),
+    resourceUuid: z.string().min(1).max(200),
+  })
+  .transform((t) => ({ id: t.id ?? randomUUID(), label: t.label, resourceUuid: t.resourceUuid }));
+
 const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
-  resourceUuid: z.string().min(1).max(200),
-  branch: z.string().min(1).max(200),
+  // One binding fans out to ≥1 target (split BE/FE deploy as separate apps).
+  targets: z.array(coolifyTargetSchema).min(1).max(20),
 });
 
-// Coolify's deploy target is BINDING-tier: two projects sharing one connection
-// (org-shared credential) each deploy their own Coolify resource, so
-// resourceUuid/branch live on binding.config (overlaid over connection.config
-// at dispatch — binding wins). Everything else (baseUrl) stays connection-tier
-// with the credential.
-const COOLIFY_BINDING_CONFIG_KEYS = ['resourceUuid', 'branch'] as const;
+// Coolify's deploy targets are BINDING-tier: two projects sharing one connection
+// (org-shared credential) each deploy their own Coolify resources, so `targets`
+// lives on binding.config (overlaid over connection.config at dispatch — binding
+// wins). Everything else (baseUrl) stays connection-tier with the credential.
+const COOLIFY_BINDING_CONFIG_KEYS = ['targets'] as const;
 
 /** Split a validated provider config into its connection-tier and binding-tier
  *  halves. Non-coolify providers have no binding-tier fields today. */
@@ -467,10 +476,7 @@ integrationsRoutes.patch(
     if (patch.config) {
       const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      const tiers = splitProviderConfig(
-        binding.provider,
-        parsed.data as Record<string, unknown>,
-      );
+      const tiers = splitProviderConfig(binding.provider, parsed.data as Record<string, unknown>);
       if (Object.keys(tiers.connection).length > 0) {
         mergedConfig = {
           ...((connection.config ?? {}) as object),

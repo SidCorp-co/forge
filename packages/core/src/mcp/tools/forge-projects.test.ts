@@ -130,6 +130,7 @@ function patCtx(opts: {
       tokenId: 'token-id',
       scopes: opts.scopes ?? ['read', 'write'],
       projectIds: opts.projectIds ?? null,
+      boundProjectId: null,
     },
     device: fakeDevice,
     projectSlug: null,

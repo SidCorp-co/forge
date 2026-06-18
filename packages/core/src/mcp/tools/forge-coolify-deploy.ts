@@ -82,8 +82,8 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
   description:
     'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs. ' +
-    'list: active Coolify integrations for the project (id, environment, resourceUuid, ' +
-    'lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
+    'list: active Coolify integrations for the project (id, environment, targets[]={id,label,' +
+    'resourceUuid}, lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
     'deploy: issueId is OPTIONAL. With issueId — run-tracked deploy: resolves the ' +
     "issue's latest pipeline run and enqueues via the SAME path as the release " +
     'auto-subscriber (the Coolify webhook then advances that run). Without issueId — ' +
@@ -121,7 +121,11 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
           integrations: rows.map((row) => ({
             id: row.id,
             environment: row.environment,
-            resourceUuid: (row.config as CoolifyConfig | null)?.resourceUuid ?? null,
+            targets: ((row.config as CoolifyConfig | null)?.targets ?? []).map((t) => ({
+              id: t.id,
+              label: t.label,
+              resourceUuid: t.resourceUuid,
+            })),
             lastHealthStatus: row.lastHealthStatus,
             breakerOpen: row.breakerOpenedAt !== null,
           })),

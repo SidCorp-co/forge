@@ -158,6 +158,79 @@ export async function findDeliveryById(
 }
 
 /**
+ * All successfully-dispatched outbound deliveries for a binding + pipeline run
+ * (matched on the jsonb `payload.runId`). Used by the Coolify inbound handler to
+ * aggregate multi-target deploys: a run only advances to `done` once EVERY
+ * target's deploy has reported success. Each row's `response.deployment_uuid`
+ * keys the per-target inbound webhook.
+ */
+export async function listDispatchedOutboundForRun(
+  bindingId: string,
+  runId: string,
+): Promise<(typeof integrationDeliveries.$inferSelect)[]> {
+  return db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'outbound'),
+        eq(integrationDeliveries.status, 'ok'),
+        sql`${integrationDeliveries.payload}->>'runId' = ${runId}`,
+      ),
+    );
+}
+
+/**
+ * The successful OUTBOUND deploy delivery whose Coolify response carried this
+ * `deployment_uuid` — the inbound webhook handler uses it to recover the
+ * pipeline run (+ target) that a deployment belongs to.
+ */
+export async function findOutboundByDeploymentUuid(
+  bindingId: string,
+  deploymentUuid: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'outbound'),
+        eq(integrationDeliveries.status, 'ok'),
+        sql`response->>'deployment_uuid' = ${deploymentUuid}`,
+      ),
+    )
+    .orderBy(desc(integrationDeliveries.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * The inbound delivery (if any) recorded for a given Coolify `deployment_uuid`
+ * on a binding — the webhook handler stores `requestId = deployment_uuid`. Used
+ * to read a sibling target's terminal outcome during multi-target aggregation.
+ */
+export async function findInboundByDeploymentUuid(
+  bindingId: string,
+  deploymentUuid: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'inbound'),
+        eq(integrationDeliveries.requestId, deploymentUuid),
+      ),
+    )
+    .orderBy(desc(integrationDeliveries.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
  * Looks up an outbound delivery by its `(binding_id, request_id)` pair — the
  * same tuple the `integration_deliveries_binding_request_id_uq` partial unique
  * index covers. Returns the row or null. Used as the application-level

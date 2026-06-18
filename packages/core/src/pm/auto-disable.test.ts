@@ -73,7 +73,7 @@ describe('handlePmJobFailedAutoDisable', () => {
       projectId: 'p-1',
       issueId: null,
       type: 'plan',
-      failureKind: 'transient',
+      failureKind: 'transient-cc',
       failureReason: null,
     });
     expect(selectMock).not.toHaveBeenCalled();
@@ -87,7 +87,7 @@ describe('handlePmJobFailedAutoDisable', () => {
       projectId: 'p-1',
       issueId: null,
       type: 'pm',
-      failureKind: 'transient',
+      failureKind: 'transient-cc',
       failureReason: null,
     });
     expect(transactionMock).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe('handlePmJobFailedAutoDisable', () => {
       projectId: 'p-1',
       issueId: null,
       type: 'pm',
-      failureKind: 'transient',
+      failureKind: 'transient-cc',
       failureReason: null,
     });
 
@@ -133,7 +133,7 @@ describe('handlePmJobFailedAutoDisable', () => {
       projectId: 'p-1',
       issueId: null,
       type: 'pm',
-      failureKind: 'transient',
+      failureKind: 'transient-cc',
       failureReason: null,
     });
 
