@@ -98,6 +98,7 @@ import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
+import { registerTransitionNotifications } from './notifications/notify-transitions.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -266,6 +267,7 @@ registerMemoryIndexer(hooks);
 registerCiFixPatternLearner(hooks);
 registerMemoryExtraction(hooks);
 registerNotifyMentionsSubscriber(hooks);
+registerTransitionNotifications(hooks);
 registerPmSubscribers(hooks);
 
 // MCP endpoint authentication (ISS-202 + ISS-150).

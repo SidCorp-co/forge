@@ -86,9 +86,9 @@ const COMMANDS: Command[] = [
 ];
 
 const NOTES: NotificationItem[] = [
-  { id: "FRG-238", text: "Review agent requested changes", sub: "missing index migration", time: "4m", unread: true, hue: "amber" },
-  { id: "FRG-224", text: "Pipeline blocked on PM policy", sub: "prod deploy needs approval", time: "22m", unread: true, hue: "red" },
-  { id: "FRG-230", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
+  { id: "FRG-238", label: "STATUS", text: "Review agent requested changes", sub: "missing index migration", time: "4m", unread: true, hue: "amber" },
+  { id: "FRG-224", label: "WEDGE", text: "Pipeline blocked on PM policy", sub: "prod deploy needs approval", time: "22m", unread: true, hue: "red" },
+  { id: "FRG-230", label: "STATUS", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
 ];
 
 const TRACKER_CASES: { stage: StageKey; status: "running" | "done" | "failed" | "blocked"; label: string }[] = [

@@ -4,6 +4,8 @@ import { MonoTag } from "@/design/primitives/mono-tag";
 
 export interface NotificationItem {
   id: string;
+  /** Short type label shown in the leading tag (e.g. "STATUS", "MENTION"). */
+  label: string;
   text: string;
   sub?: string;
   time: string;
@@ -21,41 +23,84 @@ const HUE_DOT: Record<NotificationItem["hue"], string> = {
 export interface NotificationsMenuProps {
   items: NotificationItem[];
   onSelect?: (id: string) => void;
+  onMarkAllRead?: () => void;
+  loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
 }
 
-export function NotificationsMenu({ items, onSelect }: NotificationsMenuProps) {
+export function NotificationsMenu({
+  items,
+  onSelect,
+  onMarkAllRead,
+  loading,
+  error,
+  onRetry,
+}: NotificationsMenuProps) {
+  const hasItems = items.length > 0;
   return (
     <div className="forge-drop w-[340px] overflow-hidden rounded-lg border border-line bg-surface shadow-lg">
       <div className="flex items-center justify-between border-b border-line-subtle px-4 py-3">
         <span className="fg-label">Notifications</span>
-        <button type="button" className="fg-caption text-link hover:underline">
+        <button
+          type="button"
+          onClick={onMarkAllRead}
+          disabled={!onMarkAllRead || !hasItems}
+          className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
+        >
           Mark all read
         </button>
       </div>
-      <ul className="max-h-[380px] overflow-y-auto">
-        {items.map((n) => (
-          <li key={`${n.id}-${n.time}`}>
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 px-4 py-8 text-muted">
+          <span className="size-3.5 animate-spin rounded-pill border-2 border-line border-t-transparent" />
+          <span className="fg-caption">Loading…</span>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+          <p className="fg-body-sm text-fg">Couldn’t load notifications.</p>
+          {onRetry && (
             <button
               type="button"
-              onClick={() => onSelect?.(n.id)}
-              className="flex w-full items-start gap-3 border-b border-line-subtle px-4 py-3 text-left transition-colors hover:bg-hover last:border-0"
+              onClick={onRetry}
+              className="fg-caption text-link hover:underline"
             >
-              <span
-                className="mt-1.5 size-2 flex-none rounded-pill"
-                style={{ background: n.unread ? HUE_DOT[n.hue] : "var(--border-strong)" }}
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <MonoTag>{n.id}</MonoTag>
-                  <span className="fg-caption ml-auto">{n.time}</span>
-                </div>
-                <p className="fg-body-sm mt-1 text-fg">{n.text}</p>
-                {n.sub && <p className="fg-caption mt-0.5">{n.sub}</p>}
-              </div>
+              Retry
             </button>
-          </li>
-        ))}
-      </ul>
+          )}
+        </div>
+      ) : !hasItems ? (
+        <div className="px-4 py-8 text-center">
+          <p className="fg-body-sm text-fg">You’re all caught up</p>
+          <p className="fg-caption mt-0.5">New pipeline and issue events show up here.</p>
+        </div>
+      ) : (
+        <ul className="max-h-[380px] overflow-y-auto">
+          {items.map((n) => (
+            <li key={n.id}>
+              <button
+                type="button"
+                onClick={() => onSelect?.(n.id)}
+                className="flex w-full items-start gap-3 border-b border-line-subtle px-4 py-3 text-left transition-colors hover:bg-hover last:border-0"
+              >
+                <span
+                  className="mt-1.5 size-2 flex-none rounded-pill"
+                  style={{ background: n.unread ? HUE_DOT[n.hue] : "var(--border-strong)" }}
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <MonoTag>{n.label}</MonoTag>
+                    <span className="fg-caption ml-auto">{n.time}</span>
+                  </div>
+                  <p className="fg-body-sm mt-1 text-fg">{n.text}</p>
+                  {n.sub && <p className="fg-caption mt-0.5">{n.sub}</p>}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
