@@ -11,11 +11,11 @@ import { Button, Card, CardContent, ErrorState, Icon, type IconName, Skeleton } 
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
-import { isProviderCard } from "../derive";
+import { groupCardsByProvider, isProviderCard } from "../derive";
 import type { StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 import { McpServersPanel } from "./mcp-servers-panel";
-import { StatusPill } from "./status-pill";
+import { ENV_LABEL, StatusPill } from "./status-pill";
 
 const PROVIDER_ICON: Record<string, IconName> = {
   github: "github",
@@ -113,6 +113,100 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
   );
 }
 
+/** Provider label with the env parenthetical stripped (`Coolify (prod)` →
+ *  `Coolify`), used as the consolidated card's header. */
+function baseProviderLabel(card: StatusCard): string {
+  return card.label.replace(/\s*\(.*\)$/, "");
+}
+
+/** Human env label for a sub-row: prefer the card's `meta.environment`, fall
+ *  back to the `provider:<env>` key suffix, then to the raw value. */
+function envLabel(card: StatusCard): string {
+  const env =
+    (typeof card.meta?.environment === "string" ? card.meta.environment : undefined) ??
+    card.key.split(":")[1] ??
+    "";
+  return ENV_LABEL[env] ?? env;
+}
+
+/**
+ * One consolidated card for an env-split provider (e.g. Coolify): a single
+ * provider header followed by one sub-row per environment. Each sub-row keeps
+ * its own status pill, last-health detail, synced time, and a Manage
+ * affordance that opens the drawer scoped to that environment's card — so
+ * per-env drill-in / Test / Rotate / Disconnect is unchanged. No aggregate
+ * health pill in the header (we never fabricate combined health).
+ */
+function GroupedIntegrationCard({
+  provider,
+  cards,
+  onOpen,
+}: {
+  provider: string;
+  cards: StatusCard[];
+  onOpen?: (card: StatusCard) => void;
+}) {
+  return (
+    <Card>
+      <CardContent>
+        <div className="flex min-h-[120px] flex-col gap-3">
+          <span className="inline-flex items-center gap-2">
+            <Icon name={providerIcon(provider)} size={18} className="text-muted" />
+            <span className="fg-h3">{baseProviderLabel(cards[0])}</span>
+          </span>
+
+          <div className="flex flex-col divide-y divide-[var(--border-subtle)]">
+            {cards.map((card) => {
+              const lastSync = formatRelativeTime(card.lastSyncAt);
+              const clickable = Boolean(onOpen);
+              const open = () => onOpen?.(card);
+              return (
+                <div
+                  key={card.key}
+                  className={`flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 ${
+                    clickable ? "cursor-pointer" : ""
+                  }`}
+                  {...(clickable
+                    ? {
+                        role: "button",
+                        tabIndex: 0,
+                        "aria-label": `Manage ${card.label}`,
+                        onClick: open,
+                        onKeyDown: (e: KeyboardEvent) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            open();
+                          }
+                        },
+                      }
+                    : {})}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="fg-body-sm font-semibold">{envLabel(card)}</span>
+                    <StatusPill card={card} />
+                  </div>
+                  <p className="fg-body-sm text-muted">{card.detail}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="fg-body-sm text-subtle">
+                      {lastSync ? `synced ${lastSync}` : "no sync data"}
+                    </span>
+                    {clickable ? (
+                      <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+                        Manage
+                        <Icon name="arrowRight" size={13} />
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
  * Full integrations management for ONE project: live status cards (click a
  * provider card to configure/test/rotate/disconnect in the drawer) + the Agent
@@ -140,13 +234,30 @@ export function ProjectIntegrationsPanel({ projectId }: { projectId: string }) {
             </Button>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(status.data?.cards ?? []).map((card) => (
-              <IntegrationCard
-                key={card.key}
-                card={card}
-                onOpen={isProviderCard(card.key) ? () => setSelectedCard(card) : undefined}
-              />
-            ))}
+            {groupCardsByProvider(status.data?.cards ?? []).map((group) =>
+              group.cards.length > 1 ? (
+                <GroupedIntegrationCard
+                  key={group.provider}
+                  provider={group.provider}
+                  cards={group.cards}
+                  onOpen={
+                    isProviderCard(group.provider)
+                      ? (card) => setSelectedCard(card)
+                      : undefined
+                  }
+                />
+              ) : (
+                <IntegrationCard
+                  key={group.provider}
+                  card={group.cards[0]}
+                  onOpen={
+                    isProviderCard(group.cards[0].key)
+                      ? () => setSelectedCard(group.cards[0])
+                      : undefined
+                  }
+                />
+              ),
+            )}
           </div>
 
           <McpServersPanel projectId={projectId} />
