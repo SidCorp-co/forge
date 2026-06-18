@@ -30,7 +30,13 @@ vi.mock('../../pipeline/runs.js', () => ({
   setCurrentStepForce: (...a: unknown[]) => setCurrentStepForceMock(...(a as [])),
 }));
 vi.mock('../../webhooks/hmac.js', () => ({ verifyHmacSignature: () => true }));
-vi.mock('./circuit-breaker.js', () => ({ maybeTripBreaker: vi.fn(), maybeResetBreaker: vi.fn() }));
+const breakerAllowsDispatchMock = vi.fn(async () => ({ allow: true, halfOpen: false }));
+const maybeResetBreakerMock = vi.fn();
+vi.mock('./circuit-breaker.js', () => ({
+  maybeTripBreaker: vi.fn(),
+  maybeResetBreaker: (...a: unknown[]) => maybeResetBreakerMock(...(a as [])),
+  breakerAllowsDispatch: (...a: unknown[]) => breakerAllowsDispatchMock(...(a as [])),
+}));
 vi.mock('../../observability/sentry.js', () => ({
   isSentryEnabled: () => false,
   Sentry: { addBreadcrumb: vi.fn(), captureMessage: vi.fn() },
@@ -92,6 +98,21 @@ describe('coolifyAdapter.healthcheck — needs_reauth on rejected token (ISS-409
     const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
 
     expect(res.status).toBe('needs_reauth');
+  });
+
+  it('resets the breaker on a successful Test-connection (operator recovery)', async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify([{ uuid: 'res-1', name: 'App', status: 'running' }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as unknown as typeof fetch;
+
+    const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
+
+    expect(res.status).toBe('ok');
+    expect(maybeResetBreakerMock).toHaveBeenCalledWith(CONN_ID);
   });
 
   it('keeps error for a non-auth HTTP failure (500)', async () => {

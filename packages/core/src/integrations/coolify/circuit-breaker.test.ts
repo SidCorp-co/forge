@@ -19,8 +19,14 @@ vi.mock('../../observability/sentry.js', () => ({
   Sentry: { captureMessage: vi.fn() },
 }));
 
-const { evaluateBreaker, maybeTripBreaker, maybeResetBreaker, BREAKER_FAILURE_THRESHOLD } =
-  await import('./circuit-breaker.js');
+const {
+  evaluateBreaker,
+  maybeTripBreaker,
+  maybeResetBreaker,
+  breakerAllowsDispatch,
+  BREAKER_FAILURE_THRESHOLD,
+  BREAKER_COOLDOWN_MS,
+} = await import('./circuit-breaker.js');
 
 const failed = (n: number) =>
   Array.from({ length: n }, () => ({ status: 'failed' as const, createdAt: new Date() }));
@@ -98,5 +104,42 @@ describe('coolify circuit breaker', () => {
     findConnectionByIdMock.mockResolvedValueOnce({ id: 'conn-1', active: true });
     await maybeResetBreaker('conn-1');
     expect(updateConnectionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('breakerAllowsDispatch — half-open recovery (no-deadlock)', () => {
+  it('allows dispatch when the breaker is closed (active)', async () => {
+    const r = await breakerAllowsDispatch({ id: 'conn-1', active: true, breakerOpenedAt: null });
+    expect(r).toEqual({ allow: true, halfOpen: false });
+    expect(updateConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('denies dispatch while open and still within cooldown', async () => {
+    const r = await breakerAllowsDispatch({
+      id: 'conn-1',
+      active: false,
+      breakerOpenedAt: new Date(Date.now() - 60_000), // 1 min ago, < cooldown
+    });
+    expect(r.allow).toBe(false);
+    expect(updateConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('half-opens (allows one trial + re-stamps) once cooldown has elapsed', async () => {
+    const r = await breakerAllowsDispatch({
+      id: 'conn-1',
+      active: false,
+      breakerOpenedAt: new Date(Date.now() - BREAKER_COOLDOWN_MS - 1_000),
+    });
+    expect(r).toEqual({ allow: true, halfOpen: true });
+    // Re-stamps breakerOpenedAt so a failing trial waits another full cooldown.
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      'conn-1',
+      expect.objectContaining({ breakerOpenedAt: expect.any(Date) }),
+    );
+  });
+
+  it('denies an open breaker with no timestamp (cannot compute cooldown)', async () => {
+    const r = await breakerAllowsDispatch({ id: 'conn-1', active: false, breakerOpenedAt: null });
+    expect(r.allow).toBe(false);
   });
 });

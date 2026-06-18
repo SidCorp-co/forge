@@ -1,11 +1,19 @@
 import { logger } from '../../logger.js';
-import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
+import { Sentry, isSentryEnabled } from '../../observability/sentry.js';
 import { recentOutboundDeliveries } from '../deliveries.js';
 import { findBindingById, findConnectionById, updateConnection } from '../store.js';
 
 /** Per the issue's AC: 3 consecutive failed outbound deliveries within 5 minutes trips the breaker. */
 export const BREAKER_FAILURE_THRESHOLD = 3;
 export const BREAKER_WINDOW_MS = 5 * 60_000;
+/**
+ * Cooldown before an open breaker allows a single half-open trial dispatch.
+ * Without this, an open breaker could only ever be reset by a successful
+ * dispatch — which the breaker itself blocks (deadlock). After the cooldown the
+ * next dispatch is allowed through once; success closes the breaker, failure
+ * re-arms the cooldown.
+ */
+export const BREAKER_COOLDOWN_MS = 10 * 60_000;
 
 export interface BreakerEvaluation {
   tripped: boolean;
@@ -26,7 +34,10 @@ export async function evaluateBreaker(bindingId: string): Promise<BreakerEvaluat
     BREAKER_WINDOW_MS,
   );
   if (recent.length < BREAKER_FAILURE_THRESHOLD) {
-    return { tripped: false, consecutiveFailures: recent.filter((r) => r.status === 'failed').length };
+    return {
+      tripped: false,
+      consecutiveFailures: recent.filter((r) => r.status === 'failed').length,
+    };
   }
   const allFailed = recent.every((r) => r.status === 'failed');
   return {
@@ -93,8 +104,43 @@ export async function maybeTripBreaker(args: {
 }
 
 /**
- * Called after a successful outbound delivery. If the owning connection's
- * breaker was previously open, reset it. Otherwise no-op.
+ * Dispatch-time gate. Decides whether an outbound deploy may proceed given the
+ * connection's breaker state:
+ *  - active (closed) → allow.
+ *  - inactive (open) but `breakerOpenedAt` older than {@link BREAKER_COOLDOWN_MS}
+ *    → HALF-OPEN: re-stamp `breakerOpenedAt` to now (so a failing trial waits
+ *    another full cooldown) and allow ONE trial. A success then closes the
+ *    breaker via {@link maybeResetBreaker}; a failure leaves it open with the
+ *    fresh timestamp.
+ *  - inactive and still within cooldown → deny.
+ *
+ * This breaks the deadlock where an open breaker blocks the very dispatch that
+ * would reset it. Pass the already-fetched connection row to avoid a re-read.
+ */
+export async function breakerAllowsDispatch(connection: {
+  id: string;
+  active: boolean;
+  breakerOpenedAt: Date | null;
+}): Promise<{ allow: boolean; halfOpen: boolean }> {
+  if (connection.active) return { allow: true, halfOpen: false };
+  const openedAtMs = connection.breakerOpenedAt
+    ? new Date(connection.breakerOpenedAt).getTime()
+    : null;
+  if (openedAtMs !== null && Date.now() - openedAtMs >= BREAKER_COOLDOWN_MS) {
+    // Re-stamp BEFORE the trial: if the trial fails, maybeTripBreaker is a no-op
+    // on an already-open connection, so this timestamp is what re-arms the next
+    // cooldown window. A successful trial clears it via maybeResetBreaker.
+    await updateConnection(connection.id, { breakerOpenedAt: new Date() });
+    logger.info({ connectionId: connection.id }, 'integration: circuit breaker half-open trial');
+    return { allow: true, halfOpen: true };
+  }
+  return { allow: false, halfOpen: false };
+}
+
+/**
+ * Called after a successful outbound delivery OR a successful Test-connection
+ * (operator-driven). If the owning connection's breaker was previously open,
+ * reset it. Otherwise no-op.
  */
 export async function maybeResetBreaker(connectionId: string): Promise<void> {
   const connection = await findConnectionById(connectionId);

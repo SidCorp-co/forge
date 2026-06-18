@@ -26,7 +26,7 @@ import type {
   OutboundDispatchInput,
   OutboundDispatchResult,
 } from '../types.js';
-import { maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
+import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, CoolifyClient } from './client.js';
 import { flattenLogs, redactCoolifyEnvDump, tailLog } from './logs.js';
 import type { CoolifyConfig, CoolifySecrets, CoolifyWebhookPayload } from './types.js';
@@ -95,6 +95,10 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
       });
+      // A successful Test-connection is an explicit operator signal that the
+      // connection is healthy again — clear an open breaker so dispatch (and the
+      // pipeline auto-deploy) can resume without waiting for the cooldown.
+      await maybeResetBreaker(ctx.connectionId);
       return {
         status: 'ok',
         message:
@@ -136,9 +140,16 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     // Refresh the connection to honour any breaker state changes since context
     // was built. If the breaker is open we abort without contacting Coolify.
     const connection = await findConnectionById(ctx.connectionId);
-    if (!connection || !connection.active) {
+    if (!connection) {
+      throw new Error(`coolify: connection ${ctx.connectionId} not found`);
+    }
+    // Breaker gate: allow when closed, or as a half-open trial once the cooldown
+    // has elapsed (a successful trial below resets the breaker). Still-cooling →
+    // abort. This is what lets an open breaker ever recover via dispatch.
+    const gate = await breakerAllowsDispatch(connection);
+    if (!gate.allow) {
       throw new Error(
-        `coolify: connection ${ctx.connectionId} is inactive (circuit breaker open?)`,
+        `coolify: connection ${ctx.connectionId} is inactive (circuit breaker open; retry after cooldown or Test-connection to reset)`,
       );
     }
 
