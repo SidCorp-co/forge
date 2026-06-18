@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - You can now attach files (images, PDFs, text) to messages in My Conversations, and the agent can read them in its reply.
 - You can now start an agent conversation from the "Ask agent" button in the global app header — no need to open the Agents screen first.
 - Project Settings → Integrations now shows Coolify as a single card with per-environment (Production/Staging) rows instead of two duplicate-looking cards.
+- A notification bell in the header now shows your pipeline and issue events in real time, with an unread count and one-click navigation to the related issue or run.
 
 ## [0.3.0] - 2026-06-11
 
