@@ -192,9 +192,48 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   });
 });
 
+describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
+  it('auto-dispatches prod like staging when the project opted into autoProdDeploy', async () => {
+    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    // projectAutoProdDeploy read → flag on → skip the gate entirely.
+    selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    expect(job.bindingId).toBe(PROD_INT);
+    expect(outcome.dispatched).toBe(true);
+    expect(outcome.pendingHumanConfirm).toBe(false);
+    expect(outcome.integrationIds).toEqual([PROD_INT]);
+  });
+
+  it('run-less prod also auto-dispatches when autoProdDeploy is on', async () => {
+    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
+
+    const outcome = await dispatchCoolifyDeployDirect({
+      projectId: PROJECT_ID,
+      integrationId: PROD_INT,
+    });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const job = enqueueSpy.mock.calls[0]?.[0] as { runId: string | null; requestId: string };
+    expect(job.runId).toBeNull();
+    expect(job.requestId).toMatch(new RegExp(`^direct:${PROD_INT}:\\d+-[0-9a-f]{8}$`));
+    expect(outcome.dispatched).toBe(true);
+    expect(outcome.pendingHumanConfirm).toBe(false);
+  });
+});
+
 describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('returns pendingHumanConfirm and enqueues nothing when the gate is unconfirmed', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
+    selectQueue.push([]); // projectAutoProdDeploy: no agentConfig → gate stays on
     selectQueue.push([]); // getProdGateState: no run carries a gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read
 

@@ -345,6 +345,11 @@ export const pipelineConfigSchema = z
     // use the catalog shorthand (`name: true`) or a raw custom spec object —
     // see `pipeline/mcp-catalog.ts` `expandMcpServers`.
     mcpServers: z.record(z.string(), z.unknown()).optional(),
+    // When true, a `prod`-environment Coolify deploy auto-dispatches on release
+    // exactly like `staging` — skipping the human "Confirm production deploy"
+    // gate. Default (absent/false) keeps the gate: prod never auto-deploys
+    // (safety valve for the autonomous pipeline). Per-project opt-in only.
+    autoProdDeploy: z.boolean().optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo
