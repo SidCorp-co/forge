@@ -1,7 +1,7 @@
 // web-v2 feature module: notifications (header bell). Mirrors the core
 // `notifications` row serializer (GET /api/notifications returns raw rows).
 // Workspace-global: the bell is NOT scoped to a single project.
-import type { NotificationSeverity, NotificationType } from "@forge/contracts";
+import type { NotificationSeverity, NotificationType } from "@forge/contracts/notifications";
 
 export type { NotificationSeverity, NotificationType };
 

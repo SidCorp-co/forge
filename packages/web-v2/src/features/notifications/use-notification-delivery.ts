@@ -13,7 +13,7 @@
 // invalidation, so this hook never touches React Query. Mounted ONCE in the
 // workspace layout, where the issue-routing handler already lives.
 import { useEffect } from "react";
-import { type NotificationSeverity, channelsFor, defaultSeverityForType } from "@forge/contracts";
+import { type NotificationSeverity, channelsFor, defaultSeverityForType } from "@forge/contracts/notifications";
 import type { ToastTone } from "@/design/primitives/toast";
 import { fireBrowserNotification } from "@/lib/notifications/browser";
 import { wsClient } from "@/lib/ws/client";

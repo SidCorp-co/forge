@@ -13,6 +13,10 @@
     "./pipeline-registry": {
       "types": "./src/pipeline-registry.ts",
       "default": "./src/pipeline-registry.ts"
+    },
+    "./notifications": {
+      "types": "./src/notifications.ts",
+      "default": "./src/notifications.ts"
     }
   },
   "types": "./src/index.ts",
