@@ -289,25 +289,27 @@ export function deriveJobStageMode(
   return "auto";
 }
 
-/** Derive the mode for a CHECKPOINT stage — only "manual" (park) or "skip". */
+/** Derive the mode for a CHECKPOINT stage — only "manual" (park) or "skip".
+ *  A checkpoint has no skill, so at runtime it either PARKS (`mode:"manual"`) or
+ *  auto-skips past it (anything else: `enabled:false`, or the default `mode:"auto"`).
+ *  So manual ⇔ `mode==="manual"`; everything else reads as skip. */
 export function deriveCheckpointMode(cfg: PipelineConfig, status: string): "manual" | "skip" {
-  return statesOf(cfg)[status]?.enabled === false ? "skip" : "manual";
+  return statesOf(cfg)[status]?.mode === "manual" ? "manual" : "skip";
 }
 
 /**
- * A legacy checkpoint (deploying/tested/pass) is surfaced ONLY when it's an
- * active manual gate (`mode:"manual"`) — e.g. dodgeprint's `tested`. A skipped
- * (`enabled:false`) or default `{enabled:true,mode:"auto"}` checkpoint carries no
- * behaviour worth a row, so the Pipeline tab hides it. `staging` is shown
- * separately (always — the canonical pre-production gate), so this only governs
- * the legacy rows.
+ * A secondary checkpoint (deploying/pass/staging) is surfaced ONLY when it's an
+ * active manual gate (`mode:"manual"`). A skipped (`enabled:false`) or default
+ * (auto) checkpoint carries no behaviour worth a row, so the Pipeline tab hides
+ * it. `tested` is shown separately (always — the canonical pre-production gate),
+ * so this only governs the secondary rows.
  */
 export function isCheckpointGated(cfg: PipelineConfig, status: string): boolean {
   return statesOf(cfg)[status]?.mode === "manual";
 }
 
 /** The checkpoint always surfaced as the canonical pre-production gate. */
-export const PRIMARY_CHECKPOINT = "staging";
+export const PRIMARY_CHECKPOINT = "tested";
 
 /** Flip a toggle's `enabled` while preserving its object form ({enabled,runner,model}). */
 function withToggleEnabled(existing: unknown, enabled: boolean): unknown {

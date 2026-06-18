@@ -299,9 +299,9 @@ export function PipelineTab({
         <p className="fg-body-sm mb-1 text-muted">
           Pick how each stage runs. <b>Auto</b> = the pipeline runs it automatically. <b>Manual</b>{" "}
           = the issue stops here and waits for a human to advance it (an approval gate). <b>Skip</b>{" "}
-          = the stage is bypassed and the pipeline jumps to the next one. <b>Staging</b> is the
-          pre-production checkpoint (gate or skip — no skill); other checkpoints appear only if this
-          project uses them.
+          = the stage is bypassed and the pipeline jumps to the next one. <b>Tested</b> is the
+          pre-production gate (Manual = stop for approval before release, or Skip — no skill); other
+          checkpoints appear only if this project uses them.
         </p>
         {libraryHref && (
           <p className="fg-caption mb-4">
