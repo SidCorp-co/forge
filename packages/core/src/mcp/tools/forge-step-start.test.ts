@@ -251,4 +251,58 @@ describe('forge_step_start', () => {
     expect(result.branchConfig.baseBranch).toBe('iss-99-integration');
     expect(result.branchConfig.targetBranch).toBe('iss-99-integration');
   });
+
+  it('caps a fat comment thread: keeps most-recent, trims oldest, bounds JSON, preserves invariants', async () => {
+    const tool = forgeStepStartTool(ctx);
+    loadIssue.mockResolvedValue(makeIssue({ status: 'open' }));
+    // 60 fat comments (~9K body each), oldest→newest as the handler returns them.
+    const fatComments = Array.from({ length: 60 }, (_, i) => ({
+      documentId: `c${i}`,
+      body: `comment ${i} `.padEnd(9000, 'x'),
+    }));
+    queueHappyPath({ comments: fatComments });
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+      string,
+      // biome-ignore lint/suspicious/noExplicitAny: test readback
+      any
+    >;
+
+    expect(result.commentsTruncated).toBe(true);
+    expect(result.commentsTotal).toBe(60);
+    expect(result.commentsReturned).toBe(result.comments.length);
+    expect(result.commentsReturned).toBeLessThan(60);
+    expect(result.commentsNotice).toMatch(/forge_comments\.list/);
+
+    // recent kept, oldest dropped
+    const ids = result.comments.map((c: { documentId: string }) => c.documentId);
+    expect(ids).toContain('c59');
+    expect(ids).not.toContain('c0');
+
+    // bounds: char budget on the comments array
+    expect(JSON.stringify(result.comments).length).toBeLessThanOrEqual(30_000);
+
+    // invariants never trimmed
+    expect(result.issue.id).toBe(ISSUE_ID);
+    expect(result.handoffs).toHaveLength(1);
+    expect(result.branchConfig).toBeTruthy();
+  });
+
+  it('does not truncate a small comment thread', async () => {
+    const tool = forgeStepStartTool(ctx);
+    loadIssue.mockResolvedValue(makeIssue({ status: 'open' }));
+    const small = Array.from({ length: 5 }, (_, i) => ({ documentId: `c${i}`, body: `note ${i}` }));
+    queueHappyPath({ comments: small });
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+      string,
+      // biome-ignore lint/suspicious/noExplicitAny: test readback
+      any
+    >;
+
+    expect(result.comments).toHaveLength(5);
+    expect(result.commentsTruncated).toBeUndefined();
+    expect(result.commentsReturned).toBeUndefined();
+    expect(result.commentsNotice).toBeUndefined();
+  });
 });
