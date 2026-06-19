@@ -23,7 +23,7 @@ This is NOT a test runner (vitest/playwright). It's a manual QA replacement that
 - **forge_comments** — list previous comments (review/fix feedback) + post test report
 - **forge_config** — get project config (staging URLs, test credentials)
 - **forge_coolify_deploy** — check deployment status before testing
-- **Browser** — `mcp__claude-in-chrome__*` for frontend testing
+- **Browser (optional)** — if a browser-automation MCP is available, use whatever browser tools the runner exposes (auto-detected; usually surfaced as `browser_*`: navigate, click, type, snapshot/screenshot). Do not hardcode a provider. If no browser MCP is available, fall back to curl/WebFetch HTML checks.
 - **HTTP** — WebFetch / Bash (curl) for API testing
 
 Read `references/test-approach.md` for detailed testing patterns (API auth, browser tools, what to verify). Read `references/result-format.md` for report template and verdict rules. Read `references/browser-playbook.md` for step-by-step browser interaction guides (login, navigation, form input, code inspection) — follow these exactly to avoid rediscovering UI flows.

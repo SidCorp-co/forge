@@ -21,7 +21,7 @@ Simple issues are auto-skipped (the lifecycle hook advances them to `clarified` 
 
 - **forge_issues** — get/update issues
 - **forge_comments** — list/create comments
-- **Browser** — `mcp__claude-in-chrome__*` tools (navigate, click, type, screenshot) for live environment testing
+- **Browser (optional)** — if a browser-automation MCP is available, use whatever browser tools the runner exposes (auto-detected; usually surfaced as `browser_*`: navigate, click, type, snapshot/screenshot). Do not hardcode a provider. If no browser MCP is available, fall back to curl/WebFetch HTML checks.
 - **WebFetch** — for API endpoint testing
 
 ## Workflow
@@ -52,7 +52,7 @@ Determine where to test:
 If category is `bug`:
 
 1. **Read reproduction steps** from description, acceptanceCriteria, or attachments
-2. **Open the live URL** in Chrome via browser tools
+2. **Open the live URL** using the available browser tools
 3. **Login** if test credentials are available (from project config)
 4. **Follow the reported steps** exactly:
    - Screenshot each step for evidence

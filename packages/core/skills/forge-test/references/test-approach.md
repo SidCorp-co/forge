@@ -57,12 +57,12 @@ Use `testApiUrl` (resolved from issue `previewApiUrl` or project `stagingApiUrl`
 
 Use `testUrl` (resolved from issue `previewUrl` or project `stagingUrl`) as the base URL.
 
-**With browser tools (preferred):**
-- `mcp__claude-in-chrome__navigate` — open pages
-- `mcp__claude-in-chrome__read_page` — verify content is visible
-- `mcp__claude-in-chrome__find` — locate specific elements
-- `mcp__claude-in-chrome__form_input` — fill forms, select dropdowns
-- `mcp__claude-in-chrome__computer` — click buttons, scroll, take screenshots
+**With browser tools (preferred):** if a browser-automation MCP is available, use whatever browser tools the runner exposes (auto-detected; usually surfaced as `browser_*`). Do not hardcode a provider — map these actions onto whatever the runner offers:
+- navigate — open pages
+- read the page — verify content is visible
+- locate elements — find specific elements
+- fill the field — fill forms, select dropdowns
+- click / screenshot — click buttons, scroll, take screenshots
 
 **Without browser tools (fallback):**
 - Use `curl -s "$TEST_URL/path"` to fetch page HTML
