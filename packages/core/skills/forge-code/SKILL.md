@@ -37,7 +37,7 @@ When the issue has a plan and triage/plan comments from Forge AI:
 
 1. Fetch issue + comments → extract plan and complexity from triage. Also detect **deployMode** (see above).
 2. **Confirm branch:** Run `git branch --show-current` and `git status`. If on wrong branch or dirty state, stash/clean first.
-3. `forge_config → get` to read `baseBranch`, then `git checkout <baseBranch> && git pull && git checkout -b ISS-XX-short-title`
+3. Resolve the base branch, then branch: `git checkout <effectiveBase> && git pull && git checkout -b ISS-XX-short-title`. `<effectiveBase>` is the project `baseBranch` from `forge_config → get` for a normal issue — BUT for a decompose child or parent it is `metadata.branchConfig.baseBranch` (the shared integration branch). See **Decompose-aware branching** below before this step if the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`.
 4. Set `in_progress`
 5. Follow plan step-by-step — read each file as you reach it in the plan, edit, move on
 6. Build the affected package(s) — infer the build command from the repo (the package's build script / toolchain); catch compile/type errors
@@ -59,6 +59,19 @@ When the issue has a plan and triage/plan comments from Forge AI:
 Build and review happen BEFORE push. Only clean, reviewed code gets pushed (and, in deploy mode, deployed).
 
 Read `references/workflow.md` for the full step-by-step including standalone mode.
+
+## Decompose-aware branching (epic children + parent integration)
+
+A decomposed epic shares ONE integration branch (`feature/ISS-<parent>`, core-created at decompose time). The issue's `metadata` tells you which role you are — read it from `forge_issues → get`:
+
+- **Decompose child** (`metadata.branchConfig.baseBranch` is set to a `feature/ISS-*` branch, and `metadata.integrationParent` / a `decomposes`-parent is present): you are a slice of an epic.
+  - Branch FROM the integration branch and merge BACK into it — base+target both come from `metadata.branchConfig` (`baseBranch` = `targetBranch` = the integration branch). **Do NOT branch off, build against, or merge to the project `baseBranch`.** In step 3 use `<effectiveBase> = metadata.branchConfig.baseBranch`.
+  - Everything else (build, test, review, simplify, commit) is identical. **Wherever this project's normal flow would merge the issue to `baseBranch`, redirect that merge to the integration branch (`metadata.branchConfig.targetBranch`) instead, and do NOT deploy** — a child never lands on base and never deploys individually (the integration branch has no preview of its own; full QA + deploy happen at the parent). The merge is stamped with `mark_merged target:'feature'` (by whichever step performs it for this project — forge-code in merge-on-code projects, forge-test/forge-release in merge-later projects).
+- **Decompose parent / integration step** (`metadata.useIntegrationBranch === true`): all children have already landed on the integration branch (the `decomposeChildrenPending` gate held you until then). Your job is NOT to write feature code — it is to **integrate-verify the assembled epic on its own branch**:
+  - `git fetch <remote>` then check out the integration branch (`metadata.integrationBranch` / `metadata.branchConfig.baseBranch`). **If a child you expect is missing, re-`fetch` and retry before concluding anything** — never declare a child unmerged from a single stale fetch, and never check "is child X an ancestor of base?" (that guess is the ISS-144 false-negative; you verify the integration branch you own, not base ancestry). Trust the children's `merged_at` as the readiness signal; git is only the confirmation.
+  - Refresh the integration branch against the project `baseBranch` (`git merge <remote>/<baseBranch>` — merge, do not rebase) to surface base drift, resolve any conflicts.
+  - Run the **cross-component build + the parent plan's integration test** over the combined result. Fix only integration glue (do not re-implement a child's slice).
+  - Do NOT squash-merge to base here and do NOT deploy — that is forge-test's job for the parent. End at `developed` (Complex) so review + the parent's forge-test integration merge follow.
 
 ## Docs-only deliverables (no-code decision / audit / spike)
 

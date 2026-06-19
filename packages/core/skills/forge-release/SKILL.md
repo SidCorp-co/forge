@@ -45,6 +45,15 @@ forge_comments → create → {
 
 Stop. Do NOT call `forge_issues → update`, do NOT merge branches.
 
+### Step 0.5: Decompose-aware guard (epic child vs parent)
+
+Read the issue `metadata` (from `forge_issues → get`). A decomposed epic shares ONE integration branch and **only the parent reaches the production/base branch** — children never do.
+
+- **Decompose child** (`metadata.branchConfig.baseBranch` points at a `feature/ISS-*` branch): the child's changes already landed on the **integration branch** earlier (stamped `mark_merged target:'feature'`). It must **NOT** merge to `productionBranch`/`baseBranch`. Skip the merge steps entirely — just append its CHANGELOG entry if present (Step 7.5), optionally delete its own `ISS-*` branch (NOT the integration branch), post a short "decompose child — folded into epic <parent>; promotion happens on the parent" comment, and close it (Step 9). Do not deploy.
+- **Decompose parent** (`metadata.useIntegrationBranch === true`): the parent is the single promotion point. After the parent's integration QA passed, **squash-merge the INTEGRATION branch (`metadata.integrationBranch`) → `productionBranch`** (substitute the integration branch for the `ISS-*` branch everywhere in Steps 4–6; `git fetch` + retry if a child looks missing — never conclude from one stale fetch), deploy, append CHANGELOG, then **delete the integration branch** (`git push origin --delete <integrationBranch>`) in Step 8, and in Step 9 close the parent AND cascade-close any still-open children.
+
+For a non-decompose issue (no such metadata), ignore this step and run the normal single-branch flow below.
+
 ### Step 1: Fetch Issue & Config
 
 ```

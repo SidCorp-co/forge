@@ -54,6 +54,15 @@ If the issue's change is a **no-code deliverable** (a `docs/proposals/<topic>.md
 
 Instead verify the **artifact**: confirm the planned `docs/proposals/<topic>.md` exists, is non-trivial (the actual decision/rationale/recommendations, not a stub), and is indexed in `docs/proposals/README.md`. PASS on presence + substance. Post the report and set status as usual (Step 9). If any `packages/**` file is in the diff, this is not docs-only — run the normal QA below.
 
+### Step 0.6: Decompose-aware guard (epic child vs parent integration)
+
+Read the issue `metadata`. A decomposed epic shares ONE integration branch (`feature/ISS-<parent>`).
+
+- **Decompose child** (`metadata.branchConfig.baseBranch` points at a `feature/ISS-*` branch): this child lives on the integration branch and is **not deployed individually** — there is no per-child preview URL to QA. Don't try to walk acceptance criteria against a preview (there isn't one); the child's build + independent review already validated its slice, and the FULL end-to-end QA runs once on the parent's assembled epic. **Wherever this project performs the merge/promotion, the child's target is the integration branch (`metadata.branchConfig.targetBranch`), stamped `mark_merged target:'feature'` — never base, never a deploy.** Post a short note ("decompose child — verified via build+review; e2e deferred to parent integration") and set status to advance the child toward `released`/`closed`. Do not FAIL a child merely for lacking a preview.
+- **Decompose parent / integration step** (`metadata.useIntegrationBranch === true`): THIS is where the assembled epic gets its real end-to-end QA. By now every child has landed on the integration branch and the parent's forge-code integration step has built it. QA the full epic flow (the parent plan's integration scenario) against the deployed integration result. The parent is the **only** issue that squash-merges the integration branch → `baseBranch` — done once, by whichever step promotes in this project, stamped `mark_merged target:'base'`. If a child looks absent while verifying, `git fetch` and retry before concluding — never declare the epic incomplete from a single stale fetch (the ISS-144 false-negative). Then run the normal QA workflow below over the assembled result.
+
+For a non-decompose issue (no such metadata), ignore this step and continue.
+
 ### Step 1: Fetch Issue + Pipeline Context
 
 ```

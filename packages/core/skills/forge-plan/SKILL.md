@@ -137,7 +137,7 @@ Make the decision a **mergeable artifact** instead. Plan an in-repo markdown doc
 
 ### Step 5.5: Decide whether to decompose (Complex epics only)
 
-For Complex issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, atomic release gating, and close cascade.
+For Complex issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. Adding the first edge makes core (ISS-138) create + push a **shared integration branch** off `<baseBranch>`, park the parent at `waiting`, and stamp `branchConfig` so every child branches off and merges back into that branch (not base). The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, the parent's integration gate, and close cascade. Only the parent squash-merges the integration branch → base, once, after verifying the assembled epic.
 
 **When to decompose:**
 - Each child must be reviewable + testable independently.
@@ -151,7 +151,7 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 - Items where one child's failure should not block siblings' release — the gate is atomic by design.
 - Nested decomposition (epic → epic → story). Single-level only for v1.
 
-**How to decompose** — once the decision is made, follow the mechanics in `references/decompose-protocol.md`: create children at `on_hold`, add `decomposes` (and any sibling `blocks`) dependency edges via `forge_project_pm → set_dependency` (verify each row landed — never claim an edge in prose without the call succeeding, the ISS-131 failure mode), write the parent `plan` as the per-child index, and do **NOT** set the parent status yourself (core's `decomposeParent` parks it at `waiting`). The reference also documents the post-approval automation (cascade-approve, the `decomposeChildrenPending` gate, atomic release, close cascade) and how to verify sibling-blocks edges took effect.
+**How to decompose** — once the decision is made, follow the mechanics in `references/decompose-protocol.md`: create children at `draft`, add `decomposes` (and any sibling `blocks`) dependency edges via `forge_project_pm → set_dependency` (verify each row landed — never claim an edge in prose without the call succeeding, the ISS-131 failure mode), write the parent `plan` as the per-child index **plus a parent integration-step section**, and do **NOT** create the integration branch, stamp `branchConfig`, or set the parent status yourself (core's `decomposeParent` does all three on the first edge). The reference also documents the integration-branch model (children branch off + merge back into the shared branch; the parent is the only one that squash-merges to base), the post-approval automation (cascade-approve, the `decomposeChildrenPending` gate, close cascade), and how to verify sibling-blocks edges took effect.
 
 ### Step 6: Validate the Plan
 
