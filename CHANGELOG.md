@@ -56,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Coolify deploy connections that trip their circuit breaker now auto-recover after a short cooldown, and a successful connection test clears the breaker, instead of staying stuck until a manual database fix.
 - A pipeline stage set to manual approval now reliably pauses for human sign-off instead of being silently skipped straight to release.
 - Issue status badges now use distinct colors so states like Tested, Released and Closed are easy to tell apart at a glance.
+- Forge pipeline agents now load issues more token-efficiently, avoiding oversized-response failures on issues with long comment histories.
 
 ## [0.3.0] - 2026-06-11
 
