@@ -11,6 +11,8 @@ import {
 
 const TONES: SemanticTone[] = [
   "success",
+  "shipped",
+  "archived",
   "failure",
   "active",
   "attention",
@@ -28,6 +30,8 @@ const STATUS_KEYS: StatusKey[] = [
   "failed",
   "paused",
   "done",
+  "shipped",
+  "archived",
   "review",
   "zombie",
   "swept",
@@ -51,6 +55,15 @@ describe("TONE_META — the single source of truth", () => {
       );
       expect(usesRed, tone).toBe(tone === "failure");
     }
+  });
+
+  it("keeps the terminal/gate tail mutually distinct (ISS-511)", () => {
+    // verified(green) vs shipped(flame) vs archived(ink) must not collide — the
+    // reporter's tested/released/closed complaint.
+    const dots = [TONE_META.success.dot, TONE_META.shipped.dot, TONE_META.archived.dot];
+    expect(new Set(dots).size).toBe(3);
+    // archived (closed) must read apart from blocked (on_hold) — both ink, but heavier.
+    expect(TONE_META.archived.bg).not.toBe(TONE_META.blocked.bg);
   });
 });
 

@@ -14,6 +14,10 @@ const TRACKER_STATUS: Record<StatusKey, "running" | "done" | "failed" | "blocked
   running: "running",
   done: "done",
   passed: "done",
+  // ISS-511 — released/closed split off `done` for chip color but are still
+  // terminal-good for the pipeline bead.
+  shipped: "done",
+  archived: "done",
   failed: "failed",
   blocked: "blocked",
   review: "review",

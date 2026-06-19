@@ -29,7 +29,11 @@ export interface ColorMeta {
  * The canonical semantic tones. Each = exactly ONE fg/bg/dot token. Reserve
  * `failure` (red) for a REAL failure only — a benign cleanup, a paused issue, a
  * blocked-by-dependency, or an offline runner must NEVER read red.
- *  - success   terminal-good: passed / done / released / closed / healthy
+ *  - success   terminal-good (verified): passed / done / staging / healthy
+ *  - shipped   released to production — a distinct "shipped" hue (flame), so a
+ *              released issue is not confused with a merely-verified one
+ *  - archived  closed / archived — calm, heavier ink than `blocked`, so a closed
+ *              issue reads as "filed away", distinct from a parked `on_hold`
  *  - failure   a real failure: job `failed`, a live `zombie`/`stalled` session
  *  - active    machine working: running, in_progress, the review/test stages
  *  - attention a HUMAN must act: awaiting approval / info / your review
@@ -39,6 +43,8 @@ export interface ColorMeta {
  */
 export type SemanticTone =
   | "success"
+  | "shipped"
+  | "archived"
   | "failure"
   | "active"
   | "attention"
@@ -48,6 +54,12 @@ export type SemanticTone =
 
 export const TONE_META: Record<SemanticTone, ColorMeta> = {
   success: { label: "Success", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
+  // `shipped` = released to prod, a distinct flame hue so it reads apart from a
+  // merely-verified (green) issue. ISS-511.
+  shipped: { label: "Shipped", fg: "var(--flame-700)", bg: "var(--flame-50)", dot: "var(--flame-600)" },
+  // `archived` = closed/filed-away. Heavier ink than `blocked` (ink-700/paper-200)
+  // so a closed issue is distinct from a parked `on_hold`. ISS-511.
+  archived: { label: "Archived", fg: "var(--ink-900)", bg: "var(--paper-300)", dot: "var(--ink-600)" },
   failure: { label: "Failure", fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
   active: { label: "Active", fg: "var(--cobalt-700)", bg: "var(--cobalt-50)", dot: "var(--cobalt-500)" },
   attention: { label: "Attention", fg: "var(--amberw-600)", bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
@@ -69,6 +81,8 @@ export type StatusKey =
   | "failed"
   | "paused"
   | "done"
+  | "shipped"
+  | "archived"
   | "review"
   | "zombie"
   | "swept";
@@ -85,6 +99,10 @@ export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
   failed: "failure",
   paused: "blocked",
   done: "success",
+  // ISS-511 — the issue lifecycle tail splits off the shared `success`/green so a
+  // released vs closed vs verified issue is distinct. Issue-domain only.
+  shipped: "shipped",
+  archived: "archived",
   // The review/test stages are AUTOMATED pipeline work in motion → `active`
   // (cobalt), not amber. Amber is reserved strictly for "a human must act".
   review: "active",
@@ -111,6 +129,8 @@ export const STATUS_KEY_LABEL: Record<StatusKey, string> = {
   failed: "Failed",
   paused: "Paused",
   done: "Done",
+  shipped: "Released",
+  archived: "Closed",
   review: "In review",
   zombie: "Zombie",
   swept: "Swept",
@@ -125,6 +145,8 @@ export const STATUS_META: Record<StatusKey, ColorMeta> = {
   failed: statusKeyMeta("failed"),
   paused: statusKeyMeta("paused"),
   done: statusKeyMeta("done"),
+  shipped: statusKeyMeta("shipped"),
+  archived: statusKeyMeta("archived"),
   review: statusKeyMeta("review"),
   zombie: statusKeyMeta("zombie"),
   swept: statusKeyMeta("swept"),
