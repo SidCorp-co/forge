@@ -22,7 +22,7 @@ For: operators delivering client work · internal multi-project teams · privacy
 
 | Piece | One line |
 |---|---|
-| Pipeline engine | 18-status, per-stage auto-run or human-gate; shorten/extend/replace per project (`staging` soft-skipped) |
+| Pipeline engine | 16-status, per-stage auto-run or human-gate; shorten/extend/replace per project (single pre-prod gate = `tested`) |
 | Device runners | paired devices spawn `claude` locally, stream events; Tauri desktop (`packages/dev`) + headless Rust daemon (`packages/runner`) |
 | Skills + memory | per-stage skills (built-in + user, facts-preamble), cloud memory with cognitive layer — the loop's accumulating half |
 | Webhook ingestion | GitHub/Sentry/custom events → pipeline issues (= Maintain) |

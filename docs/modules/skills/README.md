@@ -106,7 +106,7 @@ Unique constraint: `(projectId, stage)` — at most one skill per stage per proj
 | `forge-plan` | `clarified` → `approved` (S/M) / `waiting` (C) | Explore code, write implementation plan + QA scenarios |
 | `forge-code` | `approved` → `developed` | Implement, build, tiered review, commit, push ISS-* branch |
 | `forge-review` | `developed` → `testing` / `reopen` | Independent fresh-context code review + diff smoke |
-| `forge-test` | `testing` → `released` (via tested/pass/staging) / `reopen` | Merge ISS-* + Coolify deploy beta + full live E2E gate (does not merge to production) |
+| `forge-test` | `testing` → `tested` (manual release gate) / `reopen` | Merge ISS-* + Coolify deploy beta + full live E2E gate (does not merge to production) |
 | `forge-release` | `released` → `closed` | Append release note, delete branch, close (does NOT merge) |
 | `forge-fix` | `reopen` → `developed` | Scoped fix on ISS-* branch |
 

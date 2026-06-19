@@ -1,6 +1,6 @@
 # Issues & Pipeline
 
-The 18-status state machine that routes work through agent stages.
+The 16-status state machine that routes work through agent stages.
 
 - Project contains issues; each issue's status = where it is in the pipeline.
 - Transitions can trigger agent skills (jobs dispatched to paired devices); each is auto-run or human-gated per-project.
@@ -48,7 +48,7 @@ Input sources: Web UI (user creates issue) · Webhook ingestion (external platfo
 | `documentId` | Canonical ID |
 | `issueId` | `ISS-<number>` user-facing ID |
 | `title`, `description`, `priority`, `category` | User fields |
-| `status` | One of 18 statuses (see status lifecycle) |
+| `status` | One of 16 statuses (see status lifecycle) |
 | `project` | Belongs to one project |
 | `sessionContext` | JSON accumulator for agent session memory |
 | `changeHistory` | Audit log of status / priority / title changes |
@@ -60,19 +60,18 @@ Standard supporting entities. See code for schema detail.
 
 ## Status Lifecycle
 
-18 statuses + branches. Full reference (transition rules, allowed skills, reopen cycles, blocked transitions): [status-pipeline.md](status-pipeline.md).
+16 statuses + branches. Full reference (transition rules, allowed skills, reopen cycles, blocked transitions): [status-pipeline.md](status-pipeline.md).
 
 ```
 draft → open → confirmed → clarified → waiting → approved →
-in_progress → developed → deploying → testing → tested → pass →
-staging → released → closed
+in_progress → developed → deploying → testing → tested → released → closed
 
 with branches:
   reopen (max 5 cycles) → fix → back to developed
   on_hold, needs_info (manual)
 ```
 
-`forge-test` auto-advances `tested → pass → staging → released` once its merge + live-verify gate passes; those statuses are traversed automatically, not gated. Each transition can map to a skill (triage, clarify, plan, code, review, test, release, fix). Per-project config toggles auto-run vs human-gate.
+`forge-test` sets `tested` once its merge + live-verify gate passes; `tested` is the single production approval GATE (`mode:'manual'` by default), where a human advances `tested → released` and forge-release closes the issue. (`pass`/`staging` were removed from the lifecycle — unify gate model.) Each transition can map to a skill (triage, clarify, plan, code, review, test, release, fix). Per-project config toggles auto-run vs human-gate.
 
 ## Key Business Flows
 
@@ -111,5 +110,5 @@ with branches:
 
 | Document | Description |
 |----------|-------------|
-| [status-pipeline.md](status-pipeline.md) | Full 18-status lifecycle reference — transition rules, skill mappings, gate semantics |
+| [status-pipeline.md](status-pipeline.md) | Full 16-status lifecycle reference — transition rules, skill mappings, gate semantics |
 | [decompose.md](decompose.md) | Epic → children decomposition lifecycle — create/approve cascade, children-first + parent-last gating |
