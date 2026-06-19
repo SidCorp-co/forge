@@ -17,7 +17,11 @@ export interface BreadcrumbProps {
 
 export function Breadcrumb({ items, onNavigate }: BreadcrumbProps) {
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5">
+    // min-w-0 so children may shrink. Truncation is PER-CRUMB: intermediate
+    // crumbs (e.g. a long project name) shrink+truncate, while the last crumb
+    // (current page) and the "/" separators never shrink — so which page you're
+    // on is always fully readable, even at 320px (ISS-514).
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5">
       {items.map((c, i) => {
         const last = i === items.length - 1;
         const linkable = c.href && !last;
@@ -28,19 +32,27 @@ export function Breadcrumb({ items, onNavigate }: BreadcrumbProps) {
                 <button
                   type="button"
                   onClick={() => onNavigate(c.href!)}
-                  className="fg-body-sm text-muted hover:text-fg"
+                  className="fg-body-sm min-w-0 shrink truncate text-left text-muted hover:text-fg"
                 >
                   {c.label}
                 </button>
               ) : (
-                <a href={c.href} className="fg-body-sm text-muted hover:text-fg">
+                <a href={c.href} className="fg-body-sm min-w-0 shrink truncate text-muted hover:text-fg">
                   {c.label}
                 </a>
               )
             ) : (
-              <span className={last ? "fg-body-sm font-semibold text-fg" : "fg-body-sm text-muted"}>{c.label}</span>
+              <span
+                className={
+                  last
+                    ? "fg-body-sm shrink-0 whitespace-nowrap font-semibold text-fg"
+                    : "fg-body-sm min-w-0 shrink truncate text-muted"
+                }
+              >
+                {c.label}
+              </span>
             )}
-            {!last && <span className="text-subtle">/</span>}
+            {!last && <span className="shrink-0 text-subtle">/</span>}
           </Fragment>
         );
       })}
