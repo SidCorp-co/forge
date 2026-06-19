@@ -49,11 +49,11 @@ function runtimeImportsOf(src: string): string[] {
   const bad: string[] = [];
   for (const m of src.matchAll(SIDE_EFFECT)) bad.push(m[0].trim());
   for (const m of src.matchAll(FROM_IMPORT)) {
-    const clause = m[1].trim();
+    const clause = (m[1] ?? '').trim();
     if (clause.startsWith('type ')) continue; // `import type { … }` / `import type X`
     const named = clause.match(/^\{([\s\S]*)\}$/);
     if (named) {
-      const allTypeOnly = named[1]
+      const allTypeOnly = (named[1] ?? '')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean)
