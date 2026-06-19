@@ -53,6 +53,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A notification bell in the header now shows your pipeline and issue events in real time, with an unread count and one-click navigation to the related issue or run.
 - Fixed the "My conversations" agent-chat drawer so the message box can always be clicked and typed into.
 - Status colors are now consistent across the whole app, so each color reliably means one thing and different states no longer look the same.
+- Coolify deploy connections that trip their circuit breaker now auto-recover after a short cooldown, and a successful connection test clears the breaker, instead of staying stuck until a manual database fix.
+- A pipeline stage set to manual approval now reliably pauses for human sign-off instead of being silently skipped straight to release.
 
 ## [0.3.0] - 2026-06-11
 
