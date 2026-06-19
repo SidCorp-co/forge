@@ -23,7 +23,7 @@ import { type IssueStatus, issueDependencies, issues } from '../db/schema.js';
  * and its pipeline is re-triggered for the integration-test step.
  */
 export const DECOMP_CHILD_READY_STATUSES: ReadonlySet<IssueStatus> = new Set([
-  'staging',
+  'tested',
   'released',
   'closed',
 ]);

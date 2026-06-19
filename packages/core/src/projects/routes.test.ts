@@ -1102,10 +1102,8 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     'developed',
     'needs_info',
     'open',
-    'pass',
     'released',
     'reopen',
-    'staging',
     'tested',
     'testing',
   ].sort();

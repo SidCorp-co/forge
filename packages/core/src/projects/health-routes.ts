@@ -62,8 +62,6 @@ const ACTIVE_STATUSES = [
   'deploying',
   'testing',
   'tested',
-  'pass',
-  'staging',
   'reopen',
 ] as const;
 const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;

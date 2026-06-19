@@ -21,7 +21,7 @@ const PIPELINE_STAGES: PipelineStage[] = [
   { key: "approved", label: "Ready", statuses: ["approved"], emoji: "✅" },
   { key: "development", label: "Development", statuses: ["in_progress", "developed"], emoji: "💻" },
   { key: "deploy_test", label: "Deploy & Test", statuses: ["deploying", "testing"], emoji: "🚀" },
-  { key: "review", label: "Review", statuses: ["staging"], emoji: "👁" },
+  { key: "review", label: "Awaiting release", statuses: ["tested"], emoji: "👁" },
   { key: "done", label: "Done", statuses: ["released", "closed"], emoji: "🏁" },
   { key: "blocked", label: "Blocked", statuses: ["reopen", "on_hold"], emoji: "⚠️" },
 ];

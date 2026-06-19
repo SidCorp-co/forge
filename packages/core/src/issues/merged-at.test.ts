@@ -65,9 +65,9 @@ describe('resolveMergeStates', () => {
   it('accepts agentConfig wrapper form', () => {
     expect(
       resolveMergeStates({
-        pipelineConfig: { mergeStates: { baseBranch: 'staging' } },
+        pipelineConfig: { mergeStates: { baseBranch: 'tested' } },
       }),
-    ).toEqual({ baseBranch: 'staging', productionBranch: 'released' });
+    ).toEqual({ baseBranch: 'tested', productionBranch: 'released' });
   });
 
   it('accepts pipelineConfig (unwrapped) form', () => {
@@ -85,7 +85,7 @@ describe('markMergedIfLeavingBase', () => {
     const result = await markMergedIfLeavingBase(tx, {
       issueId: 'iss-1',
       projectId: 'p-1',
-      fromStatus: 'staging',
+      fromStatus: 'tested',
       toStatus: DEFAULT_BASE_MERGE_STATE,
     });
     expect(result.stamped).toBe(false);
@@ -146,7 +146,7 @@ describe('markMergedIfLeavingBase', () => {
   it('respects operator-overridden mergeStates.baseBranch', async () => {
     const { tx, updateCall } = buildMockTx({
       agentConfig: {
-        pipelineConfig: { mergeStates: { baseBranch: 'staging' } },
+        pipelineConfig: { mergeStates: { baseBranch: 'tested' } },
       },
       returningRows: [{ id: 'iss-1' }],
     });
@@ -160,17 +160,17 @@ describe('markMergedIfLeavingBase', () => {
     expect(noop.stamped).toBe(false);
     expect(updateCall).not.toHaveBeenCalled();
 
-    // Leaving 'staging' IS the merge transition under the override.
+    // Leaving 'tested' IS the merge transition under the override.
     const { tx: tx2, updateCall: updateCall2 } = buildMockTx({
       agentConfig: {
-        pipelineConfig: { mergeStates: { baseBranch: 'staging' } },
+        pipelineConfig: { mergeStates: { baseBranch: 'tested' } },
       },
       returningRows: [{ id: 'iss-1' }],
     });
     const fired = await markMergedIfLeavingBase(tx2, {
       issueId: 'iss-1',
       projectId: 'p-1',
-      fromStatus: 'staging',
+      fromStatus: 'tested',
       toStatus: 'released',
     });
     expect(fired.stamped).toBe(true);

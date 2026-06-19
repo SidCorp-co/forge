@@ -28,8 +28,8 @@ beforeEach(() => {
 });
 
 describe('DECOMP_CHILD_READY_STATUSES', () => {
-  it('contains staging, released, closed', () => {
-    expect(DECOMP_CHILD_READY_STATUSES.has('staging')).toBe(true);
+  it('contains tested, released, closed', () => {
+    expect(DECOMP_CHILD_READY_STATUSES.has('tested')).toBe(true);
     expect(DECOMP_CHILD_READY_STATUSES.has('released')).toBe(true);
     expect(DECOMP_CHILD_READY_STATUSES.has('closed')).toBe(true);
   });
@@ -47,8 +47,8 @@ describe('DECOMP_PARENT_RELEASED_STATUSES', () => {
     expect(DECOMP_PARENT_RELEASED_STATUSES.has('closed')).toBe(true);
   });
 
-  it('excludes staging — parent integration test must pass before children release', () => {
-    expect(DECOMP_PARENT_RELEASED_STATUSES.has('staging')).toBe(false);
+  it('excludes tested — parent integration test must pass before children release', () => {
+    expect(DECOMP_PARENT_RELEASED_STATUSES.has('tested')).toBe(false);
   });
 });
 
@@ -57,30 +57,30 @@ describe('allChildrenReady', () => {
     expect(allChildrenReady([])).toBe(false);
   });
 
-  it('returns true when all are staging', () => {
+  it('returns true when all are tested', () => {
     expect(
-      allChildrenReady([{ status: 'staging' }, { status: 'staging' }, { status: 'staging' }]),
+      allChildrenReady([{ status: 'tested' }, { status: 'tested' }, { status: 'tested' }]),
     ).toBe(true);
   });
 
-  it('returns true when statuses are a mix of staging/released/closed', () => {
+  it('returns true when statuses are a mix of tested/released/closed', () => {
     expect(
-      allChildrenReady([{ status: 'staging' }, { status: 'released' }, { status: 'closed' }]),
+      allChildrenReady([{ status: 'tested' }, { status: 'released' }, { status: 'closed' }]),
     ).toBe(true);
   });
 
   it('returns false when any sibling is mid-pipeline', () => {
     expect(
       allChildrenReady([
-        { status: 'staging' },
-        { status: 'staging' },
+        { status: 'tested' },
+        { status: 'tested' },
         { status: 'in_progress' },
       ]),
     ).toBe(false);
   });
 
   it('returns false when any sibling is approved (early stage)', () => {
-    expect(allChildrenReady([{ status: 'staging' }, { status: 'approved' }])).toBe(false);
+    expect(allChildrenReady([{ status: 'tested' }, { status: 'approved' }])).toBe(false);
   });
 });
 

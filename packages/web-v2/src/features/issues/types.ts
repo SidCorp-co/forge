@@ -24,8 +24,6 @@ export type IssueStatus =
   | "deploying"
   | "testing"
   | "tested"
-  | "pass"
-  | "staging"
   | "released"
   | "closed"
   | "reopen"
@@ -40,7 +38,7 @@ export type IssueComplexity = "xs" | "s" | "m" | "l" | "xl";
  *  unions above (the source of truth is `db/schema.ts`). */
 export const ISSUE_STATUSES: IssueStatus[] = [
   "open", "confirmed", "clarified", "waiting", "approved", "in_progress", "developed",
-  "deploying", "testing", "tested", "pass", "staging", "released", "closed",
+  "deploying", "testing", "tested", "released", "closed",
   "reopen", "on_hold", "needs_info", "draft",
 ];
 export const ISSUE_PRIORITIES: IssuePriority[] = ["critical", "high", "medium", "low", "none"];

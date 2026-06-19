@@ -22,8 +22,6 @@ export const REGISTRY_ISSUE_STATUSES = [
   'deploying',
   'testing',
   'tested',
-  'pass',
-  'staging',
   'released',
   'closed',
   'reopen',

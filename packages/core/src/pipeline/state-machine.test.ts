@@ -100,7 +100,7 @@ describe('state machine', () => {
       expect(canTransitionFree('open', 'released')).toBe(true);
       expect(canTransitionFree('approved', 'needs_info')).toBe(true);
       expect(canTransitionFree('developed', 'reopen')).toBe(true);
-      expect(canTransitionFree('pass', 'on_hold')).toBe(true);
+      expect(canTransitionFree('tested', 'on_hold')).toBe(true);
     });
 
     it('never allows draft as a target', () => {

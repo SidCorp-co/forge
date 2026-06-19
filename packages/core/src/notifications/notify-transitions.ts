@@ -43,8 +43,6 @@ const HEALTHY_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'developed',
   'testing',
   'tested',
-  'pass',
-  'staging',
   'released',
   'closed',
 ]);

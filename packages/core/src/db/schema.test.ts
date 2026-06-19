@@ -830,8 +830,6 @@ describe('db/schema — issues', () => {
       'deploying',
       'testing',
       'tested',
-      'pass',
-      'staging',
       'released',
       'closed',
       'reopen',

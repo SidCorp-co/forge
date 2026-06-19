@@ -127,8 +127,6 @@ const resolverStagesMock = vi.fn<() => Promise<ReadonlySet<string>>>(
       'developed',
       'testing',
       'tested',
-      'pass',
-      'staging',
       'deploying',
       'reopen',
       'released',
@@ -263,8 +261,6 @@ beforeEach(() => {
       'developed',
       'testing',
       'tested',
-      'pass',
-      'staging',
       'deploying',
       'reopen',
       'released',
@@ -825,17 +821,17 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
 
   it('does not pause via ISS-238 guard when the landing stage has its own missing skill (cap path)', async () => {
     // No skills at all. autoSkip walks the chain to the first non-skippable
-    // anchor (`closed`). For payload.to = 'pass' (a retired/legacy drain
-    // status), the chain is pass → released → closed. `closed` is
+    // anchor (`closed`). For payload.to = 'tested' (the
+    // gate), the chain is tested → released → closed. `closed` is
     // non-skippable → anchors there. No cap fires.
     cfgResolved({ enabled: true });
     resolverStagesMock.mockResolvedValueOnce(new Set<string>());
     nextSelect.mockResolvedValueOnce([
-      { id: 'iss-1', projectId: 'proj-1', status: 'pass', reopenCount: 0 },
+      { id: 'iss-1', projectId: 'proj-1', status: 'tested', reopenCount: 0 },
     ]);
 
     const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'testing', to: 'pass' }) as never);
+    await bus.emit('transition', transition({ from: 'testing', to: 'tested' }) as never);
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(2);
     expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual([

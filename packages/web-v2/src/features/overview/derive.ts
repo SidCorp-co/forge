@@ -51,7 +51,7 @@ const BUCKET_DEFS: ReadonlyArray<Omit<WorkBucket, 'count' | 'color'> & { tone: S
   { key: 'queued', label: 'Queued', tone: 'neutral', statuses: ['open', 'confirmed', 'clarified', 'approved'] },
   { key: 'progress', label: 'In progress', tone: 'active', statuses: ['in_progress', 'reopen', 'developed', 'deploying', 'testing'] },
   { key: 'attention', label: 'Needs attention', tone: 'attention', statuses: ['waiting', 'needs_info'] },
-  { key: 'ready', label: 'Ready to ship', tone: 'success', statuses: ['tested', 'pass', 'staging', 'released'] },
+  { key: 'ready', label: 'Ready to ship', tone: 'success', statuses: ['tested', 'released'] },
   { key: 'blocked', label: 'On hold', tone: 'blocked', statuses: ['on_hold'] },
 ];
 

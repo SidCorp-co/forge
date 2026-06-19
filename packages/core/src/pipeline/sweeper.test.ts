@@ -460,7 +460,7 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
     job_type: 'code',
     issue_id: '33333333-3333-4333-8333-333333333333',
     blocker_id: '44444444-4444-4444-8444-444444444444',
-    blocker_status: 'staging',
+    blocker_status: 'tested',
     kind: 'blocks',
     queued_secs: 7200,
   };

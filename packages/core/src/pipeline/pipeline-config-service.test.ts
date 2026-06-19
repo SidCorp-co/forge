@@ -166,11 +166,11 @@ describe('computeMergeStateParkWarning — silent-wedge advisory', () => {
   it('warns when baseBranch is a manual stage', () => {
     const w = computeMergeStateParkWarning({
       enabled: true,
-      mergeStates: { baseBranch: 'staging', productionBranch: 'released' },
-      states: { staging: { mode: 'manual', enabled: true } },
+      mergeStates: { baseBranch: 'tested', productionBranch: 'released' },
+      states: { tested: { mode: 'manual', enabled: true } },
     } as never);
     expect(w).toMatch(/manual stage/);
-    expect(w).toMatch(/staging/);
+    expect(w).toMatch(/tested/);
   });
 
   it("warns when baseBranch's step auto-toggle is off (e.g. released + autoRelease:false)", () => {

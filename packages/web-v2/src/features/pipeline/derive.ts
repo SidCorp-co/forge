@@ -33,8 +33,6 @@ export const STATUS_TO_STAGE: Record<string, StageKey> = {
   deploying: "test",
   testing: "test",
   tested: "test",
-  pass: "release",
-  staging: "release",
   released: "release",
   closed: "release",
 };
@@ -103,12 +101,10 @@ export function issueStatusToStatusKey(status: string): StatusKey {
     case "in_progress":
     case "deploying":
     case "testing":
-    case "staging":
       return "running";
     case "developed":
       return "review";
     case "tested":
-    case "pass":
       return "passed";
     case "released":
     case "closed":

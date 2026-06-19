@@ -108,8 +108,7 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
   'developed',
   'deploying',
   'testing',
-  'pass',
-  'staging',
+  'tested',
   'released',
   'closed',
 ];

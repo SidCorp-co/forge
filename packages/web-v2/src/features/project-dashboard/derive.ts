@@ -44,7 +44,7 @@ const STATUS_BUCKETS: ReadonlyArray<{
   { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["waiting", "needs_info"] },
   { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved", "draft"] },
   { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },
-  { key: "done", label: "Done", tone: "success", statuses: ["tested", "pass", "staging", "released", "closed"] },
+  { key: "done", label: "Done", tone: "success", statuses: ["tested", "released", "closed"] },
 ];
 
 export interface DonutSegment {

@@ -20,12 +20,11 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   developed: ['deploying', 'reopen', 'on_hold'],
   deploying: ['testing', 'reopen', 'on_hold'],
   testing: ['tested', 'reopen', 'on_hold'],
-  // `tested` is the production approval GATE: QA passed, a human advances it
-  // to `released`. `pass`/`staging` are retired from the happy path (kept in
-  // the enum + matrix only so a legacy issue parked there can drain forward).
+  // `tested` is the SINGLE production approval GATE: QA passed, a human advances
+  // it to `released`. The former `pass`/`staging` happy-path states were retired
+  // entirely (unify gate model) — a migration drained any stranded issue onto
+  // `tested`, so they no longer exist in the lifecycle.
   tested: ['released', 'reopen', 'on_hold'],
-  pass: ['released', 'reopen', 'on_hold'],
-  staging: ['released', 'reopen', 'on_hold'],
   released: ['closed', 'on_hold'],
   closed: ['reopen'],
   reopen: ['developed', 'deploying', 'in_progress', 'on_hold'],
@@ -105,13 +104,9 @@ export const STAGE_FORWARD: Partial<Record<IssueStatus, IssueStatus>> = {
   clarified: 'approved',
   developed: 'testing',
   // Canonical happy-path ends at the `tested` release GATE, then `released`.
-  // The former `pass → staging` deploy hop is retired; `pass`/`staging` are
-  // kept only as drain edges so a legacy issue still parked there flushes
-  // forward to `released` instead of wedging.
+  // The former `pass → staging` deploy hop is retired entirely.
   testing: 'tested',
   tested: 'released',
-  pass: 'released',
-  staging: 'released',
   // deploying sits between developed and testing in the lifecycle
   // (developed → deploying → testing), so skipping it lands on testing.
   deploying: 'testing',

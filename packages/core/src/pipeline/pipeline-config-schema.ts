@@ -58,11 +58,12 @@ export const STEP_TOGGLE_KEYS = PIPELINE_STEPS.map((s) => s.toggle) as unknown a
  * `FORBIDDEN: STAGE_MANUAL_ONLY`. Human-triggered `/run-pipeline-step` still
  * works regardless — manual mode means "only a human can fire this stage".
  *
- * `tested`, `pass`, `staging`, `deploying` are listed here despite having no
- * skill in STATUS_TO_JOB_TYPE: the FE needs a toggle to opt-in to soft-skip
+ * `tested` and `deploying` are listed here despite having no skill in
+ * STATUS_TO_JOB_TYPE: the FE needs a toggle to opt-in to soft-skip
  * auto-transition via STAGE_FORWARD for projects whose flow doesn't use those
  * stages. With `enabled:true` (the default) an issue parks at them; flipping
- * `enabled:false` engages the chain.
+ * `enabled:false` engages the chain. `pass`/`staging` were retired (unify gate
+ * model) — `tested` ("Awaiting release") is the single production approval gate.
  */
 export const STAGE_NAMES = [
   'open',
@@ -73,8 +74,6 @@ export const STAGE_NAMES = [
   'developed',
   'testing',
   'tested',
-  'pass',
-  'staging',
   'deploying',
   'reopen',
   'released',

@@ -51,7 +51,7 @@ describe('resolveJobTypeForStatus', () => {
 
   it('returns null for human-gated statuses', () => {
     // needs_info is human-gated again — clarify moved to the happy path.
-    for (const s of ['waiting', 'staging', 'on_hold', 'closed', 'needs_info'] as const) {
+    for (const s of ['waiting', 'tested', 'on_hold', 'closed', 'needs_info'] as const) {
       expect(resolveJobTypeForStatus(s)).toBeNull();
     }
   });

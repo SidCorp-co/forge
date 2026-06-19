@@ -47,7 +47,7 @@ export type IssueStatus =
   | "developed"
   | "deploying"
   | "testing"
-  | "staging"
+  | "tested"
   | "released"
   | "closed"
   | "reopen"

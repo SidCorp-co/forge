@@ -30,8 +30,6 @@ const MERGE_STATE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "developed", label: "developed (after Code/Review — skill-driven merge)" },
   { value: "testing", label: "testing (Test gate — merge + verify)" },
   { value: "tested", label: "tested" },
-  { value: "pass", label: "pass" },
-  { value: "staging", label: "staging" },
   { value: "released", label: "released (trunk-based default)" },
 ];
 

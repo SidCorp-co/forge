@@ -93,12 +93,11 @@ describe("statusToChip", () => {
   it("maps lifecycle status to a kit StatusKey", () => {
     expect(statusToChip("in_progress")).toBe("running");
     expect(statusToChip("waiting")).toBe("waiting");
-    expect(statusToChip("pass")).toBe("passed");
+    expect(statusToChip("tested")).toBe("passed");
     expect(statusToChip("on_hold")).toBe("paused");
   });
   it("splits the terminal/gate tail into distinct keys (ISS-511)", () => {
     expect(statusToChip("tested")).toBe("passed");
-    expect(statusToChip("staging")).toBe("done");
     expect(statusToChip("released")).toBe("shipped");
     expect(statusToChip("closed")).toBe("archived");
   });
