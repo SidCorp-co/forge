@@ -323,6 +323,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'list returns a lightweight summary projection per issue (no description/' +
     'plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*/releaseNotes) ' +
     'to stay under the response token cap; fetch the full body with action=get. ' +
+    'Token discipline: use list (projection) to browse/triage many issues, and ' +
+    'get for the single full issue you are about to work on — do NOT re-get an ' +
+    'issue whose full body you already loaded this session (e.g. via ' +
+    'forge_step_start, which already returns the full body). ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
     'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
     'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +
