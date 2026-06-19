@@ -110,9 +110,19 @@ export function PipelineTracker({
 
   const size = variant === "compact" ? 16 : 26;
   const interactive = variant === "full" && !!onSelect;
+  // ISS-515 — on narrow viewports the labeled `full` row (7 mono labels) is
+  // wider than the content box and was clipping the final stage. Wrap the row
+  // in a bounded horizontal-scroll container and let the inner row grow to its
+  // content width (`w-max`) while never shrinking below the container
+  // (`min-w-full`). At ≥sm the row already fits, so `min-w-full` wins and the
+  // connectors stretch full-width exactly as before (no desktop regression);
+  // on narrow viewports it scrolls inside the card instead of overflowing the
+  // page. The vertical padding keeps the active-bead halo + focus ring from
+  // being clipped by `overflow`.
   return (
-    <div className="flex w-full items-start">
-      {STAGES.map((s, i) => {
+    <div className="w-full overflow-x-auto py-1">
+      <div className="flex w-max min-w-full items-start">
+        {STAGES.map((s, i) => {
         const cell = cells?.[s.key];
         const st: BeadState = cell ? CELL_TO_BEAD[cell.state] : stageState(i, currentIdx, status);
         const last = i === STAGES.length - 1;
@@ -179,7 +189,8 @@ export function PipelineTracker({
             )}
           </Fragment>
         );
-      })}
+        })}
+      </div>
     </div>
   );
 }
