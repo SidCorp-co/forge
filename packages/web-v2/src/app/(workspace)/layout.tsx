@@ -513,29 +513,54 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
-  // Bottom tab bar (<md): ≤5 destinations. Search opens ⌘K; You → account.
-  const bottomItems: BottomTabItem[] = useMemo(
-    () => [
+  // Bottom tab bar (<md): ≤5 destinations. Inside a project it swaps to the
+  // project tier (PROJECT_ITEMS, incl. Issues) so the desktop rail's project
+  // nav has a mobile surface (ISS-514); otherwise it shows the workspace tabs
+  // (Search opens ⌘K; You → account). Derived from PROJECT_ITEMS so it can
+  // never drift from the rail (ISS-433 gotcha).
+  const bottomItems: BottomTabItem[] = useMemo(() => {
+    if (slug) {
+      return PROJECT_ITEMS.map((it) => ({
+        key: it.key,
+        label: it.label,
+        icon: it.icon,
+        badge: it.key === "proj-issues" ? railConsole?.openIssues : undefined,
+      }));
+    }
+    return [
       { key: "projects", label: "Projects", icon: "folder" },
       { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
       { key: "usage", label: "Usage", icon: "dollar" },
       { key: "search", label: "Search", icon: "search" },
       { key: "you", label: "You", icon: "settings" },
-    ],
-    [attentionCount],
-  );
+    ];
+  }, [slug, attentionCount, railConsole]);
 
   const bottomActiveKey = useMemo(() => {
-    // "Projects" tab → the list at /projects (incl. project detail). The
-    // Overview dashboard at `/` is reachable via the rail/⌘K, not a bottom tab.
+    // Inside a project the bar carries the project tier — light the matching
+    // `proj-*` key the same way the rail does (longest `sub` wins).
+    if (slug) {
+      const base = `/projects/${slug}`;
+      const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
+      const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
+      return hit?.key ?? "proj-overview";
+    }
+    // "Projects" tab → the list at /projects. The Overview dashboard at `/` is
+    // reachable via the drawer/⌘K, not a bottom tab.
     if (pathname.startsWith("/projects")) return "projects";
     if (pathname.startsWith("/attention")) return "attention";
     if (pathname.startsWith("/usage")) return "usage";
     if (pathname.startsWith("/settings")) return "you";
     return "";
-  }, [pathname]);
+  }, [pathname, slug]);
 
   function onBottomSelect(key: string) {
+    // Project-tier keys route through the shared navigate() (it already pushes
+    // /projects/<railSlug><sub>); workspace keys keep their dedicated handlers.
+    if (key.startsWith("proj-")) {
+      navigate(key);
+      return;
+    }
     switch (key) {
       case "projects":
         router.push("/projects");
@@ -554,6 +579,19 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         break;
     }
   }
+
+  // Workspace destinations for the mobile drawer: the rail rows plus the two
+  // most-wanted secondary destinations (Attention, Settings), so the workspace
+  // tier stays reachable from inside a project once the bottom bar shows the
+  // project tier (ISS-514). Routed via their key through navigate().
+  const drawerWorkspaceItems = useMemo<Array<NavItem & { href: string }>>(
+    () => [
+      ...WORKSPACE_ITEMS,
+      SECONDARY_DESTINATIONS.find((it) => it.key === "attention")!,
+      SECONDARY_DESTINATIONS.find((it) => it.key === "settings")!,
+    ],
+    [],
+  );
 
   const commands: Command[] = useMemo(() => {
     const out: Command[] = [];
@@ -752,8 +790,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      {/* Mobile drawer — a project switcher (the workspace destinations live in
-          the bottom tab bar). Opened from the TopBar menu button, below md. */}
+      {/* Mobile drawer — the consolidated navigation menu (ISS-514): the active
+          project's tier (PROJECT_ITEMS), the workspace destinations, and the
+          project switcher. Opened from the TopBar menu button, below md. */}
       {mobileNavOpen && (
         <div className="md:hidden">
           <button
@@ -767,34 +806,101 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             className="forge-slide fixed inset-y-0 left-0 z-50 flex w-[272px] max-w-[82vw] flex-col gap-1 border-r border-line bg-surface p-3 pb-[env(safe-area-inset-bottom)] pt-[max(env(safe-area-inset-top),0.75rem)]"
             role="dialog"
             aria-modal="true"
-            aria-label="Switch project"
+            aria-label="Navigation"
           >
             {/* Org context + switcher (ISS-469) — the rail is hidden below md,
                 so the drawer carries the current-org control on mobile. */}
             <div className="px-1.5 pb-3">
               <OrgSwitcher variant="expanded" />
             </div>
-            <div className="flex items-center justify-between px-1.5 pb-2">
-              <span className="fg-label text-fg">Projects</span>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => router.push("/projects?new=1")}
-                  className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                >
-                  <Icon name="plus" size={13} />
-                  Create
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/projects")}
-                  className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                >
-                  View all
-                </button>
-              </div>
-            </div>
+
             <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+              {/* This project — the project tier from the desktop rail. Shown
+                  for the rail project (the one you're in, else last-visited) so
+                  Issues & co. are always reachable on mobile. */}
+              {railSlug && (
+                <>
+                  <span className="fg-label px-1.5 pb-1 pt-0.5 text-fg">
+                    {railProject?.name ?? "This project"}
+                  </span>
+                  {PROJECT_ITEMS.map((it) => {
+                    const active = it.key === activeKey;
+                    const badge = it.key === "proj-issues" ? railConsole?.openIssues : undefined;
+                    return (
+                      <button
+                        key={it.key}
+                        type="button"
+                        onClick={() => {
+                          navigate(it.key);
+                          setMobileNavOpen(false);
+                        }}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+                          active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
+                        )}
+                      >
+                        <Icon name={it.icon} size={18} />
+                        <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                        {badge != null && badge > 0 && (
+                          <span className="fg-caption rounded-pill bg-app px-1.5 text-muted">{badge}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Workspace — destinations consolidated into the menu so the tier
+                  stays reachable once the bottom bar shows the project tier. */}
+              <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Workspace</span>
+              {drawerWorkspaceItems.map((it) => {
+                const active = !slug && it.key === activeKey;
+                const badge = it.key === "attention" ? attentionCount : undefined;
+                return (
+                  <button
+                    key={it.key}
+                    type="button"
+                    onClick={() => {
+                      navigate(it.key);
+                      setMobileNavOpen(false);
+                    }}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+                      active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
+                    )}
+                  >
+                    <Icon name={it.icon} size={18} />
+                    <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                    {badge != null && badge > 0 && (
+                      <span className="fg-caption rounded-pill bg-app px-1.5 text-muted">{badge}</span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Projects switcher (unchanged behaviour — do not regress). */}
+              <div className="flex items-center justify-between px-1.5 pb-1 pt-2">
+                <span className="fg-label text-fg">Projects</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/projects?new=1")}
+                    className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  >
+                    <Icon name="plus" size={13} />
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/projects")}
+                    className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  >
+                    View all
+                  </button>
+                </div>
+              </div>
               {scopedProjects.map((p) => {
                 const g = projectGlyph(p.id);
                 const active = p.slug === slug;

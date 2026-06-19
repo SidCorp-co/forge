@@ -71,7 +71,9 @@ export function TopBar({
       )}
 
       {breadcrumb && breadcrumb.length > 0 ? (
-        <div className="mr-2 min-w-0 truncate">
+        // min-w-0 lets the breadcrumb shrink; per-crumb truncation lives inside
+        // <Breadcrumb> so the current-page crumb is never clipped (ISS-514).
+        <div className="mr-2 min-w-0 flex-1">
           <Breadcrumb items={breadcrumb} onNavigate={onBreadcrumbNavigate} />
         </div>
       ) : (
