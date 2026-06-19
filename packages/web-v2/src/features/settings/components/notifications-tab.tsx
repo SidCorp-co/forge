@@ -25,6 +25,12 @@ import {
   requestPermission,
   setEnabled,
 } from "@/lib/notifications/browser";
+import {
+  isEnabled as isSoundEnabled,
+  isSupported as isSoundSupported,
+  primeAudio,
+  setEnabled as setSoundEnabled,
+} from "@/lib/notifications/sound";
 import { NOTIFICATIONS_PAGE_SIZE } from "../api";
 import {
   useMarkAllRead,
@@ -149,6 +155,9 @@ function DeliveryPreferences() {
 
         <div className="my-3 border-t border-line" />
         <DesktopNotificationsToggle />
+
+        <div className="my-3 border-t border-line" />
+        <SoundNotificationsToggle />
       </CardContent>
     </Card>
   );
@@ -204,6 +213,47 @@ function DesktopNotificationsToggle() {
         disabled={!supported || denied}
         onChange={onToggle}
         aria-label="Enable desktop notifications"
+      />
+    </div>
+  );
+}
+
+/** Notification sound toggle (ISS-513). Client-only opt-in (localStorage,
+ *  default OFF) for an audible cue that accompanies toast/browser delivery.
+ *  Toggling ON primes the AudioContext from this gesture so the autoplay policy
+ *  unlocks playback; disables itself with an explanatory caption when the
+ *  browser has no Web Audio support. */
+function SoundNotificationsToggle() {
+  const [supported, setSupported] = useState(true);
+  const [enabled, setEnabledState] = useState(false);
+
+  // Read support + opt-in on mount (client-only — AudioContext / localStorage).
+  useEffect(() => {
+    setSupported(isSoundSupported());
+    setEnabledState(isSoundEnabled());
+  }, []);
+
+  function onToggle(next: boolean) {
+    setSoundEnabled(next);
+    setEnabledState(next);
+    if (next) primeAudio();
+  }
+
+  const helper = supported
+    ? "Play a sound when a new high-signal notification arrives."
+    : "Your browser does not support notification sounds.";
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <div className="min-w-0">
+        <p className="fg-label text-fg">Notification sound</p>
+        <p className="fg-caption text-muted">{helper}</p>
+      </div>
+      <Toggle
+        checked={enabled && supported}
+        disabled={!supported}
+        onChange={onToggle}
+        aria-label="Enable notification sound"
       />
     </div>
   );

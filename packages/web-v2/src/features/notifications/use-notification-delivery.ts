@@ -16,6 +16,7 @@ import { useEffect } from "react";
 import { type NotificationSeverity, channelsFor, defaultSeverityForType } from "@forge/contracts/notifications";
 import type { ToastTone } from "@/design/primitives/toast";
 import { fireBrowserNotification } from "@/lib/notifications/browser";
+import { playNotificationSound } from "@/lib/notifications/sound";
 import { wsClient } from "@/lib/ws/client";
 import { useToast } from "@/providers/toast-provider";
 
@@ -50,6 +51,14 @@ export function planNotificationDelivery(input: {
   };
 }
 
+/** Whether the audible cue should play for a given delivery plan: the sound
+ *  piggybacks on the toast/browser decision, so it fires for high-signal types
+ *  and stays silent for bell-only/unknown ones. The opt-in gate lives inside
+ *  `playNotificationSound`. Exported for tests. */
+export function shouldPlaySound(plan: { toast: boolean; browser: boolean }): boolean {
+  return plan.toast || plan.browser;
+}
+
 /** The subset of the WS `notification.created` payload this bridge consumes. */
 export interface DeliveryNotification {
   notificationId: string;
@@ -77,6 +86,8 @@ export function useNotificationDelivery(
       if (!d || typeof d.type !== "string") return;
 
       const plan = planNotificationDelivery(d);
+
+      if (shouldPlaySound(plan)) playNotificationSound();
 
       if (plan.toast) {
         toast({
