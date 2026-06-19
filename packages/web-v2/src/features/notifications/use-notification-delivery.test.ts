@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planNotificationDelivery, severityToTone } from "./use-notification-delivery";
+import { planNotificationDelivery, severityToTone, shouldPlaySound } from "./use-notification-delivery";
 
 describe("severityToTone (ISS-510)", () => {
   it("maps each severity to a toast tone", () => {
@@ -46,5 +46,18 @@ describe("planNotificationDelivery channel routing (ISS-510)", () => {
     expect(plan.toast).toBe(false);
     expect(plan.browser).toBe(false);
     expect(plan.tone).toBe("info");
+  });
+});
+
+describe("shouldPlaySound (ISS-513)", () => {
+  it("plays for toast/browser-channel high-signal types", () => {
+    expect(shouldPlaySound(planNotificationDelivery({ type: "pipeline_wedge" }))).toBe(true);
+    expect(shouldPlaySound(planNotificationDelivery({ type: "issue_status_changed" }))).toBe(true);
+    expect(shouldPlaySound(planNotificationDelivery({ type: "agent_completed" }))).toBe(true);
+  });
+
+  it("stays silent for bell-only and unknown types", () => {
+    expect(shouldPlaySound(planNotificationDelivery({ type: "comment_added" }))).toBe(false);
+    expect(shouldPlaySound(planNotificationDelivery({ type: "totally_new_type" }))).toBe(false);
   });
 });
