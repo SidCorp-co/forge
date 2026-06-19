@@ -2,6 +2,8 @@
 
 Issue lifecycle: 16 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
 
+> Configuring stages (Auto / Manual gate / Skip) + recommended presets: [guides/pipeline-gates.md](../../guides/pipeline-gates.md). This page is the reference; the guide is the practical how-to.
+
 ## Statuses
 
 Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 16 entries). Keep this table in lockstep.

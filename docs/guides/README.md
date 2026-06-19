@@ -6,6 +6,7 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 
 | Guide | Covers |
 |-------|--------|
+| [pipeline-gates.md](pipeline-gates.md) | Configure pipeline stages: Auto / Manual (gate) / Skip per stage, the single `tested` release gate, recommended presets |
 | [trunk-based-development.md](trunk-based-development.md) | Branching model, naming, pre-push hook, who ships how (contributors + maintainers; the pipeline has its own docs) |
 | [release.md](release.md) | Cutting a release |
 | [integrations.md](integrations.md) | Wiring external integrations |
