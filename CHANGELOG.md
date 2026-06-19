@@ -55,6 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Status colors are now consistent across the whole app, so each color reliably means one thing and different states no longer look the same.
 - Coolify deploy connections that trip their circuit breaker now auto-recover after a short cooldown, and a successful connection test clears the breaker, instead of staying stuck until a manual database fix.
 - A pipeline stage set to manual approval now reliably pauses for human sign-off instead of being silently skipped straight to release.
+- Issue status badges now use distinct colors so states like Tested, Released and Closed are easy to tell apart at a glance.
 
 ## [0.3.0] - 2026-06-11
 
