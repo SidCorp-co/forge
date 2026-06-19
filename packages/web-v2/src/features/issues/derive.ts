@@ -160,9 +160,11 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
     case "pass":
       return "passed";
     case "staging":
+      return "done"; // verified, pre-release — stays success/green
     case "released":
+      return "shipped"; // ISS-511 — distinct flame, "shipped to prod"
     case "closed":
-      return "done";
+      return "archived"; // ISS-511 — heavy ink, "filed away"
     case "on_hold":
       return "paused";
     default:
