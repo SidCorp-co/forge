@@ -260,6 +260,12 @@ importers:
       '@forge/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@forge/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@sentry/react':
+        specifier: ^10.56.0
+        version: 10.56.0(react@19.2.7)
       '@tanstack/react-query':
         specifier: ^5.101.0
         version: 5.101.0(react@19.2.7)

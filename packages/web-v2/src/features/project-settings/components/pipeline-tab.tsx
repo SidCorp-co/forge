@@ -45,6 +45,7 @@ import {
 } from "@/features/skills/hooks";
 import { usableSkillOptions, type UsableSkillOption } from "@/features/skills/types";
 import { useProjectHealth } from "@/features/projects/hooks";
+import { captureDiag } from "@/lib/sentry";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
 import { SessionGroupsSection } from "./session-groups-section";
@@ -295,9 +296,14 @@ export function PipelineTab({
   const libraryHref = slug ? `/projects/${slug}/library?tab=skills` : undefined;
 
   function setJobMode(key: StepToggleKey, status: string, mode: StageMode) {
+    // DIAG (temporary): prove the segment click reaches the handler. If this
+    // event never lands in Sentry when a user taps a segment, the click is being
+    // swallowed before React (touch/overlay/disabled), not failing in our logic.
+    captureDiag("pipeline:job-mode-change", { status, mode, canEdit, masterEnabled });
     setDraft((d) => (d ? applyJobStageMode(d, key, status, mode) : d));
   }
   function setCheckpointMode(status: string, mode: StageMode) {
+    captureDiag("pipeline:checkpoint-mode-change", { status, mode, canEdit, masterEnabled });
     if (mode === "auto") return; // checkpoints have no skill — never Auto
     setDraft((d) => (d ? applyCheckpointMode(d, status, mode) : d));
   }
@@ -497,7 +503,15 @@ export function PipelineTab({
               variant="primary"
               loading={update.isPending}
               disabled={!dirty || missingSkillSteps.length > 0 || skipBlockedStages.length > 0}
-              onClick={() => update.mutate(draft)}
+              onClick={() => {
+                captureDiag("pipeline:save-click", {
+                  dirty,
+                  missingSkill: missingSkillSteps.length,
+                  skipBlocked: skipBlockedStages.length,
+                  canEdit,
+                });
+                update.mutate(draft);
+              }}
               className="min-h-11"
             >
               Save pipeline config
