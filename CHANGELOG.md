@@ -58,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Issue status badges now use distinct colors so states like Tested, Released and Closed are easy to tell apart at a glance.
 - Forge pipeline agents now load issues more token-efficiently, avoiding oversized-response failures on issues with long comment histories.
 - The project dashboard cards now stack correctly on mobile instead of being cut off at the edge of the screen.
+- You can now turn on a sound alert for incoming notifications — toggle “Notification sound” in Settings → Notifications.
 
 ## [0.3.0] - 2026-06-11
 
