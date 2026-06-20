@@ -167,7 +167,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-none items-center gap-3 border-b border-line bg-app/95 px-4 py-4 sm:px-8">
+      <header className="flex flex-none flex-col gap-2 border-b border-line bg-app/95 px-4 py-4 sm:flex-row sm:items-center sm:gap-3 sm:px-8">
         <div className="min-w-0">
           {/* Title row: editable per-conversation title once a real row exists.
               In draft / no-conversation state, fall back to the section label. */}
@@ -176,13 +176,13 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               <EditableTitle session={session} />
             </h1>
           ) : (
-            <h1 className="fg-h2">My conversations</h1>
+            <h1 className="fg-h2 truncate">My conversations</h1>
           )}
           <p className="fg-body-sm mt-1 text-muted">
             Ask the agent anything about this project.
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
           {session && display && (
             <StatusChip
               status={statusToChip(display)}
