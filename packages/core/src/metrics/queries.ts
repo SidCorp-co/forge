@@ -304,10 +304,13 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     case 'cache_hit_rate': {
       // Computed directly from usage_records (project-scoped, windowed, served by
       // the (project_id, recorded_at) index) rather than the
-      // pipeline_run_step_durations view: the deployed view is the 0057 shape and
-      // lacks the cache-token columns (0075 never applied — it references the
-      // dropped jobs.started_at), so reading cache_read_tokens off the view 500s
-      // on live (ISS-380 forge-test FAIL). usage_records carries the same tokens.
+      // pipeline_run_step_durations view: the deployed view (0057 shape; 0128 —
+      // ISS-516 — guards only duration_seconds, leaving the row set/cost_usd
+      // untouched) keeps the 8-column contract and lacks the cache-token
+      // columns (0075 was orphaned/never applied — it
+      // references the dropped jobs.started_at — and is now deleted), so reading
+      // cache_read_tokens off the view 500s on live (ISS-380 forge-test FAIL).
+      // usage_records carries the same tokens.
       // total input = input_tokens + cache_read_tokens (cache reads are billed
       // input that bypassed fresh processing).
       const rows = (await db.execute(sql`
