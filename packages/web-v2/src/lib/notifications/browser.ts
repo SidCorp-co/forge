@@ -82,3 +82,33 @@ export function fireBrowserNotification(opts: FireBrowserNotificationOptions): v
     // Notification construction can throw on some platforms — degrade silently.
   }
 }
+
+/**
+ * Fire a one-off confirmation notification the moment the user enables the
+ * channel from Settings. Unlike `fireBrowserNotification` this is intentionally
+ * NOT gated on tab visibility: it is the direct response to a user gesture, so
+ * the user gets immediate, observable proof the channel works even with the tab
+ * focused (the real complaint behind ISS-513's reopen — high-signal events only
+ * fire a native notification while the tab is backgrounded, which is invisible
+ * to someone actively testing). Still requires permission granted + opt-in.
+ * No-op + swallow on any failure.
+ */
+export function showTestNotification(): void {
+  if (!isSupported() || Notification.permission !== "granted" || !isEnabled()) return;
+  try {
+    const n = new Notification("Desktop notifications enabled", {
+      body: "You'll get a notification here for high-signal events when this tab is in the background.",
+      tag: "forge:notify-test",
+    });
+    n.onclick = () => {
+      try {
+        window.focus();
+      } catch {
+        // focus can throw in some embedded contexts — ignore.
+      }
+      n.close();
+    };
+  } catch {
+    // Notification construction can throw on some platforms — degrade silently.
+  }
+}
