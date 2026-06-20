@@ -1,6 +1,6 @@
 # Decompose protocol (mechanics)
 
-Read this when the plan step has decided an issue IS a Complex epic to decompose
+Read this when the plan step has decided an issue IS a large (`l`/`xl`) epic to decompose
 (the decision criteria live in the skill body, Step 5.5). This file is the HOW.
 
 ## The model: one shared integration branch, parent owns the merge to base

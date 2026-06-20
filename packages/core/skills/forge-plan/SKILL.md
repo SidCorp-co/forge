@@ -25,9 +25,9 @@ Planning is the highest-value step in the pipeline. A good plan saves the coding
 
 Not every issue needs deep codebase exploration. The planning depth should match the complexity:
 
-**Lightweight plan (Simple/Medium):** Use `knowledge.json` + issue description + targeted Glob to identify files and write the plan. Read at most 1-2 source files — only when you need to check an existing pattern or verify a component's current props/API. The coding agent will read the files during implementation anyway, so duplicate deep-reading wastes tokens.
+**Lightweight plan (xs/s/m):** Use `knowledge.json` + issue description + targeted Glob to identify files and write the plan. Read at most 1-2 source files — only when you need to check an existing pattern or verify a component's current props/API. The coding agent will read the files during implementation anyway, so duplicate deep-reading wastes tokens.
 
-**Deep plan (Complex):** Full codebase exploration. Read all affected files, trace dependencies, verify patterns. Complex issues involve architectural decisions where a wrong plan costs more than the exploration.
+**Deep plan (l/xl):** Full codebase exploration. Read all affected files, trace dependencies, verify patterns. `l`/`xl` issues involve architectural decisions where a wrong plan costs more than the exploration.
 
 The tier is determined by the triage comment's complexity classification.
 
@@ -100,12 +100,12 @@ Glob: <source-root from knowledge.json paths>/**/*<keyword>*
 
 ### Step 4: Explore (Depth Depends on Tier)
 
-**For Simple/Medium (lightweight):**
+**For xs/s/m (lightweight):**
 - You now have the file list from knowledge.json + Glob. That's usually enough.
 - Only read a source file if you need to check: a component's current props/API, an existing pattern to reference, or whether a utility already exists.
 - Limit to 1-2 file reads max. The coding agent will read everything during implementation.
 
-**For Complex (deep):**
+**For l/xl (deep):**
 - Read `references/exploration-guide.md` for the full exploration approach.
 - Read all affected files to understand current state.
 - Follow the data flow — trace from API to UI or vice versa.
@@ -135,9 +135,9 @@ Make the decision a **mergeable artifact** instead. Plan an in-repo markdown doc
 - This makes the change a **docs-only diff** (touches only docs/prose, no source paths — derived from the repo's own structure), which flows code → review → test → release like any other change. The coding/review/test steps key off that mechanical signal, so a real decision becomes a durable, discoverable artifact rather than a comment that vanishes from the codebase.
 - Do **NOT** decompose a no-code deliverable (see Step 5.5). Recommended follow-ups (e.g. ports the decision endorses) spin off as **standalone** issues linked with a soft `related_to` — never as `decomposes` children, since a pure decision has nothing to integrate.
 
-### Step 5.5: Decide whether to decompose (Complex epics only)
+### Step 5.5: Decide whether to decompose (l/xl epics only)
 
-For Complex issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. Adding the first edge makes core (ISS-138) create + push a **shared integration branch** off `<baseBranch>`, park the parent at `waiting`, and stamp `branchConfig` so every child branches off and merges back into that branch (not base). The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, the parent's integration gate, and close cascade. Only the parent squash-merges the integration branch → base, once, after verifying the assembled epic.
+For `l`/`xl` issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. Adding the first edge makes core (ISS-138) create + push a **shared integration branch** off `<baseBranch>`, park the parent at `waiting`, and stamp `branchConfig` so every child branches off and merges back into that branch (not base). The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, the parent's integration gate, and close cascade. Only the parent squash-merges the integration branch → base, once, after verifying the assembled epic.
 
 **When to decompose:**
 - Each child must be reviewable + testable independently.
@@ -166,24 +166,24 @@ Skip checking test files for lightweight plans — the coding agent handles test
 
 The exit behavior depends on complexity (from the triage comment, extracted in Step 1):
 
-**Simple or Medium complexity:**
+**xs / s / m complexity:**
 ```
 forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>", author: "Alakazam" } }
 forge_issues → update → { documentId: "<id>", data: { status: "approved" } }
 ```
 
-Auto-approving simple/medium plans keeps the pipeline fast. **Status update is LAST** — it triggers the coding step.
+Auto-approving `xs/s/m` plans keeps the pipeline fast. **Status update is LAST** — it triggers the coding step.
 
-**Complex complexity:**
+**l / xl complexity:**
 ```
 forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>", author: "Alakazam" } }
 forge_issues → update → { documentId: "<id>", data: { status: "waiting" } }
 ```
 
-Set status to `waiting` — Complex issues wait for a human to review the plan and manually approve. **Status update is LAST.**
+Set status to `waiting` — `l`/`xl` issues (and every decomposed epic) wait for a human to review the plan and manually approve. **Status update is LAST.**
 
 **If no triage comment found** (manual invocation, not from pipeline):
-- Default to auto-approve behavior (treat as Medium)
+- Default to auto-approve behavior (treat as `m`)
 
 ### Plan Comment Format
 
