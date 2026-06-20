@@ -78,7 +78,7 @@ Check `changeHistory` for previous `testing → reopen` transitions.
 
 ### Step 3: Wait for Deployment Readiness
 
-Before testing, ensure the deployed code is up to date. Deployments triggered by upstream skills (forge-code, forge-fix, forge-staging) may still be building when this step starts.
+Before testing, ensure the deployed code is up to date. Deployments triggered by upstream skills (forge-code, forge-fix) may still be building when this step starts.
 
 ```
 forge_coolify_deploy → status → {}
@@ -102,7 +102,7 @@ Fetch project config via `forge_config → get`. This returns `previewDeploy` wi
 
 **If both testUrl and testApiUrl are null** → post comment "No preview or staging deployment found, cannot test", stop.
 
-Use `previewDeploy.testCredentials` (array of `{label, username, password}`) for authenticated flows. Pick the credential that matches the test scenario (e.g., "Employee" account for employee-role tests).
+Use `previewDeploy.testCredentials` (array of `{label, username, password}`) for authenticated flows. Pick the credential whose `label` matches the role the scenario needs (match by label — don't assume a fixed role set).
 
 ### Step 5: Build Test Cases
 
