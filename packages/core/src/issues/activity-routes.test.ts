@@ -24,6 +24,35 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
+// Resolve actors deterministically without touching the (mocked) db: a user
+// ref → email, a device ref → name + agent marker. Keeps the db chain mock
+// scoped to the activity query itself.
+vi.mock('./actor-resolution.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./actor-resolution.js')>();
+  return {
+    ...actual,
+    resolveActors: vi.fn(async (refs: { type: 'user' | 'device'; id: string }[]) => {
+      const m = new Map();
+      for (const r of refs) {
+        m.set(
+          actual.actorKey(r.type, r.id),
+          r.type === 'user'
+            ? { type: 'user', id: r.id, displayName: 'member@example.com', isAgent: false }
+            : {
+                type: 'device',
+                id: r.id,
+                displayName: 'Agent Device',
+                isAgent: true,
+                deviceId: r.id,
+                ownerEmail: 'owner@example.com',
+              },
+        );
+      }
+      return m;
+    }),
+  };
+});
+
 const { issueActivityRoutes, projectActivityRoutes } = await import('./activity-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -117,9 +146,20 @@ describe('GET /api/issues/:id/activity', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: unknown[]; nextBefore: string | null };
+    const body = (await res.json()) as {
+      items: Array<{ actorType: string; actor: { displayName: string; isAgent: boolean } | null }>;
+      nextBefore: string | null;
+    };
     expect(body.items).toHaveLength(2);
     expect(body.nextBefore).toBe(rows[1]?.createdAt.toISOString());
+    // Each row carries a resolved actor while keeping the raw actorType.
+    expect(body.items[0]?.actor).toEqual({
+      type: 'user',
+      id: USER_ID,
+      displayName: 'member@example.com',
+      isAgent: false,
+    });
+    expect(body.items[0]?.actorType).toBe('user');
   });
 
   it('nextBefore is null when page is not full', async () => {
@@ -182,13 +222,14 @@ describe('GET /api/projects/:id/activity', () => {
       role: 'admin',
       orgRole: 'owner',
     });
+    const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
     selectOrderByLimit.mockResolvedValueOnce([
       {
         id: ACT_ID,
         issueId: ISSUE_ID,
         action: 'comment.created',
-        actorType: 'user',
-        actorId: USER_ID,
+        actorType: 'device',
+        actorId: DEVICE_ID,
         payload: { commentId: 'c' },
         createdAt: new Date(),
       },
@@ -197,8 +238,13 @@ describe('GET /api/projects/:id/activity', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: Array<{ action: string }> };
+    const body = (await res.json()) as {
+      items: Array<{ action: string; actor: { displayName: string; isAgent: boolean } | null }>;
+    };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]?.action).toBe('comment.created');
+    // A device actor resolves to an agent label.
+    expect(body.items[0]?.actor?.isAgent).toBe(true);
+    expect(body.items[0]?.actor?.displayName).toBe('Agent Device');
   });
 });

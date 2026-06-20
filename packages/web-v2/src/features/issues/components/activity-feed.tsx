@@ -5,7 +5,7 @@
 // assignment, creation. Comment lifecycle is NOT in the activity log (the
 // Comments tab is the source for that).
 
-import { EmptyState, Icon, MonoTag, type IconName } from "@/design";
+import { Badge, EmptyState, Icon, MonoTag, type IconName } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { ActivityItem } from "../types";
 
@@ -64,6 +64,11 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
     <ol className="space-y-3">
       {items.map((item) => {
         const node = describe(item);
+        // Prefer the server-resolved actor (member email / agent device name)
+        // over the bare actorType. Fall back to the raw type for older payloads;
+        // never show just "user"/"device" when a name is available (ISS-519).
+        const isAgent = item.actor?.isAgent ?? item.actorType === "device";
+        const actorLabel = item.actor?.displayName ?? item.actorType;
         return (
           <li key={item.id} className="flex items-start gap-3">
             <span className="mt-0.5 flex size-6 flex-none items-center justify-center rounded-pill bg-sunken text-subtle">
@@ -71,8 +76,17 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
             </span>
             <div className="min-w-0 flex-1">
               <div className="fg-body-sm text-fg">{node.text}</div>
-              <div className="fg-caption mt-0.5">
-                {item.actorType} · {formatRelativeTime(item.createdAt)}
+              <div className="fg-caption mt-0.5 flex flex-wrap items-center gap-1.5">
+                <span className="truncate">{actorLabel}</span>
+                {isAgent && (
+                  <Badge tone="accent">
+                    <span className="inline-flex items-center gap-1">
+                      <Icon name="agent" size={11} />
+                      Agent
+                    </span>
+                  </Badge>
+                )}
+                <span>· {formatRelativeTime(item.createdAt)}</span>
               </div>
             </div>
           </li>

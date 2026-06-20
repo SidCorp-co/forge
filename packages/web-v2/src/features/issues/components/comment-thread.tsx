@@ -289,7 +289,12 @@ function CommentItem({
   const [replying, setReplying] = useState(false);
   const kind = deriveCommentKind(node.body);
   const meta = COMMENT_KIND_META[kind];
-  const author = memberLabel(node.authorId, members);
+  // Prefer the server-resolved author (email for a human, device name for an
+  // agent). Fall back to the project-members lookup only for older payloads
+  // that predate `author` — never render a raw UUID (ISS-519, AC5).
+  const isAgent = node.author?.isAgent ?? false;
+  const author = node.author?.displayName ?? memberLabel(node.authorId, members);
+  const ownerEmail = node.author?.ownerEmail;
   return (
     <div
       className={depth > 0 ? "border-l border-line-subtle pl-3 sm:pl-4" : ""}
@@ -299,11 +304,22 @@ function CommentItem({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="fg-label text-fg">{author}</span>
+            {isAgent && (
+              <Badge tone="accent">
+                <span className="inline-flex items-center gap-1">
+                  <Icon name="agent" size={11} />
+                  Agent
+                </span>
+              </Badge>
+            )}
             {kind !== "comment" && <Badge tone={meta.tone}>{meta.label}</Badge>}
             <span className="fg-caption">
               {formatRelativeTime(node.createdAt)}
             </span>
           </div>
+          {isAgent && ownerEmail && (
+            <div className="fg-caption">via {ownerEmail}</div>
+          )}
           <div className="mt-1">
             <Markdown>{node.body}</Markdown>
           </div>
