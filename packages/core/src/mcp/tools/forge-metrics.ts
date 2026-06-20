@@ -73,7 +73,7 @@ export const forgeMetricsStepDurationsTool: ContextScopedMcpToolFactory = (ctx) 
              percentile_disc(0.95) WITHIN GROUP (ORDER BY v.duration_seconds) AS p95_s,
              avg(v.duration_seconds)::float AS avg_s,
              sum(v.cost_usd)::float AS total_cost,
-             count(*)::int AS n
+             count(v.duration_seconds)::int AS n
       FROM pipeline_run_step_durations v
       LEFT JOIN projects p ON p.id = v.project_id
       WHERE v.project_id IN (${projectIdList})
@@ -112,7 +112,7 @@ export const forgeMetricsProjectStepDurationsTool: ContextScopedMcpToolFactory =
              percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_seconds) AS p95_s,
              avg(duration_seconds)::float AS avg_s,
              sum(cost_usd)::float AS total_cost,
-             count(*)::int AS n
+             count(duration_seconds)::int AS n
       FROM pipeline_run_step_durations
       WHERE project_id = ${input.projectId}
         AND started_at >= now() - (${input.days}::int * interval '1 day')
