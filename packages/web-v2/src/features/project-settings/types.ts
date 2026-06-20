@@ -291,10 +291,16 @@ export function deriveJobStageMode(
 
 /** Derive the mode for a CHECKPOINT stage — only "manual" (park) or "skip".
  *  A checkpoint has no skill, so at runtime it either PARKS (`mode:"manual"`) or
- *  auto-skips past it (anything else: `enabled:false`, or the default `mode:"auto"`).
- *  So manual ⇔ `mode==="manual"`; everything else reads as skip. */
+ *  auto-skips past it. `enabled:false` is the authoritative "skip" signal and
+ *  MUST win over a leftover `mode:"manual"` — the server's `classifySkippable`
+ *  checks `enabled===false` first, and a Manual→Skip toggle merges `enabled:false`
+ *  onto the old entry without clearing `mode`. Without this precedence the
+ *  segment would stay stuck on "Manual" after picking Skip (no dirty → Save
+ *  disabled). So: enabled:false ⇒ skip; else mode==="manual" ⇒ manual; else skip. */
 export function deriveCheckpointMode(cfg: PipelineConfig, status: string): "manual" | "skip" {
-  return statesOf(cfg)[status]?.mode === "manual" ? "manual" : "skip";
+  const sc = statesOf(cfg)[status];
+  if (sc?.enabled === false) return "skip";
+  return sc?.mode === "manual" ? "manual" : "skip";
 }
 
 /**
@@ -305,7 +311,10 @@ export function deriveCheckpointMode(cfg: PipelineConfig, status: string): "manu
  * so this only governs the secondary rows.
  */
 export function isCheckpointGated(cfg: PipelineConfig, status: string): boolean {
-  return statesOf(cfg)[status]?.mode === "manual";
+  const sc = statesOf(cfg)[status];
+  // A disabled (skipped) checkpoint is NOT an active gate, even if a stale
+  // `mode:"manual"` lingers on the entry (enabled:false wins — see deriveCheckpointMode).
+  return sc?.enabled !== false && sc?.mode === "manual";
 }
 
 /** The checkpoint always surfaced as the canonical pre-production gate. */
@@ -360,13 +369,14 @@ export function applyCheckpointMode(
   status: string,
   mode: "manual" | "skip",
 ): PipelineConfig {
-  return {
-    ...cfg,
-    states:
-      mode === "manual"
-        ? mergeStateEntry(cfg, status, { enabled: true, mode: "manual" })
-        : mergeStateEntry(cfg, status, { enabled: false }),
-  };
+  if (mode === "manual") {
+    return { ...cfg, states: mergeStateEntry(cfg, status, { enabled: true, mode: "manual" }) };
+  }
+  // Skip: REPLACE the entry with just `{enabled:false}` (don't merge — a leftover
+  // `mode:"manual"` from a prior Manual selection would otherwise survive and make
+  // deriveCheckpointMode/the server read it ambiguously). Checkpoints carry no
+  // other per-state keys worth preserving.
+  return { ...cfg, states: { ...statesOf(cfg), [status]: { enabled: false } } };
 }
 
 // ---------------------------------------------------------------------------

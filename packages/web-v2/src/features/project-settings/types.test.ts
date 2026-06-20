@@ -1,9 +1,42 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyCheckpointMode,
+  deriveCheckpointMode,
+  isCheckpointGated,
+  type PipelineConfig,
   SESSION_GROUP_STAGES,
   SUGGESTED_SESSION_GROUPS,
   validateSessionGroups,
 } from "./types";
+
+describe("checkpoint mode — Manual ⇄ Skip", () => {
+  // Regression: Manual→Skip merges {enabled:false} onto the existing
+  // {mode:"manual",enabled:true} entry, leaving `mode:"manual"`. deriveCheckpointMode
+  // MUST treat enabled:false as Skip (not read the stale mode) — else the segment
+  // stuck on Manual, no dirty, Save disabled.
+  it("derives Skip when enabled:false even if a stale mode:manual lingers", () => {
+    const cfg = { states: { tested: { mode: "manual", enabled: false } } } as PipelineConfig;
+    expect(deriveCheckpointMode(cfg, "tested")).toBe("skip");
+    expect(isCheckpointGated(cfg, "tested")).toBe(false);
+  });
+
+  it("round-trips Manual → Skip → Manual via applyCheckpointMode", () => {
+    let cfg = { states: { tested: { mode: "manual", enabled: true } } } as PipelineConfig;
+    expect(deriveCheckpointMode(cfg, "tested")).toBe("manual");
+
+    cfg = applyCheckpointMode(cfg, "tested", "skip");
+    expect(deriveCheckpointMode(cfg, "tested")).toBe("skip"); // the bug: used to stay "manual"
+
+    cfg = applyCheckpointMode(cfg, "tested", "manual");
+    expect(deriveCheckpointMode(cfg, "tested")).toBe("manual");
+    expect(isCheckpointGated(cfg, "tested")).toBe(true);
+  });
+
+  it("manual is a gate; skip (enabled:false) is not", () => {
+    expect(isCheckpointGated({ states: { tested: { mode: "manual", enabled: true } } } as PipelineConfig, "tested")).toBe(true);
+    expect(isCheckpointGated({ states: { tested: { enabled: false } } } as PipelineConfig, "tested")).toBe(false);
+  });
+});
 
 describe("validateSessionGroups", () => {
   it("accepts a valid grouping", () => {
