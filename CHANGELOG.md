@@ -61,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - You can now turn on a sound alert for incoming notifications — toggle “Notification sound” in Settings → Notifications.
 - Pipeline step-duration analytics (dashboard duration charts + step-duration metrics) no longer report impossible negative durations — the underlying view now counts only successfully-completed steps.
 - Mobile layouts no longer break — screens now fit and stay usable on phone-sized viewports, including the issue detail page.
+- On mobile you can now reach a project's issue list and other project sections straight from the navigation, instead of having to type the URL by hand.
 
 ## [0.3.0] - 2026-06-11
 
