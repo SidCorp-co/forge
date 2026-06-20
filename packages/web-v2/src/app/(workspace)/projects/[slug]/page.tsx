@@ -164,7 +164,7 @@ export default function ProjectOverviewPage() {
 
         <AttentionQueue items={attention} now={now} />
 
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsLive} slug={project.slug} />
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
