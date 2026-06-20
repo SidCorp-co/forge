@@ -58,20 +58,13 @@ git fetch origin
 git branch --list 'ISS-*' | grep <issue-number>
 ```
 
-After fixing and committing, push ISS-*. Only merge to baseBranch if staging deploys from baseBranch (no dedicated preview):
-
-**No preview deploy / Simple + staging URL** (staging deploys from baseBranch):
+After fixing and committing, push ISS-*. In **deploy mode** (Coolify or staging URL), merge the fix into `baseBranch` (staging) for **every** complexity, then deploy — same as the code step, so the re-verify environment has the fix:
 ```bash
 git push origin ISS-XX-short-title
 git checkout <baseBranch> && git merge ISS-XX-short-title && git push origin <baseBranch>
 git checkout ISS-XX-short-title
 ```
-
-**Simple (no staging) / Medium / Complex** (preview deploys from ISS-* branch directly):
-```bash
-git push origin ISS-XX-short-title
-```
-No merge to baseBranch needed — the preview environment pulls from the ISS-* branch.
+In **local-only mode**, push the ISS-* branch only — no merge, no deploy. (Decompose child/parent target the integration branch, not `baseBranch` — see decompose-execution.md.)
 
 ## Fix Strategy
 
