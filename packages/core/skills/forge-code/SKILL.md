@@ -1,6 +1,6 @@
 ---
 name: forge-code
-description: "Implement code changes for Forge issues. Use this skill whenever approved issues need to be coded — creates branch, follows the plan, implements changes, builds, reviews, commits, and pushes. Triggers on: /forge-code, coding issues, implementing approved issues, writing code for an issue, building features from a plan. Also use when the pipeline needs to move an issue from approved to deploying."
+description: "Implement code changes for Forge issues. Use this skill whenever approved issues need to be coded — creates branch, follows the plan, implements changes, builds, reviews, commits, and pushes. Triggers on: /forge-code, coding issues, implementing approved issues, writing code for an issue, building features from a plan. Also use when the pipeline needs to move an issue from approved to developed."
 user_invocable: true
 arguments: "documentId1 documentId2 ..."
 ---
@@ -46,13 +46,14 @@ When the issue has a plan and triage/plan comments from Forge AI:
 9. Fix any review findings, re-build, re-test
 9.5. Simplify the diff (quality-only pass — see Tiered Review below; preserve behavior, stay inside the diff)
 10. Commit
-11. Push:
-    - **local-only mode** — push ISS-* branch only. **Do NOT** merge to baseBranch. **Do NOT** call `forge_coolify_deploy`.
-    - **deploy mode** — push ISS-*, merge to baseBranch (Simple/Medium), trigger `forge_coolify_deploy`.
+11. Push — see the **Push & exit matrix** below:
+    - **deploy mode** — push the ISS-* branch, merge it into `baseBranch`, then trigger `forge_coolify_deploy`. **Every complexity merges to `baseBranch` and deploys** — `baseBranch` is staging (≠ the production branch), so getting the change onto a reachable, QA-able environment is the point. Keep the ISS-* branch alive (release promotes it to prod).
+    - **local-only mode** — push the ISS-* branch only; **no** `baseBranch` merge, **no** `forge_coolify_deploy`.
+    - **decompose child/parent** — different base/target branch; see **Decompose-aware branching** above (child → integration branch, no deploy; parent → integrate-verify, no merge).
 12. Post comment
-13. Set status (LAST — triggers next pipeline step):
-    - **local-only mode** — always set `developed` (all complexities). Human reviews at `developed` and moves to `closed` (or `reopen`) manually. The pipeline does not advance to `deploying`/`testing`/`staging`/`released` in this mode.
-    - **deploy mode** — No preview deploy → `deploying`; Simple (staging URL) → `deploying` with previewUrl; Simple (no staging) / Medium → `deploying`; Complex → `developed`.
+13. Set status LAST (triggers the next step). **Never set `deploying` — it was retired from the lifecycle; the only valid exits from the code step are `developed` or `testing`.**
+    - **deploy mode** — `xs`/`s` → **`testing`** (skip independent review — the inline self-review is enough for a trivial change; set `previewUrl`/`previewApiUrl` to the staging URLs). `m`/`l`/`xl` → **`developed`** (independent forge-review runs, then advances to testing).
+    - **local-only mode** — **`developed`** for ALL complexities (human reviews at `developed` and closes manually).
 
 **Do NOT:** re-read knowledge.json (plan has the file paths), re-explore the codebase, second-guess the plan, read files that aren't in the plan.
 
@@ -78,13 +79,13 @@ Everything else (branch discipline, status transition, sessionContext) is identi
 
 Review effort should match the risk. Over-reviewing trivial changes wastes tokens.
 
-| Complexity | Review (find bugs) | Simplify (clean, quality-only) |
+| Complexity | Inline review (find bugs, pre-push) | Simplify (quality-only) |
 |-----------|--------|------------|
-| **Simple** | Self-review: read your diff, check for obvious mistakes | Skip — simplifying a trivial diff is over-engineering |
-| **Medium** | Quick review agent: Bug-severity only, skip style | Self pass: skim your diff for obvious reuse / altitude wins |
-| **Complex** | Full review agent: Bug + Minor findings | Run the simplifier subagent |
+| **xs / s** | Self-review: read your diff, check for obvious mistakes | Skip — simplifying a trivial diff is over-engineering |
+| **m** | Quick review agent: Bug-severity only, skip style | Self pass: skim your diff for obvious reuse / altitude wins |
+| **l / xl** | Full review agent: Bug + Minor findings | Run the simplifier subagent |
 
-Complexity comes from the triage comment (extracted in Step 2 of the workflow).
+Complexity comes from the triage comment (extracted in Step 2 of the workflow). This is the **inline** pre-push review; `m`/`l`/`xl` additionally get the **independent** forge-review stage at `developed` (xs/s skip it — they exit straight to `testing`).
 
 ### Simplify pass (quality only — separate from bug review)
 
@@ -98,13 +99,9 @@ Bug-hunting is the opposite concern and lives elsewhere — your self-review abo
 ## Pipeline vs Standalone
 
 **Pipeline mode** (has triage/plan comments):
-- Plan exists → follow it directly
-- ISS-* branch is always kept alive — it is the source of truth for forge-release (in deploy mode) or human close (in local-only mode)
-- **local-only mode** (no Coolify, no preview URL): push ISS-* branch only → comment → set `developed` (status LAST) for ALL complexities. No baseBranch merge. No `forge_coolify_deploy` call.
-- **deploy mode, no preview deploy configured**: push ISS-*, merge to baseBranch → `forge_coolify_deploy` → comment → set `deploying` (status LAST)
-- **deploy mode, Simple (staging URL configured)**: push ISS-*, merge to baseBranch → `forge_coolify_deploy` → comment → set `deploying` with previewUrl (status LAST)
-- **deploy mode, Simple (no staging URL) / Medium**: push ISS-* branch → `forge_coolify_deploy` → comment → set `deploying` (status LAST)
-- **deploy mode, Complex**: push feature branch → comment → set `developed` (status LAST)
+- Plan exists → follow it directly.
+- The ISS-* branch is always kept alive — it is the source of truth that forge-release promotes to the production branch (deploy mode) or that a human closes (local-only).
+- Push + exit status follow the single **Push & exit matrix** (Quick Start steps 11–13): deploy mode merges **every** complexity to `baseBranch` + deploys, then exits `xs/s` → `testing` and `m/l/xl` → `developed`; local-only pushes the branch only and exits `developed`. **Never `deploying`** (retired).
 
 **Standalone mode** (manual invocation, no pipeline comments):
 - May not have a plan → explore and self-plan
