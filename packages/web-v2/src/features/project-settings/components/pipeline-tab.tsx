@@ -44,6 +44,7 @@ import {
   useUnregisterSkill,
 } from "@/features/skills/hooks";
 import { usableSkillOptions, type UsableSkillOption } from "@/features/skills/types";
+import { useProjectHealth } from "@/features/projects/hooks";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
 import { SessionGroupsSection } from "./session-groups-section";
@@ -138,6 +139,8 @@ export function PipelineTab({
 }) {
   const cfgQ = usePipelineConfig(projectId);
   const update = useUpdatePipelineConfig(projectId);
+  // Per-status issue occupancy — to flag stages that can't be skipped yet.
+  const healthQ = useProjectHealth();
 
   // Skill registry + per-stage bindings — drives each job row's picker.
   const skillsQ = useSkills(projectId);
@@ -235,11 +238,22 @@ export function PipelineTab({
   const server = cfgQ.data?.pipelineConfig ?? {};
   const masterEnabled = draft.enabled !== false;
 
-  // Keep the ladder tidy: always show the canonical `staging` gate, but surface
-  // the legacy checkpoints (deploying/tested/pass) ONLY when a project actively
-  // gates on them (mode:"manual" — e.g. dodgeprint's `tested`). Skipped or
-  // default checkpoints stay hidden. Decided from the saved config so rows don't
-  // flicker mid-edit.
+  // Per-status issue occupancy (same source the dashboard donut uses). Drives the
+  // inline "can't skip — N issues parked here" transparency: the server rejects
+  // disabling a stage that still holds issues (STAGE_HAS_ISSUES), so we show the
+  // block AT the row + Save, not as a silent post-save toast.
+  const issueCountByStatus =
+    healthQ.data?.find((h) => h.id === projectId)?.statusDistribution ?? {};
+  const issuesAt = (status: string) => issueCountByStatus[status] ?? 0;
+  const draftStates = (draft.states ?? {}) as Record<string, { enabled?: boolean } | undefined>;
+  /** A stage the draft would DISABLE (Skip) that still has issues parked → server blocks it. */
+  const isSkipBlocked = (status: string) =>
+    draftStates[status]?.enabled === false && issuesAt(status) > 0;
+
+  // Keep the ladder tidy: always show the canonical `tested` gate, and surface a
+  // secondary checkpoint only when the project actively gates on it
+  // (mode:"manual"). Skipped / default checkpoints stay hidden. Decided from the
+  // saved config so rows don't flicker mid-edit.
   const checkpointVisible = (status: string) =>
     status === PRIMARY_CHECKPOINT || isCheckpointGated(server, status);
 
@@ -264,6 +278,19 @@ export function PipelineTab({
         deriveJobStageMode(draft, k, STEP_TOGGLE_LABELS[k].stage) === "auto" &&
         !skillByStage.has(STEP_TOGGLE_LABELS[k].stage),
     );
+
+  // Stages the draft sets to Skip while issues are still parked there. The server
+  // rejects this (STAGE_HAS_ISSUES); we surface it inline + block Save so the user
+  // never hits a silent failure (esp. on mobile, where the post-save toast is easy
+  // to miss). Mirrors the missingSkill gate.
+  const skipBlockedStages = PIPELINE_LADDER.map((row) =>
+    row.kind === "job" ? STEP_TOGGLE_LABELS[row.toggle].stage : row.status,
+  ).filter(isSkipBlocked);
+
+  const stageLabel = (status: string): string =>
+    CHECKPOINT_STAGES.find((c) => c.status === status)?.label ??
+    Object.values(STEP_TOGGLE_LABELS).find((m) => m.stage === status)?.label ??
+    status;
 
   const libraryHref = slug ? `/projects/${slug}/library?tab=skills` : undefined;
 
@@ -347,11 +374,24 @@ export function PipelineTab({
               const meta = CHECKPOINT_STAGES.find((c) => c.status === row.status);
               if (!meta) return null;
               const mode = deriveCheckpointMode(draft, row.status);
+              const parked = issuesAt(row.status);
               return (
                 <StageRow
                   key={`cp-${row.status}`}
                   label={meta.label}
                   hint={meta.hint}
+                  warning={
+                    isSkipBlocked(row.status) ? (
+                      <p
+                        className="fg-caption mt-0.5 flex items-center gap-1"
+                        style={{ color: "var(--amberw-600)" }}
+                      >
+                        <Icon name="alert" size={12} />
+                        {parked} issue{parked === 1 ? "" : "s"} parked here — move or close{" "}
+                        {parked === 1 ? "it" : "them"} before this stage can be skipped.
+                      </p>
+                    ) : undefined
+                  }
                   control={
                     <ModeControl
                       options={CHECKPOINT_MODE_OPTIONS}
@@ -393,6 +433,16 @@ export function PipelineTab({
                         </button>
                       )}
                     </div>
+                  ) : isSkipBlocked(meta.stage) ? (
+                    <p
+                      className="fg-caption mt-0.5 flex items-center gap-1"
+                      style={{ color: "var(--amberw-600)" }}
+                    >
+                      <Icon name="alert" size={12} />
+                      {issuesAt(meta.stage)} issue{issuesAt(meta.stage) === 1 ? "" : "s"} parked here
+                      — move or close {issuesAt(meta.stage) === 1 ? "it" : "them"} before this stage
+                      can be skipped.
+                    </p>
                   ) : undefined
                 }
                 skillPicker={
@@ -430,6 +480,14 @@ export function PipelineTab({
                 above, or switch to Manual/Skip.
               </Banner>
             )}
+            {skipBlockedStages.length > 0 && (
+              <Banner tone="attention">
+                Can&apos;t skip{" "}
+                {skipBlockedStages.map((s) => `${stageLabel(s)} (${issuesAt(s)})`).join(", ")}:{" "}
+                {skipBlockedStages.length === 1 ? "an issue is" : "issues are"} still parked there.
+                Move or close them first, then set the stage to Skip.
+              </Banner>
+            )}
             {update.isError && (
               <Banner tone="danger" onDismiss={() => update.reset()}>
                 {formatPipelineConfigError(update.error)}
@@ -438,7 +496,7 @@ export function PipelineTab({
             <Button
               variant="primary"
               loading={update.isPending}
-              disabled={!dirty || missingSkillSteps.length > 0}
+              disabled={!dirty || missingSkillSteps.length > 0 || skipBlockedStages.length > 0}
               onClick={() => update.mutate(draft)}
               className="min-h-11"
             >
