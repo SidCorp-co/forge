@@ -39,7 +39,6 @@ export const STATUS_LABELS: Record<IssueStatus, string> = {
   approved: "Approved",
   in_progress: "In progress",
   developed: "Developed",
-  deploying: "Deploying",
   testing: "Testing",
   tested: "Tested",
   released: "Released",
@@ -87,7 +86,6 @@ export const STATUS_TO_STAGE: Record<IssueStatus, StageKey> = {
   in_progress: "code",
   reopen: "code",
   developed: "review",
-  deploying: "test",
   testing: "test",
   tested: "test",
   released: "release",
@@ -149,7 +147,6 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
     case "needs_info":
       return "waiting";
     case "developed":
-    case "deploying":
     case "testing":
       return "review";
     case "tested":
@@ -267,7 +264,7 @@ export function filterToStatusParams(filter: IssueFilter): {
     case "active":
       return { status: ["open", "confirmed", "clarified", "waiting", "approved", "in_progress", "reopen"] };
     case "review":
-      return { status: ["developed", "deploying", "testing", "tested"] };
+      return { status: ["developed", "testing", "tested"] };
     case "blocked":
       return { status: ["on_hold", "needs_info"] };
     case "done":

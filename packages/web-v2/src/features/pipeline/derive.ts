@@ -30,7 +30,6 @@ export const STATUS_TO_STAGE: Record<string, StageKey> = {
   reopen: "code",
   on_hold: "code",
   developed: "review",
-  deploying: "test",
   testing: "test",
   tested: "test",
   released: "release",
@@ -99,7 +98,6 @@ export function runStatusToTracker(status: PipelineRunStatus): TrackerRunState {
 export function issueStatusToStatusKey(status: string): StatusKey {
   switch (status) {
     case "in_progress":
-    case "deploying":
     case "testing":
       return "running";
     case "developed":

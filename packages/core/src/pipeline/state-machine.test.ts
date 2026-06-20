@@ -219,9 +219,9 @@ describe('soft-skip resolver — missing-skill predicate (ISS-239)', () => {
   });
 
   it('skips when hasSkill returns false for the source stage', () => {
-    // STAGE_FORWARD['deploying'] = 'testing'. hasSkill: only testing is registered.
+    // STAGE_FORWARD['developed'] = 'testing'. hasSkill: only testing is registered.
     const hasSkill = (s: (typeof issueStatuses)[number]) => s === 'testing';
-    expect(resolveSkipTarget('deploying', undefined, { hasSkill })).toEqual({
+    expect(resolveSkipTarget('developed', undefined, { hasSkill })).toEqual({
       to: 'testing',
       chain: ['testing'],
       hops: [{ to: 'testing', reason: 'missing_skill' }],
@@ -394,12 +394,12 @@ describe('validateStatesConfig', () => {
 
 describe('STAGE_FORWARD vs state-machine transitions', () => {
   // ISS-110 review follow-up: STAGE_FORWARD is the orchestrator's curated
-  // forward chain for soft-skip — it intentionally collapses stages that the
-  // state-machine matrix does NOT allow as direct one-hop transitions (the
-  // canonical pipeline goes `developed → deploying → testing`, but disabling
-  // `developed` should skip straight to `testing`). Document the gap here so
-  // future contributors don't try to enforce parity. The orchestrator wires
-  // around it by passing `{ skip: true }` to `applyStatusTransition`.
+  // forward chain for soft-skip. It used to collapse stages the state-machine
+  // matrix didn't allow as direct one-hop transitions (the old
+  // `developed → deploying → testing`). With `deploying` retired (unify gate
+  // model), review exits straight to `testing` and every STAGE_FORWARD pair is
+  // now ALSO a legal direct transition — so the soft-skip chain and the matrix
+  // are fully in parity (no indirect pairs). Guard that here.
   it('records which STAGE_FORWARD pairs are not legal direct state-machine transitions', () => {
     const indirect: Array<[string, string]> = [];
     for (const from of Object.keys(STAGE_FORWARD)) {
@@ -407,6 +407,6 @@ describe('STAGE_FORWARD vs state-machine transitions', () => {
       if (!to) continue;
       if (!canTransition(from as never, to)) indirect.push([from, to]);
     }
-    expect(indirect).toEqual([['developed', 'testing']]);
+    expect(indirect).toEqual([]);
   });
 });

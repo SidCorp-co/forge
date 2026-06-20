@@ -45,7 +45,6 @@ export type IssueStatus =
   | "approved"
   | "in_progress"
   | "developed"
-  | "deploying"
   | "testing"
   | "tested"
   | "released"

@@ -1,6 +1,6 @@
 # Issues & Pipeline
 
-The 16-status state machine that routes work through agent stages.
+The 15-status state machine that routes work through agent stages.
 
 - Project contains issues; each issue's status = where it is in the pipeline.
 - Transitions can trigger agent skills (jobs dispatched to paired devices); each is auto-run or human-gated per-project.
@@ -48,7 +48,7 @@ Input sources: Web UI (user creates issue) · Webhook ingestion (external platfo
 | `documentId` | Canonical ID |
 | `issueId` | `ISS-<number>` user-facing ID |
 | `title`, `description`, `priority`, `category` | User fields |
-| `status` | One of 16 statuses (see status lifecycle) |
+| `status` | One of 15 statuses (see status lifecycle) |
 | `project` | Belongs to one project |
 | `sessionContext` | JSON accumulator for agent session memory |
 | `changeHistory` | Audit log of status / priority / title changes |
@@ -60,11 +60,11 @@ Standard supporting entities. See code for schema detail.
 
 ## Status Lifecycle
 
-16 statuses + branches. Full reference (transition rules, allowed skills, reopen cycles, blocked transitions): [status-pipeline.md](status-pipeline.md).
+15 statuses + branches. Full reference (transition rules, allowed skills, reopen cycles, blocked transitions): [status-pipeline.md](status-pipeline.md).
 
 ```
 draft → open → confirmed → clarified → waiting → approved →
-in_progress → developed → deploying → testing → tested → released → closed
+in_progress → developed → testing → tested → released → closed
 
 with branches:
   reopen (max 5 cycles) → fix → back to developed
@@ -110,5 +110,5 @@ with branches:
 
 | Document | Description |
 |----------|-------------|
-| [status-pipeline.md](status-pipeline.md) | Full 16-status lifecycle reference — transition rules, skill mappings, gate semantics |
+| [status-pipeline.md](status-pipeline.md) | Full 15-status lifecycle reference — transition rules, skill mappings, gate semantics |
 | [decompose.md](decompose.md) | Epic → children decomposition lifecycle — create/approve cascade, children-first + parent-last gating |

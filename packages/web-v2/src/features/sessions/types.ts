@@ -428,10 +428,8 @@ const STEP_TO_STAGE: Record<string, StageKey> = {
   test: "test",
   testing: "test",
   deploy: "test",
-  deploying: "test",
   verify: "test",
   release: "release",
-  staging: "release",
 };
 
 /**

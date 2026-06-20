@@ -1,12 +1,12 @@
 # Issue Status Pipeline
 
-Issue lifecycle: 16 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
+Issue lifecycle: 15 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
 
 > Configuring stages (Auto / Manual gate / Skip) + recommended presets: [guides/pipeline-gates.md](../../guides/pipeline-gates.md). This page is the reference; the guide is the practical how-to.
 
 ## Statuses
 
-Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 16 entries). Keep this table in lockstep.
+Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 15 entries). Keep this table in lockstep.
 
 | # | Status | Meaning | Set by |
 |---|--------|---------|--------|
@@ -17,15 +17,14 @@ Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/d
 | 5 | `approved` | Plan approved, ready to code | forge-plan (Simple/Medium) or human |
 | 6 | `in_progress` | Being coded + built | forge-code start |
 | 7 | `developed` | Code pushed, awaiting review | forge-code |
-| 8 | `deploying` | Deploy in progress (reserved — projects with an external deploy step) | external deploy trigger |
-| 9 | `testing` | Verify gate after review | forge-review (APPROVE) |
-| 10 | `tested` | **Production approval GATE (the single pre-prod gate)** — QA passed; parks for a human (`mode:'manual'` by default, never auto-skipped — ISS-502). Human advances → `released` | forge-test (sets) · human (advances) |
-| 11 | `released` | Cleared for release — dispatches forge-release | human (advances the `tested` gate) |
-| 12 | `closed` | Done / archived | forge-release or manual |
-| 13 | `reopen` | Rejected, needs fix | Rejection at review/test |
-| 14 | `on_hold` | Paused / blocked | Manual or infra failure |
-| 15 | `needs_info` | Human-gated bounce: blocked on reporter clarification (no auto-dispatch) | forge-triage, forge-clarify, or manual |
-| 16 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
+| 8 | `testing` | Verify gate — review exits straight here | forge-review (APPROVE) |
+| 9 | `tested` | **Production approval GATE (the single pre-prod gate)** — QA passed; parks for a human (`mode:'manual'` by default, never auto-skipped — ISS-502). Human advances → `released` | forge-test (sets) · human (advances) |
+| 10 | `released` | Cleared for release — dispatches forge-release | human (advances the `tested` gate) |
+| 11 | `closed` | Done / archived | forge-release or manual |
+| 12 | `reopen` | Rejected, needs fix | Rejection at review/test |
+| 13 | `on_hold` | Paused / blocked | Manual or infra failure |
+| 14 | `needs_info` | Human-gated bounce: blocked on reporter clarification (no auto-dispatch) | forge-triage, forge-clarify, or manual |
+| 15 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
 
 ## Flow
 
@@ -65,7 +64,7 @@ Missing info (any stage)     ──▶ needs_info — human-gated bounce, no aut
   migration backfilled `enabled: false` for every project without `autoClarify`.
 
 - `waiting` and `tested` are human GATES — no skill auto-runs there; a human advances them. `tested` is the production approval gate: `mode:'manual'` by default and **never auto-skipped** (ISS-502).
-- `pass`/`staging` were **removed entirely** (unify gate model — they are no longer in the `issueStatuses` enum, the state machine, or `STAGE_NAMES`). The single pre-prod gate is `tested`; deploy-to-staging happens inside forge-code. A one-shot migration re-parked any stranded issue onto `tested`. The `staging` *jobType* is kept (inert) only for back-compat with historical `jobs.type='staging'` rows.
+- `pass`/`staging`/`deploying` were **removed entirely** (unify gate model — no longer in the `issueStatuses` enum, the state machine, or `STAGE_NAMES`). The single pre-prod gate is `tested`; review now exits straight to `testing` (the old `developed → deploying → testing` hop is gone) and deploy-to-staging happens inside forge-code. One-shot migrations re-parked any stranded issue (`pass`/`staging` → `tested`, `deploying` → `testing`). The `staging` *jobType* is kept (inert) only for back-compat with historical `jobs.type='staging'` rows.
 
 ## Branching Model
 
@@ -116,7 +115,7 @@ Watches issue status changes, dispatches the matching skill. Mapping derived fro
 | `reopen` | forge-fix | `autoFix` |
 | `released` | forge-release | `autoRelease` |
 
-No-auto-dispatch statuses (`waiting`, `needs_info`, `deploying`, `tested`, `on_hold`, `draft`) are human gates (e.g. the `tested` release gate) or transit statuses the soft-skip resolver walks through.
+No-auto-dispatch statuses (`waiting`, `needs_info`, `tested`, `on_hold`, `draft`) are human gates (e.g. the `tested` release gate) or transit statuses the soft-skip resolver walks through.
 
 ### Execution modes
 
@@ -163,6 +162,7 @@ Older revisions used additional statuses; no longer valid, must not appear in ne
 |-----------|-------------|
 | `pass` | `tested` (the single pre-prod gate) — removed from the enum (unify gate model) |
 | `staging` | `tested` gate + deploy-in-forge-code — removed from the enum (the `staging` *jobType* is kept inert for historical `jobs` rows) |
+| `deploying` | `testing` — removed from the enum (review exits straight to `testing`; the deploy-in-progress hop always auto-skipped anyway) |
 | `resolved` | `closed` |
 | `in_review` | `developed` |
 | `rejected` | `closed` + comment / label |

@@ -19,7 +19,7 @@ function StatusDot({ status }: { status?: string }) {
   const isClosed = CLOSED_STATUSES.includes(s);
   let color = "bg-green-500";
   if (isClosed) color = "bg-purple-500";
-  else if (["in_progress", "developed", "deploying"].includes(s)) color = "bg-orange-500";
+  else if (["in_progress", "developed"].includes(s)) color = "bg-orange-500";
   else if (["testing", "tested"].includes(s)) color = "bg-blue-500";
   else if (s === "reopen") color = "bg-red-500";
   else if (["confirmed", "approved", "waiting"].includes(s)) color = "bg-sky-500";

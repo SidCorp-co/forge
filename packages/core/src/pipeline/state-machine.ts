@@ -16,18 +16,19 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   clarified: ['waiting', 'approved', 'needs_info', 'on_hold'],
   waiting: ['approved', 'clarified', 'on_hold'],
   approved: ['in_progress', 'on_hold'],
-  in_progress: ['developed', 'deploying', 'reopen', 'on_hold'],
-  developed: ['deploying', 'reopen', 'on_hold'],
-  deploying: ['testing', 'reopen', 'on_hold'],
+  // Review exits straight to `testing` (the former `developed → deploying →
+  // testing` hop is retired — `deploying` was removed from the lifecycle).
+  in_progress: ['developed', 'testing', 'reopen', 'on_hold'],
+  developed: ['testing', 'reopen', 'on_hold'],
   testing: ['tested', 'reopen', 'on_hold'],
   // `tested` is the SINGLE production approval GATE: QA passed, a human advances
-  // it to `released`. The former `pass`/`staging` happy-path states were retired
-  // entirely (unify gate model) — a migration drained any stranded issue onto
-  // `tested`, so they no longer exist in the lifecycle.
+  // it to `released`. The former `pass`/`staging`/`deploying` happy-path states
+  // were retired entirely (unify gate model) — migrations drained any stranded
+  // issue onto `tested`/`testing`, so they no longer exist in the lifecycle.
   tested: ['released', 'reopen', 'on_hold'],
   released: ['closed', 'on_hold'],
   closed: ['reopen'],
-  reopen: ['developed', 'deploying', 'in_progress', 'on_hold'],
+  reopen: ['developed', 'testing', 'in_progress', 'on_hold'],
   on_hold: issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft'),
   needs_info: ['open', 'confirmed', 'on_hold'],
   // ISS-236 — drafts are AI-generated proposals; user either promotes them
@@ -104,12 +105,9 @@ export const STAGE_FORWARD: Partial<Record<IssueStatus, IssueStatus>> = {
   clarified: 'approved',
   developed: 'testing',
   // Canonical happy-path ends at the `tested` release GATE, then `released`.
-  // The former `pass → staging` deploy hop is retired entirely.
+  // The former `pass`/`staging`/`deploying` hops are retired entirely.
   testing: 'tested',
   tested: 'released',
-  // deploying sits between developed and testing in the lifecycle
-  // (developed → deploying → testing), so skipping it lands on testing.
-  deploying: 'testing',
   reopen: 'developed',
   released: 'closed',
 };

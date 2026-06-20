@@ -59,7 +59,6 @@ const ACTIVE_STATUSES = [
   'approved',
   'in_progress',
   'developed',
-  'deploying',
   'testing',
   'tested',
   'reopen',

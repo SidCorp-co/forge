@@ -897,6 +897,13 @@
       "when": 1785110400000,
       "tag": "0129_comment_author_device",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1785196800000,
+      "tag": "0130_retire_deploying_status",
+      "breakpoints": true
     }
   ]
 }

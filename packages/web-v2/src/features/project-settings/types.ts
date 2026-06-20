@@ -251,10 +251,9 @@ function statesOf(cfg: PipelineConfig): StagesMap {
  * them between the job stages. Mirrors the gaps in core `PIPELINE_STEPS`.
  */
 export const CHECKPOINT_STAGES: { status: string; label: string; hint: string }[] = [
-  { status: "deploying", label: "Deploy", hint: "developed → testing · checkpoint" },
   // `tested` is the production approval GATE (manual by default): QA passed,
-  // a human advances it to `released`. The former `pass`/`staging` steps are
-  // retired. See core `PIPELINE_STEPS` + `defaultStatesConfig`.
+  // a human advances it to `released`. The former `pass`/`staging`/`deploying`
+  // checkpoints are retired. See core `PIPELINE_STEPS` + `defaultStatesConfig`.
   { status: "tested", label: "Awaiting release", hint: "QA passed · approval gate before production" },
 ];
 
@@ -268,7 +267,6 @@ export const PIPELINE_LADDER: (
   { kind: "job", toggle: "autoPlan" },
   { kind: "job", toggle: "autoCode" },
   { kind: "job", toggle: "autoReview" },
-  { kind: "checkpoint", status: "deploying" },
   { kind: "job", toggle: "autoTest" },
   { kind: "checkpoint", status: "tested" },
   { kind: "job", toggle: "autoRelease" },

@@ -19,7 +19,6 @@ export const REGISTRY_ISSUE_STATUSES = [
   'approved',
   'in_progress',
   'developed',
-  'deploying',
   'testing',
   'tested',
   'released',

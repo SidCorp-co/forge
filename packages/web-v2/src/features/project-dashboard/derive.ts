@@ -40,7 +40,7 @@ const STATUS_BUCKETS: ReadonlyArray<{
   tone: SemanticTone;
   statuses: readonly string[];
 }> = [
-  { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen", "developed", "deploying", "testing"] },
+  { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen", "developed", "testing"] },
   { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["waiting", "needs_info"] },
   { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved", "draft"] },
   { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },

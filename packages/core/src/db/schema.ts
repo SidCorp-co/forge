@@ -941,7 +941,6 @@ export const issueStatuses = [
   'approved',
   'in_progress',
   'developed',
-  'deploying',
   'testing',
   'tested',
   'released',
@@ -951,12 +950,13 @@ export const issueStatuses = [
   'needs_info',
   'draft',
 ] as const;
-// `pass` and `staging` were retired (ISS — unify gate model): the single
-// production approval gate is `tested` ("Awaiting release"). Both statuses were
-// removed from the lifecycle entirely; a one-shot migration re-parked any
-// stranded issue onto `tested`, so no row can ever hold them again. The
-// `staging` *jobType* (schema `jobTypes`) is intentionally kept for back-compat
-// with historical `jobs.type='staging'` rows, but maps to no status.
+// `pass`, `staging`, and `deploying` were retired (unify gate model): the single
+// production approval gate is `tested` ("Awaiting release") and review exits
+// straight to `testing`. All three were removed from the lifecycle entirely;
+// one-shot migrations re-parked any stranded issue (pass/staging → tested,
+// deploying → testing), so no row can ever hold them again. The `staging`
+// *jobType* (schema `jobTypes`) is intentionally kept for back-compat with
+// historical `jobs.type='staging'` rows, but maps to no status.
 export type IssueStatus = (typeof issueStatuses)[number];
 
 export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;

@@ -60,7 +60,7 @@ export interface ForgeFact {
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
 - **Single-shot turn — never background-and-exit.** Your step is ONE headless turn; when you stop, the whole process group is killed. Any \`run_in_background\` task dies with it and you never see its result — so NEVER end your turn while still waiting on background output (the job reports \`done\` but the issue is left parked, the silent stall above). To wait on an async result (deploy / build / migration), poll in the FOREGROUND so the turn blocks until you have the answer, then verify and set status. If the wait would exceed your budget, set the handoff status and exit cleanly — do NOT background-poll-and-exit. Backgrounding is fine ONLY for a helper you consume within the SAME turn (e.g. a dev server you query before finishing).
-- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along: \`open → confirmed → clarified → approved → developed → deploying → testing → pass → staging → released → closed\` (intermediate states you don't own auto-advance).
+- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along: \`open → confirmed → clarified → approved → developed → testing → tested → released → closed\` (intermediate states you don't own auto-advance).
 - **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision / can't proceed), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target.
 - **You never self-rescue a crash.** If your job fails mechanically (process crash / non-zero exit), the SYSTEM reverts the issue to the stage's entry-status and re-dispatches automatically (retry budget + backoff); when the budget is exhausted it parks the issue at \`waiting\`. Do NOT set \`on_hold\` to "hold" a failure — \`on_hold\` is a deliberate pause only.
 - **Decompose is system-owned — do NOT hand-set parent/child statuses.** When you decompose a parent into children, core parks the parent at \`waiting\` (the review gate) and creates the children at \`draft\`. A human approving the parent (→ \`approved\`) auto-cascades the children to \`approved\`. The parent's own forward work is held by the dispatcher until ALL children merge, then the parent runs its integration LAST. The kickoff is anchored to these system transitions — manually moving a decompose parent or child breaks it.
@@ -84,7 +84,7 @@ Merge with existing: increment sessionCount, append to arrays (skip duplicates),
 - Zero narration. Tool calls are self-documenting.
 - Code only while implementing. No explanations between edits.
 - Never repeat file contents after reading — just edit.
-- One-line status at the end (e.g. "Plan written, set approved." or "Fix applied, pushed, set deploying.").
+- One-line status at the end (e.g. "Plan written, set approved." or "Fix applied, pushed, set developed.").
 - Comments go to \`forge_comments.create\`, not to chat output.`;
 
 const TOOL_REFERENCE_TEXT = `## Tool Reference
@@ -106,7 +106,6 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
   'clarified',
   'approved',
   'developed',
-  'deploying',
   'testing',
   'tested',
   'released',

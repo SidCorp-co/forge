@@ -1098,7 +1098,6 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     'approved',
     'clarified',
     'confirmed',
-    'deploying',
     'developed',
     'needs_info',
     'open',
