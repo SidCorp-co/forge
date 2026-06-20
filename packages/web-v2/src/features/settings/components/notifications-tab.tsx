@@ -24,10 +24,12 @@ import {
   isEnabled,
   requestPermission,
   setEnabled,
+  showTestNotification,
 } from "@/lib/notifications/browser";
 import {
   isEnabled as isSoundEnabled,
   isSupported as isSoundSupported,
+  playPreviewCue,
   primeAudio,
   setEnabled as setSoundEnabled,
 } from "@/lib/notifications/sound";
@@ -193,6 +195,10 @@ function DesktopNotificationsToggle() {
     if (p === "granted") {
       setEnabled(true);
       setEnabledState(true);
+      // Immediate, observable proof the channel works — high-signal events only
+      // surface a native notification while the tab is backgrounded, so without
+      // this the user sees nothing on enable and assumes it is broken.
+      showTestNotification();
     }
   }
 
@@ -236,7 +242,12 @@ function SoundNotificationsToggle() {
   function onToggle(next: boolean) {
     setSoundEnabled(next);
     setEnabledState(next);
-    if (next) primeAudio();
+    if (next) {
+      // Prime the AudioContext on this gesture (autoplay unlock) and play the
+      // cue once so the user immediately HEARS proof it works.
+      primeAudio();
+      playPreviewCue();
+    }
   }
 
   const helper = supported

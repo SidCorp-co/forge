@@ -21,6 +21,45 @@ function makeLocalStorage(): Storage {
   } as Storage;
 }
 
+/** Minimal Web Audio fake: records how many oscillators were `start()`ed and
+ *  lets a test flip the context from `suspended` → `running` via resume(). */
+function makeAudioContextCtor(initialState: "running" | "suspended") {
+  const starts: number[] = [];
+  let resolveResume: (() => void) | null = null;
+  const ctor = function (this: Record<string, unknown>) {
+    let state = initialState;
+    this.currentTime = 0;
+    Object.defineProperty(this, "state", { get: () => state });
+    this.destination = {};
+    this.resume = () =>
+      new Promise<void>((resolve) => {
+        resolveResume = () => {
+          state = "running";
+          resolve();
+        };
+      });
+    this.createGain = () => ({
+      connect: () => {},
+      gain: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+    });
+    this.createOscillator = () => ({
+      type: "",
+      frequency: { setValueAtTime: () => {} },
+      connect: () => {},
+      start: (t: number) => starts.push(t),
+      stop: () => {},
+    });
+  } as unknown as typeof AudioContext;
+  return { ctor, starts, flushResume: () => resolveResume?.() };
+}
+
+/** Fresh import of the module so its singleton AudioContext + gesture-primer
+ *  guard don't leak between tests. */
+async function freshSound() {
+  vi.resetModules();
+  return import("./sound");
+}
+
 afterEach(() => {
   // biome-ignore lint/performance/noDelete: test global teardown
   delete (globalThis as { window?: unknown }).window;
@@ -85,5 +124,79 @@ describe("playNotificationSound", () => {
   it("never throws when window is absent", () => {
     expect(() => playNotificationSound()).not.toThrow();
     expect(() => primeAudio()).not.toThrow();
+  });
+
+  it("plays immediately on a RUNNING context when opted in", async () => {
+    const { ctor, starts } = makeAudioContextCtor("running");
+    (globalThis as { window?: unknown }).window = {
+      localStorage: makeLocalStorage(),
+      AudioContext: ctor,
+    };
+    const sound = await freshSound();
+    sound.setEnabled(true);
+    sound.playNotificationSound();
+    expect(starts).toHaveLength(1); // chime scheduled synchronously
+  });
+
+  it("resumes a SUSPENDED context and schedules the chime only AFTER resume resolves", async () => {
+    const { ctor, starts, flushResume } = makeAudioContextCtor("suspended");
+    (globalThis as { window?: unknown }).window = {
+      localStorage: makeLocalStorage(),
+      AudioContext: ctor,
+    };
+    const sound = await freshSound();
+    sound.setEnabled(true);
+    sound.playNotificationSound();
+    expect(starts).toHaveLength(0); // nothing scheduled against the frozen clock
+    flushResume();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(starts).toHaveLength(1); // chime emitted once the context is running
+  });
+});
+
+describe("playPreviewCue", () => {
+  it("plays even when NOT opted in (immediate enable confirmation)", async () => {
+    const { ctor, starts } = makeAudioContextCtor("running");
+    (globalThis as { window?: unknown }).window = {
+      localStorage: makeLocalStorage(),
+      AudioContext: ctor,
+    };
+    const sound = await freshSound();
+    // enabled flag deliberately left OFF — preview ignores the persisted gate
+    sound.playPreviewCue();
+    expect(starts).toHaveLength(1);
+  });
+
+  it("never throws when window is absent", async () => {
+    const sound = await freshSound();
+    expect(() => sound.playPreviewCue()).not.toThrow();
+  });
+});
+
+describe("installGesturePrimer", () => {
+  it("resumes the context on a gesture when enabled, and is idempotent", async () => {
+    const { ctor } = makeAudioContextCtor("suspended");
+    const handlers: Record<string, Array<() => void>> = {};
+    const addEventListener = vi.fn((type: string, fn: () => void) => {
+      (handlers[type] ??= []).push(fn);
+    });
+    (globalThis as { window?: unknown }).window = {
+      localStorage: makeLocalStorage(),
+      AudioContext: ctor,
+      addEventListener,
+    };
+    const sound = await freshSound();
+    sound.setEnabled(true);
+    sound.installGesturePrimer();
+    sound.installGesturePrimer(); // second call must not re-register
+    expect(addEventListener).toHaveBeenCalledTimes(2); // pointerdown + keydown, once
+    // Firing a gesture resumes the context (no throw, exercises the enabled path)
+    expect(() => handlers.pointerdown?.[0]?.()).not.toThrow();
+  });
+
+  it("never throws when window is absent", async () => {
+    const sound = await freshSound();
+    expect(() => sound.installGesturePrimer()).not.toThrow();
   });
 });

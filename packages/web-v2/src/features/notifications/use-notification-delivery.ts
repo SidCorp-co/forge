@@ -16,7 +16,7 @@ import { useEffect } from "react";
 import { type NotificationSeverity, channelsFor, defaultSeverityForType } from "@forge/contracts/notifications";
 import type { ToastTone } from "@/design/primitives/toast";
 import { fireBrowserNotification } from "@/lib/notifications/browser";
-import { playNotificationSound } from "@/lib/notifications/sound";
+import { installGesturePrimer, playNotificationSound } from "@/lib/notifications/sound";
 import { wsClient } from "@/lib/ws/client";
 import { useToast } from "@/providers/toast-provider";
 
@@ -80,6 +80,11 @@ export function useNotificationDelivery(
   const { toast } = useToast();
 
   useEffect(() => {
+    // Unlock the AudioContext on the user's first interaction after load, so a
+    // persisted sound opt-in is actually audible without re-visiting Settings
+    // (autoplay policy keeps a fresh context suspended). Idempotent.
+    installGesturePrimer();
+
     const off = wsClient.on((env) => {
       if (env.event !== "notification.created") return;
       const d = env.data as DeliveryNotification;
