@@ -25,13 +25,25 @@ Works in three modes:
 
 ### 1. Get the Diff
 
+In pipeline mode, first make sure you're looking at the right code: `git fetch`, then check out the issue's ISS-* branch (from the check-in bundle / `sessionContext.branch`, else `git branch -r | grep ISS-XX`). Then diff the branch's **net change against the base branch** — robust no matter how many implementation/fix commits exist:
+
 ```bash
-git diff HEAD~N --stat
-git diff HEAD~N
-git log --oneline HEAD~N..HEAD
+git fetch origin
+BASE=$(git merge-base origin/<baseBranch> HEAD)
+git diff "$BASE"..HEAD --stat
+git diff "$BASE"..HEAD
+git log --oneline "$BASE"..HEAD
 ```
 
-N = number of implementation commits (exclude previous review/fix commits).
+`<baseBranch>` comes from `forge_config → get`. Avoid `HEAD~N` — counting implementation-vs-review/fix commits is error-prone and reviews the wrong slice.
+
+**If there is no reviewable diff** — empty output, no ISS-* branch, or the branch isn't reachable (not pushed / `git fetch` brought nothing) — you **cannot review**. Do NOT report "clean" and do NOT advance status: this is an **ABSTAIN** (see Pipeline Exit). A false "approve" on an unreviewable change is exactly the failure this gate exists to prevent (the ISS-144/148 class).
+
+### 1b. Load the contract (pipeline mode)
+
+You have the issue in your check-in bundle (else `forge_issues → get`). Before reviewing, load the two things the verdict is measured against:
+- **acceptanceCriteria** — axis 1 checks the diff against each line; an AC with no corresponding change is a finding.
+- **plan** (the `plan` field / the `**Plan**` comment) — its **Affected Files** list is the scope contract. A file changed that the plan never mentions is **scope-creep** → at least a Minor finding (a Bug finding if it touches unrelated or risky surface); a planned file left untouched is also a finding.
 
 ### 2. Load Relevant Skills
 
@@ -92,6 +104,7 @@ forge_comments → create → { data: { body: "<review output>", issue: "<docume
 
 - **No Bug findings (APPROVE)** → Check if the branch has been pushed: `git log origin/<branch> --oneline -1`. If pushed → `forge_issues → update → { data: { status: "testing" } }` — review exits **straight to `testing`** (the `developed → deploying → testing` hop was retired; `deploying` is no longer a valid status). If NOT pushed (subagent/standalone review before push) → do not change status, just post the review comment.
 - **Has Bug findings** → `forge_issues → update → { data: { status: "reopen" } }`, comment serves as rejection. Forge-fix picks it up.
+- **Could not review (ABSTAIN)** → no reviewable diff / branch unreachable (Step 1). Do **NOT** change status — leave it at `developed`; post a comment naming exactly what was missing (no ISS-* branch / empty diff / not pushed) so a human or a re-dispatch can resolve it. Never advance to `testing` on an unreviewable change, and don't send `reopen` either (forge-fix would have nothing to fix — an empty loop).
 
 ## Review-specific output reminder
 
