@@ -157,8 +157,10 @@ pipelineAnalyticsRoutes.get(
 
 /**
  * ISS-104 — per-step pipeline durations. Sourced from the
- * `pipeline_run_step_durations` view (migration 0055), one row per
- * completed job under a pipeline_run. `issueId` is null for runs of kind
+ * `pipeline_run_step_durations` view (created 0055, reshaped 0057, scoped to
+ * `jobs.status='done'` in 0128 — ISS-516), one row per successfully-completed
+ * job under a pipeline_run; non-`done` / inverted spans are excluded so
+ * `duration_seconds` is never negative. `issueId` is null for runs of kind
  * `pm`/`interactive`/`system`. Capped at 1000 rows so a careless caller
  * can't dump the whole window into a single response.
  */
@@ -297,7 +299,11 @@ pipelineAnalyticsRoutes.get(
  * W2.2.1 — per-project cost analytics. Mounted under `/api/projects/:id` so
  * the URL reads as a project-scoped sub-resource. Project-member-only; CEO
  * bypass mirrors `loadVisibleProjectIds`. Data sourced from the
- * `pipeline_run_step_durations` view (migration 0055 / extended in 0075).
+ * `pipeline_run_step_durations` view (created 0055, reshaped 0057, scoped to
+ * `jobs.status='done'` in 0128 — ISS-516; 0075 was orphaned/never applied and
+ * is deleted). The view keeps the 8-column contract — cost_usd is summed from
+ * usage_records; cache-token analytics read usage_records directly (see
+ * src/metrics/queries.ts).
  */
 export const projectCostAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 projectCostAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());

@@ -160,7 +160,8 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     // COALESCE(agent_sessions.started_at, jobs.dispatched_at); set the session's
     // started_at so the row falls in the current month, and use the job's
     // dispatched_at/finished_at (both required: the view filters on
-    // finished_at IS NOT NULL).
+    // finished_at IS NOT NULL). The job status MUST be 'done' — ISS-516 scoped
+    // the view to jobs.status='done', so a non-`done` span rolls up no cost.
     await harness.db.execute(sql`
       INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
       VALUES (${sessionId}, ${projectId}, ${runId}, 'completed', now() - interval '10 minutes', '{}'::jsonb)
@@ -172,7 +173,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
         dispatched_at, finished_at, queued_at
       )
       VALUES (
-        ${jobId}, ${projectId}, ${args.issueId ?? null}, ${jobType}, 'completed',
+        ${jobId}, ${projectId}, ${args.issueId ?? null}, ${jobType}, 'done',
         '{}'::jsonb,
         (SELECT created_by FROM projects WHERE id = ${projectId}),
         ${sessionId}, ${runId},
