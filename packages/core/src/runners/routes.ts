@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -8,8 +8,10 @@ import { db } from '../db/client.js';
 import {
   type RunnerStatus,
   type RunnerType,
+  agentSessions,
   jobEvents,
   jobs,
+  runnerEvents,
   runnerHosts,
   runnerStatuses,
   runnerTypes,
@@ -145,6 +147,83 @@ runnerRoutes.get(
     const access = await loadProjectAccess(row.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
     return c.json({ runner: publicRunner(rowToRunner(row)) });
+  },
+);
+
+// Per-runner activity feed — surfaces what a runner has been doing/erroring on,
+// drawn entirely from data we already persist (no new capture): the change-gated
+// `runner_events` status timeline + the recent agent_sessions that ran on this
+// runner's device (with a best-effort error excerpt pulled from the transcript).
+// Read-only; any project member. Powers the "Activity" disclosure on the project
+// Runners screen so an operator can see e.g. a session's `[RESULT_ERROR] 401`
+// without leaving the runner row.
+const activityQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(15),
+});
+
+runnerRoutes.get(
+  '/:id/activity',
+  zValidator('param', idParam, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', activityQuery, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const userId = c.get('userId');
+    const { id } = c.req.valid('param');
+    const { limit } = c.req.valid('query');
+    const [row] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    if (!row) throw notFound();
+    const access = await loadProjectAccess(row.projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
+
+    const events = await db
+      .select({
+        id: runnerEvents.id,
+        oldStatus: runnerEvents.oldStatus,
+        newStatus: runnerEvents.newStatus,
+        reason: runnerEvents.reason,
+        ts: runnerEvents.ts,
+      })
+      .from(runnerEvents)
+      .where(eq(runnerEvents.runnerId, id))
+      .orderBy(desc(runnerEvents.ts))
+      .limit(limit);
+
+    // Recent sessions that ran on this runner's device (device-bound runners
+    // only; remote/NULL-device runners have no device-scoped sessions). The
+    // error excerpt is the last transcript line mentioning a tool/result error,
+    // extracted in SQL so we never ship the full `messages` jsonb over the wire.
+    const sessions = row.deviceId
+      ? await db
+          .select({
+            id: agentSessions.id,
+            title: agentSessions.title,
+            status: agentSessions.status,
+            failureReason: agentSessions.failureReason,
+            updatedAt: agentSessions.updatedAt,
+            errorExcerpt: sql<string | null>`(
+              SELECT left(msg->>'content', 500)
+              FROM jsonb_array_elements(${agentSessions.messages}) AS msg
+              WHERE msg->>'content' ILIKE '%RESULT_ERROR%'
+                 OR msg->>'content' ILIKE '%API Error%'
+              ORDER BY (msg->>'timestamp')::numeric DESC NULLS LAST
+              LIMIT 1
+            )`,
+          })
+          .from(agentSessions)
+          .where(
+            and(
+              eq(agentSessions.deviceId, row.deviceId),
+              eq(agentSessions.projectId, row.projectId),
+            ),
+          )
+          .orderBy(desc(agentSessions.updatedAt))
+          .limit(limit)
+      : [];
+
+    return c.json({ events, sessions });
   },
 );
 

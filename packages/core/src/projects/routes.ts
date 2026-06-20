@@ -528,6 +528,7 @@ projectRoutes.get(
         platform: devices.platform,
         deviceStatus: devices.status,
         runnerStatus: runners.status,
+        lastError: runners.lastError,
         repoPath: runners.repoPath,
         branch: runners.branch,
         lastSeenAt: runners.lastSeenAt,

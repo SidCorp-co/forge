@@ -171,6 +171,19 @@ export function useProjectRunners(projectId: string | null) {
 	});
 }
 
+/**
+ * Per-runner activity (status timeline + recent device sessions). Keyed
+ * `['runners', runnerId, 'activity']`; `enabled` gates it so the row only
+ * fetches when its Activity disclosure is open.
+ */
+export function useRunnerActivity(runnerId: string, enabled: boolean) {
+	return useQuery({
+		queryKey: ["runners", runnerId, "activity"],
+		queryFn: () => runnersApi.getRunnerActivity(runnerId),
+		enabled,
+	});
+}
+
 export function useGitCredential(projectId: string | null) {
 	return useQuery({
 		queryKey: ["projects", projectId, "git-credential"],
