@@ -7,7 +7,7 @@
 // else create one on first send (ISS-292). ISS-465 adds explicit "draft" mode
 // so "New chat" no longer leaves a ghost row, plus rename/archive/delete via
 // the conversation-list panel.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AgentWorking,
@@ -145,6 +145,43 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   const busy = live || send.isPending || create.isPending;
 
+  // Auto-scroll the thread to the newest message (ISS-522). The container opens
+  // at the OLDEST turn otherwise (turns render oldest→newest), forcing the user
+  // to scroll far down. Strategy:
+  //  - jump to bottom (instant) on conversation switch + once turns first load
+  //    for a given conversation (one-shot via lastJumpedIdRef);
+  //  - stick to bottom (smooth) on new turn / stream change ONLY when the user
+  //    is already near the bottom, so reading history isn't interrupted (AC3).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const lastJumpedIdRef = useRef<string | undefined>(undefined);
+
+  const handleThreadScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
+  // Conversation switch: reset the one-shot guard and jump to bottom once the
+  // freshly-resolved conversation's turns have loaded.
+  useEffect(() => {
+    if (!resolvedId) return;
+    if (!turnsQ.isSuccess) return;
+    if (lastJumpedIdRef.current === resolvedId) return;
+    lastJumpedIdRef.current = resolvedId;
+    atBottomRef.current = true;
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [resolvedId, turnsQ.isSuccess]);
+
+  // Growth / stream: keep pinned to latest only when already near the bottom.
+  useEffect(() => {
+    if (atBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [items.length, live]);
+
   if (latestQ.isLoading) {
     return (
       <div className="grid h-full min-h-0 place-items-center py-12">
@@ -218,7 +255,11 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        onScroll={handleThreadScroll}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
           {isFailed && (
             <div className="mb-6">
@@ -270,6 +311,8 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               <AgentWorking label="Agent is working…" elapsed={elapsed} />
             </div>
           )}
+          {/* Scroll anchor for auto-scroll-to-bottom (ISS-522). */}
+          <div ref={bottomRef} />
         </div>
       </div>
 
