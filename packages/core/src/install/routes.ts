@@ -31,8 +31,21 @@ export const installRoutes = new Hono();
 const RELEASE_DIR = process.env.RUNNER_RELEASE_DIR ?? '';
 const ASSET_PREFIX = 'forge-runner-';
 
+/**
+ * Public origin of this request. The hosted edge proxy (Cloudflare) terminates
+ * TLS and forwards plain http to core, so `new URL(reqUrl).origin` reports
+ * `http://…` even though the public site is https-only. That http origin is
+ * fatal for the runner: the binary download is a redirect-safe GET, but pairing
+ * is a POST and Cloudflare's http→https 301 downgrades POST→GET and drops the
+ * body → the runner lands on a device-authed route and gets 401. So upgrade
+ * http→https for any non-loopback host (real deploys are always https-fronted;
+ * a bare-http localhost dev box is left as-is).
+ */
 function origin(reqUrl: string): string {
-  return new URL(reqUrl).origin;
+  const u = new URL(reqUrl);
+  const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '::1';
+  if (u.protocol === 'http:' && !loopback) u.protocol = 'https:';
+  return u.origin;
 }
 
 /**

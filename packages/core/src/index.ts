@@ -290,6 +290,17 @@ app.delete('/mcp', mcpHandler);
 app.route('/', installRoutes);
 app.route('/api', installRoutes);
 
+// The CLI runner's browser-approve login prints `{core_url}/pair?code=…`, but
+// `core_url` is the API host (e.g. forge-beta-api.…) while the /pair page lives
+// on the WEB origin (APP_BASE_URL). Existing runners build that URL from
+// core_url and can't know the web host, so bounce them here — fixes every
+// already-installed runner without cutting a runner release.
+app.get('/pair', (c) => {
+  const code = c.req.query('code');
+  const base = env.APP_BASE_URL.replace(/\/+$/, '');
+  return c.redirect(code ? `${base}/pair?code=${encodeURIComponent(code)}` : `${base}/pair`, 302);
+});
+
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);
 app.route('/api/auth', refreshRoutes);
