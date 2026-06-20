@@ -62,6 +62,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pipeline step-duration analytics (dashboard duration charts + step-duration metrics) no longer report impossible negative durations — the underlying view now counts only successfully-completed steps.
 - Mobile layouts no longer break — screens now fit and stay usable on phone-sized viewports, including the issue detail page.
 - On mobile you can now reach a project's issue list and other project sections straight from the navigation, instead of having to type the URL by hand.
+- The My conversations chat screen no longer breaks its layout on phones — the title, subtitle, and controls now fit narrow screens, and the conversation History dropdown stays fully on-screen.
 
 ## [0.3.0] - 2026-06-11
 
