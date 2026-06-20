@@ -168,7 +168,7 @@ export function ConversationList({
       ref={panelRef}
       role="dialog"
       aria-label="Conversation history"
-      className="forge-drop absolute right-0 top-[calc(100%+6px)] z-50 w-[360px] overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
+      className="forge-drop absolute right-0 top-[calc(100%+6px)] z-50 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
     >
       <div className="border-b border-line p-2">
         <Input
