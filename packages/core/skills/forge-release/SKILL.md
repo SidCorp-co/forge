@@ -180,7 +180,11 @@ Then decide:
   *Technical: <technical>*    ← only emit this second line when `technical` is non-empty
 ```
 
-Use `awk`/`sed` to find the `## [Unreleased]` heading, the matching `### <section>` sub-heading (creating it if absent), and insert the bullet at the top of that sub-list so the most recent entry sits first. **If you ran a merge (Step 6),** fold the CHANGELOG bump into that merge commit — no separate commit. **If you skipped the merge (already on production / single-branch),** commit the CHANGELOG bump on its own directly to the production branch and push it (`git commit -m "docs(changelog): ISS-XX <topic>" && git push origin <productionBranch>`).
+Use `awk`/`sed` to find the `## [Unreleased]` heading, the matching `### <section>` sub-heading (creating it if absent), and insert the bullet at the top of that sub-list so the most recent entry sits first. Commit the CHANGELOG bump as **its own commit** on the production branch and push it:
+```bash
+git commit -m "docs(changelog): ISS-XX <topic>" && git push origin <productionBranch>
+```
+Always a separate commit — the Step 6 merge (when there was one) is already pushed, and you must **never amend/force-push** a shared production branch to fold it in.
 
 Style: present-tense, one short sentence, no trailing period after the bold (`**…**`) text is fine. Don't include `ISS-XX` IDs or PR references — those live in git history.
 
