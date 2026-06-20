@@ -42,6 +42,7 @@ import {
   type DeliveryNotification,
   useNotificationDelivery,
 } from "@/features/notifications/use-notification-delivery";
+import { useUnreadIndicator } from "@/features/notifications/use-unread-indicator";
 import {
   useSidebar,
   useRecents,
@@ -181,6 +182,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [markRead, projects, router],
   );
   useNotificationDelivery(onDeliveryNavigate);
+
+  // Always-visible unread indicator (ISS-523): mirror the unread count onto the
+  // favicon (a dot) + document title (`(N) Forge`). Same source as the bell, so
+  // they never disagree — and it covers the focused-tab case the background-only
+  // native notification channel intentionally skips.
+  useUnreadIndicator(unread?.count ?? 0);
 
   // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
   // to /login (which also makes logout() "return here" effective). While the

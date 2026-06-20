@@ -182,6 +182,11 @@ function DesktopNotificationsToggle() {
   const supported = perm !== "unsupported";
   const denied = perm === "denied";
   const checked = enabled && perm === "granted";
+  // Opt-in persisted but the browser grant lapsed back to `default` (e.g. the
+  // user reset site permissions): the toggle reads OFF while the stored opt-in
+  // says ON. Surface the mismatch so it doesn't look silently broken — toggling
+  // ON re-requests permission.
+  const lapsed = enabled && perm === "default";
 
   async function onToggle(next: boolean) {
     if (!next) {
@@ -206,7 +211,9 @@ function DesktopNotificationsToggle() {
     ? "Your browser does not support desktop notifications."
     : denied
       ? "Blocked in your browser settings — re-enable notifications for this site, then try again."
-      : "Show a desktop notification for high-signal events when this tab is in the background.";
+      : lapsed
+        ? "Notifications are off in your browser — toggle on to re-enable them for this site."
+        : "Show a desktop notification for high-signal events when this tab is in the background.";
 
   return (
     <div className="flex items-center justify-between gap-3 py-1">
