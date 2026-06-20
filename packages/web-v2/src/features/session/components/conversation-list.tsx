@@ -12,7 +12,7 @@
 // triggered by an external Button that owns the open state. The panel is
 // position-absolute under the trigger; render INSIDE the same relatively-
 // positioned wrapper that holds the trigger.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Icon, IconButton, Input, Toggle } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -86,6 +86,7 @@ export function ConversationList({
   onActiveRemoved,
 }: ConversationListProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -117,6 +118,35 @@ export function ConversationList({
       document.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
+
+  // Position the panel against the VIEWPORT (fixed), anchored under the trigger.
+  // The trigger lives in a narrow `relative` wrapper that, on mobile, sits
+  // mid-row — so an `absolute right-0 w-[360px]` panel spilled ~150px off the
+  // left edge (ISS-518 live-E2E fail). Measuring the trigger rect and clamping
+  // into the viewport keeps the dropdown fully on-screen at every width while
+  // preserving the desktop right-edge alignment (clamp is a no-op when there's
+  // room).
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const wrap = panelRef.current?.parentElement;
+      if (!wrap) return;
+      const r = wrap.getBoundingClientRect();
+      const gutter = 12;
+      const vw = window.innerWidth;
+      const width = Math.min(360, vw - gutter * 2);
+      let left = r.right - width; // align panel's right edge to the trigger's
+      left = Math.min(Math.max(left, gutter), vw - gutter - width);
+      setPos({ top: r.bottom + 6, left, width });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   // Reset transient panel state when it closes — a stale `renamingId` should
   // not still be editing next time the user opens History.
@@ -168,7 +198,8 @@ export function ConversationList({
       ref={panelRef}
       role="dialog"
       aria-label="Conversation history"
-      className="forge-drop absolute right-0 top-[calc(100%+6px)] z-50 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
+      style={{ top: pos?.top, left: pos?.left, width: pos?.width, visibility: pos ? undefined : "hidden" }}
+      className="forge-drop fixed z-50 overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
     >
       <div className="border-b border-line p-2">
         <Input
