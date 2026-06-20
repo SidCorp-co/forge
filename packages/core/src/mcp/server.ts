@@ -105,15 +105,17 @@ import type { McpContext } from './tools/lib.js';
  *  - `forge_agent_sessions.list` / `.get` — read-only access to
  *    `agent_sessions` rows (ISS-7).
  *  - `forge_project_pipeline_runs` — action dispatcher
- *    (list/get/pause/resume/cancel) for `pipeline_runs` (ISS-145). The
- *    legacy `forge_pipeline_runs.<action>` tools stay registered as
- *    forwarding shims that emit `X-MCP-Deprecation`.
+ *    (list/get/pause/resume/cancel) for `pipeline_runs` (ISS-145). ISS-483
+ *    §E#3 retired the zero-reference legacy `forge_pipeline_runs.<action>`
+ *    shims; only `forge_pipeline_runs.get` stays registered (still referenced
+ *    by forge-skill-audit) and emits `X-MCP-Deprecation`.
  *  - `forge_project_pm` — action dispatcher
  *    (snapshot/graph/runner_load/dispatch/set_dependency/write_decision)
- *    for the PM agent surface (ISS-145). The matching legacy
- *    `forge_pm.<action>` tools stay as shims. `flag_blocker` and the
- *    standalone `escalate` tool were removed in ISS-146 (escalation now
- *    lives on `write_decision.escalate`).
+ *    for the PM agent surface (ISS-145). ISS-483 §E#3 retired the matching
+ *    legacy `forge_pm.<action>` shims; only `forge_pm.set_dependency` stays
+ *    registered (still referenced by forge-plan). `flag_blocker` and the
+ *    standalone `escalate` tool were removed earlier in ISS-146 (escalation
+ *    now lives on `write_decision.escalate`).
  *  - `forge_projects.list` — enumerate projects visible to the device owner
  *    (ISS-7, pre-req for ISS-9).
  *  - `forge_projects.create` / `.update` / `.archive` — user-facing project
@@ -152,14 +154,10 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
     'forge_project_pm',
     new Set(['snapshot', 'graph', 'runner_load', 'dispatch', 'set_dependency', 'write_decision']),
   ],
-  // Legacy shims keep the per-tool gate so the deprecation window is
-  // byte-identical to the pre-consolidation behaviour.
-  ['forge_pm.snapshot', true],
-  ['forge_pm.graph', true],
-  ['forge_pm.runner_load', true],
-  ['forge_pm.dispatch', true],
+  // ISS-483 §E#3 retired the other forge_pm.* shims; forge_pm.set_dependency
+  // is the lone survivor and keeps its per-tool gate (byte-identical to the
+  // pre-consolidation behaviour).
   ['forge_pm.set_dependency', true],
-  ['forge_pm.write_decision', true],
 ]);
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
