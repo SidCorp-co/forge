@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Stub eager env validation (config/env.js throws at import when DATABASE_URL /
+// JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) so this unit suite stays hermetic
+// and never depends on the operator's shell — same pattern as schedules/routes.test.ts.
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
+}));
+
 // Unit tests for the SINGLE chat-turn dispatcher — the logic /start, /send and
 // schedule.run all share. The behaviour that matters: a cold session (no
 // claudeSessionId) starts a fresh Claude run (`agent:start`); a warm one
@@ -140,7 +147,8 @@ describe('dispatchChatTurn', () => {
       message: 'hello',
     });
     const call = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:start',
+      ([room, env]) =>
+        room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:start',
     );
     expect(call).toBeDefined();
     const data = (call?.[1] as { data: Record<string, unknown> }).data;
@@ -163,7 +171,8 @@ describe('dispatchChatTurn', () => {
       message: 'again',
     });
     const call = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:send',
+      ([room, env]) =>
+        room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:send',
     );
     expect(call).toBeDefined();
     const data = (call?.[1] as { data: Record<string, unknown> }).data;
@@ -186,7 +195,8 @@ describe('dispatchChatTurn', () => {
     });
     const mirror = publishSpy.mock.calls.find(
       ([room, env]) =>
-        room === `project:${PROJECT.id}` && (env as { event: string }).event === 'agent:user-message',
+        room === `project:${PROJECT.id}` &&
+        (env as { event: string }).event === 'agent:user-message',
     );
     expect(mirror).toBeDefined();
     const started = publishSpy.mock.calls.find(

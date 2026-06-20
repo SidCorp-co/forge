@@ -176,6 +176,7 @@ describe('db/schema — projects', () => {
         'preview_deploy',
         'production_branch',
         'repo_path',
+        'repo_url',
         'slug',
         'webhook_secret',
       ].sort(),
@@ -827,7 +828,6 @@ describe('db/schema — issues', () => {
       'approved',
       'in_progress',
       'developed',
-      'deploying',
       'testing',
       'tested',
       'released',
@@ -961,21 +961,32 @@ describe('db/schema — project_iss_counters', () => {
 });
 
 describe('db/schema — comments', () => {
-  it('has the seven documented columns', () => {
+  it('has the eight documented columns', () => {
     const names = getTableConfig(comments).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
-      ['author_id', 'body', 'created_at', 'id', 'issue_id', 'parent_id', 'updated_at'].sort(),
+      [
+        'author_device_id',
+        'author_id',
+        'body',
+        'created_at',
+        'id',
+        'issue_id',
+        'parent_id',
+        'updated_at',
+      ].sort(),
     );
   });
 
-  it('issue_id cascades, author_id restricts, parent_id cascades', () => {
+  it('issue_id cascades, author_id restricts, author_device_id set null, parent_id cascades', () => {
     const cfg = getTableConfig(comments);
-    expect(cfg.foreignKeys).toHaveLength(3);
+    expect(cfg.foreignKeys).toHaveLength(4);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
     expect(byCol.get('issue_id')?.onDelete).toBe('cascade');
     expect(byCol.get('author_id')?.onDelete).toBe('restrict');
+    // ISS-519 — agent-author marker FK; de-marks rather than blocks on device delete.
+    expect(byCol.get('author_device_id')?.onDelete).toBe('set null');
     expect(byCol.get('parent_id')?.onDelete).toBe('cascade');
   });
 

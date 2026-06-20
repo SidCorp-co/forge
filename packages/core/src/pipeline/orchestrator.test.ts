@@ -91,7 +91,10 @@ vi.mock('./runs.js', () => ({
 // model (db.update, db.select + project owner join, comments insert). Stub
 // them so the test asserts orchestration intent (helper called with the
 // right args) without re-deriving the helper's DB shape.
-const pauseMissingSkillMock = vi.fn(async (..._args: unknown[]) => ({ paused: true, alreadyPaused: false }));
+const pauseMissingSkillMock = vi.fn(async (..._args: unknown[]) => ({
+  paused: true,
+  alreadyPaused: false,
+}));
 const postMissingSkillCommentMock = vi.fn(async () => undefined);
 vi.mock('./missing-skill-guard.js', () => ({
   PAUSE_REASON_PREFIX: 'missing_skill:',
@@ -228,7 +231,9 @@ function issueCreated(overrides: Partial<CreatedPayload> = {}): CreatedPayload {
 }
 
 function cfgResolved(cfg: unknown) {
-  nextSelect.mockResolvedValueOnce([{ agentConfig: { pipelineConfig: cfg }, createdBy: 'u-owner' }]);
+  nextSelect.mockResolvedValueOnce([
+    { agentConfig: { pipelineConfig: cfg }, createdBy: 'u-owner' },
+  ]);
 }
 
 function skillRegistered(skillName: string, type: string, toggle: string) {
@@ -785,11 +790,13 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
 describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
   it('auto-skips past a stage with no registered skill even when states is undefined', async () => {
     cfgResolved({ enabled: true, autoTest: true });
-    // Only `testing` has a registered skill — `deploying` does not.
+    // Only `testing` has a registered skill — `developed` (review) does not.
+    // (`deploying` was retired in 53fe4a4e; review now exits straight to testing,
+    // so `developed` is the skill-less stage that skips to `testing`.)
     resolverStagesMock.mockResolvedValueOnce(new Set<string>(['testing']));
     // autoSkipDisabledStages reads the current issue row to confirm status.
     nextSelect.mockResolvedValueOnce([
-      { id: 'iss-1', projectId: 'proj-1', status: 'deploying', reopenCount: 0 },
+      { id: 'iss-1', projectId: 'proj-1', status: 'developed', reopenCount: 0 },
     ]);
     // After the skip lands on `testing`, considerEnqueue resolves the test skill.
     skillRegistered('forge-test', 'test', 'autoTest');
@@ -797,7 +804,7 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     insertReturning.mockResolvedValueOnce([{ id: 'test-job' }]);
 
     const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'developed', to: 'deploying' }) as never);
+    await bus.emit('transition', transition({ from: 'in_progress', to: 'developed' }) as never);
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(1);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
@@ -806,16 +813,16 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
       (c) => c[0]?.category === 'pipeline_run.auto_skip',
     );
     expect(autoSkipCrumb?.[0]).toMatchObject({
-      data: { reason: 'missing_skill', fromStatus: 'deploying', toStatus: 'testing' },
+      data: { reason: 'missing_skill', fromStatus: 'developed', toStatus: 'testing' },
     });
     expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(1);
     expect(appendSkipChainEntryMock.mock.calls[0]?.[1]).toMatchObject({
-      from: 'deploying',
+      from: 'developed',
       to: 'testing',
       reason: 'missing_skill',
     });
     // ISS-238 pause guard MUST NOT fire — auto-skip intercepted before considerEnqueue
-    // would have refused the missing-skill `deploying` stage.
+    // would have refused the missing-skill `developed` stage.
     expect(pauseMissingSkillMock).not.toHaveBeenCalled();
   });
 
@@ -834,10 +841,7 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     await bus.emit('transition', transition({ from: 'testing', to: 'tested' }) as never);
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(2);
-    expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual([
-      'released',
-      'closed',
-    ]);
+    expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual(['released', 'closed']);
     expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(2);
     expect(postSkipChainCappedCommentMock).not.toHaveBeenCalled();
   });
