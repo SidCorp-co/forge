@@ -60,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The project dashboard cards now stack correctly on mobile instead of being cut off at the edge of the screen.
 - You can now turn on a sound alert for incoming notifications — toggle “Notification sound” in Settings → Notifications.
 - Pipeline step-duration analytics (dashboard duration charts + step-duration metrics) no longer report impossible negative durations — the underlying view now counts only successfully-completed steps.
+- Mobile layouts no longer break — screens now fit and stay usable on phone-sized viewports, including the issue detail page.
 
 ## [0.3.0] - 2026-06-11
 
