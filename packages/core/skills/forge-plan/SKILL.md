@@ -45,9 +45,9 @@ forge_config → get
 
 Verify status is `clarified`. If the issue isn't clarified yet, stop and explain — planning before triage + clarify skips the completeness and reproduction checks and risks wasting exploration time on an incompletely-understood issue.
 
-Find the triage comment (starts with `**Triage**`) and extract the **complexity** classification — it sets both planning depth and exit behavior. Then read the **clarify** findings (comment + step handoff, present unless clarify was skipped for an xs/s issue): the reproduction outcome, the environment tested, and a code-level **root-cause hypothesis**. Trust clarify's verified behavior over re-deriving the problem from the description — plan the fix for the confirmed root cause, not the reported symptom.
+Find the triage comment (starts with `**Triage**`) and extract the **complexity** classification — it sets both planning depth and exit behavior. Then read the **clarify** findings (comment + step handoff — every issue now passes through clarify, so these are always present): the reproduction outcome, the environment tested, and a code-level **root-cause hypothesis**. Trust clarify's verified behavior over re-deriving the problem from the description — plan the fix for the confirmed root cause, not the reported symptom.
 
-Checkout the latest baseBranch (from `forge_config`, see preamble for the detection rule) so exploration sees current production code.
+Checkout the latest baseBranch (from `forge_config`, see preamble for the detection rule) so exploration sees the current base-branch code.
 
 ### Step 2: Understand the Issue
 
