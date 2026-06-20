@@ -1,7 +1,14 @@
+import type { ResolvedActor } from '../issues/actor-resolution.js';
+
 export interface CommentRow {
   id: string;
   issueId: string;
   authorId: string;
+  // ISS-519 — non-null when the comment was posted by an agent/device. The
+  // authoritative "this is an agent action" marker (authorId always points at
+  // the device's human owner). Optional so flat-list/REST builders that don't
+  // select it still satisfy the type.
+  authorDeviceId?: string | null;
   body: string;
   parentId: string | null;
   createdAt: Date;
@@ -23,6 +30,11 @@ export interface CommentAttachmentLite {
 export interface CommentNode extends CommentRow {
   replies: CommentNode[];
   attachments: CommentAttachmentLite[];
+  // ISS-519 — resolved author identity (email for a human, device name + Agent
+  // marker for an agent comment). Optional so existing builders/tests that
+  // don't enrich the tree still compile; the comments route attaches it (null
+  // when the actor could not be resolved).
+  author?: ResolvedActor | null;
 }
 
 // Assembles a flat list of comment rows into a parent → replies tree. A row
@@ -58,4 +70,16 @@ export function buildCommentTree(
     // else: orphan reply (parent beyond cap) — drop silently
   }
   return roots;
+}
+
+// Depth-first walk over a comment tree (roots, then each node's nested
+// replies). Used to attach resolved authors after the tree is built.
+export function walkCommentTree(
+  nodes: CommentNode[],
+  visit: (node: CommentNode) => void,
+): void {
+  for (const node of nodes) {
+    visit(node);
+    if (node.replies.length > 0) walkCommentTree(node.replies, visit);
+  }
 }

@@ -1093,6 +1093,15 @@ export const comments = pgTable(
     authorId: uuid('author_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    // ISS-519 — agent-authored marker. The authorId FK always points at the
+    // device's human owner (NOT-NULL FK to users), so it cannot tell an agent
+    // comment apart from one the owner wrote by hand. A non-null
+    // authorDeviceId is the authoritative "this was posted by an agent/device"
+    // signal; the human REST path leaves it null. `set null` on device delete
+    // de-marks the comment back to its owner rather than blocking the delete.
+    authorDeviceId: uuid('author_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
     body: text('body').notNull(),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

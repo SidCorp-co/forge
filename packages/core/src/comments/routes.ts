@@ -11,8 +11,14 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
+import { type ActorRef, actorKey, resolveActors } from '../issues/actor-resolution.js';
 import { parseMentions, resolveMentions } from './mentions.js';
-import { type CommentAttachmentLite, type CommentRow, buildCommentTree } from './tree.js';
+import {
+  type CommentAttachmentLite,
+  type CommentRow,
+  buildCommentTree,
+  walkCommentTree,
+} from './tree.js';
 
 const commentCreateSchema = z
   .object({
@@ -108,6 +114,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
             id: comments.id,
             issueId: comments.issueId,
             authorId: comments.authorId,
+            authorDeviceId: comments.authorDeviceId,
             body: comments.body,
             parentId: comments.parentId,
             createdAt: comments.createdAt,
@@ -212,6 +219,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           id: comments.id,
           issueId: comments.issueId,
           authorId: comments.authorId,
+          authorDeviceId: comments.authorDeviceId,
           body: comments.body,
           parentId: comments.parentId,
           createdAt: comments.createdAt,
@@ -255,6 +263,24 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       }
 
       const tree = buildCommentTree(rows, attachmentsByCommentId);
+
+      // Resolve every comment's author to a display identity (email for a
+      // human, device name + agent marker for an agent comment) so the UI never
+      // has to guess from the project-members list or render a raw UUID. An
+      // authorDeviceId routes to the device actor; otherwise the human author.
+      const refs: ActorRef[] = rows.map((r) =>
+        r.authorDeviceId
+          ? { type: 'device', id: r.authorDeviceId }
+          : { type: 'user', id: r.authorId },
+      );
+      const resolved = await resolveActors(refs);
+      walkCommentTree(tree, (node) => {
+        const key = node.authorDeviceId
+          ? actorKey('device', node.authorDeviceId)
+          : actorKey('user', node.authorId);
+        node.author = resolved.get(key) ?? null;
+      });
+
       // Report the true total so paginating clients see the real comment
       // count even when the response payload was truncated to the cap.
       setTotalCount(c, Number(total));

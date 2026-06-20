@@ -7,6 +7,13 @@ import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  type ActorRef,
+  type ActorType,
+  type ResolvedActor,
+  actorKey,
+  resolveActors,
+} from './actor-resolution.js';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
 
@@ -40,7 +47,31 @@ type ActivityRow = {
   createdAt: Date;
 };
 
-function envelope(rows: ActivityRow[], limit: number) {
+type ActivityRowWithActor = ActivityRow & { actor: ResolvedActor | null };
+
+// ISS-519 — resolve each row's (actorType, actorId) to a display identity and
+// attach it as `actor`. The raw actorType/actorId stay on the row for
+// back-compat. Only the known actor types ('user' | 'device') are resolvable;
+// any other value (defensive) leaves actor null and the FE falls back to the
+// raw actorType.
+async function attachActors(rows: ActivityRow[]): Promise<ActivityRowWithActor[]> {
+  const refs: ActorRef[] = [];
+  for (const r of rows) {
+    if ((r.actorType === 'user' || r.actorType === 'device') && r.actorId) {
+      refs.push({ type: r.actorType as ActorType, id: r.actorId });
+    }
+  }
+  const resolved = await resolveActors(refs);
+  return rows.map((r) => ({
+    ...r,
+    actor:
+      (r.actorType === 'user' || r.actorType === 'device') && r.actorId
+        ? (resolved.get(actorKey(r.actorType as ActorType, r.actorId)) ?? null)
+        : null,
+  }));
+}
+
+function envelope(rows: ActivityRowWithActor[], limit: number) {
   const last = rows.at(-1);
   return {
     items: rows,
@@ -93,7 +124,8 @@ issueActivityRoutes.get(
       .orderBy(desc(activityLog.createdAt))
       .limit(limit);
 
-    return c.json(envelope(rows as ActivityRow[], limit));
+    const withActors = await attachActors(rows as ActivityRow[]);
+    return c.json(envelope(withActors, limit));
   },
 );
 
@@ -166,7 +198,8 @@ issueActivityRoutes.patch(
         createdAt: activityLog.createdAt,
       });
     if (!updated) throw notFound('activity not found');
-    return c.json(updated);
+    const [withActor] = await attachActors([updated as ActivityRow]);
+    return c.json(withActor);
   },
 );
 
@@ -229,6 +262,7 @@ projectActivityRoutes.get(
       .orderBy(desc(activityLog.createdAt))
       .limit(limit);
 
-    return c.json(envelope(rows as ActivityRow[], limit));
+    const withActors = await attachActors(rows as ActivityRow[]);
+    return c.json(envelope(withActors, limit));
   },
 );

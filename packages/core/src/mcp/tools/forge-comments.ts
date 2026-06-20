@@ -206,14 +206,16 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
         }
 
-        // The device principal posts comments on behalf of its owner — there
-        // is no separate device authorId column, so we attribute to ownerId
-        // the same way the REST flow attributes to the authenticated user.
+        // The device principal posts comments on behalf of its owner: authorId
+        // stays the human owner (NOT-NULL FK to users), but we also stamp
+        // authorDeviceId so the comment is identifiable as an AGENT action and
+        // not mistaken for one the owner wrote by hand (ISS-519).
         const [inserted] = await db
           .insert(comments)
           .values({
             issueId,
             authorId: device.ownerId,
+            authorDeviceId: device.id,
             body,
             parentId: input.data?.parentId ?? null,
           })
