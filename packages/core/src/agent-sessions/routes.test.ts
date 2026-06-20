@@ -568,3 +568,124 @@ describe('DELETE /api/agent-sessions/:id — owner-or-admin (ISS-465)', () => {
     expect(res.status).toBe(204);
   });
 });
+
+describe('agent chat isolation — owner-or-admin reads (ISS-522)', () => {
+  const OTHER_USER = '55555555-5555-4555-8555-555555555555';
+
+  // GET /:id — interactive `agent` sessions are private to their owner.
+  it('GET /:id 403 for a non-owner plain member on an agent session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: OTHER_USER,
+        metadata: { type: 'agent' },
+        messages: [],
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /:id 200 for the owner of an agent session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: USER_ID,
+        metadata: { type: 'agent' },
+        messages: [],
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:id 200 for a project admin on another member\'s agent session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: OTHER_USER,
+        metadata: { type: 'agent' },
+        messages: [],
+      },
+    ]);
+    projectAccessAsOwner();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  // Pipeline/pm sessions stay project-shared — the guard is a no-op for them.
+  it('GET /:id 200 for a non-owner member on a pipeline session (no regression)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: OTHER_USER,
+        metadata: { type: 'pipeline' },
+        messages: [],
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  // Legacy userId=NULL agent rows are non-owner for everyone → admin-only.
+  it('GET /:id 403 for a non-owner member on a legacy userId=NULL agent session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: null,
+        metadata: { type: 'agent' },
+        messages: [],
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  // GET /:id/turns enforces the same owner-or-admin guard.
+  it('GET /:id/turns 403 for a non-owner plain member on an agent session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        userId: OTHER_USER,
+        metadata: { type: 'agent' },
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/turns`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+  });
+});

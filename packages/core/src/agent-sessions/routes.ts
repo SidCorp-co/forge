@@ -1029,6 +1029,13 @@ agentSessionRoutes.get(
     if (metadataType) {
       conditions.push(sql`${agentSessions.metadata}->>'type' = ${metadataType}`);
     }
+    // ISS-522 — interactive `agent` chats are private to their owner. Scope the
+    // "My conversations" listing to the caller; this also drops legacy
+    // userId=NULL rows (NULL never equals). Pipeline/pm/Agents-overview calls
+    // (no metadataType=agent) stay project-shared.
+    if (metadataType === 'agent') {
+      conditions.push(eq(agentSessions.userId, userId));
+    }
     if (issueId) {
       conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
     }
@@ -1159,6 +1166,7 @@ agentSessionRoutes.get(
     } else {
       const access = await loadProjectAccess(row.projectId, userId);
       if (!access.role) throw forbidden('not a project member');
+      assertAgentChatOwner(row, access, userId);
     }
 
     return c.json(row);
@@ -1619,6 +1627,25 @@ const forkBodySchema = z
   })
   .strict();
 
+// ISS-522 — interactive `agent` chats are private to their owner (or a project
+// admin). This is a NO-OP for pipeline/pm/no-type sessions, which stay
+// project-shared. Legacy `userId = NULL` agent rows are treated as non-owner →
+// only an admin can read them, so they never leak to other members. Mirrors the
+// owner-or-admin guard already used by the editTurn (PATCH /:id/turns/:turnId)
+// route.
+function assertAgentChatOwner(
+  session: { metadata: unknown; userId: string | null },
+  access: Awaited<ReturnType<typeof loadProjectAccess>>,
+  userId: string,
+) {
+  const isAgentChat =
+    (session.metadata as { type?: string } | null)?.type === 'agent';
+  if (!isAgentChat) return;
+  if (session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+    throw forbidden('not the conversation owner');
+  }
+}
+
 async function ensureSessionMember(sessionId: string, userId: string) {
   const [session] = await db
     .select()
@@ -1645,7 +1672,8 @@ agentSessionRoutes.get(
     const { id } = c.req.valid('param');
     const { after, limit } = c.req.valid('query');
     const userId = c.get('userId');
-    await ensureSessionMember(id, userId);
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertAgentChatOwner(session, access, userId);
 
     const opts: { afterTurnIndex?: number; limit?: number } = {};
     if (after) {
