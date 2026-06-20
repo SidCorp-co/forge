@@ -16,7 +16,7 @@
 export const FORGE_MCP_INSTRUCTIONS = `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. Prefer Forge MCP tools over guessing:
 
 - Project memory is the cross-device source of truth and is NOT auto-loaded. At the start of any task needing project context, recall it first: forge_memory_search({ projectId, query: <topic>, topK: 5 }). Hits are point-in-time — verify against live code/git before trusting.
-- For codebase orientation (architecture, key files, conventions), call forge_config with action get_knowledge BEFORE broad file search — it returns pre-indexed context.
+- For codebase orientation (architecture, key files, conventions), read \`.forge/knowledge.json\` directly from the repo (if present) BEFORE broad file search, and use forge_memory_search for accumulated knowledge.
 - For issues / tasks / status / dependencies, use forge_issues, forge_comments, forge_pm_* rather than inventing a tracker.
 - Before writing, rewriting, or tuning this project's pipeline skills, read the \`forge-skills\` MCP prompt (the always-latest authoring guide).
 
