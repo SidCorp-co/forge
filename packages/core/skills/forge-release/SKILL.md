@@ -142,18 +142,37 @@ forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 
 If no Coolify: skip — CI/CD may auto-deploy from production branch, or deployment is manual.
 
-### Step 7.5: Append CHANGELOG entry (if release notes present)
+### Step 7.5: Draft & append the CHANGELOG entry
 
-Read `releaseNotes` from the `forge_issues → get` response already fetched in Step 1. Shape:
+Release notes are written **here**, not at clarify — by now the change is fully implemented, so the user-facing summary reflects what actually shipped instead of a pre-implementation guess. If `releaseNotes` is already populated on the issue (a human or earlier step pre-filled it), use it as-is; otherwise draft it now from the issue + the merged diff. Shape:
 
 ```typescript
 { section: 'Added'|'Changed'|'Fixed'|'Removed'|'Security'|'Skip', userFacing: string, technical?: string|null }
 ```
 
-Decision tree:
+**Pick the section** — map the change to the right [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) bucket:
 
-- `releaseNotes` is `null` → skip this step entirely (forge-clarify did not draft one — usually a Simple issue that was auto-skipped).
-- `section === 'Skip'` → skip this step (internal-only change, no user-facing summary).
+| Section | When to pick |
+|---|---|
+| `Added` | a new user-perceivable feature/screen/command/endpoint/capability |
+| `Changed` | existing behavior changes visibly (UI, defaults, semantics) |
+| `Fixed` | a user-hittable bug is resolved |
+| `Removed` | a capability went away |
+| `Security` | a vulnerability is patched (phrase neutrally, not like a CVE advisory) |
+| `Skip` | internal-only (refactor, infra, test harness) — no `CHANGELOG.md` entry |
+
+**Draft the two strings:**
+- **userFacing** — 1–2 plain sentences a non-developer understands; lead with the verb ("Added X", "Fixed Y", "You can now Z"); no file/function/ticket names; ≤500 chars.
+- **technical** *(optional)* — one terse maintainer breadcrumb (root cause / surface area); ≤500 chars.
+
+**Persist it back to the typed field** (so the issue records what shipped) before appending — do NOT also write a release-notes block into `description`:
+
+```
+forge_issues → update → { documentId: "<id>", data: { releaseNotes: { section, userFacing, technical? } } }
+```
+
+Then decide:
+- `section === 'Skip'` → done, no `CHANGELOG.md` entry (internal-only change).
 - Otherwise → format a bullet and insert it under `### <section>` inside `## [Unreleased]` in `CHANGELOG.md`:
 
 ```

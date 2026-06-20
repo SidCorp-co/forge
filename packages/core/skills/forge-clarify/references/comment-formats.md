@@ -73,9 +73,3 @@ Pick the template matching the outcome. Always include the **Confidence** line (
 ```
 
 → Status: `needs_info`
-
-## Auto-Skip (Simple)
-
-```markdown
-**Clarify** — Auto-clarified (Simple issue, no verification needed)
-```
