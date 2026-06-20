@@ -64,6 +64,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - On mobile you can now reach a project's issue list and other project sections straight from the navigation, instead of having to type the URL by hand.
 - The My conversations chat screen no longer breaks its layout on phones — the title, subtitle, and controls now fit narrow screens, and the conversation History dropdown stays fully on-screen.
 - Issue comments and the activity timeline now show who performed each action — clearly distinguishing AI-agent actions from team-member actions and showing real member names instead of internal IDs.
+- Project Facts can now be flagged "always-inject" so a project's rules are guaranteed to reach every agent, and can be managed from a new per-project Settings → Project Facts screen.
 
 ## [0.3.0] - 2026-06-11
 
