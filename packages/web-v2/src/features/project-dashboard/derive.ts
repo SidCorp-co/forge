@@ -19,7 +19,18 @@ import type { QueueStats } from "@/features/sessions/types";
  * Open-issues-by-status donut (AC#4)
  * ------------------------------------------------------------------ */
 
-export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "done";
+export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "ready";
+
+/**
+ * Statuses that are NOT genuinely-open work and so are EXCLUDED from the donut
+ * entirely: terminal `released`/`closed` and the not-yet-active `draft`. This is
+ * the same exclusion the core KPI uses (`NON_OPEN_STATUSES` in
+ * `packages/core/src/projects/health-routes.ts`), so the donut center total
+ * equals the top "Open issues" KPI by construction (ISS-528). Previously these
+ * were bucketed into "Done" and dominated the chart (~96% noise on projects with
+ * many closed issues), contradicting the KPI.
+ */
+const NON_OPEN_STATUSES = new Set(["released", "closed", "draft"]);
 
 /**
  * Display buckets for the status donut, in legend order. ISS-509: buckets are
@@ -30,9 +41,12 @@ export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "d
  * overview, and where `on_hold`/`needs_info` were painted the alarm-red of a
  * real failure: now `reopen` is `active`, `on_hold` is calm `blocked` ink, and
  * `needs_info`/`waiting` are `attention` amber. No issue STATUS maps to the red
- * `failure` tone — only a failed job/session does. Every one of the 18 statuses
- * maps into exactly one bucket so the donut total equals the sum of
- * `statusDistribution`.
+ * `failure` tone — only a failed job/session does. ISS-528: the donut now charts
+ * OPEN work only — terminal `released`/`closed` + `draft` are excluded (see
+ * `NON_OPEN_STATUSES`), and `tested` moved out of the old "Done" bucket into a
+ * `ready` (awaiting-release) bucket since it is still in-flight. Every OPEN
+ * status maps into exactly one bucket so the donut total equals the sum of the
+ * open-only distribution = `totalActive`.
  */
 const STATUS_BUCKETS: ReadonlyArray<{
   key: StatusBucketKey;
@@ -42,9 +56,9 @@ const STATUS_BUCKETS: ReadonlyArray<{
 }> = [
   { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen", "developed", "testing"] },
   { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["waiting", "needs_info"] },
-  { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved", "draft"] },
+  { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved"] },
   { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },
-  { key: "done", label: "Done", tone: "success", statuses: ["tested", "released", "closed"] },
+  { key: "ready", label: "Ready", tone: "success", statuses: ["tested"] },
 ];
 
 export interface DonutSegment {
@@ -67,7 +81,12 @@ export interface StatusDonutData {
 
 export function statusDonut(dist: Record<string, number> | undefined): StatusDonutData {
   const d = dist ?? {};
-  const total = Object.values(d).reduce((a, b) => a + b, 0);
+  // OPEN-only total: terminal released/closed + draft are excluded so the donut
+  // center equals the "Open issues" KPI (ISS-528).
+  let total = 0;
+  for (const [status, count] of Object.entries(d)) {
+    if (!NON_OPEN_STATUSES.has(status)) total += count;
+  }
   const segments = STATUS_BUCKETS.map((b) => {
     const count = b.statuses.reduce((n, s) => n + (d[s] ?? 0), 0);
     return { key: b.key, label: b.label, color: TONE_META[b.tone].dot, count, pct: total > 0 ? (count / total) * 100 : 0 };
@@ -75,7 +94,7 @@ export function statusDonut(dist: Record<string, number> | undefined): StatusDon
 
   const stages = new Set<StageKey>();
   for (const [status, count] of Object.entries(d)) {
-    if (count > 0) stages.add(statusToStage(status));
+    if (count > 0 && !NON_OPEN_STATUSES.has(status)) stages.add(statusToStage(status));
   }
   return { segments, total, activeStageCount: stages.size };
 }

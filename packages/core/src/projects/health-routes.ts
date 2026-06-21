@@ -52,17 +52,13 @@ function emailInitials(email: string): string {
 
 const MEMBER_AVATAR_CAP = 5;
 
-const ACTIVE_STATUSES = [
-  'open',
-  'confirmed',
-  'waiting',
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'reopen',
-] as const;
+// "Open" = every issue status EXCEPT the terminal `released`/`closed` and the
+// not-yet-active `draft`. Defining it by exclusion (rather than a positive
+// allow-list) keeps it in lockstep with the web-v2 status donut (derive.ts) so
+// the donut center equals this KPI by construction, and guarantees the
+// genuinely-open statuses the old allow-list dropped — `clarified`, `on_hold`,
+// `needs_info` — are counted. ISS-528.
+const NON_OPEN_STATUSES = new Set(['released', 'closed', 'draft']);
 const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;
 
 export const projectHealthRoutes = new Hono<{ Variables: AuthVars }>();
@@ -315,7 +311,9 @@ projectHealthRoutes.get('/health', async (c) => {
   const result: ProjectHealthRow[] = visibleProjects.map((p) => {
     const dist = distByProject.get(p.id) ?? {};
     let totalActive = 0;
-    for (const s of ACTIVE_STATUSES) totalActive += dist[s] ?? 0;
+    for (const [status, n] of Object.entries(dist)) {
+      if (!NON_OPEN_STATUSES.has(status)) totalActive += n;
+    }
     const blockers = blockersByProject.get(p.id) ?? [];
     return {
       id: p.id,
