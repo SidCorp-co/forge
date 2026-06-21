@@ -150,7 +150,10 @@ describe('forge_comments tool', () => {
 
     expect(result.comments).toHaveLength(1);
     expect(result.comments[0]?.documentId).toBe(COMMENT_ID);
-    expect(result.comments[0]?.body).toBe('Hello');
+    // ISS-532: comment body is framed as untrusted DATA on the agent-facing
+    // MCP surface — the original text is preserved inside the frame.
+    expect(result.comments[0]?.body).toContain('Hello');
+    expect(result.comments[0]?.body).toContain('UNTRUSTED_DATA source="comment.body"');
     // Default empty attachment join → attachments present as []
     expect((result.comments[0] as unknown as { attachments: unknown[] }).attachments).toEqual([]);
   });

@@ -12,6 +12,7 @@ import { db } from '../../db/client.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { comments, issues, projectMembers, projects } from '../../db/schema.js';
 import { hooks } from '../../pipeline/hooks.js';
+import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -75,7 +76,9 @@ function serialize(
     documentId: row.id,
     issueId: row.issueId,
     authorId: row.authorId,
-    body: row.body,
+    // ISS-532: comment bodies are untrusted (anyone can post) and reach the
+    // agent verbatim via this MCP surface — frame as DATA, never instructions.
+    body: markUntrusted(row.body, { source: 'comment.body' }),
     parentId: row.parentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
