@@ -72,6 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Issue-detail relation lists (Subtasks, Parent, Blocked by, Blocks, Related, Duplicates) now show each related issue's status and a short title, not just the ISS-xxx number.
 - The project dashboard's "Open issues by status" chart now counts only genuinely-open issues (resolved/closed work no longer inflates the total), and the empty "Upcoming schedules" panel offers a clear next step.
 - You can now choose, per project, whether production deploys require manual approval — toggle auto-approve directly in the Coolify integration settings (manual approval stays on by default).
+- Untrusted issue, comment, attachment, and integration content is now sanitized and explicitly marked as data before it reaches pipeline agents, hardening the autonomous pipeline against prompt-injection.
 
 ## [0.3.0] - 2026-06-11
 
