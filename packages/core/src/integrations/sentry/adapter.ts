@@ -8,6 +8,14 @@
  * test-connection `GET /api/0/organizations/`, which validates the auth token
  * and surfaces the accessible orgs back to the config UI. Mirrors the postman
  * adapter (MCP-injection archetype).
+ *
+ * ISS-532 adoption point: Sentry event payloads are untrusted, but today they
+ * reach the agent only via the runner-injected `@sentry/mcp-server` — they do
+ * NOT pass through any core serializer, so there is no prompt-assembly
+ * chokepoint to harden here. IF core ever ingests Sentry event text into an
+ * issue/comment/prompt (e.g. an auto-file-issue-from-event path), route that
+ * text through `markUntrusted()` from `prompt/sanitize.ts` at the point of
+ * ingestion — same as the issue/comment/attachment chokepoints.
  */
 
 import { logger } from '../../logger.js';

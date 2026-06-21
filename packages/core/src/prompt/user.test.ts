@@ -36,8 +36,12 @@ describe('buildJobPromptString thin-prompt default (fetch-via-tool)', () => {
       expect(out, jobType).not.toContain('Description:');
       expect(out, jobType).not.toContain('Plan:');
       expect(out, jobType).not.toContain('Acceptance:');
-      // Title still orients the agent; the pointer tells it where the rest lives.
-      expect(out, jobType).toContain('Title: Add rate limiting');
+      // Title still orients the agent; the pointer tells it where the rest
+      // lives. ISS-532: the title is now framed as untrusted DATA on its own
+      // lines under a `Title:` label.
+      expect(out, jobType).toContain('Title:');
+      expect(out, jobType).toContain('Add rate limiting');
+      expect(out, jobType).toContain('UNTRUSTED_DATA source="issue.title"');
       expect(out, jobType).toContain('forge_step_start');
     }
   });

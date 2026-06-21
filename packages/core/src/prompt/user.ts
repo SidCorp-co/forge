@@ -32,6 +32,7 @@ import {
 } from '../memory/step-handoff-schema.js';
 import { resolveHandoffsPolicy } from '../pipeline/handoff-policy.js';
 import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
+import { markUntrusted, sanitizeUntrusted } from './sanitize.js';
 
 export interface IssueSnapshot {
   title: string;
@@ -237,7 +238,14 @@ function formatIssueSnapshot(
     }
   }
   const strategy = policy?.truncationStrategy ?? 'paragraph-boundary';
-  const lines: string[] = ['## Issue', `Title: ${snapshot.title}`];
+  // ISS-532: the issue title is untrusted free-text (and under thin-init the
+  // ONLY untrusted text inlined by default) — frame it as DATA on its own
+  // lines (markUntrusted output is multi-line).
+  const lines: string[] = [
+    '## Issue',
+    'Title:',
+    markUntrusted(snapshot.title, { source: 'issue.title' }),
+  ];
 
   const meta: string[] = [];
   if (snapshot.status) meta.push(`Status: ${snapshot.status}`);
@@ -250,17 +258,28 @@ function formatIssueSnapshot(
   const skipPlan =
     policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false || injectedSteps?.has('plan');
 
+  // ISS-532: sanitize/frame AFTER truncate so the existing caps still bound the
+  // input. description + acceptanceCriteria are human-authored → DATA-framed;
+  // plan is agent-authored → char-strip only (no noisy framing).
   if (fields.includes('description') && snapshot.description && !skipDescription) {
-    lines.push('', 'Description:', truncate(snapshot.description, fieldCaps.description, strategy));
+    lines.push(
+      '',
+      'Description:',
+      markUntrusted(truncate(snapshot.description, fieldCaps.description, strategy), {
+        source: 'issue.description',
+      }),
+    );
   }
   if (fields.includes('plan') && snapshot.plan && !skipPlan) {
-    lines.push('', 'Plan:', truncate(snapshot.plan, fieldCaps.plan, strategy));
+    lines.push('', 'Plan:', sanitizeUntrusted(truncate(snapshot.plan, fieldCaps.plan, strategy)));
   }
   if (fields.includes('acceptanceCriteria') && snapshot.acceptanceCriteria) {
     lines.push(
       '',
       'Acceptance:',
-      truncate(snapshot.acceptanceCriteria, fieldCaps.acceptanceCriteria, strategy),
+      markUntrusted(truncate(snapshot.acceptanceCriteria, fieldCaps.acceptanceCriteria, strategy), {
+        source: 'issue.acceptanceCriteria',
+      }),
     );
   }
   // Fetch-via-tool pointer: the prompt no longer inlines the issue body by
@@ -285,29 +304,34 @@ function formatSessionContext(
     lines.push(`**Current state:** ${ctx.currentState}`);
   }
 
+  // ISS-532: sessionContext is agent-authored → char-strip control/invisible
+  // chars (defense-in-depth) without DATA framing, which would be noise here.
   if (policy.decisions && ctx.decisions && ctx.decisions.length > 0) {
     lines.push('**Key decisions:**');
     for (const d of ctx.decisions.slice(-Math.min(depth, SESSION_CAPS.decisions))) {
-      lines.push(`- ${d}`);
+      lines.push(`- ${sanitizeUntrusted(d)}`);
     }
   }
 
   if (policy.filesModified && ctx.filesModified && ctx.filesModified.length > 0) {
-    const files = ctx.filesModified.slice(-Math.min(depth, SESSION_CAPS.filesModified)).join(', ');
+    const files = ctx.filesModified
+      .slice(-Math.min(depth, SESSION_CAPS.filesModified))
+      .map(sanitizeUntrusted)
+      .join(', ');
     lines.push(`**Files touched:** ${files}`);
   }
 
   if (policy.errorsResolved && ctx.errorsResolved && ctx.errorsResolved.length > 0) {
     lines.push('**Errors resolved:**');
     for (const e of ctx.errorsResolved.slice(-Math.min(depth, SESSION_CAPS.errorsResolved))) {
-      lines.push(`- ${e}`);
+      lines.push(`- ${sanitizeUntrusted(e)}`);
     }
   }
 
   if (policy.reviewFeedback && ctx.reviewFeedback && ctx.reviewFeedback.length > 0) {
     lines.push('**Review feedback:**');
     for (const f of ctx.reviewFeedback.slice(-Math.min(depth, SESSION_CAPS.reviewFeedback))) {
-      lines.push(`- ${typeof f === 'string' ? f : JSON.stringify(f)}`);
+      lines.push(`- ${sanitizeUntrusted(typeof f === 'string' ? f : JSON.stringify(f))}`);
     }
   }
 

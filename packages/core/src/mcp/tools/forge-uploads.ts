@@ -10,6 +10,7 @@ import {
   issues,
   sessionAttachments,
 } from '../../db/schema.js';
+import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
 import {
   UPLOAD_TICKET_TTL_MS,
@@ -243,11 +244,18 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         };
       }
 
+      // ISS-532: inlined attachment text is fully untrusted (uploaded content)
+      // and reaches the agent verbatim — frame the file body as DATA. The
+      // `Attachment "name" (mime):` label stays OUTSIDE the frame; the source
+      // carries the (sanitized) filename. Image branch above is unaffected.
       return {
         _mcpContent: [
           {
             type: 'text',
-            text: `Attachment "${att.name}" (${att.mime}):\n\n${bytes.toString('utf8')}`,
+            text: `Attachment "${att.name}" (${att.mime}):\n\n${markUntrusted(
+              bytes.toString('utf8'),
+              { source: `attachment:${att.name}` },
+            )}`,
           },
         ],
         ...meta,
