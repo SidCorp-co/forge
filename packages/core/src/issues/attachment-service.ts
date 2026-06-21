@@ -16,6 +16,10 @@ export const ALLOWED_MIMES = new Set([
   'video/quicktime',
   'text/plain',
   'text/markdown',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]);
 
 export function safeName(name: string): string {

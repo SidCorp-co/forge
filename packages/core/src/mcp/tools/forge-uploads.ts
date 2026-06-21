@@ -64,6 +64,10 @@ const EXT_MIME: Record<string, string> = {
   txt: 'text/plain',
   md: 'text/markdown',
   markdown: 'text/markdown',
+  csv: 'text/csv',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
 function mimeFromName(name: string): string {
@@ -169,7 +173,7 @@ async function loadAttachmentForFetch(
   return { ...row, url: `/api/comments/attachments/${attachmentId}` };
 }
 
-const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown']);
+const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_uploads',
