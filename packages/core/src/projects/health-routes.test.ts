@@ -147,6 +147,39 @@ describe('GET /api/projects/health', () => {
     expect(beta?.pendingEscalations).toBe(2); // needs_info bucket
   });
 
+  it('totalActive counts all non-terminal statuses and excludes released/closed/draft (ISS-528)', async () => {
+    // Open = every status EXCEPT released/closed/draft. This must include the
+    // genuinely-open statuses the old ACTIVE_STATUSES allow-list dropped
+    // (clarified/on_hold/needs_info) so the KPI equals the web-v2 donut center.
+    authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
+    queryQueue.push([
+      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
+    ]); // visibleProjects
+    queryQueue.push([
+      { projectId: PROJECT_A_ID, status: 'open', n: 2 },
+      { projectId: PROJECT_A_ID, status: 'clarified', n: 1 },
+      { projectId: PROJECT_A_ID, status: 'on_hold', n: 3 },
+      { projectId: PROJECT_A_ID, status: 'needs_info', n: 1 },
+      { projectId: PROJECT_A_ID, status: 'tested', n: 1 },
+      { projectId: PROJECT_A_ID, status: 'released', n: 5 },
+      { projectId: PROJECT_A_ID, status: 'closed', n: 100 },
+      { projectId: PROJECT_A_ID, status: 'draft', n: 4 },
+    ]); // statusRows
+    queryQueue.push([]); // blockerRowsAll
+    queryQueue.push([]); // throughputRows
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ totalActive: number }>;
+    // open(2)+clarified(1)+on_hold(3)+needs_info(1)+tested(1) = 8;
+    // released(5)+closed(100)+draft(4) excluded.
+    expect(body[0]?.totalActive).toBe(8);
+  });
+
   it('200 with throughput=0 when no activity rows match (regression: empty result must not 500)', async () => {
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds

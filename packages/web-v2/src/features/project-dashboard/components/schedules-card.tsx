@@ -1,7 +1,10 @@
+"use client";
+
 // Upcoming schedules card (ISS-379, AC#6) — next scheduled runs with cadence
 // (cron) + next-run time + last-outcome chip. Data from `useSchedules`
 // (`GET /api/schedules`, JWT/cookie auth via apiClient).
-import { Card, CardContent, Icon, MonoTag, StatusChip } from "@/design";
+import { useRouter } from "next/navigation";
+import { Button, Card, CardContent, Icon, MonoTag, StatusChip } from "@/design";
 import { formatRelativeTime } from "@/features/projects/derive";
 import { lastStatusToChip, type ScheduleRow } from "@/features/schedules/types";
 
@@ -14,7 +17,8 @@ function nextRunLabel(row: ScheduleRow, now: number): string {
   return `in ${formatRelativeTime(row.nextRunAt, now).replace("just now", "moments")}`;
 }
 
-export function SchedulesCard({ rows, now }: { rows: ScheduleRow[]; now: number }) {
+export function SchedulesCard({ rows, now, slug }: { rows: ScheduleRow[]; now: number; slug: string }) {
+  const router = useRouter();
   const shown = rows.slice(0, MAX_ROWS);
 
   return (
@@ -25,7 +29,19 @@ export function SchedulesCard({ rows, now }: { rows: ScheduleRow[]; now: number 
       </div>
       <CardContent className="flex-1">
         {rows.length === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-muted">No schedules configured.</p>
+          // ISS-528: empty state gains a primary CTA so the user knows the next
+          // step — schedules are created on the project Automation screen.
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <p className="fg-body-sm text-muted">No schedules configured.</p>
+            <Button
+              variant="primary"
+              size="sm"
+              icon="plus"
+              onClick={() => router.push(`/projects/${slug}/automation`)}
+            >
+              Create schedule
+            </Button>
+          </div>
         ) : (
           <ul className="flex flex-col gap-2">
             {shown.map((s) => {

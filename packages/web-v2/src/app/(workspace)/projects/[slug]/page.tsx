@@ -169,7 +169,7 @@ export default function ProjectOverviewPage() {
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
           <RunnersCard summary={runners} slug={project.slug} />
-          <SchedulesCard rows={schedules} now={now} />
+          <SchedulesCard rows={schedules} now={now} slug={project.slug} />
         </div>
       </div>
     </PageContainer>

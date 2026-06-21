@@ -25,6 +25,13 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
           {onlineCount}/{total} online
         </span>
       </div>
+      {/* ISS-528: runners are org-shared infra (ISS-477); there is no
+          project→runner assignment model, so the list is labelled org-wide
+          rather than implying it is exclusive to this project. The per-runner
+          busy/idle below IS already scoped to this project via /queue-stats. */}
+      <p className="fg-caption border-b border-line-subtle px-5 py-2 text-subtle">
+        Org runners available to this project
+      </p>
       <CardContent className="flex-1">
         {total === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">No runners paired yet.</p>
