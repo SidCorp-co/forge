@@ -67,6 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Project Facts can now be flagged "always-inject" so a project's rules are guaranteed to reach every agent, and can be managed from a new per-project Settings → Project Facts screen.
 - Your agent chats in "My conversations" are now private to you — they're no longer visible to other members of the same project or organization. The conversation view also opens at your most recent message instead of the oldest.
 - Unread notifications now show a badge on the browser-tab icon, and desktop-notification setup is clearer so alerts actually reach you.
+- You can now configure Sentry per project under Settings → Integrations, so the project's agents can read its Sentry logs.
 
 ## [0.3.0] - 2026-06-11
 
