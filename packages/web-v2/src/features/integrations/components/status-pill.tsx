@@ -19,6 +19,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   coolify: "Coolify deploy",
   postman: "Postman",
   epodsystem: "Epodsystem",
+  sentry: "Sentry",
 };
 
 /** One provider→icon map for every integrations surface (card, drawers, panel). */
@@ -26,6 +27,7 @@ export const PROVIDER_ICON: Record<string, IconName> = {
   coolify: "server",
   postman: "command",
   epodsystem: "command",
+  sentry: "shield",
 };
 
 /** The bare icon + text + tinted pill; feed it any `{icon,label,fg,bg}` meta. */

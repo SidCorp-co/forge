@@ -19,7 +19,7 @@ import type { IntegrationProvider, schema } from '@forge/core/public';
 
 // === Enums — mirrored from the DB schema source of truth (no hand-copied unions) ===
 
-/** `'coolify' | 'postman' | 'epodsystem'`. */
+/** `'coolify' | 'postman' | 'epodsystem' | 'sentry'`. */
 export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
 
 /** `'user' | 'org'` — the connection owner namespace. */
@@ -225,6 +225,21 @@ export interface EpodsystemSecretsInput {
   apiKey: string;
 }
 
+/**
+ * Sentry non-secret target (`connection.config`). `host` is the Sentry instance
+ * (self-hosted, e.g. `logs.canawan.com`, or SaaS `sentry.io`) without scheme;
+ * the optional slugs scope which org/project the operator works against. The
+ * `sntryu_` auth token is the secret. ISS-524.
+ */
+export interface SentryConfigInput {
+  host: string;
+  organizationSlug?: string;
+  projectSlug?: string;
+}
+export interface SentrySecretsInput {
+  authToken: string;
+}
+
 // === Request bodies ===
 
 /**
@@ -251,6 +266,12 @@ export type IntegrationBindingCreateInput =
       environment?: IntegrationEnvironment;
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+    }
+  | {
+      provider: 'sentry';
+      environment?: IntegrationEnvironment;
+      config: SentryConfigInput;
+      secrets: SentrySecretsInput;
     };
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
@@ -278,6 +299,13 @@ export type ConnectionCreateInput =
       displayName?: string;
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
+      orgId?: string;
+    }
+  | {
+      provider: 'sentry';
+      displayName?: string;
+      config: SentryConfigInput;
+      secrets: SentrySecretsInput;
       orgId?: string;
     }
   | {
