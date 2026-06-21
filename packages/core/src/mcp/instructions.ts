@@ -17,7 +17,7 @@ export const FORGE_MCP_INSTRUCTIONS = `You are connected to a Forge-managed proj
 
 - Project memory is the cross-device source of truth and is NOT auto-loaded. At the start of any task needing project context, recall it first: forge_memory_search({ projectId, query: <topic>, topK: 5 }). Hits are point-in-time — verify against live code/git before trusting.
 - For codebase orientation (architecture, key files, conventions), read \`.forge/knowledge.json\` directly from the repo (if present) BEFORE broad file search, and use forge_memory_search for accumulated knowledge.
-- For issues / tasks / status / dependencies, use forge_issues, forge_comments, forge_pm_* rather than inventing a tracker.
+- For issues / tasks / status, use forge_issues / forge_comments rather than inventing a tracker. Encode ordering between issues as a \`forge_project_pm action=set_dependency kind:blocks\` edge (NOT prose — only a blocks edge gates dispatch); record a note/follow-up as a \`draft\` issue (NOT \`open\`, which auto-triages a pipeline run).
 - Before writing, rewriting, or tuning this project's pipeline skills, read the \`forge-skills\` MCP prompt (the always-latest authoring guide).
 
 This project's projectId is in the repo's CLAUDE.md.`;

@@ -24,7 +24,7 @@ import { db } from "../db/client.js";
 import { type JobType, projects } from "../db/schema.js";
 import { estimateTokens } from "../lib/token-estimator.js";
 import type { SystemPromptOverrideConfig } from "../pipeline/pipeline-config-schema.js";
-import { renderFact } from "./facts/registry.js";
+import { OPERATING_AFFORDANCES_TEXT, renderFact } from "./facts/registry.js";
 import {
 	loadProjectFactInputs,
 	renderStageFactsText,
@@ -74,7 +74,9 @@ export const TOOL_REFERENCE = renderFact("mcp-tool-reference") ?? "";
 const CHAT_NUDGE = `## Project Orientation
 You are working in a Forge-managed project. Forge MCP tools are available for project management — \`forge_issues\`, \`forge_comments\`, \`forge_config\`, \`forge_memory\`, \`forge_pm_*\`. Use them when the request relates to issues, tasks, status, or project memory.
 
-For codebase orientation, read \`.forge/knowledge.json\` directly (if present in the repo) for architecture, key files, and conventions, and follow any always-applied Project rules in this preamble — then explore with search tools.`;
+For codebase orientation, read \`.forge/knowledge.json\` directly (if present in the repo) for architecture, key files, and conventions, and follow any always-applied Project rules in this preamble — then explore with search tools.
+
+${OPERATING_AFFORDANCES_TEXT}`;
 
 function formatProjectContext(projectId: string): string {
 	return `## Project Context

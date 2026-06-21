@@ -27,6 +27,7 @@ describe("FORGE_MCP_INSTRUCTIONS", () => {
 	it("stays tight — it costs context tokens on every connected session", () => {
 		// Guardrail, not a hard spec: if this grows a lot, reconsider whether the
 		// content belongs in a forge-* MCP prompt instead of always-on instructions.
-		expect(FORGE_MCP_INSTRUCTIONS.length).toBeLessThan(1200);
+		// (ISS-541 trigger-framed the deps/draft affordances inline → ~1200.)
+		expect(FORGE_MCP_INSTRUCTIONS.length).toBeLessThan(1300);
 	});
 });

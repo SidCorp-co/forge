@@ -5,7 +5,7 @@ import {
   SKILL_FACT_TIERS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
-import { FORGE_FACTS, getFact, listFacts, renderFact } from './registry.js';
+import { FORGE_FACTS, getFact, listFacts, OPERATING_AFFORDANCES_TEXT, renderFact } from './registry.js';
 
 describe('forge facts registry', () => {
   it('has unique fact ids', () => {
@@ -38,6 +38,34 @@ describe('forge facts registry', () => {
     // Step check-in is the mandated first action (forge_step_start tool).
     expect(text).toContain('forge_step_start');
     expect(renderFact('mcp-tool-reference')).toContain('forge_step_start');
+  });
+
+  it('pipeline-rules carries the Operating affordances table + red flags (ISS-541)', () => {
+    const text = renderFact('pipeline-rules') ?? '';
+    // The canonical affordances block is appended into the mandatory
+    // pipeline-rules so every job preamble teaches affordances as
+    // trigger → tool → red-flag (not a noun-list).
+    expect(text).toContain('## Operating affordances');
+    expect(text).toContain(OPERATING_AFFORDANCES_TEXT);
+    // The five affordances the issue requires + the red-flags list.
+    expect(text).toContain('set_dependency kind:blocks');
+    expect(text).toContain('draft');
+    expect(text).toContain('forge_memory.search');
+    expect(text).toContain('Forge red flags:');
+    expect(text).toContain('docs/guides/forge-affordances.md');
+  });
+
+  it('Operating affordances names all six Forge red flags (criterion 4)', () => {
+    for (const flag of [
+      'prose-deps',
+      'open-as-note',
+      'wholesale-config-clobber',
+      'skip-recall',
+      'on_hold-from-draft',
+      'fix-by-hand-and-forget',
+    ]) {
+      expect(OPERATING_AFFORDANCES_TEXT).toContain(flag);
+    }
   });
 
   it('issue-bound facts are scoped away from pm jobs via appliesTo', () => {

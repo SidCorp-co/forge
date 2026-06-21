@@ -43,7 +43,22 @@ memory. The Forge MCP server is wired in `.mcp.json`; its instructions explain t
 - Codebase orientation: call `forge_config` action `get_knowledge` before broad file search.\n\
 - Issues / tasks / status / dependencies: `forge_issues`, `forge_comments`, `forge_pm_*`.\n\
 - Before writing, rewriting, or tuning this project's pipeline skills, read the `forge-skills`\n\
-  MCP prompt (the always-latest authoring guide).\n",
+  MCP prompt (the always-latest authoring guide).\n\
+\n\
+## Operating affordances\n\
+Forge gives you a tool for things agents routinely do in prose. When you hit the trigger,\n\
+reach for the tool — and avoid the red flag.\n\
+\n\
+| When you need | Use | Red flag (DON'T) |\n\
+|---|---|---|\n\
+| Ordering between issues | `forge_project_pm action=set_dependency kind:blocks` (`from` = the blocker) | Describing the dependency in prose instead of setting the edge — only a `blocks` edge gates dispatch |\n\
+| To record a note / follow-up | create an issue at `draft` | Creating it at `open` — that auto-triages and spawns a pipeline run |\n\
+| To change project config (`pipelineConfig.states`, `projectFacts`, …) | GET the current config first, then send a complete entry | Blind-patching a nested map you never read — you can clobber sibling keys |\n\
+| Before you design / fix | `forge_memory_search` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |\n\
+| To park work that never started | leave it at `draft` | `on_hold` from `draft` — `on_hold` is a deliberate pause for ACTIVE work only |\n\
+| To finish a fix made by hand, outside the pipeline | drive it through `status` and/or capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded |\n\
+\n\
+**Forge red flags:** prose-deps · open-as-note · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.\n",
     )
 }
 
@@ -110,6 +125,10 @@ mod tests {
         assert!(orient.contains("proj-123"));
         assert!(orient.contains("myslug"));
         assert!(orient.contains("forge_memory_search"));
+        // Operating-affordances table (trigger → tool → red-flag), not a noun-list.
+        assert!(orient.contains("## Operating affordances"));
+        assert!(orient.contains("set_dependency kind:blocks"));
+        assert!(orient.contains("Forge red flags:"));
 
         let claude = std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap();
         assert!(claude.starts_with(FORGE_BLOCK_MARKER));
