@@ -73,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The project dashboard's "Open issues by status" chart now counts only genuinely-open issues (resolved/closed work no longer inflates the total), and the empty "Upcoming schedules" panel offers a clear next step.
 - You can now choose, per project, whether production deploys require manual approval — toggle auto-approve directly in the Coolify integration settings (manual approval stays on by default).
 - Untrusted issue, comment, attachment, and integration content is now sanitized and explicitly marked as data before it reaches pipeline agents, hardening the autonomous pipeline against prompt-injection.
+- You can now attach Word (.docx), CSV, and Excel (.xls/.xlsx) files to issues and comments, alongside the existing image, PDF, and text formats.
 
 ## [0.3.0] - 2026-06-11
 
