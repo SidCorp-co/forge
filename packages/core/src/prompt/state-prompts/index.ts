@@ -22,14 +22,37 @@ import { reviewStatePrompt } from './review.js';
 import { testStatePrompt } from './test.js';
 import { triageStatePrompt } from './triage.js';
 
+/**
+ * Shared obligation appended to consuming stages (plan/code/review/test/fix).
+ * These stages receive prior handoffs that may carry open items; they must
+ * address each before advancing. Re-query is available but prompt-layer only —
+ * no server gate. clarify/triage/release intentionally excluded.
+ */
+const ADDRESS_INHERITED_OPEN_ITEMS = `
+
+## Address inherited open items
+If the Prior step handoffs block carries open items (clarify openQuestions, plan unknowns, code knownLimitations), address each before advancing: resolve it, or acknowledge with a reason in your comment/handoff. You may re-query the prior session for missing context (max 3 calls): \`forge_agent_sessions.list({ projectId, issueId })\` → pick the prior stage's session (match \`pipelineRunId\`) → \`forge_agent_sessions.get({ sessionId })\` (returns the last-20 message tail). Prompt-layer guidance, not a status gate.`;
+
+const CONSUMES_OPEN_ITEMS: ReadonlySet<JobType> = new Set([
+  'plan',
+  'code',
+  'review',
+  'test',
+  'fix',
+]);
+
+function withOpenItemsObligation(prompt: string, step: JobType): string {
+  return CONSUMES_OPEN_ITEMS.has(step) ? prompt + ADDRESS_INHERITED_OPEN_ITEMS : prompt;
+}
+
 export const DEFAULT_STATE_SYSTEM_PROMPTS: Partial<Record<JobType, string>> = {
   triage: triageStatePrompt,
   clarify: clarifyStatePrompt,
-  plan: planStatePrompt,
-  code: codeStatePrompt,
-  review: reviewStatePrompt,
-  test: testStatePrompt,
-  fix: fixStatePrompt,
+  plan: withOpenItemsObligation(planStatePrompt, 'plan'),
+  code: withOpenItemsObligation(codeStatePrompt, 'code'),
+  review: withOpenItemsObligation(reviewStatePrompt, 'review'),
+  test: withOpenItemsObligation(testStatePrompt, 'test'),
+  fix: withOpenItemsObligation(fixStatePrompt, 'fix'),
   release: releaseStatePrompt,
 };
 
@@ -38,3 +61,5 @@ export function getStatePrompt(step: JobType | null | undefined): string | null 
   if (!step) return null;
   return DEFAULT_STATE_SYSTEM_PROMPTS[step] ?? null;
 }
+
+export { ADDRESS_INHERITED_OPEN_ITEMS, CONSUMES_OPEN_ITEMS };
