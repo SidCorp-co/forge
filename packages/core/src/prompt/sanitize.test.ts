@@ -28,7 +28,12 @@ describe('sanitizeUntrusted — control-character neutralization', () => {
     );
     // The `--!>` alternate closer is also neutralized.
     expect(sanitizeUntrusted('x<!--y--!>z')).toBe('xyz');
-    expect(sanitizeUntrusted('a-->b')).toBe('ab');
+    // A bare `-->` arrow (not part of a real comment span) is legitimate
+    // content (mermaid / arrow notation) and must survive untouched.
+    expect(sanitizeUntrusted('a-->b')).toBe('a-->b');
+    expect(sanitizeUntrusted('A --> B --> C')).toBe('A --> B --> C');
+    // An unpaired opener hides nothing and is left as-is.
+    expect(sanitizeUntrusted('lead <!-- dangling')).toBe('lead <!-- dangling');
   });
 
   it('is idempotent — re-sanitizing is a no-op', () => {

@@ -234,9 +234,18 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
       const bytes = await getStorage().get(att.path);
 
       if (isImage) {
+        // ISS-532: the filename + mime are uploaded (untrusted) content. The
+        // image block carries no DATA frame of its own, so an attacker-named
+        // file would otherwise inject raw instructions via the label. Frame the
+        // metadata as DATA — markUntrusted sanitizes + de-tokens both fields.
         return {
           _mcpContent: [
-            { type: 'text', text: `Attachment "${att.name}" (${att.mime}):` },
+            {
+              type: 'text',
+              text: markUntrusted(`Image attachment name="${att.name}" mime="${att.mime}".`, {
+                source: 'attachment-metadata',
+              }),
+            },
             { type: 'image', data: bytes.toString('base64'), mimeType: att.mime },
           ],
           ...meta,
@@ -246,15 +255,16 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       // ISS-532: inlined attachment text is fully untrusted (uploaded content)
       // and reaches the agent verbatim — frame the file body as DATA. The
-      // `Attachment "name" (mime):` label stays OUTSIDE the frame; the source
-      // carries the (sanitized) filename. Image branch above is unaffected.
+      // untrusted filename + mime are NOT echoed in a raw external label (that
+      // would be an unframed injection vector); they ride INSIDE the frame via
+      // the sanitized `source=` attribute. Only a constant label sits outside.
       return {
         _mcpContent: [
           {
             type: 'text',
-            text: `Attachment "${att.name}" (${att.mime}):\n\n${markUntrusted(
+            text: `Attachment text follows (name + type carried as data in the frame):\n\n${markUntrusted(
               bytes.toString('utf8'),
-              { source: `attachment:${att.name}` },
+              { source: `attachment name="${att.name}" mime="${att.mime}"` },
             )}`,
           },
         ],

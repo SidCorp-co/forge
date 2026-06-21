@@ -53,8 +53,16 @@ const CONTROL_CHARS = new RegExp(
   'gu',
 );
 
-/** HTML comment markers — removed while their inner text is kept (never hidden). */
-const HTML_COMMENT_MARKERS = /<!--|--!?>/g;
+/**
+ * Full HTML comment spans — `<!-- … -->` (and the `--!>` alternate closer).
+ * Matched as a paired span so the markers are removed while the inner text is
+ * surfaced ($1), never hidden. Scoping to a real span (rather than stripping the
+ * `<!--`/`-->` tokens independently) avoids mangling a bare `-->` arrow, which
+ * is legitimate content in mermaid/arch diagrams and arrow notation common in
+ * issue descriptions. Non-greedy so adjacent comments don't merge; an unpaired
+ * marker is left as-is (it hides nothing — the model reads raw text).
+ */
+const HTML_COMMENT_SPAN = /<!--([\s\S]*?)--!?>/g;
 
 // Data-frame sentinels. Picked from rarely-occurring mathematical white
 // brackets + an unlikely label so legitimate content essentially never trips
@@ -90,7 +98,7 @@ function stripFrameTokens(text: string): string {
  */
 export function sanitizeUntrusted(text: string): string {
   if (text.length === 0) return text;
-  return text.replace(CONTROL_CHARS, '').replace(HTML_COMMENT_MARKERS, '');
+  return text.replace(CONTROL_CHARS, '').replace(HTML_COMMENT_SPAN, '$1');
 }
 
 /**
