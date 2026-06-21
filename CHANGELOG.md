@@ -70,6 +70,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - You can now configure Sentry per project under Settings → Integrations, so the project's agents can read its Sentry logs.
 - The Sentry integration now lets you register multiple Sentry projects (e.g. backend, frontend, mobile) under one connection — each with its own label and optional notes — so Forge's agents can read errors across all of them.
 - Issue-detail relation lists (Subtasks, Parent, Blocked by, Blocks, Related, Duplicates) now show each related issue's status and a short title, not just the ISS-xxx number.
+- The project dashboard's "Open issues by status" chart now counts only genuinely-open issues (resolved/closed work no longer inflates the total), and the empty "Upcoming schedules" panel offers a clear next step.
 
 ## [0.3.0] - 2026-06-11
 
