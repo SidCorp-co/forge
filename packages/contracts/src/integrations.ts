@@ -226,14 +226,35 @@ export interface EpodsystemSecretsInput {
 }
 
 /**
- * Sentry non-secret target (`connection.config`). `host` is the Sentry instance
+ * One labelled Sentry target under a connection (ISS-526). A Forge project that
+ * spans several Sentry projects (backend / frontend / mobile) records one target
+ * per stack; `label` is the human name the agent disambiguates on, the optional
+ * slugs scope which org/project a Sentry MCP call hits, `environment` is a free
+ * display label, and `notes` is free-text guidance for the agent. All targets
+ * share ONE host + auth token (the token already reads every project it can see).
+ */
+export interface SentryTargetInput {
+  label: string;
+  organizationSlug?: string;
+  projectSlug?: string;
+  environment?: string;
+  notes?: string;
+}
+
+/**
+ * Sentry non-secret config (`connection.config`). `host` is the Sentry instance
  * (self-hosted, e.g. `logs.canawan.com`, or SaaS `sentry.io`) without scheme;
- * the optional slugs scope which org/project the operator works against. The
- * `sntryu_` auth token is the secret. ISS-524.
+ * `targets` is the labelled list of org/project the operator works against
+ * (ISS-526). The legacy top-level `organizationSlug`/`projectSlug` (ISS-524) are
+ * kept optional for back-compat reads of pre-ISS-526 connections. The `sntryu_`
+ * auth token is the secret.
  */
 export interface SentryConfigInput {
   host: string;
+  targets?: SentryTargetInput[];
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   organizationSlug?: string;
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   projectSlug?: string;
 }
 export interface SentrySecretsInput {
