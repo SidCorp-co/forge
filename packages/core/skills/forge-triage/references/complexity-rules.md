@@ -1,39 +1,45 @@
 # Complexity Rules
 
-Complexity classification matters because `forge-plan` uses it to decide whether to auto-approve the implementation plan or require human review. Getting this wrong has real costs:
-- **Too complex** → unnecessary human gate, slows the pipeline
-- **Too simple** → under-planned, risks missing important cross-cutting concerns
+Complexity classification matters because `forge-plan` uses it to decide whether to auto-approve the implementation plan (`xs/s/m`) or hold it for human review (`l/xl`), and whether the issue is a decompose candidate. Getting this wrong has real costs:
+- **Too high (l/xl)** → unnecessary human gate, slows the pipeline
+- **Too low** → under-planned, risks missing important cross-cutting concerns
 
-Since triage runs without codebase access, classify based on the issue description, acceptance criteria, and your knowledge of typical software patterns.
+The `complexity` field is one of `xs / s / m / l / xl`. Since triage runs without codebase access, classify based on the issue description, acceptance criteria, and your knowledge of typical software patterns.
 
-## Simple
+## xs — trivial
+A copy/constant/config one-liner with no real logic.
 
-Single file or component change, isolated with no cross-file dependencies.
+**Signals:** typo fix, label/copy change, bumping a constant, a single config value.
+**Plan gate:** auto-approve.
 
-**Signals:** typo fix, style change, config update, null check, constant change, adding a field to a form when the schema already supports it.
+## s — simple
+Single file or component change, isolated, following an existing pattern.
 
-**Auto-approve:** Yes — forge-plan will auto-approve simple plans.
+**Signals:** style change, null check, adding a field to a form when the schema already supports it, a localized tweak.
+**Plan gate:** auto-approve.
 
-## Medium
+## m — medium
+2–5 files within a single package. May need a new utility, hook, or component, but follows existing patterns.
 
-2-5 files affected, within a single package. May need a new utility, hook, or component, but follows existing patterns.
+**Signals:** new filter/sort option, new UI component using the existing design system, new field in an API response (schema exists), component refactor, new validation rule, error-handling additions.
+**Plan gate:** auto-approve.
 
-**Signals:** new filter/sort option, new UI component using existing design system, new field in API response (schema exists), component refactor, new validation rule, error handling additions.
+## l — large
+Roughly 6+ files, a sizable single feature, or a cross-cutting change within a package (and possibly spilling into a second). Bigger than "follow an existing pattern" but still one coherent piece of work.
 
-**Auto-approve:** Yes — forge-plan will auto-approve medium plans.
+**Signals:** a feature touching a list screen + its API + a dialog; a non-trivial refactor across a module; several related endpoints.
+**Plan gate:** human review. May be a decompose candidate if it splits into independently-shippable tracks.
 
-## Complex
+## xl — epic
+Cross-package work combining schema + API + UI, a new subsystem, or a multi-track effort.
 
-Cross-package changes, new APIs, schema changes, or architectural decisions.
-
-**Signals:** mentions multiple packages (strapi + web), new content types, new endpoints, "migration", "real-time", "authentication flow", "integration", affects 6+ files, new third-party dependency.
-
-**Auto-approve:** No — complex plans require human review before implementation.
+**Signals:** mentions multiple packages, new content types / schema, new endpoints, "migration", "real-time", "authentication flow", "integration", a new third-party dependency, or several independently-reviewable workstreams.
+**Plan gate:** human review; usually a **decompose candidate** (forge-plan splits it into a parent + children).
 
 ## Assessment Heuristics (Without Codebase)
 
 1. **Description scope** — how many areas/features are mentioned?
-2. **Acceptance criteria count** — many criteria usually correlate with complexity
-3. **Keywords** — "schema", "migration", "new API", "cross-platform" signal complex
-4. **Package mentions** — multiple packages = almost certainly complex
-5. **When in doubt, classify as Medium** — forge-plan can upgrade to Complex after reading the actual codebase, but starting too high adds unnecessary friction
+2. **Acceptance criteria count** — many criteria usually correlate with higher complexity.
+3. **Keywords** — "schema", "migration", "new API", "cross-platform", "multi-tenant" push toward `l`/`xl`.
+4. **Package mentions** — multiple packages = almost certainly `xl`.
+5. **When in doubt, classify as `m`** — forge-plan can upgrade after reading the actual codebase, and starting too high adds unnecessary friction.

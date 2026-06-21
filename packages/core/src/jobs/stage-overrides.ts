@@ -31,6 +31,7 @@ export interface StageOverrides {
   systemPrompt: SystemPromptOverrideConfig | null;
   model: string | null;
   allowedTools: string[] | null;
+  disallowedTools: string[] | null;
   permissionMode: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions' | null;
   timeoutSeconds: number | null;
   mcpServers: Record<string, unknown> | null;
@@ -42,6 +43,7 @@ const EMPTY: StageOverrides = {
   systemPrompt: null,
   model: null,
   allowedTools: null,
+  disallowedTools: null,
   permissionMode: null,
   timeoutSeconds: null,
   mcpServers: null,
@@ -144,6 +146,7 @@ export async function resolveStageOverrides(
     systemPrompt: stage.systemPrompt ? { ...stage.systemPrompt } : null,
     model: stage.model ?? null,
     allowedTools: stage.allowedTools ? [...stage.allowedTools] : null,
+    disallowedTools: stage.disallowedTools ? [...stage.disallowedTools] : null,
     permissionMode: stage.permissionMode ?? null,
     timeoutSeconds: stage.timeoutSeconds ?? null,
     mcpServers: stage.mcpServers

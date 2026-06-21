@@ -19,7 +19,7 @@ import type { IntegrationProvider, schema } from '@forge/core/public';
 
 // === Enums — mirrored from the DB schema source of truth (no hand-copied unions) ===
 
-/** `'coolify' | 'postman' | 'epodsystem'`. */
+/** `'coolify' | 'postman' | 'epodsystem' | 'sentry'`. */
 export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
 
 /** `'user' | 'org'` — the connection owner namespace. */
@@ -173,11 +173,22 @@ export interface ConfirmProdDeployResult {
 
 // === Provider config / secret inputs ===
 
-/** Coolify non-secret config (`connection.config`). */
+/** One Coolify deploy target (a single application UUID). `id` is server-assigned
+ *  when omitted; a write replaces the whole `targets` array. */
+export interface CoolifyTargetInput {
+  id?: string;
+  label: string;
+  resourceUuid: string;
+}
+
+/**
+ * Coolify config. `baseUrl` is connection-tier (shared credential); `targets`
+ * is binding-tier (per project+environment) and may list several applications
+ * (e.g. a split backend + frontend) that deploy together.
+ */
 export interface CoolifyConfigInput {
   baseUrl: string;
-  resourceUuid: string;
-  branch: string;
+  targets: CoolifyTargetInput[];
 }
 export interface CoolifySecretsInput {
   apiToken: string;
@@ -214,6 +225,42 @@ export interface EpodsystemSecretsInput {
   apiKey: string;
 }
 
+/**
+ * One labelled Sentry target under a connection (ISS-526). A Forge project that
+ * spans several Sentry projects (backend / frontend / mobile) records one target
+ * per stack; `label` is the human name the agent disambiguates on, the optional
+ * slugs scope which org/project a Sentry MCP call hits, `environment` is a free
+ * display label, and `notes` is free-text guidance for the agent. All targets
+ * share ONE host + auth token (the token already reads every project it can see).
+ */
+export interface SentryTargetInput {
+  label: string;
+  organizationSlug?: string;
+  projectSlug?: string;
+  environment?: string;
+  notes?: string;
+}
+
+/**
+ * Sentry non-secret config (`connection.config`). `host` is the Sentry instance
+ * (self-hosted, e.g. `logs.canawan.com`, or SaaS `sentry.io`) without scheme;
+ * `targets` is the labelled list of org/project the operator works against
+ * (ISS-526). The legacy top-level `organizationSlug`/`projectSlug` (ISS-524) are
+ * kept optional for back-compat reads of pre-ISS-526 connections. The `sntryu_`
+ * auth token is the secret.
+ */
+export interface SentryConfigInput {
+  host: string;
+  targets?: SentryTargetInput[];
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
+  organizationSlug?: string;
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
+  projectSlug?: string;
+}
+export interface SentrySecretsInput {
+  authToken: string;
+}
+
 // === Request bodies ===
 
 /**
@@ -240,6 +287,12 @@ export type IntegrationBindingCreateInput =
       environment?: IntegrationEnvironment;
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+    }
+  | {
+      provider: 'sentry';
+      environment?: IntegrationEnvironment;
+      config: SentryConfigInput;
+      secrets: SentrySecretsInput;
     };
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
@@ -270,6 +323,13 @@ export type ConnectionCreateInput =
       orgId?: string;
     }
   | {
+      provider: 'sentry';
+      displayName?: string;
+      config: SentryConfigInput;
+      secrets: SentrySecretsInput;
+      orgId?: string;
+    }
+  | {
       provider: 'epodsystem';
       displayName?: string;
       config: EpodsystemConfigInput;
@@ -294,9 +354,9 @@ export interface ConnectionUpdateInput {
 export interface BindExistingConnectionRequest {
   projectId: string;
   environment: IntegrationEnvironment;
-  /** Optional binding-tier overrides (coolify resourceUuid/branch) so the
-   *  shared connection targets a different deploy resource in this project.
-   *  Connection-tier keys (baseUrl) are dropped server-side. */
+  /** Optional binding-tier overrides (coolify `targets[]`) so the shared
+   *  connection deploys different apps in this project. Connection-tier keys
+   *  (baseUrl) are dropped server-side. */
   config?: Record<string, unknown>;
 }
 

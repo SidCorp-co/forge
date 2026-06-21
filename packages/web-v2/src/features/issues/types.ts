@@ -21,11 +21,8 @@ export type IssueStatus =
   | "approved"
   | "in_progress"
   | "developed"
-  | "deploying"
   | "testing"
   | "tested"
-  | "pass"
-  | "staging"
   | "released"
   | "closed"
   | "reopen"
@@ -40,7 +37,7 @@ export type IssueComplexity = "xs" | "s" | "m" | "l" | "xl";
  *  unions above (the source of truth is `db/schema.ts`). */
 export const ISSUE_STATUSES: IssueStatus[] = [
   "open", "confirmed", "clarified", "waiting", "approved", "in_progress", "developed",
-  "deploying", "testing", "tested", "pass", "staging", "released", "closed",
+  "testing", "tested", "released", "closed",
   "reopen", "on_hold", "needs_info", "draft",
 ];
 export const ISSUE_PRIORITIES: IssuePriority[] = ["critical", "high", "medium", "low", "none"];
@@ -266,17 +263,36 @@ export interface CommentAttachment {
   createdAt: string;
 }
 
+/**
+ * Resolved actor identity (ISS-519) — server-resolved `(type,id)` → display
+ * identity. `user` → a human member (email); `device` → an agent (device name,
+ * `isAgent: true`, optionally the owning member's email). An unresolvable actor
+ * degrades to `displayName: "Unknown"`. Mirrors core `actor-resolution.ts`.
+ */
+export interface ResolvedActor {
+  type: "user" | "device";
+  id: string;
+  displayName: string;
+  isAgent: boolean;
+  deviceId?: string;
+  ownerEmail?: string;
+}
+
 /** Comment node (tree) from `GET /api/issues/:id/comments`. */
 export interface CommentNode {
   id: string;
   issueId: string;
   authorId: string;
+  /** Non-null when posted by an agent/device (ISS-519). */
+  authorDeviceId?: string | null;
   body: string;
   parentId: string | null;
   createdAt: string;
   updatedAt: string;
   replies: CommentNode[];
   attachments: CommentAttachment[];
+  /** Server-resolved author identity (ISS-519). */
+  author?: ResolvedActor | null;
 }
 
 /** Activity log entry from `GET /api/issues/:id/activity`. */
@@ -286,6 +302,8 @@ export interface ActivityItem {
   action: string;
   actorType: string;
   actorId: string | null;
+  /** Server-resolved actor identity (ISS-519). */
+  actor?: ResolvedActor | null;
   payload: Record<string, unknown> | null;
   createdAt: string;
 }

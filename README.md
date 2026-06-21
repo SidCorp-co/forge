@@ -33,6 +33,8 @@ credentials.
   bring your own runner.
 - **Multi-project, multi-device.** One Forge instance coordinates many
   projects. Each project binds to devices from a pool; one active at a time.
+- **Organizations.** Two-tier org+project roles (owner/admin/member plus
+  project viewer), org-shared integration connections, and email invitations.
 
 Think **GitHub Actions self-hosted runners, for Claude Code.** Devices yours.
 Compute yours. Orchestration open-source.
@@ -42,7 +44,7 @@ Compute yours. Orchestration open-source.
 - Not a Claude Code replacement — we orchestrate the CLI, we don't reimplement.
 - Not a chat UI — the primary surface is a pipeline dashboard.
 - Not a tool that uses the Anthropic API — we never hold Claude credentials.
-- Not enterprise PM — no complex RBAC in `v0.x`.
+- Not heavyweight enterprise PM — Forge now ships a two-tier org+project role model, but it isn't aimed at full enterprise PM/governance suites.
 
 ## Quickstart
 
@@ -143,8 +145,10 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 See [docs/VISION.md §8](docs/VISION.md#8-roadmap-horizons).
 
 Device-runner pairing, the job pipeline, session replay, and webhook ingestion
-shipped across `v0.1.x`. Current focus (`v0.2.x`): the multi-device runner
-framework, custom skill authoring, and the web dashboard. See
+shipped across `v0.1.x`. `v0.3.0` added Organizations and the multi-runner
+framework, alongside custom skill authoring and the web dashboard. Current
+focus: hardening these — org/RBAC polish, runner reliability (the Rust runner is
+at `0.4.2`), and pipeline observability. See
 [CHANGELOG.md](CHANGELOG.md) for what's shipped.
 
 ## Documentation

@@ -86,6 +86,21 @@ describe('GET /api/skills', () => {
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body[0]?.id).toBe(SKILL_ID);
   });
+
+  it('tags managed-meta skills (forge-skills) so the UI can render them as MCP-served', async () => {
+    authVerified();
+    selectOrderBy.mockResolvedValueOnce([
+      { id: SKILL_ID, name: 'forge-skills', scope: 'global', skillMd: '...' },
+      { id: 'other-skill', name: 'forge-code', scope: 'global', skillMd: '...' },
+    ]);
+    const res = await buildApp().request('/api/skills?scope=global', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ name: string; managedMeta: boolean }>;
+    expect(body.find((s) => s.name === 'forge-skills')?.managedMeta).toBe(true);
+    expect(body.find((s) => s.name === 'forge-code')?.managedMeta).toBe(false);
+  });
 });
 
 describe('POST /api/skills', () => {

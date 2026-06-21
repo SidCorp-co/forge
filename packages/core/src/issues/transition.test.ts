@@ -257,7 +257,7 @@ describe('POST /api/issues/:id/transition', () => {
 
   it('terminal transition with outgoing blocks edges publishes issue.unblockCascade', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'staging', issSeq: 7 });
+    queueAuthAndIssue({ status: 'tested', issSeq: 7 });
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, status: 'released', reopenCount: 0, updatedAt: new Date() },
     ]);
@@ -290,7 +290,7 @@ describe('POST /api/issues/:id/transition', () => {
 
   it('terminal transition with NO outgoing blocks edges does not publish cascade', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'staging' });
+    queueAuthAndIssue({ status: 'tested' });
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, status: 'released', reopenCount: 0, updatedAt: new Date() },
     ]);

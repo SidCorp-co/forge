@@ -11,11 +11,13 @@ import {
   NotificationsMenu,
   PinnedTabBar,
   ProjectMark,
+  SlideOver,
   Icon,
   type NavItem,
   type Command,
   type Crumb,
 } from "@/design";
+import { ChatScreen } from "@/features/session/components/chat-screen";
 import { cn } from "@/lib/utils/cn";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -29,6 +31,18 @@ import { ActiveOrgProvider, useActiveOrg } from "@/features/orgs/active-org";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
+import {
+  useNotifications,
+  useUnreadCount,
+  useMarkRead,
+  useMarkAllRead,
+} from "@/features/notifications/hooks";
+import { toNotificationItem } from "@/features/notifications/map";
+import {
+  type DeliveryNotification,
+  useNotificationDelivery,
+} from "@/features/notifications/use-notification-delivery";
+import { useUnreadIndicator } from "@/features/notifications/use-unread-indicator";
 import {
   useSidebar,
   useRecents,
@@ -127,6 +141,54 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // What's New nav badge — shown when the newest changelog entry is unseen.
   const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
 
+  // Header notification bell (ISS-504). Workspace-global: list + unread count
+  // are scoped to the current user server-side. Realtime is free — the WS
+  // event-router invalidates these exact query keys on notification.created.
+  const notificationsQuery = useNotifications();
+  const { data: unread } = useUnreadCount();
+  const markRead = useMarkRead();
+  const markAllRead = useMarkAllRead();
+  const notificationRows = useMemo(
+    () => notificationsQuery.data?.items ?? [],
+    [notificationsQuery.data],
+  );
+  const notificationItems = useMemo(
+    () => notificationRows.map(toNotificationItem),
+    [notificationRows],
+  );
+  const onSelectNotification = useCallback(
+    (id: string) => {
+      const row = notificationRows.find((n) => n.id === id);
+      if (row && !row.read) markRead.mutate(id);
+      setNotificationsOpen(false);
+      if (!row?.issueId || !row.projectId) return; // mark-read only, no dead-end
+      const target = projects?.find((p) => p.id === row.projectId);
+      if (target) router.push(`/projects/${target.slug}/issues/${row.issueId}`);
+    },
+    [notificationRows, markRead, projects, router],
+  );
+
+  // Realtime delivery bridge (ISS-510): toast + browser channels for incoming
+  // `notification.created` events. Mounted here so a click reuses the same
+  // mark-read + deep-link path as the bell. The persistent bell itself updates
+  // via the event-router's query invalidation — independent of this hook.
+  const onDeliveryNavigate = useCallback(
+    (n: DeliveryNotification) => {
+      markRead.mutate(n.notificationId);
+      if (!n.issueId || !n.projectId) return;
+      const target = projects?.find((p) => p.id === n.projectId);
+      if (target) router.push(`/projects/${target.slug}/issues/${n.issueId}`);
+    },
+    [markRead, projects, router],
+  );
+  useNotificationDelivery(onDeliveryNavigate);
+
+  // Always-visible unread indicator (ISS-523): mirror the unread count onto the
+  // favicon (a dot) + document title (`(N) Forge`). Same source as the bell, so
+  // they never disagree — and it covers the focused-tab case the background-only
+  // native notification channel intentionally skips.
+  useUnreadIndicator(unread?.count ?? 0);
+
   // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
   // to /login (which also makes logout() "return here" effective). While the
   // session is still hydrating we render the shell rather than flash a redirect.
@@ -139,6 +201,15 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  // Global Agent Chat dock (ISS-500): the "Ask agent" affordance lives in the
+  // header so a conversation can be opened from any screen. The open/closed
+  // state is owned here (single source) and persisted per tab — reusing the key
+  // + `syncTabs: false` that the in-Agents-screen dock used (ISS-378 AC#7), so a
+  // tab that had it open keeps it; opening it in one tab must not pop it open in
+  // every other tab.
+  const [chatOpen, setChatOpen] = usePersistedState("web-v2:agents-chat-open", false, {
+    syncTabs: false,
+  });
   const mainRef = useRef<HTMLElement>(null);
   // Hover-open coordination for the expanded-rail project switcher: the trigger
   // (NavRail) and the panel (ProjectFlyout) are siblings, so the open + close
@@ -169,6 +240,16 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileNavOpen]);
+
+  // Esc closes the notifications dropdown (AC11 — always dismissable).
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setNotificationsOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [notificationsOpen]);
 
   const slug = activeSlug(pathname);
   const activeProject = useMemo(
@@ -219,15 +300,51 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     if (slug && slug !== lastSlug) setLastSlug(slug);
   }, [slug, lastSlug, setLastSlug]);
 
+  // Leave project context on a MANUAL cross-org switch (ISS-480). When the rail
+  // switcher flips the active org to one that does NOT own the open project, the
+  // workspace must stop showing the old org's project — otherwise the rail lies
+  // (ORGANIZATION = new org, PROJECT = old org's project). We gate on the
+  // PREVIOUS org so this never collides with the ISS-470 AC6 follow-on-open flow,
+  // which ends with activeOrgId === the just-opened project's org:
+  //   • Open cross-org project: slug changes first with org unchanged → the
+  //     `prevOrg === activeOrgId` guard early-returns; the follow-effect then
+  //     sets org = project.orgId → this re-runs but now project.orgId ===
+  //     activeOrgId → early-returns. Never leaves.
+  //   • Manual switch away: org transitions while slug is stable and the project
+  //     is foreign → leave once.
+  // No setActiveOrg here, so ISS-476 stays intact (no extra PATCH, no revert,
+  // no React #185).
+  const prevOrgRef = useRef(activeOrgId);
+  useEffect(() => {
+    const prevOrg = prevOrgRef.current;
+    prevOrgRef.current = activeOrgId;
+    if (prevOrg === activeOrgId) return; // org unchanged (incl. AC6 set-to-match)
+    if (prevOrg == null) return; // initial null→org resolution is not a user switch — AC6 re-scope owns it (ISS-480 review)
+    if (!slug || !activeProject) return; // not in a resolved project — fallback handles the rail
+    if (activeProject.orgId === activeOrgId) return; // switched INTO the project's org → stay (AC2)
+    // Switched to an org that does not own the open project → exit project context.
+    setLastSlug(null); // drop the org-agnostic persisted slug so it can't resurrect
+    router.push("/projects"); // org-scoped console; shows the empty state for 0-project orgs
+  }, [activeOrgId, slug, activeProject, router, setLastSlug]);
+
+  // Rail/switcher project lists are scoped to the active org (ISS-480) so the
+  // rail never surfaces a project from a non-active org. The `!activeOrgId ||`
+  // guard keeps the pre-resolve / single-org render coherent (mirrors the ⌘K
+  // filter below).
+  const scopedProjects = useMemo(
+    () => (projects ?? []).filter((p) => !activeOrgId || p.orgId === activeOrgId),
+    [projects, activeOrgId],
+  );
+
   // The project the rail renders: the one you're in, else the last visited, else
   // your first (pinned-first) project. Lets you re-enter a project from anywhere.
   const railSlug = useMemo(() => {
     if (slug) return slug;
-    const list = projects ?? [];
+    const list = scopedProjects;
     if (lastSlug && list.some((p) => p.slug === lastSlug)) return lastSlug;
     const pinnedFirst = list.find((p) => pinnedIds.has(p.id));
     return pinnedFirst?.slug ?? list[0]?.slug ?? null;
-  }, [slug, lastSlug, projects, pinnedIds]);
+  }, [slug, lastSlug, scopedProjects, pinnedIds]);
   const railProject = useMemo(
     () => (railSlug ? projects?.find((p) => p.slug === railSlug) ?? null : null),
     [projects, railSlug],
@@ -317,20 +434,23 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const projectsConsole = useProjectsConsole();
   const switcherProjects = useMemo<SwitcherProject[]>(
     () =>
-      projectsConsole.items.map((p) => {
-        const g = projectGlyph(p.id);
-        return {
-          id: p.id,
-          slug: p.slug,
-          name: p.name,
-          initials: projectInitials(p.name),
-          tint: g.tint,
-          ink: g.ink,
-          liveRuns: p.liveRuns,
-          pinned: p.pinned,
-        };
-      }),
-    [projectsConsole.items],
+      projectsConsole.items
+        // Scope the rail switcher to the active org (ISS-480).
+        .filter((p) => !activeOrgId || p.orgId === activeOrgId)
+        .map((p) => {
+          const g = projectGlyph(p.id);
+          return {
+            id: p.id,
+            slug: p.slug,
+            name: p.name,
+            initials: projectInitials(p.name),
+            tint: g.tint,
+            ink: g.ink,
+            liveRuns: p.liveRuns,
+            pinned: p.pinned,
+          };
+        }),
+    [projectsConsole.items, activeOrgId],
   );
   const railConsole = useMemo(
     () => (railSlug ? projectsConsole.items.find((p) => p.slug === railSlug) ?? null : null),
@@ -400,29 +520,54 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
-  // Bottom tab bar (<md): ≤5 destinations. Search opens ⌘K; You → account.
-  const bottomItems: BottomTabItem[] = useMemo(
-    () => [
+  // Bottom tab bar (<md): ≤5 destinations. Inside a project it swaps to the
+  // project tier (PROJECT_ITEMS, incl. Issues) so the desktop rail's project
+  // nav has a mobile surface (ISS-514); otherwise it shows the workspace tabs
+  // (Search opens ⌘K; You → account). Derived from PROJECT_ITEMS so it can
+  // never drift from the rail (ISS-433 gotcha).
+  const bottomItems: BottomTabItem[] = useMemo(() => {
+    if (slug) {
+      return PROJECT_ITEMS.map((it) => ({
+        key: it.key,
+        label: it.label,
+        icon: it.icon,
+        badge: it.key === "proj-issues" ? railConsole?.openIssues : undefined,
+      }));
+    }
+    return [
       { key: "projects", label: "Projects", icon: "folder" },
       { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
       { key: "usage", label: "Usage", icon: "dollar" },
       { key: "search", label: "Search", icon: "search" },
       { key: "you", label: "You", icon: "settings" },
-    ],
-    [attentionCount],
-  );
+    ];
+  }, [slug, attentionCount, railConsole]);
 
   const bottomActiveKey = useMemo(() => {
-    // "Projects" tab → the list at /projects (incl. project detail). The
-    // Overview dashboard at `/` is reachable via the rail/⌘K, not a bottom tab.
+    // Inside a project the bar carries the project tier — light the matching
+    // `proj-*` key the same way the rail does (longest `sub` wins).
+    if (slug) {
+      const base = `/projects/${slug}`;
+      const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
+      const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
+      return hit?.key ?? "proj-overview";
+    }
+    // "Projects" tab → the list at /projects. The Overview dashboard at `/` is
+    // reachable via the drawer/⌘K, not a bottom tab.
     if (pathname.startsWith("/projects")) return "projects";
     if (pathname.startsWith("/attention")) return "attention";
     if (pathname.startsWith("/usage")) return "usage";
     if (pathname.startsWith("/settings")) return "you";
     return "";
-  }, [pathname]);
+  }, [pathname, slug]);
 
   function onBottomSelect(key: string) {
+    // Project-tier keys route through the shared navigate() (it already pushes
+    // /projects/<railSlug><sub>); workspace keys keep their dedicated handlers.
+    if (key.startsWith("proj-")) {
+      navigate(key);
+      return;
+    }
     switch (key) {
       case "projects":
         router.push("/projects");
@@ -442,16 +587,25 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Workspace destinations for the mobile drawer: the rail rows plus the two
+  // most-wanted secondary destinations (Attention, Settings), so the workspace
+  // tier stays reachable from inside a project once the bottom bar shows the
+  // project tier (ISS-514). Routed via their key through navigate().
+  const drawerWorkspaceItems = useMemo<Array<NavItem & { href: string }>>(
+    () => [
+      ...WORKSPACE_ITEMS,
+      SECONDARY_DESTINATIONS.find((it) => it.key === "attention")!,
+      SECONDARY_DESTINATIONS.find((it) => it.key === "settings")!,
+    ],
+    [],
+  );
+
   const commands: Command[] = useMemo(() => {
     const out: Command[] = [];
 
-    // ISS-477 — scope project results to the active org so ⌘K never surfaces
-    // projects from another org while one is selected (matches every other
-    // SPACE-tier surface). The `!activeOrgId ||` guard keeps the pre-resolve and
-    // single-org cases coherent.
-    const scopedProjects = (projects ?? []).filter(
-      (p) => !activeOrgId || p.orgId === activeOrgId,
-    );
+    // ISS-477 — ⌘K project results are scoped to the active org (reuses the
+    // component-level `scopedProjects`) so the palette never surfaces projects
+    // from another org while one is selected (matches every other SPACE surface).
 
     // Recent — recently-viewed entities.
     for (const r of recents) {
@@ -579,7 +733,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     });
 
     return out;
-  }, [router, slug, activeProject, projects, activeOrgId, recents, pinnedViews.views, pinnedIds, toast]);
+  }, [router, slug, activeProject, scopedProjects, activeOrgId, recents, pinnedViews.views, pinnedIds, toast]);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">
@@ -643,8 +797,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      {/* Mobile drawer — a project switcher (the workspace destinations live in
-          the bottom tab bar). Opened from the TopBar menu button, below md. */}
+      {/* Mobile drawer — the consolidated navigation menu (ISS-514): the active
+          project's tier (PROJECT_ITEMS), the workspace destinations, and the
+          project switcher. Opened from the TopBar menu button, below md. */}
       {mobileNavOpen && (
         <div className="md:hidden">
           <button
@@ -658,35 +813,102 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             className="forge-slide fixed inset-y-0 left-0 z-50 flex w-[272px] max-w-[82vw] flex-col gap-1 border-r border-line bg-surface p-3 pb-[env(safe-area-inset-bottom)] pt-[max(env(safe-area-inset-top),0.75rem)]"
             role="dialog"
             aria-modal="true"
-            aria-label="Switch project"
+            aria-label="Navigation"
           >
             {/* Org context + switcher (ISS-469) — the rail is hidden below md,
                 so the drawer carries the current-org control on mobile. */}
             <div className="px-1.5 pb-3">
               <OrgSwitcher variant="expanded" />
             </div>
-            <div className="flex items-center justify-between px-1.5 pb-2">
-              <span className="fg-label text-fg">Projects</span>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => router.push("/projects?new=1")}
-                  className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                >
-                  <Icon name="plus" size={13} />
-                  Create
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/projects")}
-                  className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                >
-                  View all
-                </button>
-              </div>
-            </div>
+
             <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-              {(projects ?? []).map((p) => {
+              {/* This project — the project tier from the desktop rail. Shown
+                  for the rail project (the one you're in, else last-visited) so
+                  Issues & co. are always reachable on mobile. */}
+              {railSlug && (
+                <>
+                  <span className="fg-label px-1.5 pb-1 pt-0.5 text-fg">
+                    {railProject?.name ?? "This project"}
+                  </span>
+                  {PROJECT_ITEMS.map((it) => {
+                    const active = it.key === activeKey;
+                    const badge = it.key === "proj-issues" ? railConsole?.openIssues : undefined;
+                    return (
+                      <button
+                        key={it.key}
+                        type="button"
+                        onClick={() => {
+                          navigate(it.key);
+                          setMobileNavOpen(false);
+                        }}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+                          active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
+                        )}
+                      >
+                        <Icon name={it.icon} size={18} />
+                        <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                        {badge != null && badge > 0 && (
+                          <span className="fg-caption rounded-pill bg-app px-1.5 text-muted">{badge}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Workspace — destinations consolidated into the menu so the tier
+                  stays reachable once the bottom bar shows the project tier. */}
+              <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Workspace</span>
+              {drawerWorkspaceItems.map((it) => {
+                const active = !slug && it.key === activeKey;
+                const badge = it.key === "attention" ? attentionCount : undefined;
+                return (
+                  <button
+                    key={it.key}
+                    type="button"
+                    onClick={() => {
+                      navigate(it.key);
+                      setMobileNavOpen(false);
+                    }}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+                      active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
+                    )}
+                  >
+                    <Icon name={it.icon} size={18} />
+                    <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                    {badge != null && badge > 0 && (
+                      <span className="fg-caption rounded-pill bg-app px-1.5 text-muted">{badge}</span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Projects switcher (unchanged behaviour — do not regress). */}
+              <div className="flex items-center justify-between px-1.5 pb-1 pt-2">
+                <span className="fg-label text-fg">Projects</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/projects?new=1")}
+                    className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  >
+                    <Icon name="plus" size={13} />
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/projects")}
+                    className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  >
+                    View all
+                  </button>
+                </div>
+              </div>
+              {scopedProjects.map((p) => {
                 const g = projectGlyph(p.id);
                 const active = p.slug === slug;
                 return (
@@ -705,7 +927,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   </button>
                 );
               })}
-              {(projects ?? []).length === 0 && (
+              {scopedProjects.length === 0 && (
                 <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
               )}
             </div>
@@ -721,10 +943,17 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onMenu={() => setMobileNavOpen(true)}
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
+            notificationCount={unread?.count ?? 0}
             onNewIssue={() =>
               slug
                 ? router.push(`/projects/${slug}/issues?new=1`)
                 : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" })
+            }
+            askAgentActive={chatOpen}
+            onAskAgent={() =>
+              railProject
+                ? setChatOpen((v) => !v)
+                : toast({ title: "Ask agent", description: "Open a project to ask the agent.", tone: "info" })
             }
             scrolled={scrolled}
           />
@@ -738,11 +967,34 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
                 onClick={() => setNotificationsOpen(false)}
               />
               <div className="absolute right-4 top-[52px] z-50">
-                <NotificationsMenu items={[]} />
+                <NotificationsMenu
+                  items={notificationItems}
+                  loading={notificationsQuery.isLoading}
+                  error={notificationsQuery.isError}
+                  onRetry={() => notificationsQuery.refetch()}
+                  onSelect={onSelectNotification}
+                  onMarkAllRead={() => markAllRead.mutate()}
+                />
               </div>
             </>
           )}
         </div>
+
+        {/* Global Agent Chat dock (ISS-500) — opened from the header "Ask agent"
+            action, scoped to the active (or last-visited) project so it works
+            from any screen. Mounted once here; the Agents screen no longer hosts
+            its own desktop dock. */}
+        {railProject && (
+          <SlideOver
+            open={chatOpen}
+            onClose={() => setChatOpen(false)}
+            title="My conversations"
+            width="clamp(560px, 60vw, 1024px)"
+            fitBody
+          >
+            <ChatScreen projectId={railProject.id} />
+          </SlideOver>
+        )}
 
         <PinnedTabBar
           tabs={pinnedViews.views}

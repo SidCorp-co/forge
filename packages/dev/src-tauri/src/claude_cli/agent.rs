@@ -36,6 +36,7 @@ fn build_base_args(
     permission_mode: Option<&str>,
     system_prompt: Option<&str>,
     allowed_tools_override: Option<&str>,
+    disallowed_tools_override: Option<&str>,
     skill: Option<&str>,
     model: Option<&str>,
 ) -> Vec<String> {
@@ -68,6 +69,14 @@ fn build_base_args(
     if let Some(tools) = allowed {
         args.push("--allowed-tools".into());
         args.push(tools);
+    }
+
+    // Capability denylist (ISS-531). `--disallowed-tools` removes a tool from
+    // the available SET even under bypassPermissions — a real least-agency
+    // hard-deny, not just an auto-approval gate. No per-skill default.
+    if let Some(disallowed) = disallowed_tools_override.filter(|s| !s.is_empty()) {
+        args.push("--disallowed-tools".into());
+        args.push(disallowed.to_string());
     }
 
     // Model override (e.g. sonnet for forge-code).
@@ -137,6 +146,7 @@ pub async fn run_agent(
     skill: Option<String>,
     model: Option<String>,
     allowed_tools: Option<String>,
+    disallowed_tools: Option<String>,
     timeout_seconds: Option<u64>,
 ) -> Result<String, String> {
     let session_id = Uuid::new_v4().to_string();
@@ -148,6 +158,7 @@ pub async fn run_agent(
         permission_mode.as_deref(),
         system_prompt.as_deref(),
         allowed_tools.as_deref(),
+        disallowed_tools.as_deref(),
         skill.as_deref(),
         model.as_deref(),
     );
@@ -180,6 +191,7 @@ pub async fn send_chat(
     skill: Option<String>,
     model: Option<String>,
     allowed_tools: Option<String>,
+    disallowed_tools: Option<String>,
     timeout_seconds: Option<u64>,
 ) -> Result<(), String> {
     log(&format!("[send_chat] session={session_id}, slug={project_slug:?} worktree_branch={worktree_branch:?} skill={skill:?} model={model:?} timeout_seconds={timeout_seconds:?} resuming={}", claude_session_id.is_some()));
@@ -211,6 +223,7 @@ pub async fn send_chat(
         permission_mode.as_deref(),
         system_prompt.as_deref(),
         allowed_tools.as_deref(),
+        disallowed_tools.as_deref(),
         skill.as_deref(),
         model.as_deref(),
     );

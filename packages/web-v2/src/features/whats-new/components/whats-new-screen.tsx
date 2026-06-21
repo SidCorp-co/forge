@@ -52,7 +52,6 @@ export function WhatsNewScreen() {
         </div>
         <HelpButton
           summary="The Forge product changelog, pulled live from GitHub. Each release lists what changed, grouped by Added / Changed / Fixed. The newest entry (including the upcoming [Unreleased] section) is at the top; opening this page clears the 'new' badge in the sidebar."
-          docPath="CHANGELOG.md"
         />
       </div>
 

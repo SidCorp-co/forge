@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Stub eager env validation (config/env.js throws at import when DATABASE_URL /
+// JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) so this unit suite stays hermetic
+// and never depends on the operator's shell — same pattern as schedules/routes.test.ts.
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
+}));
+
 // Shared per-call queues so each test seeds the order it expects.
 // Explicit `(_payload: unknown)` keeps `mock.calls[i]` typed as `[unknown]`
 // instead of `[]` so element access type-checks under strict tsconfig.
@@ -30,9 +37,7 @@ vi.mock('../db/client.js', () => ({
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
-    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb({ update: txUpdate }),
-    ),
+    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({ update: txUpdate })),
   },
 }));
 
@@ -42,9 +47,9 @@ const findDeviceMock = vi.fn<(projectId: string) => Promise<string | null>>(asyn
 const resolveRepoPathMock = vi.fn(
   (_o: string | null | undefined, p: string | null): string | null => p ?? null,
 );
-const resolveRunnerRepoMock = vi.fn<(projectId: string, deviceId: string) => Promise<string | null>>(
-  async () => null,
-);
+const resolveRunnerRepoMock = vi.fn<
+  (projectId: string, deviceId: string) => Promise<string | null>
+>(async () => null);
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: findDeviceMock,
   resolveRepoPath: resolveRepoPathMock,
@@ -52,12 +57,10 @@ vi.mock('../lib/device-pool.js', () => ({
 }));
 
 const syncTurnsMock = vi.fn(
-  async (
-    _sessionId: string,
-    _prev: unknown[],
-    _next: unknown[],
-    _tx?: unknown,
-  ) => ({ appended: [], truncatedFromTurnIndex: null }),
+  async (_sessionId: string, _prev: unknown[], _next: unknown[], _tx?: unknown) => ({
+    appended: [],
+    truncatedFromTurnIndex: null,
+  }),
 );
 vi.mock('../agent-sessions/turns-helpers.js', () => ({
   syncTurnsWithMessages: syncTurnsMock,
@@ -70,7 +73,9 @@ vi.mock('../agent-sessions/broadcast.js', () => ({
   broadcastTurnAppended: broadcastTurnAppendedMock,
 }));
 
-const publishMock = vi.fn((_room: string, _msg: { event: string; data: Record<string, unknown> }) => undefined);
+const publishMock = vi.fn(
+  (_room: string, _msg: { event: string; data: Record<string, unknown> }) => undefined,
+);
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },
 }));
@@ -172,9 +177,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
 
   it('desktop + actorUserId + device online → inserts agent_session, WS publishes, hook emits sessionId', async () => {
     // .limit calls: project slug+repoPath lookup
-    selectLimit.mockResolvedValueOnce([
-      { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
     seedDesktopHappy();
 
     let emitted: unknown = null;
@@ -227,7 +230,10 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     expect(turnUpdate?.metadata).toMatchObject({ deviceId: DEVICE_ID });
 
     expect(publishMock).toHaveBeenCalledTimes(1);
-    const [room, msg] = publishMock.mock.calls[0] as [string, { event: string; data: Record<string, unknown> }];
+    const [room, msg] = publishMock.mock.calls[0] as [
+      string,
+      { event: string; data: Record<string, unknown> },
+    ];
     expect(room).toBe(`device:${DEVICE_ID}`);
     expect(msg.event).toBe('agent:start');
     expect(msg.data.sessionId).toBe(SESSION_ID);
@@ -276,9 +282,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     findDeviceMock.mockResolvedValueOnce(null);
     // owner lookup happens before findDevice in current code path
     selectLimit.mockResolvedValueOnce([{ createdBy: 'owner-1' }]); // createdBy
-    selectLimit.mockResolvedValueOnce([
-      { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
 
     const result = await dispatchScheduleRun({
       schedule: {
@@ -298,9 +302,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
 
   it('manual /run + no device online → no-device / skipped (caller turns into 409)', async () => {
     findDeviceMock.mockResolvedValueOnce(null);
-    selectLimit.mockResolvedValueOnce([
-      { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
 
     const result = await dispatchScheduleRun({
       schedule: {
@@ -322,9 +324,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     // 1st limit: project slug → target lookup
     selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID, createdBy: 'target-owner' }]);
     // 2nd limit: target project slug+repoPath
-    selectLimit.mockResolvedValueOnce([
-      { id: TARGET_PROJECT_ID, slug: 'tgt', repoPath: '/tgt' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID, slug: 'tgt', repoPath: '/tgt' }]);
     seedDesktopHappy();
 
     // Object wrapper so the callback's reassignment isn't lost to TS's
@@ -378,9 +378,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
   });
 
   it('WS publish throws → session marked failed, returns session-failed', async () => {
-    selectLimit.mockResolvedValueOnce([
-      { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
     seedDesktopHappy();
     publishMock.mockImplementationOnce(() => {
       throw new Error('ws-bus-down');
@@ -410,9 +408,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
   });
 
   it('hook subscriber throws → dispatch still returns success (best-effort emit)', async () => {
-    selectLimit.mockResolvedValueOnce([
-      { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
     seedDesktopHappy();
     hooksModule.hooks.on('scheduleRun', () => {
       throw new Error('subscriber blew up');
@@ -437,9 +433,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     // First .limit: project createdBy lookup.
     // Second .limit: project slug+repoPath.
     selectLimit.mockResolvedValueOnce([{ createdBy: 'owner-1' }]);
-    selectLimit.mockResolvedValueOnce([
-      { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
     seedDesktopHappy();
 
     const result = await dispatchScheduleRun({

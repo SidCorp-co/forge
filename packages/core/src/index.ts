@@ -10,6 +10,7 @@ import { initSentry } from './observability/sentry.js';
 initSentry();
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
+import { agentSessionAttachmentRoutes } from './agent-sessions/attachment-routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
@@ -44,7 +45,6 @@ import {
 } from './devices/routes.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
-import { docsRoutes } from './docs/routes.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
@@ -54,6 +54,7 @@ import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js'
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
+import { registerSentryAdapter } from './integrations/sentry/adapter.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
@@ -98,6 +99,7 @@ import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
+import { registerTransitionNotifications } from './notifications/notify-transitions.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -266,6 +268,7 @@ registerMemoryIndexer(hooks);
 registerCiFixPatternLearner(hooks);
 registerMemoryExtraction(hooks);
 registerNotifyMentionsSubscriber(hooks);
+registerTransitionNotifications(hooks);
 registerPmSubscribers(hooks);
 
 // MCP endpoint authentication (ISS-202 + ISS-150).
@@ -287,6 +290,17 @@ app.delete('/mcp', mcpHandler);
 // route handlers echo the arriving prefix into the download URLs they emit.
 app.route('/', installRoutes);
 app.route('/api', installRoutes);
+
+// The CLI runner's browser-approve login prints `{core_url}/pair?code=…`, but
+// `core_url` is the API host (e.g. forge-beta-api.…) while the /pair page lives
+// on the WEB origin (APP_BASE_URL). Existing runners build that URL from
+// core_url and can't know the web host, so bounce them here — fixes every
+// already-installed runner without cutting a runner release.
+app.get('/pair', (c) => {
+  const code = c.req.query('code');
+  const base = env.APP_BASE_URL.replace(/\/+$/, '');
+  return c.redirect(code ? `${base}/pair?code=${encodeURIComponent(code)}` : `${base}/pair`, 302);
+});
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);
@@ -325,7 +339,6 @@ app.route('/api/orgs', orgRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);
-app.route('/api/projects', docsRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
@@ -377,6 +390,7 @@ app.route('/api/notifications', notificationRoutes);
 app.route('/api/me', meAttentionRoutes);
 app.route('/api/agents', agentRoutes);
 app.route('/api/chat/sessions', chatSessionRoutes);
+app.route('/api/agent-sessions', agentSessionAttachmentRoutes);
 app.route('/api/agent-sessions', agentSessionRoutes);
 app.route('/api/pipeline-runs', pipelineRunReadRoutes);
 app.route('/api/pipeline-runs', pipelineRunRoutes);
@@ -435,6 +449,7 @@ if (isMain) {
   registerCoolifyAdapter();
   registerPostmanAdapter();
   registerEpodsystemAdapter();
+  registerSentryAdapter();
   await registerIntegrationsWorker();
   registerReleaseCompletedSubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);

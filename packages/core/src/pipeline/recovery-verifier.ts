@@ -47,7 +47,10 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   plan: ['approved'],
   code: ['developed'],
   review: ['testing', 'reopen'],
-  test: ['released', 'reopen', 'tested', 'pass'],
+  test: ['released', 'reopen', 'tested'],
+  // `staging` jobType is retired (no status maps to it); kept only so the
+  // Record<JobType> stays exhaustive for back-compat with historical rows.
+  staging: ['reopen'],
   fix: ['developed'],
   release: ['released', 'closed'],
   custom: [],

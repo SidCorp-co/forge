@@ -19,10 +19,10 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
-import { modelTiers, notifications, pmDecisions, projects } from '../../db/schema.js';
+import { modelTiers, pmDecisions, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { indexMemory } from '../../memory/indexer.js';
-import { hooks } from '../../pipeline/hooks.js';
+import { emitNotification } from '../../notifications/emit.js';
 import { deprecationFor } from '../deprecation.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -135,36 +135,26 @@ export async function pmWriteDecisionHandler(
       expiresAt: escalate.expiresAt,
     });
 
-    const [insertedNotification] = await db
-      .insert(notifications)
-      .values({
-        userId: project.createdBy,
-        projectId: input.projectId,
-        type: 'pm_escalation',
-        title,
-        body,
-      })
-      .returning({ id: notifications.id });
-    if (!insertedNotification) {
-      throw new Error('forge_pm.write_decision: escalation notification insert returned no row');
-    }
-
-    await hooks.emit('notificationCreated', {
-      notificationId: insertedNotification.id,
+    // ISS-510 — route through the single emission helper so severity (warning,
+    // from the contract) + the `notificationCreated` hook fan-out (incl. the
+    // project-room escalation bridge via `decisionId`) stay consistent.
+    const escalationNotification = await emitNotification({
       userId: project.createdBy,
       projectId: input.projectId,
       type: 'pm_escalation',
       title,
-      issueId: null,
-      agentSessionId: null,
+      body,
       decisionId,
     });
+    if (!escalationNotification) {
+      throw new Error('forge_pm.write_decision: escalation notification insert returned no row');
+    }
 
     return {
       decisionId,
       indexed: 'queued' as const,
       escalation: {
-        notificationId: insertedNotification.id,
+        notificationId: escalationNotification.id,
         expiresAt: escalate.expiresAt,
       },
     };

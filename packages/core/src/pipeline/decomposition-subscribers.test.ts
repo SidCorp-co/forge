@@ -223,7 +223,7 @@ describe('cascade approve', () => {
   });
 });
 
-describe('watcher children → staging', () => {
+describe('watcher children → tested', () => {
   it('does not fire when not all siblings are ready', async () => {
     // cascade-approve handler early-returns for non-waiting→approved transitions
     // and never calls findDecompositionChildren. Only watcher consumes the
@@ -235,7 +235,7 @@ describe('watcher children → staging', () => {
       issSeq: 99,
     });
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'staging', projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'tested', projectId: PROJECT_ID },
       { id: CHILD_B, status: 'in_progress', projectId: PROJECT_ID },
     ]);
     // close cascade — payload.to !== 'closed', early returns.
@@ -246,7 +246,7 @@ describe('watcher children → staging', () => {
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID },
       from: 'developed',
-      to: 'staging',
+      to: 'tested',
       reopenCount: 0,
     });
 
@@ -254,7 +254,7 @@ describe('watcher children → staging', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('fires once when LAST child reaches staging — posts comment + re-triggers parent', async () => {
+  it('fires once when LAST child reaches tested — posts comment + re-triggers parent', async () => {
     // Watcher fires; idempotency check (1st select) must return [] (no prior),
     // device lookup (2nd select) must return owner.
     dbSelect.mockReset();
@@ -272,9 +272,9 @@ describe('watcher children → staging', () => {
       issSeq: 99,
     });
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'staging', projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'staging', projectId: PROJECT_ID },
-      { id: CHILD_C, status: 'staging', projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'tested', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'tested', projectId: PROJECT_ID },
+      { id: CHILD_C, status: 'tested', projectId: PROJECT_ID },
     ]);
 
     const bus = makeBus();
@@ -283,7 +283,7 @@ describe('watcher children → staging', () => {
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID },
       from: 'developed',
-      to: 'staging',
+      to: 'tested',
       reopenCount: 0,
     });
 
@@ -304,7 +304,7 @@ describe('watcher children → staging', () => {
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID },
       from: 'developed',
-      to: 'staging',
+      to: 'tested',
       reopenCount: 0,
     });
 
@@ -325,7 +325,7 @@ describe('watcher children → staging', () => {
     });
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'released', projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'staging', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'tested', projectId: PROJECT_ID },
     ]);
 
     const bus = makeBus();
@@ -333,7 +333,7 @@ describe('watcher children → staging', () => {
       issueId: CHILD_A,
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID },
-      from: 'staging',
+      from: 'tested',
       to: 'released',
       reopenCount: 0,
     });
@@ -355,7 +355,7 @@ describe('close cascade', () => {
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'in_progress', projectId: PROJECT_ID },
       { id: CHILD_B, status: 'closed', projectId: PROJECT_ID },
-      { id: CHILD_C, status: 'staging', projectId: PROJECT_ID },
+      { id: CHILD_C, status: 'tested', projectId: PROJECT_ID },
     ]);
 
     const bus = makeBus();

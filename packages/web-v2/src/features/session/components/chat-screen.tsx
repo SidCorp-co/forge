@@ -7,7 +7,7 @@
 // else create one on first send (ISS-292). ISS-465 adds explicit "draft" mode
 // so "New chat" no longer leaves a ghost row, plus rename/archive/delete via
 // the conversation-list panel.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AgentWorking,
@@ -129,7 +129,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   // `await`s the send so a failure rejects up into the Composer, which then
   // keeps the typed text for retry (ISS-462) instead of clearing it. No `title`
   // on create — the server auto-titles from the first user message (ISS-462).
-  const handleSend = async (message: string) => {
+  const handleSend = async (message: string, files: File[] = []) => {
     let id = resolvedId;
     if (!id) {
       const created = await create.mutateAsync({
@@ -140,14 +140,51 @@ export function ChatScreen({ projectId }: { projectId: string }) {
       setDraft(false);
       setActiveId(id);
     }
-    await send.mutateAsync({ sessionId: id, message });
+    await send.mutateAsync({ sessionId: id, message, files });
   };
 
   const busy = live || send.isPending || create.isPending;
 
+  // Auto-scroll the thread to the newest message (ISS-522). The container opens
+  // at the OLDEST turn otherwise (turns render oldest→newest), forcing the user
+  // to scroll far down. Strategy:
+  //  - jump to bottom (instant) on conversation switch + once turns first load
+  //    for a given conversation (one-shot via lastJumpedIdRef);
+  //  - stick to bottom (smooth) on new turn / stream change ONLY when the user
+  //    is already near the bottom, so reading history isn't interrupted (AC3).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const lastJumpedIdRef = useRef<string | undefined>(undefined);
+
+  const handleThreadScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
+  // Conversation switch: reset the one-shot guard and jump to bottom once the
+  // freshly-resolved conversation's turns have loaded.
+  useEffect(() => {
+    if (!resolvedId) return;
+    if (!turnsQ.isSuccess) return;
+    if (lastJumpedIdRef.current === resolvedId) return;
+    lastJumpedIdRef.current = resolvedId;
+    atBottomRef.current = true;
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [resolvedId, turnsQ.isSuccess]);
+
+  // Growth / stream: keep pinned to latest only when already near the bottom.
+  useEffect(() => {
+    if (atBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [items.length, live]);
+
   if (latestQ.isLoading) {
     return (
-      <div className="grid min-h-dvh place-items-center">
+      <div className="grid h-full min-h-0 place-items-center py-12">
         <ProjectLoader label="loading chat…" />
       </div>
     );
@@ -155,7 +192,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   if (latestQ.isError) {
     return (
-      <div className="grid min-h-dvh place-items-center px-4">
+      <div className="grid h-full min-h-0 place-items-center px-4 py-12">
         <ErrorState
           title="Couldn't load chat"
           message={formatApiError(latestQ.error)}
@@ -166,8 +203,8 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-8">
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex flex-none flex-col gap-2 border-b border-line bg-app/95 px-4 py-4 sm:flex-row sm:items-center sm:gap-3 sm:px-8">
         <div className="min-w-0">
           {/* Title row: editable per-conversation title once a real row exists.
               In draft / no-conversation state, fall back to the section label. */}
@@ -176,13 +213,13 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               <EditableTitle session={session} />
             </h1>
           ) : (
-            <h1 className="fg-h2">My conversations</h1>
+            <h1 className="fg-h2 truncate">My conversations</h1>
           )}
           <p className="fg-body-sm mt-1 text-muted">
             Ask the agent anything about this project.
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
           {session && display && (
             <StatusChip
               status={statusToChip(display)}
@@ -218,7 +255,11 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        onScroll={handleThreadScroll}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
           {isFailed && (
             <div className="mb-6">
@@ -270,6 +311,8 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               <AgentWorking label="Agent is working…" elapsed={elapsed} />
             </div>
           )}
+          {/* Scroll anchor for auto-scroll-to-bottom (ISS-522). */}
+          <div ref={bottomRef} />
         </div>
       </div>
 
@@ -278,9 +321,11 @@ export function ChatScreen({ projectId }: { projectId: string }) {
           onSend={handleSend}
           busy={busy}
           placeholder="Message the agent…"
+          allowAttachments
+          sticky={false}
         />
       ) : (
-        <ReadOnlyComposerNote />
+        <ReadOnlyComposerNote sticky={false} />
       )}
     </div>
   );

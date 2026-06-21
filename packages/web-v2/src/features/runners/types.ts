@@ -70,12 +70,40 @@ export interface ProjectRunner {
 	platform: "macos" | "linux" | "windows" | null;
 	deviceStatus: "online" | "offline" | "revoked" | null;
 	runnerStatus: string;
+	/** Last health/heartbeat error string, cleared on a healthy heartbeat. */
+	lastError: string | null;
 	repoPath: string | null;
 	branch: string | null;
 	lastSeenAt: string | null;
 	provisionStatus: ProvisionStatus | null;
 	provisionDetail: string | null;
 	provisionedAt: string | null;
+}
+
+/** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */
+export interface RunnerEvent {
+	id: string;
+	oldStatus: string | null;
+	newStatus: string;
+	reason: string | null;
+	ts: string;
+}
+
+/** One recent agent session that ran on a runner's device. */
+export interface RunnerSessionActivity {
+	id: string;
+	title: string | null;
+	status: string;
+	failureReason: string | null;
+	/** Best-effort last error line from the transcript (RESULT_ERROR / API Error). */
+	errorExcerpt: string | null;
+	updatedAt: string;
+}
+
+/** `GET /api/runners/:id/activity` — status timeline + recent device sessions. */
+export interface RunnerActivity {
+	events: RunnerEvent[];
+	sessions: RunnerSessionActivity[];
 }
 
 /** `GET /api/projects/:id/git-credential` — non-secret deploy-key status. */

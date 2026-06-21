@@ -10,7 +10,7 @@
 
 import type { IssueStatus, JobType, RunnerType } from '../db/schema.js';
 
-export const PIPELINE_REGISTRY_VERSION = 3;
+export const PIPELINE_REGISTRY_VERSION = 5;
 
 // `workingStatus` — the in-flight status the step's agent flips the issue to
 // when it BEGINS work (via `forge_step_start`), so the board shows in-flight
@@ -66,6 +66,11 @@ export const PIPELINE_STEPS = [
     skillName: 'forge-test',
     workingStatus: null,
   },
+  // NOTE: the former `pass` / forge-staging "staging-deploy" step was retired.
+  // Staging deploy now happens inside forge-code, and the single production
+  // approval GATE is the `tested` status (default `mode:'manual'`; see
+  // `state-machine.ts` classifySkippable + defaultStatesConfig). `pass`/`staging`
+  // remain in the status enum for back-compat but have NO pipeline step.
   {
     status: 'reopen',
     jobType: 'fix',
@@ -113,8 +118,8 @@ export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map
 // it; without the entry the dispatcher would permanently fail the job as
 // `runner_unsupported_type`.
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify', 'smoke'],
-  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify', 'smoke'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke'],
+  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke'],
 };
 
 export interface JobTypeMapping {

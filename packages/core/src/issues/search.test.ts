@@ -8,7 +8,7 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectOffset = vi.fn(() => []);
+const selectOffset = vi.fn((): Record<string, unknown>[] => []);
 const selectOrderBy = vi.fn(() => ({ limit: vi.fn(() => ({ offset: selectOffset })) }));
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
@@ -26,7 +26,7 @@ const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
 // ISS-437 — the withCost rollup runs select().from(subquery).innerJoin()
 // .groupBy() (awaited directly; mockReturnValueOnce an array of
 // `{ issueId, estimatedCost }` rows).
-const costGroupBy = vi.fn(() => []);
+const costGroupBy = vi.fn((): Record<string, unknown>[] => []);
 const selectInnerJoin = vi.fn(() => ({ groupBy: costGroupBy }));
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
@@ -194,7 +194,7 @@ describe('withCost (ISS-437)', () => {
     const t = await token();
     const res = await req('', t);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>[];
     expect(body).toHaveLength(2);
     expect(body[0]).toMatchObject({ id: ISSUE_A, displayId: 'ISS-1' });
     expect(body[0]).not.toHaveProperty('estimatedCost');
@@ -209,7 +209,7 @@ describe('withCost (ISS-437)', () => {
     const t = await token();
     const res = await req('?withCost=1', t);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>[];
     expect(body[0]).toMatchObject({ id: ISSUE_A, displayId: 'ISS-1', estimatedCost: 1.23 });
     expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0 });
     // Exactly ONE extra query regardless of page size (the grouped rollup).
@@ -227,7 +227,7 @@ describe('withCost (ISS-437)', () => {
     const t = await token();
     const res = await req('?withCost=1&withAgentSessions=1', t);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>[];
     expect(body[0]).toMatchObject({ id: ISSUE_A, estimatedCost: 0.5, agentStatus: 'running' });
     expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0, agentStatus: null });
   });

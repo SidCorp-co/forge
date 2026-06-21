@@ -22,12 +22,14 @@ import {
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { hooks } from '../../pipeline/hooks.js';
+import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
+  type McpContext,
   assertPrincipalIsMember,
-  resolveProjectIdFromSlug,
-  zodToMcpSchema,
   assertPrincipalIsWriter,
+  resolveEffectiveProjectId,
+  zodToMcpSchema,
 } from './lib.js';
 
 /**
@@ -178,14 +180,41 @@ export type IssueRow = {
   updatedAt: Date;
 };
 
+/**
+ * ISS-532 — recursively char-strip control/invisible chars from every string
+ * in an agent-authored JSON value (e.g. `sessionContext`). Defense-in-depth: a
+ * runner agent wrote these, so DATA framing would be noise, but invisible-char
+ * smuggling is still neutralized.
+ */
+function sanitizeDeep(value: unknown): unknown {
+  if (typeof value === 'string') return sanitizeUntrusted(value);
+  if (Array.isArray(value)) return value.map(sanitizeDeep);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, sanitizeDeep(v)]),
+    );
+  }
+  return value;
+}
+
 // Exported for reuse by forge-step-start (same issue payload shape in its
 // bundle as `forge_issues.get` returns — agents see one serialization).
+//
+// ISS-532: this is the agent-facing MCP surface (and the step-start bundle), so
+// untrusted human/external free-text (title/description/acceptanceCriteria) is
+// framed in a labeled DATA delimiter via `markUntrusted`, and agent-authored
+// fields (plan/suggestedSolution/sessionContext/ai*) get char-strip only via
+// `sanitizeUntrusted`. REST/web-v2 use their own serializers, so the human UI
+// is unaffected.
 export function serialize(row: IssueRow): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: `ISS-${row.issSeq}`,
-    title: row.title,
-    description: row.description,
+    title: markUntrusted(row.title, { source: 'issue.title' }),
+    description:
+      row.description == null
+        ? null
+        : markUntrusted(row.description, { source: 'issue.description' }),
     status: row.status,
     priority: row.priority,
     category: row.category,
@@ -193,13 +222,19 @@ export function serialize(row: IssueRow): Record<string, unknown> {
     assigneeId: row.assigneeId,
     parentIssueId: row.parentIssueId,
     reopenCount: row.reopenCount,
-    plan: row.plan,
-    acceptanceCriteria: row.acceptanceCriteria,
-    suggestedSolution: row.suggestedSolution,
-    sessionContext: row.sessionContext,
-    aiSummary: row.aiSummary,
-    aiSuggestedSolution: row.aiSuggestedSolution,
-    aiAcceptanceCriteria: row.aiAcceptanceCriteria,
+    plan: row.plan == null ? null : sanitizeUntrusted(row.plan),
+    acceptanceCriteria:
+      row.acceptanceCriteria == null
+        ? null
+        : markUntrusted(row.acceptanceCriteria, { source: 'issue.acceptanceCriteria' }),
+    suggestedSolution:
+      row.suggestedSolution == null ? null : sanitizeUntrusted(row.suggestedSolution),
+    sessionContext: sanitizeDeep(row.sessionContext),
+    aiSummary: row.aiSummary == null ? null : sanitizeUntrusted(row.aiSummary),
+    aiSuggestedSolution:
+      row.aiSuggestedSolution == null ? null : sanitizeUntrusted(row.aiSuggestedSolution),
+    aiAcceptanceCriteria:
+      row.aiAcceptanceCriteria == null ? null : row.aiAcceptanceCriteria.map(sanitizeUntrusted),
     aiConfidence: row.aiConfidence,
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
@@ -220,7 +255,11 @@ function serializeListRow(row: IssueRow): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: `ISS-${row.issSeq}`,
-    title: row.title,
+    // ISS-532: char-strip only (NOT framed) — the browse-list projection exists
+    // to stay under the MCP token cap (ISS-428); a full DATA banner per title
+    // across many rows would defeat that. Invisible/bidi smuggling is still
+    // neutralized.
+    title: sanitizeUntrusted(row.title),
     status: row.status,
     priority: row.priority,
     category: row.category,
@@ -302,9 +341,8 @@ async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
   return row as TaskRow;
 }
 
-async function resolveProjectId(input: Input, projectSlug: string | null): Promise<string> {
-  if (input.projectId) return input.projectId;
-  return resolveProjectIdFromSlug(projectSlug);
+async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
+  return resolveEffectiveProjectId(ctx, input.projectId);
 }
 
 function parseDate(value: string, field: string): Date {
@@ -323,6 +361,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'list returns a lightweight summary projection per issue (no description/' +
     'plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*/releaseNotes) ' +
     'to stay under the response token cap; fetch the full body with action=get. ' +
+    'Token discipline: use list (projection) to browse/triage many issues, and ' +
+    'get for the single full issue you are about to work on — do NOT re-get an ' +
+    'issue whose full body you already loaded this session (e.g. via ' +
+    'forge_step_start, which already returns the full body). ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
     'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
     'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +
@@ -351,11 +393,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { device, principal, projectSlug } = ctx;
+    const { device, principal } = ctx;
 
     switch (input.action) {
       case 'list': {
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
 
         const conds = [eq(issues.projectId, projectId)];
@@ -400,7 +442,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'create': {
         if (!input.data?.title) throw new Error('BAD_REQUEST: data.title is required for create');
-        const projectId = await resolveProjectId(input, projectSlug);
+        const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
 
         // ISS-130 — narrow allow-list for entry status. `open` is the normal

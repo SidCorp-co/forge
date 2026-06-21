@@ -28,6 +28,9 @@ export interface PatToken {
   prefix: string;
   scopes: PatScope[];
   projectIds: string[] | null;
+  /** ISS-497 — non-null = project-level token bound to exactly this project
+   *  (X-Forge-Project-Slug header optional); null = user-level token. */
+  boundProjectId: string | null;
   expiresAt: string | null;
   createdAt: string;
   lastUsedAt: string | null;
@@ -44,6 +47,9 @@ export interface CreatePatInput {
   name: string;
   scopes: PatScope[];
   expiresAt?: string | null;
+  /** ISS-497 — bind the token to a single project (project-level token).
+   *  null/omitted = user-level (all the user's projects). */
+  boundProjectId?: string | null;
 }
 
 export interface NotificationRow {

@@ -12,6 +12,7 @@ import { db } from '../../db/client.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { comments, issues, projectMembers, projects } from '../../db/schema.js';
 import { hooks } from '../../pipeline/hooks.js';
+import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -75,7 +76,9 @@ function serialize(
     documentId: row.id,
     issueId: row.issueId,
     authorId: row.authorId,
-    body: row.body,
+    // ISS-532: comment bodies are untrusted (anyone can post) and reach the
+    // agent verbatim via this MCP surface — frame as DATA, never instructions.
+    body: markUntrusted(row.body, { source: 'comment.body' }),
     parentId: row.parentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -206,14 +209,16 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
         }
 
-        // The device principal posts comments on behalf of its owner — there
-        // is no separate device authorId column, so we attribute to ownerId
-        // the same way the REST flow attributes to the authenticated user.
+        // The device principal posts comments on behalf of its owner: authorId
+        // stays the human owner (NOT-NULL FK to users), but we also stamp
+        // authorDeviceId so the comment is identifiable as an AGENT action and
+        // not mistaken for one the owner wrote by hand (ISS-519).
         const [inserted] = await db
           .insert(comments)
           .values({
             issueId,
             authorId: device.ownerId,
+            authorDeviceId: device.id,
             body,
             parentId: input.data?.parentId ?? null,
           })

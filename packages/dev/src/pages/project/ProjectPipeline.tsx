@@ -20,15 +20,15 @@ const PIPELINE_STAGES: PipelineStage[] = [
   { key: "triage", label: "Triage", statuses: ["confirmed", "clarified", "waiting"], emoji: "🔍" },
   { key: "approved", label: "Ready", statuses: ["approved"], emoji: "✅" },
   { key: "development", label: "Development", statuses: ["in_progress", "developed"], emoji: "💻" },
-  { key: "deploy_test", label: "Deploy & Test", statuses: ["deploying", "testing"], emoji: "🚀" },
-  { key: "review", label: "Review", statuses: ["staging"], emoji: "👁" },
+  { key: "test", label: "Test", statuses: ["testing"], emoji: "🚀" },
+  { key: "review", label: "Awaiting release", statuses: ["tested"], emoji: "👁" },
   { key: "done", label: "Done", statuses: ["released", "closed"], emoji: "🏁" },
   { key: "blocked", label: "Blocked", statuses: ["reopen", "on_hold"], emoji: "⚠️" },
 ];
 
 const BOTTLENECK_HOURS: Record<string, number> = {
   intake: 24, triage: 12, approved: 48, development: 24,
-  deploy_test: 12, review: 24, blocked: 4,
+  test: 12, review: 24, blocked: 4,
 };
 
 function getTimeInStage(issue: Issue): number {

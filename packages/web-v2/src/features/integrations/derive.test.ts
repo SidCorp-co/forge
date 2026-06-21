@@ -5,6 +5,7 @@ import {
   deriveConnectionStatus,
   deriveDirectoryStatus,
   getCapabilities,
+  groupCardsByProvider,
   isProviderCard,
   REDACTED,
   redactSensitive,
@@ -148,6 +149,41 @@ describe("isProviderCard / cardProvider", () => {
   it("extracts the provider from an env-suffixed key", () => {
     expect(cardProvider("coolify:prod")).toBe("coolify");
     expect(cardProvider("postman")).toBe("postman");
+  });
+});
+
+describe("groupCardsByProvider", () => {
+  it("consolidates env-split coolify cards into one group, prod before staging", () => {
+    const groups = groupCardsByProvider([
+      card({ key: "coolify:staging", label: "Coolify (staging)", meta: { environment: "staging" } }),
+      card({ key: "github", label: "GitHub" }),
+      card({ key: "coolify:prod", label: "Coolify (prod)", meta: { environment: "prod" } }),
+    ]);
+    // First-seen provider order preserved: coolify before github.
+    expect(groups.map((g) => g.provider)).toEqual(["coolify", "github"]);
+    const coolify = groups[0];
+    expect(coolify.cards).toHaveLength(2);
+    // Deterministic prod-then-staging order regardless of input order.
+    expect(coolify.cards.map((c) => c.key)).toEqual(["coolify:prod", "coolify:staging"]);
+    expect(groups[1].cards).toHaveLength(1);
+  });
+
+  it("leaves a single coolify binding as a 1-card group (renders as today)", () => {
+    const groups = groupCardsByProvider([card({ key: "coolify:prod", label: "Coolify (prod)" })]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].cards).toHaveLength(1);
+  });
+
+  it("falls back to the key suffix when meta.environment is absent", () => {
+    const groups = groupCardsByProvider([
+      card({ key: "coolify:staging", label: "Coolify (staging)" }),
+      card({ key: "coolify:prod", label: "Coolify (prod)" }),
+    ]);
+    expect(groups[0].cards.map((c) => c.key)).toEqual(["coolify:prod", "coolify:staging"]);
+  });
+
+  it("returns an empty array for no cards", () => {
+    expect(groupCardsByProvider([])).toEqual([]);
   });
 });
 

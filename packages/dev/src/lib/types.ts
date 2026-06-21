@@ -45,9 +45,8 @@ export type IssueStatus =
   | "approved"
   | "in_progress"
   | "developed"
-  | "deploying"
   | "testing"
-  | "staging"
+  | "tested"
   | "released"
   | "closed"
   | "reopen"
@@ -385,6 +384,7 @@ export interface JobAssignedPayload {
    */
   model?: string | null;
   allowedTools?: string | null;
+  disallowedTools?: string | null;
   permissionMode?: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions' | null;
   timeoutSeconds?: number | null;
   mcpServersOverride?: Record<string, unknown> | null;

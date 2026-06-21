@@ -1,7 +1,14 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
+import { resolveManagedMetaPrompts } from '../skills/effective.js';
+import { FORGE_MCP_INSTRUCTIONS } from './instructions.js';
 import { toToolCallContent } from './tool-result.js';
 import {
   forgeAgentSessionsGetTool,
@@ -32,19 +39,15 @@ import {
 } from './tools/forge-metrics.js';
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
-import {
-  forgePipelineRunsCancelTool,
-  forgePipelineRunsGetTool,
-  forgePipelineRunsListTool,
-  forgePipelineRunsPauseTool,
-  forgePipelineRunsResumeTool,
-} from './tools/forge-pipeline-runs.js';
-import { forgePmDispatchTool } from './tools/forge-pm-dispatch.js';
-import { forgePmGraphTool } from './tools/forge-pm-graph.js';
-import { forgePmRunnerLoadTool } from './tools/forge-pm-runner-load.js';
+// ISS-483 §E#3: the forge_pipeline_runs_* / forge_pm_* standalone shims are
+// superseded by the forge_project_pipeline_runs / forge_project_pm action
+// dispatchers. Removed the 9 shims with zero references (repo + every project's
+// skills audited). Two are retained because skills/recipes still call them by
+// name: forge_pipeline_runs_get (forge-skill-audit) + forge_pm_set_dependency
+// (forge-plan + .forge/knowledge.json). The per-action HANDLERS still live in
+// their files and are reused by the dispatchers.
+import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
-import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
-import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
@@ -79,6 +82,7 @@ import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
+import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
 import type { McpContext } from './tools/lib.js';
 
 /**
@@ -101,15 +105,17 @@ import type { McpContext } from './tools/lib.js';
  *  - `forge_agent_sessions.list` / `.get` — read-only access to
  *    `agent_sessions` rows (ISS-7).
  *  - `forge_project_pipeline_runs` — action dispatcher
- *    (list/get/pause/resume/cancel) for `pipeline_runs` (ISS-145). The
- *    legacy `forge_pipeline_runs.<action>` tools stay registered as
- *    forwarding shims that emit `X-MCP-Deprecation`.
+ *    (list/get/pause/resume/cancel) for `pipeline_runs` (ISS-145). ISS-483
+ *    §E#3 retired the zero-reference legacy `forge_pipeline_runs.<action>`
+ *    shims; only `forge_pipeline_runs.get` stays registered (still referenced
+ *    by forge-skill-audit) and emits `X-MCP-Deprecation`.
  *  - `forge_project_pm` — action dispatcher
  *    (snapshot/graph/runner_load/dispatch/set_dependency/write_decision)
- *    for the PM agent surface (ISS-145). The matching legacy
- *    `forge_pm.<action>` tools stay as shims. `flag_blocker` and the
- *    standalone `escalate` tool were removed in ISS-146 (escalation now
- *    lives on `write_decision.escalate`).
+ *    for the PM agent surface (ISS-145). ISS-483 §E#3 retired the matching
+ *    legacy `forge_pm.<action>` shims; only `forge_pm.set_dependency` stays
+ *    registered (still referenced by forge-plan). `flag_blocker` and the
+ *    standalone `escalate` tool were removed earlier in ISS-146 (escalation
+ *    now lives on `write_decision.escalate`).
  *  - `forge_projects.list` — enumerate projects visible to the device owner
  *    (ISS-7, pre-req for ISS-9).
  *  - `forge_projects.create` / `.update` / `.archive` — user-facing project
@@ -148,14 +154,10 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
     'forge_project_pm',
     new Set(['snapshot', 'graph', 'runner_load', 'dispatch', 'set_dependency', 'write_decision']),
   ],
-  // Legacy shims keep the per-tool gate so the deprecation window is
-  // byte-identical to the pre-consolidation behaviour.
-  ['forge_pm.snapshot', true],
-  ['forge_pm.graph', true],
-  ['forge_pm.runner_load', true],
-  ['forge_pm.dispatch', true],
+  // ISS-483 §E#3 retired the other forge_pm.* shims; forge_pm.set_dependency
+  // is the lone survivor and keeps its per-tool gate (byte-identical to the
+  // pre-consolidation behaviour).
   ['forge_pm.set_dependency', true],
-  ['forge_pm.write_decision', true],
 ]);
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
@@ -230,11 +232,7 @@ export function createMcpServer(ctx: McpContext): Server {
     // immediately after so `tools/list` order remains stable for callers
     // that pin to the existing position.
     forgeProjectPipelineRunsTool(ctx),
-    forgePipelineRunsListTool(ctx),
     forgePipelineRunsGetTool(ctx),
-    forgePipelineRunsPauseTool(ctx),
-    forgePipelineRunsResumeTool(ctx),
-    forgePipelineRunsCancelTool(ctx),
     forgeProjectsListTool(ctx),
     forgeProjectsCreateTool(ctx),
     forgeOrgsListTool(ctx),
@@ -243,20 +241,48 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeProjectsGetTool(ctx),
     forgeProjectsArchiveTool(ctx),
     forgeProjectPmTool(ctx),
-    forgePmSnapshotTool(ctx),
-    forgePmGraphTool(ctx),
-    forgePmRunnerLoadTool(ctx),
-    forgePmDispatchTool(ctx),
     forgePmSetDependencyTool(ctx),
-    forgePmWriteDecisionTool(ctx),
     forgeHealthTool(ctx.device),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
   const server = new Server(
     { name: '@forge/core', version: pkg.version },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, prompts: {} }, instructions: FORGE_MCP_INSTRUCTIONS },
   );
+
+  // Managed META skills (forge-skills …) served live as MCP prompts — the
+  // always-latest, zero-disk-sync channel. Any session connected to Forge MCP
+  // sees the current meta guidance; no install, no shadow-freeze. Project-scoped
+  // by the X-Forge-Project-Slug header (falls back to the global bodies).
+  // ISS-497 — a project-level PAT (boundProjectId) resolves to its bound
+  // project with no header, so a bound token sees its project's meta prompts;
+  // same precedence (slug > boundProjectId) as the tool resolver.
+  const metaProjectId = async (): Promise<string | null> => {
+    if (ctx.projectSlug) {
+      try {
+        return await resolveProjectIdFromSlug(ctx.projectSlug);
+      } catch {
+        return null;
+      }
+    }
+    return ctx.boundProjectId ?? null;
+  };
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    const prompts = await resolveManagedMetaPrompts(await metaProjectId());
+    return { prompts: prompts.map((p) => ({ name: p.name, description: p.description })) };
+  });
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const prompts = await resolveManagedMetaPrompts(await metaProjectId());
+    const p = prompts.find((x) => x.name === request.params.name);
+    if (!p) throw new Error(`unknown prompt: ${request.params.name}`);
+    return {
+      description: p.description,
+      messages: [{ role: 'user' as const, content: { type: 'text' as const, text: p.body } }],
+    };
+  });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map((t) => ({
@@ -307,11 +333,15 @@ export function createMcpServer(ctx: McpContext): Server {
       }
     }
 
-    // PAT projectIds allowlist — enforce before the tool runs so we 404
-    // (NOT 403) when the caller probes a project outside their scope.
-    if (principal.kind === 'pat' && principal.projectIds !== null) {
+    // PAT effective-allowlist — enforce before the tool runs so we 404
+    // (NOT 403) when the caller probes a project outside their scope. For a
+    // project-level token (boundProjectId) this fences the explicit-arg path
+    // to the bound project; the slug-resolved path is fenced inside the
+    // assertPrincipalIs* helpers (ISS-497).
+    if (principal.kind === 'pat') {
+      const allow = patEffectiveProjectIds(principal);
       const target = auditBase.projectId;
-      if (target && !principal.projectIds.includes(target)) {
+      if (allow !== null && target && !allow.includes(target)) {
         writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
         return {
           content: [{ type: 'text', text: 'NOT_FOUND: project not found or not accessible' }],

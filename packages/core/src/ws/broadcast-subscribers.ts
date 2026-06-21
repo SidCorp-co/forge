@@ -96,6 +96,10 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         projectId: p.projectId,
         type: p.type,
         title: p.title,
+        // ISS-510 — body + severity drive the realtime toast (description +
+        // tone) and the browser-notification body without a follow-up fetch.
+        body: p.body ?? null,
+        severity: p.severity ?? null,
         issueId: p.issueId,
         agentSessionId: p.agentSessionId,
       },

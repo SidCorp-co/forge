@@ -17,6 +17,7 @@ import {
   PageContainer,
   ProjectLoader,
 } from "@/design";
+import { TONE_META, type SemanticTone } from "@/design/status";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -24,15 +25,30 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useAttention } from "../hooks";
 import type { AttentionItem, AttentionKind } from "../types";
 
-/** Per-kind presentation. Color is paired with an icon + label so status is
- *  never conveyed by color alone (a11y: color-not-only). */
-const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
-  needs_review: { label: "Needs review", icon: "check", fg: "var(--cobalt-700)", bg: "var(--cobalt-50)" },
-  awaiting_input: { label: "Awaiting input", icon: "clock", fg: "var(--amberw-600)", bg: "var(--amberw-50)" },
-  mention: { label: "Mention", icon: "mail", fg: "var(--cobalt-700)", bg: "var(--cobalt-50)" },
-  failed_job: { label: "Failed", icon: "alert", fg: "var(--red-600)", bg: "var(--red-50)" },
-  runner_offline: { label: "Runner offline", icon: "server", fg: "var(--red-600)", bg: "var(--red-50)" },
+/** Per-kind presentation. ISS-509: color resolves through the semantic tone
+ *  layer (one source of truth) so a `failed` job (failure/red) and an offline
+ *  runner (infra/slate) are no longer the same red; color is paired with an icon
+ *  + label so status is never conveyed by color alone (a11y: color-not-only). */
+const KIND_TONE: Record<AttentionKind, SemanticTone> = {
+  needs_review: "active",
+  awaiting_input: "attention",
+  mention: "neutral",
+  failed_job: "failure",
+  runner_offline: "infra",
 };
+
+const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
+  needs_review: { label: "Needs review", icon: "check", ...tone("needs_review") },
+  awaiting_input: { label: "Awaiting input", icon: "clock", ...tone("awaiting_input") },
+  mention: { label: "Mention", icon: "mail", ...tone("mention") },
+  failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
+  runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
+};
+
+function tone(kind: AttentionKind): { fg: string; bg: string } {
+  const t = TONE_META[KIND_TONE[kind]];
+  return { fg: t.fg, bg: t.bg };
+}
 
 /** Subscribes to one WS room for its lifetime (renders nothing) — lets us fan
  *  out subscriptions over the project list without breaking rules-of-hooks. */

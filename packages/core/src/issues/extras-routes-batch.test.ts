@@ -356,9 +356,9 @@ describe('PATCH /api/issues/batch', () => {
   it('terminal status transitions fan out Layer-2 dispatch ticks once per parent + child project', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
-      // Two issues in PROJECT_A, both at `staging` → `released` (terminal).
-      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'staging', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
-      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'staging', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
+      // Two issues in PROJECT_A, both at `tested` → `released` (terminal).
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'tested', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
+      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'tested', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_A,

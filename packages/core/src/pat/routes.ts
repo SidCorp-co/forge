@@ -36,6 +36,9 @@ const createBodySchema = z
     name: z.string().min(1).max(80),
     scopes: z.array(z.enum(SCOPES)).optional(),
     projectIds: z.array(z.uuid()).max(50).nullable().optional(),
+    // ISS-497 — project-level token bound to exactly this project. Mutually
+    // exclusive with a multi-project `projectIds` (enforced below).
+    boundProjectId: z.uuid().nullable().optional(),
     expiresAt: z.iso.datetime().optional(),
   })
   .strict();
@@ -64,6 +67,7 @@ function publicShape(row: typeof personalAccessTokens.$inferSelect) {
     prefix: row.tokenPrefix,
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
+    boundProjectId: row.boundProjectId ?? null,
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
     lastUsedAt: row.lastUsedAt,
@@ -126,11 +130,25 @@ patRoutes.post(
       });
     }
 
-    // projectIds — every entry must be a project the user can access.
-    if (body.projectIds && body.projectIds.length > 0) {
+    // ISS-497 — a project-level binding and a multi-project allowlist are
+    // mutually exclusive: a bound token IS its own single-project allowlist.
+    if (body.boundProjectId && body.projectIds && body.projectIds.length > 0) {
+      throw badRequest({
+        formErrors: ['boundProjectId and projectIds are mutually exclusive'],
+        fieldErrors: {},
+      });
+    }
+
+    // projectIds / boundProjectId — every referenced project must be one the
+    // user can access (same membership check, shared allowlist).
+    const referenced = [
+      ...(body.projectIds ?? []),
+      ...(body.boundProjectId ? [body.boundProjectId] : []),
+    ];
+    if (referenced.length > 0) {
       const allowed = await listUserProjectIds(userId);
       const allowedSet = new Set(allowed);
-      for (const pid of body.projectIds) {
+      for (const pid of referenced) {
         if (!allowedSet.has(pid)) {
           throw new HTTPException(403, {
             message: 'project not accessible',
@@ -145,6 +163,7 @@ patRoutes.post(
       name: body.name,
       scopes: body.scopes,
       projectIds: body.projectIds ?? null,
+      boundProjectId: body.boundProjectId ?? null,
       expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     });
 

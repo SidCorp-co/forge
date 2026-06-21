@@ -8,6 +8,7 @@ import type {
 	GitCredentialView,
 	PairingCode,
 	ProjectRunner,
+	RunnerActivity,
 } from "./types";
 
 export const runnersApi = {
@@ -87,6 +88,13 @@ export const runnersApi = {
 	/** `GET /api/projects/:id/runners` — the device pools serving THIS project. */
 	listProjectRunners: (projectId: string) =>
 		apiClient<ProjectRunner[]>(`/projects/${projectId}/runners`),
+
+	/**
+	 * `GET /api/runners/:id/activity` — per-runner status timeline + recent
+	 * device sessions (with error excerpts). Read-only; any project member.
+	 */
+	getRunnerActivity: (runnerId: string, limit = 15) =>
+		apiClient<RunnerActivity>(`/runners/${runnerId}/activity?limit=${limit}`),
 
 	/** `GET /api/projects/:id/git-credential` — non-secret deploy-key status. */
 	getGitCredential: (projectId: string) =>

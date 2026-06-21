@@ -91,7 +91,10 @@ vi.mock('./runs.js', () => ({
 // model (db.update, db.select + project owner join, comments insert). Stub
 // them so the test asserts orchestration intent (helper called with the
 // right args) without re-deriving the helper's DB shape.
-const pauseMissingSkillMock = vi.fn(async (..._args: unknown[]) => ({ paused: true, alreadyPaused: false }));
+const pauseMissingSkillMock = vi.fn(async (..._args: unknown[]) => ({
+  paused: true,
+  alreadyPaused: false,
+}));
 const postMissingSkillCommentMock = vi.fn(async () => undefined);
 vi.mock('./missing-skill-guard.js', () => ({
   PAUSE_REASON_PREFIX: 'missing_skill:',
@@ -127,8 +130,6 @@ const resolverStagesMock = vi.fn<() => Promise<ReadonlySet<string>>>(
       'developed',
       'testing',
       'tested',
-      'pass',
-      'staging',
       'deploying',
       'reopen',
       'released',
@@ -230,7 +231,9 @@ function issueCreated(overrides: Partial<CreatedPayload> = {}): CreatedPayload {
 }
 
 function cfgResolved(cfg: unknown) {
-  nextSelect.mockResolvedValueOnce([{ agentConfig: { pipelineConfig: cfg }, createdBy: 'u-owner' }]);
+  nextSelect.mockResolvedValueOnce([
+    { agentConfig: { pipelineConfig: cfg }, createdBy: 'u-owner' },
+  ]);
 }
 
 function skillRegistered(skillName: string, type: string, toggle: string) {
@@ -263,8 +266,6 @@ beforeEach(() => {
       'developed',
       'testing',
       'tested',
-      'pass',
-      'staging',
       'deploying',
       'reopen',
       'released',
@@ -685,12 +686,15 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('walks a two-stage disabled chain one hop at a time (developed → testing → pass)', async () => {
+  it('walks a two-stage disabled chain one hop at a time (developed → testing → tested gate)', async () => {
     cfgResolved({
       enabled: true,
       states: {
         developed: { enabled: false },
         testing: { enabled: false },
+        // `tested` is the manual release gate — the walk anchors here (never
+        // auto-skips a manual stage), parking the issue for a human.
+        tested: { mode: 'manual' },
       },
     });
     nextSelect.mockResolvedValueOnce([
@@ -704,7 +708,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     // status history — AC #4 requires a breadcrumb per skip transition.
     expect(applyTransitionMock).toHaveBeenCalledTimes(2);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
-    expect(applyTransitionMock.mock.calls[1]?.[1]).toBe('pass');
+    expect(applyTransitionMock.mock.calls[1]?.[1]).toBe('tested');
     // ISS-239 — two categories per hop, so 4 breadcrumbs total for a 2-hop chain.
     expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(4);
     // ISS-239 — per-hop skipChain entries.
@@ -716,7 +720,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     });
     expect(appendSkipChainEntryMock.mock.calls[1]?.[1]).toMatchObject({
       from: 'testing',
-      to: 'pass',
+      to: 'tested',
       reason: 'stage_disabled',
     });
     expect(dbInsert).not.toHaveBeenCalled();
@@ -786,11 +790,13 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
 describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
   it('auto-skips past a stage with no registered skill even when states is undefined', async () => {
     cfgResolved({ enabled: true, autoTest: true });
-    // Only `testing` has a registered skill — `deploying` does not.
+    // Only `testing` has a registered skill — `developed` (review) does not.
+    // (`deploying` was retired in 53fe4a4e; review now exits straight to testing,
+    // so `developed` is the skill-less stage that skips to `testing`.)
     resolverStagesMock.mockResolvedValueOnce(new Set<string>(['testing']));
     // autoSkipDisabledStages reads the current issue row to confirm status.
     nextSelect.mockResolvedValueOnce([
-      { id: 'iss-1', projectId: 'proj-1', status: 'deploying', reopenCount: 0 },
+      { id: 'iss-1', projectId: 'proj-1', status: 'developed', reopenCount: 0 },
     ]);
     // After the skip lands on `testing`, considerEnqueue resolves the test skill.
     skillRegistered('forge-test', 'test', 'autoTest');
@@ -798,7 +804,7 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     insertReturning.mockResolvedValueOnce([{ id: 'test-job' }]);
 
     const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'developed', to: 'deploying' }) as never);
+    await bus.emit('transition', transition({ from: 'in_progress', to: 'developed' }) as never);
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(1);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
@@ -807,40 +813,36 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
       (c) => c[0]?.category === 'pipeline_run.auto_skip',
     );
     expect(autoSkipCrumb?.[0]).toMatchObject({
-      data: { reason: 'missing_skill', fromStatus: 'deploying', toStatus: 'testing' },
+      data: { reason: 'missing_skill', fromStatus: 'developed', toStatus: 'testing' },
     });
     expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(1);
     expect(appendSkipChainEntryMock.mock.calls[0]?.[1]).toMatchObject({
-      from: 'deploying',
+      from: 'developed',
       to: 'testing',
       reason: 'missing_skill',
     });
     // ISS-238 pause guard MUST NOT fire — auto-skip intercepted before considerEnqueue
-    // would have refused the missing-skill `deploying` stage.
+    // would have refused the missing-skill `developed` stage.
     expect(pauseMissingSkillMock).not.toHaveBeenCalled();
   });
 
   it('does not pause via ISS-238 guard when the landing stage has its own missing skill (cap path)', async () => {
     // No skills at all. autoSkip walks the chain to the first non-skippable
-    // anchor (`closed` for the released chain, `approved` for the open chain).
-    // For payload.to = 'pass', the chain is pass → staging → released → closed.
-    // `closed` is non-skippable → anchors there. No cap fires.
+    // anchor (`closed`). For payload.to = 'tested' (the
+    // gate), the chain is tested → released → closed. `closed` is
+    // non-skippable → anchors there. No cap fires.
     cfgResolved({ enabled: true });
     resolverStagesMock.mockResolvedValueOnce(new Set<string>());
     nextSelect.mockResolvedValueOnce([
-      { id: 'iss-1', projectId: 'proj-1', status: 'pass', reopenCount: 0 },
+      { id: 'iss-1', projectId: 'proj-1', status: 'tested', reopenCount: 0 },
     ]);
 
     const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'testing', to: 'pass' }) as never);
+    await bus.emit('transition', transition({ from: 'testing', to: 'tested' }) as never);
 
-    expect(applyTransitionMock).toHaveBeenCalledTimes(3);
-    expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual([
-      'staging',
-      'released',
-      'closed',
-    ]);
-    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(3);
+    expect(applyTransitionMock).toHaveBeenCalledTimes(2);
+    expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual(['released', 'closed']);
+    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(2);
     expect(postSkipChainCappedCommentMock).not.toHaveBeenCalled();
   });
 

@@ -36,7 +36,7 @@ Legacy "project owner" gates (settings PATCH, DELETE, archive, pipeline-config) 
 
 ## 4. Key surfaces
 
-- REST `/api/orgs` — org + member CRUD (members added directly by email of an existing user; project invites still use email tokens).
+- REST `/api/orgs` — org + member CRUD (existing accounts are added directly by email; for an unknown email, `POST /:orgId/members` falls back to `issueOrgInvitationToken` → `/api/org-invitations` (`org_invitations` table) to send an email-token org invitation. Project invites also use email tokens).
 - `POST /api/projects` + `forge_projects.create` — optional `orgId` (defaults to personal org); creator gets project role `admin`.
 - MCP `forge_orgs.list` / `forge_orgs.members` — read-only discovery.
 - Integration connections: `ownerType 'user'|'org'`. Org connections: create/rotate/delete needs org admin; org members see them in lists; bindable only to projects **in the same org** (by a project admin).

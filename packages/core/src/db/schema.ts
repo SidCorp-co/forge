@@ -475,6 +475,9 @@ export const personalAccessTokens = pgTable(
     scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
     // NULL = inherit user's project memberships (global PAT). Non-null = strict allowlist.
     projectIds: uuid('project_ids').array(),
+    // ISS-497 — project-level token: NULL = user-level (today's behavior, zero backfill);
+    // set = bound to exactly this project (slug-omitted default AND auth fence).
+    boundProjectId: uuid('bound_project_id').references(() => projects.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
@@ -556,6 +559,11 @@ export const jobTypes = [
   'code',
   'review',
   'test',
+  // Canonical staging-deploy step (status `pass` → deploy to the staging/preview
+  // env, advance to `staging`). jobType `staging` keeps the forge-${jobType}
+  // convention (skill `forge-staging`, which already exists). `staging` the
+  // ISSUE STATUS stays a no-step approval gate — distinct enum from this jobType.
+  'staging',
   'release',
   'fix',
   'custom',
@@ -933,11 +941,8 @@ export const issueStatuses = [
   'approved',
   'in_progress',
   'developed',
-  'deploying',
   'testing',
   'tested',
-  'pass',
-  'staging',
   'released',
   'closed',
   'reopen',
@@ -945,6 +950,13 @@ export const issueStatuses = [
   'needs_info',
   'draft',
 ] as const;
+// `pass`, `staging`, and `deploying` were retired (unify gate model): the single
+// production approval gate is `tested` ("Awaiting release") and review exits
+// straight to `testing`. All three were removed from the lifecycle entirely;
+// one-shot migrations re-parked any stranded issue (pass/staging → tested,
+// deploying → testing), so no row can ever hold them again. The `staging`
+// *jobType* (schema `jobTypes`) is intentionally kept for back-compat with
+// historical `jobs.type='staging'` rows, but maps to no status.
 export type IssueStatus = (typeof issueStatuses)[number];
 
 export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;
@@ -1081,6 +1093,15 @@ export const comments = pgTable(
     authorId: uuid('author_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    // ISS-519 — agent-authored marker. The authorId FK always points at the
+    // device's human owner (NOT-NULL FK to users), so it cannot tell an agent
+    // comment apart from one the owner wrote by hand. A non-null
+    // authorDeviceId is the authoritative "this was posted by an agent/device"
+    // signal; the human REST path leaves it null. `set null` on device delete
+    // de-marks the comment back to its owner rather than blocking the delete.
+    authorDeviceId: uuid('author_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
     body: text('body').notNull(),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1677,6 +1698,15 @@ export const notifications = pgTable(
     title: text('title').notNull(),
     body: text('body'),
     read: boolean('read').notNull().default(false),
+    // ISS-510 — per-event severity (from the `@forge/contracts` notification
+    // contract) drives toast tone + bell hue. Nullable: legacy rows predate it.
+    severity: text('severity'),
+    // ISS-510 — auto-resolve linkage. A problem notification carries a stable
+    // per-condition key (e.g. `issue:<id>:status`); when the condition clears
+    // (issue reaches a healthy status) the resolver marks every matching unread
+    // row read and stamps `resolvedAt`. Both nullable — most rows carry neither.
+    resolutionKey: text('resolution_key'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
     // agent_session_id is intentionally a bare uuid (no FK) until the agent_sessions
     // table lands in a later B2 migration — adding the FK then is additive.
@@ -1690,6 +1720,11 @@ export const notifications = pgTable(
       t.createdAt,
     ),
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
+    // ISS-510 — resolver lookup: unread rows for a given resolution key.
+    resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(
+      t.resolutionKey,
+      t.read,
+    ),
   }),
 );
 
@@ -1919,6 +1954,49 @@ export const agentSessionTurnsRelations = relations(agentSessionTurns, ({ one })
     fields: [agentSessionTurns.parentTurnId],
     references: [agentSessionTurns.id],
     relationName: 'agent_session_turns_parent',
+  }),
+}));
+
+// ISS-499 — files a user attaches to an interactive chat turn ("My
+// conversations"). Mirrors `comment_attachments` (user notNull, device
+// nullable audit shape). The runner auth-downloads these to a local path so
+// claude can Read them (image vision + text/PDF) within the turn.
+export const sessionAttachments = pgTable(
+  'session_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => agentSessions.id, { onDelete: 'cascade' }),
+    uploaderId: uuid('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    // Populated when the uploader was a device principal (MCP path); null for
+    // user-principal uploads (REST multipart from web-v2).
+    uploaderDeviceId: uuid('uploader_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    path: text('path').notNull(),
+    mime: text('mime').notNull(),
+    size: integer('size').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionIdx: index('session_attachments_session_id_idx').on(t.sessionId),
+    uploaderDeviceIdx: index('session_attachments_uploader_device_id_idx').on(t.uploaderDeviceId),
+  }),
+);
+
+export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one }) => ({
+  session: one(agentSessions, {
+    fields: [sessionAttachments.sessionId],
+    references: [agentSessions.id],
+  }),
+  uploader: one(users, { fields: [sessionAttachments.uploaderId], references: [users.id] }),
+  uploaderDevice: one(devices, {
+    fields: [sessionAttachments.uploaderDeviceId],
+    references: [devices.id],
   }),
 }));
 
@@ -2349,8 +2427,8 @@ export const integrationBindings = pgTable(
     // without a join. Always equals the parent connection's provider.
     provider: text('provider').notNull(),
     environment: text('environment', { enum: integrationEnvironments }).notNull(),
-    // Per-binding overrides (e.g. coolify resourceUuid/branch). Overlaid on top
-    // of connection.config at dispatch time.
+    // Per-binding overrides (e.g. coolify `targets[]` deploy apps). Overlaid on
+    // top of connection.config at dispatch time.
     config: jsonb('config').notNull().default({}),
     // Per-binding HMAC secret for inbound webhook signature verification — an
     // inbound webhook is project+env scoped, so this stays on the binding.

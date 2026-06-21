@@ -36,6 +36,7 @@ All under `packages/core/src/integrations/`.
 ```ts
 interface IntegrationAdapter<TConfig, TSecrets> {
   readonly provider: IntegrationProvider;
+  readonly capabilities?: IntegrationCapabilities;
   healthcheck(ctx): Promise<HealthCheckResult>;
   dispatchOutbound(ctx, input: OutboundDispatchInput): Promise<OutboundDispatchResult>;
   handleInbound(ctx, input: InboundDispatchInput): Promise<InboundDispatchResult>;
@@ -111,7 +112,7 @@ Sentry here = **Forge's own observability**, not a per-project integration. `pac
 
 ## REST surface
 
-All under `/api/projects/:projectId/integrations` (`integrations/routes.ts`, auth = project member; create/update/delete require owner/admin):
+Project-scoped router, all under `/api/projects/:projectId/integrations` (`integrations/routes.ts`, auth = project member; create/update/delete require owner/admin):
 
 | Method | Path | Use |
 |--------|------|-----|
@@ -123,11 +124,25 @@ All under `/api/projects/:projectId/integrations` (`integrations/routes.ts`, aut
 | POST | `/:id/rotate-secret` | mint a new inbound HMAC secret |
 | POST | `/:id/confirm-prod-deploy` | release the prod deploy gate |
 | GET | `/:id/deliveries` | last 50 delivery rows |
+| POST | `/:id/deliveries/:deliveryId/retry` | replay a delivery |
+| GET | `/mcp-preview` | preview the injected MCP config |
 | GET | `/integrations/status` | composed read-only status hub (GitHub/Coolify/runners/postgres/MCP/Sentry/Claude cards) |
+
+Connection-level router, all under `/api/integration-connections` (`integrationConnectionsRoutes`, mounted in `src/index.ts:327`) — owner-scoped connections that can be shared into projects via bindings:
+
+| Method | Path | Use |
+|--------|------|-----|
+| GET | `/` | list owned connections |
+| POST | `/` | create a connection (supports `orgId` → org-owned) |
+| POST | `/:id/bindings` | bind an existing connection to a project (the "share a connection" UX) |
+| GET | `/:id/bindings` | list a connection's bindings |
+| POST | `/:id/test` | test the connection |
+| PATCH | `/:id` | update |
+| DELETE | `/:id` | delete |
 
 ## Adding an adapter
 
-1. Add the provider to `IntegrationProvider` in `types.ts`.
+1. Add the provider to `IntegrationProvider` in `types.ts` — and add the matching discriminated-union arm in `packages/contracts/src/integrations.ts` (the contract union is coupled to the core enum; both must list the new provider).
 2. Create `integrations/<provider>/` with `client.ts` (HTTP), `types.ts` (config + secrets shapes), `adapter.ts` implementing `IntegrationAdapter`.
 3. Register at boot in `src/index.ts` (next to `registerCoolifyAdapter()`).
 4. Inbound: add a `{ header, provider }` entry to `PROVIDER_HEADER_MAP` in `webhooks/inbound-routes.ts`; verify HMAC with `ctx.integrationSecret`.
@@ -137,4 +152,6 @@ All under `/api/projects/:projectId/integrations` (`integrations/routes.ts`, aut
 
 ## Not yet (unshipped)
 
-Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no per-project Sentry/Human-Task adapters; no `validateConfig`/`pollState` hooks, health-poll worker, webhook-secret rotation window, delivery replay UI, or payload versioning. Future work lives in [../IDEAS.md](../IDEAS.md) / issues — not here.
+Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no per-project Sentry/Human-Task adapters; no `validateConfig`/`pollState` hooks, webhook-secret rotation window, or payload versioning. Future work lives in [../IDEAS.md](../IDEAS.md) / issues — not here.
+
+(Health-polling and delivery replay have *shipped*: an hourly health sweep — `integrations/health-sweep.ts`, queue `integrations-health-sweep`, cron `17 * * * *` — re-probes connections older than 30 min; delivery replay is the `POST /…/deliveries/:deliveryId/retry` route above.)

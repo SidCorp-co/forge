@@ -145,6 +145,31 @@ export async function findLastOutbound(
   return rows[0] ?? null;
 }
 
+/**
+ * Most recent outbound delivery for a specific deploy target (matched on the
+ * jsonb `payload.targetId`). Powers the per-target `status` view so an operator
+ * can see each app (backend / frontend) of a multi-target integration
+ * independently. Returns null when that target has never been dispatched.
+ */
+export async function findLastOutboundForTarget(
+  bindingId: string,
+  targetId: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'outbound'),
+        sql`${integrationDeliveries.payload}->>'targetId' = ${targetId}`,
+      ),
+    )
+    .orderBy(desc(integrationDeliveries.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /** Looks up a single delivery by its primary key. Returns the row or null. */
 export async function findDeliveryById(
   id: string,
@@ -153,6 +178,79 @@ export async function findDeliveryById(
     .select()
     .from(integrationDeliveries)
     .where(eq(integrationDeliveries.id, id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * All successfully-dispatched outbound deliveries for a binding + pipeline run
+ * (matched on the jsonb `payload.runId`). Used by the Coolify inbound handler to
+ * aggregate multi-target deploys: a run only advances to `done` once EVERY
+ * target's deploy has reported success. Each row's `response.deployment_uuid`
+ * keys the per-target inbound webhook.
+ */
+export async function listDispatchedOutboundForRun(
+  bindingId: string,
+  runId: string,
+): Promise<(typeof integrationDeliveries.$inferSelect)[]> {
+  return db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'outbound'),
+        eq(integrationDeliveries.status, 'ok'),
+        sql`${integrationDeliveries.payload}->>'runId' = ${runId}`,
+      ),
+    );
+}
+
+/**
+ * The successful OUTBOUND deploy delivery whose Coolify response carried this
+ * `deployment_uuid` — the inbound webhook handler uses it to recover the
+ * pipeline run (+ target) that a deployment belongs to.
+ */
+export async function findOutboundByDeploymentUuid(
+  bindingId: string,
+  deploymentUuid: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'outbound'),
+        eq(integrationDeliveries.status, 'ok'),
+        sql`response->>'deployment_uuid' = ${deploymentUuid}`,
+      ),
+    )
+    .orderBy(desc(integrationDeliveries.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * The inbound delivery (if any) recorded for a given Coolify `deployment_uuid`
+ * on a binding — the webhook handler stores `requestId = deployment_uuid`. Used
+ * to read a sibling target's terminal outcome during multi-target aggregation.
+ */
+export async function findInboundByDeploymentUuid(
+  bindingId: string,
+  deploymentUuid: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, bindingId),
+        eq(integrationDeliveries.direction, 'inbound'),
+        eq(integrationDeliveries.requestId, deploymentUuid),
+      ),
+    )
+    .orderBy(desc(integrationDeliveries.createdAt))
     .limit(1);
   return rows[0] ?? null;
 }

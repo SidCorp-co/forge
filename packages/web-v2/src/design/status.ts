@@ -2,7 +2,75 @@
    These intentionally reference the raw brand palette (var(--green-500),
    ...) because the color IS the datum — unlike app chrome, which must use
    the semantic layer. Keep the status vocabulary fixed (design system):
-   queued · running · blocked · waiting · passed · failed · paused · done. */
+   queued · running · blocked · waiting · passed · failed · paused · done.
+
+   ISS-509 — ONE semantic-tone source of truth.
+   Color used to be picked independently in ~7 places, so the same meaning got
+   different colors and different meanings shared a color (a real `failed` job
+   and an `offline` runner both red; a benign `on_hold` issue red in a dashboard
+   but neutral in its chip; the pipeline "active" bead sharing the primary-action
+   flame). The fix: every status surface resolves through `TONE_META` below, and
+   the THREE concepts (issue chip · session chip · pipeline bead) stay
+   distinguishable by SHAPE + label, never by re-picking a color.
+
+   `SemanticTone` is the vocabulary. `STATUS_KEY_TONE` maps the fixed StatusKey
+   set onto it; `statusToTone` (features/issues/derive.ts) maps the 18 issue
+   lifecycle statuses through `statusToChip` so a status's tone is identical in
+   its chip and in every dashboard bucket. */
+
+export interface ColorMeta {
+  label: string;
+  fg: string;
+  bg: string;
+  dot: string;
+}
+
+/**
+ * The canonical semantic tones. Each = exactly ONE fg/bg/dot token. Reserve
+ * `failure` (red) for a REAL failure only — a benign cleanup, a paused issue, a
+ * blocked-by-dependency, or an offline runner must NEVER read red.
+ *  - success   terminal-good (verified): passed / done / staging / healthy
+ *  - shipped   released to production — a distinct "shipped" hue (flame), so a
+ *              released issue is not confused with a merely-verified one
+ *  - archived  closed / archived — calm, heavier ink than `blocked`, so a closed
+ *              issue reads as "filed away", distinct from a parked `on_hold`
+ *  - failure   a real failure: job `failed`, a live `zombie`/`stalled` session
+ *  - active    machine working: running, in_progress, the review/test stages
+ *  - attention a HUMAN must act: awaiting approval / info / your review
+ *  - blocked   parked, not a failure: on_hold, blocked-by-dependency (calm ink)
+ *  - neutral   backlog / idle / benign cleanup (`swept`, ISS-322)
+ *  - infra     infrastructure down (runner offline) — distinct from a code failure
+ */
+export type SemanticTone =
+  | "success"
+  | "shipped"
+  | "archived"
+  | "failure"
+  | "active"
+  | "attention"
+  | "blocked"
+  | "neutral"
+  | "infra";
+
+export const TONE_META: Record<SemanticTone, ColorMeta> = {
+  success: { label: "Success", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
+  // `shipped` = released to prod, a distinct flame hue so it reads apart from a
+  // merely-verified (green) issue. ISS-511.
+  shipped: { label: "Shipped", fg: "var(--flame-700)", bg: "var(--flame-50)", dot: "var(--flame-600)" },
+  // `archived` = closed/filed-away. Heavier ink than `blocked` (ink-700/paper-200)
+  // so a closed issue is distinct from a parked `on_hold`. ISS-511.
+  archived: { label: "Archived", fg: "var(--ink-900)", bg: "var(--paper-300)", dot: "var(--ink-600)" },
+  failure: { label: "Failure", fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
+  active: { label: "Active", fg: "var(--cobalt-700)", bg: "var(--cobalt-50)", dot: "var(--cobalt-500)" },
+  attention: { label: "Attention", fg: "var(--amberw-600)", bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
+  // `blocked` is a heavier ink than `neutral` so a parked issue reads as
+  // "stopped", not "new" — but stays calm (no alarm-red).
+  blocked: { label: "Blocked", fg: "var(--ink-700)", bg: "var(--paper-200)", dot: "var(--ink-500)" },
+  neutral: { label: "Neutral", fg: "var(--ink-600)", bg: "var(--paper-100)", dot: "var(--ink-400)" },
+  // `infra` = a cool slate ("dimmed / offline"), deliberately NOT red, so an
+  // offline runner is never mistaken for a code failure (ISS-509 screenshot-1).
+  infra: { label: "Infra", fg: "var(--slate-600)", bg: "var(--slate-50)", dot: "var(--slate-500)" },
+};
 
 export type StatusKey =
   | "running"
@@ -13,41 +81,99 @@ export type StatusKey =
   | "failed"
   | "paused"
   | "done"
+  | "shipped"
+  | "archived"
   | "review"
   | "zombie"
   | "swept";
 
-export interface ColorMeta {
-  label: string;
-  fg: string;
-  bg: string;
-  dot: string;
+/** The single mapping from the fixed StatusKey vocabulary onto a semantic tone.
+ *  Everything that colors a StatusKey (issue + session chips) flows through here
+ *  via `STATUS_META`, so the tone is the only place color is decided. */
+export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
+  running: "active",
+  queued: "neutral",
+  blocked: "blocked",
+  waiting: "attention",
+  passed: "success",
+  failed: "failure",
+  paused: "blocked",
+  done: "success",
+  // ISS-511 — the issue lifecycle tail splits off the shared `success`/green so a
+  // released vs closed vs verified issue is distinct. Issue-domain only.
+  shipped: "shipped",
+  archived: "archived",
+  // The review/test stages are AUTOMATED pipeline work in motion → `active`
+  // (cobalt), not amber. Amber is reserved strictly for "a human must act".
+  review: "active",
+  // A LIVE stalled session is genuinely attention-worthy (ISS-322) → failure.
+  zombie: "failure",
+  // ISS-322 — benign auto-cleanup / stale-sweep stays neutral, never red.
+  swept: "neutral",
+};
+
+/** Resolve a StatusKey's colors through its tone — the single derivation. */
+export function statusKeyMeta(key: StatusKey): ColorMeta {
+  const tone = TONE_META[STATUS_KEY_TONE[key]];
+  return { label: STATUS_KEY_LABEL[key], fg: tone.fg, bg: tone.bg, dot: tone.dot };
 }
 
+/** Chip labels for the StatusKey vocabulary (the tone carries the color; the
+ *  label carries the precise meaning so color is never the only signal). */
+export const STATUS_KEY_LABEL: Record<StatusKey, string> = {
+  running: "Running",
+  queued: "Queued",
+  blocked: "Blocked",
+  waiting: "Waiting",
+  passed: "Passed",
+  failed: "Failed",
+  paused: "Paused",
+  done: "Done",
+  shipped: "Released",
+  archived: "Closed",
+  review: "In review",
+  zombie: "Zombie",
+  swept: "Swept",
+};
+
 export const STATUS_META: Record<StatusKey, ColorMeta> = {
-  running: { label: "Running", fg: "var(--cobalt-700)", bg: "var(--cobalt-50)", dot: "var(--cobalt-500)" },
-  queued: { label: "Queued", fg: "var(--ink-600)", bg: "var(--paper-100)", dot: "var(--ink-400)" },
-  blocked: { label: "Blocked", fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
-  waiting: { label: "Waiting", fg: "var(--amberw-600)", bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
-  passed: { label: "Passed", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
-  failed: { label: "Failed", fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
-  paused: { label: "Paused", fg: "var(--ink-600)", bg: "var(--paper-100)", dot: "var(--ink-500)" },
-  done: { label: "Done", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
-  review: { label: "In review", fg: "var(--amberw-600)", bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
-  zombie: { label: "Zombie", fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
-  // ISS-322 — benign auto-cleanup / stale-sweep: a neutral (NOT red) bucket so a
-  // session reaped when its run finished, or swept after going stale, never
-  // reads as a real failure.
-  swept: { label: "Swept", fg: "var(--ink-600)", bg: "var(--paper-100)", dot: "var(--ink-400)" },
+  running: statusKeyMeta("running"),
+  queued: statusKeyMeta("queued"),
+  blocked: statusKeyMeta("blocked"),
+  waiting: statusKeyMeta("waiting"),
+  passed: statusKeyMeta("passed"),
+  failed: statusKeyMeta("failed"),
+  paused: statusKeyMeta("paused"),
+  done: statusKeyMeta("done"),
+  shipped: statusKeyMeta("shipped"),
+  archived: statusKeyMeta("archived"),
+  review: statusKeyMeta("review"),
+  zombie: statusKeyMeta("zombie"),
+  swept: statusKeyMeta("swept"),
 };
 
 export type HealthKey = "healthy" | "attention" | "down" | "idle";
 
+/** Health rolls up onto the same tones: down → `infra` (offline ≠ failure). */
+export const HEALTH_KEY_TONE: Record<HealthKey, SemanticTone> = {
+  healthy: "success",
+  attention: "attention",
+  down: "infra",
+  idle: "neutral",
+};
+
+const HEALTH_KEY_LABEL: Record<HealthKey, string> = {
+  healthy: "Healthy",
+  attention: "Attention",
+  down: "Down",
+  idle: "Idle",
+};
+
 export const HEALTH_META: Record<HealthKey, ColorMeta> = {
-  healthy: { label: "Healthy", fg: "var(--green-600)", dot: "var(--green-500)", bg: "var(--green-50)" },
-  attention: { label: "Attention", fg: "var(--amberw-600)", dot: "var(--amberw-500)", bg: "var(--amberw-50)" },
-  down: { label: "Down", fg: "var(--red-600)", dot: "var(--red-500)", bg: "var(--red-50)" },
-  idle: { label: "Idle", fg: "var(--ink-600)", dot: "var(--ink-400)", bg: "var(--paper-100)" },
+  healthy: { ...TONE_META[HEALTH_KEY_TONE.healthy], label: HEALTH_KEY_LABEL.healthy },
+  attention: { ...TONE_META[HEALTH_KEY_TONE.attention], label: HEALTH_KEY_LABEL.attention },
+  down: { ...TONE_META[HEALTH_KEY_TONE.down], label: HEALTH_KEY_LABEL.down },
+  idle: { ...TONE_META[HEALTH_KEY_TONE.idle], label: HEALTH_KEY_LABEL.idle },
 };
 
 export type AvatarHue = "cobalt" | "flame" | "green" | "amber" | "ink";

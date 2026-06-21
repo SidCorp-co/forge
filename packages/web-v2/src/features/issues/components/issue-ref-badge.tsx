@@ -24,15 +24,28 @@ export interface IssueRefBadgeProps {
   /** Optional related-issue status — rendered as a small tone dot before the
    *  pill (reuses the design-kit status tone, no new colors). */
   status?: IssueStatus | null;
+  /** When true (and `title` is present), render the title inline after the
+   *  pill, truncated to one line — so a relation row is identifiable at a
+   *  glance rather than showing only the `ISS-X` number. Off by default to
+   *  keep compact callers (blocker banner, sessions link) unchanged. */
+  showTitle?: boolean;
 }
 
-export function IssueRefBadge({ id, slug, displayId, title, status }: IssueRefBadgeProps) {
+export function IssueRefBadge({
+  id,
+  slug,
+  displayId,
+  title,
+  status,
+  showTitle = false,
+}: IssueRefBadgeProps) {
   const dot = status ? STATUS_META[statusToChip(status)].dot : null;
+  const withTitle = showTitle && !!title;
   return (
     <Link
       href={`/projects/${slug}/issues/${id}`}
       title={title ?? displayId ?? "Open issue"}
-      className="inline-flex max-w-full items-center gap-1 transition-opacity hover:opacity-80 focus-visible:outline-none"
+      className={`${withTitle ? "flex w-full" : "inline-flex"} max-w-full items-center gap-1 transition-opacity hover:opacity-80 focus-visible:outline-none`}
     >
       {dot && (
         <span
@@ -41,7 +54,12 @@ export function IssueRefBadge({ id, slug, displayId, title, status }: IssueRefBa
           style={{ background: dot }}
         />
       )}
-      <MonoTag hue="cobalt">{displayId ?? "Issue"}</MonoTag>
+      <span className="flex-none">
+        <MonoTag hue="cobalt">{displayId ?? "Issue"}</MonoTag>
+      </span>
+      {withTitle && (
+        <span className="fg-caption min-w-0 flex-1 truncate text-left text-xs">{title}</span>
+      )}
     </Link>
   );
 }

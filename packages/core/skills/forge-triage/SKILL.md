@@ -60,13 +60,15 @@ After posting, **stop** — do not proceed further for this issue.
 
 ### Step 3: Classify Complexity
 
-Read `references/complexity-rules.md` for detailed rules. Briefly:
+Read `references/complexity-rules.md` for detailed rules. The `complexity` field is one of `xs / s / m / l / xl`:
 
-- **Simple** — single file/component, isolated change
-- **Medium** — 2-5 files, single package
-- **Complex** — cross-package, schema changes, new APIs
+- **xs** — trivial: typo, copy, constant, one-line config; no real logic.
+- **s** — simple: single file/component, isolated change following an existing pattern.
+- **m** — medium: 2–5 files in one package; may add a small util/hook/component.
+- **l** — large: ~6+ files, a sizable feature, or cross-cutting within a package.
+- **xl** — epic: cross-package + schema/API/UI together, a new subsystem, or a decompose candidate.
 
-This assessment matters because `forge-plan` uses it to decide whether to auto-approve the implementation plan or require human review. Getting it wrong in the "too complex" direction wastes time on unnecessary human gates; too simple risks under-planning. When uncertain, lean toward Medium — `forge-plan` can upgrade after reading the actual codebase.
+This assessment matters because `forge-plan` uses it to decide whether to auto-approve the plan (`xs/s/m`) or hold it for human review (`l/xl`), and whether the issue is a decompose candidate. Getting it wrong toward `l/xl` wastes time on unnecessary human gates; too low risks under-planning. When uncertain, lean toward `m` — `forge-plan` can upgrade after reading the actual codebase.
 
 **No-code deliverables** (decision/audit/spike — issues whose only output is a write-up, no source change): these flow through the pipeline by materializing a `docs/proposals/<topic>.md` artifact (forge-plan handles the routing). Do **NOT** flag them for decomposition no matter how many recommendations they list — a pure decision has nothing to integrate. Note the no-code nature in the triage comment so forge-plan plans the docs artifact rather than a code change.
 
@@ -141,7 +143,7 @@ First, save classification fields (without status change):
 forge_issues → update → {
   documentId: "<id>",
   data: {
-    complexity: "<Simple|Medium|Complex>",
+    complexity: "<xs|s|m|l|xl>",
     category: "<inferred if was missing>",
     priority: "<inferred if was none>",
     relations: [<existing relations>, <new relations if any>]
@@ -172,7 +174,7 @@ forge_issues → update → { documentId: "<id>", data: { status: "confirmed" } 
 ```markdown
 **Triage** — <one-line summary of what the issue is about>
 
-**Complexity:** <Simple/Medium/Complex> — <brief justification>
+**Complexity:** <xs/s/m/l/xl> — <brief justification>
 **Category:** <category> <(inferred) if it was missing>
 **Priority:** <priority> <(inferred) if it was none>
 **Relations:** <list of linked issues with ISS-id and relation type, or "None detected">

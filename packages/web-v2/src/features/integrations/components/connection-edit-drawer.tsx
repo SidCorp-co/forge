@@ -272,8 +272,6 @@ function ConfigSection({
       connection.provider === "coolify"
         ? {
             baseUrl: (form.baseUrl ?? "").trim(),
-            resourceUuid: (form.resourceUuid ?? "").trim(),
-            branch: (form.branch ?? "").trim(),
           }
         : {
             workspaceName: (form.workspaceName ?? "").trim(),
@@ -295,26 +293,11 @@ function ConfigSection({
               disabled={!canManage}
             />
           </Field>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Default resource UUID">
-              <Input
-                value={form.resourceUuid ?? ""}
-                onChange={(e) => set("resourceUuid", e.target.value)}
-                disabled={!canManage}
-              />
-            </Field>
-            <Field label="Default branch">
-              <Input
-                value={form.branch ?? ""}
-                onChange={(e) => set("branch", e.target.value)}
-                disabled={!canManage}
-              />
-            </Field>
-          </div>
           <p className="fg-body-sm text-muted">
-            Resource UUID + branch here are connection-wide defaults. Each project bound to this
-            connection can override its own deploy target in project settings → Integrations, and
-            that per-project value takes precedence.
+            This is the shared credential (server URL + API token only). Deploy
+            targets — the Coolify application(s) each project deploys, including a
+            split backend/frontend — are configured per project under project
+            settings → Integrations.
           </p>
         </>
       ) : (

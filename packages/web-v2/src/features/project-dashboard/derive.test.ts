@@ -15,7 +15,7 @@ import {
 } from "./derive";
 
 describe("statusDonut", () => {
-  it("buckets every status and totals correctly", () => {
+  it("buckets open statuses and EXCLUDES terminal released/closed/draft from the total (ISS-528)", () => {
     const d = statusDonut({
       in_progress: 2,
       testing: 1,
@@ -23,24 +23,45 @@ describe("statusDonut", () => {
       approved: 1,
       reopen: 1,
       open: 4,
-      released: 5,
+      released: 5, // terminal — excluded from total + produces no segment
     });
-    expect(d.total).toBe(17);
+    // Open-only total = 12 (the released 5 is dropped so the donut center
+    // equals the "Open issues" KPI).
+    expect(d.total).toBe(12);
     const byKey = Object.fromEntries(d.segments.map((s) => [s.key, s.count]));
-    expect(byKey.running).toBe(3); // in_progress + testing
-    expect(byKey.review).toBe(3); // developed
-    expect(byKey.queued).toBe(1); // approved
-    expect(byKey.blocked).toBe(1); // reopen
-    expect(byKey.triage).toBe(4); // open
-    expect(byKey.done).toBe(5); // released
+    // ISS-509 — buckets fold by semantic tone. in_progress + testing +
+    // developed + reopen are all `active` (cobalt); reopen is NO LONGER a red
+    // "blocked" segment — it now matches its in-progress chip + the overview bar.
+    expect(byKey.active).toBe(7); // in_progress(2) + testing(1) + developed(3) + reopen(1)
+    expect(byKey.queued).toBe(5); // approved(1) + open(4) (neutral)
+    // released no longer produces any segment (terminal, excluded).
+    expect(d.segments.some((s) => s.key === "ready")).toBe(false);
     // pct sums to 100 across non-empty segments
     expect(d.segments.reduce((n, s) => n + s.pct, 0)).toBeCloseTo(100, 5);
   });
 
+  it("places tested in the Ready bucket and excludes closed/draft (ISS-528)", () => {
+    const d = statusDonut({ tested: 3, closed: 100, draft: 4, open: 1 });
+    // closed + draft excluded; tested + open are open work.
+    expect(d.total).toBe(4);
+    const byKey = Object.fromEntries(d.segments.map((s) => [s.key, s.count]));
+    expect(byKey.ready).toBe(3); // tested → Ready (awaiting release), not "Done"
+    expect(byKey.queued).toBe(1); // open
+    // no segment derives from closed/draft (only tested + open counted)
+    expect(d.segments.reduce((n, s) => n + s.count, 0)).toBe(4);
+  });
+
   it("drops empty buckets and reports active stage count", () => {
     const d = statusDonut({ open: 2, in_progress: 1 });
-    expect(d.segments.map((s) => s.key)).toEqual(["running", "triage"]);
+    expect(d.segments.map((s) => s.key)).toEqual(["active", "queued"]);
     expect(d.activeStageCount).toBe(2); // triage + code stages
+  });
+
+  it("never paints an issue-status segment with the failure(red) tone", () => {
+    // Only a failed JOB/session is red; no issue STATUS bucket uses red — this
+    // is the ISS-509 fix for reopen/on_hold/needs_info shown as alarm-red.
+    const d = statusDonut({ reopen: 1, on_hold: 1, needs_info: 1 });
+    expect(d.segments.every((s) => !s.color.includes("red"))).toBe(true);
   });
 
   it("handles empty/undefined distribution", () => {

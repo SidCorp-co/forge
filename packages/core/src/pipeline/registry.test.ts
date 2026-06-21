@@ -28,7 +28,7 @@ describe('PIPELINE_STEPS literal sanity', () => {
     }
   });
 
-  it('has the eight automatable steps in the expected order', () => {
+  it('has the eight automatable steps in the expected order (pass/staging retired)', () => {
     expect(PIPELINE_STEPS.map((s) => s.status)).toEqual([
       'open',
       'confirmed',
@@ -122,10 +122,10 @@ describe('contracts ↔ core enum parity', () => {
 });
 
 describe('getPipelineRegistry()', () => {
-  it('returns the four-key payload with version 3', () => {
+  it('returns the four-key payload with version 5', () => {
     const payload = getPipelineRegistry();
     expect(payload.version).toBe(PIPELINE_REGISTRY_VERSION);
-    expect(payload.version).toBe(3);
+    expect(payload.version).toBe(5);
     expect(payload.steps).toBe(PIPELINE_STEPS);
     expect(payload.runnerCapabilities).toBe(RUNNER_CAPABILITIES);
     expect(payload.manualOnlyJobTypes).toBe(MANUAL_ONLY_JOB_TYPES);
@@ -135,7 +135,7 @@ describe('getPipelineRegistry()', () => {
     const payload = getPipelineRegistry();
     const json = JSON.parse(JSON.stringify(payload));
     const parsed = pipelineRegistryResponseSchema.parse(json);
-    expect(parsed.version).toBe(3);
+    expect(parsed.version).toBe(5);
     expect(parsed.steps).toHaveLength(8);
     expect(parsed.manualOnlyJobTypes).toEqual([]);
   });
@@ -182,7 +182,7 @@ describe('GET /api/pipeline/registry', () => {
     const body = await res.json();
     const parsed = pipelineRegistryResponseSchema.parse(body);
     expect(parsed.steps).toHaveLength(8);
-    expect(parsed.version).toBe(3);
+    expect(parsed.version).toBe(5);
     expect(parsed.manualOnlyJobTypes).toEqual([]);
     expect(parsed.runnerCapabilities['claude-code']).toEqual([
       'plan',
@@ -191,6 +191,7 @@ describe('GET /api/pipeline/registry', () => {
       'fix',
       'triage',
       'test',
+      'staging',
       'release',
       'clarify',
       'smoke',

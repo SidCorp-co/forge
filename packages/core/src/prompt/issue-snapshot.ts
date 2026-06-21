@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
@@ -7,8 +7,18 @@ import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
  * Pre-load issue fields used by `buildJobPromptString` to inline an
  * `## Issue` block + sessionContext preamble into the runner prompt.
  * Single SELECT; per-state field gating happens inside `prompt/user.ts`.
+ *
+ * When `projectId` is supplied the lookup is scoped to that project
+ * (`AND issues.project_id = projectId`), so a caller-supplied issueId from a
+ * different project resolves to null — the tenant-isolation gate for the
+ * `POST /api/prompt/preview` route (ISS-492). Trusted internal callers (the
+ * pipeline orchestrator) omit it: they already resolved the issue's own
+ * project, so no cross-project read is possible there.
  */
-export async function loadIssueSnapshot(issueId: string): Promise<IssueSnapshot | null> {
+export async function loadIssueSnapshot(
+  issueId: string,
+  projectId?: string,
+): Promise<IssueSnapshot | null> {
   const [row] = await db
     .select({
       title: issues.title,
@@ -21,7 +31,11 @@ export async function loadIssueSnapshot(issueId: string): Promise<IssueSnapshot 
       sessionContext: issues.sessionContext,
     })
     .from(issues)
-    .where(eq(issues.id, issueId))
+    .where(
+      projectId
+        ? and(eq(issues.id, issueId), eq(issues.projectId, projectId))
+        : eq(issues.id, issueId),
+    )
     .limit(1);
   if (!row) return null;
   return {

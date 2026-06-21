@@ -7,15 +7,30 @@
 // no new mutations, no duplication of ISS-377/366.
 import { useRouter } from "next/navigation";
 import { Button, Card, CardContent, EmptyState, Icon, type IconName, MonoTag } from "@/design";
+import { TONE_META, type SemanticTone } from "@/design/status";
 import { formatRelativeTime } from "@/features/projects/derive";
 import type { AttentionActionKind, DashboardAttentionItem } from "../derive";
 
-const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName; fg: string; bg: string }> = {
-  retry: { tag: "Failed", icon: "alert", fg: "var(--red-600)", bg: "var(--red-50)" },
-  diff: { tag: "Review", icon: "check", fg: "var(--cobalt-700)", bg: "var(--cobalt-50)" },
-  input: { tag: "Awaiting", icon: "clock", fg: "var(--amberw-600)", bg: "var(--amberw-50)" },
-  chain: { tag: "Blocked", icon: "branch", fg: "var(--red-600)", bg: "var(--red-50)" },
+// ISS-509: tone-resolved so only a genuinely failed job is red — a
+// blocked-on-dependency `chain` item is calm `blocked` ink, NOT alarm-red.
+const ACTION_TONE: Record<AttentionActionKind, SemanticTone> = {
+  retry: "failure",
+  diff: "active",
+  input: "attention",
+  chain: "blocked",
 };
+
+const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName; fg: string; bg: string }> = {
+  retry: { tag: "Failed", icon: "alert", ...actionTone("retry") },
+  diff: { tag: "Review", icon: "check", ...actionTone("diff") },
+  input: { tag: "Awaiting", icon: "clock", ...actionTone("input") },
+  chain: { tag: "Blocked", icon: "branch", ...actionTone("chain") },
+};
+
+function actionTone(kind: AttentionActionKind): { fg: string; bg: string } {
+  const t = TONE_META[ACTION_TONE[kind]];
+  return { fg: t.fg, bg: t.bg };
+}
 
 export function AttentionQueue({ items, now }: { items: DashboardAttentionItem[]; now: number }) {
   const router = useRouter();

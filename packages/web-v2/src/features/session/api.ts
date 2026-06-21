@@ -1,9 +1,9 @@
 // web-v2 feature module: session (detail) — REST surface. All calls go through
 // the shared `apiClient` (no raw fetch). Routes verified against
 // `packages/core/src/agent-sessions/routes.ts` for ISS-292.
-import { apiClient, apiClientList } from "@/lib/api/client";
+import { apiClient, apiClientList, apiMultipart } from "@/lib/api/client";
 import type { SessionMetadata, SessionRow } from "@/features/sessions/types";
-import type { TurnRow, TurnsResponse } from "./types";
+import type { SessionAttachment, TurnRow, TurnsResponse } from "./types";
 
 export interface GetTurnsOpts {
   /** Cursor — a turn id; returns turns *after* it. */
@@ -16,6 +16,8 @@ export interface SendOpts {
   sessionId: string;
   message: string;
   claudeSessionId?: string | null;
+  /** ISS-499 — ids of already-uploaded session attachments to attach to this turn. */
+  attachmentIds?: string[];
 }
 
 export interface ForkOpts {
@@ -49,11 +51,27 @@ export const sessionApi = {
   },
 
   /** `POST /api/agent-sessions/send` — queue a new user message to the device. */
-  send: ({ sessionId, message, claudeSessionId }: SendOpts) =>
+  send: ({ sessionId, message, claudeSessionId, attachmentIds }: SendOpts) =>
     apiClient<SessionRow>("/agent-sessions/send", {
       method: "POST",
-      body: JSON.stringify({ sessionId, message, ...(claudeSessionId ? { claudeSessionId } : {}) }),
+      body: JSON.stringify({
+        sessionId,
+        message,
+        ...(claudeSessionId ? { claudeSessionId } : {}),
+        ...(attachmentIds?.length ? { attachmentIds } : {}),
+      }),
     }),
+
+  /**
+   * `POST /:sessionId/attachments` — multipart upload of one chat attachment
+   * (ISS-499). Returns the persisted attachment metadata; its `id` is then sent
+   * in the next `send` as `attachmentIds`.
+   */
+  uploadAttachment: (sessionId: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return apiMultipart<SessionAttachment>(`/agent-sessions/${sessionId}/attachments`, fd);
+  },
 
   /** `POST /:id/turns/:turnId/regenerate` — truncate after a turn + re-dispatch (409 if running). */
   regenerate: (id: string, turnId: string) =>

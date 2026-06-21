@@ -371,8 +371,12 @@ describe('forge_issues tool', () => {
       data: { title: 'New', plan: 'p1', acceptanceCriteria: 'ac1' },
     })) as { plan: string | null; acceptanceCriteria: string | null };
 
+    // ISS-532: plan is agent-authored → char-strip only (unchanged here);
+    // acceptanceCriteria is human-authored → framed as untrusted DATA in the
+    // agent-facing serialization (raw value still stored, asserted below).
     expect(result.plan).toBe('p1');
-    expect(result.acceptanceCriteria).toBe('ac1');
+    expect(result.acceptanceCriteria).toContain('ac1');
+    expect(result.acceptanceCriteria).toContain('UNTRUSTED_DATA source="issue.acceptanceCriteria"');
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'New', plan: 'p1', acceptanceCriteria: 'ac1' }),
     );
@@ -901,6 +905,7 @@ describe('forge_issues tool', () => {
           tokenId: PAT_TOKEN,
           scopes: ['read', 'write'],
           projectIds,
+          boundProjectId: null,
         },
         device: fakeDevice,
         projectSlug: null,
@@ -1185,6 +1190,7 @@ describe('forge_issues tool', () => {
           tokenId: '55555555-5555-4555-8555-555555555555',
           scopes: ['read', 'write'],
           projectIds: ['66666666-6666-4666-8666-666666666666'],
+          boundProjectId: null,
         },
         device: fakeDevice,
         projectSlug: null,

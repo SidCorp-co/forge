@@ -12,7 +12,7 @@ Two principals, one shared policy layer: **user** (JWT) and **device** (long-liv
 ## Component map
 
 ```
-browser: web (Next.js) · dev (Tauri)
+browser: web-v2 (Next.js) · dev (Tauri)
    │ REST + WS (user JWT) · MCP (user/device token)
    ▼
 control plane — packages/core (Hono)
@@ -35,6 +35,9 @@ runtime plane — your machine(s)
 - **Dual-principal auth.** User (JWT, 7-day TTL, refresh rotation): read/write own/member projects, enqueue jobs, revoke devices. Device (revocable token): accept jobs for pooled projects, submit JobEvents, heartbeat — **cannot** read user PII or enumerate projects outside its pool. One policy module (`assertUserIsProjectMember`, `assertUserIsProjectOwner`) gates REST + WS + MCP; no path bypasses it.
 - **Room-scoped WS.** Sockets are subscribed to rooms at auth (`user:<id>`, `project:<id>`, `device:<id>`); clients can't pick rooms. See [websocket.md](websocket.md).
 - **MCP on the same data layer.** Tools wrap REST controllers (same validation/policy/audit). User MCP tokens are account-wide (call must include `projectId`); device tokens are device-scoped.
+- **Organizations.** `packages/core/src/orgs/`, mounted `/api/orgs` + `/api/org-invitations`; two-tier org+project RBAC layered over the per-project membership policy.
+- **Integrations framework.** `packages/core/src/integrations/{coolify,epodsystem,postman}/`, mounted `/api/integration-connections`; pluggable adapters for outbound third-party systems.
+- **Memory cognitive layer.** `packages/core/src/memory/` (consolidation/decay/extraction/indexer), mounted `/api/memory`; the pgvector embeddings store feeds this layer for recall, consolidation, and decay.
 
 ## Data flow — a typical job
 
@@ -46,7 +49,7 @@ runtime plane — your machine(s)
 
 ## Pipeline state machine
 
-18 statuses in `packages/core/src/db/schema.ts` (`issueStatuses`). Lifecycle, transitions, and skill mapping: [status-pipeline.md](../modules/issues-pipeline/status-pipeline.md) (source of truth). Per-project `pipelineConfig.auto*` decides auto-run vs human gate.
+15 statuses in `packages/core/src/db/schema.ts` (`issueStatuses`). Lifecycle, transitions, and skill mapping: [status-pipeline.md](../modules/issues-pipeline/status-pipeline.md) (source of truth). Per-project `pipelineConfig.auto*` decides auto-run vs human gate.
 
 ## Security boundaries
 

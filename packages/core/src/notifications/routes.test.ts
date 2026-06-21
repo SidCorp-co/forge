@@ -210,6 +210,30 @@ describe('createNotification helper + WS bridge', () => {
     expect(seenUserIds).toEqual([USER_ID]);
   });
 
+  it('persists severity + resolutionKey and forwards them to the hook', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: NOTIF_ID }]);
+    let payload: { severity?: string | null; resolutionKey?: string | null } | undefined;
+    hooksModule.hooks.on('notificationCreated', (p) => {
+      payload = p;
+    });
+    const { createNotification } = await import('./routes.js');
+    await createNotification({
+      userId: USER_ID,
+      type: 'issue_status_changed',
+      title: 'ISS-1 moved to reopen',
+      projectId: PROJECT_ID,
+      severity: 'error',
+      resolutionKey: 'issue:abc:status',
+    });
+    // Row insert carries the new columns.
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: 'error', resolutionKey: 'issue:abc:status' }),
+    );
+    // …and the WS-bridge hook receives them.
+    expect(payload?.severity).toBe('error');
+    expect(payload?.resolutionKey).toBe('issue:abc:status');
+  });
+
   it('suppresses a mention when notify_on_mention is false', async () => {
     // mention gate: preferences row opts out → no insert, no emit, returns null.
     selectLimit.mockResolvedValueOnce([{ notifyOnMention: false }]);

@@ -12,6 +12,7 @@ import { CoolifySection } from "./coolify-section";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { EpodsystemSection } from "./epodsystem-section";
 import { PostmanSection } from "./postman-section";
+import { SentrySection } from "./sentry-section";
 import { ENV_LABEL, ENV_OPTIONS, PROVIDER_LABEL, StatusPill } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
@@ -29,6 +30,7 @@ import { ENV_LABEL, ENV_OPTIONS, PROVIDER_LABEL, StatusPill } from "./status-pil
 function ProviderSection({ provider, projectId }: { provider: DrillableProvider; projectId: string }) {
   if (provider === "coolify") return <CoolifySection projectId={projectId} />;
   if (provider === "postman") return <PostmanSection projectId={projectId} />;
+  if (provider === "sentry") return <SentrySection projectId={projectId} />;
   return <EpodsystemSection projectId={projectId} />;
 }
 

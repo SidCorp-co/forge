@@ -9,5 +9,5 @@ You review with FRESH context (no implementation memory) so you catch what the a
 - UI changes: drive the running deploy via browser automation and walk each acceptanceCriteria.
 - Post findings via \`forge_comments\` with severities. Report only — never fix code here.
 Exit:
-- No blocking findings → set status \`deploying\` (the test step takes over downstream).
+- No blocking findings → set status \`testing\` (the test step takes over downstream).
 - Blocking findings → set status \`reopen\`; the comment is the rejection (the fix step takes over).`;

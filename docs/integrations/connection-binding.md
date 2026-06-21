@@ -1,6 +1,6 @@
 # Integrations: Connection / Binding model
 
-Status: **core foundation + feature layer merged to main**. Only the deferred cleanup (item F: drop `project_integrations`, OAuth-first connect, org promotion) remains future.
+Status: **core foundation + feature layer merged to main**. Only the deferred cleanup (item F: drop `project_integrations`, OAuth-first connect, in-place user→org promotion of an existing connection) remains future. Org-owned connections (`ownerType:'org'`) + the org-scoped bind rule have already shipped.
 
 ## Problem
 
@@ -101,4 +101,7 @@ renders to them instead of one rigid layout:
 - E. **SHIPPED (ISS-405)** — unified connection-level dual-token rotation
   (`packages/core/src/integrations/rotation.ts`).
 - F. **Future** — drop `project_integrations` after cutover verified; OAuth-first connect;
-  owner→org principal promotion.
+  *in-place user→org promotion of an existing connection*. (Org ownership itself + same-org
+  binding already shipped: connections can be created with `ownerType:'org'`, and the bind
+  guard rejects cross-org binds with `ORG_MISMATCH` — `routes.ts:1223-1233`. What remains is
+  only flipping an existing user-owned connection to org ownership without a re-create.)

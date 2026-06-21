@@ -32,6 +32,7 @@ function makeThenable(): any {
     where: () => p,
     orderBy: () => p,
     limit: () => p,
+    // biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await — the mock must be thenable
     then: (resolve: (v: unknown) => void) => resolve(resultQueue.shift() ?? []),
   };
   return p;
@@ -51,8 +52,10 @@ vi.mock('../../pipeline/release-coolify.js', () => ({
 }));
 
 const findLastOutboundSpy = vi.fn();
+const findLastOutboundForTargetSpy = vi.fn();
 vi.mock('../../integrations/deliveries.js', () => ({
   findLastOutbound: (a: unknown) => findLastOutboundSpy(a),
+  findLastOutboundForTarget: (...a: unknown[]) => findLastOutboundForTargetSpy(...(a as [])),
 }));
 
 const { forgeCoolifyDeployTool } = await import('./forge-coolify-deploy.js');
@@ -105,7 +108,14 @@ function pair(
   } = {},
 ) {
   return {
-    binding: { id, environment, projectId: PROJECT_ID, provider: 'coolify', config: {}, active: true },
+    binding: {
+      id,
+      environment,
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      config: {},
+      active: true,
+    },
     connection: {
       id,
       provider: 'coolify',
@@ -124,14 +134,18 @@ beforeEach(() => {
   resolveRunSpy.mockReset();
   dispatchDirectSpy.mockReset();
   findLastOutboundSpy.mockReset();
+  findLastOutboundForTargetSpy.mockReset();
 });
 
 describe('forge_coolify_deploy → list', () => {
-  it('maps active integrations including breakerOpen + resourceUuid', async () => {
+  it('maps active integrations including breakerOpen + targets', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      pair(STAGING_INT, 'staging', { config: { resourceUuid: 'res-staging' }, lastHealthStatus: 'ok' }),
+      pair(STAGING_INT, 'staging', {
+        config: { targets: [{ id: 't-be', label: 'Backend', resourceUuid: 'res-staging' }] },
+        lastHealthStatus: 'ok',
+      }),
       pair(PROD_INT, 'prod', { breakerOpenedAt: new Date() }),
     ]);
 
@@ -139,7 +153,7 @@ describe('forge_coolify_deploy → list', () => {
       integrations: Array<{
         id: string;
         environment: string;
-        resourceUuid: string | null;
+        targets: Array<{ id: string; label: string; resourceUuid: string }>;
         breakerOpen: boolean;
       }>;
     };
@@ -148,12 +162,12 @@ describe('forge_coolify_deploy → list', () => {
     expect(result.integrations[0]).toMatchObject({
       id: STAGING_INT,
       environment: 'staging',
-      resourceUuid: 'res-staging',
+      targets: [{ id: 't-be', label: 'Backend', resourceUuid: 'res-staging' }],
       breakerOpen: false,
     });
     expect(result.integrations[1]).toMatchObject({
       environment: 'prod',
-      resourceUuid: null,
+      targets: [],
       breakerOpen: true,
     });
   });
@@ -304,28 +318,53 @@ describe('forge_coolify_deploy → deploy', () => {
 });
 
 describe('forge_coolify_deploy → status', () => {
-  it('returns the latest outbound delivery per active integration', async () => {
+  it('returns the latest outbound delivery per TARGET of each active integration', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      pair(STAGING_INT, 'staging', { config: { resourceUuid: 'res-staging' }, lastHealthStatus: 'ok' }),
+      pair(STAGING_INT, 'staging', {
+        config: {
+          targets: [
+            { id: 't-be', label: 'Backend', resourceUuid: 'res-be' },
+            { id: 't-fe', label: 'Frontend', resourceUuid: 'res-fe' },
+          ],
+        },
+        lastHealthStatus: 'ok',
+      }),
     ]);
-    findLastOutboundSpy.mockResolvedValueOnce({
+    findLastOutboundForTargetSpy.mockImplementation(async (_bid: string, targetId: string) => ({
       status: 'ok',
-      response: { deployment_uuid: 'dep-123' },
+      response: { deployment_uuid: `dep-${targetId}` },
       createdAt: new Date('2026-05-27T00:00:00Z'),
-    });
+    }));
 
     const result = (await tool.handler({ action: 'status', projectId: PROJECT_ID })) as {
-      deliveries: Array<{ integrationId: string; deploymentUuid: string | null; status: string }>;
+      deliveries: Array<{
+        integrationId: string;
+        targetId: string | null;
+        targetLabel: string | null;
+        deploymentUuid: string | null;
+        status: string;
+      }>;
     };
 
-    expect(result.deliveries).toHaveLength(1);
-    expect(result.deliveries[0]).toMatchObject({
-      integrationId: STAGING_INT,
-      deploymentUuid: 'dep-123',
-      status: 'ok',
-      breakerOpen: false,
-    });
+    // One row per target (Backend + Frontend).
+    expect(result.deliveries).toHaveLength(2);
+    expect(result.deliveries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          integrationId: STAGING_INT,
+          targetId: 't-be',
+          targetLabel: 'Backend',
+          deploymentUuid: 'dep-t-be',
+          status: 'ok',
+        }),
+        expect.objectContaining({
+          targetId: 't-fe',
+          targetLabel: 'Frontend',
+          deploymentUuid: 'dep-t-fe',
+        }),
+      ]),
+    );
   });
 });

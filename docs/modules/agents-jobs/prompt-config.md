@@ -31,7 +31,7 @@ Layers 1–4 are identical across every job in a project → prompt cache (5-min
 
 ### Built-in per-state blocks
 
-`packages/core/src/prompt/state-prompts/` holds one file per step — 8 files: `triage.ts`, `clarify.ts`, `plan.ts`, `code.ts`, `review.ts`, `test.ts`, `fix.ts`, `release.ts` — exported via `index.ts` as `DEFAULT_STATE_SYSTEM_PROMPTS`, resolved with `getStatePrompt(step)`. Each is short, stable platform policy (objective + emphasis + exit/status contract); detailed procedure stays in the per-state skill. No default block for stepless intermediate states (`deploying`, `tested`, `staging`) or non-pipeline steps (`custom`, `pm`).
+`packages/core/src/prompt/state-prompts/` holds one file per step — 8 files: `triage.ts`, `clarify.ts`, `plan.ts`, `code.ts`, `review.ts`, `test.ts`, `fix.ts`, `release.ts` — exported via `index.ts` as `DEFAULT_STATE_SYSTEM_PROMPTS`, resolved with `getStatePrompt(step)`. Each is short, stable platform policy (objective + emphasis + exit/status contract); detailed procedure stays in the per-state skill. No default block for stepless intermediate states (`tested`) or non-pipeline steps (`custom`, `pm`).
 
 ### Operator overrides — append vs replace
 

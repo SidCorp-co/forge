@@ -61,40 +61,29 @@ Wait ~30 seconds for services to become healthy.
 2. **Verify your email** (required before creating your first project) — click the link in the email.
 3. Create a project. Note its slug (used when pairing a device).
 
-> Admin ops (user list, device list, audit log, projects) live at `/admin` in the web app (`/admin` redirects to `/admin/users`).
+> Operational/admin views live under `/ops` (ops health), `/runners` (device & runner fleet), and `/org` + Settings → Organizations (members & roles); general settings under `/settings`.
 
 ## 3. Pair a device
 
-A device is any machine that will run `claude` for your projects (commonly your dev laptop).
-
-### Option A: Desktop GUI (Tauri)
-
-1. Download the desktop app for your OS from [GitHub Releases](https://github.com/SidCorp-co/forge/releases).
-2. Install and open it.
-3. Point it at your server: `http://localhost:8080` (or your deployed URL).
-4. Web dashboard: **Account → Devices → Add device** → copy the pairing code.
-5. Desktop app: **Settings → Pair** → paste the code.
-
-### Option B: CLI daemon (`forge-runner`)
-
-For CI runners, headless dev boxes, or terminal preference:
+A device is any machine that will run `claude` for your projects (commonly your dev laptop or a headless box). Forge pairs devices with the **`forge-runner`** daemon:
 
 ```bash
-# Install forge-runner via packages/runner/install.sh
+# Install
+curl -fsSL http://localhost:8080/install.sh | sh
 
-# Pair
-forge-runner login --code F9-3K7T-92XA
+# Pair — opens a browser to approve (use --code on a headless host)
+forge-runner login
 ```
 
-Token stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service); WebSocket connects; device appears **online** within seconds.
+The device appears **online** in **Runners** within seconds. The full walkthrough — assigning to a project, binding a checkout, running as a service — is in [guides/runners.md](guides/runners.md).
 
 ## 4. Bind the project to the device
 
-1. Dashboard: **Project → Settings → Runtime** → pick the paired device.
-2. Provide the local path to the project's git repo on that device. If absent there, the agent can `git clone` for you.
-3. Confirm. The device is now the project's **active** runner.
+1. Dashboard: **Runners** → **Manage** the device → assign it to your project (or **Project → Settings → Runners**).
+2. On the runner host, bind an **existing** checkout: `forge-runner bind <project-slug> --path /abs/path/to/repo`.
+3. Start the daemon: `forge-runner start` (or install it as a service).
 
-One device active per project at a time. Pool multiple devices (Switch Device to drain and hand over).
+One device runs one issue at a time per project; add more devices for failover, or use separate projects for parallelism. See [guides/runners.md](guides/runners.md).
 
 ## 5. Run your first job
 
@@ -121,9 +110,9 @@ On triage complete the issue advances to `confirmed`. Continue through the pipel
 | Symptom | Fix |
 |---|---|
 | `docker compose up` hangs on "waiting for postgres" | `docker compose logs postgres`. Wrong `POSTGRES_PASSWORD` → `docker compose down -v` then restart fresh. Port conflict on 5432 → change host-side port in `docker-compose.yml`. |
-| Device shows `offline` | Confirm agent running (`forge-runner status` or Tauri app). Check agent log for WebSocket connect errors. Server URL mismatch — agent must point at a reachable URL (not `localhost` if on a different machine). |
-| `forge-runner login` fails "pairing code expired" | Codes valid 5 minutes. Generate a new one from **Account → Devices → Add device**. |
-| Device online but jobs stay `queued` | Project bound to this device? (**Project → Settings → Runtime**). Another job already `running`? (one per device). Is `claude` installed and in PATH? (agent spawns it as a subprocess). |
+| Device shows `offline` | Confirm the daemon is running (`forge-runner status`). Check its log for WebSocket connect errors. Server URL mismatch — the daemon must point at a reachable URL (not `localhost` if on a different machine). |
+| `forge-runner login` fails "pairing code expired" | Codes valid ~5 minutes. Generate a fresh one (`forge-runner login`, or **Runners → Pair a device → Generate code**). |
+| Device online but jobs stay `queued` | Project bound to this device? (**Project → Settings → Runners**). Another job already `running`? (one per device). Is `claude` installed and in PATH? (the daemon spawns it as a subprocess). |
 | Email verification loop | Forge sends via configured SMTP. For local dev set `SMTP_DEBUG=true` in `.env` to print verification links to container logs. |
 
 ---

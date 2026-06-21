@@ -12,6 +12,7 @@ import {
   devices,
   issues,
   projects,
+  runners,
   usageRecords,
 } from '../db/schema.js';
 import {
@@ -200,18 +201,29 @@ const startBodySchema = z
     type: z.string().max(80).optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
+    // ISS-499 — session attachments to attach to the first turn.
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
   .strict();
 
 const sendBodySchema = z
   .object({
     sessionId: z.uuid(),
-    message: z.string().min(1).max(40_000),
+    // ISS-499 — empty allowed when attachmentIds are present (files-only send,
+    // e.g. attach a screenshot with no caption); the refine below enforces that
+    // a turn carries either text or at least one attachment.
+    message: z.string().max(40_000),
     claudeSessionId: z.string().max(500).nullable().optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
+    // ISS-499 — session attachments to attach to this turn.
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
-  .strict();
+  .strict()
+  .refine((d) => d.message.trim().length > 0 || (d.attachmentIds?.length ?? 0) > 0, {
+    message: 'message or attachmentIds required',
+    path: ['message'],
+  });
 
 const abortBodySchema = z
   .object({
@@ -387,6 +399,7 @@ agentSessionRoutes.post(
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,
       preBuilt: input.preBuilt ?? false,
+      attachmentIds: input.attachmentIds,
       broadcastEvent: 'agent-session.created',
     });
 
@@ -447,6 +460,7 @@ agentSessionRoutes.post(
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,
       claudeSessionId: input.claudeSessionId ?? null,
+      attachmentIds: input.attachmentIds,
     });
     return c.json({ ok: true });
   },
@@ -918,22 +932,51 @@ agentSessionRoutes.get(
   }),
   async (c) => {
     const { deviceId, projectSlug } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    // Non-revealing default: any caller without ownership/membership of the
+    // queried target gets `connected:false` and cannot tell a real offline
+    // device/slug from one that exists in another tenant (ISS-492).
+    const notConnected = () => c.json({ data: { connected: false } });
 
     if (deviceId) {
       const [row] = await db
-        .select({ status: devices.status })
+        .select({ status: devices.status, ownerId: devices.ownerId })
         .from(devices)
         .where(eq(devices.id, deviceId))
         .limit(1);
-      return c.json({ data: { connected: row?.status === 'online' } });
+      if (!row) return notConnected();
+
+      // Reveal the real liveness bit only to the device owner, or to a caller
+      // who shares a project this device serves as a runner.
+      let allowed = row.ownerId === userId;
+      if (!allowed) {
+        const visible = await loadVisibleProjectIds(userId);
+        if (visible.length > 0) {
+          const [served] = await db
+            .select({ id: runners.id })
+            .from(runners)
+            .where(and(eq(runners.deviceId, deviceId), inArray(runners.projectId, visible)))
+            .limit(1);
+          allowed = served !== undefined;
+        }
+      }
+      if (!allowed) return notConnected();
+
+      return c.json({ data: { connected: row.status === 'online' } });
     }
 
     if (!projectSlug) {
-      return c.json({ data: { connected: false } });
+      return notConnected();
     }
 
     const project = await loadProjectBySlug(projectSlug);
-    if (!project) return c.json({ data: { connected: false } });
+    if (!project) return notConnected();
+
+    // Gate membership before confirming the slug has a live device — otherwise
+    // the response is a slug-existence + liveness oracle for other tenants.
+    const access = await loadProjectAccess(project.id, userId).catch(() => null);
+    if (!access?.role) return notConnected();
 
     const available = await findAvailableDeviceForProject(project.id);
     return c.json({ data: { connected: available !== null } });
@@ -957,7 +1000,18 @@ agentSessionRoutes.get(
       if (!access.role) throw forbidden('not a project member');
       conditions.push(eq(agentSessions.projectId, projectId));
     } else if (deviceId) {
+      // Scope a deviceId listing to caller-visible projects, like the
+      // cross-project branch below — otherwise any authenticated user could
+      // dump every session (incl. full messages[]) for a device across all
+      // tenants (ISS-492). agentSessions.projectId is NOT NULL, so this fully
+      // scopes the rows.
+      const visible = await loadVisibleProjectIds(userId);
+      if (visible.length === 0) {
+        setTotalCount(c, 0);
+        return c.json([]);
+      }
       conditions.push(eq(agentSessions.deviceId, deviceId));
+      conditions.push(inArray(agentSessions.projectId, visible));
     } else {
       // Cross-project view: restrict to caller-visible projects (explicit
       // membership of any role, or org owner/admin).
@@ -974,6 +1028,13 @@ agentSessionRoutes.get(
     if (status) conditions.push(eq(agentSessions.status, status));
     if (metadataType) {
       conditions.push(sql`${agentSessions.metadata}->>'type' = ${metadataType}`);
+    }
+    // ISS-522 — interactive `agent` chats are private to their owner. Scope the
+    // "My conversations" listing to the caller; this also drops legacy
+    // userId=NULL rows (NULL never equals). Pipeline/pm/Agents-overview calls
+    // (no metadataType=agent) stay project-shared.
+    if (metadataType === 'agent') {
+      conditions.push(eq(agentSessions.userId, userId));
     }
     if (issueId) {
       conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
@@ -1105,6 +1166,7 @@ agentSessionRoutes.get(
     } else {
       const access = await loadProjectAccess(row.projectId, userId);
       if (!access.role) throw forbidden('not a project member');
+      assertAgentChatOwner(row, access, userId);
     }
 
     return c.json(row);
@@ -1565,6 +1627,25 @@ const forkBodySchema = z
   })
   .strict();
 
+// ISS-522 — interactive `agent` chats are private to their owner (or a project
+// admin). This is a NO-OP for pipeline/pm/no-type sessions, which stay
+// project-shared. Legacy `userId = NULL` agent rows are treated as non-owner →
+// only an admin can read them, so they never leak to other members. Mirrors the
+// owner-or-admin guard already used by the editTurn (PATCH /:id/turns/:turnId)
+// route.
+function assertAgentChatOwner(
+  session: { metadata: unknown; userId: string | null },
+  access: Awaited<ReturnType<typeof loadProjectAccess>>,
+  userId: string,
+) {
+  const isAgentChat =
+    (session.metadata as { type?: string } | null)?.type === 'agent';
+  if (!isAgentChat) return;
+  if (session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+    throw forbidden('not the conversation owner');
+  }
+}
+
 async function ensureSessionMember(sessionId: string, userId: string) {
   const [session] = await db
     .select()
@@ -1591,7 +1672,8 @@ agentSessionRoutes.get(
     const { id } = c.req.valid('param');
     const { after, limit } = c.req.valid('query');
     const userId = c.get('userId');
-    await ensureSessionMember(id, userId);
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertAgentChatOwner(session, access, userId);
 
     const opts: { afterTurnIndex?: number; limit?: number } = {};
     if (after) {

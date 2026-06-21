@@ -23,7 +23,7 @@ This is NOT a test runner (vitest/playwright). It's a manual QA replacement that
 - **forge_comments** — list previous comments (review/fix feedback) + post test report
 - **forge_config** — get project config (staging URLs, test credentials)
 - **forge_coolify_deploy** — check deployment status before testing
-- **Browser** — `mcp__claude-in-chrome__*` for frontend testing
+- **Browser (optional)** — if a browser-automation MCP is available, use whatever browser tools the runner exposes (auto-detected; usually surfaced as `browser_*`: navigate, click, type, snapshot/screenshot). Do not hardcode a provider. If no browser MCP is available, fall back to curl/WebFetch HTML checks.
 - **HTTP** — WebFetch / Bash (curl) for API testing
 
 Read `references/test-approach.md` for detailed testing patterns (API auth, browser tools, what to verify). Read `references/result-format.md` for report template and verdict rules. Read `references/browser-playbook.md` for step-by-step browser interaction guides (login, navigation, form input, code inspection) — follow these exactly to avoid rediscovering UI flows.
@@ -54,6 +54,10 @@ If the issue's change is a **no-code deliverable** (a `docs/proposals/<topic>.md
 
 Instead verify the **artifact**: confirm the planned `docs/proposals/<topic>.md` exists, is non-trivial (the actual decision/rationale/recommendations, not a stub), and is indexed in `docs/proposals/README.md`. PASS on presence + substance. Post the report and set status as usual (Step 9). If any `packages/**` file is in the diff, this is not docs-only — run the normal QA below.
 
+### Step 0.6: Decompose-aware guard (epic child vs parent integration)
+
+If the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`, it is part of a decomposed epic — QA behavior differs. **Read `.claude/skills/forge-plan/references/decompose-execution.md` and follow the forge-test section.** In short: a **child** is not deployed individually (no per-child preview), so don't FAIL it for lacking one — note "verified via build+review; e2e deferred to parent" and advance it; its merge target is the integration branch (`mark_merged target:'feature'`), never base/deploy. The **parent** (`useIntegrationBranch`) is where the assembled epic gets its real end-to-end QA, and is the only issue that promotes the integration branch to base. For a non-decompose issue (no such metadata), ignore this step.
+
 ### Step 1: Fetch Issue + Pipeline Context
 
 ```
@@ -74,7 +78,7 @@ Check `changeHistory` for previous `testing → reopen` transitions.
 
 ### Step 3: Wait for Deployment Readiness
 
-Before testing, ensure the deployed code is up to date. Deployments triggered by upstream skills (forge-code, forge-fix, forge-staging) may still be building when this step starts.
+Before testing, ensure the deployed code is up to date. Deployments triggered by upstream skills (forge-code, forge-fix) may still be building when this step starts.
 
 ```
 forge_coolify_deploy → status → {}
@@ -98,7 +102,7 @@ Fetch project config via `forge_config → get`. This returns `previewDeploy` wi
 
 **If both testUrl and testApiUrl are null** → post comment "No preview or staging deployment found, cannot test", stop.
 
-Use `previewDeploy.testCredentials` (array of `{label, username, password}`) for authenticated flows. Pick the credential that matches the test scenario (e.g., "Employee" account for employee-role tests).
+Use `previewDeploy.testCredentials` (array of `{label, username, password}`) for authenticated flows. Pick the credential whose `label` matches the role the scenario needs (match by label — don't assume a fixed role set).
 
 ### Step 5: Build Test Cases
 
@@ -123,24 +127,32 @@ If this is a reopen cycle, extract FAIL items from the previous QA report. These
 ### Step 6: Test Backend API
 
 For each backend-related test case:
-- Authenticate with appropriate test credential via `POST {testApiUrl}/api/auth/local`
+- Authenticate via the project's login flow using credentials from `previewDeploy.testCredentials` (match by label); don't hardcode the auth endpoint — it varies by stack
 - Construct requests against `testApiUrl`
 - Use WebFetch or curl to hit endpoints
 - Verify: status codes, response shape, data correctness
 - Test with **multiple roles** when the AC involves role-based behavior
 
-### Step 7: Test Frontend UI
+### Step 7: Test Frontend UI — functional AND quality
 
-For each frontend-related test case:
-- Navigate to `testUrl` using `mcp__claude-in-chrome__navigate`
-- Login with the appropriate test credential for the scenario
-- Follow the user flow from acceptance criteria
-- Verify elements present, interactive, correct data
-- Use `mcp__claude-in-chrome__read_page` to check content
-- Use `mcp__claude-in-chrome__form_input` for interactions
-- **Visual check:** look for broken layouts, overlapping elements, missing styles, console errors, blank sections, misaligned content, or any UI corruption. Report these as FAIL even if the feature works functionally.
+Drive `testUrl` with the project's wired browser MCP. Test in two passes — a feature that *works* but ships broken UX is still a FAIL.
 
-**If no browser tools available:** use curl/WebFetch to fetch the page HTML and verify key elements are present/absent. Note in the report that testing was HTML-only (no interactive browser).
+**Pass A — Functional flow (per test case):**
+- Navigate, login with the appropriate test credential for the scenario, walk the user flow from the acceptance criteria.
+- Verify elements are present, interactive, and show correct data (snapshot/read the page, fill forms, click through).
+- Watch the console: any error thrown during the flow is a FAIL even if the screen looks fine.
+
+**Pass B — UX & accessibility quality bar (every screen the change touches):**
+Run the **Pass-B quality checklist** (`references/ui-quality-checklist.md`) over each affected screen. The bar is "would you ship this to a user", not "does the element exist". Cover, and record a verdict for each:
+- **Responsive** — re-check the flow at narrow / medium / wide viewports; layout must not break, overflow, or hide primary actions at the narrow width.
+- **States** — exercise the **empty, loading, and error** states of any list / form / async surface the change touches — not just the happy path. A missing empty/error state is a FAIL.
+- **Accessibility** — every new interactive element reachable and operable by keyboard alone; icon-only controls and inputs have accessible labels; text legible and not conveyed by colour alone.
+- **Role correctness** (if the project has roles) — controls a role may not use are hidden/disabled, not just unenforced; no other tenant's/user's data leaks onto the screen.
+- **Design consistency** — matches the app's existing components, spacing, and typography; no ad-hoc one-off styling.
+
+Tag quality failures distinctly (`UX` / `A11y` / `Responsive`) so forge-fix can triage severity — they are real FAILs, kept separate from functional FAILs. **Scope to the change** — audit the screens this issue adds or modifies; don't re-audit the whole app. For backend-only changes with no UI surface, skip Pass B and note "no UI surface".
+
+**If no browser tools available:** use curl/WebFetch to fetch the page HTML and verify key elements are present/absent. Note in the report that testing was HTML-only (no interactive browser) — Pass B cannot be fully verified, say so explicitly rather than claiming PASS.
 
 ### Step 8: Post Test Report
 
@@ -165,13 +177,18 @@ Report format:
 |---|-----------|--------|--------|-------|
 | 1 | Description | AC #1 | PASS/FAIL | Details |
 | 2 | Edge case from plan | Plan | PASS/FAIL | Details |
-| 3 | Previous failure regression | Regression | PASS/FAIL | Details |
+| 3 | Empty/error state of <surface> | UX | PASS/FAIL | Details |
+| 4 | Keyboard reachability of <control> | A11y | PASS/FAIL | Details |
+| 5 | Flow at narrow viewport | Responsive | PASS/FAIL | Details |
+| 6 | Previous failure regression | Regression | PASS/FAIL | Details |
+
+**Verification:** what I actually walked — which flows, at which viewports, which states/roles exercised, and what I did NOT cover. "Looks right" is not verification; name the evidence. For UI changes, attach a screenshot of the final state.
 
 **Summary:** X/Y passed
 **Verdict:** PASS / FAIL
 ```
 
-See `references/result-format.md` for full template and failure detail format.
+`Source` ∈ `AC #N` / `Plan` / `Review` / `Regression` / `UX` / `A11y` / `Responsive`. See `references/result-format.md` for full template and failure detail format, and `references/ui-quality-checklist.md` for the Pass-B quality bar.
 
 ### Step 9: Set Status
 

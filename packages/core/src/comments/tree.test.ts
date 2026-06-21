@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type CommentAttachmentLite, type CommentRow, buildCommentTree } from './tree.js';
+import {
+  type CommentAttachmentLite,
+  type CommentRow,
+  buildCommentTree,
+  walkCommentTree,
+} from './tree.js';
 
 const issueId = '00000000-0000-0000-0000-000000000001';
 const authorId = '00000000-0000-0000-0000-000000000002';
@@ -68,5 +73,34 @@ describe('buildCommentTree', () => {
     const tree = buildCommentTree([row('a', null), row('a1', 'a')], map);
     expect(tree[0]?.attachments).toEqual([]);
     expect(tree[0]?.replies[0]?.attachments).toEqual([att]);
+  });
+
+  it('carries authorDeviceId through to the node', () => {
+    const deviceId = '00000000-0000-0000-0000-0000000000d1';
+    const tree = buildCommentTree([{ ...row('a', null), authorDeviceId: deviceId }]);
+    expect(tree[0]?.authorDeviceId).toBe(deviceId);
+  });
+});
+
+describe('walkCommentTree', () => {
+  it('visits every node depth-first across roots and nested replies', () => {
+    const tree = buildCommentTree([
+      row('a', null),
+      row('a1', 'a'),
+      row('a1a', 'a1'),
+      row('b', null),
+    ]);
+    const seen: string[] = [];
+    walkCommentTree(tree, (n) => seen.push(n.id));
+    expect(seen.sort()).toEqual(['a', 'a1', 'a1a', 'b']);
+  });
+
+  it('lets the visitor mutate each node (e.g. attach a resolved author)', () => {
+    const tree = buildCommentTree([row('a', null), row('a1', 'a')]);
+    walkCommentTree(tree, (n) => {
+      n.author = { type: 'user', id: n.authorId, displayName: 'alice@example.com', isAgent: false };
+    });
+    expect(tree[0]?.author?.displayName).toBe('alice@example.com');
+    expect(tree[0]?.replies[0]?.author?.isAgent).toBe(false);
   });
 });

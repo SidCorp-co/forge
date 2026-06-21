@@ -4,6 +4,7 @@ import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
+import { applySentryMcpServers } from '../integrations/sentry/resolver.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -51,6 +52,7 @@ function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (o.model !== null) out.model = o.model;
   if (o.allowedTools !== null) out.allowedTools = o.allowedTools.join(',');
+  if (o.disallowedTools !== null) out.disallowedTools = o.disallowedTools.join(',');
   if (o.permissionMode !== null) out.permissionMode = o.permissionMode;
   if (o.timeoutSeconds !== null) out.timeoutSeconds = o.timeoutSeconds;
   if (o.mcpServers !== null) out.mcpServersOverride = o.mcpServers;
@@ -479,6 +481,13 @@ async function dispatchViaRunner(
   // contract: active-only resolver, non-mutating merge, crmk_ key only in the
   // dispatch payload. active=false/deleted → next dispatch drops the entry.
   runnerStageOverrides.mcpServers = await applyEpodsystemMcpServers(
+    job.projectId,
+    runnerStageOverrides.mcpServers,
+  );
+  // ISS-524 — chain the Sentry MCP inject right after Epodsystem. Same contract:
+  // active-only resolver, non-mutating merge, sntryu_ token only in the dispatch
+  // payload. active=false/deleted → next dispatch drops the entry.
+  runnerStageOverrides.mcpServers = await applySentryMcpServers(
     job.projectId,
     runnerStageOverrides.mcpServers,
   );

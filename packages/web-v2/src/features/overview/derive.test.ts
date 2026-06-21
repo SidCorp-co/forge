@@ -71,40 +71,45 @@ describe('aggregateStatusDistribution', () => {
 });
 
 describe('groupWorkBuckets', () => {
-  it('folds statuses into pipeline buckets and excludes closed/draft', () => {
+  it('folds statuses into semantic-tone buckets and excludes closed/draft', () => {
     const { buckets, total } = groupWorkBuckets({
       open: 2,
       confirmed: 1,
       approved: 3,
       in_progress: 4,
       testing: 2,
+      needs_info: 1,
       released: 1,
       on_hold: 1,
       closed: 50, // excluded from the in-flight view
       draft: 9, // excluded
     });
     const by = Object.fromEntries(buckets.map((b) => [b.key, b.count]));
-    expect(by.backlog).toBe(3); // open + confirmed
-    expect(by.planning).toBe(3); // approved (+ waiting:0)
-    expect(by.progress).toBe(4); // in_progress
-    expect(by.review).toBe(2); // testing
-    expect(by.ready).toBe(1); // released
-    expect(by.blocked).toBe(1); // on_hold
+    expect(by.queued).toBe(6); // open + confirmed + approved (neutral)
+    expect(by.progress).toBe(6); // in_progress + testing (active)
+    expect(by.attention).toBe(1); // needs_info (a human must act)
+    expect(by.ready).toBe(1); // released (success)
+    expect(by.blocked).toBe(1); // on_hold (calm ink, NOT red)
     // total counts only the bucketed (in-flight) statuses — not closed/draft.
-    expect(total).toBe(14);
+    expect(total).toBe(15);
   });
 
-  it('always returns all six buckets in pipeline order', () => {
+  it('always returns all five tone buckets in pipeline order', () => {
     const { buckets } = groupWorkBuckets({});
     expect(buckets.map((b) => b.key)).toEqual([
-      'backlog',
-      'planning',
+      'queued',
       'progress',
-      'review',
+      'attention',
       'ready',
       'blocked',
     ]);
     expect(buckets.every((b) => b.count === 0)).toBe(true);
+  });
+
+  it('never colors a benign bucket with the failure(red) tone', () => {
+    const { buckets } = groupWorkBuckets({});
+    // failure-red token is var(--red-500); no work-distribution bucket uses it.
+    expect(buckets.every((b) => !b.color.includes('red'))).toBe(true);
   });
 });
 

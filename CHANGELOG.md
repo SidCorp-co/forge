@@ -42,6 +42,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Switching your active organization now works from every screen — including while you're inside a project. Previously the org switcher silently snapped back to the current project's org.
 - Workspace surfaces — runners, sessions, attention, ops, integrations, usage and global search — now show only the organization you have selected, so switching organizations re-scopes the whole workspace instead of leaking data from your other orgs.
 - Agent chat messages now render markdown — bold, headings, lists, code blocks, links and tables display formatted instead of as raw markdown source.
+- Switching your active organization now also leaves the previous org's project — the project switcher and navigation no longer stay stuck on a project from the org you switched away from.
+- Closed cross-tenant data leaks where certain API requests could return another organization's issue content, agent-session history, or device status by supplying a foreign resource ID.
+- Settings → Pipeline now has a visual Session Groups editor: choose which pipeline stages share one Claude session, with a one-click recommended default and a resume-failure policy.
+- Skill Studio now distinguishes always-on platform meta skills (served live) from disk-synced pipeline skills, and no longer shows misleading sync status for them.
+- You can now create project-scoped API tokens bound to a single project, so MCP clients can drop the X-Forge-Project-Slug header.
+- You can now attach files (images, PDFs, text) to messages in My Conversations, and the agent can read them in its reply.
+- You can now start an agent conversation from the "Ask agent" button in the global app header — no need to open the Agents screen first.
+- Project Settings → Integrations now shows Coolify as a single card with per-environment (Production/Staging) rows instead of two duplicate-looking cards.
+- A notification bell in the header now shows your pipeline and issue events in real time, with an unread count and one-click navigation to the related issue or run.
+- Fixed the "My conversations" agent-chat drawer so the message box can always be clicked and typed into.
+- Status colors are now consistent across the whole app, so each color reliably means one thing and different states no longer look the same.
+- Coolify deploy connections that trip their circuit breaker now auto-recover after a short cooldown, and a successful connection test clears the breaker, instead of staying stuck until a manual database fix.
+- A pipeline stage set to manual approval now reliably pauses for human sign-off instead of being silently skipped straight to release.
+- Issue status badges now use distinct colors so states like Tested, Released and Closed are easy to tell apart at a glance.
+- Forge pipeline agents now load issues more token-efficiently, avoiding oversized-response failures on issues with long comment histories.
+- The project dashboard cards now stack correctly on mobile instead of being cut off at the edge of the screen.
+- You can now turn on a sound alert for incoming notifications — toggle “Notification sound” in Settings → Notifications.
+- Pipeline step-duration analytics (dashboard duration charts + step-duration metrics) no longer report impossible negative durations — the underlying view now counts only successfully-completed steps.
+- Mobile layouts no longer break — screens now fit and stay usable on phone-sized viewports, including the issue detail page.
+- On mobile you can now reach a project's issue list and other project sections straight from the navigation, instead of having to type the URL by hand.
+- The My conversations chat screen no longer breaks its layout on phones — the title, subtitle, and controls now fit narrow screens, and the conversation History dropdown stays fully on-screen.
+- Issue comments and the activity timeline now show who performed each action — clearly distinguishing AI-agent actions from team-member actions and showing real member names instead of internal IDs.
+- Project Facts can now be flagged "always-inject" so a project's rules are guaranteed to reach every agent, and can be managed from a new per-project Settings → Project Facts screen.
+- Your agent chats in "My conversations" are now private to you — they're no longer visible to other members of the same project or organization. The conversation view also opens at your most recent message instead of the oldest.
+- Unread notifications now show a badge on the browser-tab icon, and desktop-notification setup is clearer so alerts actually reach you.
+- You can now configure Sentry per project under Settings → Integrations, so the project's agents can read its Sentry logs.
+- The Sentry integration now lets you register multiple Sentry projects (e.g. backend, frontend, mobile) under one connection — each with its own label and optional notes — so Forge's agents can read errors across all of them.
+- Issue-detail relation lists (Subtasks, Parent, Blocked by, Blocks, Related, Duplicates) now show each related issue's status and a short title, not just the ISS-xxx number.
+- The project dashboard's "Open issues by status" chart now counts only genuinely-open issues (resolved/closed work no longer inflates the total), and the empty "Upcoming schedules" panel offers a clear next step.
+- You can now choose, per project, whether production deploys require manual approval — toggle auto-approve directly in the Coolify integration settings (manual approval stays on by default).
+- Untrusted issue, comment, attachment, and integration content is now sanitized and explicitly marked as data before it reaches pipeline agents, hardening the autonomous pipeline against prompt-injection.
 
 ## [0.3.0] - 2026-06-11
 

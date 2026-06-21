@@ -41,7 +41,7 @@ export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
 /** The provider keys that resolve to a connection/binding the user can drill
  *  into (Test / Rotate / Disconnect + delivery log). Other status cards
  *  (github, runners, postgres, …) are read-only telemetry. */
-export const DRILLABLE_PROVIDERS = ["coolify", "postman", "epodsystem"] as const;
+export const DRILLABLE_PROVIDERS = ["coolify", "postman", "epodsystem", "sentry"] as const;
 export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
 
 /** Card key → provider; `coolify:staging` and `coolify` both map to `coolify`. */
@@ -52,6 +52,53 @@ export function cardProvider(key: string): string {
 /** True when a status card represents a drillable connection provider. */
 export function isProviderCard(key: string): boolean {
   return (DRILLABLE_PROVIDERS as readonly string[]).includes(cardProvider(key));
+}
+
+/** A provider's status cards grouped under one entry. Single-card groups
+ *  render as a normal card; multi-card groups (env-split providers like
+ *  Coolify, which the backend keys `coolify:prod` / `coolify:staging`) render
+ *  as one consolidated card with per-environment sub-rows. */
+export interface ProviderCardGroup {
+  provider: string;
+  cards: StatusCard[];
+}
+
+/** Display order for environment sub-rows within a consolidated group —
+ *  production before staging, deterministic regardless of backend row order. */
+const ENV_SORT_ORDER: Record<string, number> = { prod: 0, staging: 1 };
+
+function envRank(card: StatusCard): number {
+  const env =
+    (typeof card.meta?.environment === "string" ? card.meta.environment : undefined) ??
+    card.key.split(":")[1] ??
+    "";
+  return ENV_SORT_ORDER[env] ?? 99;
+}
+
+/**
+ * Group status cards by base provider (`cardProvider`), preserving the
+ * first-seen order of providers. Within an env-split provider's group the
+ * cards are sorted prod-then-staging so the rendered order is stable
+ * regardless of the order the backend returned the bindings. Single-card
+ * providers yield a group of length 1 and render exactly as before.
+ */
+export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
+  const groups: ProviderCardGroup[] = [];
+  const byProvider = new Map<string, ProviderCardGroup>();
+  for (const card of cards) {
+    const provider = cardProvider(card.key);
+    let group = byProvider.get(provider);
+    if (!group) {
+      group = { provider, cards: [] };
+      byProvider.set(provider, group);
+      groups.push(group);
+    }
+    group.cards.push(card);
+  }
+  for (const group of groups) {
+    if (group.cards.length > 1) group.cards.sort((a, b) => envRank(a) - envRank(b));
+  }
+  return groups;
 }
 
 /**

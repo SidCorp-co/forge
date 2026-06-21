@@ -58,11 +58,12 @@ export const STEP_TOGGLE_KEYS = PIPELINE_STEPS.map((s) => s.toggle) as unknown a
  * `FORBIDDEN: STAGE_MANUAL_ONLY`. Human-triggered `/run-pipeline-step` still
  * works regardless — manual mode means "only a human can fire this stage".
  *
- * `tested`, `pass`, `staging`, `deploying` are listed here despite having no
- * skill in STATUS_TO_JOB_TYPE: the FE needs a toggle to opt-in to soft-skip
- * auto-transition via STAGE_FORWARD for projects whose flow doesn't use those
- * stages. With `enabled:true` (the default) an issue parks at them; flipping
- * `enabled:false` engages the chain.
+ * `tested` is listed here despite having no skill in STATUS_TO_JOB_TYPE: the FE
+ * needs a toggle to opt-in to soft-skip auto-transition via STAGE_FORWARD. With
+ * `mode:'manual'` (the default) an issue parks at it; `enabled:false` skips it.
+ * `pass`/`staging`/`deploying` were retired (unify gate model) — `tested`
+ * ("Awaiting release") is the single production approval gate, and review exits
+ * straight to `testing`.
  */
 export const STAGE_NAMES = [
   'open',
@@ -73,9 +74,6 @@ export const STAGE_NAMES = [
   'developed',
   'testing',
   'tested',
-  'pass',
-  'staging',
-  'deploying',
   'reopen',
   'released',
 ] as const;
@@ -167,7 +165,9 @@ export const userPromptPolicySchema = z
       .object({
         enabled: z.boolean().default(false),
         injectFromSteps: z
-          .array(z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'release', 'fix']))
+          .array(
+            z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'stage', 'release', 'fix']),
+          )
           .default([]),
         fallbackToRawIssueFieldIfMissing: z.boolean().default(true),
         requireHandoffWrite: z.boolean().default(true),
@@ -201,7 +201,8 @@ export type BudgetConfig = z.infer<typeof budgetConfigSchema>;
 // Both `enabled` and `mode` are optional so PATCH
 // `{ states: { developed: { enabled: false } } }` works without resending
 // the rest. New per-state config fields (skillName, model, allowedTools,
-// permissionMode, timeoutSeconds, mcpServers, systemPrompt, userPromptPolicy,
+// disallowedTools, permissionMode, timeoutSeconds, mcpServers, systemPrompt,
+// userPromptPolicy,
 // budget, sessionGroup) are all optional; defaults preserve the
 // current hardcoded behavior.
 //
@@ -216,6 +217,14 @@ export const stageConfigSchema = z.object({
   skillName: z.string().min(1).max(128).optional(),
   model: z.string().min(1).max(64).optional(),
   allowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
+  // Capability denylist (ISS-531). Forwarded to the runner as Claude Code's
+  // `--disallowed-tools` (a real DENYLIST that removes a tool from the
+  // available SET even under `--permission-mode bypassPermissions`, verified
+  // on claude v2.1.185 — not just an auto-approval gate). Use for least-agency
+  // hard-deny of high-agency tools per stage (e.g. forge_projects_archive,
+  // forge_jobs_cancel, forge_memory_write). Independent of `allowedTools`;
+  // when both are set the CLI applies allow then deny.
+  disallowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
   permissionMode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']).optional(),
   timeoutSeconds: z.int().positive().max(86_400).optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
@@ -246,7 +255,16 @@ export type StatesConfig = z.infer<typeof statesConfigSchema>;
 
 export function defaultStatesConfig(): Record<StageName, StageConfig> {
   return Object.fromEntries(
-    STAGE_NAMES.map((s) => [s, { enabled: true, mode: 'auto' as const }]),
+    STAGE_NAMES.map((s) => [
+      s,
+      // `tested` is the production approval GATE — `manual` by default so the
+      // pipeline PARKS for a human before release. Flip to `auto` for full
+      // auto-ship. Every other stage runs automatically.
+      {
+        enabled: true,
+        mode: s === 'tested' ? ('manual' as const) : ('auto' as const),
+      },
+    ]),
   ) as Record<StageName, StageConfig>;
 }
 
@@ -342,6 +360,11 @@ export const pipelineConfigSchema = z
     // use the catalog shorthand (`name: true`) or a raw custom spec object —
     // see `pipeline/mcp-catalog.ts` `expandMcpServers`.
     mcpServers: z.record(z.string(), z.unknown()).optional(),
+    // When true, a `prod`-environment Coolify deploy auto-dispatches on release
+    // exactly like `staging` — skipping the human "Confirm production deploy"
+    // gate. Default (absent/false) keeps the gate: prod never auto-deploys
+    // (safety valve for the autonomous pipeline). Per-project opt-in only.
+    autoProdDeploy: z.boolean().optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo

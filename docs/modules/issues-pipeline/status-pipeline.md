@@ -1,10 +1,12 @@
 # Issue Status Pipeline
 
-Issue lifecycle: 18 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
+Issue lifecycle: 15 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
+
+> Configuring stages (Auto / Manual gate / Skip) + recommended presets: [guides/pipeline-gates.md](../../guides/pipeline-gates.md). This page is the reference; the guide is the practical how-to.
 
 ## Statuses
 
-Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 18 entries). Keep this table in lockstep.
+Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 15 entries). Keep this table in lockstep.
 
 | # | Status | Meaning | Set by |
 |---|--------|---------|--------|
@@ -15,17 +17,14 @@ Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/d
 | 5 | `approved` | Plan approved, ready to code | forge-plan (Simple/Medium) or human |
 | 6 | `in_progress` | Being coded + built | forge-code start |
 | 7 | `developed` | Code pushed, awaiting review | forge-code |
-| 8 | `deploying` | Deploy in progress (reserved — projects with an external deploy step) | external deploy trigger |
-| 9 | `testing` | Verify gate after review | forge-review (APPROVE) |
-| 10 | `tested` | Verification passed (auto-advance step) | forge-test |
-| 11 | `pass` | Auto-advance step toward release | forge-test |
-| 12 | `staging` | Final gate before release (no-op / human in most projects) | forge-test |
-| 13 | `released` | Cleared for release — triggers release note + close | forge-test |
-| 14 | `closed` | Done / archived | forge-release or manual |
-| 15 | `reopen` | Rejected, needs fix | Rejection at review/test |
-| 16 | `on_hold` | Paused / blocked | Manual or infra failure |
-| 17 | `needs_info` | Human-gated bounce: blocked on reporter clarification (no auto-dispatch) | forge-triage, forge-clarify, or manual |
-| 18 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
+| 8 | `testing` | Verify gate — review exits straight here | forge-review (APPROVE) |
+| 9 | `tested` | **Production approval GATE (the single pre-prod gate)** — QA passed; parks for a human (`mode:'manual'` by default, never auto-skipped — ISS-502). Human advances → `released` | forge-test (sets) · human (advances) |
+| 10 | `released` | Cleared for release — dispatches forge-release | human (advances the `tested` gate) |
+| 11 | `closed` | Done / archived | forge-release or manual |
+| 12 | `reopen` | Rejected, needs fix | Rejection at review/test |
+| 13 | `on_hold` | Paused / blocked | Manual or infra failure |
+| 14 | `needs_info` | Human-gated bounce: blocked on reporter clarification (no auto-dispatch) | forge-triage, forge-clarify, or manual |
+| 15 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
 
 ## Flow
 
@@ -40,12 +39,12 @@ open ──forge-triage──▶ confirmed ──forge-clarify──▶ clarifie
 approved ──forge-code──▶ in_progress ──▶ developed ──forge-review──▶ testing
                                                                        │ APPROVE
                                                                        ▼
-                              forge-test:  merge ISS-*→target + deploy + live verify
-                                                                       │
-                              testing ─▶ tested ─▶ pass ─▶ staging ─▶ released
-                                                                       │ forge-release
-                                                                       ▼
-                                                                     closed
+                              forge-test:  QA on the staging deploy
+                                                                       │ PASS
+                              testing ─▶ tested  ⏸ release GATE (manual; human approves)
+                                                       │ human advances tested ─▶ released
+                                                       ▼
+                              forge-release: merge prod + deploy + close ─▶ closed
 
 Rejection at review/test  ──▶ reopen ──forge-fix──▶ developed
 Infra failure / unknown hang ──▶ on_hold (manual)
@@ -64,8 +63,8 @@ Missing info (any stage)     ──▶ needs_info — human-gated bounce, no aut
   (missing-skill soft-skip) or set `states.confirmed.enabled: false`. The 0093
   migration backfilled `enabled: false` for every project without `autoClarify`.
 
-- `waiting` and `staging` are human/no-op gates — no skill auto-runs there.
-- `forge-test` auto-advances `tested → pass → staging → released` once its merge + live-verify gate passes (see Verification); those statuses are traversed automatically, not gated.
+- `waiting` and `tested` are human GATES — no skill auto-runs there; a human advances them. `tested` is the production approval gate: `mode:'manual'` by default and **never auto-skipped** (ISS-502).
+- `pass`/`staging`/`deploying` were **removed entirely** (unify gate model — no longer in the `issueStatuses` enum, the state machine, or `STAGE_NAMES`). The single pre-prod gate is `tested`; review now exits straight to `testing` (the old `developed → deploying → testing` hop is gone) and deploy-to-staging happens inside forge-code. One-shot migrations re-parked any stranded issue (`pass`/`staging` → `tested`, `deploying` → `testing`). The `staging` *jobType* is kept (inert) only for back-compat with historical `jobs.type='staging'` rows.
 
 ## Branching Model
 
@@ -81,9 +80,9 @@ Missing info (any stage)     ──▶ needs_info — human-gated bounce, no aut
 2. Merge reviewed ISS-* branch into target branch and push.
 3. Deploy target branch to live beta (Coolify).
 4. Run full Playwright E2E (`forge-verify-live`) against live beta.
-5. **PASS** → auto-advance `tested → pass → staging → released`; forge-release writes release note + deletes branch + closes. **FAIL on live** → `reopen` + handoff (no revert). **Merge conflict** → halt at `testing` with a comment.
+5. **PASS** → set `tested` (the manual release GATE); a human advances `tested → released`, where forge-release writes the release note + deletes the branch + closes. **FAIL on live** → `reopen` + handoff (no revert). **Merge conflict** → halt at `testing` with a comment.
 
-**No external CI / staging-VPS deploy path.** Legacy VPS staging deploy retired 2026-05-12; `forge-staging` is now a thin no-op kept only so the dispatcher does not error on a legacy `staging`-status job. See [`packages/core/skills/forge-staging/SKILL.md`](../../../packages/core/skills/forge-staging/SKILL.md) and [`packages/core/skills/forge-test/SKILL.md`](../../../packages/core/skills/forge-test/SKILL.md).
+**No external CI / staging-VPS deploy path.** Legacy VPS staging deploy retired 2026-05-12; the former `forge-staging` step + the `pass`/`staging` statuses are fully retired (deploy-to-staging happens in forge-code; the single gate is `tested`). See [`packages/core/skills/forge-test/SKILL.md`](../../../packages/core/skills/forge-test/SKILL.md).
 
 ## What Happens Inside `in_progress`
 
@@ -116,7 +115,7 @@ Watches issue status changes, dispatches the matching skill. Mapping derived fro
 | `reopen` | forge-fix | `autoFix` |
 | `released` | forge-release | `autoRelease` |
 
-No-auto-dispatch statuses (`waiting`, `needs_info`, `deploying`, `tested`, `pass`, `staging`, `on_hold`, `draft`) are human gates or auto-advance steps `forge-test` walks through.
+No-auto-dispatch statuses (`waiting`, `needs_info`, `tested`, `on_hold`, `draft`) are human gates (e.g. the `tested` release gate) or transit statuses the soft-skip resolver walks through.
 
 ### Execution modes
 
@@ -151,7 +150,7 @@ Top-level `enabled: false` (default) disables all automation — every transitio
 | **forge-plan** | `clarified` | `approved` (S/M) / `waiting` (C) | Explore code, write implementation plan + QA scenarios |
 | **forge-code** | `approved` | `developed` | Implement, build, tiered review, commit, push ISS-* branch |
 | **forge-review** | `developed` | `testing` / `reopen` | Independent fresh-context code review + diff smoke |
-| **forge-test** | `testing` | `released` (via tested/pass/staging) / `reopen` | Merge ISS-* + deploy beta + full live E2E gate |
+| **forge-test** | `testing` | `tested` (manual release gate) / `reopen` | Merge ISS-* + deploy beta + full live E2E gate |
 | **forge-fix** | `reopen` | `developed` | Scoped fix on ISS-* branch |
 | **forge-release** | `released` | `closed` | Append release note, delete branch, close |
 
@@ -161,6 +160,9 @@ Older revisions used additional statuses; no longer valid, must not appear in ne
 
 | Old status | Replacement |
 |-----------|-------------|
+| `pass` | `tested` (the single pre-prod gate) — removed from the enum (unify gate model) |
+| `staging` | `tested` gate + deploy-in-forge-code — removed from the enum (the `staging` *jobType* is kept inert for historical `jobs` rows) |
+| `deploying` | `testing` — removed from the enum (review exits straight to `testing`; the deploy-in-progress hop always auto-skipped anyway) |
 | `resolved` | `closed` |
 | `in_review` | `developed` |
 | `rejected` | `closed` + comment / label |

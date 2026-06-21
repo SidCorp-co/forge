@@ -54,10 +54,14 @@ export function useMcpPreview(projectId: string | undefined) {
 }
 
 /** Test connection. Does NOT toast on its own — the caller renders the result
- *  inline (user/email on success, clear error on a bad key). */
+ *  inline (user/email on success, clear error on a bad key). Invalidates the
+ *  integrations list on settle so health/breaker badges refresh without a manual
+ *  page reload (a successful Test resets an open circuit breaker server-side). */
 export function useTestIntegration(projectId: string | undefined) {
+  const invalidate = useInvalidateIntegrations(projectId);
   return useMutation({
     mutationFn: (id: string) => integrationsApi.test(projectId as string, id),
+    onSettled: () => invalidate(),
   });
 }
 

@@ -140,7 +140,7 @@ describe('ISS-267 /api/projects/health integration', () => {
       issueId: issueB,
       actorId: user.id,
       action: 'issue.statusChanged',
-      payload: { from: 'staging', to: 'released' },
+      payload: { from: 'tested', to: 'released' },
     });
 
     const res = await app.request('/api/projects/health', {
@@ -186,7 +186,7 @@ describe('ISS-267 /api/projects/health integration', () => {
       issueId,
       actorId: user.id,
       action: 'issue.statusChanged',
-      payload: { from: 'staging', to: 'released' },
+      payload: { from: 'tested', to: 'released' },
       createdAt: eightDaysAgo,
     });
 

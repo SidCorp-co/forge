@@ -23,10 +23,19 @@ function buildSelectChain() {
 
 const dbDelete = vi.fn(() => ({ where: () => Promise.resolve(undefined) }));
 
+const insertedValues: Record<string, unknown>[] = [];
+const dbInsert = vi.fn(() => ({
+  values: (v: Record<string, unknown>) => {
+    insertedValues.push(v);
+    return { returning: async () => [{ ...v, id: 'new-skill-id', version: 1 }] };
+  },
+}));
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => buildSelectChain(),
     delete: dbDelete,
+    insert: dbInsert,
   },
 }));
 
@@ -35,12 +44,18 @@ vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: hooksEmit },
 }));
 
-const { SkillDeleteBlockedError, SkillNotProjectScopedError, registerSkillForProject } =
-  await import('./service.js');
+const {
+  SkillDeleteBlockedError,
+  SkillNotProjectScopedError,
+  registerSkillForProject,
+  createProjectSkill,
+} = await import('./service.js');
 
 beforeEach(() => {
   selectQueue.length = 0;
+  insertedValues.length = 0;
   dbDelete.mockClear();
+  dbInsert.mockClear();
   hooksEmit.mockClear();
 });
 
@@ -138,5 +153,36 @@ describe('registerSkillForProject(stage) — SKILL_NOT_PROJECT_SCOPED (single pa
     const err = new SkillNotProjectScopedError('abc');
     expect(err.code).toBe('SKILL_NOT_PROJECT_SCOPED');
     expect(err.message).toContain('abc');
+  });
+});
+
+describe('createProjectSkill — file encoding default (MCP path safety)', () => {
+  const base = {
+    projectId: '00000000-0000-0000-0000-000000000001',
+    name: 'forge-x',
+    description: 'd',
+    skillMd: 'body',
+  };
+
+  it('defaults a file\'s encoding to utf8 when the caller omits it', async () => {
+    // The MCP create path calls the service directly (no zod default), so an
+    // omitted `encoding` must be backfilled here — otherwise the runner's
+    // required `SkillFile.encoding` fails-decode and aborts the whole sync.
+    await createProjectSkill({
+      ...base,
+      files: [{ path: 'references/a.md', content: 'hi' }],
+    });
+    const v = insertedValues.at(-1);
+    const files = v?.files as Array<Record<string, unknown>>;
+    expect(files[0]).toMatchObject({ path: 'references/a.md', content: 'hi', encoding: 'utf8' });
+  });
+
+  it('preserves an explicit base64 encoding', async () => {
+    await createProjectSkill({
+      ...base,
+      files: [{ path: 'assets/logo.png', content: 'AAAA', encoding: 'base64' }],
+    });
+    const files = insertedValues.at(-1)?.files as Array<Record<string, unknown>>;
+    expect(files[0]?.encoding).toBe('base64');
   });
 });

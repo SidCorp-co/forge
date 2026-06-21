@@ -11,6 +11,7 @@ import {
   CardTitle,
   Field,
   Input,
+  Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
@@ -39,6 +40,9 @@ interface BadgeView {
 
 function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
+  // A healthy key whose binding is disabled is NOT injected into dispatches —
+  // surface that explicitly instead of a misleading green "Connected".
+  if (!existing.active) return { label: "Disabled", tone: "neutral" };
   if (existing.lastHealthStatus === "ok") {
     const name = (existing.config as ProviderConfig).storeName;
     return {
@@ -121,6 +125,18 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
       const res = await test.mutateAsync(existing.id);
       setTestResult(res);
       list.refetch();
+    } catch (err) {
+      setError(formatApiError(err));
+    }
+  }
+
+  async function handleToggleActive(active: boolean) {
+    if (!existing) return;
+    setError(null);
+    try {
+      // Binding-level flag: when off, the resolver stops injecting
+      // mcpServers.epodsystem into dispatches (the credential is untouched).
+      await update.mutateAsync({ id: existing.id, body: { active } });
     } catch (err) {
       setError(formatApiError(err));
     }
@@ -210,6 +226,16 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
               >
                 Test connection
               </Button>
+            )}
+            {existing && (
+              <label className="flex items-center gap-2">
+                <span className="fg-body-sm text-muted">Enabled</span>
+                <Toggle
+                  checked={existing.active}
+                  onChange={handleToggleActive}
+                  disabled={orgLocked}
+                />
+              </label>
             )}
             {existing && (
               <Button

@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Stub eager env validation (config/env.js throws at import when DATABASE_URL /
+// JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) so this unit suite stays hermetic
+// and never depends on the operator's shell — same pattern as schedules/routes.test.ts.
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
+}));
+
 // Unit tests for the SINGLE chat-turn dispatcher — the logic /start, /send and
 // schedule.run all share. The behaviour that matters: a cold session (no
 // claudeSessionId) starts a fresh Claude run (`agent:start`); a warm one
@@ -12,7 +19,7 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((_values: Record<string, unknown>) => ({ where: updateWhere }));
 
 vi.mock('../db/client.js', () => {
   const dbStub = {
@@ -36,7 +43,9 @@ vi.mock('../lib/chat-preamble.js', () => ({
   TOOL_REFERENCE: '<tool-reference>',
 }));
 
-const resolveProjectDefaultMcpServers = vi.fn(async () => ({ playwright: { type: 'stdio' } }));
+const resolveProjectDefaultMcpServers = vi.fn(async (_id: string) => ({
+  playwright: { type: 'stdio' },
+}));
 vi.mock('../jobs/stage-overrides.js', () => ({
   resolveProjectDefaultMcpServers: (id: string) => resolveProjectDefaultMcpServers(id),
 }));
@@ -138,10 +147,11 @@ describe('dispatchChatTurn', () => {
       message: 'hello',
     });
     const call = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:start',
+      ([room, env]) =>
+        room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:start',
     );
     expect(call).toBeDefined();
-    const data = (call![1] as { data: Record<string, unknown> }).data;
+    const data = (call?.[1] as { data: Record<string, unknown> }).data;
     expect(data.systemPrompt).toBe('<tool-reference>');
     expect(String(data.prompt)).toContain('hello');
     expect(String(data.prompt)).toContain('[Preamble]');
@@ -161,10 +171,11 @@ describe('dispatchChatTurn', () => {
       message: 'again',
     });
     const call = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:send',
+      ([room, env]) =>
+        room === `device:${DEVICE}` && (env as { event: string }).event === 'agent:send',
     );
     expect(call).toBeDefined();
-    const data = (call![1] as { data: Record<string, unknown> }).data;
+    const data = (call?.[1] as { data: Record<string, unknown> }).data;
     expect(data.message).toBe('again');
     expect(data.claudeSessionId).toBe('c-1');
     expect(data.systemPrompt).toBeUndefined();
@@ -184,7 +195,8 @@ describe('dispatchChatTurn', () => {
     });
     const mirror = publishSpy.mock.calls.find(
       ([room, env]) =>
-        room === `project:${PROJECT.id}` && (env as { event: string }).event === 'agent:user-message',
+        room === `project:${PROJECT.id}` &&
+        (env as { event: string }).event === 'agent:user-message',
     );
     expect(mirror).toBeDefined();
     const started = publishSpy.mock.calls.find(
@@ -212,7 +224,7 @@ describe('dispatchChatTurn', () => {
     expect(next[0]).toMatchObject({ role: 'user', content: 'hello' });
     // The user turn is materialized as part of the same update that flips the
     // session to running — never after dispatch.
-    const updates = updateSet.mock.calls[0]![0] as { messages: unknown[]; status: string };
+    const updates = updateSet.mock.calls[0]?.[0] as { messages: unknown[]; status: string };
     expect(updates.status).toBe('running');
     expect(updates.messages).toHaveLength(1);
   });
@@ -225,7 +237,7 @@ describe('dispatchChatTurn', () => {
       client: { deviceId: DEVICE, isLocal: false },
       message: '  What files   are\nin this repo?  ',
     });
-    const updates = updateSet.mock.calls[0]![0] as { title?: string };
+    const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
     expect(updates.title).toBe('What files are in this repo?');
   });
 
@@ -243,7 +255,7 @@ describe('dispatchChatTurn', () => {
       client: { deviceId: DEVICE, isLocal: false },
       message: 'second message',
     });
-    const updates = updateSet.mock.calls[0]![0] as { title?: string };
+    const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
     expect(updates.title).toBeUndefined();
   });
 
@@ -255,7 +267,7 @@ describe('dispatchChatTurn', () => {
       client: { deviceId: DEVICE, isLocal: false },
       message: 'hello there',
     });
-    const updates = updateSet.mock.calls[0]![0] as { title?: string };
+    const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
     expect(updates.title).toBeUndefined();
   });
 });

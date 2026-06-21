@@ -25,9 +25,9 @@ Planning is the highest-value step in the pipeline. A good plan saves the coding
 
 Not every issue needs deep codebase exploration. The planning depth should match the complexity:
 
-**Lightweight plan (Simple/Medium):** Use `knowledge.json` + issue description + targeted Glob to identify files and write the plan. Read at most 1-2 source files — only when you need to check an existing pattern or verify a component's current props/API. The coding agent will read the files during implementation anyway, so duplicate deep-reading wastes tokens.
+**Lightweight plan (xs/s/m):** Use `knowledge.json` + issue description + targeted Glob to identify files and write the plan. Read at most 1-2 source files — only when you need to check an existing pattern or verify a component's current props/API. The coding agent will read the files during implementation anyway, so duplicate deep-reading wastes tokens.
 
-**Deep plan (Complex):** Full codebase exploration. Read all affected files, trace dependencies, verify patterns. Complex issues involve architectural decisions where a wrong plan costs more than the exploration.
+**Deep plan (l/xl):** Full codebase exploration. Read all affected files, trace dependencies, verify patterns. `l`/`xl` issues involve architectural decisions where a wrong plan costs more than the exploration.
 
 The tier is determined by the triage comment's complexity classification.
 
@@ -45,9 +45,9 @@ forge_config → get
 
 Verify status is `clarified`. If the issue isn't clarified yet, stop and explain — planning before triage + clarify skips the completeness and reproduction checks and risks wasting exploration time on an incompletely-understood issue.
 
-Find the triage comment (starts with `**Triage**`) and extract the **complexity** classification — it sets both planning depth and exit behavior. Then read the **clarify** findings (comment + step handoff, present unless clarify was skipped for an xs/s issue): the reproduction outcome, the environment tested, and a code-level **root-cause hypothesis**. Trust clarify's verified behavior over re-deriving the problem from the description — plan the fix for the confirmed root cause, not the reported symptom.
+Find the triage comment (starts with `**Triage**`) and extract the **complexity** classification — it sets both planning depth and exit behavior. Then read the **clarify** findings (comment + step handoff — every issue now passes through clarify, so these are always present): the reproduction outcome, the environment tested, and a code-level **root-cause hypothesis**. Trust clarify's verified behavior over re-deriving the problem from the description — plan the fix for the confirmed root cause, not the reported symptom.
 
-Checkout the latest baseBranch (from `forge_config`, see preamble for the detection rule) so exploration sees current production code.
+Checkout the latest baseBranch (from `forge_config`, see preamble for the detection rule) so exploration sees the current base-branch code.
 
 ### Step 2: Understand the Issue
 
@@ -87,7 +87,7 @@ Read: .forge/knowledge.json
 ```
 
 Use it to:
-- Look up `paths` to find exact file locations (e.g., `paths.frontend-feature` → `web/src/features/{domain}/`)
+- Look up `paths` to find exact file locations — infer affected paths from the repo's own structure / knowledge.json `paths` (e.g. a `paths.frontend-feature` entry → the project's feature directory), don't assume a fixed layout
 - Check `domains` to identify which content types are involved
 - Check `recipes` — if a recipe matches the issue type (new endpoint, new page, new tool), it provides the implementation steps template
 - Reference `conventions` for naming and state management patterns
@@ -95,17 +95,17 @@ Use it to:
 Then use targeted Glob to confirm the files exist and find exact paths:
 
 ```
-Glob: packages/<package>/src/**/*<keyword>*
+Glob: <source-root from knowledge.json paths>/**/*<keyword>*
 ```
 
 ### Step 4: Explore (Depth Depends on Tier)
 
-**For Simple/Medium (lightweight):**
+**For xs/s/m (lightweight):**
 - You now have the file list from knowledge.json + Glob. That's usually enough.
 - Only read a source file if you need to check: a component's current props/API, an existing pattern to reference, or whether a utility already exists.
 - Limit to 1-2 file reads max. The coding agent will read everything during implementation.
 
-**For Complex (deep):**
+**For l/xl (deep):**
 - Read `references/exploration-guide.md` for the full exploration approach.
 - Read all affected files to understand current state.
 - Follow the data flow — trace from API to UI or vice versa.
@@ -132,12 +132,12 @@ Make the decision a **mergeable artifact** instead. Plan an in-repo markdown doc
 
 - Classify an issue as a no-code deliverable only when its acceptanceCriteria/goal is purely a decision/audit/spike write-up with **no** source, UI, API, or schema change. When in doubt, plan it as normal code — this is a narrow class, not a catch-all for "has some docs."
 - The deliverable is a doc at **`docs/proposals/<topic>.md`** (short, kebab, topic-focused), added to the index in `docs/proposals/README.md`. Name the exact path in the plan and outline the required sections so the coding step writes substantive content, not a stub.
-- This makes the change a **docs-only diff** (touches only `docs/**`, no `packages/**`), which flows code → review → test → release like any other change. The coding/review/test steps key off that mechanical signal, so a real decision becomes a durable, discoverable artifact rather than a comment that vanishes from the codebase.
+- This makes the change a **docs-only diff** (touches only docs/prose, no source paths — derived from the repo's own structure), which flows code → review → test → release like any other change. The coding/review/test steps key off that mechanical signal, so a real decision becomes a durable, discoverable artifact rather than a comment that vanishes from the codebase.
 - Do **NOT** decompose a no-code deliverable (see Step 5.5). Recommended follow-ups (e.g. ports the decision endorses) spin off as **standalone** issues linked with a soft `related_to` — never as `decomposes` children, since a pure decision has nothing to integrate.
 
-### Step 5.5: Decide whether to decompose (Complex epics only)
+### Step 5.5: Decide whether to decompose (l/xl epics only)
 
-For Complex issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, atomic release gating, and close cascade.
+For `l`/`xl` issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. Adding the first edge makes core (ISS-138) create + push a **shared integration branch** off `<baseBranch>`, park the parent at `waiting`, and stamp `branchConfig` so every child branches off and merges back into that branch (not base). The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, the parent's integration gate, and close cascade. Only the parent squash-merges the integration branch → base, once, after verifying the assembled epic.
 
 **When to decompose:**
 - Each child must be reviewable + testable independently.
@@ -151,51 +151,7 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 - Items where one child's failure should not block siblings' release — the gate is atomic by design.
 - Nested decomposition (epic → epic → story). Single-level only for v1.
 
-**How to decompose:**
-
-1. For each child workstream, create a child issue:
-   ```
-   forge_issues → create → { data: { title: "<child slice title>", description: "<scoped description>", status: "on_hold", priority: <inherit>, category: <inherit> } }
-   ```
-   Children land at `on_hold` so the orchestrator does NOT auto-dispatch forge-triage. The cascade-approve hook on parent `waiting → approved` flips them to `approved` and the normal pipeline resumes.
-
-2. For each created child, add a `decomposes` dependency edge with the parent as the `from` side via the MCP tool:
-   ```
-   forge_pm_set_dependency → {
-     projectId: "<projectId>",
-     fromIssueId: "<parentId>",
-     toIssueId:   "<childId>",
-     kind: "decomposes"
-   }
-   ```
-   `projectId` is the one you already read in Step 1 via `forge_config → get` (`response.project.id`). The tool is idempotent on `(projectId, fromIssueId, toIssueId, kind)` so re-runs are safe — it returns `{ id, created: true|false }` and only emits the `dependencyChanged` hook on first insert.
-
-   **If the parent's plan declares sibling-blocks ordering** (e.g., Sub 2 must wait for Sub 1 to ship before its `forge-triage` dispatches), add those edges immediately after creating all children:
-   ```
-   forge_pm_set_dependency → {
-     projectId: "<projectId>",
-     fromIssueId: "<sub1Id>",    // the issue that ships FIRST
-     toIssueId:   "<sub2Id>",    // the issue that WAITS
-     kind: "blocks"
-   }
-   ```
-   Verify each call returns `{ id, created: true|false }`. If a call throws `FORBIDDEN` or `CYCLE_DETECTED`, stop and post a comment — silently writing "Added blocks edges" in the plan text without the rows landing is the failure mode that caused ISS-131. Never claim a dependency in plan prose unless the MCP call succeeded.
-
-3. Write the parent's `plan` field with one section per child — title, scope, files, acceptance criteria. The parent plan is the index; each child's own `description` carries the child-specific implementation detail.
-
-4. Do **NOT** set the parent's status yourself. `decomposeParent` (core) atomically parks the parent at `status: 'waiting'` (the review gate) and creates the children at `draft`. State control for decompose lives in core, not in this skill — manually overriding the parent status is the drift that breaks the kickoff. A human reviews the decomposition before approving.
-
-5. Post a plan comment summarizing the decomposition decision and rationale: which children, why this split, what the parent's integration test will verify.
-
-**What happens after human approval (automatic, all system-owned):**
-- Parent enters `approved` → the cascade flips every `draft` child → `approved` simultaneously.
-- Children run their pipelines in parallel through code → review → test → released → closed. Children do NOT wait for the parent.
-- The parent sits at `approved` but its forward jobs (code/review/test/fix) are held by the `decomposeChildrenPending` dispatch gate until EVERY child has landed on the base branch (`child.merged_at` set, i.e. child reached `closed`).
-- Once all children are merged, the gate clears and the parent runs its integration work LAST (code → … → released → closed). The parent merges after its children.
-- Parent → `closed` forces any non-closed children to `closed` (clean-up when the epic is abandoned).
-
-**Verifying sibling-blocks edges took effect (ISS-131 breadcrumb):**
-The L2 dispatcher gate evaluates `blocks` parents at dispatch time for every job type (not just `release`). When a downstream child's `forge-triage` job is queued behind a non-terminal blocker, the child's `agent_sessions` row stays at `status='queued'` with `failure_reason='waiting_on_dep'` and `metadata.waitingOn` listing the blocking parents. If after cascade-approve you see every child's `forge-triage` immediately dispatch in parallel, the most likely cause is that `forge_pm_set_dependency` never ran or threw silently — go back and re-call it for each declared blocks edge.
+**How to decompose** — once the decision is made, follow the mechanics in `references/decompose-protocol.md`: create children at `draft`, add `decomposes` (and any sibling `blocks`) dependency edges via `forge_project_pm → set_dependency` (verify each row landed — never claim an edge in prose without the call succeeding, the ISS-131 failure mode), write the parent `plan` as the per-child index **plus a parent integration-step section**, and do **NOT** create the integration branch, stamp `branchConfig`, or set the parent status yourself (core's `decomposeParent` does all three on the first edge). The reference also documents the integration-branch model (children branch off + merge back into the shared branch; the parent is the only one that squash-merges to base), the post-approval automation (cascade-approve, the `decomposeChildrenPending` gate, close cascade), and how to verify sibling-blocks edges took effect.
 
 ### Step 6: Validate the Plan
 
@@ -210,24 +166,24 @@ Skip checking test files for lightweight plans — the coding agent handles test
 
 The exit behavior depends on complexity (from the triage comment, extracted in Step 1):
 
-**Simple or Medium complexity:**
+**xs / s / m complexity:**
 ```
 forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>", author: "Alakazam" } }
 forge_issues → update → { documentId: "<id>", data: { status: "approved" } }
 ```
 
-Auto-approving simple/medium plans keeps the pipeline fast. **Status update is LAST** — it triggers the coding step.
+Auto-approving `xs/s/m` plans keeps the pipeline fast. **Status update is LAST** — it triggers the coding step.
 
-**Complex complexity:**
+**l / xl complexity:**
 ```
 forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>", author: "Alakazam" } }
 forge_issues → update → { documentId: "<id>", data: { status: "waiting" } }
 ```
 
-Set status to `waiting` — Complex issues wait for a human to review the plan and manually approve. **Status update is LAST.**
+Set status to `waiting` — `l`/`xl` issues (and every decomposed epic) wait for a human to review the plan and manually approve. **Status update is LAST.**
 
 **If no triage comment found** (manual invocation, not from pipeline):
-- Default to auto-approve behavior (treat as Medium)
+- Default to auto-approve behavior (treat as `m`)
 
 ### Plan Comment Format
 

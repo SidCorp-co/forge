@@ -157,10 +157,15 @@ pipelineAnalyticsRoutes.get(
 
 /**
  * ISS-104 — per-step pipeline durations. Sourced from the
- * `pipeline_run_step_durations` view (migration 0055), one row per
- * completed job under a pipeline_run. `issueId` is null for runs of kind
- * `pm`/`interactive`/`system`. Capped at 1000 rows so a careless caller
- * can't dump the whole window into a single response.
+ * `pipeline_run_step_durations` view (created 0055, reshaped 0057; 0128 —
+ * ISS-516 — guards `duration_seconds` to a CASE that is non-NULL only for a
+ * successfully-completed, non-inverted span). This endpoint is duration-only,
+ * so it filters `duration_seconds IS NOT NULL` to drop the non-`done` rows the
+ * view now keeps (so cost consumers see full spend); the surviving rows are
+ * exactly the completed steps and `duration_seconds` is never negative.
+ * `issueId` is null for runs of kind `pm`/`interactive`/`system`. Capped at
+ * 1000 rows so a careless caller can't dump the whole window into a single
+ * response.
  */
 pipelineAnalyticsRoutes.get(
   '/step-durations',
@@ -181,6 +186,7 @@ pipelineAnalyticsRoutes.get(
       FROM pipeline_run_step_durations
       WHERE project_id IN ${projectIds}
         AND started_at >= now() - (${days}::int * interval '1 day')
+        AND duration_seconds IS NOT NULL
         ${stepFilter}
       ORDER BY started_at DESC
       LIMIT 1000
@@ -297,7 +303,12 @@ pipelineAnalyticsRoutes.get(
  * W2.2.1 — per-project cost analytics. Mounted under `/api/projects/:id` so
  * the URL reads as a project-scoped sub-resource. Project-member-only; CEO
  * bypass mirrors `loadVisibleProjectIds`. Data sourced from the
- * `pipeline_run_step_durations` view (migration 0055 / extended in 0075).
+ * `pipeline_run_step_durations` view (created 0055, reshaped 0057; 0128 —
+ * ISS-516 — guards only `duration_seconds`, NOT the row set, so `cost_usd`
+ * still rolls up ALL finished jobs incl. failed/cancelled that burned tokens;
+ * 0075 was orphaned/never applied and is deleted). The view keeps the
+ * 8-column contract — cost_usd is summed from usage_records; cache-token
+ * analytics read usage_records directly (see src/metrics/queries.ts).
  */
 export const projectCostAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 projectCostAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());

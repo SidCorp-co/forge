@@ -73,7 +73,7 @@ queued → dispatched → running → done / failed / cancelled
 | `issue` | Optional — the issue this job serves |
 | `device` | Set on dispatch; null while queued |
 | `createdBy` | User who enqueued (or `system` for auto-triggered) |
-| `type` | `triage` \| `clarify` \| `plan` \| `code` \| `review` \| `test` \| `release` \| `fix` \| `custom` \| `pm` |
+| `type` | `triage` \| `clarify` \| `plan` \| `code` \| `review` \| `test` \| `release` \| `fix` \| `custom` \| `pm` \| `smoke` — `smoke` is the issue-less smoke-verify canary (tier-2, one-shot on a `system` pipeline_run; PASS/FAIL = the job's terminal status) |
 | `payload` | `{ skillName, args, ... }` |
 | `status` | See flow above |
 | `queuedAt` / `dispatchedAt` / `startedAt` / `finishedAt` | Lifecycle timestamps |
@@ -102,20 +102,31 @@ queued → dispatched → running → done / failed / cancelled
 
 ### Cancel a running job
 
-1. User clicks "Cancel" → `POST /api/jobs/:id/cancel` (user principal)
+1. User clicks "Cancel" → `POST /api/jobs/:id/cancel` (user principal), **or** an operator calls the `forge_jobs.cancel` MCP tool (audited manual single-job cancel escape hatch). Both share the same `jobs/cancel-job.ts` logic.
 2. Server marks `cancellationRequested = true`
 3. Server WS pushes `job.cancel` to device room
 4. Device sends SIGTERM to Claude subprocess
 5. Device POSTs `/complete` with `exitCode: -1`, `error: 'cancelled'`
 6. `Job.update({ status: 'cancelled' })`
 
-### Stale detection + auto-retry
+### Stale detection (closed loop) + auto-retry
 
-1. Slow backstop (`stale-job-detector`): reap jobs in `dispatched`/`running` past a 60-minute threshold (bumped 5→60 min per ISS-258 — legit merges run >5 min between events and tripped a false positive)
-2. Fast path (`reconcileOrphanedJobs`, `packages/core/src/pipeline/sweeper.ts`, ~1-min tick): session-driven reconciliation reaps orphaned `dispatched`/`running` jobs well before the 60-min backstop
-3. Mark stuck: `Job.update({ status: 'failed', error: 'stale' })`
-4. Retry count <3: re-enqueue new job with same payload
-5. Beyond 3 retries: leave failed, surface in health dashboard
+**Reaper — the closed job loop (`jobs/loop-monitor.ts`, `runLoopMonitor`).** This is the PRIMARY reaper for every non-progressing job/session state. It runs as the FIRST pass of the per-minute pipeline-sweeper tick (`pipeline/sweeper.ts`, `runPipelineSweep`). It models the lifecycle as a four-hop closed loop, each hop with one timeout and exactly one miss-handler (all terminal writes via `applyKernelTransition`, all reaps routed through the shared `finalizeFailedJob` tail):
+
+1. **dispatch→ack** — a `dispatched` job never acked with zero events past the ack grace → fail `dispatch_unclaimed`.
+2. **ack→heartbeat (claim)** — a pipeline/pm session sitting `queued` past the queue timeout → fail `queue_timeout`.
+3. **heartbeat** — a `running` session with a stale heartbeat → `heartbeat_timeout`; a chat/schedule session that never attached a client → `no_client_ack`; a job whose linked session is terminal with no `result` event → `session_lost`.
+4. **result** — a claimed job that emitted no event for `RESULT_QUIET_MINUTES` (= **60**, bumped 5→60 per ISS-258 because legit merges run >5 min between events) and never a `result` → fail `stale`.
+
+The legacy sweepers are DEMOTED to alarm-only (`alarmZombieSessions`, `alarmOrphanedJobs`, `alarmNeverClaimedDispatches`): they keep their detection SELECTs but perform NO terminal writes — running right after the loop in the same tick, any row they still match is a loop MISS, logged `loop-miss` + surfaced as a `pipeline_wedge`.
+
+**Auto-retry — device-rotation (`jobs/retry.ts`).** A reaped/failed job is rescheduled via bounded round-robin across online devices, NOT a flat `<3` threshold:
+
+- `RETRY_TRIES_PER_DEVICE` = **3** attempts per device before the chain rotates to the next online device.
+- `RETRY_MAX_ROUNDS` = **10** full device sweeps; beyond that the chain stops and the caller parks the issue at `waiting` for a human.
+- `RETRY_COOLDOWN_MS` = **60s** between attempts.
+
+(Rotation state lives in `payload._autoRetry`; the classifier verdict drives per-class policy — `code` never retries, `transient-cc` does immediate different-device failover.)
 
 ## API Endpoints
 
@@ -125,6 +136,7 @@ queued → dispatched → running → done / failed / cancelled
 | `GET` | `/api/jobs/:id` | user / device | Read (policy-scoped) |
 | `GET` | `/api/jobs/:id/events?since=:seq` | user | Paginated replay |
 | `POST` | `/api/jobs/:id/cancel` | user | Request cancellation |
+| MCP | `forge_jobs.cancel` | operator | Audited manual single-job cancel escape hatch (same `jobs/cancel-job.ts` logic as the REST route) |
 | `POST` | `/api/jobs/:id/events` | device | Submit JobEvent batch |
 | `POST` | `/api/jobs/:id/complete` | device | Report completion |
 
@@ -144,7 +156,7 @@ queued → dispatched → running → done / failed / cancelled
 | Command/Job | Description |
 |-------------|-------------|
 | `job-dispatcher` (long-running) | Polls pg-boss queue, picks active device, dispatches |
-| `stale-job-detector` (cron) | Slow backstop: reaps `dispatched`/`running` jobs past a 60-minute threshold (5→60 min per ISS-258), optionally retries. Fast path is `reconcileOrphanedJobs` (`pipeline/sweeper.ts`, ~1-min tick) |
+| `pipeline-sweeper` (cron, ~1-min tick) | Runs `runLoopMonitor` (`jobs/loop-monitor.ts`) FIRST as the primary closed-loop reaper (dispatch→ack→heartbeat→result; result hop `RESULT_QUIET_MINUTES` = 60), then the demoted alarm-only passes (`alarmZombieSessions`, `alarmOrphanedJobs`, `alarmNeverClaimedDispatches` — detection SELECTs, no terminal writes). Reaped jobs route through device-rotation auto-retry (`jobs/retry.ts`) |
 | `job-event-sweeper` (cron daily) | Deletes JobEvents older than 30 days past parent terminal |
 | `job-usage-aggregator` (cron hourly) | Aggregates token usage by project / device for billing / quota dashboards |
 

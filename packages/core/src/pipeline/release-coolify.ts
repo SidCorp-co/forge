@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { pipelineRuns } from '../db/schema.js';
+import { pipelineRuns, projects } from '../db/schema.js';
 import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
 import { listActiveBindingsForProjectProvider } from '../integrations/store.js';
@@ -32,6 +32,28 @@ export interface DispatchOutcome {
  * No-op (returns `dispatched=false, integrationIds=[]`) when the project
  * has no Coolify configured — preserves backwards-compatible behaviour.
  */
+/**
+ * Per-project opt-in: when `agentConfig.pipelineConfig.autoProdDeploy === true`,
+ * a prod Coolify deploy auto-dispatches on release exactly like staging,
+ * skipping the human-confirm gate. Default false keeps the gate. Best-effort —
+ * a read failure falls back to the safe (gated) behavior.
+ */
+async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const ac = (row?.agentConfig ?? null) as Record<string, unknown> | null;
+    const pc = ac?.pipelineConfig as Record<string, unknown> | undefined;
+    return pc?.autoProdDeploy === true;
+  } catch (err) {
+    logger.warn({ err, projectId }, 'coolify: failed to read autoProdDeploy — keeping prod gate');
+    return false;
+  }
+}
+
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;
@@ -46,11 +68,14 @@ export async function tryDispatchCoolifyRelease(args: {
 
   const dispatched: string[] = [];
   let pendingHumanConfirm = false;
+  // Per-project opt-in to skip the prod human-confirm gate (auto like staging).
+  const autoProd = await projectAutoProdDeploy(projectId);
 
   for (const { binding } of pairs) {
-    if (binding.environment === 'prod') {
+    if (binding.environment === 'prod' && !autoProd) {
       // Manual approval gate — never auto-dispatch prod. The UI sticky
       // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
+      // Skipped entirely when the project opted into autoProdDeploy.
       const gateState = await getProdGateState(binding.id);
       if (!gateState || gateState.confirmedAt === null) {
         await markPendingHumanConfirm({ runId, issueId, bindingId: binding.id });
@@ -131,10 +156,11 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
   const { binding } = pair;
 
-  if (binding.environment === 'prod') {
-    // Prod is never auto-dispatched run-less. Confirming a prod deploy is
-    // run-keyed (confirm-prod-deploy endpoint), so it still requires the
-    // issueId path — return the gate outcome without enqueueing.
+  if (binding.environment === 'prod' && !(await projectAutoProdDeploy(projectId))) {
+    // Prod is never auto-dispatched run-less (unless the project opted into
+    // autoProdDeploy). Confirming a prod deploy is run-keyed (confirm-prod-
+    // deploy endpoint), so it still requires the issueId path — return the gate
+    // outcome without enqueueing.
     return {
       dispatched: false,
       pendingHumanConfirm: true,

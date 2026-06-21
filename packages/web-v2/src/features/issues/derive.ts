@@ -3,7 +3,7 @@
 // counts, filter → server params, client grouping, comment-kind heuristic.
 
 import { STAGES, STAGE_INDEX, type StageKey } from "@/design/stages";
-import type { StatusKey } from "@/design/status";
+import { STATUS_KEY_TONE, type SemanticTone, type StatusKey } from "@/design/status";
 import { ISSUE_STATUSES } from "./types";
 import type {
   CommentKind,
@@ -39,11 +39,8 @@ export const STATUS_LABELS: Record<IssueStatus, string> = {
   approved: "Approved",
   in_progress: "In progress",
   developed: "Developed",
-  deploying: "Deploying",
   testing: "Testing",
   tested: "Tested",
-  pass: "Passed",
-  staging: "Staging",
   released: "Released",
   closed: "Closed",
   reopen: "Reopened",
@@ -89,11 +86,8 @@ export const STATUS_TO_STAGE: Record<IssueStatus, StageKey> = {
   in_progress: "code",
   reopen: "code",
   developed: "review",
-  deploying: "test",
   testing: "test",
   tested: "test",
-  pass: "release",
-  staging: "release",
   released: "release",
   closed: "release",
   on_hold: "code",
@@ -153,21 +147,32 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
     case "needs_info":
       return "waiting";
     case "developed":
-    case "deploying":
     case "testing":
       return "review";
     case "tested":
-    case "pass":
       return "passed";
-    case "staging":
     case "released":
+      return "shipped"; // ISS-511 — distinct flame, "shipped to prod"
     case "closed":
-      return "done";
+      return "archived"; // ISS-511 — heavy ink, "filed away"
     case "on_hold":
       return "paused";
     default:
       return "queued";
   }
+}
+
+/**
+ * Map an issue lifecycle status to a semantic TONE (ISS-509). Defined as
+ * `tone(statusToChip(status))` — the base chip mapping, no live-agent override —
+ * so a status's tone is IDENTICAL in its chip and in every dashboard bucket that
+ * folds it (the overview work-distribution bar + the project-dashboard donut
+ * both color through this). Total over all 16 `IssueStatus`es, and NO benign /
+ * blocked / idle status resolves to the `failure` tone (guarded in
+ * `derive.test.ts`).
+ */
+export function statusToTone(status: IssueStatus): SemanticTone {
+  return STATUS_KEY_TONE[statusToChip(status)];
 }
 
 /**
@@ -259,7 +264,7 @@ export function filterToStatusParams(filter: IssueFilter): {
     case "active":
       return { status: ["open", "confirmed", "clarified", "waiting", "approved", "in_progress", "reopen"] };
     case "review":
-      return { status: ["developed", "deploying", "testing", "tested", "pass", "staging"] };
+      return { status: ["developed", "testing", "tested"] };
     case "blocked":
       return { status: ["on_hold", "needs_info"] };
     case "done":

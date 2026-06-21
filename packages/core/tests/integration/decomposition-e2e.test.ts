@@ -276,7 +276,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 61 });
-      const child = await insertIssue(project.id, owner.id, { status: 'staging', issSeq: 62 });
+      const child = await insertIssue(project.id, owner.id, { status: 'tested', issSeq: 62 });
       await insertDecomposesEdge(project.id, parent, child);
       await insertReleaseJob(project.id, child, owner.id);
 
@@ -289,7 +289,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       const project = await createTestProject(harness.db, owner.id);
       await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'released', issSeq: 71 });
-      const child = await insertIssue(project.id, owner.id, { status: 'staging', issSeq: 72 });
+      const child = await insertIssue(project.id, owner.id, { status: 'tested', issSeq: 72 });
       await insertDecomposesEdge(project.id, parent, child);
       await insertReleaseJob(project.id, child, owner.id);
 
@@ -399,7 +399,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       // Parent starts at `released` — the canonical pre-close status — so the
       // state-machine permits `released → closed` without `{ skip: true }`.
       const parent = await insertIssue(project.id, owner.id, { status: 'released', issSeq: 91 });
-      const childA = await insertIssue(project.id, owner.id, { status: 'staging', issSeq: 92 });
+      const childA = await insertIssue(project.id, owner.id, { status: 'tested', issSeq: 92 });
       const childB = await insertIssue(project.id, owner.id, { status: 'closed', issSeq: 93 });
       await insertDecomposesEdge(project.id, parent, childA);
       await insertDecomposesEdge(project.id, parent, childB);
@@ -420,30 +420,30 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   });
 
   describe('watcher', () => {
-    it('posts a comment on the parent when the LAST child reaches staging', async () => {
+    it('posts a comment on the parent when the LAST child reaches tested', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 101 });
-      const childA = await insertIssue(project.id, owner.id, { status: 'staging', issSeq: 102 });
+      const childA = await insertIssue(project.id, owner.id, { status: 'tested', issSeq: 102 });
       const childB = await insertIssue(project.id, owner.id, { status: 'developed', issSeq: 103 });
       await insertDecomposesEdge(project.id, parent, childA);
       await insertDecomposesEdge(project.id, parent, childB);
 
-      // Transitioning childA early (only 1 of 2 staging) → watcher must NOT fire.
-      // Note: childA is already at `staging`. We bring childB to `staging` next.
+      // Transitioning childA early (only 1 of 2 tested) → watcher must NOT fire.
+      // Note: childA is already at `tested`. We bring childB to `tested` next.
       expect(await readCommentCount(parent)).toBe(0);
 
       await mods.applyStatusTransition(
         { id: childB, projectId: project.id, status: 'developed', reopenCount: 0 },
-        'staging',
+        'tested',
         { id: owner.id, ownerId: owner.id },
         { skip: true },
       );
       // ISS-196 — drain the outbox so the watcher subscriber fires on the
-      // child's staging transition.
+      // child's tested transition.
       await mods.drainOutboxOnce();
 
-      // Now BOTH children are at staging — watcher posts exactly one comment.
+      // Now BOTH children are at tested — watcher posts exactly one comment.
       // The triggerPipelineStepManual call inside the watcher fails with
       // NO_SKILL_REGISTERED (no skill rows seeded); the handler catches that
       // and the comment insertion still ran first. Idempotency guard ensures

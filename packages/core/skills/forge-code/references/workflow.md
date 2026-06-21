@@ -14,10 +14,10 @@ For multiple issues, fetch all in parallel.
 ## Step 2: Determine Mode & Complexity
 
 Check comments for pipeline artifacts:
-- **Triage comment** (starts with `**Triage**`) → pipeline mode, extract complexity (Simple/Medium/Complex)
+- **Triage comment** (starts with `**Triage**`) → pipeline mode, extract complexity (`xs/s/m/l/xl`)
 - **Plan comment** (starts with `**Plan**`) → has forge-plan output
 
-**Pipeline mode** (has triage/plan comments): No preview deploy → merge to baseBranch, `forge_coolify_deploy`, `deploying`; Simple (with staging URL) → merge to baseBranch, `testing`; Simple (no staging URL) / Medium → push ISS-* branch, `deploying`; Complex → `developed` (independent review)
+**Pipeline mode** (has triage/plan comments): deploy mode merges **every** complexity to `baseBranch` + `forge_coolify_deploy`, then exits `xs/s` → `testing` (set staging previewUrl) and `m/l/xl` → `developed` (independent review, then testing); local-only pushes the ISS-* branch only and exits `developed`. **Never `deploying`** (retired). See Steps 13 + 15.
 **Standalone mode** (no pipeline comments): exit as `closed`
 
 ## Step 3: Check Actionability
@@ -76,8 +76,8 @@ Either way:
 
 ## Step 8: Build
 
-Run build to catch compile/type errors before review:
-- `npm run build` from the correct package directory
+Run the project's build to catch compile/type errors before review:
+- Infer the build command from the repo (the affected package's build script / toolchain) and run it from the correct package directory
 - Fix any build errors before proceeding
 - This catches issues that would fail CI later
 
@@ -93,9 +93,9 @@ Review happens BEFORE commit and push. This catches logic bugs early — only cl
 
 Review depth scales with risk. Over-reviewing simple changes wastes tokens without catching real issues.
 
-**Simple complexity (from triage):** Self-review only. Re-read your diff (`git diff`), check for obvious mistakes (typos, missing imports, wrong variable names). No subagent needed — the change is too small to benefit from fresh-context review.
+**xs / s complexity (from triage):** Self-review only. Re-read your diff (`git diff`), check for obvious mistakes (typos, missing imports, wrong variable names). No subagent needed — the change is too small to benefit from fresh-context review.
 
-**Medium complexity:** Quick review. Launch review agent but scope it tightly:
+**m complexity:** Quick review. Launch review agent but scope it tightly:
 
 ```
 Agent → subagent_type: "general-purpose"
@@ -105,7 +105,7 @@ Agent → subagent_type: "general-purpose"
 
 Fix any Bug findings. Skip Minor/Low.
 
-**Complex complexity:** Full review. Launch the standard review agent:
+**l / xl complexity:** Full review. Launch the standard review agent:
 
 ```
 Agent → subagent_type: "general-purpose"
@@ -117,9 +117,9 @@ Fix Bug and Minor findings. Skip Low unless trivial.
 
 If fixes were needed, re-run build + test (Steps 8-9) before proceeding.
 
-## Step 11: Simplify (Complex Only)
+## Step 11: Simplify (l / xl Only)
 
-Only run the code simplifier for **Complex** issues where there's enough new code to benefit from refactoring. For Simple/Medium, the change is small enough that simplification adds cost without value.
+Only run the code simplifier for **`l`/`xl`** issues where there's enough new code to benefit from refactoring. For `xs/s/m`, the change is small enough that simplification adds cost without value.
 
 ```
 Agent → subagent_type: "code-simplifier"
@@ -133,13 +133,11 @@ Agent → subagent_type: "code-simplifier"
 - Reference issue ID: `Resolves ISS-XX`
 - Stage specific files — avoid `git add .`
 
-## Step 13: Push & Deploy (Branching by Complexity)
+## Step 13: Push & Deploy
 
-Push strategy depends on complexity. Preview environments are only created for Complex issues.
+**Key principle:** The ISS-* feature branch is always kept alive through the pipeline — it is the single source of truth that forge-release squash-merges to the **production** branch at the end. `baseBranch` is staging (≠ production), so merging there is safe for **every** complexity and is exactly what makes the change reachable for QA. (This replaces the old "Complex doesn't merge until review" rule — that left large issues unreachable on a no-preview project.)
 
-**Key principle:** The ISS-* feature branch is always kept alive through the pipeline. It is the single source of truth for the issue's changes. forge-release will squash-merge it to the production branch at the end.
-
-**No preview deploy configured:** Push the ISS-* branch, merge to baseBranch, then trigger Coolify deploy.
+**Deploy mode (Coolify configured OR `previewDeploy.stagingUrl` set) — ALL complexities:** push the ISS-* branch, merge it into `baseBranch`, push base, then deploy.
 
 ```bash
 git push -u origin ISS-XX-short-title
@@ -153,21 +151,9 @@ git checkout ISS-XX-short-title
 forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 ```
 
-**Simple / Medium:** Push the ISS-* branch, merge to baseBranch. Staging deploys from baseBranch — no per-issue preview. Trigger Coolify deploy after merge. If staging URL is configured (read from `forge_config → get`, `previewDeploy` object), set previewUrl to staging URL.
+**Decompose child/parent are the exception** — they target the integration branch, not `baseBranch` (child merges to it; parent integrate-verifies, doesn't merge here). See `.claude/skills/forge-plan/references/decompose-execution.md`.
 
-```bash
-git push -u origin ISS-XX-short-title
-git checkout <baseBranch>
-git merge ISS-XX-short-title
-git push origin <baseBranch>
-git checkout ISS-XX-short-title
-```
-
-```
-forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
-```
-
-**Complex:** Push feature branch only — do NOT merge to baseBranch. No deploy at this stage — review comes first, then preview deploy is triggered by the review step.
+**Local-only mode (no Coolify AND no staging URL):** push the ISS-* branch only — no `baseBranch` merge, no deploy.
 
 ```bash
 git push -u origin ISS-XX-short-title
@@ -185,24 +171,19 @@ What was implemented, notable decisions. No file paths or code snippets.
 
 ## Step 15: Set Status (LAST)
 
-**Status update must be the LAST action.** It triggers downstream pipeline steps, so all work (push, deploy, comment) must complete first.
+**Status update must be the LAST action.** It triggers downstream pipeline steps, so all work (push, deploy, comment) must complete first. `deploying` was **retired** — the only valid exits from the code step are `developed`, `testing`, or `reopen`.
 
-**No preview deploy configured:**
+**Deploy mode, `xs` / `s`** — skip independent review, go straight to QA on the deployed staging build:
 ```
-forge_issues → update → { documentId: "<id>", data: { status: "deploying" } }
-```
-
-**Simple / Medium (staging URL configured):**
-```
-forge_issues → update → { documentId: "<id>", data: { status: "deploying", previewUrl: "<stagingUrl>", previewApiUrl: "<stagingApiUrl>", previewStatus: "live" } }
+forge_issues → update → { documentId: "<id>", data: { status: "testing", previewUrl: "<stagingUrl>", previewApiUrl: "<stagingApiUrl>", previewStatus: "live" } }
 ```
 
-**Simple / Medium (no staging URL):**
+**Deploy mode, `m` / `l` / `xl`** — the independent forge-review stage runs at `developed`, then advances to testing:
 ```
-forge_issues → update → { documentId: "<id>", data: { status: "deploying" } }
+forge_issues → update → { documentId: "<id>", data: { status: "developed" } }
 ```
 
-**Complex:**
+**Local-only mode (any complexity)** — human reviews at `developed` and closes manually:
 ```
 forge_issues → update → { documentId: "<id>", data: { status: "developed" } }
 ```

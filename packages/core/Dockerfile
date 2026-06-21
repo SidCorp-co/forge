@@ -35,6 +35,10 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /prod/core ./
+# NOTE: the repo `docs/` tree is INTERNAL engineering documentation and is
+# deliberately NOT shipped here or served to users. End-user product docs live
+# in packages/web-v2/content/help and are bundled into the WEB build — the core
+# image serves no documentation.
 
 EXPOSE 8080
 

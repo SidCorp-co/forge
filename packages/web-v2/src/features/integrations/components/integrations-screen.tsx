@@ -256,7 +256,6 @@ export function IntegrationsScreen() {
             "Disable / Enable — switch a credential off (every binding stops resolving) and back on",
             "Binding-scoped settings (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
           ]}
-          docPath="docs/guides/integrations.md"
         />
       </div>
 

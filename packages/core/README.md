@@ -5,7 +5,7 @@ Forge core API — Hono + Drizzle backend. A single Node process serves REST, We
 ## Prerequisites
 
 - **Node** `>=20` (enforced via `engines.node`)
-- **pnpm** — the repo runs `core`, `web`, and `dev` in a pnpm workspace at `packages/`
+- **pnpm** — the repo's `packages/*` workspace (`contracts`, `core`, `dev`, `observability`, `web-v2`, plus the Rust `runner` Cargo workspace and a `tests` dir)
 - **Postgres 17** — the compose stack at the repo root gives you one preconfigured (`forge` DB, user `forge`, password `forge_secret`)
 - **Docker** — only needed if you run integration tests in `container` mode
 
@@ -16,7 +16,7 @@ Forge core API — Hono + Drizzle backend. A single Node process serves REST, We
 pnpm install
 ```
 
-Install from the repo root, not from inside `packages/core/`. The pnpm workspace links the three active packages together.
+Install from the repo root, not from inside `packages/core/`. The pnpm workspace links the active packages (`contracts`, `core`, `dev`, `observability`, `web-v2`) together.
 
 ## Environment
 
@@ -30,7 +30,7 @@ The env schema lives in [`src/config/env.ts`](./src/config/env.ts) and is valida
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | any SMTP credentials | transactional email |
 | `CORS_ORIGINS` | `http://localhost:3000` | comma-separated allow-list |
 | `PORT` | `8080` (default) | |
-| `NODE_ENV` | `development` (default) | `development` / `test` / `production` |
+| `NODE_ENV` | `development` (default) | `development` / `test` / `staging` / `production` |
 
 For local work outside compose, drop a minimal `.env` into `packages/core/`:
 

@@ -16,6 +16,7 @@ const PRIMARY_FIELD = {
   coolify: 'apiToken',
   postman: 'apiKey',
   epodsystem: 'apiKey',
+  sentry: 'authToken',
 } as const;
 
 /** Provider → name of the field used to retain the previous credential. */
@@ -23,6 +24,7 @@ const PREVIOUS_FIELD = {
   coolify: 'previousApiToken',
   postman: 'previousApiKey',
   epodsystem: 'previousApiKey',
+  sentry: 'previousAuthToken',
 } as const;
 
 export type RotatingProvider = keyof typeof PRIMARY_FIELD;

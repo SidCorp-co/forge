@@ -35,6 +35,16 @@ export type McpContext = {
    */
   device: Device;
   projectSlug: string | null;
+  /**
+   * ISS-497 — the project a project-level PAT is bound to (NULL for
+   * user-level tokens and device principals). Threaded from
+   * `principal.boundProjectId` in `handler.ts` so the effective-project
+   * resolution (arg > slug > boundProjectId) and `metaProjectId()` share a
+   * single source of truth. Optional so the many minimal test contexts that
+   * predate ISS-497 stay valid (absent → no binding, identical to null);
+   * `handler.ts` always sets it for real requests.
+   */
+  boundProjectId?: string | null;
   /** ISS-150 audit-log fields, threaded through for `writeMcpAudit`. */
   requestId?: string;
   ip?: string | null;
@@ -154,6 +164,24 @@ export async function assertPmActor(device: Device, projectId: string): Promise<
 }
 
 /**
+ * ISS-497 — the effective project allowlist for a principal. A project-level
+ * PAT (`boundProjectId` set) is fenced to exactly its bound project, as if
+ * `projectIds` contained only `[boundProjectId]`; binding and a multi-project
+ * `projectIds` are mutually exclusive at mint. A user-level PAT keeps its
+ * `projectIds` allowlist (NULL = inherit all the user's memberships). Device
+ * principals have no PAT allowlist → `null` (unrestricted, gated by role).
+ *
+ * Folding the binding in here is what makes the cross-project conflict rule
+ * (explicit arg/slug ≠ bound → NOT_FOUND) fall out of the existing fence
+ * checks with no bespoke branch.
+ */
+export function patEffectiveProjectIds(principal: McpPrincipal): readonly string[] | null {
+  if (principal.kind !== 'pat') return null;
+  if (principal.boundProjectId) return [principal.boundProjectId];
+  return principal.projectIds;
+}
+
+/**
  * Principal-aware membership check (ISS-150). Wraps the device-scoped
  * helper above and adds the PAT path:
  *   - device principal → existing assertDeviceOwnerIsMember
@@ -173,8 +201,9 @@ export async function assertPrincipalIsMember(
     await assertDeviceOwnerIsMember(principal.device, projectId);
     return;
   }
-  // PAT principal — check scope allowlist first.
-  if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
+  // PAT principal — check the effective allowlist (bound project fences here).
+  const allow = patEffectiveProjectIds(principal);
+  if (allow !== null && !allow.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   const role = await loadUserProjectRoleFlags(principal.userId, projectId);
@@ -197,7 +226,8 @@ export async function assertPrincipalIsWriter(
     await assertDeviceOwnerIsWriter(principal.device, projectId);
     return;
   }
-  if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
+  const allow = patEffectiveProjectIds(principal);
+  if (allow !== null && !allow.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   const role = await loadUserProjectRoleFlags(principal.userId, projectId);
@@ -223,7 +253,8 @@ export async function assertPrincipalIsAdmin(
     await assertDeviceOwnerIsAdmin(principal.device, projectId);
     return;
   }
-  if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
+  const allow = patEffectiveProjectIds(principal);
+  if (allow !== null && !allow.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   if (!principal.scopes.includes('admin')) {
@@ -259,9 +290,10 @@ export async function loadVisibleProjectIdsForPrincipal(
   principal: McpPrincipal,
 ): Promise<string[]> {
   let ids = await loadVisibleProjectIds(principalUserId(principal));
-  if (principal.kind === 'pat' && principal.projectIds !== null) {
-    const allow = new Set(principal.projectIds);
-    ids = ids.filter((id) => allow.has(id));
+  const allow = patEffectiveProjectIds(principal);
+  if (allow !== null) {
+    const allowSet = new Set(allow);
+    ids = ids.filter((id) => allowSet.has(id));
   }
   return ids;
 }
@@ -285,4 +317,34 @@ export async function resolveProjectIdFromSlug(slug: string | null): Promise<str
     .limit(1);
   if (!row) throw new Error(`NOT_FOUND: project not found for slug "${slug}"`);
   return row.id;
+}
+
+/**
+ * ISS-497 — resolve the effective project id for a tool call, computed once
+ * and shared by every project-scoped tool AND the managed-meta-prompt path
+ * (`metaProjectId()` in server.ts). Precedence (highest first):
+ *
+ *   1. explicit `projectId` arg on the tool call
+ *   2. `X-Forge-Project-Slug` header (`ctx.projectSlug`)
+ *   3. `boundProjectId` (project-level PAT only) — returned directly, no slug
+ *      round-trip
+ *   4. BAD_REQUEST (unchanged for user-level tokens with nothing supplied)
+ *
+ * This only RESOLVES the id. The cross-project conflict rule (an explicit
+ * arg/slug that resolves to a project ≠ the bound project) is enforced by the
+ * effective-allowlist fence inside {@link assertPrincipalIsMember} /
+ * `assertPrincipalIsWriter` / `assertPrincipalIsAdmin`, which every
+ * project-scoped tool calls after resolving — so a conflict surfaces as
+ * NOT_FOUND, never a bespoke 403.
+ */
+export async function resolveEffectiveProjectId(
+  ctx: McpContext,
+  explicitProjectId?: string | null,
+): Promise<string> {
+  if (explicitProjectId) return explicitProjectId;
+  if (ctx.projectSlug) return resolveProjectIdFromSlug(ctx.projectSlug);
+  if (ctx.boundProjectId) return ctx.boundProjectId;
+  throw new Error(
+    'BAD_REQUEST: project context missing — set X-Forge-Project-Slug header or pass projectId',
+  );
 }

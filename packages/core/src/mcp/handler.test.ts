@@ -126,16 +126,22 @@ describe('@forge/core MCP server', () => {
     }
   });
 
-  it('does not expose retired PM tools (ISS-146)', async () => {
+  it('does not expose retired PM tools (ISS-146 + ISS-483)', async () => {
     const { client, server } = await connectClient();
     try {
       const res = await client.listTools();
       const names = new Set(res.tools.map((t) => t.name));
+      // ISS-146 removed flag_blocker + the standalone escalate tool.
       expect(names.has('forge_pm.flag_blocker')).toBe(false);
       expect(names.has('forge_pm.escalate')).toBe(false);
-      const writeDecision = res.tools.find((t) => t.name === 'forge_pm.write_decision');
-      expect(writeDecision).toBeDefined();
-      expect(writeDecision?.description ?? '').toContain('escalate');
+      // ISS-483 §E#3 retired the zero-reference write_decision shim. The
+      // escalate path now lives on the forge_project_pm dispatcher
+      // (action=write_decision, with an optional `escalate` object).
+      expect(names.has('forge_pm.write_decision')).toBe(false);
+      const dispatcher = res.tools.find((t) => t.name === 'forge_project_pm');
+      expect(dispatcher).toBeDefined();
+      expect(dispatcher?.description ?? '').toContain('write_decision');
+      expect(dispatcher?.description ?? '').toContain('escalate');
     } finally {
       await client.close();
       await server.close();
@@ -169,12 +175,18 @@ describe('@forge/core MCP server', () => {
       const names = new Set(res.tools.map((t) => t.name));
       expect(names.has('forge_project_pipeline_runs')).toBe(true);
       expect(names.has('forge_project_pm')).toBe(true);
-      // Legacy shims continue to exist for ≥ 1 release.
-      expect(names.has('forge_pipeline_runs.list')).toBe(true);
-      expect(names.has('forge_pm.snapshot')).toBe(true);
-      // Description must lead with the deprecation marker so `tools/list`
+      // ISS-483 §E#3 retired the 9 zero-reference shims; the consolidated
+      // dispatchers supersede them.
+      expect(names.has('forge_pipeline_runs.list')).toBe(false);
+      expect(names.has('forge_pm.snapshot')).toBe(false);
+      // Only the 2 shims still referenced by skills survive
+      // (forge_pipeline_runs.get → forge-skill-audit, forge_pm.set_dependency
+      // → forge-plan).
+      expect(names.has('forge_pipeline_runs.get')).toBe(true);
+      expect(names.has('forge_pm.set_dependency')).toBe(true);
+      // Surviving shims must lead with the deprecation marker so `tools/list`
       // callers see the migration target without invoking the tool.
-      const shim = res.tools.find((t) => t.name === 'forge_pipeline_runs.list');
+      const shim = res.tools.find((t) => t.name === 'forge_pipeline_runs.get');
       expect(shim?.description).toMatch(/^\[DEPRECATED/);
     } finally {
       await client.close();
@@ -194,6 +206,7 @@ describe('@forge/core MCP server', () => {
         tokenId: '00000000-0000-4000-8000-0000000000ab',
         scopes: ['read', 'write'],
         projectIds: null,
+        boundProjectId: null,
       },
       device: fakeDevice,
       projectSlug: null,
@@ -237,6 +250,7 @@ describe('@forge/core MCP server', () => {
         tokenId: '00000000-0000-4000-8000-0000000000aa',
         scopes: ['read', 'write'],
         projectIds: null,
+        boundProjectId: null,
       },
       device: fakeDevice,
       projectSlug: null,
@@ -245,14 +259,9 @@ describe('@forge/core MCP server', () => {
     const client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(clientTransport);
     try {
-      for (const name of [
-        'forge_pm.snapshot',
-        'forge_pm.graph',
-        'forge_pm.runner_load',
-        'forge_pm.dispatch',
-        'forge_pm.set_dependency',
-        'forge_pm.write_decision',
-      ]) {
+      // ISS-483 §E#3 retired the other forge_pm.* shims; forge_pm.set_dependency
+      // is the lone survivor and must still enforce the device gate for PATs.
+      for (const name of ['forge_pm.set_dependency']) {
         const res = await client.callTool({ name, arguments: {} });
         expect(res.isError).toBe(true);
         const text = (res.content as Array<{ type: string; text: string }>)[0]?.text ?? '';

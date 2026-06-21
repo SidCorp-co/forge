@@ -50,7 +50,10 @@ describe('buildJobPromptString', () => {
       for (const jobType of ['triage', 'code', 'review', 'test', 'release'] as const) {
         const out = buildJobPromptString({ jobType, issueId: 'iss-1', issueSnapshot: SAMPLE });
         expect(out, jobType).toContain('## Issue');
-        expect(out, jobType).toContain('Title: Add rate limiting');
+        // ISS-532: the title is framed as untrusted DATA under a `Title:` label.
+        expect(out, jobType).toContain('Title:');
+        expect(out, jobType).toContain('Add rate limiting');
+        expect(out, jobType).toContain('UNTRUSTED_DATA source="issue.title"');
         expect(out, jobType).not.toContain('Description:');
         expect(out, jobType).not.toContain('Plan:');
         expect(out, jobType).not.toContain('Acceptance:');

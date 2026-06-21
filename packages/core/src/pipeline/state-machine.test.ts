@@ -100,7 +100,7 @@ describe('state machine', () => {
       expect(canTransitionFree('open', 'released')).toBe(true);
       expect(canTransitionFree('approved', 'needs_info')).toBe(true);
       expect(canTransitionFree('developed', 'reopen')).toBe(true);
-      expect(canTransitionFree('pass', 'on_hold')).toBe(true);
+      expect(canTransitionFree('tested', 'on_hold')).toBe(true);
     });
 
     it('never allows draft as a target', () => {
@@ -165,17 +165,17 @@ describe('soft-skip resolver (ISS-110)', () => {
     });
   });
 
-  it('developed + testing both disabled → target pass, chain [testing, pass]', () => {
+  it('developed + testing both disabled → target tested, chain [testing, tested]', () => {
     const states: StagesConfig = {
       developed: { enabled: false },
       testing: { enabled: false },
     };
     expect(resolveSkipTarget('developed', states)).toEqual({
-      to: 'pass',
-      chain: ['testing', 'pass'],
+      to: 'tested',
+      chain: ['testing', 'tested'],
       hops: [
         { to: 'testing', reason: 'stage_disabled' },
-        { to: 'pass', reason: 'stage_disabled' },
+        { to: 'tested', reason: 'stage_disabled' },
       ],
     });
   });
@@ -219,9 +219,9 @@ describe('soft-skip resolver — missing-skill predicate (ISS-239)', () => {
   });
 
   it('skips when hasSkill returns false for the source stage', () => {
-    // STAGE_FORWARD['deploying'] = 'testing'. hasSkill: only testing is registered.
+    // STAGE_FORWARD['developed'] = 'testing'. hasSkill: only testing is registered.
     const hasSkill = (s: (typeof issueStatuses)[number]) => s === 'testing';
-    expect(resolveSkipTarget('deploying', undefined, { hasSkill })).toEqual({
+    expect(resolveSkipTarget('developed', undefined, { hasSkill })).toEqual({
       to: 'testing',
       chain: ['testing'],
       hops: [{ to: 'testing', reason: 'missing_skill' }],
@@ -229,32 +229,30 @@ describe('soft-skip resolver — missing-skill predicate (ISS-239)', () => {
   });
 
   it('walks past consecutive missing-skill stages to the first anchor with a skill', () => {
-    // pass → staging → released → closed. hasSkill registers only released.
+    // testing → tested → released → closed. hasSkill registers only released.
     const hasSkill = (s: (typeof issueStatuses)[number]) => s === 'released';
-    expect(resolveSkipTarget('pass', undefined, { hasSkill })).toEqual({
+    expect(resolveSkipTarget('testing', undefined, { hasSkill })).toEqual({
       to: 'released',
-      chain: ['staging', 'released'],
+      chain: ['tested', 'released'],
       hops: [
-        { to: 'staging', reason: 'missing_skill' },
+        { to: 'tested', reason: 'missing_skill' },
         { to: 'released', reason: 'missing_skill' },
       ],
     });
   });
 
   it('mixes stage_disabled and missing_skill reasons across the chain', () => {
-    // developed disabled → STAGE_FORWARD = 'testing'. hasSkill: no stages.
-    // testing skippable + no skill → continue to pass. pass no skill →
-    // continue to staging. staging no skill → continue to released. released
-    // is registered → anchor.
+    // developed disabled → STAGE_FORWARD = 'testing'. hasSkill: only released.
+    // testing no skill → continue to tested. tested no skill → continue to
+    // released. released is registered → anchor.
     const hasSkill = (s: (typeof issueStatuses)[number]) => s === 'released';
     const states: StagesConfig = { developed: { enabled: false } };
     const r = resolveSkipTarget('developed', states, { hasSkill });
     expect(r?.to).toBe('released');
     expect(r?.hops.map((h) => h.reason)).toEqual([
       'stage_disabled', // source 'developed' was disabled → land on 'testing'
-      'missing_skill', // testing had no skill → land on 'pass'
-      'missing_skill', // pass had no skill → land on 'staging'
-      'missing_skill', // staging had no skill → land on 'released'
+      'missing_skill', // testing had no skill → land on 'tested'
+      'missing_skill', // tested had no skill → land on 'released'
     ]);
   });
 
@@ -323,6 +321,34 @@ describe('soft-skip resolver — complexity predicate (clarify-on-happy-path)', 
   });
 });
 
+describe('GATE: manual stages are never auto-skipped (ISS-502)', () => {
+  it('a manual stage with no skill parks (source is not skippable)', () => {
+    const states: StagesConfig = { tested: { enabled: true, mode: 'manual' } };
+    const hasSkill = () => false;
+    expect(resolveSkipTarget('tested', states, { hasSkill })).toBeNull();
+  });
+
+  it('a manual stage anchors a skip chain that would otherwise pass through it', () => {
+    // developed disabled, no skills anywhere, `tested` is a manual gate →
+    // skip developed → testing → tested(manual anchor); the issue parks.
+    const states: StagesConfig = {
+      developed: { enabled: false },
+      tested: { mode: 'manual' },
+    };
+    const hasSkill = () => false;
+    const r = resolveSkipTarget('developed', states, { hasSkill });
+    expect(r?.to).toBe('tested');
+    expect(r?.chain).toEqual(['testing', 'tested']);
+  });
+
+  it('enabled:false still wins over manual (operator disabled → skip, not park)', () => {
+    const states: StagesConfig = { tested: { enabled: false, mode: 'manual' } };
+    const hasSkill = () => true;
+    // tested disabled → skippable; STAGE_FORWARD['tested'] = 'released' anchor.
+    expect(resolveSkipTarget('tested', states, { hasSkill })?.to).toBe('released');
+  });
+});
+
 describe('validateStatesConfig', () => {
   it('returns null on undefined config', () => {
     expect(validateStatesConfig(undefined)).toBeNull();
@@ -368,12 +394,12 @@ describe('validateStatesConfig', () => {
 
 describe('STAGE_FORWARD vs state-machine transitions', () => {
   // ISS-110 review follow-up: STAGE_FORWARD is the orchestrator's curated
-  // forward chain for soft-skip — it intentionally collapses stages that the
-  // state-machine matrix does NOT allow as direct one-hop transitions (the
-  // canonical pipeline goes `developed → deploying → testing`, but disabling
-  // `developed` should skip straight to `testing`). Document the gap here so
-  // future contributors don't try to enforce parity. The orchestrator wires
-  // around it by passing `{ skip: true }` to `applyStatusTransition`.
+  // forward chain for soft-skip. It used to collapse stages the state-machine
+  // matrix didn't allow as direct one-hop transitions (the old
+  // `developed → deploying → testing`). With `deploying` retired (unify gate
+  // model), review exits straight to `testing` and every STAGE_FORWARD pair is
+  // now ALSO a legal direct transition — so the soft-skip chain and the matrix
+  // are fully in parity (no indirect pairs). Guard that here.
   it('records which STAGE_FORWARD pairs are not legal direct state-machine transitions', () => {
     const indirect: Array<[string, string]> = [];
     for (const from of Object.keys(STAGE_FORWARD)) {
@@ -381,6 +407,6 @@ describe('STAGE_FORWARD vs state-machine transitions', () => {
       if (!to) continue;
       if (!canTransition(from as never, to)) indirect.push([from, to]);
     }
-    expect(indirect).toEqual([['developed', 'testing']]);
+    expect(indirect).toEqual([]);
   });
 });

@@ -42,6 +42,7 @@ import {
 	useInitPairing,
 	useProjectRunners,
 	useReprovision,
+	useRunnerActivity,
 	useSetDefaultDevice,
 	useSetGitCredential,
 	useUnassignDeviceFromProject,
@@ -304,6 +305,99 @@ function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 	);
 }
 
+/** Lazy-loaded activity feed for one runner: status timeline + recent sessions. */
+function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
+	const activity = useRunnerActivity(runnerId, true);
+
+	if (activity.isLoading) {
+		return <Skeleton className="h-24 w-full" />;
+	}
+	if (activity.isError) {
+		return (
+			<ErrorState
+				message={formatApiError(activity.error)}
+				onRetry={() => activity.refetch()}
+			/>
+		);
+	}
+	const events = activity.data?.events ?? [];
+	const sessions = activity.data?.sessions ?? [];
+	if (events.length === 0 && sessions.length === 0) {
+		return (
+			<p className="fg-body-sm text-subtle">No recorded activity yet.</p>
+		);
+	}
+
+	return (
+		<div className="flex flex-col gap-4 rounded-lg border border-line bg-sunken p-3">
+			{sessions.length > 0 && (
+				<div className="flex flex-col gap-2">
+					<span className="fg-label">Recent sessions on this device</span>
+					{sessions.map((s) => (
+						<div
+							key={s.id}
+							className="flex flex-col gap-1 rounded-md border border-line bg-surface px-3 py-2"
+						>
+							<div className="flex items-center justify-between gap-2">
+								<span className="truncate text-[13px] text-fg">
+									{s.title ?? "Untitled session"}
+								</span>
+								<span className="fg-caption flex-none text-subtle">
+									{formatRelativeTime(s.updatedAt)}
+								</span>
+							</div>
+							<div className="flex items-center gap-1.5">
+								<Badge
+									tone={
+										s.status === "failed"
+											? "red"
+											: s.status === "completed"
+												? "green"
+												: "neutral"
+									}
+								>
+									{s.status}
+								</Badge>
+								{s.failureReason && (
+									<MonoTag>{s.failureReason}</MonoTag>
+								)}
+							</div>
+							{s.errorExcerpt && (
+								<code className="whitespace-pre-wrap break-words font-mono text-[11px] text-[color:var(--red-600)]">
+									{s.errorExcerpt}
+								</code>
+							)}
+						</div>
+					))}
+				</div>
+			)}
+
+			{events.length > 0 && (
+				<div className="flex flex-col gap-1.5">
+					<span className="fg-label">Status history</span>
+					{events.map((e) => (
+						<div
+							key={e.id}
+							className="flex items-center justify-between gap-2 text-[12px]"
+						>
+							<span className="text-fg">
+								{e.oldStatus ? `${e.oldStatus} → ` : ""}
+								<span className="font-semibold">{e.newStatus}</span>
+								{e.reason && (
+									<span className="text-subtle"> · {e.reason}</span>
+								)}
+							</span>
+							<span className="fg-caption flex-none text-subtle">
+								{formatRelativeTime(e.ts)}
+							</span>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
 /** One assigned device row + its provision stepper + actions. */
 function RunnerRow({
 	runner,
@@ -325,6 +419,7 @@ function RunnerRow({
 	const reprovision = useReprovision(projectId);
 	const unassign = useUnassignDeviceFromProject(projectId);
 	const [confirmRemove, setConfirmRemove] = useState(false);
+	const [showActivity, setShowActivity] = useState(false);
 	const online = runner.deviceStatus === "online";
 
 	return (
@@ -427,6 +522,13 @@ function RunnerRow({
 
 			<ProvisionStepper runner={runner} />
 
+			{runner.lastError && (
+				<Banner tone="attention">
+					<span className="font-semibold">Last error.</span>{" "}
+					<code className="font-mono text-[12px]">{runner.lastError}</code>
+				</Banner>
+			)}
+
 			<div className="flex items-center justify-between gap-2 text-subtle">
 				<span className="fg-caption truncate">
 					{runner.repoPath ? (
@@ -439,6 +541,18 @@ function RunnerRow({
 					{formatRelativeTime(runner.lastSeenAt, { emptyLabel: "never seen" })}
 				</span>
 			</div>
+
+			<div className="flex justify-start">
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={showActivity ? "chevronDown" : "chevronRight"}
+					onClick={() => setShowActivity((s) => !s)}
+				>
+					{showActivity ? "Hide activity" : "Activity & logs"}
+				</Button>
+			</div>
+			{showActivity && <RunnerActivityPanel runnerId={runner.runnerId} />}
 		</div>
 	);
 }

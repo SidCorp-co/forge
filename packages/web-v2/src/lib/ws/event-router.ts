@@ -172,6 +172,20 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			return;
 		}
+		// A runner's status flipped (heartbeat online / stale offline / operator
+		// patch). Refresh just that runner's activity feed (status-history
+		// timeline) if it's open — keyed by runnerId, so no broad refetch. The
+		// project runners list refreshes on its own (mount / window focus /
+		// runner.provision); these payloads carry no projectId to target it.
+		case "runner.status":
+		case "runner.updated": {
+			if (data?.runnerId) {
+				qc.invalidateQueries({
+					queryKey: ["runners", data.runnerId, "activity"],
+				});
+			}
+			return;
+		}
 		case "user.preferencesChanged": {
 			qc.invalidateQueries({ queryKey: ["user-prefs"] });
 			return;

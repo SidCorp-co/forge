@@ -5,7 +5,7 @@
 // `/api/auth/me/preferences`; the feed below lists in-app notifications with
 // mark-all-read. Only real, server-enforced controls are shown — no fake
 // toggles for unimplemented delivery channels.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
@@ -18,6 +18,21 @@ import {
   Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import {
+  type BrowserPermission,
+  getPermission,
+  isEnabled,
+  requestPermission,
+  setEnabled,
+  showTestNotification,
+} from "@/lib/notifications/browser";
+import {
+  isEnabled as isSoundEnabled,
+  isSupported as isSoundSupported,
+  playPreviewCue,
+  primeAudio,
+  setEnabled as setSoundEnabled,
+} from "@/lib/notifications/sound";
 import { NOTIFICATIONS_PAGE_SIZE } from "../api";
 import {
   useMarkAllRead,
@@ -139,8 +154,126 @@ function DeliveryPreferences() {
             />
           </div>
         )}
+
+        <div className="my-3 border-t border-line" />
+        <DesktopNotificationsToggle />
+
+        <div className="my-3 border-t border-line" />
+        <SoundNotificationsToggle />
       </CardContent>
     </Card>
+  );
+}
+
+/** Desktop (browser/OS) notifications toggle (ISS-510). Client-only: combines
+ *  the browser permission grant with an explicit localStorage opt-in. Toggling
+ *  ON requests permission via this gesture; the control reflects the live
+ *  permission state and disables itself when denied or unsupported. */
+function DesktopNotificationsToggle() {
+  const [perm, setPerm] = useState<BrowserPermission>("default");
+  const [enabled, setEnabledState] = useState(false);
+
+  // Read live permission + opt-in on mount (client-only — Notification API).
+  useEffect(() => {
+    setPerm(getPermission());
+    setEnabledState(isEnabled());
+  }, []);
+
+  const supported = perm !== "unsupported";
+  const denied = perm === "denied";
+  const checked = enabled && perm === "granted";
+  // Opt-in persisted but the browser grant lapsed back to `default` (e.g. the
+  // user reset site permissions): the toggle reads OFF while the stored opt-in
+  // says ON. Surface the mismatch so it doesn't look silently broken — toggling
+  // ON re-requests permission.
+  const lapsed = enabled && perm === "default";
+
+  async function onToggle(next: boolean) {
+    if (!next) {
+      setEnabled(false);
+      setEnabledState(false);
+      return;
+    }
+    let p = getPermission();
+    if (p === "default") p = await requestPermission();
+    setPerm(p);
+    if (p === "granted") {
+      setEnabled(true);
+      setEnabledState(true);
+      // Immediate, observable proof the channel works — high-signal events only
+      // surface a native notification while the tab is backgrounded, so without
+      // this the user sees nothing on enable and assumes it is broken.
+      showTestNotification();
+    }
+  }
+
+  const helper = !supported
+    ? "Your browser does not support desktop notifications."
+    : denied
+      ? "Blocked in your browser settings — re-enable notifications for this site, then try again."
+      : lapsed
+        ? "Notifications are off in your browser — toggle on to re-enable them for this site."
+        : "Show a desktop notification for high-signal events when this tab is in the background.";
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <div className="min-w-0">
+        <p className="fg-label text-fg">Desktop notifications</p>
+        <p className="fg-caption text-muted">{helper}</p>
+      </div>
+      <Toggle
+        checked={checked}
+        disabled={!supported || denied}
+        onChange={onToggle}
+        aria-label="Enable desktop notifications"
+      />
+    </div>
+  );
+}
+
+/** Notification sound toggle (ISS-513). Client-only opt-in (localStorage,
+ *  default OFF) for an audible cue that accompanies toast/browser delivery.
+ *  Toggling ON primes the AudioContext from this gesture so the autoplay policy
+ *  unlocks playback; disables itself with an explanatory caption when the
+ *  browser has no Web Audio support. */
+function SoundNotificationsToggle() {
+  const [supported, setSupported] = useState(true);
+  const [enabled, setEnabledState] = useState(false);
+
+  // Read support + opt-in on mount (client-only — AudioContext / localStorage).
+  useEffect(() => {
+    setSupported(isSoundSupported());
+    setEnabledState(isSoundEnabled());
+  }, []);
+
+  function onToggle(next: boolean) {
+    setSoundEnabled(next);
+    setEnabledState(next);
+    if (next) {
+      // Prime the AudioContext on this gesture (autoplay unlock) and play the
+      // cue once so the user immediately HEARS proof it works.
+      primeAudio();
+      playPreviewCue();
+    }
+  }
+
+  const helper = supported
+    ? "Play a sound when a new high-signal notification arrives."
+    : "Your browser does not support notification sounds.";
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <div className="min-w-0">
+        <p className="fg-label text-fg">Notification sound</p>
+        <p className="fg-caption text-muted">{helper}</p>
+      </div>
+      <Toggle
+        checked={enabled && supported}
+        disabled={!supported}
+        onChange={onToggle}
+        aria-label="Enable notification sound"
+      />
+    </div>
   );
 }
 

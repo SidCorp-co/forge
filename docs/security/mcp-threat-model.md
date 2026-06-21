@@ -8,6 +8,8 @@ Threats + mitigations for the PAT auth path alongside legacy device-token on `/m
 - Dispatcher (`require-pat-or-device.ts`) picks path by prefix, sets `c.get('principal')` = `{ kind: 'device'; device } | { kind: 'pat'; userId; tokenId; scopes; projectIds }`.
 - PAT CRUD under `/api/pat`, requires user JWT (cookie/Bearer). PATs cannot mint PATs — browser/web login required first.
 
+> **Proposed (not yet implemented):** a second, optional **project-level** token bound to one project at mint time, so `X-Forge-Project-Slug` becomes optional and a conflicting explicit project is rejected `NOT_FOUND`. The binding is modeled as a real fence (behaves as `projectIds = [boundProjectId]`), so the T1 mitigations below still hold. Design: [../proposals/mcp-project-scoped-tokens.md](../proposals/mcp-project-scoped-tokens.md).
+
 ## Threats and mitigations
 
 ### T1 — Cross-tenant read via stolen or mis-issued PAT
@@ -29,11 +31,11 @@ PAT plaintext in a Sentry event, log line, or WS payload is replayable by observ
 
 ### T3 — Privilege escalation through admin tools
 
-Non-admin user must not call `forge_admin_*` / `forge_pm_*` via PAT, whatever `scopes` they minted.
+Non-admin user must not call admin-gated tools (e.g. `forge_runners`) or device-required PM tools via PAT, whatever `scopes` they minted.
 
-- `forge_pm_*` listed in `DEVICE_REQUIRED_TOOLS` (`mcp/server.ts`); PAT principal short-circuits to `FORBIDDEN: PM_REQUIRES_DEVICE` before run. PM tools need a paired claude-code runner, hostable only by paired devices.
-- Role-gated tools: `assertPrincipalIsAdmin(principal, projectId)` checks `projects.ownerId === userId` OR `projectMembers.role IN ('owner','admin')`. PAT `scopes` does NOT widen this — admin access binds to the user's project role, not anything granted at mint.
-- `forge_admin_*`: no special cross-tenant tier exists. These tools are gated by the same `assertPrincipalIsAdmin(principal, projectId)` project-role check as the bullet above — owner/admin on the named project — refusing with `FORBIDDEN: requires owner or admin on the project`. There is no system-wide/CEO admin and no cross-tenant escalation path: a PAT cannot reach a project outside its `project_ids`, whatever its `scopes`.
+- The PM dispatcher `forge_project_pm` (with legacy `forge_pm.*` shims kept for back-compat) is device-required: a PAT principal short-circuits to `FORBIDDEN: PM_REQUIRES_DEVICE` before run. PM tools need a paired claude-code runner, hostable only by paired devices.
+- Role-gated tools: `assertPrincipalIsAdmin` (`tools/lib.ts`) resolves the EFFECTIVE project-admin role via `lib/authz.ts` (explicit `project_members.role='admin'` OR org owner/admin derivation), and for PAT principals ALSO requires the `admin` scope. PAT `scopes` does NOT widen the role — admin access binds to the user's effective project role, not anything granted at mint.
+- `forge_runners` (the admin-gated fleet tool) calls `assertPrincipalIsAdmin(principal, projectId)` and refuses non-admins. `forge_collaborators` / `forge_ops_health` are read-only discovery tools scoped by `loadVisibleProjectIdsForPrincipal` (NOT admin-gated) — they only return data for projects the principal can already see. There is no system-wide/CEO admin and no cross-tenant escalation path: a PAT cannot reach a project outside its `project_ids`, whatever its `scopes`.
 
 ### PAT scopes
 
@@ -43,10 +45,10 @@ Non-admin user must not call `forge_admin_*` / `forge_pm_*` via PAT, whatever `s
 |---|---|
 | `read` | All read-only project tools the underlying user can already reach. |
 | `write` | Project-scoped mutating tools (issues/comments/etc.) the underlying user can already reach. |
-| `admin` | Required (in addition to the user being owner/admin on the target project) to invoke any `forge_admin_*` tool via a PAT. Only narrows a PAT relative to the user's existing project role — never grants cross-tenant access. Without the owner/admin project role the tool refuses with `FORBIDDEN: requires owner or admin on the project`. |
+| `admin` | Required (in addition to the user holding effective project-admin on the target project) to invoke any admin-gated tool (e.g. `forge_runners`) via a PAT. Only narrows a PAT relative to the user's existing project role — never grants cross-tenant access. Without effective project-admin the tool refuses. A PAT lacking this scope is rejected with `FORBIDDEN: this token lacks the admin scope`. |
 
 - `mintPat` defaults to `['read', 'write']` when `scopes` omitted. `admin` must be explicitly requested, never auto-included.
-- PAT creation doesn't check the user's project role (a non-owner/admin may mint an `admin`-scoped token); the gate runs at tool time via `assertPrincipalIsAdmin` against the target project, so the token is unusable for `forge_admin_*` tools without the role.
+- PAT creation doesn't check the user's project role (a non-admin may mint an `admin`-scoped token); the gate runs at tool time via `assertPrincipalIsAdmin` against the target project, so the token is unusable for admin-gated tools (e.g. `forge_runners`) without the role.
 
 ### T4 — Brute force / credential stuffing
 
@@ -94,4 +96,4 @@ REVOKE UPDATE, DELETE ON mcp_audit_log FROM forge_app;
 
 ## Out of scope
 
-HTTPS enforcement on `/mcp` (deploy layer: Traefik/Coolify) · per-tool scope mapping (the `scopes` array is a forward-compat hook; verifier doesn't refuse by scope yet) · cross-user admin audit page (operators query `mcp_audit_log` directly) · mutation/load-test CI gates (deferred).
+HTTPS enforcement on `/mcp` (deploy layer: Traefik/Coolify) · per-tool scope mapping (the `admin` scope IS enforced at dispatch — `assertPrincipalIsAdmin` throws `FORBIDDEN: this token lacks the admin scope` when a PAT lacks it; the `read`/`write` scopes are still not independently refused) · cross-user admin audit page (operators query `mcp_audit_log` directly) · mutation/load-test CI gates (deferred).

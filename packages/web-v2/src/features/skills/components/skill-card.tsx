@@ -39,6 +39,10 @@ export function SkillCard({
   showScope = true,
 }: SkillCardProps) {
   const isGlobal = skill.scope === "global";
+  // Platform-managed META skill (forge-skills…): served LIVE as an MCP prompt,
+  // never disk-synced and never bound to a pipeline stage. It must NOT show the
+  // disk sync-status badge or the stage-registration controls.
+  const isMeta = skill.managedMeta === true;
   const registered = new Set(skill.registeredStages);
   const stageOptions = useMemo<SelectOption[]>(
     () =>
@@ -49,6 +53,58 @@ export function SkillCard({
     [skill.registeredStages],
   );
   const [stage, setStage] = useState("");
+
+  if (isMeta) {
+    // Source is derived from the visible card's scope: the list view collapses
+    // an adopted skill to its single project card, so `project` here means a
+    // same-name project copy exists (project-adopted), else the global default.
+    const source = isGlobal ? "Platform default" : "Project-adopted";
+    return (
+      <Card>
+        <CardContent>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="fg-body truncate font-semibold text-fg">{skill.name}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <Badge tone="amber">MCP-served</Badge>
+                <span className="fg-caption text-muted">{source}</span>
+              </div>
+            </div>
+            <span className="fg-caption flex-none whitespace-nowrap">live</span>
+          </div>
+
+          {skill.description && (
+            <p className="fg-body-sm mt-3 line-clamp-3 text-muted">{skill.description}</p>
+          )}
+
+          <p className="fg-caption mt-3 text-muted">
+            Served live to connected sessions as an MCP prompt — always the latest version, no
+            device sync.
+          </p>
+
+          {canManage &&
+            (isGlobal ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="plus"
+                disabled={pending}
+                onClick={() => onAdopt(skill.id)}
+                className="mt-2 min-h-11"
+              >
+                Adopt to project
+              </Button>
+            ) : (
+              <div className="mt-2">
+                <Button variant="secondary" size="sm" onClick={onEdit} className="min-h-11">
+                  Edit skill
+                </Button>
+              </div>
+            ))}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>

@@ -9,7 +9,7 @@ arguments: "documentId"
 
 This is the step between triage and plan: `confirmed → clarified`. Its job is to validate understanding — reproduce bugs in a live environment, verify UX expectations for features, and capture visual evidence. This prevents the plan step from targeting the wrong code path or misunderstanding the desired outcome.
 
-Simple issues are auto-skipped (the lifecycle hook advances them to `clarified` without running this skill).
+**Every issue passes through clarify** — there is no auto-skip. Scale the depth to the issue: a trivial `xs`/`s` change needs only a quick intent restate + confidence check (no full reproduction), while a bug or larger feature gets the full investigation below.
 
 ## Usage
 
@@ -21,7 +21,7 @@ Simple issues are auto-skipped (the lifecycle hook advances them to `clarified` 
 
 - **forge_issues** — get/update issues
 - **forge_comments** — list/create comments
-- **Browser** — `mcp__claude-in-chrome__*` tools (navigate, click, type, screenshot) for live environment testing
+- **Browser (optional)** — if a browser-automation MCP is available, use whatever browser tools the runner exposes (auto-detected; usually surfaced as `browser_*`: navigate, click, type, snapshot/screenshot). Do not hardcode a provider. If no browser MCP is available, fall back to curl/WebFetch HTML checks.
 - **WebFetch** — for API endpoint testing
 
 ## Workflow
@@ -35,9 +35,7 @@ forge_issues → get → { documentId: "<id>" }
 forge_comments → list → { filters: { issue: "<documentId>" } }
 ```
 
-Find the triage comment (starts with `**Triage**` by Snorlax) and extract **complexity** and **category**.
-
-Note: Simple issues are auto-skipped by the pipeline lifecycle — they never reach this skill. This skill only runs for Medium and Complex issues.
+Find the triage comment (starts with `**Triage**` by Snorlax) and extract **complexity** (`xs/s/m/l/xl`) and **category** — they set how deep to go (trivial → quick restate; bug/large → full investigation).
 
 ### Step 2: Resolve Live Environment
 
@@ -52,7 +50,7 @@ Determine where to test:
 If category is `bug`:
 
 1. **Read reproduction steps** from description, acceptanceCriteria, or attachments
-2. **Open the live URL** in Chrome via browser tools
+2. **Open the live URL** using the available browser tools
 3. **Login** if test credentials are available (from project config)
 4. **Follow the reported steps** exactly:
    - Screenshot each step for evidence
@@ -65,58 +63,19 @@ If category is `bug`:
 
 If category is not `bug`:
 
-1. **Navigate to the area being changed** in Chrome
-2. **Screenshot the current state** of the UI
+1. **Navigate to the area being changed** in the live environment (browser, or the API/CLI surface for headless projects)
+2. **Capture the current state** — screenshot the UI, or the current API response/schema — so the plan step has a baseline
 3. **Compare** with any mockups/designs in issue attachments
-4. **Identify existing UX patterns** in the same area (button styles, layouts, interactions)
+4. **Identify existing UX/API patterns** in the same area (button styles, layouts, interactions; or contract shape, auth, error semantics) — the change should match these, and note the expected empty/loading/error states the feature will need
 5. **Check for ambiguities** — does the issue description fully specify the desired outcome?
 
-### Step 4: Draft Release Notes
+6. **Restate the intent** so plan/code don't re-derive it from a one-line title — capture: **Outcome** (what the user can do/see after) · **User/role** · **Why now** · **Success** (how we'd know — ties to acceptanceCriteria) · **Constraint** (must-respect limits) · **Out of scope**. Where the issue is silent on a dimension, state your best assumption so it surfaces for correction instead of being buried.
 
-Before posting the clarify comment, draft a user-facing release-notes blurb and persist it to the issue's typed `releaseNotes` field. forge-release reads this field at close time to append a bullet to `CHANGELOG.md` under `## [Unreleased]`. The `forge-cut-release` skill later promotes that section to a tagged version block.
+### Step 4: Post Comment & Set Status
 
-**Pick the section.** Map the issue to the right [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) bucket:
+(Release notes are NOT drafted here — they are written at the release step, where the change is fully implemented and the user-facing summary reflects what actually shipped rather than a pre-implementation guess.)
 
-| Section | When to pick |
-|---|---|
-| `Added` | A new feature, screen, command, endpoint, or capability the end user can perceive |
-| `Changed` | Behavior the user already had changes in a visible way (UI, defaults, semantics) |
-| `Fixed` | A bug the user could hit is now resolved |
-| `Removed` | A capability went away |
-| `Security` | A vulnerability is patched; phrase neutrally so it doesn't read like a CVE advisory |
-| `Skip` | Internal-only change (refactor, infra, test harness) — no `CHANGELOG.md` entry needed |
-
-**Draft the two strings.**
-
-- **userFacing** — 1-2 plain sentences a non-developer can understand. Lead with the user-visible verb ("Added X", "Fixed Y", "You can now Z"). Avoid file names, function names, ticket IDs. Max 500 chars.
-- **technical** *(optional)* — one terse line of breadcrumbs for maintainers (root-cause, the surface area). Max 500 chars.
-
-**Persist via the typed field.** Write to `releaseNotes` with `forge_issues → update`:
-
-```
-forge_issues → update → {
-  documentId: "<id>",
-  data: {
-    releaseNotes: {
-      section: "Fixed",
-      userFacing: "Avatar uploads no longer time out for files above 2 MB.",
-      technical: "Multipart streaming in core/issues/attachment-service handled chunks under one fetch deadline."
-    }
-  }
-}
-```
-
-For internal-only changes use `{ section: "Skip", userFacing: "-" }`. `userFacing` is required by the schema even for Skip — forge-release short-circuits on the section, not on the string.
-
-This is the source of truth — do NOT also write a release-notes block into `description`. Description belongs to the developer; the typed field belongs to the user-facing summary.
-
-### Step 5: Post Comment & Set Status
-
-Upload any captured screenshots:
-
-```
-forge_issues → upload → <file path>
-```
+If you captured screenshots, attach them to the comment. For a small image, pass it inline via the comment's `attachments` (base64). For anything larger, use the **`forge_uploads`** presigned-URL flow (request an upload URL for target `comment`, `curl -T` the file to it, then reference the returned `url` in the comment body). There is no `forge_issues.upload` action — don't call one.
 
 Post a clarify comment with findings:
 
@@ -126,15 +85,19 @@ forge_comments → create → {
     body: "<clarify report>",
     issue: "<documentId>",
     author: "Jigglypuff",
-    attachments: [<media IDs if screenshots uploaded>]
+    attachments: [<small inline base64 images, if any>]
   }
 }
 ```
 
-**Set status LAST** (triggers the plan step):
+**Confidence gate — decide the exit by how sure you are, not by gut feel.** State a one-line hypothesis of what the issue wants plus a **confidence 0–100%** in the clarify comment. Calibrate it: *"Can I predict how the reporter would react to the next three questions I'd ask?"* If yes, confidence is high; if you'd be guessing, it isn't.
 
-- If clear (bug reproduced, or UX validated) → `clarified`
-- If ambiguous (cannot reproduce, or UX unclear) → `needs_info`
+- **High confidence (≈85%+)** — bug reproduced, OR feature intent validated and the restate has no load-bearing gaps → `clarified`.
+- **Below the bar** — cannot reproduce, OR an implementation-changing dimension is unresolved (which surface, which role, what "done" means, a binding constraint) → `needs_info`. Don't pass a coin-flip issue to plan; a wrong assumption here burns a whole plan→code→review round-trip.
+
+When you set `needs_info`, ask **specific questions that each carry your best guess**, e.g. *"Should the export include archived items? My assumption: no, only active — confirm?"* — the reporter reacts to a concrete proposal (fast) and you commit to a testable prediction.
+
+**Set status LAST** (triggers the plan step):
 
 ```
 forge_issues → update → { documentId: "<id>", data: { status: "clarified" } }
@@ -142,68 +105,8 @@ forge_issues → update → { documentId: "<id>", data: { status: "clarified" } 
 
 ## Comment Formats
 
-### Bug — Reproduced
-
-```markdown
-**Clarify** — Reproduced: <one-line summary>
-
-**Environment:** <URL tested>
-**Reproduced:** Yes
-
-**Steps Verified:**
-1. <step> → ✅ <observation>
-2. <step> → ❌ <error/unexpected behavior>
-
-**Root Cause Hypothesis:** <what the code-level issue likely is>
-**Evidence:** See attached screenshots
-```
-
-### Bug — Cannot Reproduce
-
-```markdown
-**Clarify** — Could not reproduce: <one-line summary>
-
-**Environment:** <URL tested>
-**Reproduced:** No
-
-**Attempted:**
-1. <step> → <what happened instead>
-
-**Questions:**
-- <specific question about environment/data/user role/timing>
-```
-
-→ Status: `needs_info`
-
-### Feature — Clear
-
-```markdown
-**Clarify** — UX validated: <one-line summary>
-
-**Current State:** <what exists now>
-**Desired State:** <what should change, from issue description>
-**Existing Patterns:** <similar UI patterns already in the app>
-**Evidence:** See attached screenshots of current state
-```
-
-### Feature — Ambiguous
-
-```markdown
-**Clarify** — UX ambiguous: <one-line summary>
-
-**Current State:** <what exists now>
-**Ambiguities:**
-- <specific question about desired behavior/appearance>
-```
-
-→ Status: `needs_info`
-
-### Auto-Skip (Simple)
-
-```markdown
-**Clarify** — Auto-clarified (Simple issue, no UX verification needed)
-```
+Use the per-outcome templates (Bug reproduced / cannot-reproduce, Feature clear / ambiguous) in `references/comment-formats.md` — each carries the **Confidence** line and, for features, the restated **Intent**.
 
 ## Clarify-specific output reminder
 
-Screenshots are evidence — capture, upload, attach to comment. Always write clarify comments in English regardless of issue language. (See pipeline preamble for general output rules.)
+Screenshots are evidence — capture and attach to the comment (inline base64, or via `forge_uploads` for larger files). Always write clarify comments in English regardless of issue language. (See pipeline preamble for general output rules.)

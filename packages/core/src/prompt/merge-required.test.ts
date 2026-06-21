@@ -12,7 +12,7 @@ import { buildJobPromptString } from './user.js';
 import { buildMergeRequiredBlock } from './merge-required.js';
 
 const TRUNK_MERGE = { baseBranch: 'released', productionBranch: 'released' } as const;
-const SPLIT_MERGE = { baseBranch: 'staging', productionBranch: 'released' } as const;
+const SPLIT_MERGE = { baseBranch: 'tested', productionBranch: 'released' } as const;
 
 describe('buildMergeRequiredBlock', () => {
   it('returns null when stage does not match either branch', () => {
@@ -63,11 +63,11 @@ describe('buildMergeRequiredBlock', () => {
     // both-branch emission we use a stage equal to baseBranch and also
     // assert the productionBranch case below.
     const baseBlock = buildMergeRequiredBlock({
-      stageStatus: 'staging',
+      stageStatus: 'tested',
       mergeStates: SPLIT_MERGE,
       issueId: 'iss-split',
     });
-    expect(baseBlock).toContain('git checkout staging');
+    expect(baseBlock).toContain('git checkout tested');
     expect(baseBlock).not.toContain('git checkout released');
 
     const prodBlock = buildMergeRequiredBlock({
@@ -76,7 +76,7 @@ describe('buildMergeRequiredBlock', () => {
       issueId: 'iss-split',
     });
     expect(prodBlock).toContain('git checkout released');
-    expect(prodBlock).not.toContain('git checkout staging');
+    expect(prodBlock).not.toContain('git checkout tested');
   });
 
   it('does not duplicate the block when trunk-based stage matches both fields', () => {

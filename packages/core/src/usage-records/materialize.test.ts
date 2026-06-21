@@ -6,7 +6,7 @@ const orderBy = vi.fn();
 const where = vi.fn(() => ({ orderBy }));
 const from = vi.fn(() => ({ where }));
 const onConflictDoNothing = vi.fn(() => Promise.resolve());
-const values = vi.fn(() => ({ onConflictDoNothing }));
+const values = vi.fn((_row: Record<string, unknown>) => ({ onConflictDoNothing }));
 const insert = vi.fn(() => ({ values }));
 const select = vi.fn(() => ({ from }));
 

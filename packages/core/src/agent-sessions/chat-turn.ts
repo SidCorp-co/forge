@@ -12,6 +12,10 @@ import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import {
+  type SessionAttachmentRef,
+  listSessionAttachmentsByIds,
+} from './attachment-service.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
 import {
   type PageContext,
@@ -170,6 +174,13 @@ export interface DispatchChatTurnArgs {
   pageContext?: PageContext | null;
   /** /send may carry the client's claudeSessionId; falls back to the row's. */
   claudeSessionId?: string | null;
+  /**
+   * ISS-499 — ids of session attachments (uploaded via POST
+   * /agent-sessions/:id/attachments) to attach to THIS turn. Hydrated to refs,
+   * stamped on the persisted user message (re-render) and sent to the runner in
+   * the WS frame so it can auth-download + feed them to claude.
+   */
+  attachmentIds?: string[] | undefined;
   /** /start passes prompts that already embed the preamble (skip rebuilding it). */
   preBuilt?: boolean;
   /**
@@ -213,9 +224,20 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     repoPath = resolveRepoPath(null, bindingRepo ?? project.repoPath ?? null);
   }
 
+  // ISS-499 — hydrate attachment refs (drops ids not belonging to this session)
+  // BEFORE building the user message so they persist on the turn for re-render.
+  const attachments: SessionAttachmentRef[] = args.attachmentIds?.length
+    ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
+    : [];
+
   const prevMessages = Array.isArray(session.messages) ? session.messages : [];
   const now = new Date();
-  const userMessage = { role: 'user', content: decoratedMessage, timestamp: now.getTime() };
+  const userMessage = {
+    role: 'user',
+    content: decoratedMessage,
+    timestamp: now.getTime(),
+    ...(attachments.length ? { attachments } : {}),
+  };
   const messages = [...prevMessages, userMessage];
 
   const updates: Record<string, unknown> = {
@@ -263,7 +285,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     // Desktop runs Claude locally — just mirror the user turn to web viewers.
     roomManager.publish(projectRoom(project.id), {
       event: 'agent:user-message',
-      data: { sessionId: updated.id, content: decoratedMessage },
+      data: {
+        sessionId: updated.id,
+        content: decoratedMessage,
+        ...(attachments.length ? { attachments } : {}),
+      },
     });
     broadcastSession(updated, broadcastEvent);
     return updated;
@@ -296,6 +322,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
         mcpServersOverride,
+        ...(attachments.length ? { attachments } : {}),
       },
     });
   } else {
@@ -309,6 +336,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         repoPath,
         projectSlug: project.slug,
         mcpServersOverride,
+        ...(attachments.length ? { attachments } : {}),
       },
     });
   }

@@ -105,6 +105,7 @@ function makePatCtx(projectIds: string[] | null) {
       tokenId: '66666666-6666-4666-8666-666666666666',
       scopes: ['read', 'write'],
       projectIds,
+      boundProjectId: null,
     },
     device: fakeDevice,
     projectSlug: null,

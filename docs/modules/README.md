@@ -6,11 +6,11 @@ Feature documentation organized by business domain. Each module answers "where d
 
 | Module | Description |
 |--------|-------------|
-| [issues-pipeline](issues-pipeline/) | The 18-status issue pipeline. Projects, issues, comments, labels, activity log. The PM core. |
+| [issues-pipeline](issues-pipeline/) | The 15-status issue pipeline. Projects, issues, comments, labels, activity log. The PM core. |
 | [agents-jobs](agents-jobs/) | Job queue, dispatch, JobEvent streaming, session capture. The execution orchestration layer. |
 | [devices](devices/) | Device pairing, revocation, project binding, heartbeat. The runtime plane connection point. |
 | [skills](skills/) | Built-in `forge-*` pipeline skills + user-authored skills. Registration into pipeline stages. |
-| [memory-knowledge](memory-knowledge/) | Postgres `pgvector` semantic memory, project knowledge graph, RAG retrieval. |
+| [memory-knowledge](memory-knowledge/) | v2 cognitive layer over Postgres `pgvector` — extraction, consolidation, decay, and indexing for semantic recall. |
 | [chat](chat/) | Interactive chat sessions with agents. Separate from pipeline jobs — this is conversation. |
 
 ## Shared concerns (cross-module)

@@ -1,23 +1,5 @@
-// web-v2 feature module: docs. Types verified against
-// `packages/core/src/docs/routes.ts` (ISS-305).
-
-export interface DocNode {
-  /** Repo-relative POSIX path, e.g. `docs/guide/setup.md`. */
-  path: string;
-  name: string;
-  type: "file" | "dir";
-  children?: DocNode[];
-}
-
-export interface DocsTree {
-  items: DocNode[];
-  truncated: boolean;
-}
-
-export interface DocContent {
-  path: string;
-  content: string;
-}
+// web-v2 feature module: docs. End-user help content is bundled at build time
+// (help-content.generated.ts); the only shared type the viewer needs is the TOC.
 
 /** One entry of the derived table of contents. */
 export interface TocEntry {

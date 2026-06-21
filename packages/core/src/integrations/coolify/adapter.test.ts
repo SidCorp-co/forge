@@ -12,9 +12,31 @@ vi.mock('../store.js', () => ({
 // for the healthcheck path) so this suite runs without a configured database.
 vi.mock('../../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
-vi.mock('../deliveries.js', () => ({ recordDelivery: vi.fn(), updateDelivery: vi.fn() }));
-vi.mock('../../pipeline/runs.js', () => ({ closeRun: vi.fn(), setCurrentStepForce: vi.fn() }));
-vi.mock('./circuit-breaker.js', () => ({ maybeTripBreaker: vi.fn(), maybeResetBreaker: vi.fn() }));
+const recordDeliveryMock = vi.fn();
+const findOutboundMock = vi.fn();
+const listDispatchedMock = vi.fn();
+const findInboundMock = vi.fn();
+vi.mock('../deliveries.js', () => ({
+  recordDelivery: (...a: unknown[]) => recordDeliveryMock(...(a as [])),
+  updateDelivery: vi.fn(),
+  findOutboundByDeploymentUuid: (...a: unknown[]) => findOutboundMock(...(a as [])),
+  listDispatchedOutboundForRun: (...a: unknown[]) => listDispatchedMock(...(a as [])),
+  findInboundByDeploymentUuid: (...a: unknown[]) => findInboundMock(...(a as [])),
+}));
+const closeRunMock = vi.fn();
+const setCurrentStepForceMock = vi.fn();
+vi.mock('../../pipeline/runs.js', () => ({
+  closeRun: (...a: unknown[]) => closeRunMock(...(a as [])),
+  setCurrentStepForce: (...a: unknown[]) => setCurrentStepForceMock(...(a as [])),
+}));
+vi.mock('../../webhooks/hmac.js', () => ({ verifyHmacSignature: () => true }));
+const breakerAllowsDispatchMock = vi.fn(async () => ({ allow: true, halfOpen: false }));
+const maybeResetBreakerMock = vi.fn();
+vi.mock('./circuit-breaker.js', () => ({
+  maybeTripBreaker: vi.fn(),
+  maybeResetBreaker: (...a: unknown[]) => maybeResetBreakerMock(...(a as [])),
+  breakerAllowsDispatch: (...a: unknown[]) => breakerAllowsDispatchMock(...(a as [])),
+}));
 vi.mock('../../observability/sentry.js', () => ({
   isSentryEnabled: () => false,
   Sentry: { addBreadcrumb: vi.fn(), captureMessage: vi.fn() },
@@ -44,7 +66,10 @@ function buildCtx(secrets: Record<string, unknown>) {
     connectionId: CONN_ID,
     bindingId: BINDING_ID,
     environment: 'staging',
-    config: { baseUrl: 'https://coolify.example', resourceUuid: 'res-1' },
+    config: {
+      baseUrl: 'https://coolify.example',
+      targets: [{ id: 't-1', label: 'App', resourceUuid: 'res-1' }],
+    },
     secrets,
     // biome-ignore lint/suspicious/noExplicitAny: adapter ctx generics resolved at registration
   } as any;
@@ -73,6 +98,21 @@ describe('coolifyAdapter.healthcheck — needs_reauth on rejected token (ISS-409
     const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
 
     expect(res.status).toBe('needs_reauth');
+  });
+
+  it('resets the breaker on a successful Test-connection (operator recovery)', async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify([{ uuid: 'res-1', name: 'App', status: 'running' }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as unknown as typeof fetch;
+
+    const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
+
+    expect(res.status).toBe('ok');
+    expect(maybeResetBreakerMock).toHaveBeenCalledWith(CONN_ID);
   });
 
   it('keeps error for a non-auth HTTP failure (500)', async () => {
@@ -132,5 +172,77 @@ describe('coolifyAdapter.dispatchOutbound — health follows real deploy outcome
       CONN_ID,
       expect.objectContaining({ lastHealthStatus: 'ok' }),
     );
+  });
+});
+
+describe('coolifyAdapter.handleInbound — multi-target run aggregation', () => {
+  const RUN_ID = 'run-multi-1';
+
+  function inboundCtx() {
+    return {
+      projectId: PROJECT_ID,
+      connectionId: CONN_ID,
+      bindingId: BINDING_ID,
+      environment: 'staging',
+      integrationSecret: 'whsec_test',
+      config: { baseUrl: 'https://coolify.example', targets: [] },
+      secrets: {},
+      // biome-ignore lint/suspicious/noExplicitAny: adapter ctx generics resolved at registration
+    } as any;
+  }
+
+  function webhook(deploymentUuid: string, status: 'success' | 'failed') {
+    const body = JSON.stringify({
+      event: `deploy.${status === 'success' ? 'succeeded' : 'failed'}`,
+      deployment_uuid: deploymentUuid,
+      status,
+    });
+    return {
+      headers: { 'x-coolify-signature-256': 'sha256=x' },
+      rawBody: body,
+      payload: JSON.parse(body),
+    };
+  }
+
+  beforeEach(() => {
+    recordDeliveryMock.mockResolvedValue('inb-1');
+    // The webhook's deployment maps back to its outbound delivery → run.
+    findOutboundMock.mockResolvedValue({ payload: { runId: RUN_ID } });
+    // Two targets dispatched for this run.
+    listDispatchedMock.mockResolvedValue([
+      { response: { deployment_uuid: 'dep-be' } },
+      { response: { deployment_uuid: 'dep-fe' } },
+    ]);
+  });
+
+  it('does NOT close the run until every target reports success (1/2)', async () => {
+    // Only the BE target has a successful inbound so far.
+    findInboundMock.mockImplementation(async (_bid: string, uuid: string) =>
+      uuid === 'dep-be' ? { payload: { status: 'success' } } : null,
+    );
+
+    const res = await coolifyAdapter.handleInbound(inboundCtx(), webhook('dep-be', 'success'));
+
+    expect(res.actions).toBe(1);
+    expect(setCurrentStepForceMock).toHaveBeenCalledWith(RUN_ID, 'release.deploy.in_flight (1/2)');
+    expect(closeRunMock).not.toHaveBeenCalled();
+  });
+
+  it('closes the run completed once all targets succeeded (2/2)', async () => {
+    findInboundMock.mockResolvedValue({ payload: { status: 'success' } });
+
+    await coolifyAdapter.handleInbound(inboundCtx(), webhook('dep-fe', 'success'));
+
+    expect(setCurrentStepForceMock).toHaveBeenCalledWith(RUN_ID, 'release.deploy.done');
+    expect(closeRunMock).toHaveBeenCalledWith(RUN_ID, 'completed');
+  });
+
+  it('fails the run fast on any target failure', async () => {
+    await coolifyAdapter.handleInbound(inboundCtx(), webhook('dep-be', 'failed'));
+
+    expect(setCurrentStepForceMock).toHaveBeenCalledWith(RUN_ID, 'release.deploy.failed');
+    expect(closeRunMock).toHaveBeenCalledWith(RUN_ID, 'failed');
+    // Fail-fast: no need to scan siblings.
+    expect(listDispatchedMock).not.toHaveBeenCalled();
   });
 });

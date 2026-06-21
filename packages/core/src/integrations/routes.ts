@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq } from 'drizzle-orm';
@@ -28,6 +28,9 @@ import { raceWithTimeout } from './probe.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
+import { buildSentryMcpEntry } from './sentry/resolver.js';
+import { resolveSentryTargets } from './sentry/targets.js';
+import type { SentryConfig } from './sentry/types.js';
 import {
   type BindingWithConnection,
   type IntegrationConnectionRow,
@@ -87,18 +90,27 @@ function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {
 
 const environmentSchema = z.enum(integrationEnvironments);
 
+// A deploy target = one Coolify application. `id` is server-assigned when
+// omitted (a stable key mapping an outbound deploy to its inbound webhook).
+const coolifyTargetSchema = z
+  .object({
+    id: z.string().min(1).max(64).optional(),
+    label: z.string().min(1).max(100),
+    resourceUuid: z.string().min(1).max(200),
+  })
+  .transform((t) => ({ id: t.id ?? randomUUID(), label: t.label, resourceUuid: t.resourceUuid }));
+
 const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
-  resourceUuid: z.string().min(1).max(200),
-  branch: z.string().min(1).max(200),
+  // One binding fans out to ≥1 target (split BE/FE deploy as separate apps).
+  targets: z.array(coolifyTargetSchema).min(1).max(20),
 });
 
-// Coolify's deploy target is BINDING-tier: two projects sharing one connection
-// (org-shared credential) each deploy their own Coolify resource, so
-// resourceUuid/branch live on binding.config (overlaid over connection.config
-// at dispatch — binding wins). Everything else (baseUrl) stays connection-tier
-// with the credential.
-const COOLIFY_BINDING_CONFIG_KEYS = ['resourceUuid', 'branch'] as const;
+// Coolify's deploy targets are BINDING-tier: two projects sharing one connection
+// (org-shared credential) each deploy their own Coolify resources, so `targets`
+// lives on binding.config (overlaid over connection.config at dispatch — binding
+// wins). Everything else (baseUrl) stays connection-tier with the credential.
+const COOLIFY_BINDING_CONFIG_KEYS = ['targets'] as const;
 
 /** Split a validated provider config into its connection-tier and binding-tier
  *  halves. Non-coolify providers have no binding-tier fields today. */
@@ -164,6 +176,31 @@ const epodsystemSecretsSchema = z.object({
   apiKey: z.string().min(8).max(2000),
 });
 
+// ISS-524 / ISS-526 — Sentry provider. Config is the non-secret target set
+// (Sentry host + a labelled `targets[]` list of org/project bindings); the
+// `sntryu_` auth token is the only secret and is vault-encrypted like
+// coolify/postman. `sentryConfigBase` carries NO defaults so `.partial()` is a
+// true partial for PATCH. The host is required on create (the MCP server's
+// SENTRY_HOST). The legacy top-level slugs (ISS-524) stay optional for
+// back-compat reads; new writes use `targets[]`.
+const sentryTargetSchema = z.object({
+  label: z.string().min(1).max(120),
+  organizationSlug: z.string().min(1).max(200).optional(),
+  projectSlug: z.string().min(1).max(200).optional(),
+  environment: z.string().min(1).max(120).optional(),
+  notes: z.string().max(2000).optional(),
+});
+const sentryConfigBase = z.object({
+  host: z.string().min(1).max(255),
+  targets: z.array(sentryTargetSchema).max(50).optional(),
+  organizationSlug: z.string().min(1).max(200).optional(),
+  projectSlug: z.string().min(1).max(200).optional(),
+});
+
+const sentrySecretsSchema = z.object({
+  authToken: z.string().min(8).max(2000),
+});
+
 // Discriminated on `provider` so each provider validates its own config +
 // secrets shape. `environment` defaults to 'prod' for postman (it has no
 // staging/prod split, but the binding column + unique index require a value).
@@ -192,6 +229,13 @@ const createSchema = z.discriminatedUnion('provider', [
     secrets: epodsystemSecretsSchema,
     orgId: z.uuid().optional(),
   }),
+  z.object({
+    provider: z.literal('sentry'),
+    environment: environmentSchema.default('prod'),
+    config: sentryConfigBase,
+    secrets: sentrySecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
 ]);
 
 // PATCH carries no provider, so config/secrets are validated loosely here and
@@ -207,6 +251,7 @@ const updateSchema = z.object({
 function configSchemaForProvider(provider: string): z.ZodTypeAny {
   if (provider === 'postman') return postmanConfigBase.partial();
   if (provider === 'epodsystem') return epodsystemConfigBase.partial();
+  if (provider === 'sentry') return sentryConfigBase.partial();
   return coolifyConfigSchema.partial();
 }
 
@@ -467,10 +512,7 @@ integrationsRoutes.patch(
     if (patch.config) {
       const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      const tiers = splitProviderConfig(
-        binding.provider,
-        parsed.data as Record<string, unknown>,
-      );
+      const tiers = splitProviderConfig(binding.provider, parsed.data as Record<string, unknown>);
       if (Object.keys(tiers.connection).length > 0) {
         mergedConfig = {
           ...((connection.config ?? {}) as object),
@@ -509,6 +551,10 @@ integrationsRoutes.patch(
         const parsed = coolifySecretsSchema.partial().safeParse(patch.secrets);
         if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
         incoming = parsed.data;
+      } else if (provider === 'sentry') {
+        const parsed = sentrySecretsSchema.partial().safeParse(patch.secrets);
+        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+        incoming = parsed.data;
       } else {
         const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets);
         if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
@@ -516,7 +562,8 @@ integrationsRoutes.patch(
       }
       // Skip the vault guard for a config-only PATCH (no primary credential
       // change) — same conditional as the prior coolify branch.
-      const primaryField = provider === 'coolify' ? 'apiToken' : 'apiKey';
+      const primaryField =
+        provider === 'coolify' ? 'apiToken' : provider === 'sentry' ? 'authToken' : 'apiKey';
       if (typeof incoming[primaryField] === 'string') {
         assertVaultConfigured();
         const currentSecrets = connection.secretsEnc
@@ -929,6 +976,28 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
         return { storeSlug: cfg.storeSlug ?? null, storeName: cfg.storeName ?? null };
       },
     }),
+    // ISS-524 — Sentry is now a per-project MCP-injection provider (binding-
+    // derived), no longer a global env-DSN status tile. Drillable → opens the
+    // Sentry config section.
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'sentry'),
+      provider: 'sentry',
+      label: 'Sentry',
+      alwaysEnvKeyed: false,
+      neverCheckedDetail: 'never test-connected',
+      extraMeta: (row) => {
+        const cfg = (row.config ?? {}) as SentryConfig;
+        // ISS-526 — surface the multi-target shape: count + the first target's
+        // org for the card subtitle. Defensive (no throw on missing config);
+        // back-compat read covers the legacy single-slug connection.
+        const targets = resolveSentryTargets(cfg);
+        return {
+          host: cfg.host ?? null,
+          organizationSlug: targets[0]?.organizationSlug ?? cfg.organizationSlug ?? null,
+          targetCount: targets.length,
+        };
+      },
+    }),
   );
 
   // --- Runners / devices online ---
@@ -967,16 +1036,8 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
     configured: true,
   });
 
-  // --- Sentry (server-side DSN presence only — no per-project quota API) ---
-  const sentryConfigured = Boolean(process.env.SENTRY_DSN);
-  cards.push({
-    key: 'sentry',
-    label: 'Sentry',
-    status: sentryConfigured ? 'connected' : 'not_configured',
-    detail: sentryConfigured ? 'error reporting enabled' : 'no SENTRY_DSN configured',
-    lastSyncAt: null,
-    configured: sentryConfigured,
-  });
+  // --- Sentry: now a per-project MCP-injection provider card (pushed above via
+  // buildProviderCards, ISS-524) — the old global env-DSN tile was removed. ---
 
   // --- Claude (auth + quota are managed per-runner; no core-side backing data) ---
   cards.push({
@@ -1011,7 +1072,7 @@ interface McpServerPreviewEntry {
 }
 
 /** The providers whose adapters inject an mcpServers entry at dispatch time. */
-const MCP_PROVIDERS = ['postman', 'epodsystem'] as const;
+const MCP_PROVIDERS = ['postman', 'epodsystem', 'sentry'] as const;
 
 function buildMcpEntryFor(
   provider: (typeof MCP_PROVIDERS)[number],
@@ -1020,6 +1081,12 @@ function buildMcpEntryFor(
   // Same builders the dispatch resolvers use — the URL can't drift from what a
   // runner actually receives. The key argument is a placeholder; the headers
   // are replaced wholesale below so secret bytes never reach the response.
+  // The token argument is an empty placeholder for ALL providers — the preview
+  // never carries secret bytes. For sentry (stdio) this means `env` holds an
+  // empty SENTRY_ACCESS_TOKEN; the preview projection below reads only `url`
+  // (null for stdio) and synthesizes its own redacted headers, so the env is
+  // never serialized into the response.
+  if (provider === 'sentry') return buildSentryMcpEntry(effectiveConfig(pair), '');
   return provider === 'postman'
     ? buildPostmanMcpEntry(effectiveConfig(pair), '')
     : buildEpodsystemMcpEntry(effectiveConfig(pair), '');
@@ -1124,6 +1191,13 @@ const connectionCreateSchema = z.discriminatedUnion('provider', [
     displayName: z.string().min(1).max(200).optional(),
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
+  z.object({
+    provider: z.literal('sentry'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: sentryConfigBase,
+    secrets: sentrySecretsSchema,
     orgId: z.uuid().optional(),
   }),
 ]);
@@ -1367,12 +1441,17 @@ integrationConnectionsRoutes.patch(
         const parsed = coolifySecretsSchema.partial().safeParse(patch.secrets);
         if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
         incoming = parsed.data;
+      } else if (provider === 'sentry') {
+        const parsed = sentrySecretsSchema.partial().safeParse(patch.secrets);
+        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+        incoming = parsed.data;
       } else {
         const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets);
         if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
         incoming = parsed.data;
       }
-      const primaryField = provider === 'coolify' ? 'apiToken' : 'apiKey';
+      const primaryField =
+        provider === 'coolify' ? 'apiToken' : provider === 'sentry' ? 'authToken' : 'apiKey';
       if (typeof incoming[primaryField] === 'string') {
         const currentSecrets = existing.secretsEnc
           ? (await import('./vault.js')).decryptJson<Record<string, unknown>>(existing.secretsEnc)

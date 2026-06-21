@@ -10,6 +10,7 @@
 import type {
   CoolifyConfigInput,
   CoolifySecretsInput,
+  CoolifyTargetInput,
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
   IntegrationHealthResult,
@@ -17,6 +18,8 @@ import type {
   PostmanMode,
   PostmanRegion,
   PostmanSecretsInput,
+  SentryConfigInput,
+  SentrySecretsInput,
 } from "@forge/contracts";
 
 export type {
@@ -27,11 +30,14 @@ export type {
   ConfirmProdDeployResult,
   IntegrationEnvironment,
   CoolifyConfigInput,
+  CoolifyTargetInput,
   CoolifySecretsInput,
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
   PostmanRegion,
   PostmanMode,
+  SentryConfigInput,
+  SentrySecretsInput,
   // === ISS-401/C — connection/binding cutover ===
   // The project-facing binding summary + the owner-facing connection summary,
   // plus the connection CRUD request/response envelopes. All exclude secret
@@ -61,6 +67,29 @@ export interface PostmanConfig {
   collectionId?: string;
   region: PostmanRegion;
   mode: PostmanMode;
+  environment?: string;
+}
+
+// === ISS-524 / ISS-526 — Sentry integration config shape ===
+
+/** One labelled Sentry target under the connection (ISS-526). */
+export interface SentryTarget {
+  label: string;
+  organizationSlug?: string;
+  projectSlug?: string;
+  environment?: string;
+  notes?: string;
+}
+
+/** Non-secret Sentry config stored in the connection `config`. `targets[]` is
+ *  the labelled list (ISS-526); the top-level slugs are legacy back-compat. */
+export interface SentryConfig {
+  host: string;
+  targets?: SentryTarget[];
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
+  organizationSlug?: string;
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
+  projectSlug?: string;
   environment?: string;
 }
 
@@ -102,8 +131,7 @@ export interface IntegrationTestResult extends IntegrationHealthResult {
 export interface ProviderConfig {
   // coolify
   baseUrl?: string;
-  resourceUuid?: string;
-  branch?: string;
+  targets?: CoolifyTargetInput[];
   // postman
   workspaceId?: string;
   workspaceName?: string;
@@ -121,6 +149,10 @@ export interface ProviderConfig {
   draftThemeId?: string;
   commerceEnabled?: boolean;
   domain?: string;
+  // sentry
+  host?: string;
+  organizationSlug?: string;
+  projectSlug?: string;
   environment?: "staging" | "prod";
 }
 
@@ -147,15 +179,32 @@ export type CreateIntegrationInput =
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
       orgId?: string;
+    }
+  | {
+      provider: "sentry";
+      environment?: "staging" | "prod";
+      config: SentryConfigInput;
+      secrets: SentrySecretsInput;
+      orgId?: string;
     };
 
-/** Partial patch for `PATCH .../integrations/:id`. */
+/**
+ * Partial patch for `PATCH .../integrations/:id`. `config`/`secrets` are a UNION
+ * over the providers (one patch targets ONE provider): an intersection would
+ * require a value to satisfy every provider at once, which is impossible now
+ * that both Coolify and Sentry carry their own incompatible `targets[]` shape
+ * (ISS-526). The server re-validates against the binding's actual provider.
+ */
 export interface UpdateIntegrationInput {
-  config?: Partial<CoolifyConfigInput> &
-    Partial<EpodsystemConfigInput> &
-    Partial<PostmanConfigInput>;
-  secrets?: Partial<CoolifySecretsInput> &
-    Partial<EpodsystemSecretsInput> &
-    Partial<PostmanSecretsInput>;
+  config?:
+    | Partial<CoolifyConfigInput>
+    | Partial<EpodsystemConfigInput>
+    | Partial<PostmanConfigInput>
+    | Partial<SentryConfigInput>;
+  secrets?:
+    | Partial<CoolifySecretsInput>
+    | Partial<EpodsystemSecretsInput>
+    | Partial<PostmanSecretsInput>
+    | Partial<SentrySecretsInput>;
   active?: boolean;
 }

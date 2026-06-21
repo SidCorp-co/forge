@@ -245,10 +245,8 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     'approved',
     'in_progress',
     'developed',
-    'deploying',
     'testing',
-    'pass',
-    'staging',
+    'tested',
     'released',
     'closed',
   ];
@@ -313,10 +311,8 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     issue = await drive(issue, 'approved', owner.id); // → code
     issue = await drive(issue, 'in_progress', owner.id); // human-gated, no job
     issue = await drive(issue, 'developed', owner.id); // → review
-    issue = await drive(issue, 'deploying', owner.id); // not mapped, no job
     issue = await drive(issue, 'testing', owner.id); // → test
-    issue = await drive(issue, 'pass', owner.id); // not mapped, no job
-    issue = await drive(issue, 'staging', owner.id); // not mapped, no job
+    issue = await drive(issue, 'tested', owner.id); // manual gate, no job
     issue = await drive(issue, 'released', owner.id); // → release
     issue = await drive(issue, 'closed', owner.id); // terminal, no job
 
@@ -356,10 +352,8 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     issue = await drive(issue, 'approved', owner.id);
     issue = await drive(issue, 'in_progress', owner.id);
     issue = await drive(issue, 'developed', owner.id);
-    issue = await drive(issue, 'deploying', owner.id);
     issue = await drive(issue, 'testing', owner.id);
-    issue = await drive(issue, 'pass', owner.id);
-    issue = await drive(issue, 'staging', owner.id);
+    issue = await drive(issue, 'tested', owner.id);
     issue = await drive(issue, 'released', owner.id);
     issue = await drive(issue, 'closed', owner.id);
 
@@ -402,8 +396,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     issue = await drive(issue, 'developed', owner.id);
     expect(issue.status).toBe('testing');
 
-    issue = await drive(issue, 'pass', owner.id);
-    issue = await drive(issue, 'staging', owner.id);
+    issue = await drive(issue, 'tested', owner.id);
     issue = await drive(issue, 'released', owner.id);
     issue = await drive(issue, 'closed', owner.id);
 

@@ -1,6 +1,6 @@
 ---
 name: forge-fix
-description: "Fix rejected Forge issues based on review or QA feedback. Use this skill when an issue has been reopened with rejection comments — reads the feedback, applies a scoped fix, builds, re-tests, and pushes. Triggers on: /forge-fix, fixing rejected issues, addressing review feedback, fixing QA failures, resolving reopen comments, fixing CI build failures. Also use when the pipeline needs to move an issue from reopen back to deploying."
+description: "Fix rejected Forge issues based on review or QA feedback. Use this skill when an issue has been reopened with rejection comments — reads the feedback, applies a scoped fix, builds, re-tests, and pushes. Triggers on: /forge-fix, fixing rejected issues, addressing review feedback, fixing QA failures, resolving reopen comments, fixing CI build failures. Also use when the pipeline needs to move an issue from reopen back to developed (or testing for xs/s)."
 user_invocable: true
 arguments: "documentId"
 ---
@@ -74,16 +74,23 @@ git checkout ISS-XX-short-title
 
 ### Step 4: Apply Scoped Fixes
 
-For each finding:
-1. Read the affected file at the mentioned line
-2. Fix the specific issue
-3. Move to the next finding
+Work one finding at a time. **Stop-the-line:** finish the current finding before touching the next — a half-fixed earlier finding makes the later ones unreliable.
 
-**Do not:** refactor adjacent code, add new features, "improve" things the review didn't mention, or change the overall approach. The plan was already approved — the fix should stay within its boundaries.
+For a **bug / QA-FAIL** finding, fix the root cause, not the symptom:
+1. **Reproduce** — make the failure actually happen (run the failing case / hit the endpoint / load the screen). If you cannot reproduce it, say so in the fix comment instead of guessing — roughly a third of "I already know what it is" guesses are wrong.
+2. **Localize** — find which layer truly fails (UI / API / data / build), reading the file at the cited line.
+3. **Fix the root cause** — address the underlying issue, not just the visible symptom.
+4. **Guard against recurrence (Beyonce Rule)** — if the project has a test surface for that layer, add or adjust a test that **fails without your fix and passes with it**, so the bug can't silently return. A bug fix with no guarding test is an incomplete fix; if there is genuinely no harness for this layer, note that in the comment.
+
+For a **Minor / pattern** finding, just correct the specific pattern at the cited line.
+
+Then **simplify only the lines you just changed** (preserve behavior, stay inside your diff) — do not expand into adjacent code.
+
+**Do not:** refactor adjacent code, add new features, "improve" things the feedback didn't mention, or change the overall approach. The plan was already approved — the fix stays within its boundaries.
 
 ### Step 5: Test
 
-If the fix touches API endpoints: run real API tests (curl affected endpoints, verify responses). Frontend-only fixes: build is sufficient — QA handles frontend testing.
+Re-run the Step 4 reproduction first — confirm the failure is gone (regression test green / endpoint returns expected / screen behaves). Then: if the fix touches API endpoints, run real API tests (curl affected endpoints, verify responses); frontend-only fixes need only a successful build — QA handles frontend testing.
 
 ### Step 6: Commit & Push
 
@@ -105,17 +112,13 @@ git push origin ISS-XX-short-title
 ```
 No baseBranch merge. No Coolify deploy. Stop here for push.
 
-**Deploy mode — Simple / Medium** (staging deploys from baseBranch):
+**Deploy mode — all complexities** (push the fix, merge into `baseBranch` = staging, then deploy in Step 7 — same as the code step, so the re-verify environment has the fix):
 ```bash
 git push origin ISS-XX-short-title
 git checkout <baseBranch> && git merge ISS-XX-short-title && git push origin <baseBranch>
 git checkout ISS-XX-short-title
 ```
-
-**Deploy mode — Complex** (per-issue preview from ISS-* branch):
-```bash
-git push origin ISS-XX-short-title
-```
+(Decompose child/parent target the integration branch instead of `baseBranch` — see `.claude/skills/forge-plan/references/decompose-execution.md`.)
 
 ### Step 7: Deploy
 
@@ -143,13 +146,13 @@ forge_comments → create → {
 }
 ```
 
-Set status based on deploy mode + complexity:
-
-**Local-only mode** — always set `developed` (all complexities). Human reviews at `developed` and moves to `closed` (or `reopen`) manually. No `deploying`/`testing`/`staging`/`released` transitions.
+Set status — **never `deploying`** (retired; from `reopen` the valid exits are `developed`, `testing`, `in_progress`). Mirror the code step so the fix is re-verified the same way the original change was:
 
 **Deploy mode:**
-- **Simple / Medium:** `deploying` (lifecycle auto-skips to `testing`, no per-issue preview)
-- **Complex:** `developed` (triggers review step again for re-verification, then preview deploy)
+- **`xs` / `s`** → `testing` (set staging `previewUrl`/`previewApiUrl`) — re-QA the fix directly on the deployed staging build; the inline self-review covered it.
+- **`m` / `l` / `xl`** → `developed` — the independent forge-review re-checks the fix, then it advances to testing.
+
+**Local-only mode** — `developed` for all complexities (human re-checks at `developed`, closes manually).
 
 ## Fix-specific output reminder
 

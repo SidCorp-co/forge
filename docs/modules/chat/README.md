@@ -5,7 +5,7 @@ Interactive conversational sessions with project agents — conversation, not pi
 ## Overview
 
 - Open a chat session with an agent inside a project; agent has project memory, skills, MCP tools.
-- Free-form — not routed through the 18-status pipeline.
+- Free-form — not routed through the 15-status pipeline.
 - Use for "what's the state of ISS-42?", brainstorming, exploration before creating an issue.
 
 ## Data Flow

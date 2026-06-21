@@ -9,9 +9,8 @@ export const ALL_ISSUE_COLS: { status: IssueStatus; label: string; color: string
   { status: "approved", label: "Approved", color: "border-indigo-400", bg: "bg-indigo-50" },
   { status: "in_progress", label: "In Progress", color: "border-yellow-400", bg: "bg-yellow-50" },
   { status: "developed", label: "Developed", color: "border-emerald-400", bg: "bg-emerald-50" },
-  { status: "deploying", label: "Deploying", color: "border-cyan-400", bg: "bg-cyan-50" },
   { status: "testing", label: "Testing", color: "border-purple-400", bg: "bg-purple-50" },
-  { status: "staging", label: "Staging", color: "border-teal-400", bg: "bg-teal-50" },
+  { status: "tested", label: "Tested", color: "border-teal-400", bg: "bg-teal-50" },
   { status: "released", label: "Released", color: "border-green-400", bg: "bg-green-50" },
   { status: "closed", label: "Closed", color: "border-slate-400", bg: "bg-slate-50" },
   { status: "reopen", label: "Reopen", color: "border-amber-400", bg: "bg-amber-50" },
@@ -29,7 +28,7 @@ export const TASK_COLS: { status: KanbanCol; label: string; color: string; bg: s
 
 export const DEFAULT_VISIBLE: Record<IssueStatus, boolean> = {
   draft: true, open: true, confirmed: true, clarified: true, waiting: true,
-  approved: true, in_progress: true, developed: true, deploying: true, testing: true,
-  staging: true, released: false, closed: false,
+  approved: true, in_progress: true, developed: true, testing: true,
+  tested: true, released: false, closed: false,
   reopen: true, on_hold: true, needs_info: false,
 };

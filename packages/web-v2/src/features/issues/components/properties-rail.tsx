@@ -32,6 +32,21 @@ function fmtDate(iso: string | null): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Total tokens an issue consumed across every session, compacted for the rail
+ * (`2.4M`, `340K`). Sums input + output + cache (read/creation) — the full
+ * usage rollup from `cost-summary`. Cache tokens are real consumption, so they
+ * count toward the total. */
+function totalTokens(cost: IssueCostSummary | undefined): number {
+  if (!cost) return 0;
+  return cost.inputTokens + cost.outputTokens + cost.cacheReadTokens + cost.cacheCreationTokens;
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 /** Title-case a free-text category (`improvement` → `Improvement`). */
 function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -81,6 +96,7 @@ function DepList({
               displayId={otherDisplayId}
               title={otherTitle}
               status={otherStatus}
+              showTitle
             />
           ) : (
             <MonoTag key={e.id} hue={e.kind === "blocks" ? "flame" : "neutral"}>
@@ -213,6 +229,18 @@ export function PropertiesRail({
       <Row label="Cost">
         <Stat icon="dollar">
           {cost && cost.estimatedCost > 0 ? `$${cost.estimatedCost.toFixed(2)}` : "—"}
+        </Stat>
+      </Row>
+      <Row label="Tokens">
+        <Stat icon="cpu">
+          {(() => {
+            const total = totalTokens(cost);
+            return total > 0 ? (
+              <span title={`${total.toLocaleString()} tokens`}>{fmtTokens(total)}</span>
+            ) : (
+              "—"
+            );
+          })()}
         </Stat>
       </Row>
       <Row label="Created">

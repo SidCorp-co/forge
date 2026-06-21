@@ -236,6 +236,7 @@ describe('forge_project_pm — action-level auth (cross-tenant)', () => {
         tokenId: '77777777-7777-4777-8777-777777777777',
         scopes: ['read', 'write'],
         projectIds: ['99999999-9999-4999-8999-999999999999'],
+        boundProjectId: null,
       },
       device: fakeDevice,
       projectSlug: null,

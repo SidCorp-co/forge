@@ -33,7 +33,6 @@ const ACTIVE_PIPELINE_STATUSES = [
   'approved',
   'in_progress',
   'developed',
-  'deploying',
   'testing',
 ] as const;
 

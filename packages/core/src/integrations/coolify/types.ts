@@ -1,13 +1,27 @@
 import type { IntegrationEnvironment } from '../../db/schema.js';
 
-export interface CoolifyConfig extends Record<string, unknown> {
-  /** Base URL of the Coolify API, e.g. https://coolify.example.com */
-  baseUrl: string;
+/**
+ * One Coolify application this project+environment deploys. A single binding
+ * fans out to many targets (e.g. a separate BE and FE resource), each its own
+ * Coolify application UUID. `id` is a stable per-target key used to map an
+ * outbound deploy delivery back to its inbound webhook + to render the target
+ * row in the UI.
+ */
+export interface CoolifyTarget {
+  /** Stable per-target id (server-assigned if omitted on write). */
+  id: string;
+  /** Human label shown in the UI, e.g. "Backend" / "Frontend". */
+  label: string;
   /** Coolify resource (application) UUID to deploy. */
   resourceUuid: string;
-  /** Git branch the resource is wired to deploy from. */
-  branch: string;
-  /** Mirror of project_integrations.environment; convenience for adapter logic. */
+}
+
+export interface CoolifyConfig extends Record<string, unknown> {
+  /** Base URL of the Coolify API, e.g. https://coolify.example.com (connection-tier). */
+  baseUrl: string;
+  /** Deploy targets for this project+environment (binding-tier). One per Coolify app. */
+  targets: CoolifyTarget[];
+  /** Mirror of the binding environment; convenience for adapter logic. */
   environment: IntegrationEnvironment;
 }
 

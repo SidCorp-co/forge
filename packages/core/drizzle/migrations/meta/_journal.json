@@ -841,6 +841,69 @@
       "when": 1784419200000,
       "tag": "0121_user_active_org",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1784505600000,
+      "tag": "0122_drop_shop_skills",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1784592000000,
+      "tag": "0123_pat_bound_project_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1784678400000,
+      "tag": "0124_session_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1784764800000,
+      "tag": "0125_coolify_multi_target",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1784851200000,
+      "tag": "0126_notification_severity_resolve",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1784937600000,
+      "tag": "0127_unify_gate_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1785024000000,
+      "tag": "0128_pipeline_run_step_durations_done_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1785110400000,
+      "tag": "0129_comment_author_device",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1785196800000,
+      "tag": "0130_retire_deploying_status",
+      "breakpoints": true
     }
   ]
 }

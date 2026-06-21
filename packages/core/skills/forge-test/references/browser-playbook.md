@@ -2,12 +2,14 @@
 
 Generic browser interaction patterns for QA testing. These are reusable techniques — NOT app-specific flows.
 
+All steps below describe plain actions (navigate, click, fill a field, screenshot). Perform each one **using the available browser tools** — whatever browser-automation MCP the runner exposes (auto-detected; usually surfaced as `browser_*`). Do not hardcode a provider. If no browser MCP is available, fall back to curl/WebFetch HTML checks (see `test-approach.md`).
+
 ## Setup
 
 ```
-1. tabs_context_mcp → get available tabs
-2. tabs_create_mcp → create a fresh tab (don't reuse old tabs)
-3. Store the tabId for all subsequent calls
+1. list the open tabs using the available browser tools
+2. open a fresh tab (don't reuse old tabs)
+3. work in that tab for all subsequent steps
 ```
 
 ## Login
@@ -15,9 +17,9 @@ Generic browser interaction patterns for QA testing. These are reusable techniqu
 ```
 1. navigate → {testUrl}/login
 2. wait 2s
-3. find → "Email input field" → triple_click → form_input "{username}"
-4. find → "Password input field" → triple_click → form_input "{password}"
-5. find → "Sign In button" → left_click
+3. fill the "Email" field with "{username}" (clear any pre-filled value first)
+4. fill the "Password" field with "{password}" (clear any pre-filled value first)
+5. click the "Sign In" button
 6. wait 3s → screenshot (verify dashboard)
 ```
 
@@ -27,27 +29,27 @@ Credentials come from `forge_config → get → previewDeploy.testCredentials`.
 
 ## Verify Element Visibility
 
-**SHOULD be visible:** `find → "{description}"` → found = PASS, not found = FAIL + screenshot.
+**SHOULD be visible:** locate "{description}" → found = PASS, not found = FAIL + screenshot.
 
-**Should NOT be visible:** `find → "{description}"` → found = FAIL, not found = PASS. Screenshot either way.
+**Should NOT be visible:** locate "{description}" → found = FAIL, not found = PASS. Screenshot either way.
 
 ## Form Interaction
 
 ```
-find → "{field}" → form_input value → find → "{submit}" → left_click → wait 2s → screenshot
+fill "{field}" with value → click "{submit}" → wait 2s → screenshot
 ```
 
 ## Dialog / Modal Handling
 
 ```
 1. screenshot → capture dialog as evidence
-2. find → "Cancel" or "Confirm" button → left_click
+2. click "Cancel" or "Confirm" button
 3. wait 2s → screenshot
 ```
 
 ## Override Browser Time
 
-For day/time-dependent features:
+For day/time-dependent features, evaluate this in the page (if your browser tools support running JS in the page):
 
 ```javascript
 const __RealDate = window._RealDate || Date;
@@ -90,12 +92,12 @@ Keep return values small — large outputs get blocked.
 
 ## Screenshots
 
-Take at: after login, after navigation, at verification point, after action. Use `computer → zoom` with `region: [x0,y0,x1,y1]` for specific areas.
+Take at: after login, after navigation, at verification point, after action. Zoom into a specific region when the browser tools support it, to capture small areas clearly.
 
 ## General Rules
 
 - Always `wait 2-3s` after navigation for SPA to load
-- `triple_click` before `form_input` to clear pre-filled values
+- Clear pre-filled values before typing into a field
 - Clock in/out and form submissions affect real data — be careful
-- Use `javascript_tool` with async IIFE (no top-level await)
+- When running JS in the page, use an async IIFE (no top-level await)
 - Don't hardcode app-specific flows here — derive them from the issue plan at test time
