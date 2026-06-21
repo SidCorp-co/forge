@@ -52,6 +52,7 @@ function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (o.model !== null) out.model = o.model;
   if (o.allowedTools !== null) out.allowedTools = o.allowedTools.join(',');
+  if (o.disallowedTools !== null) out.disallowedTools = o.disallowedTools.join(',');
   if (o.permissionMode !== null) out.permissionMode = o.permissionMode;
   if (o.timeoutSeconds !== null) out.timeoutSeconds = o.timeoutSeconds;
   if (o.mcpServers !== null) out.mcpServersOverride = o.mcpServers;

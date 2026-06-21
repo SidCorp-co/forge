@@ -187,6 +187,7 @@ pub async fn handle(
         system_prompt: ja.system_prompt.clone(),
         model: ja.model.clone(),
         allowed_tools: ja.allowed_tools.clone(),
+        disallowed_tools: ja.disallowed_tools.clone(),
         permission_mode: ja.permission_mode.clone(),
         timeout_seconds: ja.timeout_seconds,
         mcp_servers_override: ja.mcp_servers_override.clone(),

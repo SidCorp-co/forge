@@ -40,6 +40,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
     for (const key of [
       'model',
       'allowedTools',
+      'disallowedTools',
       'permissionMode',
       'timeoutSeconds',
       'mcpServersOverride',

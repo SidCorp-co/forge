@@ -208,6 +208,14 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
         args.push("--allowed-tools".into());
         args.push(tools.into());
     }
+    // Capability denylist (ISS-531). `--disallowed-tools` removes a tool from
+    // the available SET even under `--permission-mode bypassPermissions`
+    // (verified on claude v2.1.185), so it is a real least-agency hard-deny,
+    // not just an auto-approval gate.
+    if let Some(tools) = spec.disallowed_tools.as_deref().filter(|s| !s.is_empty()) {
+        args.push("--disallowed-tools".into());
+        args.push(tools.into());
+    }
     if let Some(model) = spec.model.as_deref().filter(|s| !s.is_empty()) {
         args.push("--model".into());
         args.push(model.into());
