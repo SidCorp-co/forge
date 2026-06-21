@@ -207,10 +207,19 @@ pub async fn run(
                                         waited += DRAIN_POLL_SECS;
                                     }
                                     if inflight.load(Ordering::Acquire) == 0 {
-                                        tracing::warn!("[update] idle — restarting service");
-                                        let _ = std::process::Command::new("systemctl")
-                                            .args(["--user", "restart", "forge-runner"])
-                                            .status();
+                                        tracing::warn!("[update] idle — restarting to apply update");
+                                        // Exit 0 → systemd Restart=always relaunches THIS
+                                        // unit, which re-execs the freshly-swapped binary.
+                                        // Name-agnostic, so it works for multi-instance
+                                        // forge-runner-<id> units too — same mechanism as the
+                                        // credential-watch path below. The old hardcoded
+                                        // `systemctl --user restart forge-runner` only bounced
+                                        // the default unit, so any instance under a different
+                                        // unit name (forge-runner-aiNNN) downloaded the new
+                                        // binary but never re-execed it, re-applying the same
+                                        // update every cycle forever while staying on the old
+                                        // in-memory build.
+                                        std::process::exit(0);
                                     }
                                 }
                                 Ok(None) => {}
