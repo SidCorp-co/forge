@@ -81,6 +81,7 @@ function DepList({
               displayId={otherDisplayId}
               title={otherTitle}
               status={otherStatus}
+              showTitle
             />
           ) : (
             <MonoTag key={e.id} hue={e.kind === "blocks" ? "flame" : "neutral"}>
