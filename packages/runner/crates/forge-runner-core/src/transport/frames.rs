@@ -32,6 +32,8 @@ pub struct JobAssigned {
     #[serde(default)]
     pub allowed_tools: Option<String>,
     #[serde(default)]
+    pub disallowed_tools: Option<String>,
+    #[serde(default)]
     pub permission_mode: Option<String>,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,

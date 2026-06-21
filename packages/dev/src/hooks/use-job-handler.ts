@@ -96,6 +96,7 @@ export async function handleJobAssigned(
       systemPrompt: data.systemPrompt ?? undefined,
       model: data.model ?? undefined,
       allowedTools: data.allowedTools ?? undefined,
+      disallowedTools: data.disallowedTools ?? undefined,
       permissionMode: data.permissionMode ?? undefined,
       // PR-4 — per-state `timeoutSeconds` overrides the Rust 30-min default
       // when supplied. Cast to ensure Tauri serialises as `Option<u64>`.
