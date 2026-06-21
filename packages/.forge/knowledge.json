@@ -92,5 +92,11 @@
     "dev-web": "cd packages/web-v2 && pnpm dev",
     "dev-desktop": "cd packages/dev && pnpm tauri dev",
     "build-core": "cd packages/core && pnpm build"
+  },
+  "guides": {
+    "forge-affordances": {
+      "path": "docs/guides/forge-affordances.md",
+      "when": "Before encoding a dependency, parking a note, writing project config, or recalling prior work — teaches Forge's own affordances (set_dependency kind:blocks, draft-vs-open, read-before-write config, forge_memory.search, park-at-draft) as trigger → tool → red-flag. The canonical source the pipeline preamble + chat orientation point to."
+    }
   }
 }

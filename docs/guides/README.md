@@ -9,6 +9,7 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 | [trunk-based-development.md](trunk-based-development.md) | Branching model, naming, pre-push hook, who ships how (contributors + maintainers; the pipeline has its own docs) |
 | [release.md](release.md) | Cutting a release |
 | [integrations.md](integrations.md) | Wiring external integrations |
+| [forge-affordances.md](forge-affordances.md) | Operating affordances for connected agents — when to use Forge's own tools (`set_dependency`, draft-vs-open, config writes, memory recall) as trigger → tool → red-flag |
 
 The Diátaxis quickstart lives at [../quickstart.md](../quickstart.md).
 

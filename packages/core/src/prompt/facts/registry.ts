@@ -57,6 +57,27 @@ export interface ForgeFact {
 // Keep these strings byte-identical to the pre-refactor constants; a parity
 // test in system.test.ts guards it.
 
+// Operating affordances — teach Forge's own tools as trigger → tool → red-flag
+// (not a noun-list), so connected agents reach for the affordance instead of
+// re-encoding it in prose (e.g. a dependency written as text rather than a
+// `blocks` edge). Authored ONCE here and reused by the interactive chat
+// orientation (prompt/system.ts CHAT_NUDGE) so the two surfaces never drift.
+// Full reference: docs/guides/forge-affordances.md.
+export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
+Forge gives you a tool for things agents routinely do in prose. When you hit the trigger, reach for the tool — and avoid the red flag.
+
+| When you need | Use | Red flag (DON'T) |
+|---|---|---|
+| Ordering between issues | \`forge_project_pm action=set_dependency kind:blocks\` (\`from\` = the blocker) | Describing the dependency in prose instead of setting the edge — only a \`blocks\` edge gates dispatch |
+| To record a note / follow-up | create an issue at \`draft\` | Creating it at \`open\` — that auto-triages and spawns a pipeline run |
+| To change project config (\`pipelineConfig.states\`, \`projectFacts\`, …) | GET the current config first, then send a complete entry | Blind-patching a nested map you never read — you can clobber sibling keys |
+| Before you design / fix | \`forge_memory.search\` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |
+| To park work that never started | leave it at \`draft\` | \`on_hold\` from \`draft\` — \`on_hold\` is a deliberate pause for ACTIVE work only |
+| To finish a fix made by hand, outside the pipeline | drive it through \`status\` and/or capture a \`forge_memory\` learning | Fixing it and forgetting — no status move, no learning recorded |
+
+**Forge red flags:** prose-deps · open-as-note · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.
+Full reference: \`docs/guides/forge-affordances.md\`.`;
+
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
 - **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along: \`open → confirmed → clarified → approved → developed → deploying → testing → pass → staging → released → closed\` (intermediate states you don't own auto-advance).
@@ -84,7 +105,9 @@ Merge with existing: increment sessionCount, append to arrays (skip duplicates),
 - Code only while implementing. No explanations between edits.
 - Never repeat file contents after reading — just edit.
 - One-line status at the end (e.g. "Plan written, set approved." or "Fix applied, pushed, set deploying.").
-- Comments go to \`forge_comments.create\`, not to chat output.`;
+- Comments go to \`forge_comments.create\`, not to chat output.
+
+${OPERATING_AFFORDANCES_TEXT}`;
 
 const TOOL_REFERENCE_TEXT = `## Tool Reference
 - **forge_step_start** — step check-in: marks the issue in-flight (when the step has a working status) and returns the bundle {issue (with attachments[]), comments (each with attachments[]), handoffs, branchConfig} in one call. Idempotent; call FIRST on every step.
