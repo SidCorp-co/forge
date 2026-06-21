@@ -37,7 +37,7 @@ import { AttachmentList } from "./attachment-list";
 // Comment attachment staging limits — mirror core's comment allow-list
 // (`attachment-service.ts` ALLOWED_MIMES). NOTE: narrower than issue
 // attachments — NO video for comments — so the server never 400s what we
-// staged client-side.
+// staged client-side. Office/data types (docx, csv, xls, xlsx) are allowed.
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
 const ALLOWED_MIMES = new Set([
@@ -48,7 +48,13 @@ const ALLOWED_MIMES = new Set([
   "application/pdf",
   "text/plain",
   "text/markdown",
+  "text/csv",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
+const ACCEPT_ATTR =
+  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md,.csv,.docx,.xls,.xlsx";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -248,6 +254,7 @@ function AddCommentBox({
           ref={fileInputRef}
           type="file"
           multiple
+          accept={ACCEPT_ATTR}
           className="hidden"
           onChange={onPick}
         />
