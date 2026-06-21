@@ -8,6 +8,11 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { type IssueStatus, type JobType, projects } from "../../db/schema.js";
+import {
+	renderSentryTargetsLine,
+	resolveSentryTargets,
+} from "../../integrations/sentry/targets.js";
+import type { SentryConfig, SentryTarget } from "../../integrations/sentry/types.js";
 import { listBindingsForProject } from "../../integrations/store.js";
 import { getIntegrationUsage } from "../../integrations/usage-registry.js";
 import { logger } from "../../logger.js";
@@ -66,20 +71,30 @@ interface IntegrationRow {
 	provider: string;
 	environment: string;
 	lastHealthStatus: string | null;
+	/** ISS-526 — Sentry-only: the labelled targets the agent picks between when
+	 *  querying the Sentry MCP (org/project is passed per call). */
+	sentryTargets?: SentryTarget[];
 }
 
 // Per-integration usage hints come from the data-driven registry
 // (`integrations/usage-registry.ts`) so adding an integration never edits this
 // rendering code. Listing only the connected providers keeps the guide
 // accurate; the agent then knows which tool to reach for which task.
-function renderIntegrations(rows: IntegrationRow[]): string {
+export function renderIntegrations(rows: IntegrationRow[]): string {
 	if (rows.length === 0) {
 		return "## Project integrations\nNo external integrations are connected to this project.";
 	}
 	const lines = rows.map((r) => {
 		const hint = getIntegrationUsage(r.provider);
 		const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : "";
-		return `- **${r.provider}** [${r.environment}]${health} — ${hint}`;
+		const bullet = `- **${r.provider}** [${r.environment}]${health} — ${hint}`;
+		// ISS-526 — for Sentry, list the configured targets (label → org/project
+		// → notes) under the bullet so the agent knows which org/project slug to
+		// pass per Sentry MCP call. The MCP server still gets only host + token.
+		if (r.provider === "sentry" && r.sentryTargets && r.sentryTargets.length > 0) {
+			return `${bullet}\n${renderSentryTargetsLine(r.sentryTargets)}`;
+		}
+		return bullet;
 	});
 	return `## Project integrations\nConnected integrations and how to use them:\n${lines.join("\n")}`;
 }
@@ -195,6 +210,15 @@ export async function loadProjectFactInputs(
 				provider: p.binding.provider,
 				environment: p.binding.environment,
 				lastHealthStatus: p.connection.lastHealthStatus,
+				// ISS-526 — attach the Sentry target list so renderIntegrations
+				// can surface it to the agent (config lives on the connection).
+				...(p.binding.provider === "sentry"
+					? {
+							sentryTargets: resolveSentryTargets(
+								p.connection.config as SentryConfig,
+							),
+						}
+					: {}),
 			}));
 	} catch {
 		// defaults → full ladder, empty {{project:}} resolver

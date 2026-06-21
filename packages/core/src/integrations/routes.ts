@@ -29,6 +29,8 @@ import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
 import { buildSentryMcpEntry } from './sentry/resolver.js';
+import { resolveSentryTargets } from './sentry/targets.js';
+import type { SentryConfig } from './sentry/types.js';
 import {
   type BindingWithConnection,
   type IntegrationConnectionRow,
@@ -174,13 +176,23 @@ const epodsystemSecretsSchema = z.object({
   apiKey: z.string().min(8).max(2000),
 });
 
-// ISS-524 — Sentry provider. Config is the non-secret target (Sentry host +
-// optional org/project slugs); the `sntryu_` auth token is the only secret and
-// is vault-encrypted like coolify/postman. `sentryConfigBase` carries NO
-// defaults so `.partial()` is a true partial for PATCH. The host is required on
-// create (the MCP server's SENTRY_HOST); the slugs are optional display scoping.
+// ISS-524 / ISS-526 — Sentry provider. Config is the non-secret target set
+// (Sentry host + a labelled `targets[]` list of org/project bindings); the
+// `sntryu_` auth token is the only secret and is vault-encrypted like
+// coolify/postman. `sentryConfigBase` carries NO defaults so `.partial()` is a
+// true partial for PATCH. The host is required on create (the MCP server's
+// SENTRY_HOST). The legacy top-level slugs (ISS-524) stay optional for
+// back-compat reads; new writes use `targets[]`.
+const sentryTargetSchema = z.object({
+  label: z.string().min(1).max(120),
+  organizationSlug: z.string().min(1).max(200).optional(),
+  projectSlug: z.string().min(1).max(200).optional(),
+  environment: z.string().min(1).max(120).optional(),
+  notes: z.string().max(2000).optional(),
+});
 const sentryConfigBase = z.object({
   host: z.string().min(1).max(255),
+  targets: z.array(sentryTargetSchema).max(50).optional(),
   organizationSlug: z.string().min(1).max(200).optional(),
   projectSlug: z.string().min(1).max(200).optional(),
 });
@@ -974,8 +986,16 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       alwaysEnvKeyed: false,
       neverCheckedDetail: 'never test-connected',
       extraMeta: (row) => {
-        const cfg = (row.config ?? {}) as { host?: string; organizationSlug?: string };
-        return { host: cfg.host ?? null, organizationSlug: cfg.organizationSlug ?? null };
+        const cfg = (row.config ?? {}) as SentryConfig;
+        // ISS-526 — surface the multi-target shape: count + the first target's
+        // org for the card subtitle. Defensive (no throw on missing config);
+        // back-compat read covers the legacy single-slug connection.
+        const targets = resolveSentryTargets(cfg);
+        return {
+          host: cfg.host ?? null,
+          organizationSlug: targets[0]?.organizationSlug ?? cfg.organizationSlug ?? null,
+          targetCount: targets.length,
+        };
       },
     }),
   );

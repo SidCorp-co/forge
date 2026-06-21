@@ -12,7 +12,7 @@ vi.mock("../../logger.js", () => ({
 	logger: { warn: (...a: unknown[]) => warnSpy(...a) },
 }));
 
-const { renderStageFactsText } = await import("./resolve.js");
+const { renderStageFactsText, renderIntegrations } = await import("./resolve.js");
 type Inputs = Parameters<typeof renderStageFactsText>[0];
 
 const GUIDE_TEXT = "pnpm build && pnpm test -- THE FULL GUIDE BODY";
@@ -171,5 +171,37 @@ describe("renderStageFactsText — always-inject tier (ISS-521)", () => {
 			"code",
 		);
 		expect(warnSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe("renderIntegrations — Sentry targets (ISS-526)", () => {
+	it("lists the configured Sentry targets under the provider bullet", () => {
+		const text = renderIntegrations([
+			{
+				provider: "sentry",
+				environment: "prod",
+				lastHealthStatus: "ok",
+				sentryTargets: [
+					{
+						label: "Backend",
+						organizationSlug: "acme",
+						projectSlug: "be",
+						notes: "5xx errors",
+					},
+					{ label: "Mobile", organizationSlug: "acme", projectSlug: "mob" },
+				],
+			},
+		]);
+		expect(text).toContain("- **sentry** [prod] (health: ok)");
+		expect(text).toContain("  - Backend: org=acme project=be — 5xx errors");
+		expect(text).toContain("  - Mobile: org=acme project=mob");
+	});
+
+	it("renders just the bullet when a Sentry binding has no targets", () => {
+		const text = renderIntegrations([
+			{ provider: "sentry", environment: "prod", lastHealthStatus: null, sentryTargets: [] },
+		]);
+		expect(text).toContain("- **sentry** [prod]");
+		expect(text).not.toContain("  - ");
 	});
 });

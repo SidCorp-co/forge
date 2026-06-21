@@ -70,12 +70,25 @@ export interface PostmanConfig {
   environment?: string;
 }
 
-// === ISS-524 — Sentry integration config shape ===
+// === ISS-524 / ISS-526 — Sentry integration config shape ===
 
-/** Non-secret Sentry target stored in the connection `config`. */
+/** One labelled Sentry target under the connection (ISS-526). */
+export interface SentryTarget {
+  label: string;
+  organizationSlug?: string;
+  projectSlug?: string;
+  environment?: string;
+  notes?: string;
+}
+
+/** Non-secret Sentry config stored in the connection `config`. `targets[]` is
+ *  the labelled list (ISS-526); the top-level slugs are legacy back-compat. */
 export interface SentryConfig {
   host: string;
+  targets?: SentryTarget[];
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   organizationSlug?: string;
+  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   projectSlug?: string;
   environment?: string;
 }
@@ -175,15 +188,23 @@ export type CreateIntegrationInput =
       orgId?: string;
     };
 
-/** Partial patch for `PATCH .../integrations/:id`. */
+/**
+ * Partial patch for `PATCH .../integrations/:id`. `config`/`secrets` are a UNION
+ * over the providers (one patch targets ONE provider): an intersection would
+ * require a value to satisfy every provider at once, which is impossible now
+ * that both Coolify and Sentry carry their own incompatible `targets[]` shape
+ * (ISS-526). The server re-validates against the binding's actual provider.
+ */
 export interface UpdateIntegrationInput {
-  config?: Partial<CoolifyConfigInput> &
-    Partial<EpodsystemConfigInput> &
-    Partial<PostmanConfigInput> &
-    Partial<SentryConfigInput>;
-  secrets?: Partial<CoolifySecretsInput> &
-    Partial<EpodsystemSecretsInput> &
-    Partial<PostmanSecretsInput> &
-    Partial<SentrySecretsInput>;
+  config?:
+    | Partial<CoolifyConfigInput>
+    | Partial<EpodsystemConfigInput>
+    | Partial<PostmanConfigInput>
+    | Partial<SentryConfigInput>;
+  secrets?:
+    | Partial<CoolifySecretsInput>
+    | Partial<EpodsystemSecretsInput>
+    | Partial<PostmanSecretsInput>
+    | Partial<SentrySecretsInput>;
   active?: boolean;
 }
