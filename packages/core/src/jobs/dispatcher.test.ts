@@ -441,6 +441,88 @@ describe('jobs/dispatcher', () => {
     expect(args.userPrompt).toBe('');
   });
 
+  // ISS-535 — reopen-driven escalation. A `fix` job on a reopened issue
+  // (reopenCount >= 1) bumps the default `reopen` tier (sonnet) up the ladder.
+  // Select order for a non-pm fix job (stageStatus set): (1) job lookup,
+  // (2) checkMonthlyBudget→resolveStageOverrides loadStageMap, (3) fallback
+  // chain, (4) preDispatch resolveStageOverrides loadStageMap, (5) loadRepoPath,
+  // (6) escalation issues.reopenCount lookup. The mcp-resolver selects after
+  // fall through to the base empty-row mock.
+  it('ISS-535: escalates a fix job up the tier ladder when reopenCount >= 1', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-fix',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-r',
+        type: 'fix',
+        payload: { stageStatus: 'reopen' },
+      },
+    ]);
+    mockSelectOnce([{ agentConfig: null }]); // budget-check loadStageMap → no budget → allow
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]); // preDispatch loadStageMap → default 'sonnet'
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-fix' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+    mockSelectOnce([{ reopenCount: 1 }]); // escalation lookup
+
+    const result = await handleDispatch({ jobId: 'j-fix' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    expect(arg.job.payload.model).toBe('opus'); // sonnet +1 step → opus
+  });
+
+  it('ISS-535: does NOT escalate a fix job when reopenCount is 0', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-fix0',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-r0',
+        type: 'fix',
+        payload: { stageStatus: 'reopen' },
+      },
+    ]);
+    mockSelectOnce([{ agentConfig: null }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]); // preDispatch loadStageMap → default 'sonnet'
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-fix0' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+    mockSelectOnce([{ reopenCount: 0 }]); // escalation lookup → no bump
+
+    const result = await handleDispatch({ jobId: 'j-fix0' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    expect(arg.job.payload.model).toBe('sonnet'); // base reopen tier, unescalated
+  });
+
+  it('ISS-535: a non-fix/review job is never escalated (no reopenCount lookup)', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-code',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-c',
+        type: 'code',
+        payload: { stageStatus: 'approved' },
+      },
+    ]);
+    mockSelectOnce([{ agentConfig: null }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]); // preDispatch loadStageMap → default 'sonnet'
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-code' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+    // No escalation select is queued — the code path must not perform one.
+
+    const result = await handleDispatch({ jobId: 'j-code' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    expect(arg.job.payload.model).toBe('sonnet'); // approved → code → balanced, no escalation
+  });
+
   // ISS-336 review blocker regression — the dispatcher must shallow-copy the
   // resolved overrides before layering the project's Postman MCP entry. The old
   // code mutated `preDispatchOverrides` in place; on the no-override path
