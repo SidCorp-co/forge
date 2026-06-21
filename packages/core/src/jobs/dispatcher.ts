@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs, projects, runners } from '../db/schema.js';
+import { issues, jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
@@ -31,6 +31,7 @@ import { readAutoRetryPayload } from './retry.js';
 import { findPriorSessionInGroup } from './session-resume.js';
 import {
   type StageOverrides,
+  escalateModel,
   resolveProjectDefaultMcpServers,
   resolveStageOverrides,
 } from './stage-overrides.js';
@@ -449,6 +450,29 @@ async function dispatchViaRunner(
   // dispatch for any other project (cross-tenant) and breaking the
   // active=false/deleted → drop-entry guarantee. (ISS-336 review blocker.)
   const runnerStageOverrides = { ...preDispatchOverrides };
+  // ISS-535 — reopen-driven escalation. When an issue was reopened from
+  // review/test (`reopenCount >= 1`), bump the `fix`/`review` job up the model
+  // tier ladder so the retry runs on a stronger model (ECC upgrade-on-failure).
+  // Mutate ONLY the shallow copy (never preDispatchOverrides / EMPTY), and keep
+  // it best-effort: a DB hiccup must not crash dispatch (mirror loadStageMap).
+  if (job.issueId && (job.type === 'fix' || job.type === 'review')) {
+    try {
+      const [issueRow] = await db
+        .select({ reopenCount: issues.reopenCount })
+        .from(issues)
+        .where(eq(issues.id, job.issueId))
+        .limit(1);
+      const reopenCount = issueRow?.reopenCount ?? 0;
+      if (reopenCount > 0) {
+        runnerStageOverrides.model = escalateModel(runnerStageOverrides.model, reopenCount);
+      }
+    } catch (err) {
+      logger.warn(
+        { err, jobId: job.id, issueId: job.issueId, type: job.type },
+        'dispatcher: reopenCount escalation lookup failed, dispatching without model bump',
+      );
+    }
+  }
   // Project-default MCP servers are the BASE of the merge: load + expand
   // `pipelineConfig.mcpServers` (catalog shorthand → full specs) and lay the
   // per-state `mcpServers` ON TOP (a per-state entry overrides the default by

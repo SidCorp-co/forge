@@ -52,6 +52,65 @@ const EMPTY: StageOverrides = {
 };
 
 /**
+ * ISS-535 — explicit per-stage model-routing policy (single source of truth).
+ *
+ * Keyed by issue STATUS (the `stageStatus` stamped on the job payload — the
+ * same key `resolveStageOverrides` looks up). Applies to EVERY project
+ * automatically whenever the per-project `pipelineConfig.states[status].model`
+ * is null, and is overridable per-project by setting that `.model`.
+ *
+ * Values are TIER ALIASES (`haiku`/`sonnet`/`opus`), passed verbatim to
+ * `claude --model` (claude_code.rs forwards the string as-is). Aliases resolve
+ * to the current model in each family, so the policy stays stable across model
+ * bumps — unlike dated full IDs (`claude-opus-4-8`, …), which rot. The aliases
+ * match the `modelTiers` enum, so they are already valid `--model` values.
+ *
+ * Policy: cheap (haiku) for mechanical classify/close steps, balanced (sonnet)
+ * for reproduce/code/merge, deep (opus) for the high-leverage plan & review.
+ * `fix` (reopen) starts at sonnet and ESCALATES via {@link escalateModel}.
+ * Statuses absent from this table (staging/custom/pm/smoke) fall through to the
+ * dispatcher's `job.modelTier ?? 'default'`.
+ */
+export const DEFAULT_STAGE_MODELS: Record<string, string> = {
+  open: 'haiku', // triage — classify, cheap
+  confirmed: 'sonnet', // clarify — reproduce/validate
+  clarified: 'opus', // plan — architecture, high leverage
+  approved: 'sonnet', // code — balanced
+  developed: 'opus', // review — bug-catching, high leverage
+  testing: 'sonnet', // test — merge + E2E, mechanical
+  reopen: 'sonnet', // fix — base tier; escalates with reopenCount
+  released: 'haiku', // release — changelog + close
+};
+
+/** Tier ladder for {@link escalateModel}. Index = cost/capability rank. */
+const MODEL_TIER_LADDER = ['haiku', 'sonnet', 'opus'] as const;
+
+/**
+ * The default model tier for a stage status, or null when the status is not in
+ * the policy table (caller then falls through to its own default).
+ */
+export function resolveDefaultModel(stageStatus: string): string | null {
+  return DEFAULT_STAGE_MODELS[stageStatus] ?? null;
+}
+
+/**
+ * ISS-535 escalation — bump a tier-alias model up the ladder by `reopenCount`
+ * steps, clamped to the top tier (`opus`). Used for `fix`/`review` jobs so a
+ * reopened issue retries at a stronger model (ECC "upgrade-on-failure").
+ *
+ * Passes the model through unchanged when: it is null, it is not a known tier
+ * alias (a custom full-ID override can't be laddered), or `reopenCount <= 0`.
+ */
+export function escalateModel(model: string | null, reopenCount: number): string | null {
+  if (!model || reopenCount <= 0) return model;
+  const idx = MODEL_TIER_LADDER.indexOf(model as (typeof MODEL_TIER_LADDER)[number]);
+  if (idx < 0) return model; // not a ladder alias — leave custom overrides alone
+  const next = Math.min(idx + reopenCount, MODEL_TIER_LADDER.length - 1);
+  // `next` is a clamped, in-bounds index, so this is always defined.
+  return MODEL_TIER_LADDER[next] ?? model;
+}
+
+/**
  * Read the stage status the orchestrator stamped on the job's payload at
  * enqueue time. Returns null for legacy jobs (pre-PR-4) — caller falls
  * through to no-override behavior.
@@ -136,7 +195,9 @@ export async function resolveStageOverrides(
 
   const states = await loadStageMap(projectId);
   const stage = states?.[stageStatus];
-  if (!stage) return { ...EMPTY };
+  // ISS-535 — projects with NO per-state config (or no entry for this status)
+  // still get the default model-routing policy. Everything else stays EMPTY.
+  if (!stage) return { ...EMPTY, model: resolveDefaultModel(stageStatus) };
 
   // Shallow-clone object/array fields so callers that mutate the result
   // (e.g. layer project defaults onto mcpServers, push extra tools onto
@@ -144,7 +205,8 @@ export async function resolveStageOverrides(
   // reference. Primitive fields are safe to pass through.
   return {
     systemPrompt: stage.systemPrompt ? { ...stage.systemPrompt } : null,
-    model: stage.model ?? null,
+    // ISS-535 — per-project `.model` WINS; otherwise the default policy applies.
+    model: stage.model ?? resolveDefaultModel(stageStatus),
     allowedTools: stage.allowedTools ? [...stage.allowedTools] : null,
     disallowedTools: stage.disallowedTools ? [...stage.disallowedTools] : null,
     permissionMode: stage.permissionMode ?? null,

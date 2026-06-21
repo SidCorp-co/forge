@@ -13,9 +13,14 @@ vi.mock('../logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-const { extractStageStatus, resolveStageOverrides, resolveProjectDefaultMcpServers } = await import(
-  './stage-overrides.js'
-);
+const {
+  extractStageStatus,
+  resolveStageOverrides,
+  resolveProjectDefaultMcpServers,
+  resolveDefaultModel,
+  escalateModel,
+  DEFAULT_STAGE_MODELS,
+} = await import('./stage-overrides.js');
 
 beforeEach(() => {
   limitResults.length = 0;
@@ -43,10 +48,11 @@ describe('resolveStageOverrides', () => {
     expect(r.allowedTools).toBeNull();
   });
 
-  it('returns empty when project has no agentConfig', async () => {
+  it('applies the default policy model when project has no agentConfig (ISS-535)', async () => {
     limitResults.push([{ agentConfig: null }]);
     const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
-    expect(r.model).toBeNull();
+    expect(r.model).toBe('opus'); // developed → review → deep tier
+    expect(r.allowedTools).toBeNull(); // only model gets the default; rest stay empty
   });
 
   it('returns the stage config from agentConfig.pipelineConfig.states', async () => {
@@ -78,18 +84,92 @@ describe('resolveStageOverrides', () => {
     expect(r.sessionGroup).toBe('verification');
   });
 
-  it('returns empty when the stage status is missing from the config', async () => {
+  it('applies the default policy model when the stage status is missing from the config (ISS-535)', async () => {
     limitResults.push([
-      { agentConfig: { pipelineConfig: { states: { approved: { model: 'opus' } } } } },
+      { agentConfig: { pipelineConfig: { states: { approved: { model: 'haiku' } } } } },
     ]);
     const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
+    expect(r.model).toBe('opus'); // no `developed` entry → default policy
+  });
+
+  it('per-project .model wins over the default policy (ISS-535)', async () => {
+    limitResults.push([
+      { agentConfig: { pipelineConfig: { states: { developed: { model: 'haiku' } } } } },
+    ]);
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
+    expect(r.model).toBe('haiku'); // explicit override beats the opus default
+  });
+
+  it('applies the default policy model when states[status].model is null (ISS-535)', async () => {
+    limitResults.push([
+      {
+        agentConfig: {
+          pipelineConfig: { states: { clarified: { skillName: 'forge-plan', model: null } } },
+        },
+      },
+    ]);
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'clarified' });
+    expect(r.model).toBe('opus'); // clarified → plan → deep tier
+  });
+
+  it('falls through to no default for statuses absent from the policy table (ISS-535)', async () => {
+    limitResults.push([{ agentConfig: null }]);
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'staging' });
     expect(r.model).toBeNull();
   });
 
-  it('swallows DB errors and returns empty', async () => {
+  it('still applies the default policy model on DB error (ISS-535)', async () => {
+    // loadStageMap swallows the error and returns null → the hardcoded policy
+    // table still routes the model (it needs no DB).
     limit.mockRejectedValueOnce(new Error('db down'));
     const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
-    expect(r.model).toBeNull();
+    expect(r.model).toBe('opus');
+  });
+});
+
+describe('resolveDefaultModel (ISS-535)', () => {
+  it('covers all 8 dispatchable statuses with the documented tiers', () => {
+    expect(DEFAULT_STAGE_MODELS).toEqual({
+      open: 'haiku',
+      confirmed: 'sonnet',
+      clarified: 'opus',
+      approved: 'sonnet',
+      developed: 'opus',
+      testing: 'sonnet',
+      reopen: 'sonnet',
+      released: 'haiku',
+    });
+  });
+
+  it('returns the tier for a known status and null otherwise', () => {
+    expect(resolveDefaultModel('clarified')).toBe('opus');
+    expect(resolveDefaultModel('released')).toBe('haiku');
+    expect(resolveDefaultModel('staging')).toBeNull();
+    expect(resolveDefaultModel('bogus')).toBeNull();
+  });
+});
+
+describe('escalateModel (ISS-535)', () => {
+  it('bumps a tier alias up the ladder by reopenCount steps', () => {
+    expect(escalateModel('haiku', 1)).toBe('sonnet');
+    expect(escalateModel('sonnet', 1)).toBe('opus');
+    expect(escalateModel('haiku', 2)).toBe('opus');
+  });
+
+  it('clamps at the top tier (opus)', () => {
+    expect(escalateModel('sonnet', 2)).toBe('opus');
+    expect(escalateModel('opus', 5)).toBe('opus');
+    expect(escalateModel('haiku', 99)).toBe('opus');
+  });
+
+  it('is a no-op for reopenCount <= 0', () => {
+    expect(escalateModel('sonnet', 0)).toBe('sonnet');
+    expect(escalateModel('sonnet', -1)).toBe('sonnet');
+  });
+
+  it('passes non-alias models and null through unchanged', () => {
+    expect(escalateModel('claude-opus-4-8', 3)).toBe('claude-opus-4-8');
+    expect(escalateModel(null, 2)).toBeNull();
   });
 });
 

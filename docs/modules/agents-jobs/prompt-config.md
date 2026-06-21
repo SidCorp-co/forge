@@ -49,7 +49,7 @@ Stored under `projects.agentConfig.pipelineConfig.states[<state>]` (jsonb, no mi
 | `enabled` | bool | `false` soft-skips the stage (auto-transition past it) |
 | `mode` | `auto` \| `manual` | `manual` blocks auto + PM dispatch; human-only |
 | `skillName` | string | Override the skill run at this state |
-| `model` | string | Opaque model id passed to the adapter (not validated) |
+| `model` | string | Opaque model id passed to the adapter (not validated); `null` → default model-routing policy (see below) |
 | `allowedTools` | string[] \| null | `null` = skill self-grant; array = hard whitelist |
 | `permissionMode` | `default`\|`plan`\|`acceptEdits`\|`bypassPermissions` | Claude CLI permission mode |
 | `timeoutSeconds` | int (≤86400) | Per-state runner timeout |
@@ -62,6 +62,31 @@ Stored under `projects.agentConfig.pipelineConfig.states[<state>]` (jsonb, no mi
 Session groups declared under `pipelineConfig.sessionGroups: { [name]: state[] }` with top-level `onResumeFail: 'fresh' | 'abort'`. A cross-field `superRefine` rejects any `states[x].sessionGroup` that isn't a declared group.
 
 `userPromptPolicy` (`userPromptPolicySchema`) tunes `includeFields`, `sessionContext.{depth,fields}`, `fieldCaps`, `truncationStrategy`, and the step-handoff injection block. Consumed by the orchestrator at enqueue time (the resulting `promptString` already reflects it), not at dispatch.
+
+## Default model-routing policy (ISS-535)
+
+When `states[<status>].model` is **null**, `resolveStageOverrides` applies a hardcoded default tier from `DEFAULT_STAGE_MODELS` (`stage-overrides.ts`), keyed by issue status. This is the single source of truth for per-stage model routing — it applies to **every** project automatically, even projects with no per-state config, and is overridable per-project simply by setting `states[<status>].model` (an explicit value always wins).
+
+| status | step | default tier | rationale |
+|--------|------|--------------|-----------|
+| `open` | triage | `haiku` | cheap classification |
+| `confirmed` | clarify | `sonnet` | reproduce / validate |
+| `clarified` | plan | `opus` | architecture — high leverage |
+| `approved` | code | `sonnet` | balanced |
+| `developed` | review | `opus` | bug-catching — high leverage |
+| `testing` | test | `sonnet` | merge + E2E, mechanical |
+| `reopen` | fix | `sonnet` | base tier; escalates (below) |
+| `released` | release | `haiku` | changelog + close |
+
+Statuses absent from the table (`staging`/`custom`/`pm`/`smoke`) fall through to the dispatcher's `job.modelTier ?? 'default'`.
+
+Values are **tier aliases** (`haiku`/`sonnet`/`opus`), passed verbatim to `claude --model` (the runner forwards the string unchanged in `build_args`). Aliases resolve to the current model in each family, so the policy stays stable across model bumps — unlike dated full IDs (`claude-opus-4-8`, …). Full IDs remain valid as a per-project override.
+
+**Escalation on reopen.** `escalateModel(model, reopenCount)` bumps a tier-alias model up the ladder (`haiku → sonnet → opus`) by `reopenCount` steps, clamped to `opus`. The dispatcher applies it to `fix` and `review` jobs only, reading `issues.reopenCount` (best-effort; a DB hiccup logs at warn and dispatches without the bump). So a reopened issue retries `fix`/`review` on a stronger model. Non-alias (custom full-ID) models pass through unchanged — they can't be laddered.
+
+**Apply process (per-project override).** To override the default for a project, PATCH `pipelineConfig.states.<status>` with the **full state object** — the per-state patch is a wholesale replace AND the whole config is re-validated, so omitting `enabled`/`mcpServers`/`allowedTools`/`systemPrompt` drops them, and any enabled stage missing a registered skill 409s `MISSING_SKILL_FOR_ENABLED_STAGE`. Patch on a config that already passes validation.
+
+**Verification (A/B).** Measure cost + duration + reopen-rate per stage on the `pipeline_run_step_durations` view before/after a policy change — via `forge_metrics_project_step_durations` or `GET /api/pipeline/step-durations?projectId=&days=&step=` (p50/p95 `duration_seconds`, `cost_usd`). Roll out on a single project first, then promote.
 
 ## Dispatch-Time Resolution
 
