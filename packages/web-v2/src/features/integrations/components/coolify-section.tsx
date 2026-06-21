@@ -12,7 +12,13 @@ import {
   Field,
   Input,
   SegmentedControl,
+  Toggle,
 } from "@/design";
+import {
+  isFeatureOff,
+  usePipelineConfig,
+  useUpdatePipelineConfig,
+} from "@/features/project-settings/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import { ConnectionOwnerField } from "./connection-owner-field";
@@ -435,10 +441,108 @@ function EnvironmentPanel({
       )}
 
       {isProd && existing && (
-        <ProdConfirmBanner
+        <ProdGateSection
+          projectId={projectId}
           integrationId={existing.id}
-          pending={confirmProd.isPending}
+          confirmPending={confirmProd.isPending}
           onConfirm={() => confirmProd.mutate(existing.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * ISS-529 — per-project control over the production approval gate. Surfaces the
+ * existing `pipelineConfig.autoProdDeploy` flag as a toggle (read/written via
+ * the pipeline-config PATCH). `checked` is derived straight from the query so a
+ * failed save auto-reverts (the mutation hook only writes the cache on success
+ * and raises its own success/error toasts).
+ *
+ * - autoProd ON  → prod deploys dispatch automatically on release; the manual
+ *   "Confirm production deploy" button is hidden (it would be a no-op) and an
+ *   info banner reflects the auto-approve state.
+ * - autoProd OFF (default) → the existing manual confirm gate is unchanged.
+ *
+ * When pipeline control is disabled (FEATURE_OFF) the toggle is replaced by a
+ * muted note and the manual gate stays in place — never a broken/dead control.
+ */
+function ProdGateSection({
+  projectId,
+  integrationId,
+  confirmPending,
+  onConfirm,
+}: {
+  projectId: string;
+  integrationId: string;
+  confirmPending: boolean;
+  onConfirm: () => void;
+}) {
+  const cfgQ = usePipelineConfig(projectId);
+  const update = useUpdatePipelineConfig(projectId);
+
+  const featureOff = cfgQ.isError && isFeatureOff(cfgQ.error);
+  // Default OFF: only an explicit `=== true` enables auto-approve — a missing
+  // flag (or any read error) must never auto-deploy a project to prod.
+  const autoProd = cfgQ.data?.pipelineConfig?.autoProdDeploy === true;
+
+  function handleToggle(next: boolean) {
+    if (!cfgQ.data) return;
+    // Spread the full current config — the PATCH persists the whole object, so
+    // sending a partial would clobber every other pipeline key.
+    update.mutate({ ...cfgQ.data.pipelineConfig, autoProdDeploy: next });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {featureOff ? (
+        <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
+          <span className="fg-label text-subtle">Production approval gate</span>
+          <span className="fg-body-sm text-muted">
+            Pipeline control is disabled for this project, so auto-approve
+            can&apos;t be configured here. Production deploys stay behind the
+            manual gate below.
+          </span>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="fg-label text-subtle">
+              Auto-approve production deploys
+            </span>
+            <Toggle
+              checked={autoProd}
+              onChange={handleToggle}
+              disabled={update.isPending || cfgQ.isLoading || !cfgQ.data}
+              aria-label="Auto-approve production deploys"
+            />
+          </div>
+          <span className="fg-body-sm text-muted">
+            When on, production deploys dispatch automatically on release —
+            skipping the manual approval gate. Off (default) keeps the manual
+            gate. Applies to this project.
+          </span>
+        </div>
+      )}
+
+      {autoProd ? (
+        <Banner tone="success">
+          <div className="flex flex-col gap-1">
+            <span className="fg-label">Production approval gate · off</span>
+            <span className="fg-body-sm">
+              Auto-approve is enabled — production deploys dispatch automatically
+              on release, like staging. No manual confirmation required.
+            </span>
+            <span className="font-mono text-[10px] text-subtle">
+              integration: {integrationId}
+            </span>
+          </div>
+        </Banner>
+      ) : (
+        <ProdConfirmBanner
+          integrationId={integrationId}
+          pending={confirmPending}
+          onConfirm={onConfirm}
         />
       )}
     </div>

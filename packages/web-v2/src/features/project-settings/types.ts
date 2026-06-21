@@ -169,6 +169,14 @@ export interface PipelineConfig {
 	 * Mirrors `mergeStatesSchema` in core `pipeline/pipeline-config-schema.ts`.
 	 */
 	mergeStates?: { baseBranch?: string; productionBranch?: string };
+	/**
+	 * When true, production Coolify deploys auto-dispatch on release instead of
+	 * parking at the manual human-confirm gate (mirrors `autoProdDeploy` in core
+	 * `pipeline/pipeline-config-schema.ts`). Absent/false (the default) keeps the
+	 * prod approval gate enforced — surfaced as a per-project toggle in the
+	 * Coolify integration drawer (see `integrations/components/coolify-section`).
+	 */
+	autoProdDeploy?: boolean;
 	[key: string]: unknown;
 }
 
