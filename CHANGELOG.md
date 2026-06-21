@@ -68,6 +68,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Your agent chats in "My conversations" are now private to you — they're no longer visible to other members of the same project or organization. The conversation view also opens at your most recent message instead of the oldest.
 - Unread notifications now show a badge on the browser-tab icon, and desktop-notification setup is clearer so alerts actually reach you.
 - You can now configure Sentry per project under Settings → Integrations, so the project's agents can read its Sentry logs.
+- The Sentry integration now lets you register multiple Sentry projects (e.g. backend, frontend, mobile) under one connection — each with its own label and optional notes — so Forge's agents can read errors across all of them.
 
 ## [0.3.0] - 2026-06-11
 
