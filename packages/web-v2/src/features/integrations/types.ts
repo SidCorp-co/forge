@@ -18,6 +18,8 @@ import type {
   PostmanMode,
   PostmanRegion,
   PostmanSecretsInput,
+  SentryConfigInput,
+  SentrySecretsInput,
 } from "@forge/contracts";
 
 export type {
@@ -34,6 +36,8 @@ export type {
   EpodsystemSecretsInput,
   PostmanRegion,
   PostmanMode,
+  SentryConfigInput,
+  SentrySecretsInput,
   // === ISS-401/C — connection/binding cutover ===
   // The project-facing binding summary + the owner-facing connection summary,
   // plus the connection CRUD request/response envelopes. All exclude secret
@@ -63,6 +67,16 @@ export interface PostmanConfig {
   collectionId?: string;
   region: PostmanRegion;
   mode: PostmanMode;
+  environment?: string;
+}
+
+// === ISS-524 — Sentry integration config shape ===
+
+/** Non-secret Sentry target stored in the connection `config`. */
+export interface SentryConfig {
+  host: string;
+  organizationSlug?: string;
+  projectSlug?: string;
   environment?: string;
 }
 
@@ -122,6 +136,10 @@ export interface ProviderConfig {
   draftThemeId?: string;
   commerceEnabled?: boolean;
   domain?: string;
+  // sentry
+  host?: string;
+  organizationSlug?: string;
+  projectSlug?: string;
   environment?: "staging" | "prod";
 }
 
@@ -148,15 +166,24 @@ export type CreateIntegrationInput =
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
       orgId?: string;
+    }
+  | {
+      provider: "sentry";
+      environment?: "staging" | "prod";
+      config: SentryConfigInput;
+      secrets: SentrySecretsInput;
+      orgId?: string;
     };
 
 /** Partial patch for `PATCH .../integrations/:id`. */
 export interface UpdateIntegrationInput {
   config?: Partial<CoolifyConfigInput> &
     Partial<EpodsystemConfigInput> &
-    Partial<PostmanConfigInput>;
+    Partial<PostmanConfigInput> &
+    Partial<SentryConfigInput>;
   secrets?: Partial<CoolifySecretsInput> &
     Partial<EpodsystemSecretsInput> &
-    Partial<PostmanSecretsInput>;
+    Partial<PostmanSecretsInput> &
+    Partial<SentrySecretsInput>;
   active?: boolean;
 }

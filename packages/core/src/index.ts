@@ -54,6 +54,7 @@ import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js'
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
+import { registerSentryAdapter } from './integrations/sentry/adapter.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
@@ -448,6 +449,7 @@ if (isMain) {
   registerCoolifyAdapter();
   registerPostmanAdapter();
   registerEpodsystemAdapter();
+  registerSentryAdapter();
   await registerIntegrationsWorker();
   registerReleaseCompletedSubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);
