@@ -41,7 +41,8 @@ import type { IssueComplexity, IssuePriority } from "../types";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 
 // Attachment staging limits — mirror core's `issueCreateSchema` allow-list so
-// we reject client-side before burning an upload round-trip.
+// we reject client-side before burning an upload round-trip. Office/data types
+// (docx, csv, xls, xlsx) are allowed alongside images, video, PDF, and text.
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
 const ALLOWED_MIMES = new Set([
@@ -55,7 +56,13 @@ const ALLOWED_MIMES = new Set([
   "video/quicktime",
   "text/plain",
   "text/markdown",
+  "text/csv",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
+const ACCEPT_ATTR =
+  "image/png,image/jpeg,image/gif,image/webp,application/pdf,video/mp4,video/webm,video/quicktime,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.mp4,.webm,.mov,.txt,.md,.csv,.docx,.xls,.xlsx";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -363,7 +370,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
                 <Icon name="plus" size={18} className="text-subtle" />
                 <p className="fg-body-sm text-fg">Drop files or paste an image to attach</p>
                 <p className="fg-caption">
-                  Max 10 MB each · up to {MAX_FILES} · images, video, PDF, text, markdown.
+                  Max 10 MB each · up to {MAX_FILES} · images, video, PDF, text, markdown, CSV, Word, Excel.
                 </p>
                 <Button
                   type="button"
@@ -374,7 +381,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
                 >
                   Choose files
                 </Button>
-                <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onPick} />
+                <input ref={fileInputRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={onPick} />
               </div>
 
               {warnings.length > 0 && (

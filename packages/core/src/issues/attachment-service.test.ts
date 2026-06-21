@@ -157,6 +157,27 @@ describe('persistIssueAttachment', () => {
     );
   });
 
+  it('persists office/data MIME types (csv, docx, xls, xlsx)', async () => {
+    const officeMimes = [
+      'text/csv',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+    for (const mime of officeMimes) {
+      insertReturning.mockResolvedValueOnce([makeAttachmentRow({ name: 'doc', mime })]);
+      const result = await persistIssueAttachment({
+        issueId: ISSUE_ID,
+        name: 'doc',
+        mime,
+        bytes: TINY_BYTES,
+        uploaderId: UPLOADER_ID,
+      });
+      expect(result.mime).toBe(mime);
+    }
+    expect(storagePut).toHaveBeenCalledTimes(officeMimes.length);
+  });
+
   it('throws EMPTY_FILE for zero-byte input', async () => {
     await expect(
       persistIssueAttachment({
