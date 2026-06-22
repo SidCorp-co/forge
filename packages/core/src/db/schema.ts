@@ -1558,6 +1558,9 @@ export type ScheduleRunner = (typeof scheduleRunners)[number];
 export const scheduleStatuses = ['success', 'failed', 'running', 'skipped'] as const;
 export type ScheduleStatus = (typeof scheduleStatuses)[number];
 
+export const scheduleModes = ['propose', 'auto'] as const;
+export type ScheduleMode = (typeof scheduleModes)[number];
+
 export const schedules = pgTable(
   'schedules',
   {
@@ -1576,12 +1579,19 @@ export const schedules = pgTable(
     lastStatus: text('last_status', { enum: scheduleStatuses }),
     lastSessionId: text('last_session_id'),
     metadata: jsonb('metadata'),
+    templateKey: text('template_key'),
+    params: jsonb('params'),
+    mode: text('mode', { enum: scheduleModes }),
+    appliedMessageVersions: jsonb('applied_message_versions'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectEnabledIdx: index('schedules_project_enabled_idx').on(t.projectId, t.enabled),
     nextRunAtIdx: index('schedules_next_run_at_idx').on(t.nextRunAt).where(sql`enabled = true`),
+    templateKeyIdx: index('schedules_template_key_idx')
+      .on(t.projectId, t.templateKey)
+      .where(sql`template_key is not null`),
   }),
 );
 
