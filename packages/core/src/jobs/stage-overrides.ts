@@ -26,6 +26,7 @@ import type {
   StageConfig,
   SystemPromptOverrideConfig,
 } from '../pipeline/pipeline-config-schema.js';
+import { validateStagePolicy } from '../security/config-policy.js';
 
 export interface StageOverrides {
   systemPrompt: SystemPromptOverrideConfig | null;
@@ -122,9 +123,7 @@ export function extractStageStatus(payload: unknown): string | null {
 }
 
 /** Load the project's pipelineConfig.states sub-tree once per dispatch. */
-async function loadStageMap(
-  projectId: string,
-): Promise<Record<string, StageConfig> | null> {
+async function loadStageMap(projectId: string): Promise<Record<string, StageConfig> | null> {
   try {
     const [row] = await db
       .select({ agentConfig: projects.agentConfig })
@@ -199,6 +198,15 @@ export async function resolveStageOverrides(
   // still get the default model-routing policy. Everything else stays EMPTY.
   if (!stage) return { ...EMPTY, model: resolveDefaultModel(stageStatus) };
 
+  // config-policy: non-blocking warn pass (ISS-539).
+  const policyFindings = validateStagePolicy(stageStatus, stage, resolveDefaultModel(stageStatus));
+  if (policyFindings.length > 0) {
+    logger.warn(
+      { projectId, stageStatus, findings: policyFindings },
+      'config-policy: pipeline stage policy warnings',
+    );
+  }
+
   // Shallow-clone object/array fields so callers that mutate the result
   // (e.g. layer project defaults onto mcpServers, push extra tools onto
   // allowedTools) never leak changes back into the cached drizzle row
@@ -211,9 +219,7 @@ export async function resolveStageOverrides(
     disallowedTools: stage.disallowedTools ? [...stage.disallowedTools] : null,
     permissionMode: stage.permissionMode ?? null,
     timeoutSeconds: stage.timeoutSeconds ?? null,
-    mcpServers: stage.mcpServers
-      ? { ...(stage.mcpServers as Record<string, unknown>) }
-      : null,
+    mcpServers: stage.mcpServers ? { ...(stage.mcpServers as Record<string, unknown>) } : null,
     budget: stage.budget ? { ...stage.budget } : null,
     sessionGroup: stage.sessionGroup ?? null,
   };

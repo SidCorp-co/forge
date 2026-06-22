@@ -8,8 +8,11 @@ import {
   skillRegistrations,
   skills,
 } from '../db/schema.js';
+import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { PIPELINE_STEPS } from '../pipeline/registry.js';
+import { SkillContentBlockedError } from '../security/findings.js';
+import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { hashSkillBody } from './hash.js';
 
 export interface SkillFileInput {
@@ -153,8 +156,7 @@ export class SkillNotProjectScopedError extends Error {
   readonly code = 'SKILL_NOT_PROJECT_SCOPED';
   constructor(skillId: string) {
     super(
-      `SKILL_NOT_PROJECT_SCOPED: skill '${skillId}' is not a project skill for this project; ` +
-        `adopt the global template into the project before registering it`,
+      `SKILL_NOT_PROJECT_SCOPED: skill '${skillId}' is not a project skill for this project; adopt the global template into the project before registering it`,
     );
     this.name = 'SkillNotProjectScopedError';
   }
@@ -190,9 +192,7 @@ export async function registerSkillForProject(
         const v = (pipeline as Record<string, unknown>)[step.toggle];
         const on =
           v === true ||
-          (typeof v === 'object' &&
-            v !== null &&
-            (v as { enabled?: boolean }).enabled !== false);
+          (typeof v === 'object' && v !== null && (v as { enabled?: boolean }).enabled !== false);
         if (on) {
           throw new SkillDeleteBlockedError(reg.stage as IssueStatus, step.toggle);
         }
@@ -263,9 +263,7 @@ export interface SkillRegistrationView {
  * Stages with no skill registered are NOT returned — clients diff against
  * the canonical stage list (`STAGE_NAMES`) to surface gaps.
  */
-export async function listSkillRegistrations(
-  projectId: string,
-): Promise<SkillRegistrationView[]> {
+export async function listSkillRegistrations(projectId: string): Promise<SkillRegistrationView[]> {
   const [project] = await db
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
@@ -303,8 +301,7 @@ export async function listSkillRegistrations(
       mode: stageCfg?.mode ?? 'auto',
       enabled: stageCfg?.enabled !== false,
       registeredBy: r.registeredBy,
-      registeredAt:
-        r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+      registeredAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
     };
   });
 }
@@ -326,6 +323,21 @@ export interface CreateProjectSkillInput {
 }
 
 export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
+  const scanFindings = scanSkillContent({
+    name: input.name,
+    description: input.description,
+    skillMd: input.skillMd,
+  });
+  const blockers = scanFindings.filter((f) => f.severity === 'blocker');
+  if (blockers.length > 0) throw new SkillContentBlockedError(blockers);
+  const warns = scanFindings.filter((f) => f.severity === 'warn');
+  if (warns.length > 0) {
+    logger.warn(
+      { findings: warns, skillName: input.name },
+      'skill-content-scanner: non-blocking findings on create',
+    );
+  }
+
   const files = normalizeSkillFiles(input.files ?? []);
   const contentHash = hashSkillBody(input.skillMd, files);
   const [inserted] = (await db
@@ -366,9 +378,31 @@ export interface UpdateProjectSkillPatch {
  * canonical `skillMd` for legacy prompt-only rows on first edit.
  */
 export async function updateProjectSkill(
-  existing: Pick<SkillRow, 'id' | 'skillMd' | 'prompt' | 'files' | 'version'>,
+  existing: Pick<
+    SkillRow,
+    'id' | 'skillMd' | 'prompt' | 'files' | 'version' | 'name' | 'description'
+  >,
   patch: UpdateProjectSkillPatch,
 ): Promise<SkillRow> {
+  const hasTextPatch =
+    patch.skillMd !== undefined || patch.description !== undefined || patch.name !== undefined;
+  if (hasTextPatch) {
+    const scanFindings = scanSkillContent({
+      name: patch.name ?? existing.name,
+      description: patch.description ?? existing.description,
+      skillMd: patch.skillMd ?? existing.skillMd ?? existing.prompt ?? '',
+    });
+    const blockers = scanFindings.filter((f) => f.severity === 'blocker');
+    if (blockers.length > 0) throw new SkillContentBlockedError(blockers);
+    const warns = scanFindings.filter((f) => f.severity === 'warn');
+    if (warns.length > 0) {
+      logger.warn(
+        { findings: warns, skillId: existing.id },
+        'skill-content-scanner: non-blocking findings on update',
+      );
+    }
+  }
+
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.name !== undefined) updates.name = patch.name;
   if (patch.description !== undefined) updates.description = patch.description;
@@ -377,8 +411,7 @@ export async function updateProjectSkill(
     updates.prompt = patch.skillMd;
   }
   if (patch.target !== undefined) updates.target = patch.target;
-  const normalizedFiles =
-    patch.files !== undefined ? normalizeSkillFiles(patch.files) : undefined;
+  const normalizedFiles = patch.files !== undefined ? normalizeSkillFiles(patch.files) : undefined;
   if (normalizedFiles !== undefined) updates.files = normalizedFiles;
   if (patch.localGuide !== undefined) updates.localGuide = patch.localGuide;
   if (patch.skillMd !== undefined || patch.files !== undefined) {
@@ -411,13 +444,26 @@ export async function deleteProjectSkill(skillId: string): Promise<void> {
  */
 export async function applyGlobalSkillDefault(input: {
   projectId: string;
-  global: { name: string; description: string; skillMd: string | null; prompt: string; target: SkillTarget | null; files: unknown };
+  global: {
+    name: string;
+    description: string;
+    skillMd: string | null;
+    prompt: string;
+    target: SkillTarget | null;
+    files: unknown;
+  };
 }): Promise<SkillRow> {
   const { projectId, global } = input;
   const [existing] = await db
     .select({ id: skills.id })
     .from(skills)
-    .where(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), eq(skills.name, global.name)))
+    .where(
+      and(
+        eq(skills.scope, 'project'),
+        eq(skills.projectId, projectId),
+        eq(skills.name, global.name),
+      ),
+    )
     .limit(1);
   if (existing) {
     throw new SkillAlreadyShadowedError(global.name);
