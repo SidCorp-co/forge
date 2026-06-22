@@ -11,6 +11,7 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 | [release.md](release.md) | Cutting a release |
 | [integrations.md](integrations.md) | Wiring external integrations |
 | [forge-affordances.md](forge-affordances.md) | Operating affordances for connected agents — when to use Forge's own tools (`set_dependency`, draft-vs-open, config writes, memory recall) as trigger → tool → red-flag |
+| [skill-improve.md](skill-improve.md) | Skill self-evolution loop — enable improvement messages, how the agent evaluates and applies them per-project, how to write new messages for the registry |
 
 The Diátaxis quickstart lives at [../quickstart.md](../quickstart.md).
 
