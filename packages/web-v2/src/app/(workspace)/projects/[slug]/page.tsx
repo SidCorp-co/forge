@@ -33,7 +33,7 @@ import { useAttention } from "@/features/attention/hooks";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { useDevices, useProjectRunners } from "@/features/runners/hooks";
+import { useActiveRunners, useDevices, useProjectRunners } from "@/features/runners/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -62,10 +62,12 @@ export default function ProjectOverviewPage() {
   const devicesQ = useDevices();
   const queueQ = useQueueStats(projectId);
   const projectRunnersQ = useProjectRunners(projectId ?? null);
+  const activeRunnersQ = useActiveRunners(projectId ?? null);
   const schedulesQ = useSchedules(projectId);
 
-  // Tick once a second only while some runner is limited, so the dashboard
-  // card's reset countdown stays live without a refetch.
+  // Tick once a second while some runner is limited (live reset countdown);
+  // the active-runner card's busy state refreshes via its own 10s poll + WS,
+  // so it does not need the per-second tick.
   const anyLimited = (projectRunnersQ.data ?? []).some((r) => r.limitReason);
   const tick = useNow(1000, anyLimited);
 
@@ -120,6 +122,7 @@ export default function ProjectOverviewPage() {
     queueQ.data,
     projectRunnersQ.data,
     anyLimited ? tick : now,
+    activeRunnersQ.data?.runners,
   );
   const donut = statusDonut(health?.statusDistribution);
   const spend = spendByStage(durationsQ.data);

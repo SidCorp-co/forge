@@ -31,10 +31,7 @@ import {
   jobs,
   runners,
 } from '../db/schema.js';
-import {
-  DEFAULT_MAX_CONCURRENT_ISSUES,
-  runnerSupportsJobType,
-} from '../jobs/dispatch-gates.js';
+import { resolveProjectCap, runnerSupportsJobType } from '../jobs/dispatch-gates.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 
@@ -349,10 +346,11 @@ export async function hydratePipelineHealthForIssues(
     depsByIssue.set(r.toIssueId, bucket);
   }
 
-  // Q5 — project_full inputs. ISS-232 Phase 4 — the per-project cap is
-  // hardcoded at `DEFAULT_MAX_CONCURRENT_ISSUES` (= 1); the
-  // `pipelineConfig.maxConcurrentIssues` knob was removed in Phase 3.
-  const cap = DEFAULT_MAX_CONCURRENT_ISSUES;
+  // Q5 — project_full inputs. The per-project cap defaults to 1 but is
+  // operator-tunable via `pipelineConfig.maxConcurrentIssues`; resolve the
+  // same value the dispatch picker enforces so this health card never drifts
+  // from actual dispatch behaviour.
+  const cap = await resolveProjectCap(projectId);
   const runningRows = await db.execute<{ issue_id: string }>(sql`
     SELECT DISTINCT (metadata->>'issueId') AS issue_id
     FROM agent_sessions

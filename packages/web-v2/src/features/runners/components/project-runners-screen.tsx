@@ -36,6 +36,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
 import {
+	useActiveRunners,
 	useAssignDeviceToProject,
 	useDeleteGitCredential,
 	useDevices,
@@ -49,10 +50,12 @@ import {
 	useUnassignDeviceFromProject,
 } from "../hooks";
 import {
+	type ActiveRunnerJob,
 	PROVISION_LABEL,
 	PROVISION_STEPS,
 	type ProjectRunner,
 	type ProvisionStatus,
+	formatElapsed,
 	provisionHealth,
 	runnerLimitDisplay,
 } from "../types";
@@ -403,6 +406,7 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 /** One assigned device row + its provision stepper + actions. */
 function RunnerRow({
 	runner,
+	current,
 	projectId,
 	canEdit,
 	isPrimary,
@@ -410,6 +414,8 @@ function RunnerRow({
 	settingPrimary,
 }: {
 	runner: ProjectRunner;
+	/** The job this runner is executing right now, or null when idle. */
+	current: ActiveRunnerJob | null;
 	projectId: string;
 	canEdit: boolean;
 	/** True when this device is the project's primary (defaultDeviceId). */
@@ -423,10 +429,11 @@ function RunnerRow({
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [showActivity, setShowActivity] = useState(false);
 	const online = runner.deviceStatus === "online";
-	// Tick once a second only while this runner is limited so the reset
-	// countdown ("resets in 41m") stays live without a refetch.
-	const now = useNow(1000, Boolean(runner.limitReason));
+	// Tick once a second while this runner is limited (live reset countdown) OR
+	// busy (live elapsed counter on the current job).
+	const now = useNow(1000, Boolean(runner.limitReason) || Boolean(current));
 	const limit = runnerLimitDisplay(runner, now);
+	const elapsed = current ? formatElapsed(current.startedAt, now) : null;
 
 	return (
 		<div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
@@ -536,6 +543,36 @@ function RunnerRow({
 			</div>
 
 			<ProvisionStepper runner={runner} />
+
+			{current ? (
+				<div className="flex items-center gap-2 rounded-md border border-line bg-sunken px-3 py-1.5">
+					<HealthDot health="healthy" withLabel={false} />
+					<span className="fg-body-sm text-fg">
+						Running{" "}
+						{current.issueRef ? (
+							<span className="font-semibold">{current.issueRef}</span>
+						) : (
+							<span className="font-semibold">a job</span>
+						)}
+						{current.stage && (
+							<span className="text-subtle"> · {current.stage}</span>
+						)}
+						{current.issueTitle && (
+							<span className="text-subtle"> — {current.issueTitle}</span>
+						)}
+					</span>
+					{elapsed && (
+						<span className="fg-caption ml-auto flex-none tabular-nums text-subtle">
+							{elapsed}
+						</span>
+					)}
+				</div>
+			) : (
+				<div className="flex items-center gap-2 px-1">
+					<HealthDot health="idle" withLabel={false} />
+					<span className="fg-body-sm text-subtle">Idle</span>
+				</div>
+			)}
 
 			{limit ? (
 				<Banner tone={limit.health === "down" ? "danger" : "attention"}>
@@ -724,6 +761,7 @@ export function ProjectRunnersScreen({
 	useRoom(projectRoom(projectId));
 	const project = useProject(projectId);
 	const runners = useProjectRunners(projectId);
+	const active = useActiveRunners(projectId);
 	const setDefault = useSetDefaultDevice(projectId);
 	const defaultDeviceId = project.data?.defaultDeviceId ?? null;
 
@@ -732,6 +770,14 @@ export function ProjectRunnersScreen({
 		() =>
 			new Set(rows.map((r) => r.deviceId).filter((id): id is string => !!id)),
 		[rows],
+	);
+	// runnerId → its current in-flight job, for the per-row "running …" line.
+	const currentByRunner = useMemo(
+		() =>
+			new Map(
+				(active.data?.runners ?? []).map((r) => [r.runnerId, r.current]),
+			),
+		[active.data],
 	);
 
 	const body = (
@@ -797,6 +843,7 @@ export function ProjectRunnersScreen({
 								<RunnerRow
 									key={r.runnerId}
 									runner={r}
+									current={currentByRunner.get(r.runnerId) ?? null}
 									projectId={projectId}
 									canEdit={!!canEdit}
 									isPrimary={!!r.deviceId && r.deviceId === defaultDeviceId}

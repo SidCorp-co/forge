@@ -170,6 +170,13 @@ export interface PipelineConfig {
 	 */
 	mergeStates?: { baseBranch?: string; productionBranch?: string };
 	/**
+	 * Per-project cap on simultaneously-active issues (default 1). Raise it to
+	 * fan INDEPENDENT issues across the runner pool; dependent issues stay
+	 * serialized by the dependency gates regardless. Range [1,20]. Mirrors
+	 * `maxConcurrentIssues` in core `pipeline/pipeline-config-schema.ts`.
+	 */
+	maxConcurrentIssues?: number;
+	/**
 	 * When true, production Coolify deploys auto-dispatch on release instead of
 	 * parking at the manual human-confirm gate (mirrors `autoProdDeploy` in core
 	 * `pipeline/pipeline-config-schema.ts`). Absent/false (the default) keeps the

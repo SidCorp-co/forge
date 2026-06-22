@@ -38,7 +38,7 @@
 
 import { type SQL, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs, runners } from '../db/schema.js';
+import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
@@ -70,15 +70,40 @@ export type DispatchBarrier = { ok: true } | { ok: false; reason: GateSkipReason
 const PASS: GateResult = { pass: true };
 
 /**
- * Per-project cap on simultaneously-active issues. ISS-232 Phase 3 fixed
- * this at 1 and removed the `pipelineConfig.maxConcurrentIssues` knob.
- * Rationale: multiple in-flight code/fix sessions on the same repo race
- * each other into merge conflicts (forge-code + forge-fix branching off
- * the same base, then colliding at release time), and the v2 spec's
- * primary-pinned + serial-per-project invariants require this. Operators
- * who need higher parallelism run separate projects.
+ * DEFAULT per-project cap on simultaneously-active issues, applied to any
+ * project that has not set `pipelineConfig.maxConcurrentIssues`. ISS-232
+ * Phase 3 fixed this at 1 because multiple in-flight code/fix sessions on the
+ * same repo race each other into merge conflicts (forge-code + forge-fix
+ * branching off the same base, then colliding at release time). That remains
+ * the safe default; {@link resolveProjectCap} lets an operator opt a project
+ * into higher parallelism (independent issues only — dependent ones stay
+ * serialized by the L1/L2 gates).
  */
 export const DEFAULT_MAX_CONCURRENT_ISSUES = 1;
+
+/**
+ * Resolve the per-project concurrent-issue cap from
+ * `projects.agent_config -> 'pipelineConfig' -> 'maxConcurrentIssues'`,
+ * falling back to {@link DEFAULT_MAX_CONCURRENT_ISSUES} when unset, malformed,
+ * or out of the schema's [1,20] range. A single indexed-PK lookup; the picker
+ * calls it once per tick.
+ *
+ * Returned as a clamped integer so a hand-edited DB value can never widen the
+ * gate past the schema ceiling (`pipeline-config-schema.ts` enforces the same
+ * bound on the write path).
+ */
+export async function resolveProjectCap(projectId: string): Promise<number> {
+  const [row] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const raw = (row?.agentConfig as { pipelineConfig?: { maxConcurrentIssues?: unknown } } | null)
+    ?.pipelineConfig?.maxConcurrentIssues;
+  const n = typeof raw === 'number' ? Math.floor(raw) : Number.NaN;
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_MAX_CONCURRENT_ISSUES;
+  return Math.min(n, 20);
+}
 
 /**
  * ISS-232 Phase 2 — runner cap is unified to 1 across every runner type.
@@ -397,11 +422,13 @@ function buildBarrierFragments(args: {
   return { ctes, predicates };
 }
 
-// ISS-232 Phase 3 — `resolveProjectCap` is gone. The cap is hardcoded to
-// `DEFAULT_MAX_CONCURRENT_ISSUES` (= 1) for every project; the
-// `pipelineConfig.maxConcurrentIssues` knob was removed because the v2
-// spec's primary-pinned + serial-per-project invariants require it.
-// Operators who genuinely need higher parallelism run separate projects.
+// The per-project cap is resolved by `resolveProjectCap` (above) from
+// `pipelineConfig.maxConcurrentIssues`, defaulting to
+// `DEFAULT_MAX_CONCURRENT_ISSUES` (= 1). ISS-232 Phase 3 had hardcoded it to 1
+// for the v2 serial-per-project invariant; the knob was later re-added as an
+// opt-in so operators can fan INDEPENDENT issues across the pool without
+// standing up separate projects (dependent issues stay serialized by the
+// L1/L2 gates regardless of the cap).
 
 /**
  * Pick the next queued job that satisfies L1/L2/L3/L4/L5 inline, or null if
@@ -418,7 +445,7 @@ function buildBarrierFragments(args: {
  * of `queued`.
  */
 export async function pickNextDispatchableJobForProject(projectId: string): Promise<JobRow | null> {
-  const cap = DEFAULT_MAX_CONCURRENT_ISSUES;
+  const cap = await resolveProjectCap(projectId);
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${projectId}`,
@@ -491,7 +518,7 @@ export async function assertDispatchable(jobId: string): Promise<DispatchBarrier
     .limit(1);
   if (!job) return { ok: false, reason: 'not_found', hint: jobId };
 
-  const cap = DEFAULT_MAX_CONCURRENT_ISSUES;
+  const cap = await resolveProjectCap(job.projectId);
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${job.projectId}`,

@@ -337,10 +337,16 @@ export const pipelineConfigSchema = z
     autoTest: stepToggleSchema.optional(),
     autoFix: stepToggleSchema.optional(),
     autoRelease: stepToggleSchema.optional(),
-    // ISS-232 Phase 3 — `maxConcurrentIssues` was removed. The per-project
-    // cap is now hardcoded to 1 (see `dispatch-gates.ts:DEFAULT_MAX_
-    // CONCURRENT_ISSUES`) — operators with isolated worktrees per session
-    // who need higher parallelism must run separate projects.
+    // Per-project cap on simultaneously-active issues. Defaults to 1 (see
+    // `dispatch-gates.ts:DEFAULT_MAX_CONCURRENT_ISSUES`), preserving the
+    // ISS-232 serial-per-project behaviour for every project that does not
+    // opt in. Raise it to fan independent issues across the runner pool —
+    // dependent issues stay serialized by the L1 issue-busy + L2 blocks/
+    // decomposes gates regardless of this value, so only INDEPENDENT issues
+    // parallelize. Capped at 20: beyond that, concurrent code/fix sessions on
+    // one repo collide at merge often enough that separate projects are the
+    // right tool.
+    maxConcurrentIssues: z.number().int().min(1).max(20).optional(),
     // ISS-108 Phase 1 / ISS-110 Phase 3 — per-stage enable/mode toggle. When
     // `states[X].enabled === false`, the orchestrator auto-transitions past
     // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection

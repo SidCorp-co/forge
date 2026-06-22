@@ -184,6 +184,25 @@ export function useRunnerActivity(runnerId: string, enabled: boolean) {
 	});
 }
 
+/**
+ * Live snapshot of which runners are executing a job for a project. Keyed
+ * `['projects', id, 'active-runners']`. Invalidated by the event-router on
+ * `issue.pipelineHealth.changed` (fires on every job completion/failure +
+ * dispatch tick, carries projectId) and on `runner.status`/`pipeline_run`
+ * terminal events. The 10s `refetchInterval` is a backstop for any gap (e.g.
+ * `job.assigned` rides the device room, so busy ONSET can lag up to one poll)
+ * and re-anchors the row's elapsed counter to real `startedAt` values (the
+ * per-second tick itself is purely client-side).
+ */
+export function useActiveRunners(projectId: string | null) {
+	return useQuery({
+		queryKey: ["projects", projectId, "active-runners"],
+		queryFn: () => runnersApi.listActiveRunners(projectId as string),
+		enabled: !!projectId,
+		refetchInterval: 10_000,
+	});
+}
+
 export function useGitCredential(projectId: string | null) {
 	return useQuery({
 		queryKey: ["projects", projectId, "git-credential"],

@@ -52,6 +52,15 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
                       {r.limit.active && r.limit.resetText ? r.limit.resetText : r.limit.label}
                     </span>
                   </Badge>
+                ) : r.activeIssueRef ? (
+                  // Live: which issue (+ stage) this runner is executing now.
+                  <span
+                    className="fg-caption flex-none text-right font-semibold tabular-nums"
+                    style={{ color: "var(--cobalt-700)" }}
+                  >
+                    {r.activeIssueRef}
+                    {r.activeStage ? ` · ${r.activeStage}` : ""}
+                  </span>
                 ) : (
                   <span
                     className="fg-caption w-12 flex-none text-right font-semibold"

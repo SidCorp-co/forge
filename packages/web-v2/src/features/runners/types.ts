@@ -112,6 +112,54 @@ export interface RunnerActivity {
 	sessions: RunnerSessionActivity[];
 }
 
+/** The job a runner is currently executing (from `GET /api/runners/active`). */
+export interface ActiveRunnerJob {
+	jobId: string;
+	/** Pipeline stage (job type): code | review | test | fix | … */
+	stage: string | null;
+	/** ISO dispatch time — basis for the live elapsed counter. */
+	startedAt: string | null;
+	issueId: string | null;
+	/** Display ref, e.g. "ISS-417"; null for non-issue jobs. */
+	issueRef: string | null;
+	issueTitle: string | null;
+}
+
+/** One runner in the project's active snapshot. `current` is null when idle. */
+export interface ActiveRunner {
+	runnerId: string;
+	name: string;
+	status: string;
+	lastSeenAt: string | null;
+	current: ActiveRunnerJob | null;
+}
+
+/** `GET /api/runners/active?projectId=` — live per-runner execution snapshot. */
+export interface ActiveRunnersSnapshot {
+	runners: ActiveRunner[];
+	/** Count with a non-null `current`. */
+	busy: number;
+	/** Total runners on the project. */
+	total: number;
+}
+
+/**
+ * Format the elapsed time since a job's `startedAt` as a compact `Mm Ss` /
+ * `Hh Mm` string for the live "running … · 3m 12s" line. Returns null when no
+ * start time is known. `now` is injected so a `useNow(1000)` tick re-renders it.
+ */
+export function formatElapsed(startedAt: string | null, now: number = Date.now()): string | null {
+	if (!startedAt) return null;
+	const start = Date.parse(startedAt);
+	if (!Number.isFinite(start)) return null;
+	const sec = Math.max(0, Math.floor((now - start) / 1000));
+	if (sec < 60) return `${sec}s`;
+	const min = Math.floor(sec / 60);
+	if (min < 60) return `${min}m ${sec % 60}s`;
+	const hr = Math.floor(min / 60);
+	return `${hr}h ${min % 60}m`;
+}
+
 /** `GET /api/projects/:id/git-credential` — non-secret deploy-key status. */
 export type GitCredentialView =
 	| { configured: false }
