@@ -76,7 +76,7 @@ export type MemoryCandidateSignalType =
   | "repeated_fix_type"
   | "handoff_gap_rescue";
 
-export type MemoryCandidateStatus = "accruing" | "graduated" | "accepted" | "rejected";
+export type MemoryCandidateStatus = "accruing" | "graduated" | "accepted" | "rejected" | "promoted";
 
 export interface EvidenceRef {
   runId: string;

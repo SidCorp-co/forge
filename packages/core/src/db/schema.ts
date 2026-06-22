@@ -2779,7 +2779,7 @@ export const improvementMessageDrafts = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     // Stable kebab key; unique across the table (draft-<slugified-signalKey>).
-    key: text('key').notNull().unique(),
+    key: text('key').notNull(),
     title: text('title').notNull(),
     // Message body sourced from agent feedback — content is UNTRUSTED.
     message: text('message').notNull(),
@@ -2805,6 +2805,7 @@ export const improvementMessageDrafts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    keyUq: uniqueIndex('improvement_message_drafts_key_uq').on(t.key),
     statusIdx: index('improvement_message_drafts_status_idx').on(t.status),
     candidateIdx: index('improvement_message_drafts_candidate_idx').on(t.candidateId),
     signalKeyIdx: index('improvement_message_drafts_signal_key_idx').on(t.signalKey),

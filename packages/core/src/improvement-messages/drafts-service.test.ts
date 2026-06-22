@@ -5,7 +5,8 @@ const selectExistingWhere = vi.fn(() => ({ limit: selectExistingLimit }));
 const selectFrom = vi.fn(() => ({ where: selectExistingWhere }));
 
 const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const insertOnConflict = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn(() => ({ onConflictDoNothing: insertOnConflict }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -41,9 +42,6 @@ beforeEach(() => {
 
 describe('createImprovementMessageDraft', () => {
   it('inserts and returns a new draft', async () => {
-    // No existing draft with this key.
-    selectExistingLimit.mockResolvedValueOnce([]);
-
     const expectedRow = {
       id: '33333333-3333-4333-8333-333333333333',
       key: 'draft-reopen-loop-bug',
@@ -77,25 +75,24 @@ describe('createImprovementMessageDraft', () => {
     expect(insertedValues?.sourceProjectId).toBe(INPUT.projectId);
   });
 
-  it('is idempotent — returns existing draft when key already exists', async () => {
+  it('is idempotent — returns existing draft on key conflict', async () => {
     const existingDraft = {
       id: '44444444-4444-4444-8444-444444444444',
       key: 'draft-reopen-loop-bug',
       status: 'pending_review',
     };
-    // First select: finds existing draft by key.
-    selectExistingLimit.mockResolvedValueOnce([{ id: existingDraft.id }]);
-    // Second select: fetches full row.
+    // INSERT ON CONFLICT DO NOTHING returns empty → conflict occurred.
+    insertReturning.mockResolvedValueOnce([]);
+    // Fallback SELECT returns the existing draft.
     selectExistingLimit.mockResolvedValueOnce([existingDraft]);
 
     const result = await createImprovementMessageDraft(INPUT);
     expect(result.id).toBe(existingDraft.id);
-    // No insert should have been called.
-    expect(insertValues).not.toHaveBeenCalled();
+    // Insert WAS called but returned no rows (conflict).
+    expect(insertValues).toHaveBeenCalled();
   });
 
   it('derives correct key from signalKey', async () => {
-    selectExistingLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValue([{ key: 'draft-reopen-loop-bug' }]);
 
     await createImprovementMessageDraft(INPUT);
@@ -104,7 +101,6 @@ describe('createImprovementMessageDraft', () => {
   });
 
   it('derives skill-specific appliesWhen for agent_self_report', async () => {
-    selectExistingLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValue([{ key: 'draft-self-report-skill-forge-test-friction' }]);
 
     await createImprovementMessageDraft({

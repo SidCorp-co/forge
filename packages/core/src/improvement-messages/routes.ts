@@ -90,10 +90,28 @@ improvementMessageRoutes.get(
   },
 );
 
-// GET /api/improvement-messages/drafts
-// Returns all pending_review improvement message drafts (bottom-up proposals).
-// Requires auth; no project scope — drafts are global.
-improvementMessageRoutes.get('/drafts', async (c) => {
-  const drafts: ImprovementMessageDraftRow[] = await listPendingDrafts();
-  return c.json(drafts);
-});
+const draftsQuerySchema = z
+  .object({
+    projectId: z.string().uuid(),
+  })
+  .strict();
+
+// GET /api/improvement-messages/drafts?projectId=<uuid>
+// Returns pending_review drafts sourced from the given project.
+// Requires project membership (viewer+).
+improvementMessageRoutes.get(
+  '/drafts',
+  zValidator('query', draftsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
+
+    const drafts: ImprovementMessageDraftRow[] = await listPendingDrafts(projectId);
+    return c.json(drafts);
+  },
+);
