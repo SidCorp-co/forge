@@ -1,8 +1,8 @@
 "use client";
 
-// Project-tier Memory (`/projects/[slug]/memory`). Searchable list of system
-// breadcrumbs (issue/comment/job/note/decision/policy/knowledge). Empty query →
-// paginated list; a term → semantic search hits. ISS-299.
+// Project-tier Memory (`/projects/[slug]/library?tab=memory`). Two sub-tabs:
+//   • "All Memory" — searchable list of system breadcrumbs (ISS-299)
+//   • "Curator Queue" — graduated memory candidates awaiting review (ISS-534)
 import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -15,14 +15,24 @@ import {
   MonoTag,
   PageContainer,
   Pagination,
+  ScreenTabs,
   Select,
   Skeleton,
   type SelectOption,
+  type TabItem,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { MEMORY_PAGE_SIZE } from "../api";
 import { useMemoryList, useMemorySearch } from "../hooks";
 import { MEMORY_SOURCES, sourceTone, type MemorySource } from "../types";
+import { MemoryCandidatesTab } from "./memory-candidates-tab";
+
+type MemorySubTab = "all" | "curator";
+
+const MEMORY_SUB_TABS: TabItem[] = [
+  { value: "all", label: "All Memory" },
+  { value: "curator", label: "Curator Queue" },
+];
 
 interface MemoryScreenProps {
   scope: { projectId: string };
@@ -53,6 +63,7 @@ interface BreadcrumbItem {
 
 export function MemoryScreen({ scope }: MemoryScreenProps) {
   const { projectId } = scope;
+  const [subTab, setSubTab] = useState<MemorySubTab>("all");
   const [query, setQuery] = useState("");
   const [source, setSource] = useState("");
   const [page, setPage] = useState(1);
@@ -103,72 +114,84 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
         </p>
       </header>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Input
-          icon="search"
-          value={query}
-          placeholder="Search memory…"
-          aria-label="Search memory"
-          onChange={(e) => setQuery(e.target.value)}
-          className="w-full sm:w-72"
-        />
-        <Select
-          options={SOURCE_OPTIONS}
-          value={source}
-          onChange={setSource}
-          placeholder="All sources"
-          aria-label="Filter by source"
-          className="w-full sm:w-48"
-        />
-        {ready && items.length > 0 && (
-          <p className="fg-caption ml-auto text-subtle">
-            {searching
-              ? `${items.length} match${items.length === 1 ? "" : "es"}`
-              : `${totalCount} breadcrumb${totalCount === 1 ? "" : "s"}`}
-          </p>
-        )}
-      </div>
+      <ScreenTabs
+        tabs={MEMORY_SUB_TABS}
+        value={subTab}
+        onChange={(v) => setSubTab(v as MemorySubTab)}
+      />
 
-      {active.isLoading && (
-        <div className="space-y-2.5">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full rounded-lg" />
-          ))}
-        </div>
-      )}
+      {subTab === "curator" && <MemoryCandidatesTab scope={{ projectId }} />}
 
-      {active.isError && (
-        <ErrorState
-          title="Couldn't load memory"
-          message={formatApiError(active.error)}
-          onRetry={() => active.refetch()}
-        />
-      )}
+      {subTab === "all" && (
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <Input
+              icon="search"
+              value={query}
+              placeholder="Search memory…"
+              aria-label="Search memory"
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full sm:w-72"
+            />
+            <Select
+              options={SOURCE_OPTIONS}
+              value={source}
+              onChange={setSource}
+              placeholder="All sources"
+              aria-label="Filter by source"
+              className="w-full sm:w-48"
+            />
+            {ready && items.length > 0 && (
+              <p className="fg-caption ml-auto text-subtle">
+                {searching
+                  ? `${items.length} match${items.length === 1 ? "" : "es"}`
+                  : `${totalCount} breadcrumb${totalCount === 1 ? "" : "s"}`}
+              </p>
+            )}
+          </div>
 
-      {ready && items.length === 0 && (
-        <EmptyState
-          title={filtered ? "Nothing here" : "No memory yet"}
-          message={
-            filtered
-              ? "No breadcrumbs match these filters."
-              : "Breadcrumbs from issues, comments, jobs, and decisions will appear here."
-          }
-          mascot={!filtered}
-        />
-      )}
+          {active.isLoading && (
+            <div className="space-y-2.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 w-full rounded-lg" />
+              ))}
+            </div>
+          )}
 
-      {ready && items.length > 0 && (
-        <div className="space-y-2.5">
-          {items.map((item) => (
-            <MemoryCard key={item.id} item={item} />
-          ))}
-        </div>
-      )}
+          {active.isError && (
+            <ErrorState
+              title="Couldn't load memory"
+              message={formatApiError(active.error)}
+              onRetry={() => active.refetch()}
+            />
+          )}
 
-      {!searching && ready && totalCount > MEMORY_PAGE_SIZE && (
-        <div className="mt-6 flex justify-center">
-          <Pagination page={page} pageCount={pageCount} onChange={setPage} />
-        </div>
+          {ready && items.length === 0 && (
+            <EmptyState
+              title={filtered ? "Nothing here" : "No memory yet"}
+              message={
+                filtered
+                  ? "No breadcrumbs match these filters."
+                  : "Breadcrumbs from issues, comments, jobs, and decisions will appear here."
+              }
+              mascot={!filtered}
+            />
+          )}
+
+          {ready && items.length > 0 && (
+            <div className="space-y-2.5">
+              {items.map((item) => (
+                <MemoryCard key={item.id} item={item} />
+              ))}
+            </div>
+          )}
+
+          {!searching && ready && totalCount > MEMORY_PAGE_SIZE && (
+            <div className="mt-6 flex justify-center">
+              <Pagination page={page} pageCount={pageCount} onChange={setPage} />
+            </div>
+          )}
+        </>
       )}
     </PageContainer>
   );

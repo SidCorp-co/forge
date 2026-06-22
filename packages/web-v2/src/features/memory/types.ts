@@ -68,3 +68,63 @@ export function sourceTone(
       return "neutral";
   }
 }
+
+// Memory candidates (continuous-learning observer).
+
+export type MemoryCandidateSignalType =
+  | "reopen_loop"
+  | "repeated_fix_type"
+  | "handoff_gap_rescue";
+
+export type MemoryCandidateStatus = "accruing" | "graduated" | "accepted" | "rejected";
+
+export interface EvidenceRef {
+  runId: string;
+  issueId: string;
+  at: string;
+}
+
+export interface MemoryCandidate {
+  id: string;
+  projectId: string;
+  signalType: MemoryCandidateSignalType;
+  signalKey: string;
+  status: MemoryCandidateStatus;
+  confidence: string;
+  evidenceCount: number;
+  evidence: EvidenceRef[];
+  summary: string;
+  graduatedAt: string | null;
+  reviewedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function signalTypeTone(
+  signalType: MemoryCandidateSignalType,
+): "neutral" | "accent" | "cobalt" | "green" | "amber" {
+  switch (signalType) {
+    case "reopen_loop":
+      return "amber";
+    case "repeated_fix_type":
+      return "cobalt";
+    case "handoff_gap_rescue":
+      return "accent";
+    default:
+      return "neutral";
+  }
+}
+
+export function signalTypeLabel(signalType: MemoryCandidateSignalType): string {
+  switch (signalType) {
+    case "reopen_loop":
+      return "Reopen Loop";
+    case "repeated_fix_type":
+      return "Repeated Fix";
+    case "handoff_gap_rescue":
+      return "Handoff Gap";
+    default:
+      return signalType;
+  }
+}

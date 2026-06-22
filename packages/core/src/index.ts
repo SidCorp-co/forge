@@ -84,6 +84,12 @@ import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
+import { registerCandidatesDecay } from './memory/candidates-decay.js';
+import {
+  registerCandidatesObserver,
+  registerCandidatesWorker,
+} from './memory/candidates-observer.js';
+import { memoryCandidatesRoutes } from './memory/candidates-routes.js';
 import { registerMemoryConsolidation } from './memory/consolidation.js';
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
@@ -271,6 +277,7 @@ registerMemoryExtraction(hooks);
 registerNotifyMentionsSubscriber(hooks);
 registerTransitionNotifications(hooks);
 registerPmSubscribers(hooks);
+registerCandidatesObserver(hooks);
 
 // MCP endpoint authentication (ISS-202 + ISS-150).
 // Accepts either a device token (legacy desktop path) or a Personal Access
@@ -384,6 +391,7 @@ app.route('/api/webhooks', webhookInboundRoutes);
 app.route('/api/memory', memorySearchRoutes);
 app.route('/api/memory', memoryListRoutes);
 app.route('/api/memory', memoryWriteRoutes);
+app.route('/api/memory', memoryCandidatesRoutes);
 app.route('/api/issue-step-contexts', stepHandoffRoutes);
 app.route('/api/prompts', promptRoutes);
 app.route('/api/skill-facts', skillFactsRoutes);
@@ -476,6 +484,8 @@ if (isMain) {
   await registerEmbeddingBackfill();
   await registerMemoryDecay();
   await registerMemoryConsolidation();
+  await registerCandidatesWorker();
+  await registerCandidatesDecay();
   await registerDevicePrune();
   await registerRunnerStaleDetector();
   await registerRetentionSweeper();
