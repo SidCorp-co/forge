@@ -78,6 +78,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - You can now choose, per project, whether production deploys require manual approval — toggle auto-approve directly in the Coolify integration settings (manual approval stays on by default).
 - Untrusted issue, comment, attachment, and integration content is now sanitized and explicitly marked as data before it reaches pipeline agents, hardening the autonomous pipeline against prompt-injection.
 - You can now attach Word (.docx), CSV, and Excel (.xls/.xlsx) files to issues and comments, alongside the existing image, PDF, and text formats.
+- Schedules table now includes template_key, params, mode, and applied_message_versions columns for skill improvements.
 
 ## [0.3.0] - 2026-06-11
 
