@@ -75,10 +75,34 @@ For a change that introduces branching logic, crosses a module/service/tenant bo
 
 Any disproof that survives a second read becomes a **Bug** finding. Skip this pass for trivial or localized diffs — it's for the changes where being wrong is expensive.
 
+### 3c. Risk gate — multi-vote for high-risk diffs
+
+Classify the diff before settling the verdict, using the changed-file list you already
+computed (Step 1) + the issue `complexity`. The diff is **HIGH-RISK** if ANY holds:
+
+- **schema / migration** — a changed path matches `**/schema*`, `**/migrations/**`, or `**/*.sql`.
+- **auth / access-control / credentials** — a changed path matches `*auth*`, `*token*`, `*permission*`, or `*credential*`.
+- **payment / billing** — a changed path matches `*payment*`, `*billing*`, `*checkout*`, or `*stripe*`.
+- **blast radius** — changed-file count ≥ 10.
+- **complexity** — `issue.complexity ∈ {l, xl}`.
+
+Otherwise the diff is **ORDINARY**.
+
+- **ORDINARY** → the single-pass review you just did (Steps 3–3b) stands. Continue to Step 4.
+- **HIGH-RISK** → a lone reviewer is the rubber-stamp risk this gate removes. Run a
+  **pass^k multi-vote**: 3 independent sub-reviewers across distinct lenses (correctness +
+  security + an adaptive third), APPROVE only when **≥2/3 are clean**. Lens selection, the
+  sub-reviewer prompt, the substantiation guard, aggregation/tally, out-voted-finding
+  handling, and the Task-tool-absent fallback all live in
+  [references/multi-vote.md](references/multi-vote.md). The multi-vote produces the SAME
+  mechanical verdict (APPROVE / Bug-findings / ABSTAIN) — Step 5 is unchanged.
+
 ### 4. Output
 
 ```markdown
 ## Code Review — ISS-XX
+
+Reviewed SHA: `<short-sha>`
 
 | # | File | Line | Severity | Finding |
 |---|------|------|----------|---------|
@@ -92,6 +116,8 @@ Any disproof that survives a second read becomes a **Bug** finding. Skip this pa
 Severities: **Bug** (incorrect behavior), **Minor** (problematic pattern), **Low** (style/naming).
 
 If clean: `No issues found. Implementation looks clean.`
+
+Always include `Reviewed SHA: <short-sha>` in the comment body, even on a clean APPROVE. For full single-pass and multi-vote comment templates see [references/comment-format.md](references/comment-format.md).
 
 **The review agent reports only — it does NOT fix code.**
 
