@@ -300,6 +300,9 @@ function MessageCard({
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <span className="fg-body-sm font-medium text-fg">{entry.title}</span>
               <Badge tone="neutral">{CATEGORY_LABELS[entry.category]}</Badge>
+              {entry.standing && (
+                <Badge tone="cobalt">Standing · runs continuously</Badge>
+              )}
               {entry.recommended && (
                 <Badge tone="accent">Recommended</Badge>
               )}

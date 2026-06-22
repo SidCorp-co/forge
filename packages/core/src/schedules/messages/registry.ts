@@ -21,6 +21,14 @@
 // config + code that a cheap deterministic function cannot reliably cover.
 // A future iteration MAY add an optional structured predicate for trivially-
 // checkable conditions, but structured predicates are out of v1 scope.
+//
+// ── standing templates ───────────────────────────────────────────────────────
+// When `standing === true`, the dispatch engine BYPASSES the
+// `appliedMessageVersions` idempotency gate — every cadence run fires
+// regardless of prior executions. Use for templates whose value comes from
+// observing fresh signals on every run (e.g. the skill steward). One-shot
+// templates (standing omitted / false) still skip after their version is
+// applied.
 
 import type { ScheduleMode } from '../../db/schema.js';
 
@@ -34,13 +42,16 @@ export type ImprovementMessageCategory =
   | 'ops'
   | 'pipeline-correctness'
   | 'quality'
+  | 'steward'
   | 'general';
 
 export interface ImprovementMessage {
   /** Stable, kebab-case key used as `schedules.template_key`. */
   key: string;
   title: string;
-  /** The schedule prompt injected when this message is enabled. */
+  /** The schedule prompt injected when this message is enabled (one-shot templates).
+   *  For standing templates this is human-facing catalog copy only; the real
+   *  prompt is built by the dedicated prompt builder in skill-steward-prompt.ts. */
   message: string;
   /** Why this improvement matters — shown in the UI. */
   rationale: string;
@@ -58,12 +69,22 @@ export interface ImprovementMessage {
   recommended: boolean;
   /** Default mode when the owner enables this message without specifying one. */
   defaultMode: ScheduleMode;
+  /**
+   * When true, the dispatch engine bypasses the `appliedMessageVersions`
+   * idempotency gate so the template fires on every cadence run.
+   * Standing templates have continuous value (always fresh signals to process).
+   * Default: false (one-shot semantics).
+   */
+  standing?: boolean;
 }
 
-// ── Registry ─────────────────────────────────────────────────────────────────
-
-export const improvementMessages: ImprovementMessage[] = [
-  {
+// ── Strategy inputs (retired one-shot templates) ──────────────────────────────
+// These patterns were previously separate scheduled templates. They are now
+// STRATEGY_INPUTS absorbed by the standing steward — applied by the steward
+// when it observes the matching signal, not run on their own schedule.
+// Preserved here as reference data so the steward prompt can inline them.
+export const RETIRED_STRATEGY_INPUTS = {
+  MERGED_AT_ON_PASS: {
     key: 'merged-at-on-pass',
     title: 'Stamp merged_at on PASS to unblock dependencies',
     message:
@@ -74,24 +95,14 @@ export const improvementMessages: ImprovementMessage[] = [
       'automatically dispatched. Without this stamp, dependent issues queue ' +
       'indefinitely even though their blocker has merged — the pipeline ' +
       'cannot detect the merge from status alone.',
-    rationale:
-      'Blocks/decomposes dependencies dispatch as soon as the blocker has ' +
-      'merged_at set. When the base-merge state is a manual gate (e.g. ' +
-      'released or tested), the system does not auto-stamp merged_at — ' +
-      'leaving forge-test responsible for stamping on PASS. Missing this ' +
-      'stamp silently stalls the entire downstream chain.',
-    appliesToSkills: ['forge-test'],
     appliesWhen:
       'The project uses blocks/decomposes issue relations AND the base-merge ' +
       'state is a manual gate (a pipeline status the system does not ' +
       'auto-advance, such as "released" or "tested"), meaning merged_at is ' +
       'not stamped automatically on status transition.',
-    category: 'pipeline-correctness',
-    version: 1,
-    recommended: true,
-    defaultMode: 'propose',
+    appliesToSkills: ['forge-test'],
   },
-  {
+  RELEASE_CONFLICT_2TIER: {
     key: 'release-conflict-2tier',
     title: 'Two-tier conflict recovery on forge-release',
     message:
@@ -106,25 +117,14 @@ export const improvementMessages: ImprovementMessage[] = [
       'transition released → reopen and post the standard conflict comment ' +
       'so forge-fix can resolve it. Never leave the issue at released after ' +
       'a conflict — silent waiting blocks the release indefinitely.',
-    rationale:
-      'On 2-branch projects (baseBranch ≠ productionBranch), the ISS-* ' +
-      'branch can diverge from production between the time it is cut and ' +
-      'when forge-release runs. A simple merge --abort → reopen loses the ' +
-      'opportunity to auto-resolve via rebase, unnecessarily pulling a human ' +
-      'into a trivially-fixable conflict. The 2-tier approach (rebase attempt ' +
-      'first, reopen only on true conflict) keeps the release path automated.',
-    appliesToSkills: ['forge-release'],
     appliesWhen:
       'The project is 2-branch: baseBranch and productionBranch are ' +
       'different values in the project config (e.g. baseBranch="main" and ' +
       'productionBranch="release" or "production"), meaning ISS-* branches ' +
       'must track production to avoid divergence at merge time.',
-    category: 'pipeline-correctness',
-    version: 1,
-    recommended: true,
-    defaultMode: 'propose',
+    appliesToSkills: ['forge-release'],
   },
-  {
+  QA_QUALITY_BAR: {
     key: 'qa-quality-bar',
     title: 'Pass-B quality checks for UI surfaces',
     message:
@@ -143,20 +143,38 @@ export const improvementMessages: ImprovementMessage[] = [
       'elements have accessible labels and keyboard tab order is logical. ' +
       'Report each check as a separate row tagged "Quality"; any FAIL blocks ' +
       'the overall PASS verdict.',
-    rationale:
-      'Acceptance criteria typically describe the happy-path feature behavior ' +
-      'but omit edge states (empty, loading, error) and cross-cutting quality ' +
-      'attributes (responsive, a11y). These gaps are the most common source ' +
-      'of production regressions that pass QA. Pass-B closes them ' +
-      'systematically on every UI issue without requiring explicit AC entries.',
-    appliesToSkills: ['forge-test'],
     appliesWhen:
       'The project has a frontend or UI surface — web app, mobile app, or ' +
       'any browser-rendered interface that end users interact with directly.',
-    category: 'quality',
+    appliesToSkills: ['forge-test'],
+  },
+} as const;
+
+// ── Registry ─────────────────────────────────────────────────────────────────
+
+export const improvementMessages: ImprovementMessage[] = [
+  {
+    key: 'optimize-skills',
+    title: 'Standing skill steward — continuous per-project optimization',
+    message:
+      'The skill steward observes accumulated quality signals across pipeline runs ' +
+      '(reopen rates, step durations, forge_feedback reports, domain weaknesses) ' +
+      'and uses a per-skill memory namespace to propose or apply targeted improvements ' +
+      'to this project\'s skills. Each run absorbs the forge-skill-audit rubric and ' +
+      'playbook, curates per-skill memory to ≤2k tokens, and emits a structured run ' +
+      'report tracking which domains improved over time.',
+    rationale:
+      'Skills improve continuously rather than through one-time patches. ' +
+      'The steward accumulates project-specific knowledge in a dedicated memory ' +
+      'namespace (2k token cap per skill), raises accept standards gradually as ' +
+      'quality improves, and routes Forge-level issues to the owner via forge_feedback ' +
+      'rather than silently dropping them. replaces the recurring forge-skill-audit ' +
+      'daily schedule and the 3 retired one-shot templates.',
+    category: 'steward',
     version: 1,
     recommended: true,
     defaultMode: 'propose',
+    standing: true,
   },
 ];
 

@@ -13,6 +13,8 @@ import {
   type AppliedVersions,
   buildSkillImprovePrompt,
 } from './messages/skill-improve-prompt.js';
+import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
+import { getImprovementMessage } from './messages/registry.js';
 
 export interface ScheduleRowForDispatch {
   id: string;
@@ -92,24 +94,43 @@ export async function dispatchScheduleRun(
     return { ok: false, reason: 'unsupported-runner', status: 'skipped' };
   }
 
-  // ISS-548 — when a schedule has a templateKey, build the skill-improve prompt
-  // BEFORE any DB lookups. A `null` return means the message is already applied at
-  // its current version → return skipped early to avoid a wasted round-trip.
+  // ISS-548/ISS-556 — when a schedule has a templateKey, build the prompt
+  // BEFORE any DB lookups.
+  // - Standing templates (standing===true) bypass appliedMessageVersions — every
+  //   cadence run fires unconditionally; the steward always has fresh signals.
+  // - One-shot templates still return null when already applied at current version
+  //   → return skipped early to avoid a wasted round-trip.
   let effectivePrompt = schedule.prompt;
+  let isStandingTemplate = false;
   if (schedule.templateKey) {
-    const built = buildSkillImprovePrompt({
-      templateKey: schedule.templateKey,
-      mode: schedule.mode ?? 'propose',
-      appliedMessageVersions: schedule.appliedMessageVersions ?? null,
-    });
-    if (built === null) {
+    const registryEntry = getImprovementMessage(schedule.templateKey);
+    if (registryEntry?.standing) {
+      // Standing template: always dispatch, use the steward prompt builder.
+      isStandingTemplate = true;
+      effectivePrompt = buildSkillStewardPrompt({
+        mode: schedule.mode ?? 'propose',
+        projectId: schedule.projectId,
+      });
       logger.info(
         { scheduleId: schedule.id, templateKey: schedule.templateKey },
-        'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
+        'schedule.dispatch: standing steward template dispatching (bypassing appliedMessageVersions)',
       );
-      return { ok: false, reason: 'already-applied', status: 'skipped' };
+    } else {
+      // One-shot template: use existing idempotency gate.
+      const built = buildSkillImprovePrompt({
+        templateKey: schedule.templateKey,
+        mode: schedule.mode ?? 'propose',
+        appliedMessageVersions: schedule.appliedMessageVersions ?? null,
+      });
+      if (built === null) {
+        logger.info(
+          { scheduleId: schedule.id, templateKey: schedule.templateKey },
+          'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
+        );
+        return { ok: false, reason: 'already-applied', status: 'skipped' };
+      }
+      effectivePrompt = built;
     }
-    effectivePrompt = built;
   }
 
   let resolvedProjectId = schedule.projectId;
@@ -168,9 +189,13 @@ export async function dispatchScheduleRun(
   const title = schedule.name?.trim() || 'Scheduled run';
   const metadata: Record<string, unknown> = { source: 'schedule.run', scheduleId: schedule.id };
   if (input.tick) metadata.tick = true;
-  // ISS-548 — carry templateKey in session metadata so the session-completion
-  // handler can locate the schedule row and write back applied_message_versions.
+  // ISS-548/ISS-556 — carry templateKey in session metadata so the session-completion
+  // handler can locate the schedule row and write back applied_message_versions (one-shot)
+  // or persist the steward run report (standing).
   if (schedule.templateKey) metadata.templateKey = schedule.templateKey;
+  // ISS-556 — tag standing sessions so the completion handler routes to the
+  // steward report parser instead of the one-shot skill-improve parser.
+  if (isStandingTemplate) metadata.steward = true;
 
   // ISS-101 — schedule runs are project-scoped one-shots with no issueId; open a
   // 'system' run via the shared chat-session creator, then deliver the prompt

@@ -11,6 +11,9 @@ export type ImprovementMessageCategory =
   | "security"
   | "dx"
   | "ops"
+  | "pipeline-correctness"
+  | "quality"
+  | "steward"
   | "general";
 
 export interface ImprovementMessage {
@@ -24,6 +27,8 @@ export interface ImprovementMessage {
   version: number;
   recommended: boolean;
   defaultMode: "propose" | "auto";
+  /** When true, this template fires on every cadence run (no applied-once skip). */
+  standing?: boolean;
 }
 
 export interface ImprovementMessageEnablement {
@@ -69,6 +74,9 @@ export const CATEGORY_LABELS: Record<ImprovementMessageCategory, string> = {
   security: "Security",
   dx: "DX",
   ops: "Ops",
+  "pipeline-correctness": "Pipeline",
+  quality: "Quality",
+  steward: "Steward",
   general: "General",
 };
 
