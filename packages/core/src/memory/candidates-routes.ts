@@ -5,11 +5,13 @@ import { z } from 'zod';
 import { assertProjectAccess } from '../lib/authz.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { createImprovementMessageDraft } from '../improvement-messages/drafts-service.js';
 import { runMemoryWrite } from './write-service.js';
 import {
   acceptCandidate,
   getCandidate,
   listGraduatedCandidates,
+  markCandidatePromoted,
   rejectCandidate,
 } from './candidates-service.js';
 
@@ -84,5 +86,41 @@ memoryCandidatesRoutes.post(
 
     await rejectCandidate(id);
     return c.json({ rejected: true }, 200);
+  },
+);
+
+// Promote a graduated candidate → seeds an improvement-message draft in the
+// improvement_message_drafts table. Human-gated: requires an explicit curator
+// action; no auto-promotion path exists.
+memoryCandidatesRoutes.post(
+  '/candidates/:id/promote',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const candidate = await getCandidate(id);
+    if (!candidate) throw new HTTPException(404, { message: 'Candidate not found' });
+    await assertProjectAccess(candidate.projectId, userId);
+
+    if (candidate.status !== 'graduated') {
+      throw new HTTPException(409, {
+        message: 'Only graduated candidates can be promoted',
+        cause: { code: 'CANDIDATE_NOT_GRADUATED' },
+      });
+    }
+
+    const draft = await createImprovementMessageDraft({
+      candidateId: candidate.id,
+      signalKey: candidate.signalKey,
+      signalType: candidate.signalType,
+      summary: candidate.summary,
+      projectId: candidate.projectId,
+    });
+
+    await markCandidatePromoted(id);
+    return c.json({ promoted: true, draft }, 200);
   },
 );

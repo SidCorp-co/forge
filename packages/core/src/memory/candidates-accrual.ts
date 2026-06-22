@@ -58,8 +58,13 @@ export async function upsertCandidate(
     return;
   }
 
-  // Skip if already accepted/rejected — don't re-accrue.
-  if (existing.status === 'accepted' || existing.status === 'rejected') return;
+  // Skip if already in a terminal curator state — don't re-accrue.
+  if (
+    existing.status === 'accepted' ||
+    existing.status === 'rejected' ||
+    existing.status === 'promoted'
+  )
+    return;
 
   const existingEvidence = (Array.isArray(existing.evidence) ? existing.evidence : []) as EvidenceRef[];
   const alreadySeen = existingEvidence.some((e) => e.runId === runId);

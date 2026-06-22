@@ -11,6 +11,7 @@ import {
   type ImprovementMessage,
   listImprovementMessages,
 } from '../schedules/messages/registry.js';
+import { listPendingDrafts, type ImprovementMessageDraftRow } from './drafts-service.js';
 
 const listQuerySchema = z
   .object({
@@ -86,5 +87,31 @@ improvementMessageRoutes.get(
     });
 
     return c.json(entries);
+  },
+);
+
+const draftsQuerySchema = z
+  .object({
+    projectId: z.string().uuid(),
+  })
+  .strict();
+
+// GET /api/improvement-messages/drafts?projectId=<uuid>
+// Returns pending_review drafts sourced from the given project.
+// Requires project membership (viewer+).
+improvementMessageRoutes.get(
+  '/drafts',
+  zValidator('query', draftsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
+
+    const drafts: ImprovementMessageDraftRow[] = await listPendingDrafts(projectId);
+    return c.json(drafts);
   },
 );

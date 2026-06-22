@@ -33,12 +33,12 @@ export function MemoryCandidatesTab({ scope }: MemoryCandidatesTabProps) {
   const [page, setPage] = useState(1);
   const { toast } = useToast();
   const candidatesQ = useMemoryCandidates({ projectId, page });
-  const { accept, reject } = useReviewCandidate(projectId);
+  const { accept, reject, promote } = useReviewCandidate(projectId);
 
   const items = candidatesQ.data?.items ?? [];
   const totalCount = candidatesQ.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalCount / CANDIDATES_PAGE_SIZE));
-  const busy = accept.isPending || reject.isPending;
+  const busy = accept.isPending || reject.isPending || promote.isPending;
 
   const handleAccept = async (id: string) => {
     try {
@@ -55,6 +55,15 @@ export function MemoryCandidatesTab({ scope }: MemoryCandidatesTabProps) {
       toast({ title: "Candidate rejected" });
     } catch (err) {
       toast({ title: "Failed to reject candidate", tone: "error", description: formatApiError(err) });
+    }
+  };
+
+  const handlePromote = async (id: string) => {
+    try {
+      await promote.mutateAsync(id);
+      toast({ title: "Improvement draft created", tone: "success" });
+    } catch (err) {
+      toast({ title: "Failed to promote candidate", tone: "error", description: formatApiError(err) });
     }
   };
 
@@ -92,6 +101,7 @@ export function MemoryCandidatesTab({ scope }: MemoryCandidatesTabProps) {
               candidate={candidate}
               onAccept={handleAccept}
               onReject={handleReject}
+              onPromote={handlePromote}
               busy={busy}
             />
           ))}
@@ -111,11 +121,12 @@ interface CandidateCardProps {
   candidate: MemoryCandidate;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  onPromote: (id: string) => void;
   busy: boolean;
 }
 
-function CandidateCard({ candidate, onAccept, onReject, busy }: CandidateCardProps) {
-  const [confirming, setConfirming] = useState<"accept" | "reject" | null>(null);
+function CandidateCard({ candidate, onAccept, onReject, onPromote, busy }: CandidateCardProps) {
+  const [confirming, setConfirming] = useState<"accept" | "reject" | "promote" | null>(null);
   const confidence = (Number(candidate.confidence) * 100).toFixed(0);
 
   return (
@@ -154,8 +165,29 @@ function CandidateCard({ candidate, onAccept, onReject, busy }: CandidateCardPro
             <Button size="sm" variant="primary" disabled={busy} onClick={() => setConfirming("accept")}>
               Accept
             </Button>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming("promote")}>
+              Promote
+            </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirming("reject")}>
               Reject
+            </Button>
+          </div>
+        ) : confirming === "promote" ? (
+          <div className="flex items-center gap-2">
+            <span className="fg-body-sm text-subtle">Seed an improvement draft?</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={busy}
+              onClick={() => {
+                setConfirming(null);
+                onPromote(candidate.id);
+              }}
+            >
+              Confirm
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>
+              Cancel
             </Button>
           </div>
         ) : confirming === "accept" ? (

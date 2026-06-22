@@ -50,5 +50,10 @@ export function useReviewCandidate(projectId: string) {
     onSuccess: invalidate,
   });
 
-  return { accept, reject };
+  const promote = useMutation({
+    mutationFn: (id: string) => memoryCandidatesApi.promote(id),
+    onSuccess: invalidate,
+  });
+
+  return { accept, reject, promote };
 }

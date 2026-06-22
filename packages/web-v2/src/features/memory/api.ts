@@ -61,4 +61,11 @@ export const memoryCandidatesApi = {
   /** `POST /api/memory/candidates/:id/reject` — archive the candidate. */
   reject: (id: string) =>
     apiClient<{ rejected: boolean }>(`/memory/candidates/${id}/reject`, { method: "POST" }),
+
+  /** `POST /api/memory/candidates/:id/promote` — create an improvement-message draft. */
+  promote: (id: string) =>
+    apiClient<{ promoted: boolean; draft: { key: string; id: string } }>(
+      `/memory/candidates/${id}/promote`,
+      { method: "POST" },
+    ),
 };
