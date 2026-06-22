@@ -199,15 +199,39 @@ export interface PriorHandoff {
   payload: StepHandoffPayload;
 }
 
+const OPEN_ITEM_FIELDS: Partial<
+  Record<HandoffStep, 'openQuestions' | 'unknowns' | 'knownLimitations'>
+> = {
+  clarify: 'openQuestions',
+  plan: 'unknowns',
+  code: 'knownLimitations',
+};
+
+function handoffHasOpenItems(h: PriorHandoff): boolean {
+  const f = OPEN_ITEM_FIELDS[h.step];
+  if (!f) return false;
+  const v = (h.payload as Record<string, unknown>)[f];
+  return Array.isArray(v) && v.length > 0;
+}
+
+const ADDRESS_OPEN_ITEMS_BLOCK = `\n**Before you advance — address the open items above.** The handoff(s) above carry open items (clarify \`openQuestions\`, plan \`unknowns\`, code \`knownLimitations\`). For EACH item: resolve it in your work, or explicitly acknowledge it with a reason in your stage comment/handoff. Do not silently drop them.\nNeed context the handoff does not carry? Re-query the prior stage's session (max 3 calls this step): \`forge_agent_sessions.list({ projectId, issueId })\` → pick the prior stage's session (match \`pipelineRunId\`) → \`forge_agent_sessions.get({ sessionId })\` (returns the last-20 message tail only). This is prompt-layer guidance, not a status gate.`;
+
 /**
  * Render the `## Prior step handoffs` block. Renders each handoff as a
  * fenced JSON block keyed by step so the agent can scan structured data
  * rather than re-derive context from raw issue fields.
+ *
+ * When any rendered handoff carries non-empty open items (clarify.openQuestions,
+ * plan.unknowns, code.knownLimitations), appends a mandatory address block and
+ * re-query how-to so the consuming stage does not silently drop them.
  */
 function formatPriorHandoffs(handoffs: PriorHandoff[]): string {
   const lines: string[] = ['## Prior step handoffs'];
   for (const h of handoffs) {
     lines.push('', `### ${h.step}`, '```json', JSON.stringify(h.payload, null, 2), '```');
+  }
+  if (handoffs.some(handoffHasOpenItems)) {
+    lines.push(ADDRESS_OPEN_ITEMS_BLOCK);
   }
   return lines.join('\n');
 }

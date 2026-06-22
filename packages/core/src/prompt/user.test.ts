@@ -9,7 +9,6 @@ const SAMPLE: IssueSnapshot = {
   sessionContext: null,
 };
 
-
 // The zod schema defaults these flags; the inferred TS type requires them, so
 // tests build a full handoffs policy from the schema defaults.
 function handoffsPolicy(
@@ -387,5 +386,116 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       handoffScope: { projectId: 'p-1', issueId: 'iss-1', runId: 'r-1', attempt: 1 },
     });
     expect(out).not.toContain('## Termination protocol');
+  });
+});
+
+describe('buildJobPromptString — open items address block (ISS-537)', () => {
+  const snapshot: IssueSnapshot = {
+    title: 'Fix auth flow',
+    description: 'Users cannot log in',
+    plan: 'Check tokens',
+    acceptanceCriteria: 'Login works',
+  };
+
+  it('appends address-open-items block when clarify handoff has non-empty openQuestions (plan step)', () => {
+    const out = buildJobPromptString({
+      jobType: 'plan',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: handoffsPolicy(true, ['clarify']),
+      priorHandoffs: [
+        {
+          step: 'clarify',
+          payload: {
+            step: 'clarify',
+            schema_version: 1,
+            outcome: 'ux_validated',
+            environment: 'local',
+            openQuestions: ['Should we support OAuth refresh tokens?', 'Cookie or JWT?'],
+            stepsVerified: [],
+            rootCauseHypothesis: 'Token expiry not handled',
+          },
+        },
+      ],
+    });
+    expect(out).toContain('## Prior step handoffs');
+    expect(out).toContain('Before you advance — address the open items above');
+    expect(out).toContain('forge_agent_sessions.list');
+    expect(out).toContain('forge_agent_sessions.get');
+    expect(out).toContain('max 3 calls');
+    expect(out).toContain('last-20 message tail');
+  });
+
+  it('omits address-open-items block when clarify handoff has empty openQuestions', () => {
+    const out = buildJobPromptString({
+      jobType: 'plan',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: handoffsPolicy(true, ['clarify']),
+      priorHandoffs: [
+        {
+          step: 'clarify',
+          payload: {
+            step: 'clarify',
+            schema_version: 1,
+            outcome: 'ux_validated',
+            environment: 'local',
+            openQuestions: [],
+            stepsVerified: [],
+            rootCauseHypothesis: 'Known',
+          },
+        },
+      ],
+    });
+    expect(out).toContain('## Prior step handoffs');
+    expect(out).not.toContain('Before you advance — address the open items above');
+  });
+
+  it('omits address-open-items block when only a triage handoff is present (no open-items field)', () => {
+    const out = buildJobPromptString({
+      jobType: 'plan',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: handoffsPolicy(true, ['triage']),
+      priorHandoffs: [
+        {
+          step: 'triage',
+          payload: {
+            step: 'triage',
+            schema_version: 1,
+            summary: 'Auth broken',
+            suggestedApproach: 'Check JWT',
+            complexity: 's',
+            risks: [],
+            affectedAreas: ['auth'],
+          },
+        },
+      ],
+    });
+    expect(out).toContain('## Prior step handoffs');
+    expect(out).not.toContain('Before you advance — address the open items above');
+  });
+
+  it('appends address-open-items block when plan handoff has non-empty unknowns (code step)', () => {
+    const out = buildJobPromptString({
+      jobType: 'code',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: handoffsPolicy(true, ['plan']),
+      priorHandoffs: [
+        {
+          step: 'plan',
+          payload: {
+            step: 'plan',
+            schema_version: 1,
+            planSummary: 'Add refresh token logic',
+            affectedFiles: ['src/auth.ts'],
+            acceptanceChecklist: ['passes tests'],
+            unknowns: ['Whether Redis or in-memory store should hold tokens'],
+          },
+        },
+      ],
+    });
+    expect(out).toContain('Before you advance — address the open items above');
   });
 });
