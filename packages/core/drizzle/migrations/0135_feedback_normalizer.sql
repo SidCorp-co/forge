@@ -25,6 +25,6 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- FK: candidate_id → memory_candidates.id (set null on delete).
 DO $$ BEGIN
   ALTER TABLE "feedback_reports"
-    ADD CONSTRAINT "feedback_reports_candidate_id_fk"
+    ADD CONSTRAINT "feedback_reports_candidate_id_memory_candidates_id_fk"
     FOREIGN KEY ("candidate_id") REFERENCES "memory_candidates"("id") ON DELETE SET NULL;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;

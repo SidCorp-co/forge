@@ -5,6 +5,7 @@ import { feedbackReports, memoryCandidates } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { upsertCandidate } from '../memory/candidates-accrual.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { sanitizeUntrusted, stripFrameTokens } from '../prompt/sanitize.js';
 
 type Outcome = 'completed' | 'failed';
 
@@ -77,8 +78,13 @@ async function foldReportsForJob(
 }
 
 function buildSummary(report: typeof feedbackReports.$inferSelect): string {
-  const ref = report.targetRef ? `:${report.targetRef}` : '';
-  return `[agent_self_report] ${report.kind}/${report.severity} on ${report.target}${ref} — ${report.summary}`;
+  // Sanitize agent-authored fields before composing into durable memory.
+  // On accept, candidates-routes.ts writes summary → knowledge memory injected into future prompts.
+  const safeRef = report.targetRef
+    ? `:${stripFrameTokens(sanitizeUntrusted(report.targetRef))}`
+    : '';
+  const safeSummary = stripFrameTokens(sanitizeUntrusted(report.summary));
+  return `[agent_self_report] ${report.kind}/${report.severity} on ${report.target}${safeRef} — ${safeSummary}`;
 }
 
 let registered = false;
@@ -87,6 +93,10 @@ export function registerFeedbackNormalizer(bus: HooksBus): void {
   if (registered) return;
   registered = true;
 
+  // TODO(minor): queueMicrotask bypasses the pg-boss per-queue serialization that upsertCandidate
+  // assumes. Concurrent same-signalKey folds from different jobs can race on INSERT (unique index
+  // throws on 2nd → witness dropped). Low-frequency in practice; route through a dedicated pg-boss
+  // queue to fully serialize when accrual correctness becomes a hard requirement.
   bus.on('jobCompleted', (p) => {
     if (!p.issueId) return;
     queueMicrotask(() => {
