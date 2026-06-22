@@ -125,7 +125,29 @@ git push origin <productionBranch>
 
 Squash merge creates one clean atomic commit per issue on the production branch. All intermediate commits (implementation + fixes + review cycles) are collapsed.
 
-If merge conflict → post comment with conflict details, set `reopen`, stop. If `git commit` reports **nothing to commit**, the branch was already merged — do NOT loop: treat it as already-on-production and continue to Step 7.
+If `git commit` reports **nothing to commit**, the branch was already merged — do NOT loop: treat it as already-on-production and continue to Step 7.
+
+**On merge conflict — never bail into a mechanical failure.** An uncaught non-zero git exit ends the turn dirty; the system then retries the release and, when the budget is exhausted, silently parks the issue at `waiting` — looking like "release gave up". Always `git merge --abort` first so the tree is clean, then finish with a *posted comment + an explicit status*. Handle in two tiers:
+
+**Tier 1 — auto-rebase + retry ONCE** (the common case: `ISS-*` is simply behind a production branch that moved forward; the "conflict" is just drift):
+
+```bash
+git merge --abort
+git fetch origin
+git checkout ISS-XX-short-title && git rebase origin/<productionBranch>
+```
+
+- **Rebase completes clean** (drift only, no overlapping edits) → the conflict is resolved. Re-run Step 6 against the rebased branch — `git checkout <productionBranch> && git merge --squash ISS-XX-short-title && git commit -m "ISS-XX: <title>" && git push origin <productionBranch>` — and `git push --force-with-lease origin ISS-XX-short-title` to keep the remote branch consistent. Release proceeds normally.
+
+**Tier 2 — genuine semantic conflict** (the rebase itself conflicts → the same lines changed on both sides; resolving needs code judgement):
+
+```bash
+git rebase --abort
+```
+
+Set `reopen` with an explicit handoff comment: forge-fix must **rebase `ISS-XX` onto `<productionBranch>` (NOT `baseBranch`) and resolve the conflict there**. This is critical — forge-fix rebases onto base by default, but a *release* conflict resolved against base re-hits the identical conflict at the next release and loops forever. Name the conflicted files so forge-fix doesn't rediscover them.
+
+Set `waiting` **only** as a last resort — when even a rebase onto production can't resolve it (e.g. the branch builds on a production change that was reverted/abandoned) and a human must decide. Say exactly why. `waiting` is never the default reaction to a conflict; `reopen` (Tier 2) is.
 
 ### Step 7: Deploy (if Coolify configured)
 
