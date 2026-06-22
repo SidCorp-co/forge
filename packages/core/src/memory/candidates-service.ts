@@ -62,3 +62,10 @@ export async function rejectCandidate(id: string): Promise<void> {
     })
     .where(eq(memoryCandidates.id, id));
 }
+
+export async function markCandidatePromoted(id: string): Promise<void> {
+  await db
+    .update(memoryCandidates)
+    .set({ status: 'promoted', reviewedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(eq(memoryCandidates.id, id));
+}

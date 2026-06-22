@@ -115,3 +115,22 @@ export interface ImprovementMessageEntry extends ImprovementMessage {
     cron: string;
   } | null;
 }
+
+// ISS-554 — improvement message draft (bottom-up proposal from a graduated candidate).
+export interface ImprovementMessageDraft {
+  id: string;
+  key: string;
+  title: string;
+  message: string;
+  rationale: string;
+  appliesWhen: string | null;
+  appliesToSkills: string[];
+  category: string;
+  status: 'pending_review' | 'published' | 'dismissed';
+  source: 'bottom_up';
+  candidateId: string | null;
+  signalKey: string;
+  sourceProjectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

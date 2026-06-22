@@ -1499,7 +1499,13 @@ export const memoryCandidateSignalTypes = [
 ] as const;
 export type MemoryCandidateSignalType = (typeof memoryCandidateSignalTypes)[number];
 
-export const memoryCandidateStatuses = ['accruing', 'graduated', 'accepted', 'rejected'] as const;
+export const memoryCandidateStatuses = [
+  'accruing',
+  'graduated',
+  'accepted',
+  'rejected',
+  'promoted',
+] as const;
 export type MemoryCandidateStatus = (typeof memoryCandidateStatuses)[number];
 
 export const memoryCandidates = pgTable(
@@ -2751,3 +2757,56 @@ export const feedbackReportsRelations = relations(feedbackReports, ({ one }) => 
   run: one(pipelineRuns, { fields: [feedbackReports.runId], references: [pipelineRuns.id] }),
   job: one(jobs, { fields: [feedbackReports.jobId], references: [jobs.id] }),
 }));
+
+// ISS-554 — bottom-up improvement message drafts.
+// Stores proposals seeded by the curator's "promote" action on a graduated candidate.
+// These are global (not per-project) like the static registry, but dynamically created.
+// A human curator reviews pending_review drafts before they graduate into the static registry.
+export const improvementMessageDraftStatuses = [
+  'pending_review',
+  'published',
+  'dismissed',
+] as const;
+export type ImprovementMessageDraftStatus =
+  (typeof improvementMessageDraftStatuses)[number];
+
+export const improvementMessageDraftSources = ['bottom_up'] as const;
+export type ImprovementMessageDraftSource =
+  (typeof improvementMessageDraftSources)[number];
+
+export const improvementMessageDrafts = pgTable(
+  'improvement_message_drafts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Stable kebab key; unique across the table (draft-<slugified-signalKey>).
+    key: text('key').notNull().unique(),
+    title: text('title').notNull(),
+    // Message body sourced from agent feedback — content is UNTRUSTED.
+    message: text('message').notNull(),
+    rationale: text('rationale').notNull(),
+    appliesWhen: text('applies_when'),
+    appliesToSkills: jsonb('applies_to_skills').notNull().default([]),
+    category: text('category').notNull().default('general'),
+    status: text('status', { enum: improvementMessageDraftStatuses })
+      .notNull()
+      .default('pending_review'),
+    source: text('source', { enum: improvementMessageDraftSources })
+      .notNull()
+      .default('bottom_up'),
+    // Provenance: the candidate and signal that seeded this draft.
+    candidateId: uuid('candidate_id').references(() => memoryCandidates.id, {
+      onDelete: 'set null',
+    }),
+    signalKey: text('signal_key').notNull(),
+    sourceProjectId: uuid('source_project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    statusIdx: index('improvement_message_drafts_status_idx').on(t.status),
+    candidateIdx: index('improvement_message_drafts_candidate_idx').on(t.candidateId),
+    signalKeyIdx: index('improvement_message_drafts_signal_key_idx').on(t.signalKey),
+  }),
+);

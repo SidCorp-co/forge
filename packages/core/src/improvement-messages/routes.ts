@@ -11,6 +11,7 @@ import {
   type ImprovementMessage,
   listImprovementMessages,
 } from '../schedules/messages/registry.js';
+import { listPendingDrafts, type ImprovementMessageDraftRow } from './drafts-service.js';
 
 const listQuerySchema = z
   .object({
@@ -88,3 +89,11 @@ improvementMessageRoutes.get(
     return c.json(entries);
   },
 );
+
+// GET /api/improvement-messages/drafts
+// Returns all pending_review improvement message drafts (bottom-up proposals).
+// Requires auth; no project scope — drafts are global.
+improvementMessageRoutes.get('/drafts', async (c) => {
+  const drafts: ImprovementMessageDraftRow[] = await listPendingDrafts();
+  return c.json(drafts);
+});
