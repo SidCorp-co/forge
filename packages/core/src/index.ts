@@ -94,6 +94,7 @@ import { registerMemoryConsolidation } from './memory/consolidation.js';
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
 import { registerMemoryExtraction } from './memory/extraction.js';
+import { registerFeedbackNormalizer } from './feedback/normalizer.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
@@ -278,6 +279,7 @@ registerNotifyMentionsSubscriber(hooks);
 registerTransitionNotifications(hooks);
 registerPmSubscribers(hooks);
 registerCandidatesObserver(hooks);
+registerFeedbackNormalizer(hooks);
 
 // MCP endpoint authentication (ISS-202 + ISS-150).
 // Accepts either a device token (legacy desktop path) or a Personal Access

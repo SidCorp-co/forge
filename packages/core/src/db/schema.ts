@@ -1496,6 +1496,7 @@ export const memoryCandidateSignalTypes = [
   'reopen_loop',
   'repeated_fix_type',
   'handoff_gap_rescue',
+  'agent_self_report',
 ] as const;
 export type MemoryCandidateSignalType = (typeof memoryCandidateSignalTypes)[number];
 
@@ -2725,8 +2726,8 @@ export const feedbackReports = pgTable(
     summary: text('summary').notNull(),
     detail: text('detail'),
     suggestion: text('suggestion'),
-    // FK-less until C2 adds memory_candidates table.
-    candidateId: uuid('candidate_id'),
+    // FK added by C2 (ISS-553).
+    candidateId: uuid('candidate_id').references(() => memoryCandidates.id, { onDelete: 'set null' }),
     // Server-computed `self_report:<target>:<targetRef|'-'>:<kind>`.
     // Stored for C2 signal accrual + list dedup.
     signalKey: text('signal_key').notNull(),
