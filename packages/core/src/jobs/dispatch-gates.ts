@@ -336,6 +336,10 @@ function buildBarrierFragments(args: {
         AND r.status = 'online'
         AND r.last_seen_at IS NOT NULL
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        -- Rate/usage-limited runners are unavailable until their reset time.
+        -- rate_limited_until is NULL for auth limits (no auto-recovery), so
+        -- those do not gate here; they keep failing and trip the breaker.
+        AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
     )`;
 
   const predicates = {

@@ -26,6 +26,7 @@ import {
 	PageContainer,
 	Select,
 	Skeleton,
+	useNow,
 } from "@/design";
 import { useUpdateProject } from "@/features/project-settings/hooks";
 import { useProject } from "@/features/projects/hooks";
@@ -53,6 +54,7 @@ import {
 	type ProjectRunner,
 	type ProvisionStatus,
 	provisionHealth,
+	runnerLimitDisplay,
 } from "../types";
 
 function CopyButton({
@@ -421,6 +423,10 @@ function RunnerRow({
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [showActivity, setShowActivity] = useState(false);
 	const online = runner.deviceStatus === "online";
+	// Tick once a second only while this runner is limited so the reset
+	// countdown ("resets in 41m") stays live without a refetch.
+	const now = useNow(1000, Boolean(runner.limitReason));
+	const limit = runnerLimitDisplay(runner, now);
 
 	return (
 		<div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
@@ -430,6 +436,15 @@ function RunnerRow({
 					<span className="truncate font-semibold text-fg">
 						{runner.deviceName ?? "Unknown device"}
 					</span>
+					{limit && (
+						<Badge tone={limit.health === "down" ? "red" : "amber"}>
+							<span className="inline-flex items-center gap-1">
+								<Icon name="alert" size={11} />
+								{limit.label}
+								{limit.active && limit.resetText ? ` · ${limit.resetText}` : ""}
+							</span>
+						</Badge>
+					)}
 					{isPrimary && (
 						<Badge tone="accent">
 							<span className="inline-flex items-center gap-1">
@@ -522,11 +537,30 @@ function RunnerRow({
 
 			<ProvisionStepper runner={runner} />
 
-			{runner.lastError && (
-				<Banner tone="attention">
-					<span className="font-semibold">Last error.</span>{" "}
-					<code className="font-mono text-[12px]">{runner.lastError}</code>
+			{limit ? (
+				<Banner tone={limit.health === "down" ? "danger" : "attention"}>
+					<span className="font-semibold">
+						{limit.label}
+						{limit.reason === "auth"
+							? " — fix the runner's credentials."
+							: limit.active && limit.resetText
+								? ` — ${limit.resetText}.`
+								: " — recently throttled."}
+					</span>
+					{limit.detail && (
+						<>
+							{" "}
+							<code className="font-mono text-[12px]">{limit.detail}</code>
+						</>
+					)}
 				</Banner>
+			) : (
+				runner.lastError && (
+					<Banner tone="attention">
+						<span className="font-semibold">Last error.</span>{" "}
+						<code className="font-mono text-[12px]">{runner.lastError}</code>
+					</Banner>
+				)
 			)}
 
 			<div className="flex items-center justify-between gap-2 text-subtle">

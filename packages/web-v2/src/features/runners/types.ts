@@ -72,6 +72,12 @@ export interface ProjectRunner {
 	runnerStatus: string;
 	/** Last health/heartbeat error string, cleared on a healthy heartbeat. */
 	lastError: string | null;
+	/** Why the runner is currently limited (rate/usage/auth), or null. */
+	limitReason: RunnerLimitReason | null;
+	/** ISO reset time for a time-based limit; null for `auth` / no limit. */
+	rateLimitedUntil: string | null;
+	/** Short human-readable limit detail. */
+	limitDetail: string | null;
 	repoPath: string | null;
 	branch: string | null;
 	lastSeenAt: string | null;
@@ -176,4 +182,61 @@ export function runnerHealth(status: string): HealthKey {
 		default:
 			return "idle";
 	}
+}
+
+/** Why a runner is limited — mirrors `runnerLimitReasons` on the core schema. */
+export type RunnerLimitReason = "usage_limit" | "rate_limit" | "auth";
+
+/** Short badge label per limit reason. */
+const LIMIT_LABEL: Record<RunnerLimitReason, string> = {
+	usage_limit: "Usage limit",
+	rate_limit: "Rate limited",
+	auth: "Auth error",
+};
+
+export interface RunnerLimitDisplay {
+	reason: RunnerLimitReason;
+	label: string;
+	/** Health tone — auth (needs a fix) is `down`; timed throttles are `attention`. */
+	health: HealthKey;
+	/** Whether the limit's reset time is still in the future. */
+	active: boolean;
+	/** e.g. "resets in 42m" / "reset passed" / null when no reset time. */
+	resetText: string | null;
+	detail: string | null;
+}
+
+/**
+ * Derive the limited-state display for a runner, or null when it is not
+ * limited. A time-based limit whose `rateLimitedUntil` has already passed is
+ * still surfaced (active=false, "reset passed") until the next job clears it,
+ * so an operator sees the recent throttle.
+ */
+export function runnerLimitDisplay(
+	runner: Pick<ProjectRunner, "limitReason" | "rateLimitedUntil" | "limitDetail">,
+	now: number = Date.now(),
+): RunnerLimitDisplay | null {
+	if (!runner.limitReason) return null;
+	const reason = runner.limitReason;
+	const resetMs = runner.rateLimitedUntil ? Date.parse(runner.rateLimitedUntil) : null;
+	const active = resetMs !== null ? resetMs > now : reason === "auth";
+	return {
+		reason,
+		label: LIMIT_LABEL[reason],
+		health: reason === "auth" ? "down" : "attention",
+		active,
+		resetText: formatReset(resetMs, now),
+		detail: runner.limitDetail,
+	};
+}
+
+function formatReset(resetMs: number | null, now: number): string | null {
+	if (resetMs === null) return null;
+	const diff = resetMs - now;
+	if (diff <= 0) return "reset passed";
+	const mins = Math.round(diff / 60000);
+	if (mins < 60) return `resets in ${mins}m`;
+	const hours = Math.floor(mins / 60);
+	const rem = mins % 60;
+	return rem === 0 ? `resets in ${hours}h` : `resets in ${hours}h ${rem}m`;
 }

@@ -406,7 +406,24 @@ deviceAuthRoutes.post(
       ),
       upd AS (
         UPDATE runners
-        SET last_seen_at = now(), status = 'online', updated_at = now()
+        SET last_seen_at = now(), status = 'online', updated_at = now(),
+            -- Clear a runner limit once it can no longer apply: an auth limit
+            -- (no reset time) clears on the next live heartbeat (operator
+            -- presumably fixed the credentials; if not, the next job re-stamps
+            -- it). A time-based limit clears only once its reset has passed; an
+            -- active throttle must persist so the dispatcher keeps skipping.
+            limit_reason = CASE
+              WHEN limit_reason = 'auth'
+                OR (rate_limited_until IS NOT NULL AND rate_limited_until <= now())
+              THEN NULL ELSE limit_reason END,
+            rate_limited_until = CASE
+              WHEN limit_reason = 'auth'
+                OR (rate_limited_until IS NOT NULL AND rate_limited_until <= now())
+              THEN NULL ELSE rate_limited_until END,
+            limit_detail = CASE
+              WHEN limit_reason = 'auth'
+                OR (rate_limited_until IS NOT NULL AND rate_limited_until <= now())
+              THEN NULL ELSE limit_detail END
         WHERE device_id = ${device.id}
         RETURNING id
       )

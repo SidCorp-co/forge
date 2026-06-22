@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { RunnerHost, RunnerStatus, RunnerType } from '../db/schema.js';
+import type { RunnerHost, RunnerLimitReason, RunnerStatus, RunnerType } from '../db/schema.js';
 
 export const runnerCapabilitiesSchema = z
   .object({
@@ -36,6 +36,12 @@ export interface Runner {
   status: RunnerStatus;
   lastSeenAt: Date | null;
   lastError: string | null;
+  /** Why the runner is currently limited (rate/usage/auth), or null. */
+  limitReason: RunnerLimitReason | null;
+  /** Reset time for a time-based limit; null for `auth` / no limit. */
+  rateLimitedUntil: Date | null;
+  /** Short human-readable limit detail for the UI. */
+  limitDetail: string | null;
 }
 
 export interface DispatchInput {

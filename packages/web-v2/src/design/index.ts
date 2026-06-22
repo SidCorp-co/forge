@@ -90,4 +90,5 @@ export {
 
 // hooks
 export { useElapsed } from "./hooks/use-elapsed";
+export { useNow } from "./hooks/use-now";
 export { useAnimatedNumber } from "./hooks/use-animated-number";

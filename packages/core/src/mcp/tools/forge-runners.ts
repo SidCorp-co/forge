@@ -65,6 +65,9 @@ function publicRunnerRow(r: typeof runners.$inferSelect) {
     status: r.status,
     lastSeenAt: r.lastSeenAt,
     lastError: r.lastError,
+    limitReason: r.limitReason,
+    rateLimitedUntil: r.rateLimitedUntil,
+    limitDetail: r.limitDetail,
   };
 }
 

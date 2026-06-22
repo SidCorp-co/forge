@@ -11,7 +11,12 @@ import type { AttentionView } from "@/features/attention/types";
 import { jobTypeToStage, statusToStage } from "@/features/pipeline/derive";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
-import type { DeviceRow } from "@/features/runners/types";
+import {
+  type DeviceRow,
+  type ProjectRunner,
+  type RunnerLimitDisplay,
+  runnerLimitDisplay,
+} from "@/features/runners/types";
 import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
 
@@ -264,6 +269,8 @@ export interface RunnerLine {
   busy: boolean;
   running: number;
   queued: number;
+  /** Rate/usage/auth limit on this device's runner for this project, or null. */
+  limit: RunnerLimitDisplay | null;
 }
 
 export interface RunnersSummary {
@@ -281,10 +288,20 @@ export interface RunnersSummary {
 export function runnersSummary(
   devices: DeviceRow[] | undefined,
   queue: QueueStats | undefined,
+  projectRunners?: ProjectRunner[] | undefined,
+  now: number = Date.now(),
 ): RunnersSummary {
   const byDevice = new Map<string, { queued: number; running: number }>();
   for (const d of queue?.devices ?? []) {
     if (d.deviceId) byDevice.set(d.deviceId, { queued: d.queued, running: d.running });
+  }
+  // Limit state lives on the project-scoped runner row, not the device; join by
+  // deviceId so the org-wide device list can surface a per-project limit.
+  const limitByDevice = new Map<string, RunnerLimitDisplay>();
+  for (const r of projectRunners ?? []) {
+    if (!r.deviceId) continue;
+    const limit = runnerLimitDisplay(r, now);
+    if (limit) limitByDevice.set(r.deviceId, limit);
   }
   const lines: RunnerLine[] = (devices ?? [])
     .filter((d) => d.status !== "revoked")
@@ -299,6 +316,7 @@ export function runnersSummary(
         busy: online && q.running > 0,
         running: q.running,
         queued: q.queued,
+        limit: limitByDevice.get(d.id) ?? null,
       };
     });
   return {
