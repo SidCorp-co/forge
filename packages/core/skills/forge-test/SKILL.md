@@ -190,11 +190,15 @@ Report format:
 
 `Source` ∈ `AC #N` / `Plan` / `Review` / `Regression` / `UX` / `A11y` / `Responsive`. See `references/result-format.md` for full template and failure detail format, and `references/ui-quality-checklist.md` for the Pass-B quality bar.
 
-### Step 9: Set Status
+### Step 9: Stamp merged_at (base) on PASS, then Set Status
 
 **Status update must be the LAST action.** It triggers downstream pipeline steps.
 
-- **All pass** → `forge_issues → update → { data: { status: "tested" } }`
+- **All pass:**
+  1. **Stamp `merged_at` (base).** forge-code merges every complexity's `ISS-*` branch into the base branch at the code step, and you just QA'd that base/staging deployment — so a PASS means it is verified-on-base. Stamping `merged_at` is what releases the blocks-gate for any issue this one `blocks` (a blocked dependent only dispatches once its blocker's `merged_at` is set) and any decompose parent waiting on this child. Idempotent (COALESCE keeps the first timestamp):
+     `forge_issues → mark_merged → { data: { issueId: "<documentId>", target: "base" } }`
+     **Skip for a decomposed-epic issue** (`metadata.branchConfig`/`useIntegrationBranch`) — Step 0.6 stamps those against the integration branch (`target:'feature'`); don't double-stamp.
+  2. Then set status as the LAST action → `forge_issues → update → { data: { status: "tested" } }`
 - **Any fail** → `forge_issues → update → { data: { status: "reopen" } }` + detailed failure report with actionable info for forge-fix
 
 ## Test-specific output reminder
