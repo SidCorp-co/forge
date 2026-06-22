@@ -77,7 +77,7 @@ const FRAME_CLOSE_BRACKET = '⟧'; // ⟧
  * inner content nor the source attribute can reconstruct an opening or closing
  * delimiter line — defeats delimiter-forgery break-out.
  */
-function stripFrameTokens(text: string): string {
+export function stripFrameTokens(text: string): string {
   return text
     .split(FRAME_OPEN_BRACKET)
     .join('')

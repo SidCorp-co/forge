@@ -10,7 +10,7 @@ import {
   feedbackTargets,
   jobs,
 } from '../../db/schema.js';
-import { markUntrusted } from '../../prompt/sanitize.js';
+import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -46,7 +46,8 @@ const inputSchema = z
   .strict();
 
 function buildSignalKey(target: string, targetRef: string | null | undefined, kind: string): string {
-  return `self_report:${target}:${targetRef ?? '-'}:${kind}`;
+  const safeRef = targetRef ? stripFrameTokens(sanitizeUntrusted(targetRef)) : '-';
+  return `self_report:${target}:${safeRef}:${kind}`;
 }
 
 type ActiveJobContext = {
