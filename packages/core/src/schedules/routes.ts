@@ -1,16 +1,24 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
+import { and, eq, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessions, pipelineRuns, projects, schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { schedules } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { nextRunFor, validateCron } from './cron.js';
+import { nextRunFor } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
-import { getImprovementMessage } from './messages/registry.js';
+import {
+  createSchedule,
+  deleteSchedule,
+  getSchedule,
+  listScheduleRuns,
+  listSchedules,
+  markScheduleFailed,
+  runScheduleNow,
+  updateSchedule,
+} from './service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -71,48 +79,6 @@ const updateSchema = z
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-// Cross-project routing via `targetProjectSlug` would otherwise let a source
-// project's admin plant jobs on any project they know the slug of. Require the
-// actor to hold at least `member` on the target project before accepting the
-// slug, both when persisting it (POST/PUT) and when manually triggering
-// (`/:id/run`).
-// Reset `lastStatus` to 'failed' after a dispatcher throw so the row never
-// gets pinned to 'running' or a stale 'success'. Errors during the reset are
-// logged but never propagated — the original dispatch failure is what matters.
-async function markScheduleFailed(scheduleId: string, ctx: string): Promise<void> {
-  try {
-    await db
-      .update(schedules)
-      .set({ lastStatus: 'failed' })
-      .where(eq(schedules.id, scheduleId));
-  } catch (err) {
-    logger.error({ err, scheduleId }, `${ctx}: lastStatus reset threw`);
-  }
-}
-
-async function assertTargetProjectAccess(
-  slug: string,
-  userId: string,
-): Promise<{ id: string; createdBy: string }> {
-  const [target] = await db
-    .select({ id: projects.id, createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.slug, slug))
-    .limit(1);
-  if (!target) {
-    throw new HTTPException(400, {
-      message: 'targetProjectSlug not found',
-      cause: { code: 'INVALID_TARGET_PROJECT' },
-    });
-  }
-  const access = await loadProjectAccess(target.id, userId);
-  assertProjectRole(access, 'member', 'not a member of target project');
-  return target;
-}
-
 export const scheduleRoutes = new Hono<{ Variables: AuthVars }>();
 scheduleRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -123,20 +89,7 @@ scheduleRoutes.get(
   }),
   async (c) => {
     const { projectId, enabled } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
-
-    const conditions = [eq(schedules.projectId, projectId)];
-    if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled === 'true'));
-
-    const rows = await db
-      .select()
-      .from(schedules)
-      .where(and(...conditions))
-      .orderBy(asc(schedules.createdAt));
-
+    const rows = await listSchedules(projectId, c.get('userId'), enabled === 'true' ? true : enabled === 'false' ? false : undefined);
     return c.json(rows);
   },
 );
@@ -148,14 +101,7 @@ scheduleRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const [row] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
-    if (!row) throw notFound('schedule not found');
-
-    const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
-
+    const row = await getSchedule(id, c.get('userId'));
     return c.json(row);
   },
 );
@@ -176,66 +122,8 @@ scheduleRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const { limit } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const [schedule] = await db
-      .select({ projectId: schedules.projectId })
-      .from(schedules)
-      .where(eq(schedules.id, id))
-      .limit(1);
-    if (!schedule) throw notFound('schedule not found');
-
-    const access = await loadProjectAccess(schedule.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
-
-    const rows = await db
-      .select({
-        sessionId: agentSessions.id,
-        pipelineRunId: agentSessions.pipelineRunId,
-        status: agentSessions.status,
-        title: agentSessions.title,
-        failureReason: agentSessions.failureReason,
-        sessionStartedAt: agentSessions.startedAt,
-        createdAt: agentSessions.createdAt,
-        tick: sql<boolean>`(${agentSessions.metadata} ->> 'tick') = 'true'`,
-        runStatus: pipelineRuns.status,
-        runStartedAt: pipelineRuns.startedAt,
-        runFinishedAt: pipelineRuns.finishedAt,
-      })
-      .from(agentSessions)
-      .leftJoin(pipelineRuns, eq(agentSessions.pipelineRunId, pipelineRuns.id))
-      .where(sql`${agentSessions.metadata} ->> 'scheduleId' = ${id}`)
-      .orderBy(desc(agentSessions.createdAt))
-      .limit(limit ?? 20);
-
-    const toIso = (d: Date | string | null): string | null =>
-      d == null ? null : d instanceof Date ? d.toISOString() : d;
-
-    const runs = rows.map((r) => {
-      const start = r.sessionStartedAt ?? r.runStartedAt ?? r.createdAt;
-      const end = r.runFinishedAt ?? null;
-      const durationSeconds =
-        start && end
-          ? Math.max(
-              0,
-              Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000),
-            )
-          : null;
-      return {
-        sessionId: r.sessionId,
-        pipelineRunId: r.pipelineRunId,
-        status: r.status,
-        runStatus: r.runStatus,
-        trigger: r.tick ? ('scheduled' as const) : ('manual' as const),
-        title: r.title,
-        failureReason: r.failureReason,
-        startedAt: toIso(start),
-        finishedAt: toIso(end),
-        durationSeconds,
-      };
-    });
-
-    return c.json({ runs });
+    const result = await listScheduleRuns(id, c.get('userId'), limit);
+    return c.json(result);
   },
 );
 
@@ -246,59 +134,7 @@ scheduleRoutes.post(
   }),
   async (c) => {
     const input = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
-
-    const validation = validateCron(input.cron);
-    if (!validation.ok) {
-      throw new HTTPException(400, {
-        message: validation.error ?? 'invalid cron',
-        cause: { code: 'INVALID_CRON' },
-      });
-    }
-
-    if (input.targetProjectSlug) {
-      await assertTargetProjectAccess(input.targetProjectSlug, userId);
-    }
-
-    if (input.templateKey) {
-      const msg = getImprovementMessage(input.templateKey);
-      if (!msg) {
-        throw new HTTPException(400, {
-          message: `templateKey '${input.templateKey}' not found in registry`,
-          cause: { code: 'INVALID_TEMPLATE_KEY' },
-        });
-      }
-    }
-
-    const enabled = input.enabled ?? true;
-    const nextRunAt = enabled ? nextRunFor(input.cron) : null;
-    const mode = input.mode ?? (input.templateKey ? 'propose' : undefined);
-
-    // ISS-244 — desktop is the only runner supported on the new interactive
-    // dispatch path. The DB column default ('antigravity') predates this;
-    // pin to 'desktop' here so newly-created schedules are dispatchable.
-    const [inserted] = await db
-      .insert(schedules)
-      .values({
-        projectId: input.projectId,
-        name: input.name,
-        cron: input.cron,
-        prompt: input.prompt,
-        runner: input.runner ?? 'desktop',
-        enabled,
-        targetProjectSlug: input.targetProjectSlug ?? null,
-        metadata: (input.metadata as never) ?? null,
-        nextRunAt,
-        templateKey: input.templateKey ?? null,
-        params: (input.params as never) ?? null,
-        mode: mode ?? null,
-      })
-      .returning();
-    if (!inserted) throw new Error('schedules: insert returned no row');
-
+    const inserted = await createSchedule(input, c.get('userId'));
     return c.json(inserted, 201);
   },
 );
@@ -314,64 +150,7 @@ scheduleRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const [row] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
-    if (!row) throw notFound('schedule not found');
-
-    const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
-
-    if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
-      await assertTargetProjectAccess(patch.targetProjectSlug, userId);
-    }
-
-    if (patch.templateKey !== undefined && patch.templateKey !== null) {
-      const msg = getImprovementMessage(patch.templateKey);
-      if (!msg) {
-        throw new HTTPException(400, {
-          message: `templateKey '${patch.templateKey}' not found in registry`,
-          cause: { code: 'INVALID_TEMPLATE_KEY' },
-        });
-      }
-    }
-
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.prompt !== undefined) updates.prompt = patch.prompt;
-    if (patch.runner !== undefined) updates.runner = patch.runner;
-    if (patch.targetProjectSlug !== undefined) updates.targetProjectSlug = patch.targetProjectSlug;
-    if (patch.metadata !== undefined) updates.metadata = patch.metadata;
-    if (patch.templateKey !== undefined) updates.templateKey = patch.templateKey;
-    if (patch.params !== undefined) updates.params = patch.params;
-    if (patch.mode !== undefined) updates.mode = patch.mode;
-
-    const cron = patch.cron ?? row.cron;
-    const enabled = patch.enabled ?? row.enabled;
-
-    if (patch.cron !== undefined) {
-      const validation = validateCron(patch.cron);
-      if (!validation.ok) {
-        throw new HTTPException(400, {
-          message: validation.error ?? 'invalid cron',
-          cause: { code: 'INVALID_CRON' },
-        });
-      }
-      updates.cron = patch.cron;
-    }
-    if (patch.enabled !== undefined) updates.enabled = patch.enabled;
-
-    if (patch.cron !== undefined || patch.enabled !== undefined) {
-      updates.nextRunAt = enabled ? nextRunFor(cron) : null;
-    }
-
-    const [updated] = await db
-      .update(schedules)
-      .set(updates)
-      .where(eq(schedules.id, id))
-      .returning();
-    if (!updated) throw notFound('schedule not found');
-
+    const updated = await updateSchedule(id, patch, c.get('userId'));
     return c.json(updated);
   },
 );
@@ -383,19 +162,7 @@ scheduleRoutes.delete(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const [row] = await db
-      .select({ id: schedules.id, projectId: schedules.projectId })
-      .from(schedules)
-      .where(eq(schedules.id, id))
-      .limit(1);
-    if (!row) throw notFound('schedule not found');
-
-    const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
-
-    await db.delete(schedules).where(eq(schedules.id, id));
+    await deleteSchedule(id, c.get('userId'));
     return c.body(null, 204);
   },
 );
@@ -407,62 +174,8 @@ scheduleRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const [schedule] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
-    if (!schedule) throw notFound('schedule not found');
-
-    const access = await loadProjectAccess(schedule.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
-
-    // Defensive re-check: rows persisted before the create/update gate landed
-    // could carry a `targetProjectSlug` the actor has no business triggering.
-    let resolvedTarget: { id: string; createdBy: string } | undefined;
-    if (schedule.targetProjectSlug) {
-      resolvedTarget = await assertTargetProjectAccess(schedule.targetProjectSlug, userId);
-    }
-
-    let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
-    try {
-      result = await dispatchScheduleRun({
-        schedule: {
-          id: schedule.id,
-          name: schedule.name,
-          projectId: schedule.projectId,
-          prompt: schedule.prompt,
-          runner: schedule.runner,
-          targetProjectSlug: schedule.targetProjectSlug ?? null,
-          templateKey: schedule.templateKey ?? null,
-          params: (schedule.params as Record<string, unknown> | null) ?? null,
-          mode: schedule.mode ?? null,
-          appliedMessageVersions:
-            (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
-        },
-        actorUserId: userId,
-        ...(resolvedTarget ? { resolvedTarget } : {}),
-      });
-    } catch (err) {
-      logger.error({ err, scheduleId: schedule.id }, 'schedule.run: dispatch threw');
-      await markScheduleFailed(schedule.id, 'schedule.run');
-      throw err;
-    }
-
-    await db
-      .update(schedules)
-      .set({ lastStatus: result.status })
-      .where(eq(schedules.id, schedule.id));
-
-    if (!result.ok) {
-      // ISS-244 — manual /run no longer queues; surface "no device online"
-      // synchronously so the user knows nothing was started. `unsupported-runner`
-      // is only reachable for pre-existing antigravity rows.
-      throw new HTTPException(409, {
-        message: result.reason,
-        cause: { code: 'SCHEDULE_DISPATCH_FAILED', reason: result.reason },
-      });
-    }
-
-    return c.json({ sessionId: result.sessionId, message: 'Schedule triggered' }, 202);
+    const result = await runScheduleNow(id, c.get('userId'));
+    return c.json(result, 202);
   },
 );
 

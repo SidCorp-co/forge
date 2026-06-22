@@ -59,6 +59,7 @@ import {
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
+import { forgeSchedulesTool } from './tools/forge-schedules.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
 import {
   forgeSkillsAdoptTool,
@@ -212,6 +213,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeMetricsProjectStepDurationsTool(ctx),
     forgeMetricsProjectTimeseriesTool(ctx),
     forgeRunnersTool(ctx),
+    forgeSchedulesTool(ctx),
     forgeCollaboratorsTool(ctx),
     forgeOpsHealthTool(ctx),
     forgeIssuesTool(ctx),
