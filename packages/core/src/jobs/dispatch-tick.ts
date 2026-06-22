@@ -124,8 +124,19 @@ async function runTickInner(
   }
 
   try {
+    // Jobs this tick picked but could not PLACE (barrier skip, or selected
+    // runner full, or no capable free runner). Excluding them from the next
+    // pick lets the tick keep draining placeable jobs onto free runners —
+    // essential once maxConcurrentIssues>1, where a single unplaceable
+    // head-of-line job (e.g. a resume pinned to a busy host) must NOT block
+    // independent issues that can fan out to other runners.
+    const skippedJobIds: string[] = [];
     for (let i = 0; i < MAX_DISPATCH_PER_TICK; i++) {
-      const job = await pickNextDispatchableJobForProject(projectId);
+      const job = await pickNextDispatchableJobForProject(projectId, {
+        excludeJobIds: skippedJobIds,
+      });
+      // null = nothing left the picker will hand out (incl. pool-wide full via
+      // the L4 gate) — the tick is done.
       if (!job) return;
       if (job.issueId) affectedIssueIds.add(job.issueId);
 
@@ -148,12 +159,15 @@ async function runTickInner(
       }
 
       if (outcome === 'skipped') {
-        // ISS-162 — exit the loop on any skip. The picker is stateless and
-        // would keep returning the same L4-blocked or no-runner candidate on
-        // every iteration; spinning here would burn CPU until MAX_DISPATCH_PER_TICK.
-        // The next external trigger (job complete, runner online, 60s backstop)
-        // re-enters the sweep with fresh state.
-        return;
+        // This specific job couldn't be placed this tick. Exclude it and try
+        // the next candidate rather than exiting (the original ISS-162 return
+        // here head-of-line-blocked the whole project on one stuck job). The
+        // picker is stateless, so excluding it prevents the re-pick spin; when
+        // nothing placeable remains (incl. the whole pool full via the L4
+        // gate) the picker returns null and the loop ends. Fresh state on the
+        // next external trigger (job complete, runner online, 60s backstop)
+        // re-evaluates every excluded job from scratch.
+        skippedJobIds.push(job.id);
       }
     }
   } finally {

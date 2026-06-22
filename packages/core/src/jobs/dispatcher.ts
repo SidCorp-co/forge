@@ -23,7 +23,12 @@ import { getTrippedDeviceIds, selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
-import { assertDispatchable, runnerSupportsJobType } from './dispatch-gates.js';
+import {
+  assertDispatchable,
+  claimRunnerSlot,
+  resolveProjectCap,
+  runnerSupportsJobType,
+} from './dispatch-gates.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
@@ -340,12 +345,16 @@ async function dispatchViaRunner(
   // Runner-type filtering is enforced post-select via `runnerSupportsJobType`
   // (failure = permanent `runner_unsupported_type:<runner-type>`). The chain
   // is kept around purely for the L5-skip telemetry breadcrumb below.
+  // cap>1 makes runner selection load-aware (primary-first, spill to a free
+  // runner). At the default cap=1 this is the unchanged primary-pinned path.
+  const projectCap = await resolveProjectCap(job.projectId);
   const runner = await selectRunnerForJob({
     projectId: job.projectId,
     requiredCapabilities: required,
     pinDeviceId,
     excludeDeviceIds,
     skipPrimary,
+    projectCap,
   });
   if (!runner) {
     // ISS-198 — selectRunnerForJob filters runners with stale heartbeats
@@ -397,28 +406,35 @@ async function dispatchViaRunner(
     return 'skipped';
   }
 
-  // ISS-198 — L4 (runner capacity) is now enforced inline by the picker SQL
-  // (see `pickNextDispatchableJobForProject`). The dispatcher no longer
-  // re-checks post-pick; the only race that still survives is two pickers
-  // racing on the same job id, which is caught by the `status='queued'`
-  // CAS on the UPDATE below.
-
+  // AUTHORITATIVE per-runner cap gate (the picker's L4 EXISTS is pool-coarse —
+  // it only proves SOME runner is free, not that THIS selected runner is). When
+  // maxConcurrentIssues>1 the load-aware selector usually avoids a full runner,
+  // but a resume-pin to a busy host, or two ticks racing on the same free
+  // runner, can still target one at capacity. Enforce it atomically: lock the
+  // runner row (FOR UPDATE serializes concurrent dispatches to the same host),
+  // recount orphan-aware in-flight under the lock, and only then claim the job.
+  // This makes it IMPOSSIBLE to exceed RUNNER_CAP_PER_RUNNER regardless of race.
+  // Mirror runner→deviceId for backwards-compat with consumers reading the
+  // legacy column (antigravity-remote runners have deviceId=null → stays null).
   const dispatchedAt = new Date();
-  const updated = await db
-    .update(jobs)
-    .set({
-      status: 'dispatched',
-      runnerId: runner.id,
-      // Mirror to deviceId for backwards-compat with consumers reading the
-      // legacy column. Antigravity-remote runners have deviceId=null so this
-      // remains null in that case.
-      deviceId: runner.deviceId,
-      dispatchedAt,
-    })
-    .where(and(eq(jobs.id, job.id), eq(jobs.status, 'queued')))
-    .returning({ id: jobs.id });
+  const claim = await claimRunnerSlot({
+    jobId: job.id,
+    runnerId: runner.id,
+    deviceId: runner.deviceId,
+    dispatchedAt,
+  });
 
-  if (updated.length === 0) {
+  if (claim === 'runner_full') {
+    // Selected runner filled up between pick and claim. Leave queued; the tick
+    // excludes this job and tries the next candidate (no head-of-line block),
+    // and a freed slot re-picks it on a later tick.
+    logger.debug(
+      { jobId: job.id, runnerId: runner.id },
+      'dispatcher: selected runner at per-runner cap, leaving queued',
+    );
+    return 'skipped';
+  }
+  if (claim === 'lost') {
     logger.debug({ jobId: job.id }, 'dispatcher: lost race to another dispatcher');
     return 'skipped';
   }

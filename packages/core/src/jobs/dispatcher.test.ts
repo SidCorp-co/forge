@@ -80,6 +80,12 @@ vi.mock('./dispatch-gates.js', () => ({
   // ISS-226 / ISS-228 regression tests override per-call with a failing
   // barrier to assert the skip path.
   assertDispatchable: vi.fn(async () => ({ ok: true })),
+  // Per-project concurrency cap (default 1) — feeds the load-aware selector.
+  resolveProjectCap: vi.fn(async () => 1),
+  // Atomic per-runner claim that replaced the inline dispatch UPDATE. Default
+  // to a successful claim so the envelope/adapter assertions stay focused; the
+  // race/over-cap behaviour is covered in dispatch-loadbalance-e2e (real PG).
+  claimRunnerSlot: vi.fn(async () => 'claimed'),
 }));
 
 // ISS-198 — dispatcher emits a Sentry breadcrumb + histogram sample when
@@ -124,6 +130,7 @@ const {
 const { boss } = await import('../queue/boss.js');
 const { roomManager } = await import('../ws/server.js');
 const { selectRunnerForJob } = await import('../runners/select.js');
+const { claimRunnerSlot } = await import('./dispatch-gates.js');
 const { getRunnerAdapter } = await import('../runners/registry.js');
 const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
 const { applyPostmanMcpServers } = await import('../integrations/postman/resolver.js');
@@ -168,6 +175,13 @@ function mockRunnerDispatch(opts: { deviceId?: string } = {}): ReturnType<typeof
 describe('jobs/dispatcher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks only clears call history — mockImplementationOnce queues
+    // persist. The dispatch flip moved into the mocked claimRunnerSlot, so the
+    // happy-path tests' mockUpdateReturn(...) is never consumed and would leak
+    // a non-empty UPDATE into a later test's applyKernelTransition. Reset the
+    // update mock's one-shot queue each test (it has no base impl → undefined).
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
+    (db as any).update.mockReset();
   });
 
   afterEach(() => {
@@ -223,8 +237,9 @@ describe('jobs/dispatcher', () => {
 
       const result = await handleDispatch({ jobId: 'j1' });
       expect(result).toBe('dispatched');
-      // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
-      expect((db as any).update).toHaveBeenCalledTimes(1);
+      // The dispatched-flip now happens inside the atomic claimRunnerSlot
+      // (per-runner CAS gate), not an inline db.update in handleDispatch.
+      expect(claimRunnerSlot).toHaveBeenCalledTimes(1);
       expect(dispatchSpy).toHaveBeenCalledTimes(1);
       const arg = dispatchSpy.mock.calls[0]?.[0] as {
         job: Record<string, unknown>;
@@ -251,11 +266,12 @@ describe('jobs/dispatcher', () => {
     }
   });
 
-  it('skips when racing UPDATE returns zero rows and does NOT dispatch to the adapter', async () => {
+  it('skips when the runner-slot claim is lost (CAS) and does NOT dispatch to the adapter', async () => {
     mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
     mockSelectOnce([{ agentConfig: null }]);
     const dispatchSpy = mockRunnerDispatch();
-    mockUpdateReturn([]);
+    // claimRunnerSlot loses the queued→dispatched CAS (another dispatcher won).
+    (claimRunnerSlot as ReturnType<typeof vi.fn>).mockResolvedValueOnce('lost');
 
     const result = await handleDispatch({ jobId: 'j1' });
     expect(result).toBe('skipped');
@@ -576,6 +592,13 @@ describe('jobs/dispatcher', () => {
 describe('jobs/dispatcher PM path', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks only clears call history — mockImplementationOnce queues
+    // persist. The dispatch flip moved into the mocked claimRunnerSlot, so the
+    // happy-path tests' mockUpdateReturn(...) is never consumed and would leak
+    // a non-empty UPDATE into a later test's applyKernelTransition. Reset the
+    // update mock's one-shot queue each test (it has no base impl → undefined).
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
+    (db as any).update.mockReset();
   });
 
   afterEach(() => {
@@ -604,6 +627,7 @@ describe('jobs/dispatcher PM path', () => {
       pinDeviceId: null,
       excludeDeviceIds: [],
       skipPrimary: false,
+      projectCap: 1,
     });
 
     // ISS-186 — snapshot must persist on runner path too, before adapter.dispatch.
@@ -639,6 +663,7 @@ describe('jobs/dispatcher PM path', () => {
       pinDeviceId: null,
       excludeDeviceIds: [],
       skipPrimary: false,
+      projectCap: 1,
     });
   });
 

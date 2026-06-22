@@ -36,7 +36,7 @@
  *   - No writes from the picker / asserter. Both are read-only.
  */
 
-import { type SQL, eq, sql } from 'drizzle-orm';
+import { type SQL, and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
@@ -253,6 +253,54 @@ export async function checkLayer4RunnerFull(
   return PASS;
 }
 
+/**
+ * AUTHORITATIVE per-runner cap enforcement at dispatch time, race-safe.
+ *
+ * The picker's L4 EXISTS gate is pool-coarse (it proves SOME runner is free, not
+ * that the SELECTED one is), and `maxConcurrentIssues>1` lets two ticks target
+ * the same free runner concurrently. This claims a runner slot atomically:
+ *   1. `SELECT … FOR UPDATE` the runner row → serializes concurrent dispatches
+ *      to the SAME host (other claimers block until this tx commits).
+ *   2. recount orphan-aware in-flight under the lock (mirrors
+ *      {@link countInFlightForRunner} — terminal-parent orphans don't count).
+ *   3. only if a slot is free, CAS the job `queued → dispatched` on this runner.
+ *
+ * Returns `'claimed'` on success, `'runner_full'` if the runner is already at
+ * {@link RUNNER_CAP_PER_RUNNER} (caller leaves the job queued for a later tick),
+ * or `'lost'` if the job was no longer `queued` (another dispatcher won the CAS).
+ * Makes exceeding the per-runner cap IMPOSSIBLE regardless of dispatch races.
+ */
+export async function claimRunnerSlot(args: {
+  jobId: string;
+  runnerId: string;
+  deviceId: string | null;
+  dispatchedAt: Date;
+}): Promise<'claimed' | 'runner_full' | 'lost'> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT 1 FROM runners WHERE id = ${args.runnerId} FOR UPDATE`);
+    const rows = await tx.execute<{ in_flight: number }>(sql`
+      SELECT COUNT(*)::int AS in_flight
+      FROM jobs j
+      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+      WHERE j.runner_id = ${args.runnerId}
+        AND j.status IN ('dispatched','running')
+        AND (pr.id IS NULL OR pr.status IN ('running','paused'))
+    `);
+    if (Number(rows[0]?.in_flight ?? 0) >= RUNNER_CAP_PER_RUNNER) return 'runner_full' as const;
+    const upd = await tx
+      .update(jobs)
+      .set({
+        status: 'dispatched',
+        runnerId: args.runnerId,
+        deviceId: args.deviceId,
+        dispatchedAt: args.dispatchedAt,
+      })
+      .where(and(eq(jobs.id, args.jobId), eq(jobs.status, 'queued')))
+      .returning({ id: jobs.id });
+    return upd.length > 0 ? ('claimed' as const) : ('lost' as const);
+  });
+}
+
 type JobRow = typeof jobs.$inferSelect;
 
 interface BarrierFragments {
@@ -444,13 +492,29 @@ function buildBarrierFragments(args: {
  * in depth on top of the terminal-issue cascade that already moves jobs out
  * of `queued`.
  */
-export async function pickNextDispatchableJobForProject(projectId: string): Promise<JobRow | null> {
+export async function pickNextDispatchableJobForProject(
+  projectId: string,
+  opts?: { excludeJobIds?: string[] },
+): Promise<JobRow | null> {
   const cap = await resolveProjectCap(projectId);
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${projectId}`,
     livenessSeconds,
   });
+  // Jobs the current dispatch tick already tried and could not PLACE (e.g. a
+  // resume pinned to a busy host, or no capable free runner). Excluding them
+  // lets the stateless picker return the NEXT candidate instead of the same
+  // head-of-line job, so an unplaceable job never blocks independent issues
+  // that can go to a free runner. Empty on the first pick of a tick.
+  const excludeJobIds = opts?.excludeJobIds ?? [];
+  const excludeClause =
+    excludeJobIds.length > 0
+      ? sql`AND j.id NOT IN (${sql.join(
+          excludeJobIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})`
+      : sql``;
 
   const rows = await db.execute<JobRow>(sql`
     WITH ${ctes}
@@ -462,6 +526,7 @@ export async function pickNextDispatchableJobForProject(projectId: string): Prom
       AND j.status = 'queued'
       AND j.type <> 'pm'
       AND r.status = 'running'
+      ${excludeClause}
       -- ISS-197 — L1 cooldown gate. retry_after_at is set by the retry
       -- engine when honouring a provider Retry-After hint; until the
       -- timestamp passes, the job is invisible to the picker.

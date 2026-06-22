@@ -74,14 +74,22 @@ describe('dispatchTickForProject', () => {
     expect(handleDispatch).toHaveBeenNthCalledWith(2, { jobId: 'j2' });
   });
 
-  // ISS-162 — picker is stateless; an L4-blocked candidate would keep being
-  // returned. The tick breaks on first `skipped` outcome so the loop never
-  // burns CPU; the next external trigger or 60s backstop re-enters.
-  it('breaks the loop when handleDispatch returns skipped', async () => {
-    pickFn.mockResolvedValue({ id: 'j-stuck' });
+  // A skipped job is EXCLUDED for the rest of the tick (fed back via
+  // excludeJobIds) rather than ending the loop, so an unplaceable head-of-line
+  // job can't starve independent issues that CAN go to a free runner. The
+  // stateless picker honors excludeJobIds (modelled here as j-stuck → null), so
+  // it never re-picks the skipped job and the loop ends with no spin.
+  it('excludes a skipped job and re-picks (no head-of-line block, no spin)', async () => {
+    pickFn
+      .mockResolvedValueOnce({ id: 'j-stuck' })
+      .mockResolvedValueOnce(null); // real picker excludes j-stuck → null
     handleDispatch.mockResolvedValue('skipped');
     await dispatchTickForProject('p1');
     expect(handleDispatch).toHaveBeenCalledTimes(1);
+    expect(handleDispatch).toHaveBeenCalledWith({ jobId: 'j-stuck' });
+    // the re-pick excludes the skipped job
+    expect(pickFn).toHaveBeenCalledTimes(2);
+    expect(pickFn).toHaveBeenNthCalledWith(2, 'p1', { excludeJobIds: ['j-stuck'] });
   });
 
   it('coalesces: a second trigger while one is pending is dropped', async () => {
@@ -117,8 +125,8 @@ describe('dispatchTickForProject', () => {
     await dispatchTickForProject('p-self-heal');
 
     expect(pickFn).toHaveBeenCalledTimes(2);
-    expect(pickFn).toHaveBeenNthCalledWith(1, 'p-self-heal');
-    expect(pickFn).toHaveBeenNthCalledWith(2, 'p-self-heal');
+    expect(pickFn).toHaveBeenNthCalledWith(1, 'p-self-heal', { excludeJobIds: [] });
+    expect(pickFn).toHaveBeenNthCalledWith(2, 'p-self-heal', { excludeJobIds: [] });
   });
 
   // The `affectedIssueIds` snapshot SELECT must mirror the picker's L1

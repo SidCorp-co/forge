@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerType, projects } from '../db/schema.js';
+import { RUNNER_CAP_PER_RUNNER } from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
@@ -120,6 +121,16 @@ interface SelectInput {
    * First dispatches leave this false → primary-pinned behaviour is unchanged.
    */
   skipPrimary?: boolean;
+  /**
+   * Per-project concurrency cap (`pipelineConfig.maxConcurrentIssues`, default
+   * 1). When > 1 AND this is a first dispatch (`!skipPrimary`), runner choice
+   * becomes LOAD-AWARE: primary-first, then spill to the least-loaded FREE
+   * runner so independent issues fan across the pool instead of piling onto the
+   * primary. At cap 1 (the default) selection is byte-for-byte the legacy
+   * primary-pinned path. Retries (`skipPrimary`) always use the round-robin
+   * regardless of cap. Defaults to 1 when omitted.
+   */
+  projectCap?: number;
 }
 
 type RunnerRow = {
@@ -192,11 +203,13 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const excludeDeviceIds = input.excludeDeviceIds ?? [];
   const skipPrimary = input.skipPrimary ?? false;
+  const projectCap = input.projectCap ?? 1;
 
   const picked = await pickRunner(projectId, required, livenessSeconds, {
     pinDeviceId: pinDeviceId ?? null,
     excludeDeviceIds,
     skipPrimary,
+    projectCap,
   });
   if (picked) return picked;
 
@@ -210,6 +223,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       pinDeviceId: pinDeviceId ?? null,
       excludeDeviceIds: [],
       skipPrimary,
+      projectCap,
     });
   }
   return null;
@@ -219,7 +233,12 @@ async function pickRunner(
   projectId: string,
   required: string,
   livenessSeconds: number,
-  opts: { pinDeviceId: string | null; excludeDeviceIds: string[]; skipPrimary: boolean },
+  opts: {
+    pinDeviceId: string | null;
+    excludeDeviceIds: string[];
+    skipPrimary: boolean;
+    projectCap: number;
+  },
 ): Promise<Runner | null> {
   // Step 1 — pin. For a session-group resume this is the prior device; for a
   // retry rotation it is the round-robin `target`. The exclusion overrides the
@@ -245,6 +264,20 @@ async function pickRunner(
     .where(eq(projects.id, projectId))
     .limit(1);
   const defaultDeviceId = project?.defaultDeviceId ?? null;
+
+  // cap>1 first dispatch — LOAD-AWARE pool fan-out. Pick the least-loaded runner
+  // that still has a FREE slot (in_flight < RUNNER_CAP_PER_RUNNER), preferring
+  // the primary on ties so a usually-serial project keeps its warm primary and
+  // only spills under load. Unlike the legacy primary step this NEVER returns a
+  // full runner, so two independent issues land on two different hosts instead
+  // of piling onto the primary. Retries (skipPrimary) keep the round-robin.
+  if (!opts.skipPrimary && opts.projectCap > 1) {
+    return pickLeastLoadedFreeRunner(projectId, required, livenessSeconds, {
+      excludeDeviceIds: opts.excludeDeviceIds,
+      preferDeviceId: defaultDeviceId,
+    });
+  }
+
   if (!opts.skipPrimary && defaultDeviceId && !opts.excludeDeviceIds.includes(defaultDeviceId)) {
     const primary = await findHealthyByDevice(
       projectId,
@@ -351,6 +384,66 @@ async function findStandby(
         ${exclusionClause}
         ${retryExclusionClause}
       ORDER BY last_seen_at DESC, id ASC
+      LIMIT 1
+    `,
+  );
+  if (rows.length === 0) return null;
+  // biome-ignore lint/style/noNonNullAssertion: length checked
+  return rowToRunner(rows[0]!);
+}
+
+/**
+ * cap>1 LOAD-AWARE pick: the online + fresh + capable runner with a FREE slot
+ * (in-flight < {@link RUNNER_CAP_PER_RUNNER}, orphan jobs under a terminal
+ * pipeline_run excluded — mirrors the dispatch-gates `runner_load` CTE), ordered
+ * primary-first (`preferDeviceId`) then least-loaded then freshest then id.
+ * Deterministic (no RANDOM). Returns null when EVERY capable runner is full →
+ * the job stays queued and a later tick (freed slot) re-picks it. This is the
+ * spill mechanism that makes `maxConcurrentIssues>1` fan across the pool; the
+ * dispatcher's per-runner CAS gate is the authoritative no-overload backstop.
+ */
+async function pickLeastLoadedFreeRunner(
+  projectId: string,
+  required: string,
+  livenessSeconds: number,
+  opts: { excludeDeviceIds: string[]; preferDeviceId: string | null },
+): Promise<Runner | null> {
+  const retryExclusionClause =
+    opts.excludeDeviceIds.length > 0
+      ? sql.join(
+          opts.excludeDeviceIds.map((id) => sql`AND r.device_id IS DISTINCT FROM ${id}`),
+          sql` `,
+        )
+      : sql``;
+  const rows = await db.execute<RunnerRow>(
+    sql`
+      SELECT r.id, r.project_id, r.type, r.host, r.device_id, r.name, r.labels,
+             r.capabilities, r.config, r.status, r.last_seen_at, r.last_error,
+             r.limit_reason, r.rate_limited_until, r.limit_detail
+      FROM runners r
+      LEFT JOIN (
+        -- per-runner in-flight, orphan-aware (parent pipeline_run non-terminal)
+        SELECT j.runner_id, COUNT(*)::int AS in_flight
+        FROM jobs j
+        LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+        WHERE j.runner_id IS NOT NULL
+          AND j.status IN ('dispatched','running')
+          AND (pr.id IS NULL OR pr.status IN ('running','paused'))
+        GROUP BY j.runner_id
+      ) rl ON rl.runner_id = r.id
+      WHERE r.project_id = ${projectId}
+        AND r.status = 'online'
+        AND r.capabilities @> ${required}::jsonb
+        AND r.last_seen_at IS NOT NULL
+        AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+        AND COALESCE(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
+        ${retryExclusionClause}
+      ORDER BY
+        CASE WHEN r.device_id IS NOT DISTINCT FROM ${opts.preferDeviceId} THEN 0 ELSE 1 END,
+        COALESCE(rl.in_flight, 0) ASC,
+        r.last_seen_at DESC,
+        r.id ASC
       LIMIT 1
     `,
   );

@@ -196,10 +196,11 @@ describe('ISS-40 dispatch-tick E2E', () => {
       expect(handleDispatch).not.toHaveBeenCalled();
     });
 
-    // ISS-162 — picker is stateless, so an L4-blocked candidate would keep
-    // being returned. The tick breaks on the first `skipped` outcome to
-    // avoid spinning; the next external trigger or 60s backstop re-enters.
-    it('breaks the loop on the first skipped outcome', async () => {
+    // The picker is stateless: a skipped candidate is EXCLUDED for the rest of
+    // the tick (not re-picked) so the loop never spins, and ends when no other
+    // placeable job remains. With a single stuck job that means exactly one
+    // handleDispatch call, then the picker returns null.
+    it('excludes a skipped job and does not re-pick it (no spin)', async () => {
       const { owner, project } = await seedProject();
       await seedRunner(project.id, owner.id);
       const issueId = await insertIssue(project.id);
@@ -213,6 +214,38 @@ describe('ISS-40 dispatch-tick E2E', () => {
       await mods.dispatchTickForProject(project.id);
       expect(handleDispatch).toHaveBeenCalledWith({ jobId: stuck });
       expect(handleDispatch).toHaveBeenCalledTimes(1);
+    });
+
+    // No head-of-line blocking: a job that cannot be placed (e.g. a resume
+    // pinned to a busy host) must NOT end the tick — the next placeable job on
+    // an independent issue still gets dispatched. Pre-fix, the first `skipped`
+    // returned out of the loop and starved every following job.
+    it('does not head-of-line block: a skipped job still lets a later job dispatch', async () => {
+      const { owner, project } = await seedProject();
+      await seedRunner(project.id, owner.id);
+      const blockedIssue = await insertIssue(project.id);
+      const readyIssue = await insertIssue(project.id);
+      // Pick order: make the unplaceable one go first.
+      await harness.db.execute(sql`UPDATE issues SET priority = 'critical' WHERE id = ${blockedIssue}`);
+      await harness.db.execute(sql`UPDATE issues SET priority = 'low'      WHERE id = ${readyIssue}`);
+      const blockedJob = await insertJob(project.id, { issueId: blockedIssue });
+      const readyJob = await insertJob(project.id, { issueId: readyIssue });
+
+      const dispatcher = await import('../../src/jobs/dispatcher.js');
+      const handleDispatch = dispatcher.handleDispatch as unknown as ReturnType<typeof vi.fn>;
+      handleDispatch.mockClear();
+      handleDispatch.mockImplementation(async (args: { jobId: string }) => {
+        if (args.jobId === blockedJob) return 'skipped'; // unplaceable
+        await harness.db.execute(sql`
+          UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${args.jobId}`);
+        return 'dispatched';
+      });
+
+      await mods.dispatchTickForProject(project.id);
+
+      const calls = handleDispatch.mock.calls.map((c) => (c[0] as { jobId: string }).jobId);
+      expect(calls[0]).toBe(blockedJob); // critical-priority, tried first
+      expect(calls).toContain(readyJob); // still dispatched despite the skip
     });
   });
 });
