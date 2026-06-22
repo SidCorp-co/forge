@@ -97,6 +97,22 @@ describe("renderStageFactsText", () => {
 		expect(release).toContain("Release-notes shape");
 	});
 
+	it("feedback-red-flag fact appears in code/fix, absent for plan/review (ISS-552)", () => {
+		const RED_FLAG_TRIGGER = "report the friction";
+
+		const code = renderStageFactsText(makeInputs(), "p-1", "code");
+		expect(code).toContain(RED_FLAG_TRIGGER);
+
+		const fix = renderStageFactsText(makeInputs(), "p-1", "fix");
+		expect(fix).toContain(RED_FLAG_TRIGGER);
+
+		const plan = renderStageFactsText(makeInputs(), "p-1", "plan");
+		expect(plan).not.toContain(RED_FLAG_TRIGGER);
+
+		const review = renderStageFactsText(makeInputs(), "p-1", "review");
+		expect(review).not.toContain(RED_FLAG_TRIGGER);
+	});
+
 	it("keeps issue-bound facts out of pm jobs", () => {
 		const pm = renderStageFactsText(makeInputs(), "p-1", "pm");
 		expect(pm).not.toContain("Status ladder");

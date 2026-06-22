@@ -132,6 +132,10 @@ const EnvSchema = z.object({
   OIDC_CLIENT_ID: z.string().min(1).optional(),
   OIDC_CLIENT_SECRET: z.string().min(1).optional(),
   OIDC_SCOPES: z.string().min(1).default('openid email profile'),
+  // ISS-552 (C1) — per-job rate-limit for forge_feedback submit. When a device
+  // principal has a resolved active job, submissions beyond this cap return a
+  // soft-reject {ok:false, reason:'rate_limited'} rather than a 500.
+  FEEDBACK_MAX_PER_JOB: z.coerce.number().int().positive().default(5),
 });
 
 // ISS-234 — INTEGRATION_MASTER_KEY is intentionally NOT validated through

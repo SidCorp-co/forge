@@ -2633,3 +2633,79 @@ export const runnerEvents = pgTable(
     projectTsIdx: index('runner_events_project_ts_idx').on(t.projectId, t.ts),
   }),
 );
+
+// ISS-552 (C1) — append-only agent friction feed. Agents submit friction,
+// ambiguous steps, skill gaps, and learnings mid-run; the owner reads the raw
+// feed before the normalizer (C2) accrues signals into memory candidates.
+// candidate_id column present but FK-less until C2 adds the target table.
+export const feedbackKinds = [
+  'friction',
+  'bug',
+  'skill_gap',
+  'unclear_step',
+  'redundant_step',
+  'learning',
+  'suggestion',
+] as const;
+export type FeedbackKind = (typeof feedbackKinds)[number];
+
+export const feedbackSeverities = ['low', 'medium', 'high'] as const;
+export type FeedbackSeverity = (typeof feedbackSeverities)[number];
+
+export const feedbackTargets = [
+  'skill',
+  'prompt',
+  'tool',
+  'doc',
+  'orientation',
+  'pipeline',
+  'other',
+] as const;
+export type FeedbackTarget = (typeof feedbackTargets)[number];
+
+export const feedbackReports = pgTable(
+  'feedback_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
+    runId: uuid('run_id').references(() => pipelineRuns.id, { onDelete: 'set null' }),
+    jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'set null' }),
+    stage: text('stage'),
+    skillName: text('skill_name'),
+    skillVersion: integer('skill_version'),
+    kind: text('kind', { enum: feedbackKinds }).notNull(),
+    severity: text('severity', { enum: feedbackSeverities }).notNull().default('low'),
+    target: text('target', { enum: feedbackTargets }).notNull(),
+    targetRef: text('target_ref'),
+    summary: text('summary').notNull(),
+    detail: text('detail'),
+    suggestion: text('suggestion'),
+    // FK-less until C2 adds memory_candidates table.
+    candidateId: uuid('candidate_id'),
+    // Server-computed `self_report:<target>:<targetRef|'-'>:<kind>`.
+    // Stored for C2 signal accrual + list dedup.
+    signalKey: text('signal_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectIdIdx: index('feedback_reports_project_id_idx').on(t.projectId),
+    projectKindIdx: index('feedback_reports_project_kind_idx').on(t.projectId, t.kind),
+    projectTargetIdx: index('feedback_reports_project_target_idx').on(
+      t.projectId,
+      t.target,
+      t.targetRef,
+    ),
+    signalKeyIdx: index('feedback_reports_signal_key_idx').on(t.signalKey),
+    createdAtIdx: index('feedback_reports_created_at_idx').on(t.createdAt),
+  }),
+);
+
+export const feedbackReportsRelations = relations(feedbackReports, ({ one }) => ({
+  project: one(projects, { fields: [feedbackReports.projectId], references: [projects.id] }),
+  issue: one(issues, { fields: [feedbackReports.issueId], references: [issues.id] }),
+  run: one(pipelineRuns, { fields: [feedbackReports.runId], references: [pipelineRuns.id] }),
+  job: one(jobs, { fields: [feedbackReports.jobId], references: [jobs.id] }),
+}));

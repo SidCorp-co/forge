@@ -381,6 +381,22 @@ Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/wo
 - Create on first entry; REUSE the existing worktree if it's already present (fix re-enters the one code created).
 - Resolve collisions by reusing rather than recreating; clean up only at release.`,
 	},
+	// ISS-552 (C1) — trigger-phrased red-flag fact for code + fix stages.
+	// Teaches by trigger condition (ISS-541: "if X happened, do Y"), not by
+	// noun-list. Injected via the contextual tier; appliesTo keeps it out of
+	// plan/review/triage where it would just be noise.
+	{
+		id: "feedback-red-flag",
+		title: "Red flag: report friction you worked around",
+		category: "protocol",
+		tier: "contextual",
+		scope: "global",
+		namespace: "forge",
+		appliesTo: ["code", "fix"],
+		version: 1,
+		render: () => `## Red flag: report the friction
+If you JUST worked around an ambiguous / contradictory / missing / redundant pipeline step (skill, tool, doc, orientation) to get unblocked, call \`forge_feedback\` (action=submit) BEFORE you finish — name the target + targetRef and what you expected vs what you hit. This is a trigger, not a checklist item: do it when the trigger fires, skip it when nothing snagged.`,
+	},
 ] as const;
 
 const FACT_BY_ID = new Map<string, ForgeFact>(

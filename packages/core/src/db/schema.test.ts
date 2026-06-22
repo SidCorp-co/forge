@@ -9,6 +9,7 @@ import {
   deviceStatuses,
   devices,
   emailVerificationTokens,
+  feedbackReports,
   issueDependencies,
   issueDependencyKinds,
   issueLabels,
@@ -1394,5 +1395,69 @@ describe('tasks table (ISS-146 cascade verification)', () => {
     );
     if (!projectFk) throw new Error('project_id FK not found on tasks');
     expect(projectFk.onDelete).toBe('cascade');
+  });
+});
+
+describe('feedbackReports table (ISS-552 C1)', () => {
+  it('has the expected columns', () => {
+    const names = getTableConfig(feedbackReports).columns.map((c) => c.name).sort();
+    expect(names).toEqual(
+      [
+        'id',
+        'project_id',
+        'issue_id',
+        'run_id',
+        'job_id',
+        'stage',
+        'skill_name',
+        'skill_version',
+        'kind',
+        'severity',
+        'target',
+        'target_ref',
+        'summary',
+        'detail',
+        'suggestion',
+        'candidate_id',
+        'signal_key',
+        'created_at',
+      ].sort(),
+    );
+  });
+
+  it('project_id cascades on delete', () => {
+    const cfg = getTableConfig(feedbackReports);
+    const fk = cfg.foreignKeys.find((k) =>
+      k.reference().columns.some((c) => c.name === 'project_id'),
+    );
+    if (!fk) throw new Error('project_id FK not found');
+    expect(fk.onDelete).toBe('cascade');
+  });
+
+  it('issue_id, run_id, job_id are nullable (set null on delete)', () => {
+    const cfg = getTableConfig(feedbackReports);
+    const cols = cfg.columns;
+    const issueId = cols.find((c) => c.name === 'issue_id');
+    const runId = cols.find((c) => c.name === 'run_id');
+    const jobId = cols.find((c) => c.name === 'job_id');
+    if (!issueId || !runId || !jobId) throw new Error('nullable FK column not found');
+    expect(issueId.notNull).toBe(false);
+    expect(runId.notNull).toBe(false);
+    expect(jobId.notNull).toBe(false);
+  });
+
+  it('severity defaults to "low"', () => {
+    const col = getTableConfig(feedbackReports).columns.find((c) => c.name === 'severity');
+    if (!col) throw new Error('severity column not found');
+    expect(col.default).toBe('low');
+  });
+
+  it('has the five expected indexes', () => {
+    const names = getTableConfig(feedbackReports).indexes.map((i) => i.config.name);
+    expect(names).toContain('feedback_reports_project_id_idx');
+    expect(names).toContain('feedback_reports_project_kind_idx');
+    expect(names).toContain('feedback_reports_project_target_idx');
+    expect(names).toContain('feedback_reports_signal_key_idx');
+    expect(names).toContain('feedback_reports_created_at_idx');
   });
 });
