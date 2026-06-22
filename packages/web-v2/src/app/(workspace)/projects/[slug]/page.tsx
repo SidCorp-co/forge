@@ -11,6 +11,7 @@ import {
   PageContainer,
   ProjectLoader,
   ProjectMark,
+  useNow,
 } from "@/design";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { KpiBand } from "@/features/project-dashboard/components/kpi-band";
@@ -32,7 +33,7 @@ import { useAttention } from "@/features/attention/hooks";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { useDevices } from "@/features/runners/hooks";
+import { useDevices, useProjectRunners } from "@/features/runners/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -60,7 +61,13 @@ export default function ProjectOverviewPage() {
   const durationsQ = useStepDurations({ days: 7, projectId });
   const devicesQ = useDevices();
   const queueQ = useQueueStats(projectId);
+  const projectRunnersQ = useProjectRunners(projectId ?? null);
   const schedulesQ = useSchedules(projectId);
+
+  // Tick once a second only while some runner is limited, so the dashboard
+  // card's reset countdown stays live without a refetch.
+  const anyLimited = (projectRunnersQ.data ?? []).some((r) => r.limitReason);
+  const tick = useNow(1000, anyLimited);
 
   const isLoading = projectsQ.isLoading || healthQ.isLoading;
   const isError = projectsQ.isError || healthQ.isError;
@@ -108,7 +115,12 @@ export default function ProjectOverviewPage() {
   const runItems = runsQ.data?.items;
   const runsLive = liveRuns(runItems);
   const inFlight = inFlightSpend(runItems);
-  const runners = runnersSummary(devicesQ.data, queueQ.data);
+  const runners = runnersSummary(
+    devicesQ.data,
+    queueQ.data,
+    projectRunnersQ.data,
+    anyLimited ? tick : now,
+  );
   const donut = statusDonut(health?.statusDistribution);
   const spend = spendByStage(durationsQ.data);
   const schedules = upcomingSchedules(schedulesQ.data);

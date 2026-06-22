@@ -173,16 +173,23 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		// A runner's status flipped (heartbeat online / stale offline / operator
-		// patch). Refresh just that runner's activity feed (status-history
-		// timeline) if it's open — keyed by runnerId, so no broad refetch. The
-		// project runners list refreshes on its own (mount / window focus /
-		// runner.provision); these payloads carry no projectId to target it.
+		// patch / rate-or-usage-limit stamp+clear). Refresh that runner's
+		// activity feed (status-history timeline) if open — keyed by runnerId.
+		// When the payload carries a projectId (limit stamp/clear, heartbeat),
+		// also refresh the project's runner list + health so the dashboard
+		// runners card and Runners screen reflect the limit badge/countdown live.
 		case "runner.status":
 		case "runner.updated": {
 			if (data?.runnerId) {
 				qc.invalidateQueries({
 					queryKey: ["runners", data.runnerId, "activity"],
 				});
+			}
+			if (data?.projectId) {
+				qc.invalidateQueries({
+					queryKey: ["projects", data.projectId, "runners"],
+				});
+				qc.invalidateQueries({ queryKey: ["projects", "health"] });
 			}
 			return;
 		}

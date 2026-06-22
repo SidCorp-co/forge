@@ -51,6 +51,9 @@ function rowToRunner(r: typeof runners.$inferSelect): Runner {
     status: r.status,
     lastSeenAt: r.lastSeenAt,
     lastError: r.lastError,
+    limitReason: r.limitReason,
+    rateLimitedUntil: r.rateLimitedUntil,
+    limitDetail: r.limitDetail,
   };
 }
 

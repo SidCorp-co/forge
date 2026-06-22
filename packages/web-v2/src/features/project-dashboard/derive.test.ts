@@ -170,6 +170,33 @@ describe("runnersSummary", () => {
     expect(s.busyCount).toBe(1); // d1 running>0
     expect(s.lines.find((l) => l.id === "d1")?.busy).toBe(true);
     expect(s.lines.find((l) => l.id === "d2")?.busy).toBe(false);
+    // No project runners passed → no limit on any line.
+    expect(s.lines.every((l) => l.limit === null)).toBe(true);
+  });
+
+  it("joins a project runner's limit onto its device line by deviceId", () => {
+    const now = Date.parse("2026-06-22T08:00:00.000Z");
+    const projectRunners = [
+      {
+        runnerId: "r1",
+        deviceId: "d1",
+        limitReason: "usage_limit",
+        rateLimitedUntil: "2026-06-22T08:42:00.000Z",
+        limitDetail: "out of extra usage",
+      },
+      {
+        runnerId: "r2",
+        deviceId: "d2",
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
+      },
+    ] as Parameters<typeof runnersSummary>[2];
+    const s = runnersSummary(devices, queue, projectRunners, now);
+    const d1 = s.lines.find((l) => l.id === "d1");
+    expect(d1?.limit?.reason).toBe("usage_limit");
+    expect(d1?.limit?.resetText).toBe("resets in 42m");
+    expect(s.lines.find((l) => l.id === "d2")?.limit).toBeNull();
   });
 });
 

@@ -41,6 +41,9 @@ import { JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { classifyFailure } from '../pipeline/failure-classifier.js';
+import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
+import { detectRunnerLimit } from '../runners/limit-detect.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
@@ -199,6 +202,25 @@ export async function finalizeFailedJob(
   //    would wedge one that already recovered (ISS-280 AC2/AC4).
   const recoveredViaVerify =
     retry.reason === 'completed_via_recovery' || retry.reason === 'cancelled_stale';
+
+  // Rate-limit / usage-limit / auth highlighting (ported from forge-agents).
+  // Detect from the failure text (the runner emits `[USAGE_LIMIT] …resets…`,
+  // and Anthropic 429/401 surface in `error`). For a 429 with no parseable
+  // reset phrase we fall back to the provider `Retry-After` header, which the
+  // shared failure classifier extracts from `failureMeta` (its canonical
+  // source — `jobs.retryAfterAt` is only the retry engine's flat cooldown on
+  // the *next* attempt's row, never this failed row). Stamps the owning runner
+  // so the dispatcher skips it until reset and the UI shows a distinct
+  // "limited" badge. Fire-and-forget.
+  const errorText = updated.error ?? '';
+  const { retryAfter } = classifyFailure({
+    error: errorText,
+    meta: (updated.failureMeta as Record<string, unknown> | null) ?? null,
+  });
+  const limit = detectRunnerLimit(errorText, retryAfter);
+  if (limit) {
+    void stampRunnerLimit(updated.runnerId, updated.projectId, limit);
+  }
 
   // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
   // (retry path) or park at `waiting` + reap the run (no-retry path).

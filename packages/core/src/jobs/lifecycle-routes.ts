@@ -12,6 +12,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
+import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -203,6 +204,8 @@ jobLifecycleDeviceRoutes.post(
             issueId: reclaimed.issueId,
             type: reclaimed.type,
           });
+          // A successful completion clears any rate/usage/auth limit on the runner.
+          void clearRunnerLimit(reclaimed.runnerId, reclaimed.projectId);
           void dispatchTickForProject(reclaimed.projectId);
           if (reclaimed.issueId) {
             await publishPipelineHealthChanged(reclaimed.projectId, [reclaimed.issueId]);
@@ -317,6 +320,8 @@ jobLifecycleDeviceRoutes.post(
         issueId: updated.issueId,
         type: updated.type,
       });
+      // A successful completion clears any rate/usage/auth limit on the runner.
+      void clearRunnerLimit(updated.runnerId, updated.projectId);
     }
 
     // ISS-40 PR-E — re-tick the project so newly-freed slots get filled.

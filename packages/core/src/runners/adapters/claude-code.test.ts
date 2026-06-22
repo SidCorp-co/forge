@@ -41,6 +41,9 @@ describe('claude-code adapter', () => {
         status: 'online',
         lastSeenAt: new Date(),
         lastError: null,
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
       },
     });
     expect(result.status).toBe('dispatched');
@@ -74,6 +77,9 @@ describe('claude-code adapter', () => {
         status: 'online',
         lastSeenAt: new Date(),
         lastError: null,
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
       },
     });
     const call = publish.mock.calls[0];
@@ -98,6 +104,7 @@ describe('claude-code adapter', () => {
         id: 'r-1', projectId: 'p-1', type: 'claude-code', host: 'device',
         deviceId: 'd-1', name: 'desk', labels: [], capabilities: {}, config: {},
         status: 'online', lastSeenAt: new Date(), lastError: null,
+        limitReason: null, rateLimitedUntil: null, limitDetail: null,
       },
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: string } }).data;
@@ -118,6 +125,7 @@ describe('claude-code adapter', () => {
         id: 'r-1', projectId: 'p-1', type: 'claude-code', host: 'device',
         deviceId: 'd-1', name: 'desk', labels: [], capabilities: {}, config: {},
         status: 'online', lastSeenAt: new Date(), lastError: null,
+        limitReason: null, rateLimitedUntil: null, limitDetail: null,
       },
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: unknown } }).data;
@@ -147,6 +155,9 @@ describe('claude-code adapter', () => {
         status: 'online',
         lastSeenAt: new Date(),
         lastError: null,
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
       },
     });
     const call = publish.mock.calls[0];
@@ -177,6 +188,9 @@ describe('claude-code adapter', () => {
         status: 'online',
         lastSeenAt: null,
         lastError: null,
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
       },
     });
     expect(result.status).toBe('failed');
@@ -204,6 +218,9 @@ describe('claude-code adapter', () => {
         status: 'online',
         lastSeenAt: new Date(Date.now() - 200_000),
         lastError: null,
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
       },
     });
     expect(r.ok).toBe(false);

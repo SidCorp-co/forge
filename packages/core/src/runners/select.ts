@@ -135,6 +135,9 @@ type RunnerRow = {
   status: 'online' | 'offline' | 'draining' | 'disabled';
   last_seen_at: string | null;
   last_error: string | null;
+  limit_reason: 'usage_limit' | 'rate_limit' | 'auth' | null;
+  rate_limited_until: string | null;
+  limit_detail: string | null;
 };
 
 function rowToRunner(r: RunnerRow): Runner {
@@ -151,6 +154,9 @@ function rowToRunner(r: RunnerRow): Runner {
     status: r.status,
     lastSeenAt: r.last_seen_at ? new Date(r.last_seen_at) : null,
     lastError: r.last_error,
+    limitReason: r.limit_reason,
+    rateLimitedUntil: r.rate_limited_until ? new Date(r.rate_limited_until) : null,
+    limitDetail: r.limit_detail,
   };
 }
 
@@ -276,7 +282,8 @@ async function findHealthyByDevice(
   const rows = await db.execute<RunnerRow>(
     sql`
       SELECT id, project_id, type, host, device_id, name, labels,
-             capabilities, config, status, last_seen_at, last_error
+             capabilities, config, status, last_seen_at, last_error,
+             limit_reason, rate_limited_until, limit_detail
       FROM runners
       WHERE project_id = ${projectId}
         AND device_id = ${deviceId}
@@ -284,6 +291,7 @@ async function findHealthyByDevice(
         AND capabilities @> ${required}::jsonb
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        AND (rate_limited_until IS NULL OR rate_limited_until <= now())
       ORDER BY last_seen_at DESC, id ASC
       LIMIT 1
     `,
@@ -331,13 +339,15 @@ async function findStandby(
   const rows = await db.execute<RunnerRow>(
     sql`
       SELECT id, project_id, type, host, device_id, name, labels,
-             capabilities, config, status, last_seen_at, last_error
+             capabilities, config, status, last_seen_at, last_error,
+             limit_reason, rate_limited_until, limit_detail
       FROM runners
       WHERE project_id = ${projectId}
         AND status = 'online'
         AND capabilities @> ${required}::jsonb
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        AND (rate_limited_until IS NULL OR rate_limited_until <= now())
         ${exclusionClause}
         ${retryExclusionClause}
       ORDER BY last_seen_at DESC, id ASC
