@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Schedules can now deliver improvement messages from a registry, enabling automated coaching throughout the workspace.
 - Forge now blocks skills with hardcoded secrets or prompt-injection patterns from being saved, and warns when pipeline stage configurations grant over-broad permissions.
 - Pipeline agents now address open questions from prior stages before advancing, reducing context loss across steps.
 - Pipeline stages now run on a deliberate model tier (cheaper models for mechanical steps, stronger models for planning and review), and harder issues automatically escalate to a higher tier after a reopen.
