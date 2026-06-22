@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   real,
@@ -1488,6 +1489,47 @@ export const memories = pgTable(
       sql`"embedding" vector_cosine_ops`,
     ),
     textSearchIdx: index('memories_text_search_idx').using('gin', t.textSearch),
+  }),
+);
+
+export const memoryCandidateSignalTypes = [
+  'reopen_loop',
+  'repeated_fix_type',
+  'handoff_gap_rescue',
+] as const;
+export type MemoryCandidateSignalType = (typeof memoryCandidateSignalTypes)[number];
+
+export const memoryCandidateStatuses = ['accruing', 'graduated', 'accepted', 'rejected'] as const;
+export type MemoryCandidateStatus = (typeof memoryCandidateStatuses)[number];
+
+export const memoryCandidates = pgTable(
+  'memory_candidates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    signalType: text('signal_type', { enum: memoryCandidateSignalTypes }).notNull(),
+    signalKey: text('signal_key').notNull(),
+    status: text('status', { enum: memoryCandidateStatuses }).notNull().default('accruing'),
+    confidence: numeric('confidence', { precision: 3, scale: 2 }).notNull().default('0.30'),
+    evidenceCount: integer('evidence_count').notNull().default(1),
+    evidence: jsonb('evidence').notNull().default([]),
+    summary: text('summary').notNull(),
+    graduatedAt: timestamp('graduated_at', { withTimezone: true }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectSignalKeyUq: uniqueIndex('memory_candidates_project_signal_key_uq').on(
+      t.projectId,
+      t.signalType,
+      t.signalKey,
+    ),
+    projectStatusIdx: index('memory_candidates_project_status_idx').on(t.projectId, t.status),
+    archivedIdx: index('memory_candidates_archived_idx').on(t.archivedAt),
   }),
 );
 

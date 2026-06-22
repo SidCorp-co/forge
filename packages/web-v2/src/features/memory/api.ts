@@ -1,7 +1,7 @@
 // web-v2 feature module: memory — REST surface. Routes verified against
-// `packages/core/src/memory/{list-routes,search-routes}.ts`.
+// `packages/core/src/memory/{list-routes,search-routes,candidates-routes}.ts`.
 import { apiClient, apiClientList } from "@/lib/api/client";
-import type { MemoryRow, MemorySearchResult, MemorySource } from "./types";
+import type { MemoryCandidate, MemoryRow, MemorySearchResult, MemorySource } from "./types";
 
 export const MEMORY_PAGE_SIZE = 25;
 
@@ -34,4 +34,31 @@ export const memoryApi = {
         ...(sourceFilter && sourceFilter.length ? { sourceFilter } : {}),
       }),
     }),
+};
+
+export const CANDIDATES_PAGE_SIZE = 25;
+
+export interface ListCandidatesOpts {
+  projectId: string;
+  page?: number;
+}
+
+export const memoryCandidatesApi = {
+  /** `GET /api/memory/candidates` — graduated candidates waiting for review. */
+  list: ({ projectId, page = 1 }: ListCandidatesOpts) => {
+    const params = new URLSearchParams({
+      projectId,
+      limit: String(CANDIDATES_PAGE_SIZE),
+      offset: String((page - 1) * CANDIDATES_PAGE_SIZE),
+    });
+    return apiClientList<MemoryCandidate>(`/memory/candidates?${params}`);
+  },
+
+  /** `POST /api/memory/candidates/:id/accept` — write candidate to memory. */
+  accept: (id: string) =>
+    apiClient<{ id: string }>(`/memory/candidates/${id}/accept`, { method: "POST" }),
+
+  /** `POST /api/memory/candidates/:id/reject` — archive the candidate. */
+  reject: (id: string) =>
+    apiClient<{ rejected: boolean }>(`/memory/candidates/${id}/reject`, { method: "POST" }),
 };
