@@ -432,6 +432,11 @@ scheduleRoutes.post(
           prompt: schedule.prompt,
           runner: schedule.runner,
           targetProjectSlug: schedule.targetProjectSlug ?? null,
+          templateKey: schedule.templateKey ?? null,
+          params: (schedule.params as Record<string, unknown> | null) ?? null,
+          mode: schedule.mode ?? null,
+          appliedMessageVersions:
+            (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
         },
         actorUserId: userId,
         ...(resolvedTarget ? { resolvedTarget } : {}),
@@ -507,6 +512,11 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
             prompt: schedule.prompt,
             runner: schedule.runner,
             targetProjectSlug: schedule.targetProjectSlug ?? null,
+            templateKey: schedule.templateKey ?? null,
+            params: (schedule.params as Record<string, unknown> | null) ?? null,
+            mode: schedule.mode ?? null,
+            appliedMessageVersions:
+              (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
           },
           // FIXME(iss-257): system-initiated sessions attribute to the
           // project creator (audit `projects.created_by`) because
