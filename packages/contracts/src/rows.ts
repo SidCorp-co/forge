@@ -81,3 +81,37 @@ export type DeviceLoginCode = typeof schema.deviceLoginCodes.$inferSelect;
 export type Runner = typeof schema.runners.$inferSelect;
 
 export type ActivityLog = typeof schema.activityLog.$inferSelect;
+
+// ISS-546 — improvement-message registry type (cross-app parity).
+// Pure data shape; no DB import needed — the registry is a git-committed module.
+export type ImprovementMessageCategory =
+  | 'code-quality'
+  | 'testing'
+  | 'documentation'
+  | 'performance'
+  | 'security'
+  | 'dx'
+  | 'ops'
+  | 'general';
+
+export interface ImprovementMessage {
+  key: string;
+  title: string;
+  message: string;
+  rationale: string;
+  appliesToSkills?: readonly string[];
+  appliesWhen?: string;
+  category: ImprovementMessageCategory;
+  version: number;
+  recommended: boolean;
+  defaultMode: 'propose' | 'auto';
+}
+
+export interface ImprovementMessageEntry extends ImprovementMessage {
+  enablement: {
+    enabled: boolean;
+    scheduleId: string;
+    mode: string;
+    cron: string;
+  } | null;
+}

@@ -10,6 +10,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
+import { getImprovementMessage } from './messages/registry.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -33,6 +34,8 @@ const runsQuerySchema = z
 // enum (`scheduleRunners`) stays wide so existing rows don't fail at read.
 const apiScheduleRunner = z.enum(['desktop']);
 
+const scheduleMode = z.enum(['propose', 'auto']);
+
 const createSchema = z
   .object({
     projectId: z.uuid(),
@@ -43,6 +46,9 @@ const createSchema = z
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+    templateKey: z.string().trim().min(1).max(200).nullable().optional(),
+    params: z.record(z.string(), z.unknown()).nullable().optional(),
+    mode: scheduleMode.optional(),
   })
   .strict();
 
@@ -55,6 +61,9 @@ const updateSchema = z
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+    templateKey: z.string().trim().min(1).max(200).nullable().optional(),
+    params: z.record(z.string(), z.unknown()).nullable().optional(),
+    mode: scheduleMode.optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -254,8 +263,19 @@ scheduleRoutes.post(
       await assertTargetProjectAccess(input.targetProjectSlug, userId);
     }
 
+    if (input.templateKey) {
+      const msg = getImprovementMessage(input.templateKey);
+      if (!msg) {
+        throw new HTTPException(400, {
+          message: `templateKey '${input.templateKey}' not found in registry`,
+          cause: { code: 'INVALID_TEMPLATE_KEY' },
+        });
+      }
+    }
+
     const enabled = input.enabled ?? true;
     const nextRunAt = enabled ? nextRunFor(input.cron) : null;
+    const mode = input.mode ?? (input.templateKey ? 'propose' : undefined);
 
     // ISS-244 — desktop is the only runner supported on the new interactive
     // dispatch path. The DB column default ('antigravity') predates this;
@@ -272,6 +292,9 @@ scheduleRoutes.post(
         targetProjectSlug: input.targetProjectSlug ?? null,
         metadata: (input.metadata as never) ?? null,
         nextRunAt,
+        templateKey: input.templateKey ?? null,
+        params: (input.params as never) ?? null,
+        mode: mode ?? null,
       })
       .returning();
     if (!inserted) throw new Error('schedules: insert returned no row');
@@ -303,12 +326,25 @@ scheduleRoutes.put(
       await assertTargetProjectAccess(patch.targetProjectSlug, userId);
     }
 
+    if (patch.templateKey !== undefined && patch.templateKey !== null) {
+      const msg = getImprovementMessage(patch.templateKey);
+      if (!msg) {
+        throw new HTTPException(400, {
+          message: `templateKey '${patch.templateKey}' not found in registry`,
+          cause: { code: 'INVALID_TEMPLATE_KEY' },
+        });
+      }
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.prompt !== undefined) updates.prompt = patch.prompt;
     if (patch.runner !== undefined) updates.runner = patch.runner;
     if (patch.targetProjectSlug !== undefined) updates.targetProjectSlug = patch.targetProjectSlug;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
+    if (patch.templateKey !== undefined) updates.templateKey = patch.templateKey;
+    if (patch.params !== undefined) updates.params = patch.params;
+    if (patch.mode !== undefined) updates.mode = patch.mode;
 
     const cron = patch.cron ?? row.cron;
     const enabled = patch.enabled ?? row.enabled;
