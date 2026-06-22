@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Agents can now report friction, unclear steps, and skill gaps in real time via the new forge_feedback tool, and owners can read the raw feed — surfacing problems even on clean, successful runs.
 - Agents and automations can now manage improvement schedules via MCP without requiring a user session.
 - Improve tab: agent context read, appliesWhen rules, propose/auto options, run reports, and idempotency support.
 - Schedules can now deliver improvement messages from a registry, enabling automated coaching throughout the workspace.
