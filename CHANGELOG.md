@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - Improve tab: agent context read, appliesWhen rules, propose/auto options, run reports, and idempotency support.
 - Schedules can now deliver improvement messages from a registry, enabling automated coaching throughout the workspace.
+- Projects can now subscribe to improvement messages that automatically propose or apply per-project skill refinements on a schedule.
 - Forge now blocks skills with hardcoded secrets or prompt-injection patterns from being saved, and warns when pipeline stage configurations grant over-broad permissions.
 - Pipeline agents now address open questions from prior stages before advancing, reducing context loss across steps.
 - Pipeline stages now run on a deliberate model tier (cheaper models for mechanical steps, stronger models for planning and review), and harder issues automatically escalate to a higher tier after a reopen.
