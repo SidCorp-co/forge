@@ -5,10 +5,14 @@ import {
   resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
-import { agentSessions, projects, schedules } from '../db/schema.js';
+import { type ScheduleMode, agentSessions, projects, schedules } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
+import {
+  type AppliedVersions,
+  buildSkillImprovePrompt,
+} from './messages/skill-improve-prompt.js';
 
 export interface ScheduleRowForDispatch {
   id: string;
@@ -17,6 +21,11 @@ export interface ScheduleRowForDispatch {
   prompt: string;
   runner: 'desktop' | 'antigravity';
   targetProjectSlug: string | null;
+  /** When set, the skill-improve engine builds the prompt instead of using `prompt`. */
+  templateKey?: string | null;
+  params?: Record<string, unknown> | null;
+  mode?: ScheduleMode | null;
+  appliedMessageVersions?: AppliedVersions | null;
 }
 
 export interface DispatchScheduleInput {
@@ -43,7 +52,7 @@ export type DispatchScheduleResult =
   | { ok: true; sessionId: string; status: 'success'; resolvedProjectId: string }
   | {
       ok: false;
-      reason: 'project-not-found' | 'no-device' | 'unsupported-runner';
+      reason: 'project-not-found' | 'no-device' | 'unsupported-runner' | 'already-applied';
       status: 'skipped';
     }
   | { ok: false; reason: 'session-failed'; status: 'failed'; sessionId?: string };
@@ -81,6 +90,26 @@ export async function dispatchScheduleRun(
   // point, only desktop schedules can ride this code path.
   if (schedule.runner !== 'desktop') {
     return { ok: false, reason: 'unsupported-runner', status: 'skipped' };
+  }
+
+  // ISS-548 — when a schedule has a templateKey, build the skill-improve prompt
+  // BEFORE any DB lookups. A `null` return means the message is already applied at
+  // its current version → return skipped early to avoid a wasted round-trip.
+  let effectivePrompt = schedule.prompt;
+  if (schedule.templateKey) {
+    const built = buildSkillImprovePrompt({
+      templateKey: schedule.templateKey,
+      mode: schedule.mode ?? 'propose',
+      appliedMessageVersions: schedule.appliedMessageVersions ?? null,
+    });
+    if (built === null) {
+      logger.info(
+        { scheduleId: schedule.id, templateKey: schedule.templateKey },
+        'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
+      );
+      return { ok: false, reason: 'already-applied', status: 'skipped' };
+    }
+    effectivePrompt = built;
   }
 
   let resolvedProjectId = schedule.projectId;
@@ -139,6 +168,9 @@ export async function dispatchScheduleRun(
   const title = schedule.name?.trim() || 'Scheduled run';
   const metadata: Record<string, unknown> = { source: 'schedule.run', scheduleId: schedule.id };
   if (input.tick) metadata.tick = true;
+  // ISS-548 — carry templateKey in session metadata so the session-completion
+  // handler can locate the schedule row and write back applied_message_versions.
+  if (schedule.templateKey) metadata.templateKey = schedule.templateKey;
 
   // ISS-101 — schedule runs are project-scoped one-shots with no issueId; open a
   // 'system' run via the shared chat-session creator, then deliver the prompt
@@ -172,7 +204,7 @@ export async function dispatchScheduleRun(
       session,
       project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
       client,
-      message: schedule.prompt,
+      message: effectivePrompt,
       // Parity with /start — web subscribers add the new session to their list.
       broadcastEvent: 'agent-session.created',
     });

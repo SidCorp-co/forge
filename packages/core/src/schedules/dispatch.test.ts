@@ -96,6 +96,15 @@ vi.mock('../pipeline/runs.js', () => ({
   setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
 }));
 
+// ISS-548 — mock the prompt builder so dispatch tests remain registry-independent.
+const buildSkillImprovePromptMock = vi.fn<
+  (input: { templateKey: string; mode: string; appliedMessageVersions: unknown }) => string | null
+>();
+vi.mock('./messages/skill-improve-prompt.js', () => ({
+  buildSkillImprovePrompt: (input: unknown) => buildSkillImprovePromptMock(input as never),
+  extractReportFromMessages: vi.fn(() => null),
+}));
+
 const { dispatchScheduleRun } = await import('./dispatch.js');
 const hooksModule = await import('../pipeline/hooks.js');
 
@@ -153,6 +162,7 @@ beforeEach(() => {
   publishMock.mockReturnValue(undefined);
   syncTurnsMock.mockReset();
   syncTurnsMock.mockResolvedValue({ appended: [], truncatedFromTurnIndex: null });
+  buildSkillImprovePromptMock.mockReset();
   hooksModule.hooks.reset();
 });
 
@@ -454,5 +464,144 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     };
     expect(insertCall?.userId).toBe('owner-1');
     expect(insertCall?.metadata?.tick).toBe(true);
+  });
+});
+
+// ── ISS-548: skill-improve dispatch branching ─────────────────────────────────
+
+describe('dispatchScheduleRun — templateKey / skill-improve path', () => {
+  it('templateKey null → buildSkillImprovePrompt not called, raw prompt used', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'legacy raw prompt',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(buildSkillImprovePromptMock).not.toHaveBeenCalled();
+    // Session still created — raw prompt path proceeds normally.
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('templateKey set + prompt builder returns non-null → session created, metadata carries templateKey', async () => {
+    buildSkillImprovePromptMock.mockReturnValue('BUILT_SKILL_IMPROVE_PROMPT');
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'fallback-should-not-be-used',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'merged-at-on-pass',
+        mode: 'propose',
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+
+    // Builder called with the right args.
+    expect(buildSkillImprovePromptMock).toHaveBeenCalledWith({
+      templateKey: 'merged-at-on-pass',
+      mode: 'propose',
+      appliedMessageVersions: null,
+    });
+
+    // Session metadata carries templateKey so the completion hook can locate the schedule.
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      metadata?: { templateKey?: string; source?: string; scheduleId?: string };
+    };
+    expect(insertCall?.metadata?.templateKey).toBe('merged-at-on-pass');
+    expect(insertCall?.metadata?.source).toBe('schedule.run');
+    expect(insertCall?.metadata?.scheduleId).toBe(SCHEDULE_ID);
+
+    // Session was created and WS was published.
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('templateKey set + prompt builder returns null → already-applied / skipped, no WS', async () => {
+    buildSkillImprovePromptMock.mockReturnValue(null);
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'merged-at-on-pass',
+        mode: 'propose',
+        appliedMessageVersions: { 'merged-at-on-pass': 1 },
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'already-applied', status: 'skipped' });
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('templateKey set + appliedMessageVersions forwarded to builder', async () => {
+    buildSkillImprovePromptMock.mockReturnValue('PROMPT');
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'qa-quality-bar',
+        mode: 'auto',
+        appliedMessageVersions: { 'some-other-key': 3 },
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(buildSkillImprovePromptMock).toHaveBeenCalledWith({
+      templateKey: 'qa-quality-bar',
+      mode: 'auto',
+      appliedMessageVersions: { 'some-other-key': 3 },
+    });
+  });
+
+  it('templateKey set but mode null → defaults to propose', async () => {
+    buildSkillImprovePromptMock.mockReturnValue('PROMPT');
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'merged-at-on-pass',
+        mode: null,
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(buildSkillImprovePromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'propose' }),
+    );
   });
 });
