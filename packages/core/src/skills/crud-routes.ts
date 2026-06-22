@@ -1,12 +1,13 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
+import { type SQL, and, asc, eq, inArray, or } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
+import { skillRegistrations, skillTargets, skills } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { SkillContentBlockedError } from '../security/findings.js';
 import { MANAGED_META_SKILLS } from './effective.js';
 import {
   createProjectSkill,
@@ -109,7 +110,10 @@ skillCrudRoutes.get(
       if (projectId) {
         const access = await loadProjectAccess(projectId, userId);
         if (!access.role) throw forbidden('not a project member');
-        const projectCond = and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)) as SQL;
+        const projectCond = and(
+          eq(skills.scope, 'project'),
+          eq(skills.projectId, projectId),
+        ) as SQL;
         conditions.push(or(eq(skills.scope, 'global'), projectCond) as SQL);
       } else {
         conditions.push(eq(skills.scope, 'global'));
@@ -177,17 +181,26 @@ skillCrudRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     assertProjectRole(access, 'admin', 'only a project admin can create skills');
 
-    const inserted = await createProjectSkill({
-      projectId: input.projectId,
-      name: input.name,
-      description: input.description,
-      skillMd: input.skillMd,
-      target: input.target ?? null,
-      files: input.files,
-      localGuide: input.localGuide ?? null,
-    });
-
-    return c.json(inserted, 201);
+    try {
+      const inserted = await createProjectSkill({
+        projectId: input.projectId,
+        name: input.name,
+        description: input.description,
+        skillMd: input.skillMd,
+        target: input.target ?? null,
+        files: input.files,
+        localGuide: input.localGuide ?? null,
+      });
+      return c.json(inserted, 201);
+    } catch (err) {
+      if (err instanceof SkillContentBlockedError) {
+        throw new HTTPException(400, {
+          message: 'SKILL_CONTENT_BLOCKED',
+          cause: { code: 'SKILL_CONTENT_BLOCKED', details: { findings: err.findings } },
+        });
+      }
+      throw err;
+    }
   },
 );
 
@@ -215,8 +228,18 @@ skillCrudRoutes.put(
       throw forbidden('global skills cannot be updated via this endpoint');
     }
 
-    const updated = await updateProjectSkill(row, patch);
-    return c.json(updated);
+    try {
+      const updated = await updateProjectSkill(row, patch);
+      return c.json(updated);
+    } catch (err) {
+      if (err instanceof SkillContentBlockedError) {
+        throw new HTTPException(400, {
+          message: 'SKILL_CONTENT_BLOCKED',
+          cause: { code: 'SKILL_CONTENT_BLOCKED', details: { findings: err.findings } },
+        });
+      }
+      throw err;
+    }
   },
 );
 
