@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RETIRED_STRATEGY_INPUTS,
   getImprovementMessage,
   improvementMessages,
   listImprovementMessages,
@@ -39,37 +40,56 @@ describe('improvementMessages registry', () => {
     expect(getImprovementMessage(first.key)).toBe(first);
   });
 
-  it('registry contains exactly 3 seed messages', () => {
-    expect(listImprovementMessages()).toHaveLength(3);
+  // AC1: 3 one-shot entries removed from registry
+  it('registry does NOT contain the 3 retired one-shot keys', () => {
+    expect(getImprovementMessage('merged-at-on-pass')).toBeUndefined();
+    expect(getImprovementMessage('release-conflict-2tier')).toBeUndefined();
+    expect(getImprovementMessage('qa-quality-bar')).toBeUndefined();
   });
 
-  it('merged-at-on-pass has correct shape', () => {
-    const msg = getImprovementMessage('merged-at-on-pass');
+  // AC2: optimize-skills standing entry present
+  it('registry contains the optimize-skills standing entry', () => {
+    const msg = getImprovementMessage('optimize-skills');
     expect(msg).toBeDefined();
-    expect(msg!.category).toBe('pipeline-correctness');
-    expect(msg!.appliesToSkills).toContain('forge-test');
-    expect(msg!.appliesWhen).toBeTruthy();
-    expect(msg!.version).toBe(1);
+    expect(msg!.standing).toBe(true);
+    expect(msg!.category).toBe('steward');
     expect(msg!.recommended).toBe(true);
   });
 
-  it('release-conflict-2tier has correct shape', () => {
-    const msg = getImprovementMessage('release-conflict-2tier');
+  it('optimize-skills has correct shape', () => {
+    const msg = getImprovementMessage('optimize-skills');
     expect(msg).toBeDefined();
-    expect(msg!.category).toBe('pipeline-correctness');
-    expect(msg!.appliesToSkills).toContain('forge-release');
-    expect(msg!.appliesWhen).toBeTruthy();
     expect(msg!.version).toBe(1);
-    expect(msg!.recommended).toBe(true);
+    expect(msg!.defaultMode).toBe('propose');
+    expect(msg!.standing).toBe(true);
+    expect(msg!.title).toBeTruthy();
+    expect(msg!.message).toBeTruthy();
+    expect(msg!.rationale).toBeTruthy();
   });
 
-  it('qa-quality-bar has correct shape', () => {
-    const msg = getImprovementMessage('qa-quality-bar');
-    expect(msg).toBeDefined();
-    expect(msg!.category).toBe('quality');
-    expect(msg!.appliesToSkills).toContain('forge-test');
-    expect(msg!.appliesWhen).toBeTruthy();
-    expect(msg!.version).toBe(1);
-    expect(msg!.recommended).toBe(true);
+  it('registry contains exactly 1 entry (the standing steward)', () => {
+    expect(listImprovementMessages()).toHaveLength(1);
+  });
+
+  it('standing entries have standing=true', () => {
+    const standing = listImprovementMessages().filter((m) => m.standing === true);
+    expect(standing).toHaveLength(1);
+    expect(standing[0]!.key).toBe('optimize-skills');
+  });
+});
+
+describe('RETIRED_STRATEGY_INPUTS', () => {
+  it('contains all 3 retired patterns', () => {
+    expect(RETIRED_STRATEGY_INPUTS.MERGED_AT_ON_PASS.key).toBe('merged-at-on-pass');
+    expect(RETIRED_STRATEGY_INPUTS.RELEASE_CONFLICT_2TIER.key).toBe('release-conflict-2tier');
+    expect(RETIRED_STRATEGY_INPUTS.QA_QUALITY_BAR.key).toBe('qa-quality-bar');
+  });
+
+  it('each retired pattern has message and appliesWhen', () => {
+    for (const input of Object.values(RETIRED_STRATEGY_INPUTS)) {
+      expect(input.message).toBeTruthy();
+      expect(input.appliesWhen).toBeTruthy();
+      expect(input.appliesToSkills.length).toBeGreaterThan(0);
+    }
   });
 });

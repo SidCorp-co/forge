@@ -82,7 +82,7 @@ export type Runner = typeof schema.runners.$inferSelect;
 
 export type ActivityLog = typeof schema.activityLog.$inferSelect;
 
-// ISS-546 — improvement-message registry type (cross-app parity).
+// ISS-546/ISS-556 — improvement-message registry type (cross-app parity).
 // Pure data shape; no DB import needed — the registry is a git-committed module.
 export type ImprovementMessageCategory =
   | 'code-quality'
@@ -92,6 +92,9 @@ export type ImprovementMessageCategory =
   | 'security'
   | 'dx'
   | 'ops'
+  | 'pipeline-correctness'
+  | 'quality'
+  | 'steward'
   | 'general';
 
 export interface ImprovementMessage {
@@ -105,6 +108,8 @@ export interface ImprovementMessage {
   version: number;
   recommended: boolean;
   defaultMode: 'propose' | 'auto';
+  /** When true, the dispatch engine bypasses the appliedMessageVersions gate and fires every run. */
+  standing?: boolean;
 }
 
 export interface ImprovementMessageEntry extends ImprovementMessage {

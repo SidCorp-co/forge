@@ -18,6 +18,7 @@ import {
 } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
+import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
 import {
   broadcastSession,
   broadcastTurnAppended,
@@ -909,13 +910,13 @@ agentSessionRoutes.post(
       );
     }
 
-    // ISS-548 — skill-improve idempotency write-back.
-    // When a skill-improve schedule session completes, parse the agent's
-    // embedded report from the session messages and update
-    // schedules.applied_message_versions so the same message version is not
-    // re-dispatched. Also stash the full per-message report in session metadata
-    // so the UI (child 5/5) can surface it. Best-effort — failures must not
-    // break the status update itself.
+    // ISS-548/ISS-556 — schedule session completion write-back.
+    // When a schedule session completes, parse the agent's embedded report and
+    // persist it. Two paths based on session metadata:
+    //   steward===true  → ISS-556 standing steward: persist stewardReport to
+    //                     session metadata; NO appliedMessageVersions write (standing).
+    //   otherwise       → ISS-548 one-shot: update appliedMessageVersions + skillImproveReport.
+    // Best-effort — failures must not break the status update itself.
     if (status === 'completed') {
       const meta = existing.metadata as Record<string, unknown> | null;
       const scheduleId = meta?.scheduleId;
@@ -923,38 +924,54 @@ agentSessionRoutes.post(
       if (typeof scheduleId === 'string' && typeof templateKey === 'string') {
         try {
           const messages = Array.isArray(existing.messages) ? existing.messages : [];
-          const report = extractReportFromMessages(messages);
-          if (report && Object.keys(report.updatedVersions).length > 0) {
-            // Merge with any existing applied versions (concurrent runs are rare
-            // but we prefer a max-version merge over a blind overwrite).
-            const [currentRow] = await db
-              .select({ appliedMessageVersions: schedules.appliedMessageVersions })
-              .from(schedules)
-              .where(eq(schedules.id, scheduleId))
-              .limit(1);
-            const existing_ =
-              (currentRow?.appliedMessageVersions as Record<string, number> | null) ?? {};
-            const merged: Record<string, number> = { ...existing_ };
-            for (const [key, ver] of Object.entries(report.updatedVersions)) {
-              merged[key] = Math.max(merged[key] ?? 0, ver);
+          const isSteward = meta?.steward === true;
+
+          if (isSteward) {
+            // ISS-556 — standing steward: parse steward run report, persist to
+            // session metadata. No appliedMessageVersions write (fires every run).
+            const stewardReport = extractStewardReportFromMessages(messages);
+            if (stewardReport) {
+              const updatedMeta = { ...(meta ?? {}), stewardReport };
+              await db
+                .update(agentSessions)
+                .set({ metadata: updatedMeta })
+                .where(eq(agentSessions.id, sessionId));
             }
-            await db
-              .update(schedules)
-              .set({ appliedMessageVersions: merged })
-              .where(eq(schedules.id, scheduleId));
-          }
-          // Always persist the report in session metadata for the UI.
-          if (report) {
-            const updatedMeta = { ...(meta ?? {}), skillImproveReport: report.entries };
-            await db
-              .update(agentSessions)
-              .set({ metadata: updatedMeta })
-              .where(eq(agentSessions.id, sessionId));
+          } else {
+            // ISS-548 — one-shot skill-improve: update appliedMessageVersions gate.
+            const report = extractReportFromMessages(messages);
+            if (report && Object.keys(report.updatedVersions).length > 0) {
+              // Merge with any existing applied versions (concurrent runs are rare
+              // but we prefer a max-version merge over a blind overwrite).
+              const [currentRow] = await db
+                .select({ appliedMessageVersions: schedules.appliedMessageVersions })
+                .from(schedules)
+                .where(eq(schedules.id, scheduleId))
+                .limit(1);
+              const existing_ =
+                (currentRow?.appliedMessageVersions as Record<string, number> | null) ?? {};
+              const merged: Record<string, number> = { ...existing_ };
+              for (const [key, ver] of Object.entries(report.updatedVersions)) {
+                merged[key] = Math.max(merged[key] ?? 0, ver);
+              }
+              await db
+                .update(schedules)
+                .set({ appliedMessageVersions: merged })
+                .where(eq(schedules.id, scheduleId));
+            }
+            // Always persist the report in session metadata for the UI.
+            if (report) {
+              const updatedMeta = { ...(meta ?? {}), skillImproveReport: report.entries };
+              await db
+                .update(agentSessions)
+                .set({ metadata: updatedMeta })
+                .where(eq(agentSessions.id, sessionId));
+            }
           }
         } catch (err) {
           logger.error(
             { err, sessionId, scheduleId, templateKey },
-            'agent-sessions/desktop-status: skill-improve write-back failed',
+            'agent-sessions/desktop-status: schedule write-back failed',
           );
         }
       }

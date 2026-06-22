@@ -105,6 +105,15 @@ vi.mock('./messages/skill-improve-prompt.js', () => ({
   extractReportFromMessages: vi.fn(() => null),
 }));
 
+// ISS-556 — mock the steward prompt builder.
+const buildSkillStewardPromptMock = vi.fn<
+  (input: { mode: string; projectId: string }) => string
+>(() => 'BUILT_STEWARD_PROMPT');
+vi.mock('./messages/skill-steward-prompt.js', () => ({
+  buildSkillStewardPrompt: (input: unknown) => buildSkillStewardPromptMock(input as never),
+  extractStewardReportFromMessages: vi.fn(() => null),
+}));
+
 const { dispatchScheduleRun } = await import('./dispatch.js');
 const hooksModule = await import('../pipeline/hooks.js');
 
@@ -603,5 +612,112 @@ describe('dispatchScheduleRun — templateKey / skill-improve path', () => {
     expect(buildSkillImprovePromptMock).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'propose' }),
     );
+  });
+});
+
+// ── ISS-556: standing steward dispatch path ───────────────────────────────────
+
+describe('dispatchScheduleRun — standing steward (ISS-556)', () => {
+  it('standing template (optimize-skills) always dispatches — never already-applied', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    // Even with appliedMessageVersions already set, standing always fires.
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'fallback-should-not-be-used',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'optimize-skills',
+        mode: 'propose',
+        appliedMessageVersions: { 'optimize-skills': 1 },
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    // Steward builder called, NOT the one-shot builder.
+    expect(buildSkillStewardPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'propose', projectId: SOURCE_PROJECT_ID }),
+    );
+    expect(buildSkillImprovePromptMock).not.toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('standing template sets metadata.steward=true so completion handler routes correctly', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'optimize-skills',
+        mode: 'auto',
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      metadata?: { steward?: boolean; templateKey?: string; source?: string };
+    };
+    expect(insertCall?.metadata?.steward).toBe(true);
+    expect(insertCall?.metadata?.templateKey).toBe('optimize-skills');
+    expect(insertCall?.metadata?.source).toBe('schedule.run');
+  });
+
+  it('standing template with null appliedMessageVersions still dispatches', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'optimize-skills',
+        mode: 'propose',
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(buildSkillStewardPromptMock).toHaveBeenCalledTimes(1);
+    expect(buildSkillImprovePromptMock).not.toHaveBeenCalled();
+  });
+
+  it('one-shot template still skips after appliedMessageVersions applied (regression guard)', async () => {
+    // Explicitly return null from the one-shot builder to simulate already-applied.
+    buildSkillImprovePromptMock.mockReturnValue(null);
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        // 'merged-at-on-pass' is NOT in the registry anymore (retired) so
+        // getImprovementMessage returns undefined → one-shot branch.
+        templateKey: 'merged-at-on-pass',
+        mode: 'propose',
+        appliedMessageVersions: { 'merged-at-on-pass': 1 },
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'already-applied', status: 'skipped' });
+    expect(buildSkillStewardPromptMock).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
   });
 });
