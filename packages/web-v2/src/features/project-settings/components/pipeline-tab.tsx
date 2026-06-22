@@ -48,6 +48,7 @@ import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hoo
 import { McpServersSection } from "./mcp-servers-section";
 import { SessionGroupsSection } from "./session-groups-section";
 import { MergeStatesSection } from "./merge-states-section";
+import { ConcurrencySection } from "./concurrency-section";
 import {
   applyCheckpointMode,
   applyJobStageMode,
@@ -454,6 +455,9 @@ export function PipelineTab({
 
         {/* Merge points (mergeStates) — round-trips the full fetched config. */}
         <MergeStatesSection projectId={projectId} config={server} canEdit={canEdit} />
+
+        {/* Concurrency (maxConcurrentIssues) — round-trips the full fetched config. */}
+        <ConcurrencySection projectId={projectId} config={server} canEdit={canEdit} />
       </CardContent>
     </Card>
   );

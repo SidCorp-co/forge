@@ -57,6 +57,16 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			if (data?.issueId) {
 				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
 			}
+			// Fires on every job completion/failure + dispatch tick and carries
+			// projectId — the reliable hook for the active-runner snapshot, since
+			// a mid-pipeline stage flip (code done → test queued) leaves the run
+			// `status='running'` so `pipeline_run.status_changed` never fires, and
+			// `job.completed`/`job.failed` carry only jobId (no projectId to key on).
+			if (data?.projectId) {
+				qc.invalidateQueries({
+					queryKey: ["projects", data.projectId, "active-runners"],
+				});
+			}
 			return;
 		}
 		case "comment.created":
@@ -117,7 +127,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		case "job.assigned":
-		case "job.statusChanged":
+		case "job.completed":
+		case "job.failed":
 		case "job.cancelled": {
 			qc.invalidateQueries({ queryKey: ["jobs", "list"] });
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
@@ -126,6 +137,11 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			if (data?.jobId) {
 				qc.invalidateQueries({ queryKey: ["job", data.jobId] });
 			}
+			// NOTE: the active-runner snapshot is refreshed via
+			// `issue.pipelineHealth.changed` (which carries projectId and fires on
+			// the same completions). These job.* payloads carry only jobId, and
+			// `job.assigned` rides the device room — not the project room — so
+			// there's nothing reliable to key an active-runners invalidation on here.
 			return;
 		}
 		case "pipeline_run.status_changed": {
@@ -139,6 +155,13 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			if (data?.status === "cancelled") {
 				qc.invalidateQueries({ queryKey: ["jobs"] });
 				qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+			}
+			// A run reaching a terminal status frees its runner — refresh the
+			// active-runner snapshot so the busy → idle flip reflects live.
+			if (data?.projectId) {
+				qc.invalidateQueries({
+					queryKey: ["projects", data.projectId, "active-runners"],
+				});
 			}
 			return;
 		}
@@ -188,6 +211,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			if (data?.projectId) {
 				qc.invalidateQueries({
 					queryKey: ["projects", data.projectId, "runners"],
+				});
+				qc.invalidateQueries({
+					queryKey: ["projects", data.projectId, "active-runners"],
 				});
 				qc.invalidateQueries({ queryKey: ["projects", "health"] });
 			}

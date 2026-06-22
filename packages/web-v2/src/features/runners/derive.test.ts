@@ -1,7 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { runnerLimitDisplay } from "./types";
+import { formatElapsed, runnerLimitDisplay } from "./types";
 
 const NOW = Date.parse("2026-06-22T08:00:00.000Z");
+
+describe("formatElapsed", () => {
+	it("returns null when no start time is known", () => {
+		expect(formatElapsed(null, NOW)).toBeNull();
+		expect(formatElapsed("not-a-date", NOW)).toBeNull();
+	});
+
+	it("formats sub-minute durations as seconds", () => {
+		expect(formatElapsed("2026-06-22T07:59:12.000Z", NOW)).toBe("48s");
+	});
+
+	it("formats sub-hour durations as Mm Ss", () => {
+		expect(formatElapsed("2026-06-22T07:56:48.000Z", NOW)).toBe("3m 12s");
+	});
+
+	it("formats multi-hour durations as Hh Mm", () => {
+		expect(formatElapsed("2026-06-22T05:30:00.000Z", NOW)).toBe("2h 30m");
+	});
+
+	it("clamps a future start time to 0s rather than going negative", () => {
+		expect(formatElapsed("2026-06-22T08:05:00.000Z", NOW)).toBe("0s");
+	});
+});
 
 describe("runnerLimitDisplay", () => {
 	it("returns null when the runner is not limited", () => {

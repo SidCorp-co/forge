@@ -137,6 +137,98 @@ runnerRoutes.get(
   },
 );
 
+// Active-runner snapshot for a project — every runner with its CURRENT in-flight
+// job (status dispatched|running) mapped to the issue + stage it is executing,
+// or null when idle. Powers the project dashboard "Active runners" card and the
+// per-row "running ISS-X (stage)" line on the Runners screen. Read-only; any
+// project member.
+//
+// Registered BEFORE `/:id` so the static `/active` segment is never captured as
+// an id param. Cap is 1 job per runner (RUNNER_CAP_PER_RUNNER), so runner→job is
+// at most 1:1. Orphan jobs whose parent pipeline_run is terminal are excluded
+// (ISS-258), mirroring the dispatcher's runner-load gate so a stale row never
+// shows a runner as "busy".
+const activeQuery = z.object({ projectId: z.uuid() });
+
+runnerRoutes.get(
+  '/active',
+  zValidator('query', activeQuery, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const userId = c.get('userId');
+    const { projectId } = c.req.valid('query');
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
+
+    const rows = await db.execute<{
+      runner_id: string;
+      runner_name: string;
+      status: string;
+      last_seen_at: string | null;
+      job_id: string | null;
+      job_type: string | null;
+      dispatched_at: string | null;
+      issue_id: string | null;
+      iss_seq: number | null;
+      issue_title: string | null;
+    }>(sql`
+      SELECT
+        r.id          AS runner_id,
+        r.name        AS runner_name,
+        r.status      AS status,
+        r.last_seen_at AS last_seen_at,
+        j.id          AS job_id,
+        j.type        AS job_type,
+        j.dispatched_at AS dispatched_at,
+        i.id          AS issue_id,
+        i.iss_seq     AS iss_seq,
+        i.title       AS issue_title
+      FROM runners r
+      -- Orphan exclusion (ISS-258) lives in the JOIN, not a WHERE clause, so a
+      -- runner whose only active job is parented by a terminal pipeline_run
+      -- still appears — as IDLE — instead of dropping out of the result.
+      LEFT JOIN jobs j
+        ON j.runner_id = r.id
+       AND j.status IN ('dispatched','running')
+      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+      LEFT JOIN issues i ON i.id = j.issue_id
+      WHERE r.project_id = ${projectId}
+        AND (j.id IS NULL OR pr.id IS NULL OR pr.status IN ('running','paused'))
+      ORDER BY r.name ASC, j.dispatched_at ASC NULLS LAST
+    `);
+
+    // RUNNER_CAP_PER_RUNNER = 1 means at most one surviving active job per
+    // runner; keep the first non-null job we see. The Map also dedups
+    // defensively if the cap ever rises.
+    const byRunner = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      const existing = byRunner.get(row.runner_id);
+      if (!existing || (!existing.job_id && row.job_id)) byRunner.set(row.runner_id, row);
+    }
+
+    const runnersOut = [...byRunner.values()].map((row) => ({
+      runnerId: row.runner_id,
+      name: row.runner_name,
+      status: row.status,
+      lastSeenAt: row.last_seen_at,
+      current: row.job_id
+        ? {
+            jobId: row.job_id,
+            stage: row.job_type,
+            startedAt: row.dispatched_at,
+            issueId: row.issue_id,
+            issueRef: row.iss_seq != null ? `ISS-${row.iss_seq}` : null,
+            issueTitle: row.issue_title,
+          }
+        : null,
+    }));
+
+    const busy = runnersOut.filter((r) => r.current).length;
+    return c.json({ runners: runnersOut, busy, total: runnersOut.length });
+  },
+);
+
 runnerRoutes.get(
   '/:id',
   zValidator('param', idParam, (r) => {

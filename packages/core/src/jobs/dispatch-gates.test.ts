@@ -29,6 +29,7 @@ const {
   pickNextDispatchableJobForProject,
   countInFlightForRunner,
   hasNonTerminalPriorSession,
+  resolveProjectCap,
   DEFAULT_MAX_CONCURRENT_ISSUES,
 } = await import('./dispatch-gates.js');
 
@@ -72,15 +73,16 @@ function selectChainOnce(rows: unknown[]): void {
 }
 
 /**
- * ISS-232 Phase 3 — `pickNextDispatchableJobForProject` and
- * `assertDispatchable` no longer do a project lookup to resolve the cap
- * (it's hardcoded). Keeping this helper as a no-op so existing call sites
- * still compile, but queueing a `selectChainOnce` here would leak past
- * its test and break subsequent `checkLayer5RunnerHeartbeat` tests that
- * share the same `dbSelect` mock queue.
+ * `resolveProjectCap` (re-added) does ONE `db.select().from().where().limit()`
+ * to read `projects.agent_config` before the picker/asserter runs its
+ * `db.execute` SQL. Queue the project row this lookup should return: pass an
+ * `agentConfig`-shaped object (e.g. `{ pipelineConfig: { maxConcurrentIssues: 3 } }`),
+ * or `null` to simulate a missing project (→ DEFAULT cap). Each
+ * `pickNextDispatchableJobForProject` / `assertDispatchable` call consumes
+ * exactly one queued row, so it never leaks into later `dbSelect`-based tests.
  */
-function mockProjectAgentConfigOnce(_value: Record<string, unknown> | null): void {
-  // No-op since Phase 3 removed `resolveProjectCap`.
+function mockProjectAgentConfigOnce(value: Record<string, unknown> | null): void {
+  selectChainOnce(value ? [{ agentConfig: value }] : []);
 }
 
 describe('checkLayer4RunnerFull', () => {
@@ -146,6 +148,32 @@ describe('countInFlightForRunner', () => {
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);
     expect(text).toMatch(/pr\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
+  });
+});
+
+describe('resolveProjectCap', () => {
+  it('reads pipelineConfig.maxConcurrentIssues from agent_config', async () => {
+    selectChainOnce([{ agentConfig: { pipelineConfig: { maxConcurrentIssues: 4 } } }]);
+    expect(await resolveProjectCap('p1')).toBe(4);
+  });
+
+  it('falls back to the default when the project row is missing', async () => {
+    selectChainOnce([]);
+    expect(await resolveProjectCap('p1')).toBe(DEFAULT_MAX_CONCURRENT_ISSUES);
+  });
+
+  it('falls back to the default when the knob is unset or non-numeric', async () => {
+    selectChainOnce([{ agentConfig: { pipelineConfig: {} } }]);
+    expect(await resolveProjectCap('p1')).toBe(DEFAULT_MAX_CONCURRENT_ISSUES);
+    selectChainOnce([{ agentConfig: { pipelineConfig: { maxConcurrentIssues: 'lots' } } }]);
+    expect(await resolveProjectCap('p1')).toBe(DEFAULT_MAX_CONCURRENT_ISSUES);
+  });
+
+  it('clamps a value below 1 to the default and a huge value to the 20 ceiling', async () => {
+    selectChainOnce([{ agentConfig: { pipelineConfig: { maxConcurrentIssues: 0 } } }]);
+    expect(await resolveProjectCap('p1')).toBe(DEFAULT_MAX_CONCURRENT_ISSUES);
+    selectChainOnce([{ agentConfig: { pipelineConfig: { maxConcurrentIssues: 999 } } }]);
+    expect(await resolveProjectCap('p1')).toBe(20);
   });
 });
 
@@ -432,21 +460,20 @@ describe('checkLayer5RunnerHeartbeat', () => {
 describe('assertDispatchable', () => {
   function mockAssertChain(opts: {
     job: { projectId: string } | null;
-    /** Retained for source-compat with old call sites; ISS-232 Phase 3
-     *  removed `resolveProjectCap`, so no second `db.select` happens
-     *  inside the asserter and this knob is now ignored. */
+    /** `agent_config` row `resolveProjectCap` should read for this assert
+     *  (e.g. `{ pipelineConfig: { maxConcurrentIssues: 3 } }`), or null to
+     *  simulate a missing project → DEFAULT cap. Only consulted when `job`
+     *  is non-null (the asserter short-circuits to not_found otherwise). */
     cap?: Record<string, unknown> | null;
     caseResult: { reason: string | null } | null | undefined;
   }): void {
     // 1) jobs lookup → returns [job] or []
     selectChainOnce(opts.job ? [opts.job] : []);
     if (opts.job) {
-      // ISS-232 Phase 3 — only ONE select call now (the job lookup above).
-      // The previous agentConfig lookup was dropped together with
-      // `resolveProjectCap`; queueing a 2nd selectChainOnce here would
-      // leak past this test and break unrelated checkLayer5RunnerHeartbeat
-      // / parity assertions further down the file.
-      // 2) the CASE-driven SQL — returns 0 or 1 row
+      // 2) resolveProjectCap → reads projects.agent_config. Queued only when a
+      // job exists, mirroring the asserter's short-circuit on a missing job.
+      selectChainOnce(opts.cap ? [{ agentConfig: opts.cap }] : []);
+      // 3) the CASE-driven SQL — returns 0 or 1 row.
       const rows =
         opts.caseResult === undefined ? [] : opts.caseResult === null ? [] : [opts.caseResult];
       dbExecute.mockResolvedValueOnce(rows);

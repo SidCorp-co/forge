@@ -116,9 +116,10 @@ describe('STEP_TOGGLE_KEYS', () => {
 });
 
 describe('pipelineConfigPatchSchema', () => {
-  // ISS-232 Phase 3 — `runnerFallback` was dropped from the patch schema
-  // alongside `maxConcurrentIssues`. The patch is now identical to
-  // `pipelineConfigSchema` (no extension fields).
+  // ISS-232 Phase 3 dropped `runnerFallback` from the patch schema. The patch
+  // is identical to `pipelineConfigSchema` (no extension fields).
+  // `maxConcurrentIssues` was later RE-ADDED as an opt-in per-project cap
+  // (default 1), so it is accepted within [1,20] — see tests below.
   it('accepts pipelineConfig fields', () => {
     const patch = {
       enabled: true,
@@ -139,12 +140,24 @@ describe('pipelineConfigPatchSchema', () => {
     expect(out).toEqual({ enabled: true });
   });
 
-  it('rejects legacy `maxConcurrentIssues` is silently dropped too', () => {
+  it('preserves `maxConcurrentIssues` within the [1,20] range', () => {
     const out = pipelineConfigPatchSchema.parse({
       enabled: true,
       maxConcurrentIssues: 4,
     });
-    expect(out).toEqual({ enabled: true });
+    expect(out).toEqual({ enabled: true, maxConcurrentIssues: 4 });
+  });
+
+  it('rejects `maxConcurrentIssues` outside [1,20]', () => {
+    expect(() =>
+      pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 0 }),
+    ).toThrow();
+    expect(() =>
+      pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 21 }),
+    ).toThrow();
+    expect(() =>
+      pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 2.5 }),
+    ).toThrow();
   });
 });
 

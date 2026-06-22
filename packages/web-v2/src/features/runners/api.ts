@@ -3,6 +3,7 @@
 // `packages/core/src/devices/{routes,login-routes}.ts`.
 import { apiClient } from "@/lib/api/client";
 import type {
+	ActiveRunnersSnapshot,
 	DeviceRow,
 	DeviceRunnerAssignment,
 	GitCredentialView,
@@ -88,6 +89,16 @@ export const runnersApi = {
 	/** `GET /api/projects/:id/runners` — the device pools serving THIS project. */
 	listProjectRunners: (projectId: string) =>
 		apiClient<ProjectRunner[]>(`/projects/${projectId}/runners`),
+
+	/**
+	 * `GET /api/runners/active?projectId=` — live snapshot of which runners are
+	 * executing a job right now (runner → issue → stage → started-at), or idle.
+	 * Read-only; any project member.
+	 */
+	listActiveRunners: (projectId: string) =>
+		apiClient<ActiveRunnersSnapshot>(
+			`/runners/active?projectId=${encodeURIComponent(projectId)}`,
+		),
 
 	/**
 	 * `GET /api/runners/:id/activity` — per-runner status timeline + recent

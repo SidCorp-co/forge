@@ -198,6 +198,49 @@ describe("runnersSummary", () => {
     expect(d1?.limit?.resetText).toBe("resets in 42m");
     expect(s.lines.find((l) => l.id === "d2")?.limit).toBeNull();
   });
+
+  it("sources busy + active issue/stage from the live snapshot (bridged runnerId→deviceId)", () => {
+    const now = Date.parse("2026-06-22T08:00:00.000Z");
+    const projectRunners = [
+      { runnerId: "r1", deviceId: "d1" },
+      { runnerId: "r2", deviceId: "d2" },
+    ] as Parameters<typeof runnersSummary>[2];
+    const active = [
+      {
+        runnerId: "r1",
+        name: "mac",
+        status: "online",
+        lastSeenAt: null,
+        current: {
+          jobId: "j1",
+          stage: "code",
+          startedAt: "2026-06-22T08:00:00.000Z",
+          issueId: "i1",
+          issueRef: "ISS-417",
+          issueTitle: "Add export",
+        },
+      },
+      { runnerId: "r2", name: "lin", status: "online", lastSeenAt: null, current: null },
+    ] as Parameters<typeof runnersSummary>[4];
+    const s = runnersSummary(devices, queue, projectRunners, now, active);
+    const d1 = s.lines.find((l) => l.id === "d1");
+    const d2 = s.lines.find((l) => l.id === "d2");
+    // d1 busy comes from the live job, NOT the queue counter (which says 2).
+    expect(d1?.busy).toBe(true);
+    expect(d1?.activeIssueRef).toBe("ISS-417");
+    expect(d1?.activeStage).toBe("code");
+    // d2 idle per the snapshot, overriding any queue running count.
+    expect(d2?.busy).toBe(false);
+    expect(d2?.activeIssueRef).toBeNull();
+    expect(s.busyCount).toBe(1);
+  });
+
+  it("falls back to queue counters for busy when no active snapshot is passed", () => {
+    const s = runnersSummary(devices, queue);
+    // d1 has running=2 in the queue and no snapshot → busy via fallback.
+    expect(s.lines.find((l) => l.id === "d1")?.busy).toBe(true);
+    expect(s.lines.find((l) => l.id === "d1")?.activeIssueRef).toBeNull();
+  });
 });
 
 describe("upcomingSchedules", () => {

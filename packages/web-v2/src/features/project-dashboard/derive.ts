@@ -12,6 +12,7 @@ import { jobTypeToStage, statusToStage } from "@/features/pipeline/derive";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import {
+  type ActiveRunner,
   type DeviceRow,
   type ProjectRunner,
   type RunnerLimitDisplay,
@@ -271,6 +272,10 @@ export interface RunnerLine {
   queued: number;
   /** Rate/usage/auth limit on this device's runner for this project, or null. */
   limit: RunnerLimitDisplay | null;
+  /** Issue ref the runner is executing right now (e.g. "ISS-417"), or null. */
+  activeIssueRef: string | null;
+  /** Pipeline stage of the current job (job type), or null when idle. */
+  activeStage: string | null;
 }
 
 export interface RunnersSummary {
@@ -282,14 +287,18 @@ export interface RunnersSummary {
 
 /**
  * Compact runner summary: the caller's devices joined with per-device queue
- * counters. `busy` = online AND ≥1 running session. No utilization% (not stored
- * — deferred to ISS-378); revoked devices are dropped.
+ * counters and the live active-runner snapshot. When `active` is supplied,
+ * `busy` and the `activeIssueRef`/`activeStage` line detail are sourced from
+ * the runner's ACTUAL in-flight job (via `projectRunners` to bridge
+ * runnerId→deviceId); otherwise `busy` falls back to the queue running-count.
+ * No utilization% (not stored — deferred to ISS-378); revoked devices dropped.
  */
 export function runnersSummary(
   devices: DeviceRow[] | undefined,
   queue: QueueStats | undefined,
   projectRunners?: ProjectRunner[] | undefined,
   now: number = Date.now(),
+  active?: ActiveRunner[] | undefined,
 ): RunnersSummary {
   const byDevice = new Map<string, { queued: number; running: number }>();
   for (const d of queue?.devices ?? []) {
@@ -303,20 +312,37 @@ export function runnersSummary(
     const limit = runnerLimitDisplay(r, now);
     if (limit) limitByDevice.set(r.deviceId, limit);
   }
+  // Bridge the active snapshot (keyed by runnerId) to deviceId via the project
+  // runner rows, so the device-keyed lines below can show the live job.
+  const deviceByRunner = new Map<string, string>();
+  for (const r of projectRunners ?? []) {
+    if (r.deviceId) deviceByRunner.set(r.runnerId, r.deviceId);
+  }
+  const activeByDevice = new Map<string, ActiveRunner>();
+  for (const a of active ?? []) {
+    const deviceId = deviceByRunner.get(a.runnerId);
+    if (deviceId) activeByDevice.set(deviceId, a);
+  }
   const lines: RunnerLine[] = (devices ?? [])
     .filter((d) => d.status !== "revoked")
     .map((d) => {
       const q = byDevice.get(d.id) ?? { queued: 0, running: 0 };
       const online = d.status === "online";
+      const act = activeByDevice.get(d.id);
+      // Prefer the real in-flight job for `busy`; fall back to queue counters
+      // when no active snapshot was passed (keeps callers that omit it working).
+      const busy = act ? !!act.current : online && q.running > 0;
       return {
         id: d.id,
         name: d.name,
         platform: d.platform,
         online,
-        busy: online && q.running > 0,
+        busy,
         running: q.running,
         queued: q.queued,
         limit: limitByDevice.get(d.id) ?? null,
+        activeIssueRef: act?.current?.issueRef ?? null,
+        activeStage: act?.current?.stage ?? null,
       };
     });
   return {
