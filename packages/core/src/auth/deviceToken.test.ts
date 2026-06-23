@@ -29,6 +29,7 @@ type DeviceRow = {
   agentVersion: string | null;
   tokenHash: string;
   tokenPrefix: string;
+  disabledAt: null,
   status: 'online' | 'offline' | 'revoked';
   lastSeenAt: Date | null;
   pairedAt: Date;
@@ -44,6 +45,7 @@ function rowFromInsert(overrides: Partial<DeviceRow> = {}): DeviceRow {
     agentVersion: string | null;
     tokenHash: string;
     tokenPrefix: string;
+    disabledAt: null,
     capabilities: unknown;
   };
   return {
@@ -54,6 +56,7 @@ function rowFromInsert(overrides: Partial<DeviceRow> = {}): DeviceRow {
     agentVersion: values.agentVersion,
     tokenHash: values.tokenHash,
     tokenPrefix: values.tokenPrefix,
+    disabledAt: null,
     status: 'offline',
     lastSeenAt: null,
     pairedAt: new Date('2026-04-24T00:00:00Z'),
@@ -107,6 +110,7 @@ describe('issueDeviceToken', () => {
     const values = insertValues.mock.calls[0]?.[0] as {
       tokenHash: string;
       tokenPrefix: string;
+      disabledAt: null,
       ownerId: string;
       name: string;
       platform: string;
@@ -198,6 +202,7 @@ describe('verifyDeviceToken', () => {
         agentVersion: null,
         tokenHash: 'not-a-valid-hash',
         tokenPrefix: 'yyyyyyyy',
+        disabledAt: null,
         status: 'online',
         lastSeenAt: null,
         pairedAt: new Date('2026-04-24T00:00:00Z'),

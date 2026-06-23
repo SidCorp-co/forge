@@ -30,7 +30,7 @@ import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
 import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useDevices, useInitPairing, useRevokeDevice } from "../hooks";
+import { useDevices, useInitPairing, useRevokeDevice, useSetDeviceDisabled } from "../hooks";
 import { deviceHealth, type DeviceRow } from "../types";
 import { DeviceDetail } from "./device-detail";
 
@@ -152,7 +152,9 @@ export function RunnersScreen() {
   const { activeOrgId } = useActiveOrg();
   const devices = useDevices(activeOrgId);
   const revoke = useRevokeDevice();
+  const toggleDisabled = useSetDeviceDisabled();
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const rows: DeviceRow[] = devices.data ?? [];
@@ -169,10 +171,11 @@ export function RunnersScreen() {
           </p>
         </div>
         <HelpButton
-          summary="Each device is a machine running the forge-runner agent. Pair new devices with a browser-approved login, watch their online status live, and revoke access when a device is retired."
+          summary="Each device is a machine running the forge-runner agent. Pair new devices with a browser-approved login, watch their online status live, turn a device off to park it, or revoke access when a device is retired."
           actions={[
             "Pair a device — start the browser-approve login flow",
-            "Revoke — cut off a device's token and unbind its runners",
+            "Turn off — ignore a device across every project (reversible; keeps it paired). Turn it back on anytime",
+            "Revoke — permanently cut off a device's token and unbind its runners",
           ]}
           docPath="pair-a-runner"
         />
@@ -214,6 +217,7 @@ export function RunnersScreen() {
               <TBody>
                 {rows.map((d) => {
                   const revoked = d.status === "revoked";
+                  const disabled = !!d.disabledAt;
                   return (
                     <TR key={d.id}>
                       <TD>
@@ -239,7 +243,17 @@ export function RunnersScreen() {
                         </div>
                       </TD>
                       <TD>
-                        <HealthDot health={deviceHealth(d.status)} />
+                        {disabled ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[12px] font-medium text-muted bg-sunken"
+                            title="Turned off — ignored by every project until turned back on"
+                          >
+                            <Icon name="pause" size={12} />
+                            Off
+                          </span>
+                        ) : (
+                          <HealthDot health={deviceHealth(d.status)} />
+                        )}
                       </TD>
                       <TD>
                         <MonoTag>{d.platform}</MonoTag>
@@ -289,6 +303,25 @@ export function RunnersScreen() {
                             >
                               Manage
                             </Button>
+                            {!revoked && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={disabled ? "play" : "pause"}
+                                loading={toggleDisabled.isPending && togglingId === d.id}
+                                title={
+                                  disabled
+                                    ? "Turn on — let every project dispatch to this device again"
+                                    : "Turn off — ignore this device across every project (reversible, keeps it paired)"
+                                }
+                                onClick={() => {
+                                  setTogglingId(d.id);
+                                  toggleDisabled.mutate({ id: d.id, disabled: !disabled });
+                                }}
+                              >
+                                {disabled ? "Turn on" : "Turn off"}
+                              </Button>
+                            )}
                             {!revoked && (
                               <Button
                                 variant="ghost"

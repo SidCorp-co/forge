@@ -39,6 +39,33 @@ export function useRevokeDevice() {
 	});
 }
 
+/**
+ * Reversible "turn off" toggle for a device. Invalidates the `['devices','me']`
+ * prefix so every org-scoped variant of the list reflects the new state; the
+ * server also broadcasts `device.status` so other tabs refresh live.
+ */
+export function useSetDeviceDisabled() {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: ({ id, disabled }: { id: string; disabled: boolean }) =>
+			runnersApi.setDeviceDisabled(id, disabled),
+		onSuccess: (_data, { disabled }) => {
+			qc.invalidateQueries({ queryKey: ["devices", "me"] });
+			toast({
+				title: disabled ? "Device turned off" : "Device turned on",
+				tone: "success",
+			});
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't update device",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
 export function useInitPairing() {
 	const { toast } = useToast();
 	return useMutation({

@@ -134,6 +134,7 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
     platform: devices.platform,
     agentVersion: devices.agentVersion,
     status: devices.status,
+    disabledAt: devices.disabledAt,
     lastSeenAt: devices.lastSeenAt,
     pairedAt: devices.pairedAt,
     capabilities: devices.capabilities,
@@ -174,9 +175,15 @@ const deviceIdParamSchema = z.object({ id: z.uuid() });
 
 const updateDeviceSchema = z
   .object({
-    name: z.string().trim().min(1).max(80),
+    name: z.string().trim().min(1).max(80).optional(),
+    // Reversible "turn off" switch — true = ignore this device across every
+    // project's dispatch + chat; false = re-enable. Distinct from revoke.
+    disabled: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.name !== undefined || v.disabled !== undefined, {
+    message: 'provide at least one of `name` or `disabled`',
+  });
 
 deviceOwnerRoutes.patch(
   '/devices/:id',
@@ -188,11 +195,11 @@ deviceOwnerRoutes.patch(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { name } = c.req.valid('json');
+    const { name, disabled } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [device] = await db
-      .select({ ownerId: devices.ownerId })
+      .select({ ownerId: devices.ownerId, status: devices.status })
       .from(devices)
       .where(eq(devices.id, id))
       .limit(1);
@@ -200,18 +207,45 @@ deviceOwnerRoutes.patch(
       throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
     }
     if (device.ownerId !== userId) throw forbidden('not the device owner');
+    // A revoked device is gone for good — its token is dead and its runners were
+    // deleted; "turn on" can't bring it back (re-pair instead).
+    if (disabled === false && device.status === 'revoked') {
+      throw forbidden('device is revoked — re-pair it instead of re-enabling');
+    }
 
-    const [updated] = await db.update(devices).set({ name }).where(eq(devices.id, id)).returning({
+    const patch: { name?: string; disabledAt?: Date | null } = {};
+    if (name !== undefined) patch.name = name;
+    if (disabled !== undefined) patch.disabledAt = disabled ? new Date() : null;
+
+    const [updated] = await db.update(devices).set(patch).where(eq(devices.id, id)).returning({
       id: devices.id,
       name: devices.name,
       platform: devices.platform,
       status: devices.status,
+      disabledAt: devices.disabledAt,
       lastSeenAt: devices.lastSeenAt,
       pairedAt: devices.pairedAt,
     });
     if (!updated) {
       throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
     }
+
+    // When toggling on/off, live-refresh the owner's Runners surface + any device
+    // room watchers so the badge flips without a manual reload. Best-effort.
+    if (disabled !== undefined) {
+      try {
+        const { roomManager } = await import('../ws/server.js');
+        const { deviceRoom, userRoom } = await import('../ws/rooms.js');
+        // `device.statusChanged` is the device-state event the web event-router
+        // already invalidates ['devices','me'] (+ project health / attention) on.
+        const payload = { event: 'device.statusChanged', data: { deviceId: id, disabled } };
+        roomManager.publish(userRoom(userId), payload);
+        roomManager.publish(deviceRoom(id), payload);
+      } catch {
+        // Non-fatal: the toggle already committed.
+      }
+    }
+
     return c.json(updated);
   },
 );

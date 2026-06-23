@@ -29,6 +29,7 @@ const fakeDevice: Device = {
   agentVersion: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
+  disabledAt: null,
   status: 'online',
   lastSeenAt: null,
   pairedAt: new Date(),

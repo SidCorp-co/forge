@@ -59,6 +59,7 @@ const fakeDevice = {
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
+  disabledAt: null,
   lastSeenAt: null,
   pairedAt: new Date(),
   capabilities: null,

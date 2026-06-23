@@ -24,6 +24,7 @@ function stubDeviceForPat(userId: string, tokenId: string): Device {
     tokenHash: '',
     tokenPrefix: '',
     status: 'online',
+    disabledAt: null,
     lastSeenAt: null,
     pairedAt: new Date(0),
     capabilities: null,

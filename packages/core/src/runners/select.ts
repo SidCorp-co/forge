@@ -6,6 +6,18 @@ import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
 /**
+ * Device "turn off" gate — exclude any runner whose device the owner has
+ * disabled (`devices.disabled_at` set). Correlates to the runner's `device_id`
+ * in the enclosing query (works whether the runner row is aliased or not;
+ * `devices` has no `device_id` column so the bare ref resolves outward).
+ * Remote/server runners (NULL device_id) have no matching device row → the
+ * NOT EXISTS is satisfied and they stay eligible.
+ */
+const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
+  SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
+)`;
+
+/**
  * Decide the initial `capabilities` jsonb for a freshly-created runner row.
  *
  * Dev-mode (`NODE_ENV !== 'production'`) defaults `claude-code` runners with
@@ -325,6 +337,7 @@ async function findHealthyByDevice(
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
+        ${NOT_DISABLED_DEVICE}
       ORDER BY last_seen_at DESC, id ASC
       LIMIT 1
     `,
@@ -381,6 +394,7 @@ async function findStandby(
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
+        ${NOT_DISABLED_DEVICE}
         ${exclusionClause}
         ${retryExclusionClause}
       ORDER BY last_seen_at DESC, id ASC
@@ -438,6 +452,7 @@ async function pickLeastLoadedFreeRunner(
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
         AND COALESCE(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
+        ${NOT_DISABLED_DEVICE}
         ${retryExclusionClause}
       ORDER BY
         CASE WHEN r.device_id IS NOT DISTINCT FROM ${opts.preferDeviceId} THEN 0 ELSE 1 END,
@@ -476,6 +491,7 @@ export async function onlineCapableDeviceIds(
         AND capabilities @> ${required}::jsonb
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        ${NOT_DISABLED_DEVICE}
       ORDER BY device_id ASC
     `,
   );

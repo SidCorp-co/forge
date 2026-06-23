@@ -65,6 +65,7 @@ function mkRow(over: Record<string, unknown> = {}) {
     id: 'tok-1',
     name: 'my token',
     tokenPrefix: 'forge_pat_test_ab',
+    disabledAt: null,
     scopes: ['read', 'write'],
     projectIds: null,
     boundProjectId: null,

@@ -831,8 +831,17 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(project.id, userId);
     assertProjectRole(access, 'member');
 
-    const deviceId =
-      (await findAvailableDeviceForProject(project.id)) ?? project.defaultDeviceId;
+    let deviceId = await findAvailableDeviceForProject(project.id);
+    if (!deviceId && project.defaultDeviceId) {
+      // Last-resort fallback to the (possibly offline) default device — but honor
+      // the "turn off" switch: never target a device the owner disabled.
+      const [def] = await db
+        .select({ disabledAt: devices.disabledAt })
+        .from(devices)
+        .where(eq(devices.id, project.defaultDeviceId))
+        .limit(1);
+      if (def && !def.disabledAt) deviceId = project.defaultDeviceId;
+    }
     if (!deviceId) {
       throw new HTTPException(503, {
         message: 'no online device for this project',

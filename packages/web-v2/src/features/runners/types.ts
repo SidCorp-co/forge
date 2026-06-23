@@ -14,6 +14,12 @@ export interface DeviceRow {
 	/** True when this device's agentVersion lags `latestAgentVersion` (ISS-392). */
 	agentOutdated: boolean;
 	status: "online" | "offline" | "revoked";
+	/**
+	 * Operator "turn off" timestamp (reversible, distinct from `revoked`). When
+	 * set, the device is ignored by dispatch + chat across every project; null =
+	 * on/eligible. Toggle via `PATCH /devices/:id { disabled }`.
+	 */
+	disabledAt: string | null;
 	lastSeenAt: string | null;
 	pairedAt: string | null;
 	capabilities: unknown;

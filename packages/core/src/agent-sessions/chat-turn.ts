@@ -109,11 +109,13 @@ export async function resolveChatDevice(
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
   if (pinned) {
     const [dev] = await db
-      .select({ status: devices.status })
+      .select({ status: devices.status, disabledAt: devices.disabledAt })
       .from(devices)
       .where(eq(devices.id, pinned))
       .limit(1);
-    if (dev?.status === 'online') return { deviceId: pinned, isLocal: false };
+    // A turned-off device is ignored even when online + pinned — fall through to
+    // pick another available device (or report no client).
+    if (dev?.status === 'online' && !dev.disabledAt) return { deviceId: pinned, isLocal: false };
   }
   const deviceId = await findAvailableDeviceForProject(session.projectId);
   return { deviceId, isLocal: false };

@@ -63,6 +63,18 @@ export const runnersApi = {
 			method: "DELETE",
 		}),
 
+	/**
+	 * `PATCH /api/devices/:id { disabled }` — reversible "turn off" switch. A
+	 * disabled device keeps its token + runner bindings and still heartbeats, but
+	 * is ignored by dispatch + interactive chat across every project; `false`
+	 * re-enables it. Distinct from revoke (which is permanent). Owner only.
+	 */
+	setDeviceDisabled: (id: string, disabled: boolean) =>
+		apiClient<DeviceRow>(`/devices/${id}`, {
+			method: "PATCH",
+			body: JSON.stringify({ disabled }),
+		}),
+
 	/** `DELETE /api/devices/:id` — soft-revoke a device (requires fresh auth). */
 	revokeDevice: (id: string) =>
 		apiClient<void>(`/devices/${id}`, { method: "DELETE" }),

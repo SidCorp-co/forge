@@ -436,6 +436,13 @@ export const devices = pgTable(
     tokenHash: text('token_hash').notNull(),
     tokenPrefix: varchar('token_prefix', { length: 8 }).notNull(),
     status: text('status', { enum: deviceStatuses }).notNull().default('offline'),
+    // Operator-set "turn off" switch (reversible, distinct from `revoked`). When
+    // set, the device is IGNORED by dispatch + interactive-chat device-pick
+    // across EVERY project it runs for — it keeps its token + runner bindings and
+    // still heartbeats, so flipping it back (set to NULL) makes it eligible again
+    // instantly. NULL = on/eligible. Orthogonal to `status` (heartbeat-driven
+    // online/offline), so a steady heartbeat never clears it.
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pairedAt: timestamp('paired_at', { withTimezone: true }).notNull().defaultNow(),
     capabilities: jsonb('capabilities'),

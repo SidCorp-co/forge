@@ -17,6 +17,7 @@ type DeviceRow = {
   platform: 'macos' | 'linux' | 'windows';
   tokenHash: string | null;
   tokenPrefix: string | null;
+  disabledAt: null,
   status: 'online' | 'offline' | 'revoked';
   createdAt: Date;
 };
@@ -28,6 +29,7 @@ const testDevice: DeviceRow = {
   platform: 'macos',
   tokenHash: 'hash',
   tokenPrefix: 'abcd1234',
+  disabledAt: null,
   status: 'online',
   createdAt: new Date('2026-01-01T00:00:00Z'),
 };

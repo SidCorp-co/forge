@@ -78,6 +78,23 @@ describe('selectRunnerForJob', () => {
     expect(r).toBeNull();
   });
 
+  // Device "turn off" gate — every runner-picking query must exclude runners
+  // whose device the owner disabled (`devices.disabled_at` set), so a disabled
+  // device is ignored across all projects without touching runner status.
+  it('gates every selection query on the disabled-device guard', async () => {
+    const captured: string[] = [];
+    execute.mockImplementation(async (q: unknown) => {
+      captured.push(JSON.stringify(q));
+      return [];
+    });
+    // primary path (first dispatch) → findHealthyByDevice (pin/primary) + findStandby
+    await selectRunnerForJob({ projectId: PROJECT_A, pinDeviceId: DEVICE_X });
+    expect(captured.length).toBeGreaterThan(0);
+    for (const sql of captured) {
+      expect(sql).toContain('disabled_at');
+    }
+  });
+
   it('prefers pinDeviceId when the pinned runner is online + fresh', async () => {
     const pinned = {
       id: 'r-pinned',

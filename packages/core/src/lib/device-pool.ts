@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from './dispatch-liveness.js';
@@ -31,6 +31,9 @@ export async function findAvailableDeviceForProject(
       AND r.device_id IS NOT NULL
       AND r.last_seen_at IS NOT NULL
       AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+      AND NOT EXISTS (
+        SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
+      )
     ORDER BY r.last_seen_at DESC
     LIMIT 1
   `);
@@ -47,7 +50,13 @@ export async function findAvailableDeviceForProject(
   const [defaultDevice] = await db
     .select({ id: devices.id })
     .from(devices)
-    .where(and(eq(devices.id, project.defaultDeviceId), eq(devices.status, 'online')))
+    .where(
+      and(
+        eq(devices.id, project.defaultDeviceId),
+        eq(devices.status, 'online'),
+        isNull(devices.disabledAt),
+      ),
+    )
     .limit(1);
 
   return defaultDevice?.id ?? null;

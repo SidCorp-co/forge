@@ -946,6 +946,13 @@
       "when": 1785715200000,
       "tag": "0136_improvement_message_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1785801600000,
+      "tag": "0137_device_disabled_at",
+      "breakpoints": true
     }
   ]
 }
