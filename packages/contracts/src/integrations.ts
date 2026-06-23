@@ -72,6 +72,9 @@ export interface BindingSummary {
    *  is the merged connection+binding view; this distinguishes a per-project
    *  value from one inherited off the shared connection. */
   bindingConfig: Record<string, unknown>;
+  /** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = named
+   *  extra storefront (epodsystem only). Always '' for non-epodsystem providers. */
+  label: string;
   active: boolean;
   lastHealthStatus: string | null;
   lastHealthAt: string | null;
@@ -287,6 +290,9 @@ export type IntegrationBindingCreateInput =
       environment?: IntegrationEnvironment;
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+      /** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
+       *  Absent/empty = the default binding. */
+      label?: string;
     }
   | {
       provider: 'sentry';

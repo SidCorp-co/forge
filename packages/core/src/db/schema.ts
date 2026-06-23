@@ -2517,6 +2517,12 @@ export const integrationBindings = pgTable(
     // Per-binding HMAC secret for inbound webhook signature verification — an
     // inbound webhook is project+env scoped, so this stays on the binding.
     integrationSecret: text('integration_secret'),
+    // ISS-558 — multi-store support for epodsystem. Empty string = the default
+    // (unlabeled) binding; a non-empty kebab slug = a named extra binding.
+    // Non-epodsystem providers always leave this as '' (the DB default), so
+    // UNIQUE(project_id, provider, environment, label) still keeps the
+    // one-per-(project,provider,env) invariant for coolify/postman/sentry.
+    label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2527,12 +2533,12 @@ export const integrationBindings = pgTable(
       t.projectId,
       t.provider,
     ),
-    // Preserves project_integrations' one-row-per (project, provider, env) guard.
-    projectProviderEnvUq: uniqueIndex('integration_bindings_project_provider_env_uq').on(
-      t.projectId,
-      t.provider,
-      t.environment,
-    ),
+    // ISS-558: label column added. UNIQUE(project_id, provider, environment, label)
+    // preserves the one-per-(project,provider,env) invariant for all providers
+    // (label='' for non-epodsystem) while allowing multiple labeled epodsystem bindings.
+    projectProviderEnvLabelUq: uniqueIndex(
+      'integration_bindings_project_provider_env_label_uq',
+    ).on(t.projectId, t.provider, t.environment, t.label),
   }),
 );
 

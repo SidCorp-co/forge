@@ -39,6 +39,7 @@ import {
   createConnection,
   effectiveConfig,
   findActiveBinding,
+  findActiveBindingByLabel,
   findBindingWithConnectionById,
   findConnectionById,
   listActiveBindingsForProjectProvider,
@@ -228,6 +229,13 @@ const createSchema = z.discriminatedUnion('provider', [
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
     orgId: z.uuid().optional(),
+    // ISS-558 — optional label for the second+ storefront. Empty = default.
+    label: z
+      .string()
+      .min(1)
+      .max(60)
+      .regex(/^[a-z0-9][a-z0-9-]*$/, 'label must be kebab-case (a-z0-9-)')
+      .optional(),
   }),
   z.object({
     provider: z.literal('sentry'),
@@ -273,6 +281,8 @@ function summarizeBinding(pair: BindingWithConnection) {
     // Raw binding-tier overrides so clients can tell a per-project value from
     // one inherited off the shared connection (`config` is the merged view).
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
+    // ISS-558 — empty string = default/unlabeled; non-empty = named store.
+    label: binding.label ?? '',
     active: binding.active && connection.active,
     lastHealthStatus: connection.lastHealthStatus,
     lastHealthAt: connection.lastHealthAt,
@@ -414,14 +424,36 @@ integrationsRoutes.post(
 
     const body = c.req.valid('json');
 
-    // One active binding per (project, provider, env) — guard before we create a
-    // connection so we don't leave an orphan when the binding would collide.
-    const clash = await findActiveBinding(projectId, body.provider, body.environment);
-    if (clash) {
-      throw new HTTPException(409, {
-        message: 'integration already exists for this provider+environment',
-        cause: { code: 'ALREADY_EXISTS' },
-      });
+    // ISS-558 — epodsystem allows N labeled bindings per (project, env).
+    // The unique index is now (project_id, provider, environment, label), so
+    // we check by label for epodsystem and by env-only for other providers.
+    const bindingLabel =
+      body.provider === 'epodsystem' && 'label' in body && body.label ? body.label : '';
+
+    if (body.provider === 'epodsystem') {
+      // For epodsystem check the specific label slot ('' = default, or named).
+      const clash = await findActiveBindingByLabel(
+        projectId,
+        body.provider,
+        body.environment,
+        bindingLabel,
+      );
+      if (clash) {
+        const labelSuffix = bindingLabel ? ` (label "${bindingLabel}")` : '';
+        throw new HTTPException(409, {
+          message: `integration already exists for this provider+environment${labelSuffix}`,
+          cause: { code: 'ALREADY_EXISTS' },
+        });
+      }
+    } else {
+      // Non-epodsystem: one active binding per (project, provider, env) as before.
+      const clash = await findActiveBinding(projectId, body.provider, body.environment);
+      if (clash) {
+        throw new HTTPException(409, {
+          message: 'integration already exists for this provider+environment',
+          cause: { code: 'ALREADY_EXISTS' },
+        });
+      }
     }
 
     // Auto-mint a per-binding HMAC secret for inbound webhook verification.
@@ -461,6 +493,7 @@ integrationsRoutes.post(
         environment: body.environment,
         config: tiers.binding,
         integrationSecret,
+        label: bindingLabel,
       });
     } catch (err) {
       // Roll the just-created connection back so a binding-unique collision
@@ -470,7 +503,7 @@ integrationsRoutes.post(
       const msg = err instanceof Error ? err.message : String(err);
       if (code === '23505' || /duplicate key|unique/.test(msg)) {
         throw new HTTPException(409, {
-          message: 'integration already exists for this provider+environment',
+          message: 'integration already exists for this provider+environment+label',
           cause: { code: 'ALREADY_EXISTS' },
         });
       }
@@ -1128,20 +1161,28 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
       continue;
     }
 
-    // The resolver injects ONE entry per provider key — the first row of the
-    // same active-bindings query. Resolve that pick here so a multi-binding
-    // project sees which binding actually wins (`shadowed` marks the losers).
-    const [resolverPick] = await listActiveBindingsForProjectProvider(projectId, provider);
+    // ISS-558 — epodsystem injects N entries (one per active binding), each
+    // with its own serverName. Other providers still pick one winner.
+    const isEpodsystem = provider === 'epodsystem';
+    // For non-epodsystem: resolve the winning binding once outside the loop.
+    const resolverPick = isEpodsystem
+      ? null
+      : (await listActiveBindingsForProjectProvider(projectId, provider))[0] ?? null;
 
     for (const pair of rows) {
       const active = pair.binding.active && pair.connection.active;
       const hasSecrets = pair.connection.secretsEnc !== null;
-      const isPick = resolverPick?.binding.id === pair.binding.id;
-      const willInject = active && hasSecrets && isPick;
+      const bindingLabel = (pair.binding as Record<string, unknown>).label as string ?? '';
+      const serverName = isEpodsystem
+        ? `epodsystem${bindingLabel ? `_${bindingLabel.replace(/-/g, '_')}` : ''}`
+        : provider;
+      // Epodsystem: every active+credentialed binding gets its own injected key.
+      // Others: only the resolver's winning pick is injected; rest are shadowed.
+      const willInject = active && hasSecrets && (isEpodsystem || resolverPick?.binding.id === pair.binding.id);
       const entry = buildMcpEntryFor(provider, pair);
       servers.push({
         provider,
-        serverName: provider,
+        serverName,
         bindingId: pair.binding.id,
         environment: pair.binding.environment as IntegrationEnvironment,
         configured: true,

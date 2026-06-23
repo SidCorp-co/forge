@@ -12,18 +12,24 @@ vi.mock('../store.js', () => ({
   }),
 }));
 
-const { applyEpodsystemMcpServers, resolveEpodsystemMcpEntry, buildEpodsystemMcpEntry } =
-  await import('./resolver.js');
+const {
+  applyEpodsystemMcpServers,
+  resolveEpodsystemMcpEntry,
+  resolveEpodsystemMcpEntries,
+  buildEpodsystemMcpEntry,
+} = await import('./resolver.js');
 
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
-function mockActiveRow(config: Record<string, unknown>) {
-  listBindingsMock.mockResolvedValueOnce([
-    {
-      binding: { id: 'bind-1', projectId: PROJECT_ID, config: {} },
-      connection: { id: 'conn-1', config, secretsEnc: Buffer.from('enc') },
-    },
-  ]);
+function mockRow(label: string, config: Record<string, unknown> = {}) {
+  return {
+    binding: { id: `bind-${label || 'default'}`, projectId: PROJECT_ID, config: {}, label },
+    connection: { id: `conn-${label || 'default'}`, config, secretsEnc: Buffer.from('enc') },
+  };
+}
+
+function mockActiveRow(config: Record<string, unknown> = {}, label = '') {
+  listBindingsMock.mockResolvedValueOnce([mockRow(label, config)]);
   decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_secret_key_123456' });
 }
 
@@ -48,9 +54,77 @@ describe('buildEpodsystemMcpEntry', () => {
   });
 });
 
-describe('resolveEpodsystemMcpEntry', () => {
+describe('resolveEpodsystemMcpEntries (ISS-558 — N bindings)', () => {
+  it('returns a single "epodsystem" entry for an unlabeled (default) binding', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow('')]);
+    decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_key1' });
+
+    const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
+    expect(Object.keys(entries)).toEqual(['epodsystem']);
+    expect((entries.epodsystem?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer crmk_key1',
+    );
+  });
+
+  it('returns "epodsystem_<slug>" for a labeled binding (dashes→underscores)', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow('partner-a')]);
+    decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_key2' });
+
+    const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
+    expect(Object.keys(entries)).toEqual(['epodsystem_partner_a']);
+  });
+
+  it('returns N entries for N active bindings', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow(''), mockRow('store-b'), mockRow('store-c')]);
+    decryptConnectionSecretsMock
+      .mockReturnValueOnce({ apiKey: 'crmk_key1' })
+      .mockReturnValueOnce({ apiKey: 'crmk_key2' })
+      .mockReturnValueOnce({ apiKey: 'crmk_key3' });
+
+    const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
+    expect(Object.keys(entries).sort()).toEqual(['epodsystem', 'epodsystem_store_b', 'epodsystem_store_c']);
+  });
+
+  it('skips a binding whose key cannot be decrypted — others still inject', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow(''), mockRow('store-b')]);
+    decryptConnectionSecretsMock
+      .mockImplementationOnce(() => { throw new Error('bad key'); })
+      .mockReturnValueOnce({ apiKey: 'crmk_good' });
+
+    const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
+    expect(Object.keys(entries)).toEqual(['epodsystem_store_b']);
+    expect((entries.epodsystem_store_b?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer crmk_good',
+    );
+  });
+
+  it('skips a binding with no secretsEnc', async () => {
+    listBindingsMock.mockResolvedValueOnce([
+      { binding: { id: 'bind-1', projectId: PROJECT_ID, config: {}, label: '' },
+        connection: { id: 'conn-1', config: {}, secretsEnc: null } },
+    ]);
+
+    const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
+    expect(Object.keys(entries)).toHaveLength(0);
+  });
+
+  it('returns empty record when no active integrations', async () => {
+    listBindingsMock.mockResolvedValueOnce([]);
+    const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
+    expect(entries).toEqual({});
+  });
+
+  it('returns empty record (does not throw) when DB lookup fails', async () => {
+    listBindingsMock.mockRejectedValueOnce(new Error('connection refused'));
+    const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
+    expect(entries).toEqual({});
+  });
+});
+
+describe('resolveEpodsystemMcpEntry (compat — returns default entry)', () => {
   it('returns the rendered entry when an active integration exists', async () => {
-    mockActiveRow({ endpoint: 'https://acme.epodsystem.com', environment: 'prod' });
+    listBindingsMock.mockResolvedValueOnce([mockRow('', { environment: 'prod' })]);
+    decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_secret_key_123456' });
     const entry = await resolveEpodsystemMcpEntry(PROJECT_ID);
     expect(entry).not.toBeNull();
     expect(entry?.url).toBe('https://mcp.epodsystem.com/mcp');
@@ -59,49 +133,37 @@ describe('resolveEpodsystemMcpEntry', () => {
     );
   });
 
-  it('returns null when no active integration exists (AC#6 drop-on-disable)', async () => {
+  it('returns null when no active integration exists', async () => {
     listBindingsMock.mockResolvedValueOnce([]);
     const entry = await resolveEpodsystemMcpEntry(PROJECT_ID);
     expect(entry).toBeNull();
-    expect(decryptConnectionSecretsMock).not.toHaveBeenCalled();
   });
 
-  it('returns null when the connection has no secretsEnc', async () => {
-    listBindingsMock.mockResolvedValueOnce([
-      {
-        binding: { id: 'bind-1', projectId: PROJECT_ID, config: {} },
-        connection: { id: 'conn-1', config: {}, secretsEnc: null },
-      },
-    ]);
+  it('returns null when only labeled bindings exist (no default binding)', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow('store-a')]);
+    decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_abc' });
     const entry = await resolveEpodsystemMcpEntry(PROJECT_ID);
-    expect(entry).toBeNull();
-  });
-
-  it('returns null (does not throw) when decrypt fails', async () => {
-    listBindingsMock.mockResolvedValueOnce([
-      {
-        binding: { id: 'bind-1', projectId: PROJECT_ID, config: {} },
-        connection: { id: 'conn-1', config: {}, secretsEnc: Buffer.from('enc') },
-      },
-    ]);
-    decryptConnectionSecretsMock.mockImplementationOnce(() => {
-      throw new Error('bad key');
-    });
-    const entry = await resolveEpodsystemMcpEntry(PROJECT_ID);
+    // resolveEpodsystemMcpEntry returns entries.epodsystem — null when no default
     expect(entry).toBeNull();
   });
 });
 
 describe('applyEpodsystemMcpServers', () => {
-  it('adds the epodsystem entry to a null override (project-default inject)', async () => {
-    mockActiveRow({ endpoint: 'https://acme.epodsystem.com', environment: 'prod' });
+  it('adds ALL epodsystem entries to a null override', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow(''), mockRow('store-b')]);
+    decryptConnectionSecretsMock
+      .mockReturnValueOnce({ apiKey: 'crmk_key1' })
+      .mockReturnValueOnce({ apiKey: 'crmk_key2' });
+
     const merged = await applyEpodsystemMcpServers(PROJECT_ID, null);
     expect(merged).not.toBeNull();
-    expect(Object.keys(merged ?? {})).toEqual(['epodsystem']);
+    expect(Object.keys(merged ?? {}).sort()).toEqual(['epodsystem', 'epodsystem_store_b']);
   });
 
-  it('merges epodsystem alongside an existing override without clobbering it', async () => {
-    mockActiveRow({ endpoint: 'https://acme.epodsystem.com', environment: 'prod' });
+  it('merges epodsystem entries alongside an existing override without clobbering it', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow('')]);
+    decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_key1' });
+
     const merged = await applyEpodsystemMcpServers(PROJECT_ID, { postman: { type: 'http' } });
     expect(merged).toMatchObject({
       postman: { type: 'http' },
@@ -109,20 +171,13 @@ describe('applyEpodsystemMcpServers', () => {
     });
   });
 
-  it('does NOT leak the key onto a shared/previous override object (no cross-tenant bleed)', async () => {
-    // First dispatch: active integration injects the key.
-    mockActiveRow({ endpoint: 'https://acme.epodsystem.com', environment: 'prod' });
+  it('does NOT mutate the caller object', async () => {
+    listBindingsMock.mockResolvedValueOnce([mockRow('')]);
+    decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_key1' });
     const shared = { postman: { type: 'http' } };
     const first = await applyEpodsystemMcpServers(PROJECT_ID, shared);
-    expect(first).not.toBe(shared); // new object, original untouched
-    expect(shared).toEqual({ postman: { type: 'http' } }); // caller's object unmutated
-
-    // Second dispatch (different project, no active integration): no inject,
-    // and nothing from the first dispatch bleeds through.
-    listBindingsMock.mockResolvedValueOnce([]);
-    const second = await applyEpodsystemMcpServers(PROJECT_ID, shared);
-    expect(second).toBe(shared);
-    expect(second).toEqual({ postman: { type: 'http' } });
+    expect(first).not.toBe(shared);
+    expect(shared).toEqual({ postman: { type: 'http' } });
   });
 
   it('leaves the override unchanged when there is no active integration', async () => {

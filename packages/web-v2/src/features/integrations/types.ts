@@ -172,6 +172,8 @@ export type CreateIntegrationInput =
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
       orgId?: string;
+      /** ISS-558 — optional kebab label for a named storefront. Absent = default. */
+      label?: string;
     }
   | {
       provider: "postman";

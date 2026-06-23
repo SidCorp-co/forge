@@ -24,6 +24,7 @@ vi.mock('../db/client.js', () => ({
 const createConnection = vi.fn();
 const createBinding = vi.fn();
 const findActiveBinding = vi.fn();
+const findActiveBindingByLabel = vi.fn();
 const findBindingWithConnectionById = vi.fn();
 const findConnectionById = vi.fn();
 const updateConnection = vi.fn();
@@ -49,6 +50,7 @@ vi.mock('./store.js', () => ({
   createConnection: (a: unknown) => createConnection(a),
   createBinding: (a: unknown) => createBinding(a),
   findActiveBinding: (...a: unknown[]) => findActiveBinding(...(a as [])),
+  findActiveBindingByLabel: (...a: unknown[]) => findActiveBindingByLabel(...(a as [])),
   findBindingWithConnectionById: (id: string) => findBindingWithConnectionById(id),
   findConnectionById: (id: string) => findConnectionById(id),
   updateConnection: (id: string, patch: unknown) => updateConnection(id, patch),
@@ -155,6 +157,7 @@ beforeEach(() => {
   selectLimit.mockReset();
   effectiveRole.mockReset();
   orgRoleMock.mockReset();
+  findActiveBindingByLabel.mockReset();
 });
 
 describe('POST /api/projects/:projectId/integrations — vault guard', () => {
@@ -1119,5 +1122,164 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
     expect(pm?.willInject).toBe(false);
     expect(pm?.reason).toBe('no_credential');
     expect(pm?.headers).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ISS-558 — epodsystem multi-binding (label-based)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeEpodsystemConn(overrides?: { secretsEnc?: Buffer | null }) {
+  return {
+    id: 'conn-epod',
+    ownerType: 'user',
+    ownerId: USER_ID,
+    provider: 'epodsystem',
+    displayName: null,
+    config: { environment: 'prod' },
+    active: true,
+    lastHealthStatus: null,
+    lastHealthAt: null,
+    breakerOpenedAt: null,
+    secretsEnc: overrides?.secretsEnc ?? Buffer.from('enc'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+function makeEpodsystemBinding(label: string, active = true) {
+  return {
+    id: `bind-epod-${label || 'default'}`,
+    connectionId: 'conn-epod',
+    projectId: PROJECT_ID,
+    provider: 'epodsystem',
+    environment: 'prod',
+    config: {},
+    integrationSecret: null,
+    label,
+    active,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+describe('POST /api/projects/:projectId/integrations — epodsystem multi-binding (ISS-558)', () => {
+  const EPOD_BODY = {
+    provider: 'epodsystem',
+    config: {},
+    secrets: { apiKey: 'crmk_abc123456789' },
+  };
+
+  it('201 — creates default (unlabeled) epodsystem binding; label defaults to empty string', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findActiveBindingByLabel.mockResolvedValueOnce(null);
+    createConnection.mockResolvedValueOnce(makeEpodsystemConn());
+    createBinding.mockResolvedValueOnce(makeEpodsystemBinding(''));
+
+    const res = await post(token, EPOD_BODY);
+    expect(res.status).toBe(201);
+    expect(createBinding).toHaveBeenCalledWith(
+      expect.objectContaining({ label: '' }),
+    );
+  });
+
+  it('201 — creates labeled epodsystem binding when label is provided', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findActiveBindingByLabel.mockResolvedValueOnce(null);
+    createConnection.mockResolvedValueOnce(makeEpodsystemConn());
+    createBinding.mockResolvedValueOnce(makeEpodsystemBinding('partner-a'));
+
+    const res = await post(token, { ...EPOD_BODY, label: 'partner-a' });
+    expect(res.status).toBe(201);
+    expect(createBinding).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'partner-a' }),
+    );
+  });
+
+  it('409 — duplicate epodsystem label returns ALREADY_EXISTS', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findActiveBindingByLabel.mockResolvedValueOnce({
+      binding: makeEpodsystemBinding('partner-a'),
+      connection: makeEpodsystemConn(),
+    });
+
+    const res = await post(token, { ...EPOD_BODY, label: 'partner-a' });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('ALREADY_EXISTS');
+    expect(createConnection).not.toHaveBeenCalled();
+  });
+
+  it('400 — rejects invalid label (not kebab-case)', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+
+    const res = await post(token, { ...EPOD_BODY, label: 'Partner A!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('409 — non-epodsystem (postman) still rejects a 2nd binding in same env', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findActiveBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
+
+    const res = await post(token, {
+      provider: 'postman',
+      config: { workspaceName: 'W', region: 'us', mode: 'minimal' },
+      secrets: { apiKey: 'PMAK-abcdef123456' },
+    });
+    expect(res.status).toBe(409);
+    expect(createConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/projects/:projectId/integrations/mcp-preview — epodsystem multi-entry (ISS-558)', () => {
+  const TOKEN_MOCK = { headers: { authorization: '' } };
+
+  async function previewEpod(pairs: unknown[]) {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    listBindingsForProject.mockResolvedValueOnce(pairs);
+    return buildApp().request(`/api/projects/${PROJECT_ID}/integrations/mcp-preview`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${token}` },
+    });
+  }
+
+  it('shows two separate willInject entries for two active epodsystem bindings', async () => {
+    const defaultPair = { binding: makeEpodsystemBinding(''), connection: makeEpodsystemConn() };
+    const labeledPair = {
+      binding: makeEpodsystemBinding('store-b'),
+      connection: { ...makeEpodsystemConn(), id: 'conn-epod-2' },
+    };
+
+    const res = await previewEpod([defaultPair, labeledPair]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { servers: { serverName: string; willInject: boolean }[] };
+    const epodServers = body.servers.filter((s) => s.serverName.startsWith('epodsystem'));
+    expect(epodServers).toHaveLength(2);
+    const names = epodServers.map((s) => s.serverName).sort();
+    expect(names).toEqual(['epodsystem', 'epodsystem_store_b']);
+    expect(epodServers.every((s) => s.willInject)).toBe(true);
+  });
+
+  it('uses epodsystem_<slug> serverName with dashes converted to underscores', async () => {
+    const labeledPair = {
+      binding: makeEpodsystemBinding('partner-abc'),
+      connection: makeEpodsystemConn(),
+    };
+    const res = await previewEpod([labeledPair]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { servers: { serverName: string }[] };
+    const epod = body.servers.find((s) => s.provider === 'epodsystem');
+    expect(epod?.serverName).toBe('epodsystem_partner_abc');
   });
 });
