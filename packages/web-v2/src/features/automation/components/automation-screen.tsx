@@ -8,15 +8,17 @@ import { ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { SchedulesScreen } from "@/features/schedules/components/schedules-screen";
 import { ImproveScreen } from "@/features/improvement-messages/components/improve-screen";
+import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { PmScreen } from "./pm-screen";
 
-type AutomationTab = "schedules" | "pm" | "improve";
+type AutomationTab = "schedules" | "pm" | "improve" | "feedback";
 
-const TAB_VALUES = ["schedules", "pm", "improve"] as const;
+const TAB_VALUES = ["schedules", "pm", "improve", "feedback"] as const;
 const TABS: TabItem[] = [
   { value: "schedules", label: "Schedules" },
   { value: "pm", label: "PM" },
   { value: "improve", label: "Improve" },
+  { value: "feedback", label: "Feedback" },
 ];
 
 export interface AutomationScreenProps {
@@ -37,6 +39,9 @@ export function AutomationScreen({ scope }: AutomationScreenProps) {
       )}
       {tab === "improve" && (
         <ImproveScreen scope={{ projectId: scope.projectId, canManage: scope.canManage }} />
+      )}
+      {tab === "feedback" && (
+        <FeedbackScreen scope={{ projectId: scope.projectId, canManage: scope.canManage }} />
       )}
     </div>
   );

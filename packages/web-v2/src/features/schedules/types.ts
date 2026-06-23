@@ -44,6 +44,26 @@ export function lastStatusToChip(status: ScheduleLastStatus): StatusKey | null {
 
 export type ScheduleRunTrigger = "manual" | "scheduled";
 
+export interface StewardRunReportAction {
+  skill: string;
+  kind: "proposed" | "applied" | "feedback" | "skipped";
+  summary: string;
+}
+
+export interface StewardRunReportMemoryWrite {
+  skill: string;
+  sourceRef: string;
+  tokensAfter: number;
+}
+
+export interface StewardRunReport {
+  weakestDomain: string;
+  skillsAssessed: string[];
+  actions: StewardRunReportAction[];
+  memoryWrites: StewardRunReportMemoryWrite[];
+  idempotencySkips: string[];
+}
+
 /** One past run of a schedule (an agent session under a system pipeline run).
  *  Shape verified against `GET /api/schedules/:id/runs` in
  *  `packages/core/src/schedules/routes.ts`. */
@@ -59,6 +79,7 @@ export interface ScheduleRun {
   startedAt: string | null;
   finishedAt: string | null;
   durationSeconds: number | null;
+  stewardReport: StewardRunReport | null;
 }
 
 /** Map an agent-session status to a design-kit StatusChip key (session domain). */

@@ -2744,6 +2744,10 @@ export const feedbackReports = pgTable(
     // Server-computed `self_report:<target>:<targetRef|'-'>:<kind>`.
     // Stored for C2 signal accrual + list dedup.
     signalKey: text('signal_key').notNull(),
+    // ISS-557 — bare uuid pointing at the agent_session that emitted this report.
+    // No hard FK so steward sessions (which have no job row) can link cleanly.
+    sessionId: uuid('session_id'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -2756,6 +2760,7 @@ export const feedbackReports = pgTable(
     ),
     signalKeyIdx: index('feedback_reports_signal_key_idx').on(t.signalKey),
     createdAtIdx: index('feedback_reports_created_at_idx').on(t.createdAt),
+    sessionIdx: index('feedback_reports_session_id_idx').on(t.sessionId),
   }),
 );
 

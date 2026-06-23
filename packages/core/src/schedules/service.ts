@@ -7,12 +7,18 @@ import { logger } from '../logger.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { getImprovementMessage } from './messages/registry.js';
+import type { StewardRunReport } from './messages/skill-steward-prompt.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
+
+export type {
+  StewardRunReport,
+  StewardRunReportAction,
+} from './messages/skill-steward-prompt.js';
 
 // Cross-project routing via `targetProjectSlug` would otherwise let a source
 // project's admin plant jobs on any project they know the slug of. Require the
@@ -94,6 +100,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
       sessionStartedAt: agentSessions.startedAt,
       createdAt: agentSessions.createdAt,
       tick: sql<boolean>`(${agentSessions.metadata} ->> 'tick') = 'true'`,
+      stewardReport: sql<unknown>`${agentSessions.metadata} -> 'stewardReport'`,
       runStatus: pipelineRuns.status,
       runStartedAt: pipelineRuns.startedAt,
       runFinishedAt: pipelineRuns.finishedAt,
@@ -125,6 +132,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
       startedAt: toIso(start),
       finishedAt: toIso(end),
       durationSeconds,
+      stewardReport: (r.stewardReport as StewardRunReport | null) ?? null,
     };
   });
 
@@ -324,7 +332,7 @@ export async function runScheduleNow(
 
   await db
     .update(schedules)
-    .set({ lastStatus: result.status })
+    .set({ lastStatus: result.status, lastRunAt: new Date() })
     .where(eq(schedules.id, schedule.id));
 
   if (!result.ok) {
