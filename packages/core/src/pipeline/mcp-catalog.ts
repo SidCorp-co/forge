@@ -35,6 +35,12 @@ export const MCP_CATALOG: Record<string, Record<string, unknown>> = {
     args: ['@playwright/mcp@latest'],
     env: {},
   },
+  'chrome-devtools-mcp': {
+    type: 'stdio',
+    command: 'npx',
+    args: ['chrome-devtools-mcp@latest'],
+    env: {},
+  },
 };
 
 /** Names a project may enable with the `name: true` shorthand. */

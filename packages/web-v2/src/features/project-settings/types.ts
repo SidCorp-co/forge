@@ -208,6 +208,16 @@ export const MCP_CATALOG: Record<
 			env: {},
 		},
 	},
+	"chrome-devtools-mcp": {
+		label: "Chrome DevTools",
+		hint: "Chrome DevTools Protocol access for browser inspection, debugging, performance traces, and network monitoring.",
+		spec: {
+			type: "stdio",
+			command: "npx",
+			args: ["chrome-devtools-mcp@latest"],
+			env: {},
+		},
+	},
 };
 
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);

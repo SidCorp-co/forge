@@ -16,6 +16,22 @@ describe('MCP_CATALOG', () => {
     });
     expect(MCP_CATALOG_NAMES).toContain('playwright');
   });
+
+  it('includes the chrome-devtools-mcp entry as a stdio npx spec', () => {
+    expect(MCP_CATALOG['chrome-devtools-mcp']).toEqual({
+      type: 'stdio',
+      command: 'npx',
+      args: ['chrome-devtools-mcp@latest'],
+      env: {},
+    });
+    expect(MCP_CATALOG_NAMES).toContain('chrome-devtools-mcp');
+  });
+
+  it('expands chrome-devtools-mcp shorthand to its catalog spec', () => {
+    const out = expandMcpServers({ 'chrome-devtools-mcp': true });
+    expect(out['chrome-devtools-mcp']).toEqual(MCP_CATALOG['chrome-devtools-mcp']);
+    expect(out['chrome-devtools-mcp']).not.toBe(MCP_CATALOG['chrome-devtools-mcp']);
+  });
 });
 
 describe('expandMcpServers', () => {
