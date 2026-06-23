@@ -109,6 +109,7 @@ vi.mock('../../issues/attachment-service.js', async (importActual) => {
 });
 
 const { forgeIssuesTool } = await import('./forge-issues.js');
+const { db: mockDb } = await import('../../db/client.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_SLUG = 'forge-dev';
@@ -249,6 +250,67 @@ describe('forge_issues tool', () => {
     ]) {
       expect(row).not.toHaveProperty(heavy);
     }
+  });
+
+  // ISS-562 — SQL-level projection: assert db.select() is called with a
+  // light-column projection map, NOT bare (no args). A returned-row assertion
+  // won't catch this because the unit-test mock bypasses drizzle column
+  // selection.
+  it('list calls db.select with SQL-level light-column projection — no heavy fields (ISS-562)', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+
+    await tool.handler({ action: 'list' });
+
+    // db.select was called with a projection object (not undefined/no-args)
+    const selectSpy = vi.mocked(mockDb.select);
+    const callArg = selectSpy.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
+    expect(callArg).toBeDefined();
+    // Light fields present in projection
+    for (const light of ['id', 'issSeq', 'title', 'status', 'priority', 'category', 'complexity', 'assigneeId', 'parentIssueId', 'reopenCount', 'mergedAt', 'createdAt', 'updatedAt']) {
+      expect(callArg).toHaveProperty(light);
+    }
+    // Heavy fields absent from projection
+    for (const heavy of ['description', 'plan', 'acceptanceCriteria', 'suggestedSolution', 'sessionContext', 'aiSummary', 'aiSuggestedSolution', 'aiAcceptanceCriteria', 'aiConfidence', 'releaseNotes']) {
+      expect(callArg).not.toHaveProperty(heavy);
+    }
+  });
+
+  it('list returns truncated:true and stays under output cap when fat rows exceed 38K chars (ISS-562)', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // 50 fat issue rows (title ~2KB each) — total well exceeds 38K
+    const fatRows = Array.from({ length: 50 }, (_, i) => ({
+      ...baseIssueRow,
+      id: `22222222-2222-4222-8222-22222222222${(i % 10).toString()}`,
+      title: 't'.repeat(2_000),
+    }));
+    selectLimit.mockResolvedValueOnce(fatRows);
+
+    const result = (await tool.handler({ action: 'list' })) as {
+      issues: unknown[];
+      truncated: boolean;
+      returned: number;
+      requested: number;
+      notice: string;
+    };
+
+    expect(result.truncated).toBe(true);
+    expect(result.returned).toBeLessThan(50);
+    expect(result.requested).toBe(25);
+    expect(result.notice).toMatch(/truncated/i);
+    expect(JSON.stringify(result).length).toBeLessThan(50_000);
   });
 
   it('list throws BAD_REQUEST when no slug and no projectId', async () => {
@@ -1322,6 +1384,84 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       await expect(tool.handler({ action: 'listTasks' })).rejects.toThrow(/BAD_REQUEST/);
+    });
+
+    // ISS-562 — SQL-level projection: assert db.select() is called without the
+    // description column. A returned-row assertion won't catch this because the
+    // unit-test mock bypasses drizzle column selection.
+    it('listTasks: calls db.select with projection that omits description (ISS-562)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      selectLimit.mockResolvedValueOnce([baseTaskRow]);
+
+      await tool.handler({ action: 'listTasks', filters: { issue: ISSUE_ID } });
+
+      const selectSpy = vi.mocked(mockDb.select);
+      const callArg = selectSpy.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
+      expect(callArg).toBeDefined();
+      // Light task fields present
+      for (const light of ['id', 'issueId', 'projectId', 'title', 'status', 'priority', 'assigneeId', 'isAgentTask', 'agentStatus', 'acceptanceCriteria', 'createdAt', 'updatedAt']) {
+        expect(callArg).toHaveProperty(light);
+      }
+      // description is absent from the projection
+      expect(callArg).not.toHaveProperty('description');
+    });
+
+    it('listTasks: returned rows omit description field in serialization (ISS-562)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      selectLimit.mockResolvedValueOnce([{ ...baseTaskRow, description: 'd'.repeat(1_000) }]);
+
+      const result = (await tool.handler({
+        action: 'listTasks',
+        filters: { issue: ISSUE_ID },
+      })) as { tasks: Array<Record<string, unknown>> };
+
+      expect(result.tasks[0]).not.toHaveProperty('description');
+    });
+
+    it('listTasks: returns truncated:true when fat rows exceed 38K chars (ISS-562)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      // 50 fat task rows (title ~2KB each) — total well exceeds 38K
+      const fatTaskRows = Array.from({ length: 50 }, (_, i) => ({
+        ...baseTaskRow,
+        id: `66666666-6666-4666-8666-66666666666${(i % 10).toString()}`,
+        title: 't'.repeat(2_000),
+      }));
+      selectLimit.mockResolvedValueOnce(fatTaskRows);
+
+      const result = (await tool.handler({
+        action: 'listTasks',
+        filters: { issue: ISSUE_ID },
+      })) as {
+        tasks: unknown[];
+        truncated: boolean;
+        returned: number;
+        requested: number;
+        notice: string;
+      };
+
+      expect(result.truncated).toBe(true);
+      expect(result.returned).toBeLessThan(50);
+      expect(result.requested).toBe(25);
+      expect(result.notice).toMatch(/truncated/i);
+      expect(JSON.stringify(result).length).toBeLessThan(50_000);
     });
 
     it('updateTask: patches mapped fields', async () => {

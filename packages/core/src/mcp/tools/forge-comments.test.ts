@@ -188,6 +188,42 @@ describe('forge_comments tool', () => {
     expect(result.comments[0]?.attachments[0]?.url).toBe('/api/comments/attachments/att-1');
   });
 
+  it('list returns truncated:true and keeps newest when response exceeds 38K chars (ISS-562)', async () => {
+    const tool = forgeCommentsTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // 50 fat comments (~9KB bodies each) → ~450KB raw, far exceeds 38K cap
+    const fatRows = Array.from({ length: 50 }, (_, i) => ({
+      ...baseCommentRow,
+      id: `5555555${i}-5555-4555-8555-555555555555`.slice(0, 36),
+      body: 'x'.repeat(9_000),
+      createdAt: new Date(Date.now() + i * 1000),
+    }));
+    selectLimit.mockResolvedValueOnce(fatRows);
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { issue: ISSUE_ID },
+    })) as {
+      comments: unknown[];
+      truncated: boolean;
+      returned: number;
+      requested: number;
+      notice: string;
+    };
+
+    expect(result.truncated).toBe(true);
+    expect(result.returned).toBeLessThan(50);
+    expect(result.requested).toBe(50);
+    expect(result.notice).toMatch(/truncated/i);
+    // Total serialized response must stay under a safe threshold
+    expect(JSON.stringify(result).length).toBeLessThan(50_000);
+  });
+
   it('list throws NOT_FOUND when issue is missing', async () => {
     const tool = forgeCommentsTool({
       principal: { kind: 'device', device: fakeDevice },

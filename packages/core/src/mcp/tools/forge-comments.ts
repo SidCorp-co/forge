@@ -125,6 +125,8 @@ function decodeBase64Strict(input: string): Buffer | null {
   return Buffer.from(trimmed, 'base64');
 }
 
+const MAX_RESPONSE_CHARS = 38_000;
+
 export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_comments',
   description:
@@ -167,11 +169,30 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           .limit(input.limit ?? 50);
 
         const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
-        return {
-          comments: rows.map((r) =>
-            serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? []),
-          ),
-        };
+        const serialized = rows.map((r) =>
+          serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? []),
+        );
+
+        // Hard total-response cap: trim from the front (oldest) until the
+        // serialized payload fits MAX_RESPONSE_CHARS, so a large limit or
+        // verbose comment thread can never spill to a file. Oldest-first
+        // ordering means trimming the front keeps the newest comments. Always
+        // keep at least one comment.
+        let kept = serialized;
+        while (kept.length > 1 && JSON.stringify({ comments: kept }).length > MAX_RESPONSE_CHARS) {
+          kept = kept.slice(1);
+        }
+
+        if (kept.length < serialized.length) {
+          return {
+            comments: kept,
+            truncated: true,
+            returned: kept.length,
+            requested: input.limit ?? 50,
+            notice: `Response truncated to the ${kept.length} most recent of ${serialized.length} comments to stay under the MCP output cap. Use a smaller limit or fetch comments individually.`,
+          };
+        }
+        return { comments: kept };
       }
 
       case 'create': {
