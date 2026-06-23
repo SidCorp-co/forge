@@ -35,6 +35,7 @@ import {
   sessionStatusToChip,
   type ScheduleRow,
   type ScheduleRun,
+  type StewardRunReportAction,
 } from "../types";
 
 interface SchedulesScreenProps {
@@ -102,9 +103,17 @@ function LastResult({
   return inner;
 }
 
+const ACTION_TONE: Record<StewardRunReportAction["kind"], "green" | "cobalt" | "amber" | "neutral"> =
+  {
+    applied: "green",
+    proposed: "cobalt",
+    feedback: "amber",
+    skipped: "neutral",
+  };
+
 /** One past run inside the expanded history panel. Links to its session. */
 function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) {
-  const body = (
+  const header = (
     <div className="flex flex-wrap items-center gap-2 py-1.5">
       <Badge tone={run.trigger === "manual" ? "accent" : "neutral"}>{run.trigger}</Badge>
       <StatusChip status={sessionStatusToChip(run.status)} size="sm" domain="session" />
@@ -118,14 +127,45 @@ function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undef
       {slug && <span className="fg-caption text-accent">View session →</span>}
     </div>
   );
+
+  const stewardSection = run.stewardReport && (
+    <div className="pb-1.5 pl-1 space-y-1">
+      {run.stewardReport.weakestDomain && (
+        <p className="fg-caption text-subtle">
+          Weakest domain: <span className="font-mono">{run.stewardReport.weakestDomain}</span>
+        </p>
+      )}
+      <div className="flex flex-wrap gap-1.5">
+        {run.stewardReport.actions.map((a, i) => (
+          <Tooltip key={i} label={a.summary}>
+            <span className="inline-flex items-center gap-1">
+              <Badge tone={ACTION_TONE[a.kind]}>{a.kind}</Badge>
+              <span className="fg-caption text-muted max-w-[160px] truncate">{a.skill}</span>
+            </span>
+          </Tooltip>
+        ))}
+      </div>
+    </div>
+  );
+
+  const body = (
+    <div>
+      {header}
+      {stewardSection}
+    </div>
+  );
+
   if (slug) {
     return (
-      <Link
-        href={`/projects/${slug}/agents/${run.sessionId}`}
-        className="block rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-      >
-        {body}
-      </Link>
+      <div className="rounded-md px-1 hover:bg-hover">
+        <Link
+          href={`/projects/${slug}/agents/${run.sessionId}`}
+          className="block focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
+          {header}
+        </Link>
+        {stewardSection}
+      </div>
     );
   }
   return body;

@@ -109,6 +109,8 @@ describe('forge_feedback submit', () => {
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'code' },
     ]);
+    // resolveActiveSessionId: running session for device (ISS-557)
+    selectLimit.mockResolvedValueOnce([{ id: 'sess-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }]);
     // per-job count check: 0 existing
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     // insert returning
@@ -142,6 +144,8 @@ describe('forge_feedback submit', () => {
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: null, stage: 'code' },
     ]);
+    // resolveActiveSessionId (ISS-557)
+    selectLimit.mockResolvedValueOnce([{ id: 'sess-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }]);
     // count = 5 (at limit)
     selectLimit.mockResolvedValueOnce([{ n: 5 }]);
 
@@ -203,6 +207,8 @@ describe('forge_feedback submit', () => {
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'code' },
     ]);
+    // resolveActiveSessionId (ISS-557)
+    selectLimit.mockResolvedValueOnce([{ id: 'sess-cccc-4ccc-8ccc-cccccccccccc' }]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     insertReturning.mockResolvedValueOnce([
       { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', signalKey: 'placeholder' },

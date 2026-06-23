@@ -1420,6 +1420,8 @@ describe('feedbackReports table (ISS-552 C1)', () => {
         'suggestion',
         'candidate_id',
         'signal_key',
+        'session_id',
+        'reviewed_at',
         'created_at',
       ].sort(),
     );
@@ -1452,12 +1454,13 @@ describe('feedbackReports table (ISS-552 C1)', () => {
     expect(col.default).toBe('low');
   });
 
-  it('has the five expected indexes', () => {
+  it('has the expected indexes (ISS-557 adds session_id_idx)', () => {
     const names = getTableConfig(feedbackReports).indexes.map((i) => i.config.name);
     expect(names).toContain('feedback_reports_project_id_idx');
     expect(names).toContain('feedback_reports_project_kind_idx');
     expect(names).toContain('feedback_reports_project_target_idx');
     expect(names).toContain('feedback_reports_signal_key_idx');
     expect(names).toContain('feedback_reports_created_at_idx');
+    expect(names).toContain('feedback_reports_session_id_idx');
   });
 });

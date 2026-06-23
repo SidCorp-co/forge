@@ -14,6 +14,21 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
+// ISS-557 — shape of the steward run report written at schedule session completion.
+export interface StewardRunReportAction {
+  skill: string;
+  kind: 'proposed' | 'applied' | 'feedback' | 'skipped';
+  summary: string;
+}
+
+export interface StewardRunReport {
+  weakestDomain: string | null;
+  skillsAssessed: string[];
+  actions: StewardRunReportAction[];
+  memoryWrites: string[];
+  idempotencySkips: string[];
+}
+
 // Cross-project routing via `targetProjectSlug` would otherwise let a source
 // project's admin plant jobs on any project they know the slug of. Require the
 // actor to hold at least `member` on the target project before accepting the
@@ -94,6 +109,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
       sessionStartedAt: agentSessions.startedAt,
       createdAt: agentSessions.createdAt,
       tick: sql<boolean>`(${agentSessions.metadata} ->> 'tick') = 'true'`,
+      stewardReport: sql<unknown>`${agentSessions.metadata} -> 'stewardReport'`,
       runStatus: pipelineRuns.status,
       runStartedAt: pipelineRuns.startedAt,
       runFinishedAt: pipelineRuns.finishedAt,
@@ -125,6 +141,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
       startedAt: toIso(start),
       finishedAt: toIso(end),
       durationSeconds,
+      stewardReport: (r.stewardReport as StewardRunReport | null) ?? null,
     };
   });
 
@@ -324,7 +341,7 @@ export async function runScheduleNow(
 
   await db
     .update(schedules)
-    .set({ lastStatus: result.status })
+    .set({ lastStatus: result.status, lastRunAt: new Date() })
     .where(eq(schedules.id, schedule.id));
 
   if (!result.ok) {

@@ -79,6 +79,18 @@ async function resolveActiveJobContext(deviceId: string): Promise<ActiveJobConte
   return row ?? null;
 }
 
+// ISS-557 — steward runs are schedule sessions with no job row, so the job-join
+// above resolves null. This session-level lookup covers both pipeline + schedule sessions.
+async function resolveActiveSessionId(deviceId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(and(eq(agentSessions.deviceId, deviceId), eq(agentSessions.status, 'running')))
+    .orderBy(desc(agentSessions.updatedAt))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_feedback',
   description:
@@ -110,6 +122,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         let issueId: string | null = null;
         let stage: string | null = null;
 
+        let sessionId: string | null = null;
         if (principal.kind === 'device') {
           const ctx_ = await resolveActiveJobContext(device.id);
           if (ctx_) {
@@ -118,6 +131,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
             issueId = ctx_.issueId ?? null;
             stage = ctx_.stage ?? null;
           }
+          // Resolve session-level link for steward + pipeline sessions (works even with no job).
+          sessionId = await resolveActiveSessionId(device.id);
         }
 
         // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
@@ -153,6 +168,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
             detail: input.detail ?? undefined,
             suggestion: input.suggestion ?? undefined,
             signalKey,
+            sessionId: sessionId ?? undefined,
           })
           .returning({ id: feedbackReports.id, signalKey: feedbackReports.signalKey });
 
@@ -182,6 +198,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
             detail: feedbackReports.detail,
             suggestion: feedbackReports.suggestion,
             signalKey: feedbackReports.signalKey,
+            sessionId: feedbackReports.sessionId,
+            reviewedAt: feedbackReports.reviewedAt,
             createdAt: feedbackReports.createdAt,
           })
           .from(feedbackReports)

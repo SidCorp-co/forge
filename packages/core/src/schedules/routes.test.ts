@@ -259,9 +259,10 @@ describe('POST /api/schedules/:id/run', () => {
     const body = (await res.json()) as { sessionId: string; jobId?: string };
     expect(body.sessionId).toBe(SESSION_ID);
     expect(body.jobId).toBeUndefined();
-    // lastStatus written from dispatch result
-    const statusWrites = updateSet.mock.calls.map((c) => c[0] as { lastStatus?: string });
+    // lastStatus + lastRunAt written from dispatch result (ISS-557: lastRunAt must not be null)
+    const statusWrites = updateSet.mock.calls.map((c) => c[0] as { lastStatus?: string; lastRunAt?: unknown });
     expect(statusWrites.some((p) => p?.lastStatus === 'success')).toBe(true);
+    expect(statusWrites.some((p) => p?.lastRunAt instanceof Date)).toBe(true);
   });
 
   it('409 no-device → SCHEDULE_DISPATCH_FAILED', async () => {
