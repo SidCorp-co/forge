@@ -1,18 +1,24 @@
 /**
- * ISS-387 — dispatch-time Epodsystem MCP resolver.
+ * ISS-387 / ISS-558 — dispatch-time Epodsystem MCP resolver.
  *
  * Bridge between the integration config layer and the existing
  * mcpServers-override pipeline (mirrors `postman/resolver.ts`). On EVERY
  * dispatch the dispatcher calls {@link applyEpodsystemMcpServers}; if the
- * project has an active `epodsystem` integration we decrypt its `crmk_` key
- * and render a remote-HTTP + Bearer `mcpServers.epodsystem` entry into the
- * per-project override. The key is rendered ONLY into the dispatch payload
- * (which the runner writes to a temp `--mcp-config` file); it is never
- * persisted to DB jsonb, logs, or API responses.
+ * project has active `epodsystem` integrations we decrypt each `crmk_` key
+ * and render mcpServers entries:
+ *   - The default (label='') binding → bare `epodsystem` key (backward-compat)
+ *   - Each labeled binding → `epodsystem_<slug>` (dashes → underscores)
+ *
+ * Keys are rendered ONLY into the dispatch payload (which the runner writes to
+ * a temp `--mcp-config` file); they are never persisted to DB jsonb, logs, or
+ * API responses.
  *
  * Drop behaviour: the query filters `active = true`, so disabling
  * (`active=false`) or soft-deleting the integration makes the NEXT dispatch
  * stop injecting the entry — no extra teardown needed (AC#6).
+ *
+ * ISS-558 skip-bad-key: if one binding's key fails to decrypt, that entry is
+ * skipped and the remaining entries are still injected (never crash dispatch).
  */
 
 import { logger } from '../../logger.js';
@@ -25,7 +31,7 @@ import {
 import { epodsystemMcpUrl } from './endpoints.js';
 import type { EpodsystemConfig, EpodsystemSecrets } from './types.js';
 
-/** Build the `mcpServers.epodsystem` entry the runner merges into its config. */
+/** Build the mcpServers entry the runner merges into its config. */
 export function buildEpodsystemMcpEntry(
   _config: EpodsystemConfig,
   apiKey: string,
@@ -39,51 +45,83 @@ export function buildEpodsystemMcpEntry(
 }
 
 /**
- * Resolve the active Epodsystem MCP entry for a project, or `null` when there
- * is no active integration (or the key cannot be decrypted). Pure read — does
- * not mutate the override.
+ * ISS-558 — convert a binding label to a safe MCP server name component.
+ * label='' → '' (bare `epodsystem` key); label='store-a' → '_store_a'.
+ * Dashes become underscores so the resulting name is a valid MCP server key.
  */
-export async function resolveEpodsystemMcpEntry(
+function labelToMcpSuffix(label: string): string {
+  if (!label) return '';
+  return `_${label.replace(/-/g, '_')}`;
+}
+
+/**
+ * ISS-558 — resolve ALL active Epodsystem MCP entries for a project.
+ * Returns a Record<serverName, entry> where:
+ *   - default (label='') → key 'epodsystem'   (backward-compatible)
+ *   - labeled           → key 'epodsystem_<slug>'
+ * Skips bindings whose key cannot be decrypted (best-effort, logs warn).
+ * Returns an empty record when there are no active integrations.
+ */
+export async function resolveEpodsystemMcpEntries(
   projectId: string,
-): Promise<Record<string, unknown> | null> {
-  let pair: BindingWithConnection | undefined;
+): Promise<Record<string, Record<string, unknown>>> {
+  let pairs: BindingWithConnection[];
   try {
-    // Single active epodsystem binding per project (env unsplit). Take the first.
-    [pair] = await listActiveBindingsForProjectProvider(projectId, 'epodsystem');
+    pairs = await listActiveBindingsForProjectProvider(projectId, 'epodsystem');
   } catch (err) {
-    // Injection is best-effort: a DB hiccup must NOT crash a dispatch.
     logger.warn(
       { err, projectId },
       'epodsystem-resolver: integration lookup failed, skipping inject',
     );
-    return null;
+    return {};
   }
-  if (!pair || !pair.connection.secretsEnc) return null;
 
-  try {
-    const secrets = decryptConnectionSecrets<EpodsystemSecrets>(pair.connection);
-    if (!secrets?.apiKey) return null;
-    return buildEpodsystemMcpEntry(effectiveConfig<EpodsystemConfig>(pair), secrets.apiKey);
-  } catch (err) {
-    logger.warn(
-      { err, projectId, connectionId: pair.connection.id, bindingId: pair.binding.id },
-      'epodsystem-resolver: decrypt failed, skipping inject',
-    );
-    return null;
+  const entries: Record<string, Record<string, unknown>> = {};
+  for (const pair of pairs) {
+    if (!pair.connection.secretsEnc) continue;
+    const label = (pair.binding as Record<string, unknown>).label as string ?? '';
+    const serverName = `epodsystem${labelToMcpSuffix(label)}`;
+    try {
+      const secrets = decryptConnectionSecrets<EpodsystemSecrets>(pair.connection);
+      if (!secrets?.apiKey) continue;
+      entries[serverName] = buildEpodsystemMcpEntry(
+        effectiveConfig<EpodsystemConfig>(pair),
+        secrets.apiKey,
+      );
+    } catch (err) {
+      logger.warn(
+        { err, projectId, connectionId: pair.connection.id, bindingId: pair.binding.id, serverName },
+        'epodsystem-resolver: decrypt failed for binding, skipping',
+      );
+    }
   }
+  return entries;
 }
 
 /**
- * Merge the project's Epodsystem MCP entry (if any) into a resolved mcpServers
- * override. Returns the (possibly new) override object, or the original value
- * unchanged when there is no active Epodsystem integration. Never mutates the
- * caller's object in place.
+ * Resolve the active Epodsystem MCP entry for a project (SINGLE / first).
+ * Kept for backward-compat callers (routes mcp-preview) — prefer
+ * {@link resolveEpodsystemMcpEntries} for dispatch.
+ * Returns null when there is no active integration.
+ */
+export async function resolveEpodsystemMcpEntry(
+  projectId: string,
+): Promise<Record<string, unknown> | null> {
+  const entries = await resolveEpodsystemMcpEntries(projectId);
+  return entries.epodsystem ?? null;
+}
+
+/**
+ * Merge ALL project Epodsystem MCP entries into a resolved mcpServers override.
+ * ISS-558: injects one entry per active binding (epodsystem, epodsystem_<slug>).
+ * Returns the (possibly new) override, or the original value unchanged when
+ * there are no active integrations. Never mutates the caller's object in place.
  */
 export async function applyEpodsystemMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
 ): Promise<Record<string, unknown> | null> {
-  const entry = await resolveEpodsystemMcpEntry(projectId);
-  if (!entry) return current;
-  return { ...(current ?? {}), epodsystem: entry };
+  const entries = await resolveEpodsystemMcpEntries(projectId);
+  if (Object.keys(entries).length === 0) return current;
+  return { ...(current ?? {}), ...entries };
 }

@@ -43,6 +43,38 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
   return rows[0] ?? null;
 }
 
+/**
+ * ISS-558 — Active epodsystem binding for a specific label slot.
+ * label='' targets the default/unlabeled binding; a non-empty label targets
+ * a named extra binding. Used by the create-guard for epodsystem only.
+ */
+export async function findActiveBindingByLabel(
+  projectId: string,
+  provider: IntegrationProvider,
+  environment: IntegrationEnvironment,
+  label: string,
+): Promise<BindingWithConnection | null> {
+  const rows = await db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.environment, environment),
+        eq(integrationBindings.label, label),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /** Active binding (+ its connection) for a project + provider + environment. */
 export async function findActiveBinding(
   projectId: string,
@@ -215,6 +247,9 @@ export interface CreateBindingInput {
   environment: IntegrationEnvironment;
   config?: Record<string, unknown>;
   integrationSecret?: string | null;
+  /** ISS-558 — empty string (default) = unlabeled/default binding;
+   *  non-empty kebab = a named extra epodsystem binding. */
+  label?: string;
 }
 
 export async function createBinding(input: CreateBindingInput): Promise<IntegrationBindingRow> {
@@ -227,6 +262,7 @@ export async function createBinding(input: CreateBindingInput): Promise<Integrat
       environment: input.environment,
       config: input.config ?? {},
       integrationSecret: input.integrationSecret ?? null,
+      label: input.label ?? '',
       active: true,
     })
     .returning();
@@ -252,6 +288,7 @@ export interface UpdateBindingPatch {
   config?: Record<string, unknown>;
   integrationSecret?: string | null;
   active?: boolean;
+  label?: string;
 }
 
 export async function updateBinding(
@@ -262,6 +299,7 @@ export async function updateBinding(
   if (patch.config !== undefined) set.config = patch.config;
   if (patch.integrationSecret !== undefined) set.integrationSecret = patch.integrationSecret;
   if (patch.active !== undefined) set.active = patch.active;
+  if (patch.label !== undefined) set.label = patch.label;
   const [row] = await db
     .update(integrationBindings)
     .set(set)
