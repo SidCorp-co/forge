@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Chrome DevTools MCP is now available as a built-in catalog option in Project Settings — Pipeline — MCP servers.
 - Projects can now connect multiple Epodsystem storefronts, each with a label, enabling white-label and multi-tenant workflows.
 - Per-project skill stewards now run continuously, using accumulated memory to propose and apply targeted skill improvements automatically.
+- Forge now automatically surfaces memory candidates from completed pipeline runs into a Curator Queue, where you review and accept or reject them before they graduate into project memory.
 - Agents can now report friction, unclear steps, and skill gaps in real time via the new forge_feedback tool, and owners can read the raw feed — surfacing problems even on clean, successful runs.
 - Agents and automations can now manage improvement schedules via MCP without requiring a user session.
 - Improve tab: agent context read, appliesWhen rules, propose/auto options, run reports, and idempotency support.
