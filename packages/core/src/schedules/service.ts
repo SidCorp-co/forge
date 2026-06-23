@@ -7,6 +7,7 @@ import { logger } from '../logger.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { getImprovementMessage } from './messages/registry.js';
+import type { StewardRunReport } from './messages/skill-steward-prompt.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -14,20 +15,10 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-// ISS-557 — shape of the steward run report written at schedule session completion.
-export interface StewardRunReportAction {
-  skill: string;
-  kind: 'proposed' | 'applied' | 'feedback' | 'skipped';
-  summary: string;
-}
-
-export interface StewardRunReport {
-  weakestDomain: string | null;
-  skillsAssessed: string[];
-  actions: StewardRunReportAction[];
-  memoryWrites: string[];
-  idempotencySkips: string[];
-}
+export type {
+  StewardRunReport,
+  StewardRunReportAction,
+} from './messages/skill-steward-prompt.js';
 
 // Cross-project routing via `targetProjectSlug` would otherwise let a source
 // project's admin plant jobs on any project they know the slug of. Require the

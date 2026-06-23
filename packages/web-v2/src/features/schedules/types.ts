@@ -50,11 +50,17 @@ export interface StewardRunReportAction {
   summary: string;
 }
 
+export interface StewardRunReportMemoryWrite {
+  skill: string;
+  sourceRef: string;
+  tokensAfter: number;
+}
+
 export interface StewardRunReport {
-  weakestDomain: string | null;
+  weakestDomain: string;
   skillsAssessed: string[];
   actions: StewardRunReportAction[];
-  memoryWrites: string[];
+  memoryWrites: StewardRunReportMemoryWrite[];
   idempotencySkips: string[];
 }
 

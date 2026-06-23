@@ -5,23 +5,24 @@
 type BadgeTone = "neutral" | "accent" | "cobalt" | "green" | "red" | "amber";
 
 export type FeedbackKind =
-  | "unclear_step"
-  | "skill_gap"
   | "friction"
+  | "bug"
+  | "skill_gap"
+  | "unclear_step"
+  | "redundant_step"
   | "learning"
-  | "blocker"
-  | "policy";
+  | "suggestion";
 
-export type FeedbackSeverity = "low" | "medium" | "high" | "critical";
+export type FeedbackSeverity = "low" | "medium" | "high";
 
 export type FeedbackTarget =
   | "skill"
-  | "pipeline"
+  | "prompt"
   | "tool"
-  | "memory"
-  | "issue"
-  | "project"
-  | "forge";
+  | "doc"
+  | "orientation"
+  | "pipeline"
+  | "other";
 
 export interface FeedbackReport {
   id: string;
@@ -46,13 +47,16 @@ export interface FeedbackFilters {
 
 export function kindToBadgeTone(kind: FeedbackKind): BadgeTone {
   switch (kind) {
-    case "blocker":
-      return "red";
+    case "bug":
     case "skill_gap":
     case "friction":
+    case "redundant_step":
       return "amber";
     case "learning":
+    case "suggestion":
       return "green";
+    case "unclear_step":
+      return "cobalt";
     default:
       return "neutral";
   }
@@ -60,8 +64,6 @@ export function kindToBadgeTone(kind: FeedbackKind): BadgeTone {
 
 export function severityToBadgeTone(severity: FeedbackSeverity): BadgeTone {
   switch (severity) {
-    case "critical":
-      return "red";
     case "high":
       return "amber";
     case "medium":

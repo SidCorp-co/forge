@@ -54,12 +54,13 @@ function fmtTime(iso: string | null): string {
 
 const KIND_OPTIONS: SelectOption[] = [
   { value: "", label: "All kinds" },
-  { value: "unclear_step", label: "Unclear step" },
-  { value: "skill_gap", label: "Skill gap" },
   { value: "friction", label: "Friction" },
+  { value: "bug", label: "Bug" },
+  { value: "skill_gap", label: "Skill gap" },
+  { value: "unclear_step", label: "Unclear step" },
+  { value: "redundant_step", label: "Redundant step" },
   { value: "learning", label: "Learning" },
-  { value: "blocker", label: "Blocker" },
-  { value: "policy", label: "Policy" },
+  { value: "suggestion", label: "Suggestion" },
 ];
 
 const SEVERITY_OPTIONS: SelectOption[] = [
@@ -67,18 +68,17 @@ const SEVERITY_OPTIONS: SelectOption[] = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
-  { value: "critical", label: "Critical" },
 ];
 
 const TARGET_OPTIONS: SelectOption[] = [
   { value: "", label: "All targets" },
   { value: "skill", label: "Skill" },
-  { value: "pipeline", label: "Pipeline" },
+  { value: "prompt", label: "Prompt" },
   { value: "tool", label: "Tool" },
-  { value: "memory", label: "Memory" },
-  { value: "issue", label: "Issue" },
-  { value: "project", label: "Project" },
-  { value: "forge", label: "Forge" },
+  { value: "doc", label: "Doc" },
+  { value: "orientation", label: "Orientation" },
+  { value: "pipeline", label: "Pipeline" },
+  { value: "other", label: "Other" },
 ];
 
 function ReviewButton({

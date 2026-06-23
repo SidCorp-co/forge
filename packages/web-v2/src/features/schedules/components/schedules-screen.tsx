@@ -148,13 +148,6 @@ function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undef
     </div>
   );
 
-  const body = (
-    <div>
-      {header}
-      {stewardSection}
-    </div>
-  );
-
   if (slug) {
     return (
       <div className="rounded-md px-1 hover:bg-hover">
@@ -168,7 +161,12 @@ function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undef
       </div>
     );
   }
-  return body;
+  return (
+    <div>
+      {header}
+      {stewardSection}
+    </div>
+  );
 }
 
 /** Expanded panel: the schedule's prompt + runner/target meta + recent runs. */
