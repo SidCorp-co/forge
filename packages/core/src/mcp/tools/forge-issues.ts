@@ -32,6 +32,10 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 
+// Hard total-response cap for list surfaces. ~38K leaves headroom under the
+// observed spill threshold (matches the forge-jobs.ts precedent, ISS-478).
+const MAX_RESPONSE_CHARS = 38_000;
+
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_issues` tool. The
  * single-tool-per-resource shape (one tool, dispatched on an `action` field)
@@ -244,6 +248,29 @@ export function serialize(row: IssueRow): Record<string, unknown> {
 }
 
 /**
+ * Light projection type for the `list` surface — only the scalar fields that
+ * `serializeListRow` actually reads. Using this instead of `IssueRow` lets the
+ * SQL-level projection (db.select({...})) return a properly-typed result without
+ * needing to load heavy TOAST columns from disk.
+ */
+type IssueListProjection = Pick<
+  IssueRow,
+  | 'id'
+  | 'issSeq'
+  | 'title'
+  | 'status'
+  | 'priority'
+  | 'category'
+  | 'complexity'
+  | 'assigneeId'
+  | 'parentIssueId'
+  | 'reopenCount'
+  | 'mergedAt'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+/**
  * ISS-428 — body-free projection for the `list` (browse) surface. Returns only
  * light scalar fields and OMITS the heavy bodies (`description`, `plan`,
  * `acceptanceCriteria`, `suggestedSolution`, `sessionContext`, `ai*`,
@@ -251,7 +278,7 @@ export function serialize(row: IssueRow): Record<string, unknown> {
  * token cap. Heavy fields stay reachable per-issue via `action=get`. Do NOT
  * widen this back to `serialize()`.
  */
-function serializeListRow(row: IssueRow): Record<string, unknown> {
+function serializeListRow(row: IssueListProjection): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: `ISS-${row.issSeq}`,
@@ -314,6 +341,29 @@ function serializeTask(row: TaskRow): Record<string, unknown> {
     projectId: row.projectId,
     title: row.title,
     description: row.description,
+    status: row.status,
+    priority: row.priority,
+    assigneeId: row.assigneeId,
+    isAgentTask: row.isAgentTask,
+    agentStatus: row.agentStatus,
+    acceptanceCriteria: row.acceptanceCriteria,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * Body-free projection for the `listTasks` surface — omits `description`
+ * (up to 50KB each) so a list over many tasks never overflows the MCP token
+ * cap. Full task body stays reachable via `action=updateTask` / `getTask`.
+ * Do NOT widen this back to `serializeTask()` for the list path.
+ */
+function serializeTaskListRow(row: Omit<TaskRow, 'description'>): Record<string, unknown> {
+  return {
+    documentId: row.id,
+    issueId: row.issueId,
+    projectId: row.projectId,
+    title: row.title,
     status: row.status,
     priority: row.priority,
     assigneeId: row.assigneeId,
@@ -423,14 +473,55 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           if (orExpr) conds.push(orExpr);
         }
 
+        // ISS-562 — SQL-level light-column projection: never load heavy TOAST
+        // columns (description/plan/acceptanceCriteria/sessionContext/ai*/
+        // releaseNotes) from disk. serializeListRow already omits them at the
+        // JS layer (ISS-428), but a bare db.select() still reads them from
+        // Postgres. This aligns the DB query with the serializer projection.
         const rows = await db
-          .select()
+          .select({
+            id: issues.id,
+            issSeq: issues.issSeq,
+            title: issues.title,
+            status: issues.status,
+            priority: issues.priority,
+            category: issues.category,
+            complexity: issues.complexity,
+            assigneeId: issues.assigneeId,
+            parentIssueId: issues.parentIssueId,
+            reopenCount: issues.reopenCount,
+            mergedAt: issues.mergedAt,
+            createdAt: issues.createdAt,
+            updatedAt: issues.updatedAt,
+          })
           .from(issues)
           .where(and(...conds))
           .orderBy(desc(issues.updatedAt))
           .limit(input.limit ?? 25);
 
-        return { issues: rows.map((r) => serializeListRow(r as IssueRow)) };
+        // Hard total-response cap: trim from the tail (oldest) until the
+        // serialized payload fits MAX_RESPONSE_CHARS. Newest-first ordering
+        // means trimming the tail keeps the most-recent issues. Always keep
+        // at least one issue.
+        const serialized = rows.map((r) => serializeListRow(r));
+        let keptIssues = serialized;
+        while (
+          keptIssues.length > 1 &&
+          JSON.stringify({ issues: keptIssues }).length > MAX_RESPONSE_CHARS
+        ) {
+          keptIssues = keptIssues.slice(0, -1);
+        }
+
+        if (keptIssues.length < serialized.length) {
+          return {
+            issues: keptIssues,
+            truncated: true,
+            returned: keptIssues.length,
+            requested: input.limit ?? 25,
+            notice: `Response truncated to the ${keptIssues.length} most recent of ${serialized.length} issues to stay under the MCP output cap. Add status/priority/category filters or use a smaller limit.`,
+          };
+        }
+        return { issues: keptIssues };
       }
 
       case 'get': {
@@ -717,14 +808,52 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ? and(eq(tasks.issueId, issueId), eq(tasks.status, input.filters.taskStatus))
           : eq(tasks.issueId, issueId);
 
+        // ISS-562 — SQL-level projection: omit description (up to 50KB each)
+        // so the list query never loads heavy TOAST content from disk. Default
+        // limit lowered 100→25 (100 tasks × 50KB = 5MB theoretical max).
         const rows = await db
-          .select()
+          .select({
+            id: tasks.id,
+            issueId: tasks.issueId,
+            projectId: tasks.projectId,
+            title: tasks.title,
+            status: tasks.status,
+            priority: tasks.priority,
+            assigneeId: tasks.assigneeId,
+            isAgentTask: tasks.isAgentTask,
+            agentStatus: tasks.agentStatus,
+            acceptanceCriteria: tasks.acceptanceCriteria,
+            createdAt: tasks.createdAt,
+            updatedAt: tasks.updatedAt,
+          })
           .from(tasks)
           .where(where)
           .orderBy(asc(tasks.createdAt))
-          .limit(input.limit ?? 100);
+          .limit(input.limit ?? 25);
 
-        return { tasks: (rows as TaskRow[]).map(serializeTask) };
+        // Hard total-response cap: trim from the front (oldest) until the
+        // serialized payload fits MAX_RESPONSE_CHARS. Oldest-first ordering
+        // means trimming the front keeps the newest tasks. Always keep at
+        // least one task.
+        const tasksSerialized = rows.map((r) => serializeTaskListRow(r));
+        let keptTasks = tasksSerialized;
+        while (
+          keptTasks.length > 1 &&
+          JSON.stringify({ tasks: keptTasks }).length > MAX_RESPONSE_CHARS
+        ) {
+          keptTasks = keptTasks.slice(1);
+        }
+
+        if (keptTasks.length < tasksSerialized.length) {
+          return {
+            tasks: keptTasks,
+            truncated: true,
+            returned: keptTasks.length,
+            requested: input.limit ?? 25,
+            notice: `Response truncated to the ${keptTasks.length} most recent of ${tasksSerialized.length} tasks to stay under the MCP output cap. Use a smaller limit or fetch tasks individually.`,
+          };
+        }
+        return { tasks: keptTasks };
       }
 
       case 'createTask': {
