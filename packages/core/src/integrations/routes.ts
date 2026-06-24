@@ -18,6 +18,7 @@ import {
 } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -499,9 +500,7 @@ integrationsRoutes.post(
       // Roll the just-created connection back so a binding-unique collision
       // doesn't leave a dangling credential.
       await softDeleteConnection(connection.id).catch(() => {});
-      const code = (err as { code?: string } | null)?.code;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (code === '23505' || /duplicate key|unique/.test(msg)) {
+      if (isUniqueViolation(err)) {
         throw new HTTPException(409, {
           message: 'integration already exists for this provider+environment+label',
           cause: { code: 'ALREADY_EXISTS' },
@@ -1383,9 +1382,7 @@ integrationConnectionsRoutes.post(
     } catch (err) {
       // No connection rollback here — we did not create one (contrast the create
       // path, which soft-deletes its just-minted connection on a binding clash).
-      const code = (err as { code?: string } | null)?.code;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (code === '23505' || /duplicate key|unique/.test(msg)) {
+      if (isUniqueViolation(err)) {
         throw new HTTPException(409, {
           message: 'integration already exists for this provider+environment',
           cause: { code: 'ALREADY_EXISTS' },
