@@ -5,7 +5,7 @@ import { getTasks, getIssues } from "@/lib/api";
 import { useAppStore } from "@/stores/app-store";
 import type { Issue, AgentMessage } from "@/lib/types";
 import { getMcpServersParam, getActivePrompt } from "./agentChatPrompts";
-import { useKnowledgeCheck, useAutoPopulatePrompt, useStreamListener, useAutoSave, useLoadSessions } from "./useAgentChatEffects";
+import { useAutoPopulatePrompt, useStreamListener, useAutoSave, useLoadSessions } from "./useAgentChatEffects";
 import type { SessionMeta } from "./useAgentChatEffects";
 import { createHandlers } from "./useAgentChatHandlers";
 
@@ -53,14 +53,11 @@ export function useAgentChat() {
   const [savedSessions, setSavedSessions] = useState<SessionMeta[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [restoredSessionTitle, setRestoredSessionTitle] = useState<string | null>(null);
-  const [hasKnowledge, setHasKnowledge] = useState(false);
-
-  useKnowledgeCheck(projectConfig, setHasKnowledge);
 
   const getActivePromptBound = () => getActivePrompt(confirmed, promptDraft, task, issue, multiIssues);
   const getMcpServersParamBound = () => getMcpServersParam(projectConfig);
 
-  useAutoPopulatePrompt(confirmed, messages.length, getActivePromptBound, setPromptDraft, [task, issue, multiIssues.length, confirmed, messages.length, hasKnowledge]);
+  useAutoPopulatePrompt(confirmed, messages.length, getActivePromptBound, setPromptDraft, [task, issue, multiIssues.length, confirmed, messages.length]);
   useStreamListener(slug, sessionIdRef, setMessages, setIsRunning, setClaudeSessionId, makeMessage);
   useAutoSave(messages, claudeSessionId, slug, agentUsage, sessionIdRef, strapiSessionIdRef);
   useLoadSessions(activeItem, slug, setLoadingSessions, setSavedSessions);

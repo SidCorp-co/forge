@@ -87,8 +87,8 @@ ${msg.appliesWhen}`
 Call forge_skills.list with scope="project" to get the skill list.
 Then call forge_skills.get for each skill listed in "Applies to skills" above (plus related skills you discover).
 
-**b) .forge/knowledge.json**
-Read this file from the repository root (if it exists). It documents project structure, conventions, stack, and key decisions.
+**b) Project knowledge**
+Call forge_knowledge (list/get/search) to retrieve project knowledge entries. They document project structure, conventions, stack, and key decisions.
 
 **c) Project memory**
 Call forge_memory_search with:

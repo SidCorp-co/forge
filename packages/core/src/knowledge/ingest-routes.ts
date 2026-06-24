@@ -5,7 +5,17 @@ import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { indexMemory } from '../memory/indexer.js';
+import { upsertKnowledgeEntry } from './service.js';
+
+function toKebabSlug(id: string): string {
+  return id
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/^([^a-z0-9])/, 'k$1')
+    .slice(0, 512) || 'knowledge';
+}
 
 const MAX_DOCS_PER_REQUEST = 20;
 const MAX_DOC_CONTENT_BYTES = 50 * 1024;
@@ -109,23 +119,29 @@ knowledgeIngestRoutes.post(
       }
 
       try {
-        await indexMemory({
+        const slug = toKebabSlug(doc.id);
+        await upsertKnowledgeEntry({
           projectId,
-          source: 'knowledge',
-          sourceRef: doc.id,
-          text,
+          slug,
+          title: doc.title,
+          body: text,
+          kind: 'reference',
+          injection: 'on_demand',
+          confidence: 'inferred',
+          authoredBy: 'imported',
+          orderIndex: processed,
           metadata: {
-            title: doc.title,
+            sourceId: doc.id,
             category: doc.category ?? null,
             ...(doc.metadata ?? {}),
           },
         });
         processed += 1;
-        totalChunks += Math.max(1, Math.ceil(text.length / 500));
+        totalChunks = processed;
       } catch (err) {
         logger.error(
           { err, docId: doc.id, projectId },
-          'knowledge.ingest: indexMemory failed',
+          'knowledge.ingest: upsertKnowledgeEntry failed',
         );
         skipped.push({ id: doc.id, reason: 'index_failed' });
       }

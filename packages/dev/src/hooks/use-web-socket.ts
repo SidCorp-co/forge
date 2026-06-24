@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "./use-tauri-ipc";
-import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToCore, syncAgentFiles, postJobEvents, completeJob, createUsageRecord, type JobEventInput } from "@/lib/api";
+import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncAgentFiles, postJobEvents, completeJob, createUsageRecord, type JobEventInput } from "@/lib/api";
 import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
 import { Sentry } from "@/lib/sentry";
 import { SessionTracker } from "@/lib/session-tracker";
@@ -764,16 +764,6 @@ export function useWebSocket() {
             if (trackedSession?.repoPath && trackedSession?.slug && !rest.error) {
               try {
                 const project = await getProject(trackedSession.slug);
-
-                // Sync .forge/knowledge.json → project.knowledgeIndex + Qdrant
-                const knowledge = await invoke<Record<string, unknown> | null>("read_knowledge_index", { repoPath: trackedSession.repoPath });
-                if (knowledge && project?.documentId) {
-                  // Wrap flat KnowledgeIndex in repo-keyed map if not already wrapped
-                  // Display expects Record<string, KnowledgeIndex>, local file is flat KnowledgeIndex
-                  const isFlat = 'project' in knowledge || 'architecture' in knowledge || 'domains' in knowledge;
-                  const wrapped = isFlat ? { [trackedSession.slug]: knowledge } : knowledge;
-                  await syncKnowledgeToCore(project.documentId, wrapped, project.documentId);
-                }
 
                 // Sync agent-specific files (e.g. .forge/po-agent/) → agent record
                 if (project) {

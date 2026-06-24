@@ -23,7 +23,6 @@ vi.mock("@/lib/api", () => ({
   // Unused by handleAgentComplete but imported by the module:
   getProject: vi.fn(),
   getAgents: vi.fn(),
-  syncKnowledgeToCore: vi.fn(),
   syncAgentFiles: vi.fn(),
   postJobEvents: vi.fn(),
 }));

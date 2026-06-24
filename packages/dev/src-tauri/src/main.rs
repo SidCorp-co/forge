@@ -315,11 +315,6 @@ fn detect_mcp_servers(repo_path: String) -> std::collections::HashMap<String, Mc
 }
 
 #[tauri::command]
-fn read_knowledge_index(repo_path: String) -> Option<serde_json::Value> {
-    config::read_knowledge_index(&repo_path)
-}
-
-#[tauri::command]
 fn read_conventions(repo_path: String) -> Option<String> {
     config::read_conventions(&repo_path)
 }
@@ -622,7 +617,6 @@ fn main() {
             load_session,
             delete_session,
             detect_mcp_servers,
-            read_knowledge_index,
             read_conventions,
             read_agent_files,
             seed_agent_files,
