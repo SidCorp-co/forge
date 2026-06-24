@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { activityLog, comments, issues, memories } from '../db/schema.js';
+import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { indexMemory, indexMemoryBestEffort } from './indexer.js';
@@ -35,9 +35,132 @@ const MAX_SIGNAL_STATUS_CHANGES = 200;
 const SIGNAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CONSOLIDATABLE_SOURCES = ['note', 'knowledge'] as const;
 
+// ── Promotion constants ───────────────────────────────────────────────────────
+// Memories satisfying these thresholds are candidates for promotion to curated
+// knowledge_entries via a human/PM gate (DRAFT issue). Nothing auto-promotes.
+export const PROMOTION_RETRIEVAL_MIN = 3;
+export const PROMOTION_AGE_DAYS = 7;
+export const PROMOTION_CANDIDATES_PER_RUN = 3;
+const PROMOTABLE_SOURCES = ['knowledge', 'decision'] as const;
+
 // Concurrency guard — prevents overlapping runs for one project (scheduled
 // sweep racing a manual trigger).
 const runningProjects = new Set<string>();
+
+/**
+ * AC3 (ISS-568): propose durable memory lessons for promotion into curated
+ * knowledge_entries via a human/PM gate.
+ *
+ * Selects memories that are:
+ *   - source IN ('knowledge', 'decision')
+ *   - not archived
+ *   - retrieved ≥ PROMOTION_RETRIEVAL_MIN times (durable — actually referenced)
+ *   - at least PROMOTION_AGE_DAYS old (not brand-new)
+ *   - not already proposed (metadata.promotionProposedAt is NULL)
+ *
+ * For each candidate, creates ONE DRAFT issue (never 'open') proposing the
+ * lesson as a knowledge entry (kind='guide'|'rule', injection='on_demand').
+ * Then stamps metadata.promotionProposedAt to prevent re-proposals.
+ *
+ * HARD RULES:
+ *  - NEVER writes knowledge_entries.
+ *  - NEVER sets injection='always'.
+ *  - Draft issues only — never 'open' (which auto-triages).
+ *  - Best-effort: any error is logged, never breaks consolidation.
+ */
+export async function proposeKnowledgePromotions(projectId: string): Promise<void> {
+  const [projectRow] = await db
+    .select({ createdBy: projects.createdBy })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!projectRow?.createdBy) {
+    logger.debug({ projectId }, 'memory.consolidation: proposeKnowledgePromotions: project not found or no creator');
+    return;
+  }
+
+  const ageThreshold = new Date(Date.now() - PROMOTION_AGE_DAYS * 24 * 60 * 60 * 1000);
+
+  const candidates = await db
+    .select({
+      id: memories.id,
+      source: memories.source,
+      sourceRef: memories.sourceRef,
+      textContent: memories.textContent,
+      metadata: memories.metadata,
+    })
+    .from(memories)
+    .where(
+      and(
+        eq(memories.projectId, projectId),
+        inArray(memories.source, [...PROMOTABLE_SOURCES]),
+        isNull(memories.archivedAt),
+        gte(memories.retrievalCount, PROMOTION_RETRIEVAL_MIN),
+        lte(memories.createdAt, ageThreshold),
+        sql`${memories.metadata}->>'promotionProposedAt' IS NULL`,
+      ),
+    )
+    .limit(PROMOTION_CANDIDATES_PER_RUN);
+
+  if (candidates.length === 0) return;
+
+  for (const candidate of candidates) {
+    const issueTitle = `Promote memory to knowledge: ${candidate.sourceRef}`;
+    const issueDescription = [
+      '## Promotion proposal',
+      '',
+      `**Memory source:** \`${candidate.source}\``,
+      `**Source ref:** \`${candidate.sourceRef}\``,
+      '',
+      '### Lesson',
+      '',
+      candidate.textContent,
+      '',
+      '### Proposed knowledge entry',
+      '',
+      '- **kind:** `guide` or `rule` (reviewer decides)',
+      '- **injection:** `on_demand` (NEVER `always`)',
+      '- **body:** the lesson text above, refined as appropriate',
+      '',
+      '*Created automatically by the nightly memory consolidation job. A human/PM gate is required before promoting to curated knowledge.*',
+    ].join('\n');
+
+    const [inserted] = await db
+      .insert(issues)
+      .values({
+        projectId,
+        title: issueTitle,
+        description: issueDescription,
+        status: 'draft',
+        priority: 'low',
+        category: 'knowledge-promotion',
+        createdById: projectRow.createdBy,
+      })
+      .returning({ id: issues.id });
+
+    if (!inserted) {
+      logger.warn({ projectId, sourceRef: candidate.sourceRef }, 'memory.consolidation: promotion draft insert returned no row');
+      continue;
+    }
+
+    // Stamp idempotency flag: next run skips this memory.
+    await indexMemory({
+      projectId,
+      source: candidate.source as (typeof PROMOTABLE_SOURCES)[number],
+      sourceRef: candidate.sourceRef,
+      text: candidate.textContent,
+      metadata: {
+        ...((candidate.metadata ?? {}) as Record<string, unknown>),
+        promotionProposedAt: ageThreshold.toISOString(),
+      },
+    });
+
+    logger.info(
+      { projectId, sourceRef: candidate.sourceRef, issueId: inserted.id },
+      'memory.consolidation: promotion draft issue created',
+    );
+  }
+}
 
 const CONSOLIDATION_PROMPT = `You are a memory consolidation agent for a software project management AI pipeline.
 
@@ -307,6 +430,14 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
       text: `Memory consolidation: ${summary} (created: ${created}, updated: ${updated}, archived: ${archived})`,
       metadata: { cause: 'memory-consolidation' },
     });
+  }
+
+  // AC3 (ISS-568): propose durable lessons for knowledge promotion — best-effort,
+  // never breaks consolidation.
+  try {
+    await proposeKnowledgePromotions(projectId);
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, projectId }, 'memory.consolidation: proposeKnowledgePromotions failed');
   }
 
   return { created, updated, archived, summary };

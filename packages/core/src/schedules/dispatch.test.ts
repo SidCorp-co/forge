@@ -114,6 +114,14 @@ vi.mock('./messages/skill-steward-prompt.js', () => ({
   extractStewardReportFromMessages: vi.fn(() => null),
 }));
 
+// ISS-568 — mock the drift-check prompt builder.
+const buildDriftCheckPromptMock = vi.fn<
+  (input: { mode: string; projectId: string }) => string
+>(() => 'BUILT_DRIFT_CHECK_PROMPT');
+vi.mock('./messages/drift-check-prompt.js', () => ({
+  buildDriftCheckPrompt: (input: unknown) => buildDriftCheckPromptMock(input as never),
+}));
+
 const { dispatchScheduleRun } = await import('./dispatch.js');
 const hooksModule = await import('../pipeline/hooks.js');
 
@@ -719,5 +727,119 @@ describe('dispatchScheduleRun — standing steward (ISS-556)', () => {
     expect(result).toEqual({ ok: false, reason: 'already-applied', status: 'skipped' });
     expect(buildSkillStewardPromptMock).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+// ── ISS-568: knowledge-drift-check standing dispatch path ─────────────────────
+
+describe('dispatchScheduleRun — knowledge drift-check (ISS-568)', () => {
+  beforeEach(() => {
+    buildDriftCheckPromptMock.mockReset();
+    buildDriftCheckPromptMock.mockReturnValue('BUILT_DRIFT_CHECK_PROMPT');
+  });
+
+  it('drift-check key → builds drift prompt, NOT steward prompt', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'fallback-should-not-be-used',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'knowledge-drift-check',
+        mode: 'propose',
+        appliedMessageVersions: { 'knowledge-drift-check': 1 }, // would block one-shot; standing ignores
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    // Drift-check builder called with correct args.
+    expect(buildDriftCheckPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'propose', projectId: SOURCE_PROJECT_ID }),
+    );
+    // Steward builder must NOT be called.
+    expect(buildSkillStewardPromptMock).not.toHaveBeenCalled();
+    // One-shot builder must NOT be called.
+    expect(buildSkillImprovePromptMock).not.toHaveBeenCalled();
+    // Session was created and WS was published.
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('drift-check standing template always dispatches — never already-applied', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'knowledge-drift-check',
+        mode: 'propose',
+        appliedMessageVersions: { 'knowledge-drift-check': 1 },
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(buildDriftCheckPromptMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('drift-check does NOT set metadata.steward (completion parser must skip it)', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'knowledge-drift-check',
+        mode: 'propose',
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      metadata?: { steward?: boolean; templateKey?: string };
+    };
+    // templateKey is carried for session traceability.
+    expect(insertCall?.metadata?.templateKey).toBe('knowledge-drift-check');
+    // steward must NOT be set — the drift-check parser is not the steward parser.
+    expect(insertCall?.metadata?.steward).toBeUndefined();
+  });
+
+  it('optimize-skills (steward) still sets metadata.steward=true (regression guard)', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'optimize-skills',
+        mode: 'propose',
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      metadata?: { steward?: boolean };
+    };
+    expect(insertCall?.metadata?.steward).toBe(true);
   });
 });

@@ -176,6 +176,29 @@ export const improvementMessages: ImprovementMessage[] = [
     defaultMode: 'propose',
     standing: true,
   },
+  {
+    key: 'knowledge-drift-check',
+    title: 'Standing knowledge drift detector — weekly staleness + gap scan',
+    message:
+      'The knowledge drift-check agent reads curated knowledge_entries and recently ' +
+      'shipped issues to identify three classes of drift: (1) stale entries whose ' +
+      'relatedIssueIds are all >90 days old while newer issues touch the same ' +
+      'capability, (2) scenario entries referencing removed features, and (3) ' +
+      'capabilities with ≥3 shipped issues in the last 30 days but no covering ' +
+      'knowledge entry. For each drift cluster it files ONE draft issue describing ' +
+      'the gap — capped at 5 proposals per run. It NEVER edits knowledge_entries directly.',
+    rationale:
+      'Curated knowledge entries go stale as features ship and evolve. ' +
+      'Without a standing detector, documentation rot is invisible until it ' +
+      'misleads an agent at runtime. The drift-check surfaces staleness signals ' +
+      'continuously and routes them through the human/PM review gate (draft issues) ' +
+      'rather than auto-patching knowledge — keeping the human in the loop.',
+    category: 'documentation',
+    version: 1,
+    recommended: true,
+    defaultMode: 'propose',
+    standing: true,
+  },
 ];
 
 // ── Lookups ───────────────────────────────────────────────────────────────────

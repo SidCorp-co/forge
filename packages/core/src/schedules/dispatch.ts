@@ -14,7 +14,12 @@ import {
   buildSkillImprovePrompt,
 } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
+import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
 import { getImprovementMessage } from './messages/registry.js';
+
+// Keys for standing templates that build their own prompt instead of the steward.
+// Add new standing-template keys here when they have a dedicated builder.
+const DRIFT_CHECK_KEY = 'knowledge-drift-check';
 
 export interface ScheduleRowForDispatch {
   id: string;
@@ -105,16 +110,27 @@ export async function dispatchScheduleRun(
   if (schedule.templateKey) {
     const registryEntry = getImprovementMessage(schedule.templateKey);
     if (registryEntry?.standing) {
-      // Standing template: always dispatch, use the steward prompt builder.
+      // Standing template: always dispatch, bypass appliedMessageVersions.
       isStandingTemplate = true;
-      effectivePrompt = buildSkillStewardPrompt({
-        mode: schedule.mode ?? 'propose',
-        projectId: schedule.projectId,
-      });
-      logger.info(
-        { scheduleId: schedule.id, templateKey: schedule.templateKey },
-        'schedule.dispatch: standing steward template dispatching (bypassing appliedMessageVersions)',
-      );
+      if (schedule.templateKey === DRIFT_CHECK_KEY) {
+        effectivePrompt = buildDriftCheckPrompt({
+          mode: schedule.mode ?? 'propose',
+          projectId: schedule.projectId,
+        });
+        logger.info(
+          { scheduleId: schedule.id, templateKey: schedule.templateKey },
+          'schedule.dispatch: standing drift-check template dispatching (bypassing appliedMessageVersions)',
+        );
+      } else {
+        effectivePrompt = buildSkillStewardPrompt({
+          mode: schedule.mode ?? 'propose',
+          projectId: schedule.projectId,
+        });
+        logger.info(
+          { scheduleId: schedule.id, templateKey: schedule.templateKey },
+          'schedule.dispatch: standing steward template dispatching (bypassing appliedMessageVersions)',
+        );
+      }
     } else {
       // One-shot template: use existing idempotency gate.
       const built = buildSkillImprovePrompt({
@@ -195,7 +211,9 @@ export async function dispatchScheduleRun(
   if (schedule.templateKey) metadata.templateKey = schedule.templateKey;
   // ISS-556 — tag standing sessions so the completion handler routes to the
   // steward report parser instead of the one-shot skill-improve parser.
-  if (isStandingTemplate) metadata.steward = true;
+  // Drift-check is standing but does NOT use the steward report format — the
+  // agent creates draft issues directly, so the parser must skip it.
+  if (isStandingTemplate && schedule.templateKey !== DRIFT_CHECK_KEY) metadata.steward = true;
 
   // ISS-101 — schedule runs are project-scoped one-shots with no issueId; open a
   // 'system' run via the shared chat-session creator, then deliver the prompt
