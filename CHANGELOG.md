@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- A new Knowledge workspace in the Library gives projects a visual map of their product — showing overviews, user-journey scenarios, and workflow diagrams rendered from curated knowledge entries, with a built-in skill to generate and maintain them automatically.
 - Projects can now store and search curated knowledge entries, which are used to automatically inject project context into agent prompts.
 - Feedback inbox for steward reports and run-log outcome display in the Automate screen, so every steward run produces a visible artifact for owner review.
 - Forge MCP list tools now cap large responses to prevent excessive token consumption and context bloat.
