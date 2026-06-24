@@ -82,6 +82,9 @@ export type Runner = typeof schema.runners.$inferSelect;
 
 export type ActivityLog = typeof schema.activityLog.$inferSelect;
 
+// ISS-564 — Knowledge subsystem P0. Foundation row type only; no reader/writer yet.
+export type KnowledgeEntry = typeof schema.knowledgeEntries.$inferSelect;
+
 // ISS-546/ISS-556 — improvement-message registry type (cross-app parity).
 // Pure data shape; no DB import needed — the registry is a git-committed module.
 export type ImprovementMessageCategory =

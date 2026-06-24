@@ -1565,6 +1565,64 @@ export const memoriesRelations = relations(memories, ({ one }) => ({
   project: one(projects, { fields: [memories.projectId], references: [projects.id] }),
 }));
 
+export const knowledgeKinds = [
+  'overview',
+  'scenario',
+  'workflow',
+  'rule',
+  'guide',
+  'reference',
+  'glossary',
+] as const;
+
+export const knowledgeEntries = pgTable(
+  'knowledge_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: knowledgeKinds }).notNull(),
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    injection: text('injection', { enum: ['always', 'on_demand', 'none'] })
+      .notNull()
+      .default('on_demand'),
+    confidence: text('confidence', { enum: ['verified', 'inferred', 'deprecated'] })
+      .notNull()
+      .default('inferred'),
+    relatedIssueIds: jsonb('related_issue_ids').notNull().default([]),
+    tags: jsonb('tags').notNull().default([]),
+    orderIndex: integer('order_index').notNull().default(0),
+    authoredBy: text('authored_by', { enum: ['human', 'agent', 'imported'] })
+      .notNull()
+      .default('agent'),
+    embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding'),
+    textSearch: tsVector('text_search').generatedAlwaysAs(
+      (): SQL =>
+        sql`to_tsvector('english', left(${knowledgeEntries.title} || ' ' || ${knowledgeEntries.body}, 100000))`,
+    ),
+    metadata: jsonb('metadata').notNull().default({}),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectKindIdx: index('knowledge_entries_project_kind_idx').on(t.projectId, t.kind),
+    projectSlugUq: uniqueIndex('knowledge_entries_project_slug_uq').on(t.projectId, t.slug),
+    embeddingHnswIdx: index('knowledge_entries_embedding_hnsw_idx').using(
+      'hnsw',
+      sql`"embedding" vector_cosine_ops`,
+    ),
+    textSearchIdx: index('knowledge_entries_text_search_idx').using('gin', t.textSearch),
+  }),
+);
+
+export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) => ({
+  project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
+}));
+
 export const taskStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'] as const;
 export type TaskStatus = (typeof taskStatuses)[number];
 
