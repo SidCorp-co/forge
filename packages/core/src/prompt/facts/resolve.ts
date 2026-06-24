@@ -15,12 +15,17 @@ import {
 import type { SentryConfig, SentryTarget } from "../../integrations/sentry/types.js";
 import { listBindingsForProject } from "../../integrations/store.js";
 import { getIntegrationUsage } from "../../integrations/usage-registry.js";
+import {
+	selectAlwaysInjectFromKnowledge,
+	selectOnDemandSlugsFromKnowledge,
+} from "../../knowledge/service.js";
 import { logger } from "../../logger.js";
 import {
 	PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
 	type RESERVED_PROJECT_FACT_KEYS,
 	selectAlwaysInjectFacts,
 } from "../../projects/project-facts.js";
+import { env } from "../../config/env.js";
 import {
 	CANONICAL_LADDER,
 	FORGE_FACTS,
@@ -223,6 +228,29 @@ export async function loadProjectFactInputs(
 	} catch {
 		// defaults → full ladder, empty {{project:}} resolver
 	}
+
+	// When the flag is ON, source alwaysInjectFacts and projectFactKeys from
+	// knowledge_entries instead of agentConfig. The {{project:key}} resolver
+	// still reads agentConfig for the deprecation window so inline templates
+	// kept in skill files continue to work.
+	let alwaysInjectFacts: Array<{ key: string; text: string }>;
+	let projectFactKeys: string[];
+	if (env.KNOWLEDGE_INJECTION_ENABLED) {
+		try {
+			[alwaysInjectFacts, projectFactKeys] = await Promise.all([
+				selectAlwaysInjectFromKnowledge(projectId),
+				selectOnDemandSlugsFromKnowledge(projectId),
+			]);
+		} catch {
+			// Fallback to agentConfig on any DB error so the prompt never breaks.
+			alwaysInjectFacts = selectAlwaysInjectFacts(projectFacts, projectFactsConfig);
+			projectFactKeys = Object.keys(projectFacts);
+		}
+	} else {
+		alwaysInjectFacts = selectAlwaysInjectFacts(projectFacts, projectFactsConfig);
+		projectFactKeys = Object.keys(projectFacts);
+	}
+
 	return {
 		ladder: buildLadder(states),
 		branches: { baseBranch, productionBranch },
@@ -234,11 +262,8 @@ export async function loadProjectFactInputs(
 			integrations,
 			projectFacts,
 		}),
-		projectFactKeys: Object.keys(projectFacts),
-		alwaysInjectFacts: selectAlwaysInjectFacts(
-			projectFacts,
-			projectFactsConfig,
-		),
+		projectFactKeys,
+		alwaysInjectFacts,
 	};
 }
 
@@ -318,7 +343,7 @@ export function renderStageFactsText(
 		projectParts.push(
 			[
 				"### Project guides (fetch on demand)",
-				"Author-maintained guides exist for this project. When the task needs one, fetch its text via `forge_config` (action `get` → `projectFacts.<key>`) — do NOT guess its contents:",
+				"Author-maintained guides exist for this project. When the task needs one, fetch its text via `forge_knowledge` (action `get` + slug) — do NOT guess its contents:",
 				...indexKeys.map((key) => `- ${key}`),
 			].join("\n"),
 		);

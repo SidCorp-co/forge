@@ -136,6 +136,10 @@ const EnvSchema = z.object({
   // principal has a resolved active job, submissions beyond this cap return a
   // soft-reject {ok:false, reason:'rate_limited'} rather than a 500.
   FEEDBACK_MAX_PER_JOB: z.coerce.number().int().positive().default(5),
+  // ISS-565 (P1) — switches the prompt injection source for always/on_demand
+  // project facts from agentConfig to knowledge_entries. Default OFF for the
+  // deprecation window; flip ON after running the migrate-project-facts script.
+  KNOWLEDGE_INJECTION_ENABLED: z.coerce.boolean().default(false),
 });
 
 // ISS-234 — INTEGRATION_MASTER_KEY is intentionally NOT validated through

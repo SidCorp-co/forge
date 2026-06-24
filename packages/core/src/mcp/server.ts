@@ -27,6 +27,7 @@ import {
   forgeJobsGetTool,
   forgeJobsListTool,
 } from './tools/forge-jobs.js';
+import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
 import {
   forgeMemoryDeleteTool,
   forgeMemoryGetTool,
@@ -223,6 +224,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeFeedbackTool(ctx),
     forgeUploadsTool(ctx),
     forgeConfigTool(ctx),
+    forgeKnowledgeTool(ctx),
     forgeCoolifyDeployTool(ctx),
     forgePostmanTargetTool(ctx),
     forgeStorefrontTargetTool(ctx),
