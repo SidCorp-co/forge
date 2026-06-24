@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,11 +20,6 @@ export function useProjectSettings() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveLog, setSaveLog] = useState<Array<{ step: string; status: "ok" | "error" | "skip"; detail?: string }>>([]);
-  const [indexingRepo, setIndexingRepo] = useState<string | null>(null);
-  const [indexStatus, setIndexStatus] = useState<string | null>(null);
-  const indexSessionRef = useRef<string | null>(null);
-  const [indexLog, setIndexLog] = useState<string[]>([]);
-
   // Listen for project init log events (from web-initiated agent starts)
   useEffect(() => {
     if (!slug) return;
@@ -61,120 +56,6 @@ export function useProjectSettings() {
     })();
     return () => { cancelled = true; };
   }, [slug]);
-
-  // Listen for agent events to track indexing progress
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const { listen } = await import("@tauri-apps/api/event");
-        const ul = await listen<{ sessionId: string; data: Record<string, unknown> }>(
-          "agent:message",
-          (event) => {
-            if (cancelled) return;
-            const { sessionId, data } = event.payload;
-            if (sessionId !== indexSessionRef.current) return;
-
-            // Capture streaming output for log
-            if (data.type === "assistant") {
-              const msg = data.message as Record<string, unknown> | undefined;
-              const content = msg?.content as Array<{ type: string; text?: string; name?: string }> | undefined;
-              if (Array.isArray(content)) {
-                for (const c of content) {
-                  if (c.type === "text" && c.text) {
-                    setIndexLog((prev) => [...prev, c.text!]);
-                  } else if (c.type === "tool_use") {
-                    const input = (c as Record<string, unknown>).input as Record<string, unknown> | undefined;
-                    let detail = "";
-                    if (c.name === "Bash" && input?.command) {
-                      detail = ` $ ${String(input.command).slice(0, 120)}`;
-                    } else if (c.name === "Read" && input?.file_path) {
-                      detail = ` ${input.file_path}`;
-                    } else if (c.name === "Write" && input?.file_path) {
-                      detail = ` ${input.file_path}`;
-                    } else if (c.name === "Edit" && input?.file_path) {
-                      detail = ` ${input.file_path}`;
-                    } else if (c.name === "Glob" && input?.pattern) {
-                      detail = ` ${input.pattern}`;
-                    } else if (c.name === "Grep" && input?.pattern) {
-                      detail = ` ${input.pattern}`;
-                    } else if (input) {
-                      detail = ` ${JSON.stringify(input).slice(0, 100)}`;
-                    }
-                    setIndexLog((prev) => [...prev, `⚡ ${c.name ?? "tool"}${detail}`]);
-                  }
-                }
-              }
-            } else if (data.type === "system") {
-              const msg = (data.message as string) ?? "";
-              if (msg) setIndexLog((prev) => [...prev, msg]);
-            }
-
-            if (data.type === "result") {
-              const failed = (data.is_error as boolean) ?? false;
-              if (failed) {
-                setIndexStatus("Indexing failed");
-                setIndexingRepo(null);
-                indexSessionRef.current = null;
-              } else {
-                setIndexStatus("Indexing complete!");
-                setIndexingRepo(null);
-                indexSessionRef.current = null;
-                setTimeout(() => setIndexStatus(null), 3000);
-              }
-            }
-          },
-        );
-        if (cancelled) { ul(); return; }
-        unlisten = ul;
-
-        // Also listen for agent:complete to catch errors
-        const ul2 = await listen<{ sessionId: string; error?: string }>(
-          "agent:complete",
-          (event) => {
-            if (cancelled) return;
-            if (event.payload.sessionId !== indexSessionRef.current) return;
-            if (event.payload.error) {
-              setIndexLog((prev) => [...prev, `Error: ${event.payload.error}`]);
-              setIndexStatus("Indexing failed");
-              setIndexingRepo(null);
-              indexSessionRef.current = null;
-            }
-          },
-        );
-        if (cancelled) { ul2(); return; }
-        const origUnlisten = unlisten;
-        unlisten = () => { origUnlisten?.(); ul2(); };
-      } catch {}
-    })();
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
-
-  async function handleIndex() {
-    if (!slug || !repoPath) return;
-    setIndexingRepo(repoPath);
-    setIndexStatus("Indexing codebase...");
-    setIndexLog([]);
-    try {
-      const sessionId = await invoke<string>("run_agent", {
-        repoPath,
-        prompt: `/forge-index ${branch}`,
-        projectSlug: slug,
-        permissionMode: "bypassPermissions",
-      });
-      indexSessionRef.current = sessionId;
-    } catch (err) {
-      setIndexingRepo(null);
-      setIndexStatus(`Index failed: ${err}`);
-      setTimeout(() => setIndexStatus(null), 3000);
-    }
-  }
 
   function ensureForgeMcp(servers: Record<string, McpServerConfig>, deviceToken: string | null, sentryProject?: string): Record<string, McpServerConfig> {
     const existing = servers["forge"];
@@ -310,10 +191,6 @@ export function useProjectSettings() {
     saved,
     saving,
     saveLog,
-    indexingRepo,
-    indexStatus,
-    indexLog,
-    handleIndex,
     handleSave,
   };
 }

@@ -11,10 +11,11 @@ describe("FORGE_MCP_INSTRUCTIONS", () => {
 		// recall-first memory contract
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_memory_search");
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("NOT auto-loaded");
-		// codebase orientation — the phantom `forge_config get_knowledge` action
-		// was removed (ISS-521); orientation now points at the on-disk file.
+		// codebase orientation — ISS-567 removed the local file read path;
+		// orientation now points at the forge_knowledge MCP tool.
 		expect(FORGE_MCP_INSTRUCTIONS).not.toContain("get_knowledge");
-		expect(FORGE_MCP_INSTRUCTIONS).toContain(".forge/knowledge.json");
+		expect(FORGE_MCP_INSTRUCTIONS).not.toContain(".forge/knowledge.json");
+		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_knowledge");
 		// project-management tools
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_issues");
 		// skill-authoring meta prompt

@@ -4,7 +4,6 @@ import { parseStreamMessages } from "@/lib/stream-parser";
 import { mergeMessages } from "@/lib/session-tracker";
 import type { AgentMessage } from "@/lib/types";
 import type { AgentUsage } from "@/stores/app-store";
-import type { ProjectConfig } from "@/lib/types";
 
 interface StoredSession {
   id: string;
@@ -21,18 +20,6 @@ export type { StoredSession };
 
 interface MakeMessageFn {
   (type: AgentMessage["type"], content: string): AgentMessage;
-}
-
-export function useKnowledgeCheck(
-  projectConfig: ProjectConfig | undefined,
-  setHasKnowledge: (v: boolean) => void,
-) {
-  useEffect(() => {
-    if (!projectConfig?.repoPath) return;
-    invoke<unknown>("read_knowledge_index", { repoPath: projectConfig.repoPath })
-      .then((data) => setHasKnowledge(!!data))
-      .catch(() => {});
-  }, [projectConfig?.repoPath]);
 }
 
 export function useAutoPopulatePrompt(

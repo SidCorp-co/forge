@@ -23,9 +23,14 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
-const indexMemoryMock = vi.fn(async (..._args: unknown[]) => undefined);
-vi.mock('../memory/indexer.js', () => ({
-  indexMemory: (input: unknown) => indexMemoryMock(input),
+const upsertKnowledgeEntryMock = vi.fn(async (..._args: unknown[]) => ({
+  id: 'test-id',
+  slug: 'test-slug',
+  degraded: false,
+  truncated: false,
+}));
+vi.mock('./service.js', () => ({
+  upsertKnowledgeEntry: (input: unknown) => upsertKnowledgeEntryMock(input),
 }));
 
 const { knowledgeIngestRoutes, resetRateLimits } = await import('./ingest-routes.js');
@@ -48,7 +53,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   projectAccess.mockReset();
-  indexMemoryMock.mockClear();
+  upsertKnowledgeEntryMock.mockClear();
   resetRateLimits();
 });
 
@@ -128,11 +133,11 @@ describe('POST /api/knowledge/ingest', () => {
     const body = (await res.json()) as { ok: boolean; processed: number; skipped: unknown[] };
     expect(body.ok).toBe(true);
     expect(body.processed).toBe(2);
-    expect(indexMemoryMock).toHaveBeenCalledTimes(2);
-    expect(indexMemoryMock.mock.calls[0]?.[0]).toMatchObject({
+    expect(upsertKnowledgeEntryMock).toHaveBeenCalledTimes(2);
+    expect(upsertKnowledgeEntryMock.mock.calls[0]?.[0]).toMatchObject({
       projectId: PROJECT_ID,
-      source: 'knowledge',
-      sourceRef: 'd1',
+      kind: 'reference',
+      authoredBy: 'imported',
     });
   });
 

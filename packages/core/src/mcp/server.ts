@@ -46,7 +46,7 @@ import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 // dispatchers. Removed the 9 shims with zero references (repo + every project's
 // skills audited). Two are retained because skills/recipes still call them by
 // name: forge_pipeline_runs_get (forge-skill-audit) + forge_pm_set_dependency
-// (forge-plan + .forge/knowledge.json). The per-action HANDLERS still live in
+// (forge-plan + forge_knowledge). The per-action HANDLERS still live in
 // their files and are reused by the dispatchers.
 import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';

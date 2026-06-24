@@ -41,8 +41,8 @@ describe('buildSkillImprovePrompt', () => {
     expect(prompt).not.toBeNull();
     // a) skills
     expect(prompt).toContain('forge_skills.list');
-    // b) knowledge.json
-    expect(prompt).toContain('.forge/knowledge.json');
+    // b) project knowledge via forge_knowledge
+    expect(prompt).toContain('forge_knowledge');
     // c) memory
     expect(prompt).toContain('forge_memory_search');
     // d) pipeline runs

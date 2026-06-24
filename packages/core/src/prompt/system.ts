@@ -74,7 +74,7 @@ export const TOOL_REFERENCE = renderFact("mcp-tool-reference") ?? "";
 const CHAT_NUDGE = `## Project Orientation
 You are working in a Forge-managed project. Forge MCP tools are available for project management — \`forge_issues\`, \`forge_comments\`, \`forge_config\`, \`forge_memory\`, \`forge_pm_*\`. Use them when the request relates to issues, tasks, status, or project memory.
 
-For codebase orientation, read \`.forge/knowledge.json\` directly (if present in the repo) for architecture, key files, and conventions, and follow any always-applied Project rules in this preamble — then explore with search tools.
+For codebase & project knowledge, call \`forge_knowledge\` (list/get/search) — no local file. Follow any always-applied Project rules in this preamble, then explore with search tools.
 
 ${OPERATING_AFFORDANCES_TEXT}`;
 
@@ -119,8 +119,8 @@ async function loadProjectBranches(projectId: string): Promise<{
 
 /**
  * Build a non-pipeline (chat / interactive) system prompt. The chat variant
- * nudges the agent to read `.forge/knowledge.json` directly for orientation
- * since no per-state preamble has been pre-loaded into the conversation.
+ * nudges the agent to use forge_knowledge for orientation since no per-state
+ * preamble has been pre-loaded into the conversation.
  *
  * Returns `''` when the project does not exist / can't be read — the caller
  * concatenates the preamble onto the user prompt, so an empty string keeps

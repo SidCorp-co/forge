@@ -26,7 +26,6 @@ vi.mock("@/lib/api", () => ({
   patchAgentSession: vi.fn(),
   getProject: vi.fn(),
   getAgents: vi.fn(),
-  syncKnowledgeToCore: vi.fn(),
   syncAgentFiles: vi.fn(),
   postJobEvents: vi.fn(),
   completeJob: vi.fn(),

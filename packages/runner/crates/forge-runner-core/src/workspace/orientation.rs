@@ -40,7 +40,7 @@ memory. The Forge MCP server is wired in `.mcp.json`; its instructions explain t
 - **Recall memory FIRST** — project memory is NOT auto-loaded. Before any task needing\n\
   project context: `forge_memory_search({{ projectId: '{project_id}', query: <topic>, topK: 5 }})`.\n\
   Treat hits as point-in-time — verify against live code/git before trusting.\n\
-- Codebase orientation: call `forge_config` action `get_knowledge` before broad file search.\n\
+- Codebase & project knowledge: call `forge_knowledge` (list/get/search).\n\
 - Issues / tasks / status / dependencies: `forge_issues`, `forge_comments`, `forge_pm_*`.\n\
 - Before writing, rewriting, or tuning this project's pipeline skills, read the `forge-skills`\n\
   MCP prompt (the always-latest authoring guide).\n\

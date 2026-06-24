@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - A new Knowledge workspace in the Library gives projects a visual map of their product — showing overviews, user-journey scenarios, and workflow diagrams rendered from curated knowledge entries, with a built-in skill to generate and maintain them automatically.
 - Projects can now store and search curated knowledge entries, which are used to automatically inject project context into agent prompts.
+- Project knowledge is now stored in Postgres and served via `forge_knowledge` — the local `.forge/knowledge.json` file is no longer read and is safe to delete from any repo that has one.
 - Feedback inbox for steward reports and run-log outcome display in the Automate screen, so every steward run produces a visible artifact for owner review.
 - Forge MCP list tools now cap large responses to prevent excessive token consumption and context bloat.
 - Chrome DevTools MCP is now available as a built-in catalog option in Project Settings — Pipeline — MCP servers.

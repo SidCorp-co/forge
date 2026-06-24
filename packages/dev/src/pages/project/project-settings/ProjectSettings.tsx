@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/ui/page-shell";
 import { FormInput, FormTextarea } from "@/components/ui/form-input";
@@ -19,10 +18,6 @@ export function ProjectSettings() {
     saved,
     saving,
     saveLog,
-    indexingRepo,
-    indexStatus,
-    indexLog,
-    handleIndex,
     handleSave,
   } = useProjectSettings();
   const runnerBindings = useAppStore((s) => s.runnerBindings);
@@ -38,11 +33,6 @@ export function ProjectSettings() {
       // Fallback: user types manually
     }
   }
-
-  const logEndRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [indexLog.length]);
 
   // Skill sync log — reads from local file, auto-refreshes when WebSocket push invalidates
   const { data: syncLog } = useQuery({
@@ -99,32 +89,10 @@ export function ProjectSettings() {
               placeholder="main"
               className="flex-1"
             />
-            {repoPath && (
-              <button
-                onClick={handleIndex}
-                disabled={!!indexingRepo}
-                className="shrink-0 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-              >
-                {indexingRepo ? "Indexing..." : "Index Codebase"}
-              </button>
-            )}
           </div>
           <p className="mt-1 text-xs text-gray-400">
-            Agent checks out this branch before working. Also used for indexing.
+            Agent checks out this branch before working.
           </p>
-          {indexStatus && (
-            <p className={`mt-1 text-xs font-medium ${indexStatus.includes("fail") ? "text-red-500" : indexStatus.includes("complete") ? "text-green-600" : "text-blue-500"}`}>
-              {indexStatus}
-            </p>
-          )}
-          {indexLog.length > 0 && (
-            <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-gray-900 p-3 font-mono text-xs text-gray-300">
-              {indexLog.map((line, i) => (
-                <div key={i} className="whitespace-pre-wrap">{line}</div>
-              ))}
-              <div ref={logEndRef} />
-            </div>
-          )}
         </div>
 
         <div>

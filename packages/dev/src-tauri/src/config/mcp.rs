@@ -31,11 +31,6 @@ pub fn detect_mcp_servers(repo_path: &str) -> HashMap<String, McpServerConfig> {
     servers
 }
 
-pub fn read_knowledge_index(repo_path: &str) -> Option<serde_json::Value> {
-    let data = super::wsl::read_file(repo_path, ".forge/knowledge.json")?;
-    serde_json::from_str(&data).ok()
-}
-
 pub fn read_conventions(repo_path: &str) -> Option<String> {
     super::wsl::read_file(repo_path, ".forge/conventions.md")
 }

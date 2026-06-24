@@ -166,7 +166,7 @@ pub async fn start_session(
     log(&format!("[start_session] worktree={wsl_path}"));
 
     let mut prompt = format!(
-        "You are working on Forge issues/tasks. Read .forge/knowledge.json for codebase context.\n\n\
+        "You are working on Forge issues/tasks. Use forge_knowledge (list/get/search) for project knowledge.\n\n\
          You are in a git worktree on branch `{}`. Do NOT run `git checkout` — you are already on the correct branch.\n\n",
         branch_name
     );
