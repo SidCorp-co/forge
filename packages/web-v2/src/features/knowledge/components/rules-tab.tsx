@@ -95,6 +95,7 @@ function RulesEditor({
   // rid-keyed so multiple unsaved new rows (all slug="") don't share a delete-confirm state.
   const [confirmRid, setConfirmRid] = useState<number | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Map<string, string>>(new Map());
+  const [loadedMeta, setLoadedMeta] = useState<Map<string, Record<string, unknown>>>(new Map());
 
   const upsert = useUpsertEntry(projectId);
   const deleteEntry = useDeleteEntry(projectId);
@@ -112,7 +113,7 @@ function RulesEditor({
       confidence: r.confidence ?? "inferred",
       authoredBy: r.authoredBy ?? "human",
       orderIndex: r.orderIndex ?? 0,
-      metadata: null,
+      metadata: loadedMeta.get(r.slug) ?? null,
     }));
     setEditRows(seeded);
     setNextRid(seeded.length + 1);
@@ -207,6 +208,7 @@ function RulesEditor({
       {
         onSuccess: () => {
           setLoadedBodies((m) => new Map(m).set(row.slug.trim(), row.body));
+          setLoadedMeta((m) => new Map(m).set(row.slug.trim(), row.metadata ?? {}));
           patchRow(row.rid, { isNew: false });
         },
       },
@@ -280,6 +282,7 @@ function RulesEditor({
               isSaving={upsert.isPending}
               isDeleting={deleteEntry.isPending}
               onPatch={(patch) => patchRow(r.rid, patch)}
+              onBodyLoad={(slug, body, meta) => setLoadedMeta((m) => new Map(m).set(slug, meta))}
               onSave={() => saveRow(r)}
               onDelete={() => handleDelete(r)}
               onConfirmDelete={() => setConfirmRid(r.rid)}
@@ -334,6 +337,7 @@ function RuleRow({
   isSaving,
   isDeleting,
   onPatch,
+  onBodyLoad,
   onSave,
   onDelete,
   onConfirmDelete,
@@ -347,6 +351,7 @@ function RuleRow({
   isSaving: boolean;
   isDeleting: boolean;
   onPatch: (p: Partial<EditRow>) => void;
+  onBodyLoad: (slug: string, body: string, meta: Record<string, unknown>) => void;
   onSave: () => void;
   onDelete: () => void;
   onConfirmDelete: () => void;
@@ -362,7 +367,7 @@ function RuleRow({
         <RuleBodyLoader
           projectId={projectId}
           slug={row.slug}
-          onLoad={(b, m) => { onPatch({ body: b, metadata: m }); setBodyLoaded(true); }}
+          onLoad={(b, m) => { onPatch({ body: b, metadata: m }); setBodyLoaded(true); onBodyLoad(row.slug, b, m); }}
         />
       )}
 
