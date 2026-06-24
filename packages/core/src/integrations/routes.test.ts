@@ -215,6 +215,37 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
     expect(createConnection).toHaveBeenCalledTimes(1);
     expect(createBinding).toHaveBeenCalledTimes(1);
   });
+
+  it('409 — Drizzle-wrapped 23505 on createBinding returns ALREADY_EXISTS and rolls back connection', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findActiveBinding.mockResolvedValueOnce(null);
+    createConnection.mockResolvedValueOnce({
+      id: 'conn-rollback',
+      provider: 'coolify',
+      config: { ...VALID_BODY.config, environment: 'staging' },
+      active: true,
+      lastHealthStatus: null,
+      lastHealthAt: null,
+      breakerOpenedAt: null,
+      secretsEnc: Buffer.from('enc'),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    // Simulate Drizzle wrapping the driver's 23505 in a cause object.
+    const drizzleWrapped = Object.assign(new Error('Failed query: insert into integration_bindings'), {
+      cause: { code: '23505' },
+    });
+    createBinding.mockRejectedValueOnce(drizzleWrapped);
+    softDeleteConnection.mockResolvedValueOnce(undefined);
+
+    const res = await post(token, VALID_BODY);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('ALREADY_EXISTS');
+    expect(softDeleteConnection).toHaveBeenCalledWith('conn-rollback');
+  });
 });
 
 describe('POST /api/projects/:projectId/integrations — postman provider schema', () => {
@@ -833,6 +864,23 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ALREADY_EXISTS');
     expect(createBinding).not.toHaveBeenCalled();
+  });
+
+  it('409 — Drizzle-wrapped 23505 on createBinding returns ALREADY_EXISTS (inactive duplicate)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findConnectionById.mockResolvedValueOnce(ownedConnection());
+    findActiveBinding.mockResolvedValueOnce(null); // no active duplicate — inactive row not caught by pre-flight
+    const drizzleWrapped = Object.assign(new Error('Failed query: insert into integration_bindings'), {
+      cause: { code: '23505' },
+    });
+    createBinding.mockRejectedValueOnce(drizzleWrapped);
+
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('ALREADY_EXISTS');
+    expect(createConnection).not.toHaveBeenCalled();
   });
 
   it('404 — non-owner of the connection (no existence leak)', async () => {
