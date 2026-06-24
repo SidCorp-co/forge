@@ -30,7 +30,7 @@ export function EntryCard({ projectId, row, canManage, defaultOpen = false }: En
 
   function handleConfirm() {
     if (!entryQ.data) return;
-    const { title, body, kind, injection, authoredBy, orderIndex } = entryQ.data;
+    const { title, body, kind, injection, authoredBy, orderIndex, metadata } = entryQ.data;
     upsert.mutate({
       slug: row.slug,
       body: {
@@ -41,6 +41,7 @@ export function EntryCard({ projectId, row, canManage, defaultOpen = false }: En
         confidence: "verified",
         authoredBy: authoredBy as never,
         orderIndex,
+        metadata: metadata as Record<string, unknown>,
       },
     });
   }

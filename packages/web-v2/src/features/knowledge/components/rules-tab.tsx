@@ -31,6 +31,12 @@ interface EditRow {
   injection: KnowledgeInjection;
   kind: KnowledgeKind;
   isNew: boolean;
+  // Preserved from server for PUT to avoid silently downgrading verified entries.
+  confidence: string;
+  authoredBy: string;
+  orderIndex: number;
+  // null = not yet fetched (existing rows); populated by RuleBodyLoader on expand.
+  metadata: Record<string, unknown> | null;
 }
 
 interface RulesTabProps {
@@ -86,7 +92,8 @@ function RulesEditor({
 }) {
   const [editRows, setEditRows] = useState<EditRow[]>([]);
   const [nextRid, setNextRid] = useState(1);
-  const [confirmSlug, setConfirmSlug] = useState<string | null>(null);
+  // rid-keyed so multiple unsaved new rows (all slug="") don't share a delete-confirm state.
+  const [confirmRid, setConfirmRid] = useState<number | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Map<string, string>>(new Map());
 
   const upsert = useUpsertEntry(projectId);
@@ -102,6 +109,10 @@ function RulesEditor({
       injection: (r.injection as KnowledgeInjection) ?? "on_demand",
       kind: (r.kind as KnowledgeKind) ?? "rule",
       isNew: false,
+      confidence: r.confidence ?? "inferred",
+      authoredBy: r.authoredBy ?? "human",
+      orderIndex: r.orderIndex ?? 0,
+      metadata: null,
     }));
     setEditRows(seeded);
     setNextRid(seeded.length + 1);
@@ -118,11 +129,28 @@ function RulesEditor({
   );
   const overBudget = injectedChars > ALWAYS_INJECT_MAX_CHARS;
   const budgetPct = Math.min(100, Math.round((injectedChars / ALWAYS_INJECT_MAX_CHARS) * 100));
+  // True when always-inject bodies haven't been fetched yet (count is an underestimate).
+  const hasUnloadedAlwaysInject = useMemo(
+    () => editRows.some((r) => !r.isNew && r.injection === "always" && !r.body),
+    [editRows],
+  );
 
   function addRow() {
     setEditRows((rs) => [
       ...rs,
-      { rid: nextRid, slug: "", title: "", body: "", injection: "on_demand", kind: "rule", isNew: true },
+      {
+        rid: nextRid,
+        slug: "",
+        title: "",
+        body: "",
+        injection: "on_demand",
+        kind: "rule",
+        isNew: true,
+        confidence: "inferred",
+        authoredBy: "human",
+        orderIndex: 0,
+        metadata: {},
+      },
     ]);
     setNextRid((n) => n + 1);
   }
@@ -158,26 +186,31 @@ function RulesEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editRows]);
 
-  const hasErrors = errors.size > 0;
-
   function saveRow(row: EditRow) {
     if (errors.has(row.rid)) return;
-    upsert.mutate({
-      slug: row.slug.trim(),
-      body: {
-        title: row.title.trim(),
-        body: row.body,
-        kind: row.kind,
-        injection: row.injection,
-        confidence: "inferred",
-        authoredBy: "human",
+    upsert.mutate(
+      {
+        slug: row.slug.trim(),
+        body: {
+          title: row.title.trim(),
+          body: row.body,
+          kind: row.kind,
+          injection: row.injection,
+          // Preserve server-side confidence/authoredBy/orderIndex/metadata to avoid silently
+          // downgrading verified entries or wiping metadata.relatedIssueIds.
+          confidence: row.confidence as never,
+          authoredBy: row.authoredBy as never,
+          orderIndex: row.orderIndex,
+          metadata: row.metadata ?? {},
+        },
       },
-    }, {
-      onSuccess: () => {
-        setLoadedBodies((m) => new Map(m).set(row.slug.trim(), row.body));
-        patchRow(row.rid, { isNew: false });
+      {
+        onSuccess: () => {
+          setLoadedBodies((m) => new Map(m).set(row.slug.trim(), row.body));
+          patchRow(row.rid, { isNew: false });
+        },
       },
-    });
+    );
   }
 
   function handleDelete(row: EditRow) {
@@ -188,7 +221,7 @@ function RulesEditor({
     deleteEntry.mutate(row.slug, {
       onSuccess: () => {
         setEditRows((rs) => rs.filter((r) => r.rid !== row.rid));
-        setConfirmSlug(null);
+        setConfirmRid(null);
       },
     });
   }
@@ -204,6 +237,7 @@ function RulesEditor({
             style={{ color: overBudget ? "var(--red-600)" : "var(--fg-muted)" }}
           >
             {injectedChars.toLocaleString()} / {ALWAYS_INJECT_MAX_CHARS.toLocaleString()} chars
+            {hasUnloadedAlwaysInject && " (estimated)"}
           </span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-pill bg-sunken">
@@ -242,14 +276,14 @@ function RulesEditor({
               row={r}
               canManage={canManage}
               error={errors.get(r.rid)}
-              confirmActive={confirmSlug === r.slug}
+              confirmActive={confirmRid === r.rid}
               isSaving={upsert.isPending}
               isDeleting={deleteEntry.isPending}
               onPatch={(patch) => patchRow(r.rid, patch)}
               onSave={() => saveRow(r)}
               onDelete={() => handleDelete(r)}
-              onConfirmDelete={() => setConfirmSlug(r.slug)}
-              onCancelDelete={() => setConfirmSlug(null)}
+              onConfirmDelete={() => setConfirmRid(r.rid)}
+              onCancelDelete={() => setConfirmRid(null)}
             />
           ))}
         </div>
@@ -279,11 +313,13 @@ function RuleBodyLoader({
 }: {
   projectId: string;
   slug: string;
-  onLoad: (body: string) => void;
+  onLoad: (body: string, metadata: Record<string, unknown>) => void;
 }) {
   const entryQ = useKnowledgeEntry(projectId, slug || undefined);
   useEffect(() => {
-    if (entryQ.data?.body) onLoad(entryQ.data.body);
+    if (entryQ.data?.body) {
+      onLoad(entryQ.data.body, (entryQ.data.metadata as Record<string, unknown>) ?? {});
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryQ.data?.body]);
   return null;
@@ -321,12 +357,12 @@ function RuleRow({
 
   return (
     <div className="rounded-md border border-line bg-surface p-3">
-      {/* Load body from server when row expands for existing entries */}
+      {/* Load body + metadata from server when row expands for existing entries */}
       {expanded && !row.isNew && !bodyLoaded && (
         <RuleBodyLoader
           projectId={projectId}
           slug={row.slug}
-          onLoad={(b) => { onPatch({ body: b }); setBodyLoaded(true); }}
+          onLoad={(b, m) => { onPatch({ body: b, metadata: m }); setBodyLoaded(true); }}
         />
       )}
 
@@ -416,7 +452,14 @@ function RuleRow({
                   </Button>
                 )}
               </div>
-              <Button variant="primary" size="sm" loading={isSaving} onClick={onSave}>
+              {/* Disable Save until body fetched — saves with empty body hit 400 (bodySchema.min(1)). */}
+              <Button
+                variant="primary"
+                size="sm"
+                loading={isSaving}
+                onClick={onSave}
+                disabled={!row.isNew && !bodyLoaded}
+              >
                 Save
               </Button>
             </div>
