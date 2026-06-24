@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- The Rules editor in the Knowledge workspace now has a collapsible live preview pane that renders Mermaid diagrams and markdown as you type.
 - A new Knowledge workspace in the Library gives projects a visual map of their product — showing overviews, user-journey scenarios, and workflow diagrams rendered from curated knowledge entries, with a built-in skill to generate and maintain them automatically.
 - Projects can now store and search curated knowledge entries, which are used to automatically inject project context into agent prompts.
 - Project knowledge is now stored in Postgres and served via `forge_knowledge` — the local `.forge/knowledge.json` file is no longer read and is safe to delete from any repo that has one.
