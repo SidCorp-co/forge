@@ -93,6 +93,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Untrusted issue, comment, attachment, and integration content is now sanitized and explicitly marked as data before it reaches pipeline agents, hardening the autonomous pipeline against prompt-injection.
 - You can now attach Word (.docx), CSV, and Excel (.xls/.xlsx) files to issues and comments, alongside the existing image, PDF, and text formats.
 - Schedules table now includes template_key, params, mode, and applied_message_versions columns for skill improvements.
+- Knowledge entries now stay current automatically: shipped features promote inferred entries to verified, a weekly drift check proposes updates when documentation falls behind the codebase, and durable memory lessons can be nominated for promotion into curated knowledge via a human review gate.
 
 ## [0.3.0] - 2026-06-11
 
