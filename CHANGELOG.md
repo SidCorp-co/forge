@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Project knowledge is now stored in Postgres and served via `forge_knowledge` — the local `.forge/knowledge.json` file is no longer read and is safe to delete from any repo that has one.
 - Feedback inbox for steward reports and run-log outcome display in the Automate screen, so every steward run produces a visible artifact for owner review.
 - Forge MCP list tools now cap large responses to prevent excessive token consumption and context bloat.
 - Chrome DevTools MCP is now available as a built-in catalog option in Project Settings — Pipeline — MCP servers.

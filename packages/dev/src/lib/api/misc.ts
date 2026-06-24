@@ -1,5 +1,5 @@
 import type { IssueAttachment, Notification, Agent } from "../types";
-import { request } from "./client";
+import { request, getBaseUrl, getAuthToken } from "./client";
 import { updateProject } from "./projects";
 import { updateAgent } from "./agents";
 

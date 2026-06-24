@@ -120,6 +120,8 @@ knowledgeIngestRoutes.post(
 
       try {
         const slug = toKebabSlug(doc.id);
+        // Two doc.ids kebabing to the same slug hit onConflictDoUpdate — last writer wins.
+        // processed still increments for both; callers should use unique doc.ids.
         await upsertKnowledgeEntry({
           projectId,
           slug,
