@@ -88,7 +88,7 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => (
     'snapshot/graph/runner_load: read-only; require projectId + project membership. ' +
     'graph also accepts optional rootIssueId (BFS) and depth (default 2, max 5); without rootIssueId returns the full graph capped at 200 nodes with truncated:true + remainingNodes:N. ' +
     'dispatch: enqueue a coder-skill job for an issue (projectId, issueId, jobType, reason; optional payload, modelTier); requires PM-actor capability. ' +
-    'set_dependency: record a dependency edge (projectId, fromIssueId, toIssueId, kind; optional reason, validUntil, decomposeOpts); idempotent. ' +
+    'set_dependency: record a dependency edge (projectId, fromIssueId, toIssueId, kind; optional reason, validUntil, decomposeOpts); idempotent. When creating a NEW issue that needs a blocking edge, prefer forge_issues.create { data.relations } (atomic, edges committed before issueCreated fires) or create the issue as status:draft first — a blocks edge set after an open create can miss the first dispatch tick. ' +
     'write_decision: durable PM decision turn (projectId, cause, summary; optional sessionId, eventRef, actions, confidence, modelTier, tookMs, escalate); requires PM-actor capability. To escalate alongside the decision, pass an `escalate` object — top-level `summary` is the decision summary, `escalate.summary` becomes the notification title.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {

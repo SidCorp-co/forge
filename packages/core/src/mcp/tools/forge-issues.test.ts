@@ -108,6 +108,18 @@ vi.mock('../../issues/attachment-service.js', async (importActual) => {
   };
 });
 
+// ISS-571 — stub pmSetDependencyHandler so create-with-relations tests don't
+// need to program the full DB query chain that the real handler executes.
+const pmSetDependencyMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
+vi.mock('./forge-pm-set-dependency.js', async (importActual) => {
+  const actual = await importActual<typeof import('./forge-pm-set-dependency.js')>();
+  return {
+    ...actual,
+    // Assign mock directly to avoid TS2556 (spread of unknown[] into typed params).
+    pmSetDependencyHandler: pmSetDependencyMock as unknown as typeof actual.pmSetDependencyHandler,
+  };
+});
+
 const { forgeIssuesTool } = await import('./forge-issues.js');
 const { db: mockDb } = await import('../../db/client.js');
 
@@ -537,6 +549,175 @@ describe('forge_issues tool', () => {
       'issueCreated',
       expect.objectContaining({ status: 'open' }),
     );
+  });
+
+  // ISS-571 — atomic relations on create
+  describe('create with relations', () => {
+    const BLOCKER_ID = '77777777-7777-4777-8777-777777777777';
+    const BLOCKED_ID = '88888888-8888-4888-8888-888888888888';
+
+    it('calls pmSetDependencyHandler with dependsOnId BEFORE hooks.emit(issueCreated)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      insertReturning.mockResolvedValueOnce([baseIssueRow]); // issue insert
+
+      const { hooks } = await import('../../pipeline/hooks.js');
+      const callOrder: string[] = [];
+      pmSetDependencyMock.mockImplementationOnce(async () => {
+        callOrder.push('setDep');
+        return { id: 'dep-id-1', created: true };
+      });
+      vi.mocked(hooks.emit).mockImplementationOnce(async (..._args) => {
+        callOrder.push('issueCreated');
+        return undefined;
+      });
+
+      await tool.handler({
+        action: 'create',
+        data: {
+          title: 'blocked issue',
+          relations: [{ dependsOnId: BLOCKER_ID, kind: 'blocks' }],
+        },
+      });
+
+      // edge must be committed before the hook fires
+      expect(callOrder).toEqual(['setDep', 'issueCreated']);
+      expect(pmSetDependencyMock).toHaveBeenCalledWith(
+        fakeDevice,
+        expect.objectContaining({
+          projectId: PROJECT_ID,
+          fromIssueId: BLOCKER_ID,
+          toIssueId: ISSUE_ID,
+          kind: 'blocks',
+        }),
+      );
+    });
+
+    it('calls pmSetDependencyHandler with blocksId (new issue blocks the target)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      insertReturning.mockResolvedValueOnce([baseIssueRow]);
+
+      await tool.handler({
+        action: 'create',
+        data: {
+          title: 'blocking issue',
+          relations: [{ blocksId: BLOCKED_ID, kind: 'blocks' }],
+        },
+      });
+
+      expect(pmSetDependencyMock).toHaveBeenCalledWith(
+        fakeDevice,
+        expect.objectContaining({
+          projectId: PROJECT_ID,
+          fromIssueId: ISSUE_ID,
+          toIssueId: BLOCKED_ID,
+          kind: 'blocks',
+        }),
+      );
+    });
+
+    it('create without relations does not call pmSetDependencyHandler (backward compat)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      insertReturning.mockResolvedValueOnce([baseIssueRow]);
+
+      await tool.handler({ action: 'create', data: { title: 'plain issue' } });
+
+      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a relation with both dependsOnId and blocksId set', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            title: 'bad relation',
+            relations: [{ dependsOnId: BLOCKER_ID, blocksId: BLOCKED_ID, kind: 'blocks' }],
+          } as unknown as Record<string, unknown>,
+        }),
+      ).rejects.toThrow();
+      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a relation with neither dependsOnId nor blocksId set', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            title: 'bad relation',
+            relations: [{ kind: 'blocks' }],
+          } as unknown as Record<string, unknown>,
+        }),
+      ).rejects.toThrow();
+      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a relation with kind=decomposes (must use forge_project_pm instead)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            title: 'bad kind',
+            relations: [{ dependsOnId: BLOCKER_ID, kind: 'decomposes' }],
+          } as unknown as Record<string, unknown>,
+        }),
+      ).rejects.toThrow();
+      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+    });
+
+    it('propagates a pmSetDependencyHandler error and does not emit issueCreated', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      insertReturning.mockResolvedValueOnce([baseIssueRow]);
+
+      const { hooks } = await import('../../pipeline/hooks.js');
+      pmSetDependencyMock.mockRejectedValueOnce(new Error('CYCLE_DETECTED: adding this blocks edge would form a loop'));
+
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: { title: 'cyclic issue', relations: [{ dependsOnId: BLOCKER_ID, kind: 'blocks' }] },
+        }),
+      ).rejects.toThrow(/CYCLE_DETECTED/);
+
+      expect(hooks.emit).not.toHaveBeenCalledWith('issueCreated', expect.anything());
+    });
   });
 
   describe('create with attachments', () => {
