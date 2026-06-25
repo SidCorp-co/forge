@@ -15,6 +15,19 @@ defaults:
     working-directory: packages/runner
 
 jobs:
+  # Fast guard: the runner-release workflow builds with `--locked`, so a version
+  # bump that touches Cargo.toml but not Cargo.lock makes the RELEASE fail (after
+  # the tag is cut) — this bit runner-v0.6.2 (ISS-570 never shipped). `cargo
+  # metadata --locked` resolves the graph against the lock WITHOUT compiling, so
+  # it catches the drift here in seconds, before merge/tag.
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo.lock is in sync with manifests (release uses --locked)
+        run: cargo metadata --locked --format-version=1 >/dev/null
+
   build:
     strategy:
       fail-fast: false
