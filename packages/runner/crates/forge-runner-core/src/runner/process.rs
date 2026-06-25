@@ -151,9 +151,6 @@ mod tests {
 
     #[test]
     fn respects_operator_override() {
-        assert_eq!(
-            mcp_tool_timeout_default(Some(OsStr::new("120000"))),
-            None
-        );
+        assert_eq!(mcp_tool_timeout_default(Some(OsStr::new("120000"))), None);
     }
 }

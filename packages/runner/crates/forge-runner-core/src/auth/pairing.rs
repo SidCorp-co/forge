@@ -134,7 +134,9 @@ pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse>
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("login init failed ({status}): {text}")));
+        return Err(Error::Other(format!(
+            "login init failed ({status}): {text}"
+        )));
     }
     resp.json::<LoginInitResponse>()
         .await
@@ -163,7 +165,9 @@ pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll>
     }
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("login poll failed ({status}): {text}")));
+        return Err(Error::Other(format!(
+            "login poll failed ({status}): {text}"
+        )));
     }
     let approved = resp
         .json::<LoginApproved>()

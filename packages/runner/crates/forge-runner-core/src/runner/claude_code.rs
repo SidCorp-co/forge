@@ -68,7 +68,10 @@ fn split_exit(status: &ExitStatus) -> (Option<i32>, Option<i32>) {
 /// From a `{type:result}` event with `is_error=true`, extract a short detail
 /// string (`subtype: message`).
 fn result_error_detail(json: &Value) -> String {
-    let subtype = json.get("subtype").and_then(Value::as_str).unwrap_or("error");
+    let subtype = json
+        .get("subtype")
+        .and_then(Value::as_str)
+        .unwrap_or("error");
     let msg = json
         .get("result")
         .and_then(Value::as_str)
@@ -691,7 +694,14 @@ mod tests {
 
     #[test]
     fn result_error_reports_result_token() {
-        let r = classify_failure_reason(Some(0), None, true, Some("error_max_turns: hit cap"), &[], "");
+        let r = classify_failure_reason(
+            Some(0),
+            None,
+            true,
+            Some("error_max_turns: hit cap"),
+            &[],
+            "",
+        );
         assert!(r.starts_with("[RESULT_ERROR]"), "{r}");
         assert!(r.contains("error_max_turns"), "{r}");
     }
@@ -700,7 +710,14 @@ mod tests {
     fn nonempty_stderr_passes_through_for_existing_pattern_match() {
         // Real provider error text should pass through untokenized so core's
         // existing classifier patterns can match it.
-        let r = classify_failure_reason(Some(1), None, false, None, &[], "  invalid_request_error: bad  ");
+        let r = classify_failure_reason(
+            Some(1),
+            None,
+            false,
+            None,
+            &[],
+            "  invalid_request_error: bad  ",
+        );
         assert_eq!(r, "invalid_request_error: bad");
     }
 
@@ -764,7 +781,10 @@ mod tests {
 
     #[test]
     fn required_mcp_down_mixed_forge_and_non_forge_is_true() {
-        let failed = vec!["playwright(failed)".to_string(), "forge(pending)".to_string()];
+        let failed = vec![
+            "playwright(failed)".to_string(),
+            "forge(pending)".to_string(),
+        ];
         assert!(required_mcp_down(&failed));
     }
 
@@ -779,17 +799,26 @@ mod tests {
     #[test]
     fn mcp_failure_not_fatal_for_chat_even_when_forge_down() {
         // Chat / schedule (issue_id=None) must survive a transient init `pending`.
-        assert!(!mcp_failure_is_fatal(false, &["forge(pending)".to_string()]));
         assert!(!mcp_failure_is_fatal(
             false,
-            &["forge(failed)".to_string(), "playwright(pending)".to_string()]
+            &["forge(pending)".to_string()]
+        ));
+        assert!(!mcp_failure_is_fatal(
+            false,
+            &[
+                "forge(failed)".to_string(),
+                "playwright(pending)".to_string()
+            ]
         ));
     }
 
     #[test]
     fn mcp_failure_not_fatal_when_forge_up() {
         // Only the required `forge` server gates; a down override never is fatal.
-        assert!(!mcp_failure_is_fatal(true, &["playwright(failed)".to_string()]));
+        assert!(!mcp_failure_is_fatal(
+            true,
+            &["playwright(failed)".to_string()]
+        ));
         assert!(!mcp_failure_is_fatal(true, &[]));
     }
 }

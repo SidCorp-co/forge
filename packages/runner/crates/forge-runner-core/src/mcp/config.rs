@@ -136,7 +136,8 @@ mod tests {
     use super::*;
 
     fn tmp_repo(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("forge-mcp-persist-{tag}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("forge-mcp-persist-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -173,7 +174,10 @@ mod tests {
         // user's server survives untouched
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
         // forge added
-        assert_eq!(doc["mcpServers"]["forge"]["url"], "https://core.example/mcp");
+        assert_eq!(
+            doc["mcpServers"]["forge"]["url"],
+            "https://core.example/mcp"
+        );
         let _ = std::fs::remove_dir_all(&repo);
     }
 
@@ -187,8 +191,14 @@ mod tests {
         .unwrap();
         write_persistent(&repo, "https://fresh.example", "tok2", "proj2").unwrap();
         let doc = read_doc(&repo);
-        assert_eq!(doc["mcpServers"]["forge"]["url"], "https://fresh.example/mcp");
-        assert_eq!(doc["mcpServers"]["forge"]["headers"]["Authorization"], "Bearer tok2");
+        assert_eq!(
+            doc["mcpServers"]["forge"]["url"],
+            "https://fresh.example/mcp"
+        );
+        assert_eq!(
+            doc["mcpServers"]["forge"]["headers"]["Authorization"],
+            "Bearer tok2"
+        );
         assert_eq!(doc["mcpServers"]["other"]["x"], 1);
         let _ = std::fs::remove_dir_all(&repo);
     }

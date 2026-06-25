@@ -138,7 +138,9 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     ) {
         (Some(url), Some(tok)) => (url, tok),
         _ => {
-            println!("• online       not logged in — skipping network checks (run `forge-runner login`)");
+            println!(
+                "• online       not logged in — skipping network checks (run `forge-runner login`)"
+            );
             return false;
         }
     };
@@ -164,7 +166,10 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             failed = true;
         }
         Err(_) => {
-            println!("✖ heartbeat    timeout after {}s — check core_url ({core_url})", ONLINE_TIMEOUT.as_secs());
+            println!(
+                "✖ heartbeat    timeout after {}s — check core_url ({core_url})",
+                ONLINE_TIMEOUT.as_secs()
+            );
             failed = true;
         }
     }
@@ -203,7 +208,11 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                         if has_git {
                             println!("✔ runner       {} → {}", r.slug, p.display());
                         } else {
-                            let why = if p.exists() { "no .git" } else { "directory does not exist" };
+                            let why = if p.exists() {
+                                "no .git"
+                            } else {
+                                "directory does not exist"
+                            };
                             println!("✖ runner       {} → {} ({why})", r.slug, p.display());
                             failed = true;
                         }

@@ -26,7 +26,10 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let core_url = ctx
         .resolve_core_url(&cfg)
         .ok_or_else(|| anyhow::anyhow!("no core URL — pass --core-url <url>"))?;
-    let name = args.name.clone().unwrap_or_else(pairing::default_device_name);
+    let name = args
+        .name
+        .clone()
+        .unwrap_or_else(pairing::default_device_name);
 
     // Back-compat: explicit --code keeps the paste-code project-pairing flow.
     if let Some(code) = args.code {

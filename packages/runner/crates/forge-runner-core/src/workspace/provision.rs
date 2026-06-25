@@ -148,7 +148,11 @@ fn resolve_path(cfg: &Config, p: &Provision) -> Option<PathBuf> {
 /// `git clone <url> <path>` with the deploy key (if any) via `GIT_SSH_COMMAND`.
 /// Returns the trimmed git stderr on failure. Clones the default branch — the
 /// per-job dispatch resolves/checks out the working branch later.
-fn clone_repo(repo_url: &str, repo_path: &Path, ssh_cmd: Option<&str>) -> std::result::Result<(), String> {
+fn clone_repo(
+    repo_url: &str,
+    repo_path: &Path,
+    ssh_cmd: Option<&str>,
+) -> std::result::Result<(), String> {
     if let Some(parent) = repo_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {e}"))?;
     }
@@ -157,9 +161,7 @@ fn clone_repo(repo_url: &str, repo_path: &Path, ssh_cmd: Option<&str>) -> std::r
     if let Some(ssh) = ssh_cmd {
         cmd.env("GIT_SSH_COMMAND", ssh);
     }
-    let out = cmd
-        .output()
-        .map_err(|e| format!("spawn git clone: {e}"))?;
+    let out = cmd.output().map_err(|e| format!("spawn git clone: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {

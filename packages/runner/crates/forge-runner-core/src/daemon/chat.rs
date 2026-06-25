@@ -140,7 +140,11 @@ async fn stage_attachments(
                 }
             },
             Ok(r) => {
-                tracing::warn!("[chat {session_id}] attach {}: http {}", att.name, r.status());
+                tracing::warn!(
+                    "[chat {session_id}] attach {}: http {}",
+                    att.name,
+                    r.status()
+                );
                 continue;
             }
             Err(e) => {
@@ -219,7 +223,12 @@ pub async fn handle_start(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| Error::Other("agent:start has no prompt".into()))?;
     let repo_path = resolve_repo(cfg, f.repo_path.as_deref(), f.project_slug.as_deref())?;
-    let staged = stage_attachments(client, &f.session_id, f.attachments.as_deref().unwrap_or(&[])).await;
+    let staged = stage_attachments(
+        client,
+        &f.session_id,
+        f.attachments.as_deref().unwrap_or(&[]),
+    )
+    .await;
     let (prompt, attachment_dir) = match staged {
         Some((dir, paths)) => (augment_prompt(&prompt, &paths), Some(dir)),
         None => (prompt, None),
@@ -255,7 +264,12 @@ pub async fn handle_send(
     let f: SendFrame =
         serde_json::from_value(data).map_err(|e| Error::Other(format!("bad agent:send: {e}")))?;
     let repo_path = resolve_repo(cfg, f.repo_path.as_deref(), f.project_slug.as_deref())?;
-    let staged = stage_attachments(client, &f.session_id, f.attachments.as_deref().unwrap_or(&[])).await;
+    let staged = stage_attachments(
+        client,
+        &f.session_id,
+        f.attachments.as_deref().unwrap_or(&[]),
+    )
+    .await;
     let (prompt, attachment_dir) = match staged {
         Some((dir, paths)) => (augment_prompt(&f.message, &paths), Some(dir)),
         None => (f.message, None),

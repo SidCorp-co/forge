@@ -139,7 +139,11 @@ mod tests {
     #[test]
     fn prepends_block_to_existing_claude_md_preserving_content() {
         let repo = tmp_repo("prepend");
-        std::fs::write(repo.join("CLAUDE.md"), "# My Project\n\nProject rules here.\n").unwrap();
+        std::fs::write(
+            repo.join("CLAUDE.md"),
+            "# My Project\n\nProject rules here.\n",
+        )
+        .unwrap();
         write_orientation(&repo, "p", "s").unwrap();
 
         let claude = std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap();
@@ -155,7 +159,11 @@ mod tests {
         write_orientation(&repo, "p", "s").unwrap();
         let after_first = std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap();
         // a human appends content below the block
-        std::fs::write(repo.join("CLAUDE.md"), format!("{after_first}\n## human notes\n")).unwrap();
+        std::fs::write(
+            repo.join("CLAUDE.md"),
+            format!("{after_first}\n## human notes\n"),
+        )
+        .unwrap();
 
         write_orientation(&repo, "p", "s").unwrap();
         let after_second = std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap();

@@ -207,7 +207,9 @@ pub async fn run(
                                         waited += DRAIN_POLL_SECS;
                                     }
                                     if inflight.load(Ordering::Acquire) == 0 {
-                                        tracing::warn!("[update] idle — restarting to apply update");
+                                        tracing::warn!(
+                                            "[update] idle — restarting to apply update"
+                                        );
                                         // Exit 0 → systemd Restart=always relaunches THIS
                                         // unit, which re-execs the freshly-swapped binary.
                                         // Name-agnostic, so it works for multi-instance
