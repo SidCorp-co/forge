@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Fixed a race condition where a newly created issue could be picked up by the pipeline dispatcher before its blocking dependencies were set.
 - Re-adding an integration whose previous binding was disabled now returns a clear "already exists" conflict instead of a server error.
 - The Rules editor in the Knowledge workspace now has a collapsible live preview pane that renders Mermaid diagrams and markdown as you type.
 - A new Knowledge workspace in the Library gives projects a visual map of their product — showing overviews, user-journey scenarios, and workflow diagrams rendered from curated knowledge entries, with a built-in skill to generate and maintain them automatically.
