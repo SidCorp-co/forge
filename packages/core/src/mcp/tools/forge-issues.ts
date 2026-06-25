@@ -19,6 +19,7 @@ import {
   listIssueAttachments,
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
+import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { hooks } from '../../pipeline/hooks.js';
@@ -35,6 +36,13 @@ import {
 // Hard total-response cap for list surfaces. ~38K leaves headroom under the
 // observed spill threshold (matches the forge-jobs.ts precedent, ISS-478).
 const MAX_RESPONSE_CHARS = 38_000;
+
+// Kinds allowed in the create-time `relations` field. `decomposes` is excluded
+// because it triggers integration-branch side effects that belong in the
+// dedicated decompose flow (forge_project_pm set_dependency kind=decomposes).
+// `duplicates` and `parent` are also excluded — they don't need to be atomic
+// with create. Route those through forge_project_pm.set_dependency directly.
+const createRelationKinds = ['blocks', 'relates'] as const;
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_issues` tool. The
@@ -124,6 +132,29 @@ const dataSchema = z
     taskPriority: z.enum(issuePriorities).optional(),
     isAgentTask: z.boolean().optional(),
     taskAcceptanceCriteria: z.array(z.string()).nullable().optional(),
+    // ISS-571 — atomic dependency edges at create time. Each entry must set
+    // exactly one of dependsOnId (new issue will be blocked-by it) or blocksId
+    // (new issue blocks it). Edges are inserted BEFORE issueCreated fires so
+    // the L2 dispatch gate sees the blocking edge on the very first tick,
+    // closing the race between create + a subsequent set_dependency call.
+    // Restricted to blocks/relates; route decomposes through forge_project_pm.
+    relations: z
+      .array(
+        z
+          .object({
+            kind: z.enum(createRelationKinds).default('blocks'),
+            dependsOnId: z.uuid().optional(),
+            blocksId: z.uuid().optional(),
+            reason: z.string().max(2000).optional(),
+            validUntil: z.iso.datetime().optional(),
+          })
+          .strict()
+          .refine((r) => (r.dependsOnId == null) !== (r.blocksId == null), {
+            message: 'each relation must set exactly one of dependsOnId or blocksId',
+          }),
+      )
+      .max(20)
+      .optional(),
   })
   .strict()
   .optional();
@@ -439,7 +470,17 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Task sub-actions: createTask requires data.issueId + data.taskTitle; listTasks ' +
     'requires filters.issue and accepts filters.taskStatus; updateTask/deleteTask ' +
     'use documentId as the task UUID. Tasks inherit project membership from the ' +
-    'parent issue.',
+    'parent issue. ' +
+    'Atomic relations (ISS-571): pass data.relations (optional array, max 20) at ' +
+    'create time to insert dependency edges BEFORE issueCreated fires — this closes ' +
+    'the race where the dispatcher picks up the new issue before a subsequent ' +
+    'forge_project_pm set_dependency call can land. Each entry requires kind ' +
+    '(blocks|relates, default blocks) and exactly one of dependsOnId (new issue is ' +
+    'blocked-by it) or blocksId (new issue blocks it). For decomposes edges, use ' +
+    'forge_project_pm set_dependency kind=decomposes directly. Draft-first fallback: ' +
+    'create with status:draft, set deps, then transition to open — draft issues are ' +
+    'never dispatched, so the edge is always present before the issue enters the ' +
+    'pipeline.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -587,6 +628,26 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!inserted) throw new Error('issues: insert returned no row');
 
         const created = inserted as IssueRow;
+
+        // ISS-571 — insert dependency edges BEFORE issueCreated fires.
+        // issueCreated is the synchronous trigger for considerEnqueue→dispatch,
+        // so edges committed here are visible to the L2 dispatch gate on the
+        // very first tick with no race window.
+        if (input.data?.relations && input.data.relations.length > 0) {
+          for (const rel of input.data.relations) {
+            const fromIssueId = rel.dependsOnId ?? created.id;
+            const toIssueId = rel.dependsOnId != null ? created.id : rel.blocksId!;
+            await pmSetDependencyHandler(device, {
+              projectId,
+              fromIssueId,
+              toIssueId,
+              kind: rel.kind,
+              reason: rel.reason,
+              validUntil: rel.validUntil,
+            });
+          }
+        }
+
         await hooks.emit('issueCreated', {
           issueId: created.id,
           projectId: created.projectId,
