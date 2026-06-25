@@ -85,10 +85,26 @@ fn result_error_detail(json: &Value) -> String {
     }
 }
 
-/// From a `system`/`init` stream event, return the MCP servers that did NOT
-/// reach a connected status (`name(status)`). `None` if `json` is not a
-/// system event carrying `mcp_servers` (so the caller keeps looking); an empty
-/// vec means all servers connected.
+/// `pending` / `connecting` are TRANSIENT: Claude Code emits the `system/init`
+/// event before HTTP/stdio servers finish their handshake, and (per the docs)
+/// "if your request needs tools from a server that is still connecting in the
+/// background, Claude waits for that server before continuing." A server that
+/// genuinely can't connect is reported as `failed` (after up to 3 retries) or
+/// `needs-auth` — NOT left `pending`. So the init snapshot must not treat a
+/// still-connecting server as a failure (that was the chat MCP_INIT race:
+/// `forge(pending), chrome-devtools-mcp(pending)`).
+fn is_transient_mcp_status(status: &str) -> bool {
+    let s = status.trim();
+    s.eq_ignore_ascii_case("pending")
+        || s.eq_ignore_ascii_case("connecting")
+        || s.eq_ignore_ascii_case("needs-restart")
+}
+
+/// From a `system`/`init` stream event, return the MCP servers that TERMINALLY
+/// failed to connect (`name(status)`) — `failed` / `needs-auth` / etc., but NOT
+/// transient `pending`/`connecting` (see [`is_transient_mcp_status`]). `None` if
+/// `json` is not a system event carrying `mcp_servers` (so the caller keeps
+/// looking); an empty vec means no server is terminally failed.
 fn mcp_failed_servers(json: &Value) -> Option<Vec<String>> {
     if json.get("type").and_then(Value::as_str) != Some("system") {
         return None;
@@ -99,9 +115,9 @@ fn mcp_failed_servers(json: &Value) -> Option<Vec<String>> {
         .filter_map(|s| {
             let name = s.get("name").and_then(Value::as_str)?;
             let status = s.get("status").and_then(Value::as_str).unwrap_or("");
-            // Claude reports "connected" on success; treat anything else
-            // (failed / needs-auth / pending / empty) as not-connected.
-            if status.eq_ignore_ascii_case("connected") {
+            // Connected → fine. Still-connecting → transient, ignore. Anything
+            // else (failed / needs-auth / empty) → a real not-connected failure.
+            if status.eq_ignore_ascii_case("connected") || is_transient_mcp_status(status) {
                 None
             } else {
                 Some(format!("{name}({status})"))
@@ -171,12 +187,13 @@ fn classify_failure_reason(
     "[NO_RESULT_EXIT] terminal with no success signal".to_string()
 }
 
-/// Is the required `forge` MCP server among the ones that failed to connect
-/// at init? Every pipeline step requires forge tools (`forge_issues.*` etc.)
-/// to read the issue and advance its status. A job that ran without them can
-/// only emit pseudocode — it must FAIL (not Done) so core routes it through
-/// bounded auto-retry instead of leaving the issue unchanged and letting the
-/// reconciler re-dispatch forever (ISS-570 / ISS-563 triage loop).
+/// Is the required `forge` MCP server among the ones that TERMINALLY failed to
+/// connect at init? (`mcp_failed` already excludes transient `pending` — see
+/// [`mcp_failed_servers`].) Every pipeline step requires forge tools
+/// (`forge_issues.*` etc.) to read the issue and advance its status. A job that
+/// ran without them can only emit pseudocode — it must FAIL (not Done) so core
+/// routes it through bounded auto-retry instead of leaving the issue unchanged
+/// and letting the reconciler re-dispatch forever (ISS-570 / ISS-563 loop).
 ///
 /// Scope is intentionally narrow: only servers whose name starts with `forge(`
 /// are considered required. Override servers (playwright, postman, …) are
@@ -352,6 +369,13 @@ impl Runner for ClaudeCodeRunner {
         cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        // Give MCP servers room to connect before the `system/init` snapshot.
+        // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
+        // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
+        // claude default is tight. Caller-set env wins (don't clobber an override).
+        if std::env::var_os("MCP_TIMEOUT").is_none() {
+            cmd.env("MCP_TIMEOUT", "15000");
+        }
 
         // New process group so we can kill the whole tree.
         #[cfg(unix)]
@@ -743,6 +767,24 @@ mod tests {
     }
 
     #[test]
+    fn mcp_init_parse_ignores_transient_pending() {
+        // The race we fixed: claude emits init while servers are still connecting.
+        // `pending` / `connecting` are transient (claude waits for them), so they
+        // must NOT be reported as failed — only a genuinely terminal status is.
+        let init = json!({
+            "type": "system",
+            "subtype": "init",
+            "mcp_servers": [
+                { "name": "forge", "status": "pending" },
+                { "name": "chrome-devtools-mcp", "status": "connecting" },
+                { "name": "playwright", "status": "failed" }
+            ]
+        });
+        let failed = mcp_failed_servers(&init).expect("system event");
+        assert_eq!(failed, vec!["playwright(failed)".to_string()]);
+    }
+
+    #[test]
     fn mcp_init_parse_all_connected_is_empty() {
         let init = json!({
             "type": "system",
@@ -758,12 +800,18 @@ mod tests {
         assert_eq!(mcp_failed_servers(&assistant), None);
     }
 
-    // required_mcp_down — ISS-570
     #[test]
-    fn required_mcp_down_forge_pending_is_true() {
-        assert!(required_mcp_down(&["forge(pending)".to_string()]));
+    fn transient_statuses_classified() {
+        assert!(is_transient_mcp_status("pending"));
+        assert!(is_transient_mcp_status("Connecting"));
+        assert!(is_transient_mcp_status(" needs-restart "));
+        assert!(!is_transient_mcp_status("failed"));
+        assert!(!is_transient_mcp_status("needs-auth"));
+        assert!(!is_transient_mcp_status("connected"));
     }
 
+    // required_mcp_down — ISS-570 (mcp_failed only ever holds TERMINAL statuses;
+    // pending is filtered upstream by mcp_failed_servers).
     #[test]
     fn required_mcp_down_forge_failed_is_true() {
         assert!(required_mcp_down(&["forge(failed)".to_string()]));
@@ -783,31 +831,32 @@ mod tests {
     fn required_mcp_down_mixed_forge_and_non_forge_is_true() {
         let failed = vec![
             "playwright(failed)".to_string(),
-            "forge(pending)".to_string(),
+            "forge(failed)".to_string(),
         ];
         assert!(required_mcp_down(&failed));
     }
 
     // mcp_failure_is_fatal — scope the ISS-570 hard-fail to issue jobs only.
+    // (mcp_failed only ever holds TERMINAL statuses; pending never reaches here.)
     #[test]
     fn mcp_failure_fatal_for_issue_job_when_forge_down() {
-        // Reconciler-driven issue job loses forge → fatal (ISS-570 preserved).
-        assert!(mcp_failure_is_fatal(true, &["forge(pending)".to_string()]));
+        // Reconciler-driven issue job loses forge terminally → fatal (ISS-570).
         assert!(mcp_failure_is_fatal(true, &["forge(failed)".to_string()]));
+        assert!(mcp_failure_is_fatal(
+            true,
+            &["forge(needs-auth)".to_string()]
+        ));
     }
 
     #[test]
     fn mcp_failure_not_fatal_for_chat_even_when_forge_down() {
-        // Chat / schedule (issue_id=None) must survive a transient init `pending`.
-        assert!(!mcp_failure_is_fatal(
-            false,
-            &["forge(pending)".to_string()]
-        ));
+        // Chat / schedule (issue_id=None) must never be nuked by a down forge.
+        assert!(!mcp_failure_is_fatal(false, &["forge(failed)".to_string()]));
         assert!(!mcp_failure_is_fatal(
             false,
             &[
                 "forge(failed)".to_string(),
-                "playwright(pending)".to_string()
+                "playwright(failed)".to_string()
             ]
         ));
     }
