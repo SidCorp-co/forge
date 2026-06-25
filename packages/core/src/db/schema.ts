@@ -2888,3 +2888,100 @@ export const improvementMessageDrafts = pgTable(
     signalKeyIdx: index('improvement_message_drafts_signal_key_idx').on(t.signalKey),
   }),
 );
+
+// ─── UX Contract ────────────────────────────────────────────────────────────
+// ISS-574 — Foundation for the UX Completeness Contract epic.
+// `ux_contract_rules` is the source-of-truth rule set; the compiler turns
+// active rules → projectFacts['ux-contract'] prose on every mutation.
+// `ux_findings` records per-issue per-run observations that cite a rule.
+
+export const uxRuleGroups = [
+  'designSystem',
+  'states',
+  'flows',
+  'a11y',
+  'microcopy',
+  'responsive',
+] as const;
+export type UxRuleGroup = (typeof uxRuleGroups)[number];
+
+export const uxRuleSeverities = ['must', 'should'] as const;
+export type UxRuleSeverity = (typeof uxRuleSeverities)[number];
+
+export const uxRuleSources = ['preset', 'detected', 'learned', 'manual'] as const;
+export type UxRuleSource = (typeof uxRuleSources)[number];
+
+export const uxRuleStatuses = ['active', 'proposed', 'retired'] as const;
+export type UxRuleStatus = (typeof uxRuleStatuses)[number];
+
+export const uxFindingStages = ['review', 'verify-live'] as const;
+export type UxFindingStage = (typeof uxFindingStages)[number];
+
+export const uxFindingKinds = [
+  'missing-state',
+  'a11y',
+  'microcopy',
+  'responsive',
+  'design-system',
+  'other',
+] as const;
+export type UxFindingKind = (typeof uxFindingKinds)[number];
+
+export const uxContractRules = pgTable(
+  'ux_contract_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    group: text('group', { enum: uxRuleGroups }).notNull(),
+    text: text('text').notNull(),
+    severity: text('severity', { enum: uxRuleSeverities }).notNull().default('must'),
+    source: text('source', { enum: uxRuleSources }).notNull().default('manual'),
+    status: text('status', { enum: uxRuleStatuses }).notNull().default('active'),
+    evidenceIssueIds: jsonb('evidence_issue_ids').notNull().default([]),
+    orderIndex: integer('order_index').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectStatusIdx: index('ux_contract_rules_project_status_idx').on(t.projectId, t.status),
+    projectGroupIdx: index('ux_contract_rules_project_group_idx').on(t.projectId, t.group),
+  }),
+);
+
+export const uxContractRulesRelations = relations(uxContractRules, ({ one, many }) => ({
+  project: one(projects, { fields: [uxContractRules.projectId], references: [projects.id] }),
+  findings: many(uxFindings),
+}));
+
+export const uxFindings = pgTable(
+  'ux_findings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
+    runId: uuid('run_id').references(() => pipelineRuns.id, { onDelete: 'set null' }),
+    stage: text('stage', { enum: uxFindingStages }).notNull(),
+    ruleId: uuid('rule_id').references(() => uxContractRules.id, { onDelete: 'set null' }),
+    kind: text('kind', { enum: uxFindingKinds }).notNull(),
+    detail: text('detail').notNull(),
+    severity: text('severity', { enum: uxRuleSeverities }).notNull().default('must'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectIssueIdx: index('ux_findings_project_issue_idx').on(t.projectId, t.issueId),
+    ruleIdx: index('ux_findings_rule_idx').on(t.ruleId),
+  }),
+);
+
+export const uxFindingsRelations = relations(uxFindings, ({ one }) => ({
+  project: one(projects, { fields: [uxFindings.projectId], references: [projects.id] }),
+  issue: one(issues, { fields: [uxFindings.issueId], references: [issues.id] }),
+  rule: one(uxContractRules, { fields: [uxFindings.ruleId], references: [uxContractRules.id] }),
+  pipelineRun: one(pipelineRuns, { fields: [uxFindings.runId], references: [pipelineRuns.id] }),
+}));
