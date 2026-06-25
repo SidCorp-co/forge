@@ -168,6 +168,20 @@ fn classify_failure_reason(
     "[NO_RESULT_EXIT] terminal with no success signal".to_string()
 }
 
+/// Is the required `forge` MCP server among the ones that failed to connect
+/// at init? Every pipeline step requires forge tools (`forge_issues.*` etc.)
+/// to read the issue and advance its status. A job that ran without them can
+/// only emit pseudocode — it must FAIL (not Done) so core routes it through
+/// bounded auto-retry instead of leaving the issue unchanged and letting the
+/// reconciler re-dispatch forever (ISS-570 / ISS-563 triage loop).
+///
+/// Scope is intentionally narrow: only servers whose name starts with `forge(`
+/// are considered required. Override servers (playwright, postman, …) are
+/// opt-in per state and may legitimately be absent without invalidating the job.
+fn required_mcp_down(mcp_failed: &[String]) -> bool {
+    mcp_failed.iter().any(|s| s.starts_with("forge("))
+}
+
 pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
@@ -527,7 +541,9 @@ impl Runner for ClaudeCodeRunner {
                     .contains("out of extra usage")
                     .then(|| stderr.trim().chars().take(500).collect())
             });
-            let succeeded = usage_limit.is_none() && succeeded_opt.unwrap_or(false);
+            let succeeded = usage_limit.is_none()
+                && succeeded_opt.unwrap_or(false)
+                && !required_mcp_down(&mcp_failed);
 
             let resume_failed = invoked_with_resume && !succeeded && {
                 let b = stderr.to_lowercase();
@@ -701,5 +717,32 @@ mod tests {
     fn non_system_event_is_ignored_by_mcp_parse() {
         let assistant = json!({ "type": "assistant", "message": {} });
         assert_eq!(mcp_failed_servers(&assistant), None);
+    }
+
+    // required_mcp_down — ISS-570
+    #[test]
+    fn required_mcp_down_forge_pending_is_true() {
+        assert!(required_mcp_down(&["forge(pending)".to_string()]));
+    }
+
+    #[test]
+    fn required_mcp_down_forge_failed_is_true() {
+        assert!(required_mcp_down(&["forge(failed)".to_string()]));
+    }
+
+    #[test]
+    fn required_mcp_down_non_forge_server_is_false() {
+        assert!(!required_mcp_down(&["playwright(failed)".to_string()]));
+    }
+
+    #[test]
+    fn required_mcp_down_empty_is_false() {
+        assert!(!required_mcp_down(&[]));
+    }
+
+    #[test]
+    fn required_mcp_down_mixed_forge_and_non_forge_is_true() {
+        let failed = vec!["playwright(failed)".to_string(), "forge(pending)".to_string()];
+        assert!(required_mcp_down(&failed));
     }
 }
