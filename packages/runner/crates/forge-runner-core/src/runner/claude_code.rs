@@ -182,6 +182,24 @@ fn required_mcp_down(mcp_failed: &[String]) -> bool {
     mcp_failed.iter().any(|s| s.starts_with("forge("))
 }
 
+/// Whether a missing `forge` MCP server should be treated as FATAL for this run.
+///
+/// ISS-570's hard-fail exists to stop the *reconciler re-dispatch loop*: an
+/// issue pipeline job that ran without forge tools can only emit pseudocode,
+/// leaves its issue unchanged, and the reconciler re-dispatches it forever.
+/// That loop is impossible without an issue behind the run, so the hard-fail is
+/// scoped to issue-bound pipeline jobs (`issue_id = Some`).
+///
+/// Interactive runs — chat (`daemon/chat.rs` sets `step="chat"`, `issue_id=None`)
+/// and schedule ticks — have no reconciler driving them. A transient `pending`
+/// at the single init snapshot must NOT nuke them; at worst they answer the turn
+/// without forge tools instead of failing the whole session and wedging a slot.
+/// (For issue jobs that hit the same transient race, the failure is emitted as
+/// `FailureKind::Transient`, so core's bounded auto-retry self-heals it.)
+fn mcp_failure_is_fatal(is_issue_job: bool, mcp_failed: &[String]) -> bool {
+    is_issue_job && required_mcp_down(mcp_failed)
+}
+
 pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
@@ -318,6 +336,10 @@ impl Runner for ClaudeCodeRunner {
         args.push(prompt);
 
         let invoked_with_resume = spec.resume_id.is_some();
+        // ISS-570 hard-fail on a down `forge` server is scoped to reconciler-driven
+        // issue jobs (see mcp_failure_is_fatal). Chat / schedule runs carry no
+        // issue_id and must not be nuked by a transient `pending` at init.
+        let is_issue_job = spec.issue_id.is_some();
         let timeout = spec
             .timeout_seconds
             .filter(|s| *s > 0)
@@ -543,7 +565,7 @@ impl Runner for ClaudeCodeRunner {
             });
             let succeeded = usage_limit.is_none()
                 && succeeded_opt.unwrap_or(false)
-                && !required_mcp_down(&mcp_failed);
+                && !mcp_failure_is_fatal(is_issue_job, &mcp_failed);
 
             let resume_failed = invoked_with_resume && !succeeded && {
                 let b = stderr.to_lowercase();
@@ -744,5 +766,30 @@ mod tests {
     fn required_mcp_down_mixed_forge_and_non_forge_is_true() {
         let failed = vec!["playwright(failed)".to_string(), "forge(pending)".to_string()];
         assert!(required_mcp_down(&failed));
+    }
+
+    // mcp_failure_is_fatal — scope the ISS-570 hard-fail to issue jobs only.
+    #[test]
+    fn mcp_failure_fatal_for_issue_job_when_forge_down() {
+        // Reconciler-driven issue job loses forge → fatal (ISS-570 preserved).
+        assert!(mcp_failure_is_fatal(true, &["forge(pending)".to_string()]));
+        assert!(mcp_failure_is_fatal(true, &["forge(failed)".to_string()]));
+    }
+
+    #[test]
+    fn mcp_failure_not_fatal_for_chat_even_when_forge_down() {
+        // Chat / schedule (issue_id=None) must survive a transient init `pending`.
+        assert!(!mcp_failure_is_fatal(false, &["forge(pending)".to_string()]));
+        assert!(!mcp_failure_is_fatal(
+            false,
+            &["forge(failed)".to_string(), "playwright(pending)".to_string()]
+        ));
+    }
+
+    #[test]
+    fn mcp_failure_not_fatal_when_forge_up() {
+        // Only the required `forge` server gates; a down override never is fatal.
+        assert!(!mcp_failure_is_fatal(true, &["playwright(failed)".to_string()]));
+        assert!(!mcp_failure_is_fatal(true, &[]));
     }
 }
