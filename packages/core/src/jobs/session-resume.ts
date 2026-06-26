@@ -28,8 +28,96 @@
 
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import { agentSessions, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+
+const DEFAULT_MAX_RESUME_TOKENS = 150_000;
+const DEFAULT_MAX_RESUME_REOPEN_CYCLES = 3;
+
+export interface ResumeBounds {
+  maxResumeTokens: number;
+  maxResumeReopenCycles: number;
+}
+
+/**
+ * ISS-580 — load the project's session-resume bounds from pipelineConfig.
+ * Defaults to 150k tokens / 3 reopen cycles when absent or on DB error.
+ * Mirrors the loadOnResumeFailPolicy pattern from handle-resume-failed.ts.
+ *
+ * Pass `cachedAgentConfig` (already fetched by the caller) to skip the DB
+ * round-trip — the dispatcher fetches it on the non-forced dispatch path.
+ */
+export async function loadResumeBounds(
+  projectId: string,
+  cachedAgentConfig?: Record<string, unknown>,
+): Promise<ResumeBounds> {
+  try {
+    let ac: Record<string, unknown>;
+    if (cachedAgentConfig !== undefined) {
+      ac = cachedAgentConfig;
+    } else {
+      const [row] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      ac = (row?.agentConfig ?? {}) as Record<string, unknown>;
+    }
+    const pc = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
+    const maxTokens =
+      typeof pc.maxResumeTokens === 'number' && Number.isFinite(pc.maxResumeTokens)
+        ? pc.maxResumeTokens
+        : DEFAULT_MAX_RESUME_TOKENS;
+    const maxCycles =
+      typeof pc.maxResumeReopenCycles === 'number' && Number.isFinite(pc.maxResumeReopenCycles)
+        ? pc.maxResumeReopenCycles
+        : DEFAULT_MAX_RESUME_REOPEN_CYCLES;
+    return { maxResumeTokens: maxTokens, maxResumeReopenCycles: maxCycles };
+  } catch (err) {
+    logger.warn({ err, projectId }, 'session-resume: failed to load resume bounds, using defaults');
+    return { maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS, maxResumeReopenCycles: DEFAULT_MAX_RESUME_REOPEN_CYCLES };
+  }
+}
+
+/**
+ * ISS-580 — estimate the peak single-request context for all sessions in a
+ * (issueId, sessionGroup) group by querying MAX(input_tokens+cache_read_tokens)
+ * from usage_records joined via agent_sessions. This mirrors the compact_boundary
+ * pre_tokens value — the largest single turn seen for this group.
+ *
+ * Returns 0 on no rows or DB error (fail-safe: never blocks dispatch).
+ */
+export async function estimateGroupContextTokens(args: {
+  issueId: string;
+  sessionGroup: string;
+}): Promise<number> {
+  try {
+    // session_id is a uuid-shaped text column; guard the cast so a stray
+    // non-uuid value doesn't throw "operator does not exist: text = uuid".
+    // AND s.claude_session_id IS NOT NULL allows the planner to use
+    // agent_sessions_invalidate_lookup_idx (migration 0069 partial index).
+    const rows = await db.execute<{ peak: string | null }>(sql`
+      SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
+      FROM agent_sessions AS s
+      JOIN usage_records AS ur
+        ON ur.session_id ~ '^[0-9a-fA-F-]{36}$'
+       AND ur.session_id::uuid = s.id
+      WHERE s.metadata->>'issueId' = ${args.issueId}
+        AND s.metadata->>'sessionGroup' = ${args.sessionGroup}
+        AND s.claude_session_id IS NOT NULL
+    `);
+    const peak = rows[0]?.peak;
+    if (peak === null || peak === undefined) return 0;
+    const n = Number(peak);
+    return Number.isFinite(n) ? n : 0;
+  } catch (err) {
+    logger.warn(
+      { err, issueId: args.issueId, sessionGroup: args.sessionGroup },
+      'session-resume: estimateGroupContextTokens failed, defaulting to 0',
+    );
+    return 0;
+  }
+}
 
 export interface PriorSession {
   claudeSessionId: string;

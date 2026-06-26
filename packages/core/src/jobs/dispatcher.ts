@@ -11,6 +11,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   recordDispatchBarrierSkip,
+  recordResumeBoundFresh,
   recordRunnerDeathDetection,
 } from '../observability/hold-metrics.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
@@ -33,7 +34,11 @@ import { finalizeFailedJob } from './finalize-failure.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 import { readAutoRetryPayload } from './retry.js';
-import { findPriorSessionInGroup } from './session-resume.js';
+import {
+  estimateGroupContextTokens,
+  findPriorSessionInGroup,
+  loadResumeBounds,
+} from './session-resume.js';
 import {
   type StageOverrides,
   escalateModel,
@@ -263,6 +268,7 @@ async function dispatchViaRunner(
   let required: RequiredCapabilities;
   let fallbackChain: RunnerType[];
 
+  let cachedAgentConfig: Record<string, unknown> | undefined;
   if (forcedCapabilities !== undefined || forcedChain !== undefined) {
     required = forcedCapabilities ?? {};
     fallbackChain = forcedChain ?? [];
@@ -275,8 +281,8 @@ async function dispatchViaRunner(
       .from(projects)
       .where(eq(projects.id, job.projectId))
       .limit(1);
-    const agentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
-    fallbackChain = resolveRunnerChainForJob(job.type, agentConfig);
+    cachedAgentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
+    fallbackChain = resolveRunnerChainForJob(job.type, cachedAgentConfig);
   }
 
   // PR-5 — if this job belongs to a sessionGroup AND a prior session of the
@@ -298,6 +304,64 @@ async function dispatchViaRunner(
     }
   }
 
+  // Compute isRetry here so the bound check below can skip the 3-query block
+  // (+ metric/Sentry side effects) on retry dispatches — the retry path nulls
+  // priorClaudeSessionId at its own site unconditionally.
+  const isRetry = job.retryOf != null;
+
+  // ISS-580 — bound check: if the accumulated context of the sessionGroup
+  // exceeds the configured token limit, or the issue has been reopened more
+  // than the cycle limit, drop the resume and dispatch fresh. Continuity is
+  // preserved via the existing handoff/sessionContext mechanism (ISS-537).
+  // Skip on retries — the retry block unconditionally nulls priorClaudeSessionId
+  // anyway, so running this block on a retry is pure wasted work + spurious
+  // resume_bound_fresh_total increments.
+  if (!isRetry && priorClaudeSessionId && preDispatchOverrides.sessionGroup && job.issueId) {
+    const bounds = await loadResumeBounds(job.projectId, cachedAgentConfig);
+    const estTokens = await estimateGroupContextTokens({
+      issueId: job.issueId,
+      sessionGroup: preDispatchOverrides.sessionGroup,
+    });
+    let reopenCount = 0;
+    try {
+      const [issueRow] = await db
+        .select({ reopenCount: issues.reopenCount })
+        .from(issues)
+        .where(eq(issues.id, job.issueId))
+        .limit(1);
+      reopenCount = issueRow?.reopenCount ?? 0;
+    } catch (err) {
+      logger.warn({ err, jobId: job.id, issueId: job.issueId }, 'dispatcher: failed to read reopenCount, treating as 0');
+    }
+    const overTokens = bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens;
+    const overCycles = bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
+    if (overTokens || overCycles) {
+      const reason = overTokens ? ('tokens' as const) : ('reopen_cycles' as const);
+      logger.info(
+        {
+          jobId: job.id,
+          issueId: job.issueId,
+          sessionGroup: preDispatchOverrides.sessionGroup,
+          estTokens,
+          reopenCount,
+          maxResumeTokens: bounds.maxResumeTokens,
+          maxResumeReopenCycles: bounds.maxResumeReopenCycles,
+          reason,
+        },
+        'dispatcher: sessionGroup resume bound exceeded — dispatching fresh session',
+      );
+      recordResumeBoundFresh(reason);
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'pipeline.resume_bound',
+          data: { reason, estTokens, reopenCount },
+        });
+      }
+      priorClaudeSessionId = null;
+      pinDeviceId = null;
+    }
+  }
+
   // Device selection splits cleanly into two cases (jobs/retry.ts owns the
   // retry side):
   //
@@ -315,7 +379,7 @@ async function dispatchViaRunner(
   //     fight it (a device tripped after its 3 tries would be skipped for the
   //     rest of the chain instead of getting its turn next round).
   const autoRetry = readAutoRetryPayload(job.payload);
-  const isRetry = job.retryOf != null;
+  // isRetry was hoisted above to gate the ISS-580 bound check block.
 
   let excludeDeviceIds: string[];
   let skipPrimary: boolean;
