@@ -11,6 +11,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   recordDispatchBarrierSkip,
+  recordResumeBoundFresh,
   recordRunnerDeathDetection,
 } from '../observability/hold-metrics.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
@@ -33,7 +34,11 @@ import { finalizeFailedJob } from './finalize-failure.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 import { readAutoRetryPayload } from './retry.js';
-import { findPriorSessionInGroup } from './session-resume.js';
+import {
+  estimateGroupContextTokens,
+  findPriorSessionInGroup,
+  loadResumeBounds,
+} from './session-resume.js';
 import {
   type StageOverrides,
   escalateModel,
@@ -295,6 +300,57 @@ async function dispatchViaRunner(
     if (prior) {
       priorClaudeSessionId = prior.claudeSessionId;
       pinDeviceId = prior.deviceId;
+    }
+  }
+
+  // ISS-580 — bound check: if the accumulated context of the sessionGroup
+  // exceeds the configured token limit, or the issue has been reopened more
+  // than the cycle limit, drop the resume and dispatch fresh. Continuity is
+  // preserved via the existing handoff/sessionContext mechanism (ISS-537).
+  // This block only runs when a prior session was actually found above.
+  if (priorClaudeSessionId && preDispatchOverrides.sessionGroup && job.issueId) {
+    const bounds = await loadResumeBounds(job.projectId);
+    const estTokens = await estimateGroupContextTokens({
+      issueId: job.issueId,
+      sessionGroup: preDispatchOverrides.sessionGroup,
+    });
+    let reopenCount = 0;
+    try {
+      const [issueRow] = await db
+        .select({ reopenCount: issues.reopenCount })
+        .from(issues)
+        .where(eq(issues.id, job.issueId))
+        .limit(1);
+      reopenCount = issueRow?.reopenCount ?? 0;
+    } catch (err) {
+      logger.warn({ err, jobId: job.id, issueId: job.issueId }, 'dispatcher: failed to read reopenCount, treating as 0');
+    }
+    const overTokens = bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens;
+    const overCycles = bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
+    if (overTokens || overCycles) {
+      const reason = overTokens ? ('tokens' as const) : ('reopen_cycles' as const);
+      logger.info(
+        {
+          jobId: job.id,
+          issueId: job.issueId,
+          sessionGroup: preDispatchOverrides.sessionGroup,
+          estTokens,
+          reopenCount,
+          maxResumeTokens: bounds.maxResumeTokens,
+          maxResumeReopenCycles: bounds.maxResumeReopenCycles,
+          reason,
+        },
+        'dispatcher: sessionGroup resume bound exceeded — dispatching fresh session',
+      );
+      recordResumeBoundFresh(reason);
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'pipeline.resume_bound',
+          data: { reason, estTokens, reopenCount },
+        });
+      }
+      priorClaudeSessionId = null;
+      pinDeviceId = null;
     }
   }
 

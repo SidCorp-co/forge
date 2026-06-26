@@ -387,6 +387,39 @@ describe('sessionGroups + onResumeFail', () => {
   it('rejects unknown onResumeFail policy', () => {
     expect(() => pipelineConfigSchema.parse({ onResumeFail: 'retry' })).toThrow();
   });
+
+  // ISS-580 — maxResumeTokens + maxResumeReopenCycles
+  it('accepts maxResumeTokens and maxResumeReopenCycles as optional non-negative integers', () => {
+    const parsed = pipelineConfigSchema.parse({
+      maxResumeTokens: 200_000,
+      maxResumeReopenCycles: 5,
+    });
+    expect(parsed.maxResumeTokens).toBe(200_000);
+    expect(parsed.maxResumeReopenCycles).toBe(5);
+  });
+
+  it('accepts 0 for maxResumeTokens and maxResumeReopenCycles (gate disabled)', () => {
+    const parsed = pipelineConfigSchema.parse({
+      maxResumeTokens: 0,
+      maxResumeReopenCycles: 0,
+    });
+    expect(parsed.maxResumeTokens).toBe(0);
+    expect(parsed.maxResumeReopenCycles).toBe(0);
+  });
+
+  it('rejects negative maxResumeTokens', () => {
+    expect(() => pipelineConfigSchema.parse({ maxResumeTokens: -1 })).toThrow();
+  });
+
+  it('rejects negative maxResumeReopenCycles', () => {
+    expect(() => pipelineConfigSchema.parse({ maxResumeReopenCycles: -1 })).toThrow();
+  });
+
+  it('fields are absent (undefined) when not configured', () => {
+    const parsed = pipelineConfigSchema.parse({ enabled: true });
+    expect(parsed.maxResumeTokens).toBeUndefined();
+    expect(parsed.maxResumeReopenCycles).toBeUndefined();
+  });
 });
 
 describe('mergePipelineConfig', () => {

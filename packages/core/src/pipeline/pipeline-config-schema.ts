@@ -355,6 +355,15 @@ export const pipelineConfigSchema = z
     // PR-5 — session-group routing.
     sessionGroups: sessionGroupsSchema.optional(),
     onResumeFail: z.enum(['fresh', 'abort']).optional(),
+    // ISS-580 — bound the accumulated context a sessionGroup is allowed to
+    // resume. When the estimated peak context (MAX(input_tokens+cache_read_tokens)
+    // over the group's usage_records) exceeds this value, or the issue's
+    // reopenCount exceeds maxResumeReopenCycles, the dispatcher starts a FRESH
+    // session instead of resuming — continuity is preserved via the existing
+    // handoff/sessionContext mechanism (ISS-537). Set 0 to disable the gate.
+    // Defaults: 150000 tokens / 3 reopen cycles.
+    maxResumeTokens: z.number().int().min(0).optional(),
+    maxResumeReopenCycles: z.number().int().min(0).optional(),
     // ISS-232 — git-aware L2 dependency gate config.
     mergeStates: mergeStatesSchema.optional(),
     // Project-default MCP servers seeded into EVERY job's temp `--mcp-config`

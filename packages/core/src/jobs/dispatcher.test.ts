@@ -101,6 +101,8 @@ vi.mock('../observability/hold-metrics.js', () => ({
   // leaves a job queued. Test mock so the unit tests don't need a
   // metrics-state reset between cases.
   recordDispatchBarrierSkip: vi.fn(),
+  // ISS-580 — counter for fresh-instead-of-resume decisions.
+  recordResumeBoundFresh: vi.fn(),
 }));
 
 // ISS-336 — the dispatcher layers the project's Postman MCP entry onto the
@@ -112,6 +114,16 @@ vi.mock('../integrations/postman/resolver.js', () => ({
   applyPostmanMcpServers: vi.fn(
     async (_projectId: string, current: Record<string, unknown> | null) => current,
   ),
+}));
+
+// ISS-580 — mock session-resume helpers so bound-check tests can directly
+// control what each function returns without wiring up the full DB chain.
+// Defaults: no prior session (→ resume skipped), conservative defaults bounds,
+// and 0 estimated tokens. Per-test overrides use mockResolvedValueOnce.
+vi.mock('./session-resume.js', () => ({
+  findPriorSessionInGroup: vi.fn(async () => null),
+  loadResumeBounds: vi.fn(async () => ({ maxResumeTokens: 150_000, maxResumeReopenCycles: 3 })),
+  estimateGroupContextTokens: vi.fn(async () => 0),
 }));
 
 const { db } = await import('../db/client.js');
@@ -134,6 +146,8 @@ const { claimRunnerSlot } = await import('./dispatch-gates.js');
 const { getRunnerAdapter } = await import('../runners/registry.js');
 const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
 const { applyPostmanMcpServers } = await import('../integrations/postman/resolver.js');
+const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import('./session-resume.js');
+const { recordResumeBoundFresh } = await import('../observability/hold-metrics.js');
 
 type Row = Record<string, unknown>;
 
@@ -548,6 +562,175 @@ describe('jobs/dispatcher', () => {
   // project (cross-tenant) and defeating the active=false/deleted drop
   // guarantee. Dispatch a project WITH Postman, then one WITHOUT, and assert the
   // second envelope carries no postman entry.
+  // ISS-580 — Resume bound check tests.
+  //
+  // The bound check runs when priorClaudeSessionId is set AND
+  // preDispatchOverrides.sessionGroup is non-null. To get a non-null
+  // sessionGroup from resolveStageOverrides, the job must have stageStatus
+  // in its payload AND the project must have a matching states entry with
+  // sessionGroup configured.
+  //
+  // DB select order for these tests (type='code', stageStatus='approved'):
+  //   1. job lookup
+  //   2. checkMonthlyBudget → resolveStageOverrides → loadStageMap
+  //   3. dispatchViaRunner fallback chain
+  //   4. dispatchViaRunner → resolveStageOverrides → loadStageMap (preDispatch)
+  //   5. [new] reopenCount lookup (issues table)
+  //   6. loadRepoPath
+
+  const agentConfigWithGroup = {
+    pipelineConfig: {
+      sessionGroups: { build: ['approved'] },
+      states: { approved: { sessionGroup: 'build' } },
+    },
+  };
+
+  it('ISS-580: resumes normally when both bounds are under threshold (regression guard)', async () => {
+    mockSelectOnce([{
+      id: 'j-resume',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-1',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
+    // Prior session exists (below bound).
+    (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      claudeSessionId: 'cli-old',
+      deviceId: 'd-old',
+    });
+    // Bounds: 150k tokens / 3 cycles; estimated: 50k; reopenCount: 0.
+    (estimateGroupContextTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce(50_000);
+    mockSelectOnce([{ reopenCount: 0 }]); // reopenCount lookup
+    const dispatchSpy = mockRunnerDispatch({ deviceId: 'd-old' });
+    mockUpdateReturn([{ id: 'j-resume' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+
+    const result = await handleDispatch({ jobId: 'j-resume' });
+    expect(result).toBe('dispatched');
+    expect(recordResumeBoundFresh).not.toHaveBeenCalled();
+    // resume proceeds — adapter is called with the prior session's device
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISS-580: drops resume when estimated tokens exceed maxResumeTokens', async () => {
+    mockSelectOnce([{
+      id: 'j-over-tokens',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-2',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
+    (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      claudeSessionId: 'cli-huge',
+      deviceId: 'd-huge',
+    });
+    // Over token bound (363K > 150K default).
+    (estimateGroupContextTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce(363_000);
+    mockSelectOnce([{ reopenCount: 0 }]); // reopenCount lookup
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-over-tokens' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+
+    const result = await handleDispatch({ jobId: 'j-over-tokens' });
+    expect(result).toBe('dispatched');
+    // Counter incremented with reason 'tokens'.
+    expect(recordResumeBoundFresh).toHaveBeenCalledWith('tokens');
+    // resume dropped — job dispatched to a freely-selected device (not pinned).
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISS-580: drops resume when reopenCount exceeds maxResumeReopenCycles', async () => {
+    mockSelectOnce([{
+      id: 'j-over-cycles',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-3',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
+    (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      claudeSessionId: 'cli-stale',
+      deviceId: 'd-stale',
+    });
+    // Under token bound but over cycle bound (4 > 3 default).
+    (estimateGroupContextTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce(10_000);
+    mockSelectOnce([{ reopenCount: 4 }]); // reopenCount lookup
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-over-cycles' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+
+    const result = await handleDispatch({ jobId: 'j-over-cycles' });
+    expect(result).toBe('dispatched');
+    expect(recordResumeBoundFresh).toHaveBeenCalledWith('reopen_cycles');
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISS-580: gate disabled (maxResumeTokens=0) skips token check', async () => {
+    mockSelectOnce([{
+      id: 'j-gate-off',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-4',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
+    (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      claudeSessionId: 'cli-ok',
+      deviceId: 'd-ok',
+    });
+    // Gate disabled for tokens; huge count, still resumes.
+    (loadResumeBounds as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      maxResumeTokens: 0,
+      maxResumeReopenCycles: 3,
+    });
+    (estimateGroupContextTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce(999_999);
+    mockSelectOnce([{ reopenCount: 0 }]); // reopenCount lookup
+    const dispatchSpy = mockRunnerDispatch({ deviceId: 'd-ok' });
+    mockUpdateReturn([{ id: 'j-gate-off' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+
+    const result = await handleDispatch({ jobId: 'j-gate-off' });
+    expect(result).toBe('dispatched');
+    expect(recordResumeBoundFresh).not.toHaveBeenCalled();
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISS-580: no sessionGroup → bound check is a no-op (no prior session lookup)', async () => {
+    // Job without stageStatus → resolveStageOverrides returns EMPTY (sessionGroup=null).
+    mockSelectOnce([{
+      id: 'j-no-group',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-5',
+      type: 'code',
+      payload: { foo: 'bar' },
+    }]);
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain (no stageStatus → no budget-check loadStageMap)
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-no-group' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+
+    const result = await handleDispatch({ jobId: 'j-no-group' });
+    expect(result).toBe('dispatched');
+    expect(findPriorSessionInGroup).not.toHaveBeenCalled();
+    expect(recordResumeBoundFresh).not.toHaveBeenCalled();
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('ISS-336: does not leak the Postman MCP entry into a later dispatch for another project', async () => {
     // Dispatch 1 — project p1 has an active Postman integration.
     (applyPostmanMcpServers as ReturnType<typeof vi.fn>).mockImplementationOnce(

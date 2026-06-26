@@ -24,6 +24,8 @@
 
 import type { GateSkipReason } from '../jobs/dispatch-gates.js';
 
+export type ResumeBoundReason = 'tokens' | 'reopen_cycles';
+
 const RUNNER_DEATH_BUCKETS_SECONDS = [10, 20, 30, 45, 60, 90, 120, 300] as const;
 
 interface RunnerDeathHistogram {
@@ -37,9 +39,15 @@ interface DispatchBarrierCounters {
   count: number;
 }
 
+interface ResumeBoundFreshCounters {
+  reason: ResumeBoundReason;
+  count: number;
+}
+
 interface HoldMetricsState {
   runnerDeath: RunnerDeathHistogram;
   dispatchBarrierSkips: Map<GateSkipReason, DispatchBarrierCounters>;
+  resumeBoundFresh: Map<ResumeBoundReason, ResumeBoundFreshCounters>;
 }
 
 function makeState(): HoldMetricsState {
@@ -52,6 +60,7 @@ function makeState(): HoldMetricsState {
   return {
     runnerDeath: histogram,
     dispatchBarrierSkips: new Map(),
+    resumeBoundFresh: new Map(),
   };
 }
 
@@ -69,6 +78,17 @@ export function recordDispatchBarrierSkip(reason: GateSkipReason): void {
     existing.count += 1;
   } else {
     state.dispatchBarrierSkips.set(reason, { reason, count: 1 });
+  }
+}
+
+// ISS-580 — increment resume_bound_fresh_total{reason} when the dispatcher
+// decides to dispatch fresh instead of resuming a prior session.
+export function recordResumeBoundFresh(reason: ResumeBoundReason): void {
+  const existing = state.resumeBoundFresh.get(reason);
+  if (existing) {
+    existing.count += 1;
+  } else {
+    state.resumeBoundFresh.set(reason, { reason, count: 1 });
   }
 }
 
@@ -90,6 +110,7 @@ export interface HoldMetricsSnapshot {
     buckets: Array<{ leSeconds: number; count: number }>;
   };
   dispatchBarrierSkips: DispatchBarrierCounters[];
+  resumeBoundFresh: ResumeBoundFreshCounters[];
 }
 
 export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
@@ -103,6 +124,7 @@ export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
       })),
     },
     dispatchBarrierSkips: [...state.dispatchBarrierSkips.values()],
+    resumeBoundFresh: [...state.resumeBoundFresh.values()],
   };
 }
 
