@@ -1,14 +1,15 @@
 /**
- * ISS-336 — dispatch-time Postman MCP resolver.
+ * ISS-336 / ISS-581 — dispatch-time Postman MCP resolver.
  *
- * This is the single bridge between the integration config layer and the
- * existing mcpServers-override pipeline. On EVERY dispatch the dispatcher
- * calls {@link applyPostmanMcpServers}; if the project has an active `postman`
- * integration we decrypt its API key and render a remote-HTTP + Bearer
- * `mcpServers.postman` entry into the per-project override (project-default,
- * all stages — NOT pinned to a single stage). The key is rendered only into
- * the dispatch payload (which the runner writes to a temp `--mcp-config`
- * file); it is never persisted to DB jsonb, logs, or API responses.
+ * Stage opt-in: the resolver injects ONLY when the resolved `mcpServers` map
+ * for the current dispatch carries `postman: true` (sentinel). A stage opts in
+ * by listing `postman: true` in its `pipelineConfig.states.<status>.mcpServers`
+ * or the project-default `pipelineConfig.mcpServers`. The sentinel is replaced
+ * with the real secret-bearing spec; absent → not injected.
+ *
+ * The key is rendered only into the dispatch payload (which the runner writes
+ * to a temp `--mcp-config` file); it is never persisted to DB jsonb, logs,
+ * or API responses.
  *
  * Drop behaviour: the query filters `active = true`, so disabling
  * (`active=false`) or soft-deleting the integration makes the NEXT dispatch
@@ -71,16 +72,22 @@ export async function resolvePostmanMcpEntry(
 }
 
 /**
- * Merge the project's Postman MCP entry (if any) into a resolved mcpServers
- * override. Returns the (possibly new) override object, or the original value
- * unchanged when there is no active Postman integration. Never mutates the
- * caller's object in place.
+ * Merge the project's Postman MCP entry into a resolved mcpServers override.
+ * Injects ONLY when the stage opted in via `postman: true` sentinel in its
+ * resolved map. Strips the sentinel regardless (never leaks `true` to runner).
+ * Never mutates the caller's object in place.
  */
 export async function applyPostmanMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
 ): Promise<Record<string, unknown> | null> {
+  if (current?.postman !== true) return current;
+  // Stage declared opt-in — resolve the real entry.
   const entry = await resolvePostmanMcpEntry(projectId);
-  if (!entry) return current;
-  return { ...(current ?? {}), postman: entry };
+  const { postman: _sentinel, ...rest } = current;
+  if (!entry) {
+    // Active integration absent or decrypt failed — drop sentinel, don't inject.
+    return Object.keys(rest).length > 0 ? rest : null;
+  }
+  return { ...rest, postman: entry };
 }

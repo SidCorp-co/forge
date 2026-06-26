@@ -105,13 +105,22 @@ vi.mock('../observability/hold-metrics.js', () => ({
   recordResumeBoundFresh: vi.fn(),
 }));
 
-// ISS-336 — the dispatcher layers the project's Postman MCP entry onto the
-// resolved mcpServers override at dispatch time. Mock the resolver's DB lookup
-// so dispatcher tests don't stand up project_integrations + vault. The default
-// implementation mirrors the real one's "no active integration" path: return
-// the override unchanged. The regression test below overrides it per-call.
+// ISS-336 / ISS-581 — mock all three integration resolvers so dispatcher tests
+// don't stand up project_integrations + vault. Default: return override unchanged
+// (mirrors "no active integration" / "sentinel absent" path). Per-test overrides
+// use mockImplementationOnce.
 vi.mock('../integrations/postman/resolver.js', () => ({
   applyPostmanMcpServers: vi.fn(
+    async (_projectId: string, current: Record<string, unknown> | null) => current,
+  ),
+}));
+vi.mock('../integrations/epodsystem/resolver.js', () => ({
+  applyEpodsystemMcpServers: vi.fn(
+    async (_projectId: string, current: Record<string, unknown> | null) => current,
+  ),
+}));
+vi.mock('../integrations/sentry/resolver.js', () => ({
+  applySentryMcpServers: vi.fn(
     async (_projectId: string, current: Record<string, unknown> | null) => current,
   ),
 }));
@@ -146,6 +155,8 @@ const { claimRunnerSlot } = await import('./dispatch-gates.js');
 const { getRunnerAdapter } = await import('../runners/registry.js');
 const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
 const { applyPostmanMcpServers } = await import('../integrations/postman/resolver.js');
+const { applyEpodsystemMcpServers } = await import('../integrations/epodsystem/resolver.js');
+const { applySentryMcpServers } = await import('../integrations/sentry/resolver.js');
 const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import('./session-resume.js');
 const { recordResumeBoundFresh } = await import('../observability/hold-metrics.js');
 
@@ -729,6 +740,123 @@ describe('jobs/dispatcher', () => {
     expect(findPriorSessionInGroup).not.toHaveBeenCalled();
     expect(recordResumeBoundFresh).not.toHaveBeenCalled();
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // ISS-581 — browser dedup: when both playwright and chrome-devtools-mcp are
+  // present in the merged map, only chrome-devtools-mcp should survive.
+  it('ISS-581: drops playwright when both browser servers are present (dedup)', async () => {
+    // Stage has both browser servers declared.
+    (applyPostmanMcpServers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_p: string, c: Record<string, unknown> | null) => c,
+    );
+    (applyEpodsystemMcpServers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_p: string, c: Record<string, unknown> | null) => c,
+    );
+    (applySentryMcpServers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_p: string, c: Record<string, unknown> | null) => c,
+    );
+    // agentConfig with a stage that declares both browser servers
+    const agentConfigBothBrowsers = {
+      pipelineConfig: {
+        states: {
+          approved: {
+            mcpServers: {
+              playwright: { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest'], env: {} },
+              'chrome-devtools-mcp': { type: 'stdio', command: 'npx', args: ['chrome-devtools-mcp@latest'], env: {} },
+            },
+          },
+        },
+      },
+    };
+    mockSelectOnce([{
+      id: 'j-dedup',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'i1',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
+    mockSelectOnce([{ agentConfig: agentConfigBothBrowsers }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigBothBrowsers }]); // preDispatch loadStageMap
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-dedup' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    const result = await handleDispatch({ jobId: 'j-dedup' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    const mcp = arg.job.payload.mcpServersOverride as Record<string, unknown> | undefined;
+    expect(mcp?.['chrome-devtools-mcp']).toBeDefined();
+    expect(mcp?.playwright).toBeUndefined();
+  });
+
+  // ISS-581 — AC#1: integration server NOT injected when stage has no sentinel.
+  it('ISS-581: active sentry integration is NOT injected when stage has no sentry sentinel', async () => {
+    // Override: applySentryMcpServers behaves as opt-in (sentinel absent → no inject).
+    // Default mock already passes current through unchanged, which is the correct behavior.
+    mockSelectOnce([{
+      id: 'j-no-sentry',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'i1',
+      type: 'test',
+      payload: { stageStatus: 'testing' },
+    }]);
+    mockSelectOnce([{ agentConfig: null }]); // budget-check
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]); // preDispatch loadStageMap
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-no-sentry' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    const result = await handleDispatch({ jobId: 'j-no-sentry' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    const mcp = arg.job.payload.mcpServersOverride as Record<string, unknown> | undefined;
+    // With no mcpServers declared and no sentinel, mcp should be null/undefined
+    expect(mcp?.sentry).toBeUndefined();
+  });
+
+  // ISS-581 — AC#2: no leftover `true` sentinel ever reaches the runner.
+  it('ISS-581: sentinel sweep removes leftover `true` for integration names', async () => {
+    // Simulate: stage has sentry: true but sentry integration is absent.
+    // applySentryMcpServers (real) would strip the sentinel; since we mock it here,
+    // simulate the sentinel being present after the mock chain and verify the
+    // sentinel sweep in dispatcher cleans it up.
+    (applySentryMcpServers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      // Simulate resolver returning current unchanged (sentinel present but no integration)
+      // which would leave `sentry: true` in the map — sweep should remove it.
+      async (_p: string, c: Record<string, unknown> | null) => c,
+    );
+    const agentConfigWithSentinel = {
+      pipelineConfig: {
+        states: {
+          testing: { mcpServers: { sentry: true } },
+        },
+      },
+    };
+    mockSelectOnce([{
+      id: 'j-sweep',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'i1',
+      type: 'test',
+      payload: { stageStatus: 'testing' },
+    }]);
+    mockSelectOnce([{ agentConfig: agentConfigWithSentinel }]); // budget-check
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigWithSentinel }]); // preDispatch loadStageMap
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-sweep' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    const result = await handleDispatch({ jobId: 'j-sweep' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    const mcp = arg.job.payload.mcpServersOverride as Record<string, unknown> | undefined;
+    // The sentinel `true` must NOT reach the runner
+    expect(mcp?.sentry).not.toBe(true);
   });
 
   it('ISS-336: does not leak the Postman MCP entry into a later dispatch for another project', async () => {

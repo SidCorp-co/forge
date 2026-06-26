@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   STEP_TOGGLE_KEYS,
+  defaultStatesConfig,
   mergePipelineConfig,
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
@@ -419,6 +420,23 @@ describe('sessionGroups + onResumeFail', () => {
     const parsed = pipelineConfigSchema.parse({ enabled: true });
     expect(parsed.maxResumeTokens).toBeUndefined();
     expect(parsed.maxResumeReopenCycles).toBeUndefined();
+  });
+});
+
+describe('defaultStatesConfig (ISS-581)', () => {
+  it('ships disallowedTools for developed/testing/released', () => {
+    const config = defaultStatesConfig();
+    const EXPECTED = ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'];
+    expect(config.developed?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
+    expect(config.testing?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
+    expect(config.released?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
+  });
+
+  it('does NOT set disallowedTools on open/confirmed/clarified/approved/tested/reopen', () => {
+    const config = defaultStatesConfig();
+    for (const stage of ['open', 'confirmed', 'clarified', 'approved', 'tested', 'reopen'] as const) {
+      expect(config[stage]?.disallowedTools).toBeUndefined();
+    }
   });
 });
 
