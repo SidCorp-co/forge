@@ -13,6 +13,10 @@
       ],
       "env": ["NODE_ENV"]
     },
+    "@forge/contracts#build": {
+      "dependsOn": [],
+      "outputs": []
+    },
     "dev": {
       "cache": false,
       "persistent": true
