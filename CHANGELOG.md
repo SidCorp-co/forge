@@ -100,6 +100,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Schedules table now includes template_key, params, mode, and applied_message_versions columns for skill improvements.
 - Knowledge entries now stay current automatically: shipped features promote inferred entries to verified, a weekly drift check proposes updates when documentation falls behind the codebase, and durable memory lessons can be nominated for promotion into curated knowledge via a human review gate.
 - Pipeline jobs no longer get stuck in an infinite triage loop when the forge MCP server fails to connect at initialization.
+- QA evidence screenshots from forge-verify-live are now reliably attached to comments using the forge_uploads presigned-URL pattern, eliminating false 'screenshot attached' claims when FORGE_API_TOKEN was unset.
 
 ## [0.3.0] - 2026-06-11
 
