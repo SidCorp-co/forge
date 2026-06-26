@@ -68,14 +68,14 @@ Forge gives you a tool for things agents routinely do in prose. When you hit the
 
 | When you need | Use | Red flag (DON'T) |
 |---|---|---|
-| Ordering between issues | \`forge_project_pm action=set_dependency kind:blocks\` (\`from\` = the blocker) | Describing the dependency in prose instead of setting the edge — only a \`blocks\` edge gates dispatch |
+| Ordering between issues | Blocker known **at create time** → \`forge_issues.create { data.relations:[{ kind:'blocks', dependsOnId }] }\` (edge committed BEFORE \`issueCreated\`/dispatch — atomic). Both issues already exist → \`forge_project_pm action=set_dependency kind:blocks\` (\`from\` = the blocker). | Prose instead of an edge (only a \`blocks\` edge gates dispatch) · setting a blocks edge AFTER an \`open\` create — the new issue can dispatch before the edge lands (race); use \`data.relations\` or create at \`draft\` first |
 | To record a note / follow-up | create an issue at \`draft\` | Creating it at \`open\` — that auto-triages and spawns a pipeline run |
 | To change project config (\`pipelineConfig.states\`, \`projectFacts\`, …) | GET the current config first, then send a complete entry | Blind-patching a nested map you never read — you can clobber sibling keys |
 | Before you design / fix | \`forge_memory.search\` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |
 | To park work that never started | leave it at \`draft\` | \`on_hold\` from \`draft\` — \`on_hold\` is a deliberate pause for ACTIVE work only |
 | To finish a fix made by hand, outside the pipeline | drive it through \`status\` and/or capture a \`forge_memory\` learning | Fixing it and forgetting — no status move, no learning recorded |
 
-**Forge red flags:** prose-deps · open-as-note · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.
+**Forge red flags:** prose-deps · open-then-block · open-as-note · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.
 Full reference: \`docs/guides/forge-affordances.md\`.`;
 
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
