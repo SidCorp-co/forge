@@ -33,6 +33,8 @@ The two modes differ only in steps 11 and 13 (push + status). Everything else (b
 
 ## Quick Start (Pipeline Mode)
 
+> **Pull-model note:** On large issues `forge_step_start` returns a lean manifest (`bodyTruncated:true`). Fetch `plan`/`description`/`acceptanceCriteria` as needed via `forge_issues.get { documentId, fields: ['plan'] }` rather than assuming full body is present.
+
 When the issue has a plan and triage/plan comments from Forge AI:
 
 1. Fetch issue + comments → extract plan and complexity from triage. Also detect **deployMode** (see above).

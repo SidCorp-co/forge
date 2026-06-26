@@ -28,6 +28,8 @@ Read `references/fix-workflow.md` for parsing rejection formats, branch handling
 
 ## Workflow
 
+> **Pull-model note:** On large issues `forge_step_start` returns a lean manifest (`bodyTruncated:true`). Fetch `plan`/`description`/`acceptanceCriteria` as needed via `forge_issues.get { documentId, fields: ['plan'] }` rather than assuming full body is present.
+
 ### Step 1: Fetch Issue & Feedback
 
 ```

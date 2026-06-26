@@ -26,14 +26,36 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 const loadIssue = vi.fn();
+// Default heavyFieldChars returns 0 so all tests use the full-body path
+// unless overridden per-test.
+const heavyFieldChars = vi.fn(() => 0);
 vi.mock('./forge-issues.js', () => ({
   loadIssue: (...args: unknown[]) => loadIssue(...args),
+  heavyFieldChars: (...args: unknown[]) => heavyFieldChars(...args),
   // identity serializer — bundle assertions read the raw row. The
   // attachment-aware variant just adds an empty `attachments[]` here (the
   // real DB join is exercised in forge-issues.test.ts).
   serialize: (row: unknown) => row,
   serializeWithAttachments: async (row: Record<string, unknown>) => ({
     ...row,
+    attachments: [],
+  }),
+  serializeManifestWithAttachments: async (row: Record<string, unknown>) => ({
+    documentId: row.id,
+    issueId: row.issueId ?? 'ISS-1',
+    title: row.title ?? 'Test',
+    status: row.status,
+    bodyTruncated: true as const,
+    bodyManifest: {
+      description: null,
+      plan: row.plan != null ? { chars: (row.plan as string).length } : null,
+      acceptanceCriteria: null,
+      suggestedSolution: null,
+      sessionContext: null,
+      aiSummary: null,
+      aiSuggestedSolution: null,
+      aiAcceptanceCriteria: null,
+    },
     attachments: [],
   }),
 }));
@@ -305,5 +327,91 @@ describe('forge_step_start', () => {
     expect(result.commentsTruncated).toBeUndefined();
     expect(result.commentsReturned).toBeUndefined();
     expect(result.commentsNotice).toBeUndefined();
+  });
+
+  it('small issue (heavy chars ≤ threshold) returns full body without bodyTruncated', async () => {
+    const tool = forgeStepStartTool(ctx);
+    loadIssue.mockResolvedValue(makeIssue({ plan: 'short plan' }));
+    heavyFieldChars.mockReturnValue(10); // well under threshold
+    queueHappyPath();
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+      string,
+      // biome-ignore lint/suspicious/noExplicitAny: test readback
+      any
+    >;
+
+    // Full body path: no manifest, no truncation flag
+    expect(result.issue.bodyTruncated).toBeUndefined();
+    expect(result.issue.bodyManifest).toBeUndefined();
+    expect(result.issue.attachments).toEqual([]);
+  });
+
+  it('large issue (heavy chars > threshold) returns lean manifest + bodyTruncated:true', async () => {
+    const tool = forgeStepStartTool(ctx);
+    const longPlan = 'x'.repeat(6000);
+    loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
+    heavyFieldChars.mockReturnValue(6000); // over 2000 threshold
+    queueHappyPath();
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+      string,
+      // biome-ignore lint/suspicious/noExplicitAny: test readback
+      any
+    >;
+
+    expect(result.issue.bodyTruncated).toBe(true);
+    expect(result.issue.bodyManifest).toBeDefined();
+    expect(result.issue.bodyManifest.plan).toEqual({ chars: 6000 });
+    // Full plan body must NOT be inline
+    expect(result.issue.plan).toBeUndefined();
+    expect(result.issue.attachments).toEqual([]);
+  });
+
+  it('lean issue JSON is smaller than full JSON for plan > 5000 chars (token-savings assertion)', async () => {
+    const tool = forgeStepStartTool(ctx);
+    const longPlan = 'y'.repeat(5500);
+
+    // Small issue: heavyFieldChars returns 0 → serializeWithAttachments
+    heavyFieldChars.mockReturnValue(0);
+    loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
+    queueHappyPath();
+    const fullResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<string, unknown>;
+    const fullSize = JSON.stringify(fullResult.issue).length;
+
+    // Large issue: heavyFieldChars returns 5500 → serializeManifestWithAttachments
+    heavyFieldChars.mockReturnValue(5500);
+    loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
+    queueHappyPath();
+    const leanResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<string, unknown>;
+    const leanSize = JSON.stringify(leanResult.issue).length;
+
+    expect(leanSize).toBeLessThan(fullSize);
+  });
+
+  it('threshold boundary: exactly at threshold returns full body, one over returns manifest', async () => {
+    const tool = forgeStepStartTool(ctx);
+
+    // Exactly at threshold (2000) → full body (≤ 2000 = NOT over)
+    heavyFieldChars.mockReturnValue(2000);
+    loadIssue.mockResolvedValueOnce(makeIssue({ status: 'open' })); // status=open → no transition
+    queueHappyPath();
+    const atThreshold = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'triage',
+    })) as Record<string, unknown>;
+    expect((atThreshold.issue as Record<string, unknown>).bodyTruncated).toBeUndefined();
+
+    // One over threshold (2001) → manifest
+    heavyFieldChars.mockReturnValue(2001);
+    loadIssue.mockResolvedValueOnce(makeIssue({ status: 'open' })); // fresh object
+    queueHappyPath();
+    const overThreshold = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'triage',
+    })) as Record<string, unknown>;
+    expect((overThreshold.issue as Record<string, unknown>).bodyTruncated).toBe(true);
   });
 });

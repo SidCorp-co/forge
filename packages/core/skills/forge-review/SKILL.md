@@ -23,6 +23,8 @@ Works in three modes:
 
 ## Review Process
 
+> **Pull-model note:** On large issues `forge_step_start` returns a lean manifest (`bodyTruncated:true`). Fetch `acceptanceCriteria`/`description` as needed via `forge_issues.get { documentId, fields: ['acceptanceCriteria'] }` rather than assuming full body is present.
+
 ### 1. Get the Diff
 
 In pipeline mode, first make sure you're looking at the right code: `git fetch`, then check out the issue's ISS-* branch (from the check-in bundle / `sessionContext.branch`, else `git branch -r | grep ISS-XX`). Then diff the branch's **net change against the base branch** — robust no matter how many implementation/fix commits exist:

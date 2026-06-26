@@ -30,6 +30,8 @@ Read `references/test-approach.md` for detailed testing patterns (API auth, brow
 
 ## Workflow
 
+> **Pull-model note:** On large issues `forge_step_start` returns a lean manifest (`bodyTruncated:true`). Fetch `acceptanceCriteria`/`plan` as needed via `forge_issues.get { documentId, fields: ['acceptanceCriteria'] }` rather than assuming full body is present.
+
 ### Step 0: Local-only mode guard
 
 Call `forge_config → get` and `forge_coolify_deploy → list`. If `previewDeploy` is null/missing AND Coolify list is empty → project is in **local-only mode**.

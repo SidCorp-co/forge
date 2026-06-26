@@ -33,6 +33,8 @@ The tier is determined by the triage comment's complexity classification.
 
 ## Workflow
 
+> **Pull-model note:** On large issues `forge_step_start` returns a lean manifest (`bodyTruncated:true`). Fetch `plan`/`description`/`acceptanceCriteria` as needed via `forge_issues.get { documentId, fields: ['description', 'acceptanceCriteria'] }` rather than assuming full body is present.
+
 ### Step 1: Fetch Issue & Triage Context
 
 Fetch the issue and its comments in parallel:
