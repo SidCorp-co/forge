@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pipeline jobs in large session groups no longer accumulate unbounded context across multiple stages, preventing mid-job compaction failures and MCP reconnection errors.
 - Fixed a race condition where a newly created issue could be picked up by the pipeline dispatcher before its blocking dependencies were set.
 - Re-adding an integration whose previous binding was disabled now returns a clear "already exists" conflict instead of a server error.
+- Pipeline stages can now independently choose which integrations and browser tools they need, automatically filtering unused connections to prevent tool-not-found errors.
 - The Rules editor in the Knowledge workspace now has a collapsible live preview pane that renders Mermaid diagrams and markdown as you type.
 - A new Knowledge workspace in the Library gives projects a visual map of their product — showing overviews, user-journey scenarios, and workflow diagrams rendered from curated knowledge entries, with a built-in skill to generate and maintain them automatically.
 - Projects can now store and search curated knowledge entries, which are used to automatically inject project context into agent prompts.
