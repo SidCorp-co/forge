@@ -26,6 +26,8 @@ This is the step between triage and plan: `confirmed → clarified`. Its job is 
 
 ## Workflow
 
+> **Pull-model note:** On large issues `forge_step_start` returns a lean manifest (`bodyTruncated:true`). Fetch `description`/`acceptanceCriteria` as needed via `forge_issues.get { documentId, fields: ['description', 'acceptanceCriteria'] }` rather than assuming full body is present.
+
 ### Step 1: Fetch Issue & Triage Context
 
 Fetch the issue and its comments in parallel:

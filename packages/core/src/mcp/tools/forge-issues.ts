@@ -159,6 +159,34 @@ const dataSchema = z
   .strict()
   .optional();
 
+/**
+ * Heavy free-text fields — large TOAST bodies that dominate token count on
+ * complex issues. When their total char count exceeds
+ * STEP_START_BODY_MANIFEST_THRESHOLD in forge_step_start, they are replaced
+ * by a manifest (field → {chars} | null) so agents can pull only the fields
+ * they need via `forge_issues.get { fields: [...] }`.
+ */
+export const STEP_START_HEAVY_FIELDS = [
+  'description',
+  'plan',
+  'acceptanceCriteria',
+  'suggestedSolution',
+  'sessionContext',
+  'aiSummary',
+  'aiSuggestedSolution',
+  'aiAcceptanceCriteria',
+] as const;
+
+export type StepStartHeavyField = (typeof STEP_START_HEAVY_FIELDS)[number];
+
+// Fields allowed in the get action's selective-projection param.
+// Mirrors STEP_START_HEAVY_FIELDS (the body fields omitted in lean step_start)
+// plus releaseNotes (small structured value sometimes worth fetching alone).
+const GET_SELECTABLE_FIELDS = [
+  ...STEP_START_HEAVY_FIELDS,
+  'releaseNotes',
+] as const;
+
 const inputSchema = z
   .object({
     action: z.enum([
@@ -179,6 +207,14 @@ const inputSchema = z
     filters: filtersSchema,
     data: dataSchema,
     limit: z.number().int().min(1).max(500).optional(),
+    /**
+     * For action=get only: fetch only the listed fields (+ documentId/issueId)
+     * instead of the full body. Useful when forge_step_start returned a lean
+     * manifest (bodyTruncated:true) — the agent pulls only the fields it needs
+     * rather than re-fetching the entire issue. Omitting this param is
+     * backwards-compatible (returns full body with attachments[]).
+     */
+    fields: z.array(z.enum(GET_SELECTABLE_FIELDS)).min(1).max(20).optional(),
   })
   .strict();
 
@@ -340,13 +376,78 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
 /**
  * `serialize` + the issue's attachment metadata (`attachments[]`). Used by the
  * focused single-issue surfaces an agent acts on — `get`, the write-returns,
- * and `forge_step_start` — so the agent always sees which files are attached
- * (then reads their bytes via `forge_uploads` action=fetch). NOT used by
- * `list` (a summary/browse surface) to avoid an attachment query per row.
+ * and `forge_step_start` (under-threshold path) — so the agent always sees
+ * which files are attached (then reads bytes via `forge_uploads` action=fetch).
+ * NOT used by `list` (summary/browse) to avoid an attachment query per row.
  */
 export async function serializeWithAttachments(row: IssueRow): Promise<Record<string, unknown>> {
   const attachments = await listIssueAttachments(row.id);
   return { ...serialize(row), attachments };
+}
+
+// ── Lean manifest serializer for forge_step_start over-threshold path ──────
+
+/** Sum of char lengths across all non-null heavy fields for threshold gating. */
+export function heavyFieldChars(row: IssueRow): number {
+  let total = 0;
+  if (row.description != null) total += row.description.length;
+  if (row.plan != null) total += row.plan.length;
+  if (row.acceptanceCriteria != null) total += row.acceptanceCriteria.length;
+  if (row.suggestedSolution != null) total += row.suggestedSolution.length;
+  if (row.sessionContext != null) total += JSON.stringify(row.sessionContext).length;
+  if (row.aiSummary != null) total += row.aiSummary.length;
+  if (row.aiSuggestedSolution != null) total += row.aiSuggestedSolution.length;
+  if (row.aiAcceptanceCriteria != null) total += JSON.stringify(row.aiAcceptanceCriteria).length;
+  return total;
+}
+
+/**
+ * Lean manifest — light scalars + `bodyManifest` (field → {chars} | null)
+ * + `bodyTruncated: true`. Used by forge_step_start when heavy fields exceed
+ * the threshold. Agents fetch fields they need via
+ * `forge_issues.get { documentId, fields: ['plan', ...] }`.
+ *
+ * Heavy fields are NOT emitted — only their sizes. Title framing is preserved
+ * (still needed for orientation). aiConfidence and releaseNotes are small
+ * scalars and remain inline.
+ */
+export function serializeManifest(row: IssueRow): Record<string, unknown> {
+  return {
+    documentId: row.id,
+    issueId: `ISS-${row.issSeq}`,
+    title: markUntrusted(row.title, { source: 'issue.title' }),
+    status: row.status,
+    priority: row.priority,
+    category: row.category,
+    complexity: row.complexity,
+    assigneeId: row.assigneeId,
+    parentIssueId: row.parentIssueId,
+    reopenCount: row.reopenCount,
+    aiConfidence: row.aiConfidence,
+    releaseNotes: row.releaseNotes,
+    mergedAt: row.mergedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    bodyTruncated: true as const,
+    bodyManifest: {
+      description: row.description != null ? { chars: row.description.length } : null,
+      plan: row.plan != null ? { chars: row.plan.length } : null,
+      acceptanceCriteria: row.acceptanceCriteria != null ? { chars: row.acceptanceCriteria.length } : null,
+      suggestedSolution: row.suggestedSolution != null ? { chars: row.suggestedSolution.length } : null,
+      sessionContext: row.sessionContext != null ? { chars: JSON.stringify(row.sessionContext).length } : null,
+      aiSummary: row.aiSummary != null ? { chars: row.aiSummary.length } : null,
+      aiSuggestedSolution: row.aiSuggestedSolution != null ? { chars: row.aiSuggestedSolution.length } : null,
+      aiAcceptanceCriteria: row.aiAcceptanceCriteria != null ? { chars: JSON.stringify(row.aiAcceptanceCriteria).length } : null,
+    },
+  };
+}
+
+/** `serializeManifest` + attachment metadata. Used by forge_step_start over-threshold path. */
+export async function serializeManifestWithAttachments(
+  row: IssueRow,
+): Promise<Record<string, unknown>> {
+  const attachments = await listIssueAttachments(row.id);
+  return { ...serializeManifest(row), attachments };
 }
 
 type TaskRow = {
@@ -443,9 +544,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*/releaseNotes) ' +
     'to stay under the response token cap; fetch the full body with action=get. ' +
     'Token discipline: use list (projection) to browse/triage many issues, and ' +
-    'get for the single full issue you are about to work on — do NOT re-get an ' +
-    'issue whose full body you already loaded this session (e.g. via ' +
-    'forge_step_start, which already returns the full body). ' +
+    'get for the single full issue you are about to work on. When forge_step_start ' +
+    'returned a lean manifest (bodyTruncated:true), pull only the fields you need ' +
+    'via get with fields:[...] (e.g. { action:"get", documentId, fields:["plan"] }). ' +
+    'Do NOT re-get an issue whose full body you already loaded this session. ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
     'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
     'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +
@@ -569,6 +671,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsMember(principal, issue.projectId);
+        if (input.fields && input.fields.length > 0) {
+          // Field-selective projection: pick from the already-framed serialize()
+          // output so markUntrusted DATA banners are preserved on untrusted fields
+          // (description/acceptanceCriteria). Never project from the raw row.
+          const full = serialize(issue);
+          const projected: Record<string, unknown> = {
+            documentId: full.documentId,
+            issueId: full.issueId,
+          };
+          for (const field of input.fields) {
+            projected[field] = full[field] ?? null;
+          }
+          return projected;
+        }
         return serializeWithAttachments(issue);
       }
 

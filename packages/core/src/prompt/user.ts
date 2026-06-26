@@ -95,12 +95,14 @@ const SESSION_CAPS = {
 } as const;
 
 /**
- * Per-state issue fields inlined into the user prompt. Default is now EMPTY for
+ * Per-state issue fields inlined into the user prompt. Default is EMPTY for
  * every state (fetch-via-tool): the agent calls `forge_step_start` first, which
- * returns the full issue + comments + attachments + handoffs, so duplicating
- * description/plan/AC into the prompt only burns tokens and creates a second,
- * staler source of truth. The prompt instead carries a one-line pointer (see
- * `formatIssueSnapshot`). Operators who want a field re-inlined for a state set
+ * returns a lean index (manifest of which fields exist and their sizes) on large
+ * issues, or the full body on small ones. Either way the prompt stays thin — it
+ * carries only a one-line pointer (see `formatIssueSnapshot`) so the agent can
+ * pull only the fields it needs via `forge_issues.get { fields: [...] }`. This
+ * avoids burning prompt tokens on a second, staler copy of the issue body.
+ * Operators who want a field re-inlined for a state set
  * `appConfig.pipeline.states[state].userPromptPolicy.includeFields` — the
  * override still flows through `resolveIssueFields`.
  */

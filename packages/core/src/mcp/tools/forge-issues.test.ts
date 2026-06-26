@@ -417,6 +417,93 @@ describe('forge_issues tool', () => {
     );
   });
 
+  it('get with fields returns only documentId + issueId + requested fields', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    const rowWithPlan = { ...baseIssueRow, plan: 'the implementation plan', description: 'some description' };
+    selectLimit.mockResolvedValueOnce([rowWithPlan]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID, fields: ['plan'] })) as Record<string, unknown>;
+
+    // Identity fields always present
+    expect(result.documentId).toBe(ISSUE_ID);
+    expect(result.issueId).toBe('ISS-1');
+    // Requested field present
+    expect(result.plan).toBe('the implementation plan');
+    // Un-requested heavy field absent
+    expect(result.description).toBeUndefined();
+    // Light scalar fields absent (not requested, not identity)
+    expect(result.status).toBeUndefined();
+    // Attachments absent (field-selective path skips attachment join)
+    expect(result.attachments).toBeUndefined();
+    // listIssueAttachments should NOT be called in the fields path
+    expect(listIssueAttachmentsMock).not.toHaveBeenCalled();
+  });
+
+  it('get with multiple fields returns all of them', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    const rowWithFields = {
+      ...baseIssueRow,
+      plan: 'the plan',
+      acceptanceCriteria: 'AC content',
+      description: 'desc',
+    };
+    selectLimit.mockResolvedValueOnce([rowWithFields]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    const result = (await tool.handler({
+      action: 'get',
+      documentId: ISSUE_ID,
+      fields: ['plan', 'acceptanceCriteria'],
+    })) as Record<string, unknown>;
+
+    expect(result.documentId).toBe(ISSUE_ID);
+    expect(result.plan).toBe('the plan');
+    // acceptanceCriteria is framed via markUntrusted — just verify it is present and contains the value
+    expect(String(result.acceptanceCriteria)).toContain('AC content');
+    expect(result.description).toBeUndefined();
+  });
+
+  it('get without fields stays backwards-compatible (full body + attachments)', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, plan: 'a plan' }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as Record<string, unknown>;
+
+    // Full body: status and other scalars present
+    expect(result.status).toBe('open');
+    // Attachments join runs in the full path
+    expect(listIssueAttachmentsMock).toHaveBeenCalledWith(ISSUE_ID);
+    expect(result.attachments).toEqual([]);
+    // bodyTruncated NOT set (that is only for step_start lean path)
+    expect(result.bodyTruncated).toBeUndefined();
+  });
+
+  it('get with invalid field enum throws validation error', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+
+    await expect(
+      tool.handler({ action: 'get', documentId: ISSUE_ID, fields: ['invalidField' as unknown as 'plan'] }),
+    ).rejects.toThrow();
+  });
+
   it('create requires data.title', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
