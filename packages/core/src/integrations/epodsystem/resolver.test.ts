@@ -148,48 +148,80 @@ describe('resolveEpodsystemMcpEntry (compat — returns default entry)', () => {
   });
 });
 
-describe('applyEpodsystemMcpServers', () => {
-  it('adds ALL epodsystem entries to a null override', async () => {
+describe('applyEpodsystemMcpServers (ISS-581 — opt-in gating)', () => {
+  // ISS-581: sentinel ABSENT → NOT injected even when active integration exists.
+  it('does NOT inject when sentinel is absent (no epodsystem key in current)', async () => {
+    const existing = { postman: { type: 'http' } };
+    const merged = await applyEpodsystemMcpServers(PROJECT_ID, existing);
+    expect(merged).toBe(existing);
+    expect(listBindingsMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT inject when current is null (no sentinel declared)', async () => {
+    const merged = await applyEpodsystemMcpServers(PROJECT_ID, null);
+    expect(merged).toBeNull();
+    expect(listBindingsMock).not.toHaveBeenCalled();
+  });
+
+  // ISS-581: sentinel PRESENT + active integration → specs injected, sentinel stripped.
+  it('injects ALL active entries when epodsystem: true sentinel present', async () => {
     listBindingsMock.mockResolvedValueOnce([mockRow(''), mockRow('store-b')]);
     decryptConnectionSecretsMock
       .mockReturnValueOnce({ apiKey: 'crmk_key1' })
       .mockReturnValueOnce({ apiKey: 'crmk_key2' });
 
-    const merged = await applyEpodsystemMcpServers(PROJECT_ID, null);
+    const merged = await applyEpodsystemMcpServers(PROJECT_ID, { epodsystem: true });
     expect(merged).not.toBeNull();
     expect(Object.keys(merged ?? {}).sort()).toEqual(['epodsystem', 'epodsystem_store_b']);
+    // sentinel is stripped — no `true` value remains
+    expect((merged?.epodsystem as Record<string, unknown>)?.type).toBe('http');
   });
 
-  it('merges epodsystem entries alongside an existing override without clobbering it', async () => {
+  it('merges epodsystem entries alongside existing entries when sentinel present', async () => {
     listBindingsMock.mockResolvedValueOnce([mockRow('')]);
     decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_key1' });
 
-    const merged = await applyEpodsystemMcpServers(PROJECT_ID, { postman: { type: 'http' } });
+    const merged = await applyEpodsystemMcpServers(PROJECT_ID, {
+      postman: { type: 'http' },
+      epodsystem: true,
+    });
     expect(merged).toMatchObject({
       postman: { type: 'http' },
       epodsystem: { type: 'http' },
     });
   });
 
+  // ISS-581: sentinel PRESENT but no active integration → sentinel stripped, no inject.
+  it('strips sentinel and returns null when no active integration and no other entries', async () => {
+    listBindingsMock.mockResolvedValueOnce([]);
+    const merged = await applyEpodsystemMcpServers(PROJECT_ID, { epodsystem: true });
+    expect(merged).toBeNull();
+  });
+
+  it('strips sentinel but preserves other entries when no active integration', async () => {
+    listBindingsMock.mockResolvedValueOnce([]);
+    const merged = await applyEpodsystemMcpServers(PROJECT_ID, {
+      epodsystem: true,
+      other: { type: 'stdio' },
+    });
+    expect(merged).toEqual({ other: { type: 'stdio' } });
+    expect(merged?.epodsystem).toBeUndefined();
+  });
+
   it('does NOT mutate the caller object', async () => {
     listBindingsMock.mockResolvedValueOnce([mockRow('')]);
     decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_key1' });
-    const shared = { postman: { type: 'http' } };
+    const shared = { epodsystem: true, postman: { type: 'http' } } as Record<string, unknown>;
     const first = await applyEpodsystemMcpServers(PROJECT_ID, shared);
     expect(first).not.toBe(shared);
-    expect(shared).toEqual({ postman: { type: 'http' } });
+    // original still has the sentinel
+    expect(shared.epodsystem).toBe(true);
   });
 
-  it('leaves the override unchanged when there is no active integration', async () => {
-    listBindingsMock.mockResolvedValueOnce([]);
+  it('leaves override unchanged when it has no epodsystem* sentinel', async () => {
     const existing = { other: { type: 'stdio' } };
     const merged = await applyEpodsystemMcpServers(PROJECT_ID, existing);
     expect(merged).toBe(existing);
-  });
-
-  it('returns null override unchanged when there is no active integration', async () => {
-    listBindingsMock.mockResolvedValueOnce([]);
-    const merged = await applyEpodsystemMcpServers(PROJECT_ID, null);
-    expect(merged).toBeNull();
+    expect(listBindingsMock).not.toHaveBeenCalled();
   });
 });

@@ -253,6 +253,20 @@ export const statesConfigSchema = z
 
 export type StatesConfig = z.infer<typeof statesConfigSchema>;
 
+/**
+ * ISS-581 — stages that should NOT have access to scheduling/orchestration
+ * agency tools by default. Review/test/release agents don't need to create
+ * schedules, run workflows, or trigger remote jobs — denying these reduces the
+ * blast radius if an agent behaves unexpectedly. allowedTools is intentionally
+ * NOT set: an allowlist must enumerate every builtin and is fragile on CLI
+ * upgrades, whereas a denylist is expansion-safe.
+ */
+const STAGE_DEFAULT_DISALLOWED: Partial<Record<StageName, string[]>> = {
+  developed: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
+  testing: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
+  released: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
+};
+
 export function defaultStatesConfig(): Record<StageName, StageConfig> {
   return Object.fromEntries(
     STAGE_NAMES.map((s) => [
@@ -263,6 +277,7 @@ export function defaultStatesConfig(): Record<StageName, StageConfig> {
       {
         enabled: true,
         mode: s === 'tested' ? ('manual' as const) : ('auto' as const),
+        ...(STAGE_DEFAULT_DISALLOWED[s] ? { disallowedTools: STAGE_DEFAULT_DISALLOWED[s] } : {}),
       },
     ]),
   ) as Record<StageName, StageConfig>;

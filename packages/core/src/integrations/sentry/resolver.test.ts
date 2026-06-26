@@ -104,42 +104,67 @@ describe('resolveSentryMcpEntry', () => {
   });
 });
 
-describe('applySentryMcpServers', () => {
-  it('adds the sentry entry to a null override (project-default inject)', async () => {
-    mockActiveRow({ host: 'logs.canawan.com' });
-    const merged = await applySentryMcpServers(PROJECT_ID, null);
-    expect(merged).not.toBeNull();
-    expect(Object.keys(merged ?? {})).toEqual(['sentry']);
-  });
-
-  it('merges sentry alongside an existing override without clobbering it', async () => {
-    mockActiveRow({ host: 'logs.canawan.com' });
-    const merged = await applySentryMcpServers(PROJECT_ID, { other: { type: 'stdio' } });
-    expect(merged).toMatchObject({ other: { type: 'stdio' }, sentry: { type: 'stdio' } });
-  });
-
-  it('leaves the override unchanged when there is no active integration', async () => {
-    listBindingsMock.mockResolvedValueOnce([]);
+describe('applySentryMcpServers (ISS-581 — opt-in gating)', () => {
+  it('does NOT inject when sentinel is absent (no sentry key in current)', async () => {
     const existing = { other: { type: 'stdio' } };
     const merged = await applySentryMcpServers(PROJECT_ID, existing);
     expect(merged).toBe(existing);
+    expect(listBindingsMock).not.toHaveBeenCalled();
   });
 
-  // ISS-524 / EMPTY-singleton no-leak: two consecutive dispatches must each get
-  // a FRESH override object — the resolver never mutates the caller's value, so
-  // a second project's dispatch cannot inherit the first's sentry entry.
+  it('does NOT inject when current is null (no sentinel declared)', async () => {
+    const merged = await applySentryMcpServers(PROJECT_ID, null);
+    expect(merged).toBeNull();
+    expect(listBindingsMock).not.toHaveBeenCalled();
+  });
+
+  it('injects and strips sentinel when sentry: true + active integration', async () => {
+    mockActiveRow({ host: 'logs.canawan.com' });
+    const merged = await applySentryMcpServers(PROJECT_ID, { sentry: true });
+    expect(merged).not.toBeNull();
+    expect(Object.keys(merged ?? {})).toEqual(['sentry']);
+    expect((merged?.sentry as Record<string, unknown>)?.type).toBe('stdio');
+  });
+
+  it('merges sentry spec alongside other entries when sentinel present', async () => {
+    mockActiveRow({ host: 'logs.canawan.com' });
+    const merged = await applySentryMcpServers(PROJECT_ID, { other: { type: 'http' }, sentry: true });
+    expect(merged).toMatchObject({ other: { type: 'http' }, sentry: { type: 'stdio' } });
+  });
+
+  it('strips sentinel and returns null when no active integration and no other entries', async () => {
+    listBindingsMock.mockResolvedValueOnce([]);
+    const merged = await applySentryMcpServers(PROJECT_ID, { sentry: true });
+    expect(merged).toBeNull();
+  });
+
+  it('strips sentinel but preserves other entries when no active integration', async () => {
+    listBindingsMock.mockResolvedValueOnce([]);
+    const merged = await applySentryMcpServers(PROJECT_ID, { sentry: true, other: { type: 'stdio' } });
+    expect(merged).toEqual({ other: { type: 'stdio' } });
+    expect(merged?.sentry).toBeUndefined();
+  });
+
+  // ISS-524 / EMPTY-singleton no-leak
   it('does not mutate the passed override (dispatch-twice no-leak)', async () => {
     mockActiveRow({ host: 'logs.canawan.com' });
-    const shared = Object.freeze({ base: { type: 'http' } }) as Record<string, unknown>;
+    const shared = { base: { type: 'http' }, sentry: true } as Record<string, unknown>;
     const merged = await applySentryMcpServers(PROJECT_ID, shared);
     expect(merged).not.toBe(shared);
-    expect(shared.sentry).toBeUndefined();
-    expect(merged).toMatchObject({ base: { type: 'http' }, sentry: { type: 'stdio' } });
+    expect((merged?.sentry as Record<string, unknown>)?.type).toBe('stdio');
 
-    // Second dispatch with NO active integration leaves a different override
-    // untouched — proving no cross-dispatch state was retained.
+    // Second dispatch with NO active integration — sentry sentinel stripped.
     listBindingsMock.mockResolvedValueOnce([]);
-    const other = { base: { type: 'http' } };
-    expect(await applySentryMcpServers(PROJECT_ID, other)).toBe(other);
+    const other = { base: { type: 'http' }, sentry: true };
+    const merged2 = await applySentryMcpServers(PROJECT_ID, other);
+    expect(merged2?.sentry).toBeUndefined();
+    expect(merged2?.base).toEqual({ type: 'http' });
+  });
+
+  it('leaves an existing sentry spec object untouched (no double-inject)', async () => {
+    const existing = { sentry: { type: 'stdio', command: 'npx', args: [], env: {}, enabled: true } };
+    const merged = await applySentryMcpServers(PROJECT_ID, existing);
+    expect(merged).toBe(existing);
+    expect(listBindingsMock).not.toHaveBeenCalled();
   });
 });

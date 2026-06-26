@@ -67,11 +67,32 @@ export const MCP_CATALOG: Record<string, Record<string, unknown>> = {
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
 /**
+ * Integration server names resolved to secret-bearing specs by the dispatcher
+ * integration resolvers (not in the catalog — they require tokens/API keys).
+ * A stage opts in by setting `name: true` in its `mcpServers` config; the
+ * resolver replaces the sentinel with the real spec at dispatch time.
+ */
+export const INTEGRATION_SERVER_NAMES = ['postman', 'epodsystem', 'sentry'] as const;
+
+/**
+ * Returns true when the server name is an integration that is resolved at
+ * dispatch time (not a catalog shorthand). Covers the bare `epodsystem` name
+ * AND labeled variants like `epodsystem_store_a` (ISS-558).
+ */
+export function isIntegrationSentinelName(name: string): boolean {
+  if ((INTEGRATION_SERVER_NAMES as readonly string[]).includes(name)) return true;
+  if (name.startsWith('epodsystem_')) return true;
+  return false;
+}
+
+/**
  * Expand a project's shorthand `mcpServers` map into full specs.
  *
  * Per-entry rules:
- *   - value `true`            → the catalog spec for that name (skip + warn if
- *                               the name is unknown).
+ *   - value `true` for integration name → preserved as `true` sentinel so the
+ *                               dispatcher's integration resolver can opt-in.
+ *   - value `true` for catalog name     → the catalog spec for that name.
+ *   - value `true` for unknown name     → skip + warn (neither catalog nor integration).
  *   - value object (non-null) → used verbatim (a raw custom spec; stdio
  *                               command/args/env or http url/headers).
  *   - value `false` / `null`  → omitted (explicit opt-out).
@@ -89,6 +110,12 @@ export function expandMcpServers(
 
   for (const [name, value] of Object.entries(map)) {
     if (value === true) {
+      // Integration sentinel: preserve `true` so the dispatcher resolver
+      // can opt-in this stage. Do NOT expand to a catalog spec (they have none).
+      if (isIntegrationSentinelName(name)) {
+        out[name] = true;
+        continue;
+      }
       const spec = MCP_CATALOG[name];
       if (!spec) {
         logger.warn(

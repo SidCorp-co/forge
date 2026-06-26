@@ -4,7 +4,13 @@ vi.mock('../logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-const { MCP_CATALOG, MCP_CATALOG_NAMES, expandMcpServers } = await import('./mcp-catalog.js');
+const {
+  MCP_CATALOG,
+  MCP_CATALOG_NAMES,
+  INTEGRATION_SERVER_NAMES,
+  isIntegrationSentinelName,
+  expandMcpServers,
+} = await import('./mcp-catalog.js');
 
 describe('MCP_CATALOG', () => {
   it('includes the required playwright entry as a stdio npx spec', () => {
@@ -40,6 +46,31 @@ describe('MCP_CATALOG', () => {
   });
 });
 
+describe('INTEGRATION_SERVER_NAMES + isIntegrationSentinelName (ISS-581)', () => {
+  it('exports INTEGRATION_SERVER_NAMES with postman, epodsystem, sentry', () => {
+    expect(INTEGRATION_SERVER_NAMES).toContain('postman');
+    expect(INTEGRATION_SERVER_NAMES).toContain('epodsystem');
+    expect(INTEGRATION_SERVER_NAMES).toContain('sentry');
+  });
+
+  it('isIntegrationSentinelName returns true for exact integration names', () => {
+    expect(isIntegrationSentinelName('postman')).toBe(true);
+    expect(isIntegrationSentinelName('epodsystem')).toBe(true);
+    expect(isIntegrationSentinelName('sentry')).toBe(true);
+  });
+
+  it('isIntegrationSentinelName returns true for epodsystem_* labels', () => {
+    expect(isIntegrationSentinelName('epodsystem_store_a')).toBe(true);
+    expect(isIntegrationSentinelName('epodsystem_partner_x')).toBe(true);
+  });
+
+  it('isIntegrationSentinelName returns false for catalog and unknown names', () => {
+    expect(isIntegrationSentinelName('playwright')).toBe(false);
+    expect(isIntegrationSentinelName('chrome-devtools-mcp')).toBe(false);
+    expect(isIntegrationSentinelName('unknown')).toBe(false);
+  });
+});
+
 describe('expandMcpServers', () => {
   it('returns empty for null/undefined/non-object', () => {
     expect(expandMcpServers(null)).toEqual({});
@@ -65,6 +96,27 @@ describe('expandMcpServers', () => {
     expect(out).toEqual({});
   });
 
+  // ISS-581: integration sentinel preservation
+  it('preserves `true` for integration names as a sentinel (not warn-skipped)', () => {
+    const out = expandMcpServers({ postman: true });
+    expect(out.postman).toBe(true);
+  });
+
+  it('preserves `true` for sentry sentinel', () => {
+    const out = expandMcpServers({ sentry: true });
+    expect(out.sentry).toBe(true);
+  });
+
+  it('preserves `true` for epodsystem sentinel', () => {
+    const out = expandMcpServers({ epodsystem: true });
+    expect(out.epodsystem).toBe(true);
+  });
+
+  it('preserves `true` for labeled epodsystem_* sentinel', () => {
+    const out = expandMcpServers({ epodsystem_store_a: true });
+    expect(out.epodsystem_store_a).toBe(true);
+  });
+
   it('uses an object value verbatim (custom raw spec)', () => {
     const custom = { type: 'http', url: 'https://x', headers: { A: '1' } };
     const out = expandMcpServers({ mine: custom });
@@ -83,15 +135,23 @@ describe('expandMcpServers', () => {
     expect(out).toEqual({ playwright: MCP_CATALOG.playwright });
   });
 
-  it('handles a mixed map', () => {
+  it('handles a mixed map with integrations and catalog names', () => {
     const custom = { type: 'stdio', command: 'foo', args: [], env: {} };
     const out = expandMcpServers({
       playwright: true,
       custom,
       disabled: false,
       unknown: true,
+      sentry: true,
+      epodsystem: true,
     });
-    expect(Object.keys(out).sort()).toEqual(['custom', 'playwright']);
+    // playwright → catalog spec; sentry/epodsystem → sentinel true; custom → spec; disabled/unknown → dropped
+    expect(out.playwright).toEqual(MCP_CATALOG.playwright);
+    expect(out.sentry).toBe(true);
+    expect(out.epodsystem).toBe(true);
+    expect(out.custom).toEqual(custom);
+    expect(out.disabled).toBeUndefined();
+    expect(out.unknown).toBeUndefined();
   });
 });
 
@@ -99,8 +159,8 @@ describe('expandMcpServers', () => {
 // order (project-default < per-state < integrations) is locked by a test.
 // The dispatcher does, in sequence:
 //   base = { ...projectDefault, ...perState }          // per-state wins by name
-//   base = applyPostmanMcpServers(base)  → { ...base, postman }
-//   base = applyEpodsystemMcpServers(base) → { ...base, epodsystem }
+//   base = applyPostmanMcpServers(base)  → sentinel replaced or stripped
+//   base = applyEpodsystemMcpServers(base) → sentinel replaced or stripped
 describe('dispatch mcpServers merge order', () => {
   function merge(
     projectDefault: Record<string, unknown>,
@@ -138,5 +198,14 @@ describe('dispatch mcpServers merge order', () => {
   it('project-default flows through when no per-state and no integrations', () => {
     const out = merge(expandMcpServers({ playwright: true }), null, {});
     expect(out.playwright).toBeDefined();
+  });
+
+  it('ISS-581: integration sentinel in project-default flows to per-state merge', () => {
+    // expandMcpServers preserves true for integration names
+    const projectDefault = expandMcpServers({ playwright: true, sentry: true });
+    expect(projectDefault.sentry).toBe(true);
+    // per-state inherits the sentinel
+    const out = merge(projectDefault, null, {});
+    expect(out.sentry).toBe(true);
   });
 });

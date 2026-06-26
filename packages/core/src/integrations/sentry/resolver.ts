@@ -1,14 +1,11 @@
 /**
- * ISS-524 — dispatch-time Sentry MCP resolver.
+ * ISS-524 / ISS-581 — dispatch-time Sentry MCP resolver.
  *
- * Bridge between the integration config layer and the existing mcpServers-
- * override pipeline (mirrors `postman/resolver.ts` / `epodsystem/resolver.ts`).
- * On EVERY dispatch the dispatcher calls {@link applySentryMcpServers}; if the
- * project has an active `sentry` integration we decrypt its `sntryu_` auth token
- * and render a STDIO `@sentry/mcp-server` entry into the per-project override so
- * the project's agents can read its Sentry logs. The token is rendered ONLY into
- * the dispatch payload (which the runner writes to a temp `--mcp-config` file);
- * it is never persisted to DB jsonb, logs, or API responses.
+ * Stage opt-in: the resolver injects ONLY when the resolved `mcpServers` map
+ * for the current dispatch carries `sentry: true` (sentinel). A stage opts in
+ * by listing `sentry: true` in its `pipelineConfig.states.<status>.mcpServers`
+ * or the project-default `pipelineConfig.mcpServers`. The sentinel is replaced
+ * with the real secret-bearing spec; absent → not injected.
  *
  * Transport = stdio `npx @sentry/mcp-server` (matches this repo's `.mcp.json`
  * and works against the self-hosted Sentry at `logs.canawan.com`; the hosted
@@ -82,16 +79,22 @@ export async function resolveSentryMcpEntry(
 }
 
 /**
- * Merge the project's Sentry MCP entry (if any) into a resolved mcpServers
- * override. Returns the (possibly new) override object, or the original value
- * unchanged when there is no active Sentry integration. Never mutates the
- * caller's object in place.
+ * Merge the project's Sentry MCP entry into a resolved mcpServers override.
+ * Injects ONLY when the stage opted in via `sentry: true` sentinel in its
+ * resolved map. Strips the sentinel regardless (never leaks `true` to runner).
+ * Never mutates the caller's object in place.
  */
 export async function applySentryMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
 ): Promise<Record<string, unknown> | null> {
+  if (current?.sentry !== true) return current;
+  // Stage declared opt-in — resolve the real entry.
   const entry = await resolveSentryMcpEntry(projectId);
-  if (!entry) return current;
-  return { ...(current ?? {}), sentry: entry };
+  const { sentry: _sentinel, ...rest } = current;
+  if (!entry) {
+    // Active integration absent or decrypt failed — drop sentinel, don't inject.
+    return Object.keys(rest).length > 0 ? rest : null;
+  }
+  return { ...rest, sentry: entry };
 }

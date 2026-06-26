@@ -110,30 +110,58 @@ describe('resolvePostmanMcpEntry', () => {
   });
 });
 
-describe('applyPostmanMcpServers', () => {
-  it('adds the postman entry to a null override (project-default inject)', async () => {
-    mockActiveRow({ workspaceName: 'W', region: 'us', mode: 'minimal' });
-    const merged = await applyPostmanMcpServers(PROJECT_ID, null);
-    expect(merged).not.toBeNull();
-    expect(Object.keys(merged ?? {})).toEqual(['postman']);
-  });
-
-  it('merges postman alongside an existing stage override without clobbering it', async () => {
-    mockActiveRow({ workspaceName: 'W', region: 'us', mode: 'minimal' });
-    const merged = await applyPostmanMcpServers(PROJECT_ID, { other: { type: 'stdio' } });
-    expect(merged).toMatchObject({ other: { type: 'stdio' }, postman: { type: 'http' } });
-  });
-
-  it('leaves the override unchanged when there is no active integration', async () => {
-    listBindingsMock.mockResolvedValueOnce([]);
+describe('applyPostmanMcpServers (ISS-581 — opt-in gating)', () => {
+  // ISS-581: sentinel ABSENT → NOT injected even when active integration exists.
+  it('does NOT inject when sentinel is absent (no postman key in current)', async () => {
     const existing = { other: { type: 'stdio' } };
     const merged = await applyPostmanMcpServers(PROJECT_ID, existing);
     expect(merged).toBe(existing);
+    expect(listBindingsMock).not.toHaveBeenCalled();
   });
 
-  it('returns null override unchanged when there is no active integration', async () => {
-    listBindingsMock.mockResolvedValueOnce([]);
+  it('does NOT inject when current is null (no sentinel declared)', async () => {
     const merged = await applyPostmanMcpServers(PROJECT_ID, null);
     expect(merged).toBeNull();
+    expect(listBindingsMock).not.toHaveBeenCalled();
+  });
+
+  // ISS-581: sentinel PRESENT + active integration → spec injected, sentinel stripped.
+  it('injects and strips sentinel when postman: true + active integration', async () => {
+    mockActiveRow({ workspaceName: 'W', region: 'us', mode: 'minimal' });
+    const merged = await applyPostmanMcpServers(PROJECT_ID, { postman: true });
+    expect(merged).not.toBeNull();
+    expect(Object.keys(merged ?? {})).toEqual(['postman']);
+    expect((merged?.postman as Record<string, unknown>)?.type).toBe('http');
+  });
+
+  it('merges postman spec alongside other entries when sentinel present', async () => {
+    mockActiveRow({ workspaceName: 'W', region: 'us', mode: 'minimal' });
+    const merged = await applyPostmanMcpServers(PROJECT_ID, {
+      other: { type: 'stdio' },
+      postman: true,
+    });
+    expect(merged).toMatchObject({ other: { type: 'stdio' }, postman: { type: 'http' } });
+  });
+
+  // ISS-581: sentinel PRESENT but no active integration → sentinel stripped, no inject.
+  it('strips sentinel and returns null when no active integration and no other entries', async () => {
+    listBindingsMock.mockResolvedValueOnce([]);
+    const merged = await applyPostmanMcpServers(PROJECT_ID, { postman: true });
+    expect(merged).toBeNull();
+  });
+
+  it('strips sentinel but preserves other entries when no active integration', async () => {
+    listBindingsMock.mockResolvedValueOnce([]);
+    const merged = await applyPostmanMcpServers(PROJECT_ID, { postman: true, other: { type: 'stdio' } });
+    expect(merged).toEqual({ other: { type: 'stdio' } });
+    expect(merged?.postman).toBeUndefined();
+  });
+
+  // Legacy: already-object postman entry (not a sentinel) is left untouched.
+  it('leaves an existing postman spec object untouched (no double-inject)', async () => {
+    const existing = { postman: { type: 'http', url: 'https://existing', enabled: true } };
+    const merged = await applyPostmanMcpServers(PROJECT_ID, existing);
+    expect(merged).toBe(existing);
+    expect(listBindingsMock).not.toHaveBeenCalled();
   });
 });

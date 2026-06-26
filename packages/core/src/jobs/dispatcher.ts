@@ -5,6 +5,7 @@ import type { JobType, RunnerType } from '../db/schema.js';
 import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { applySentryMcpServers } from '../integrations/sentry/resolver.js';
+import { isIntegrationSentinelName } from '../pipeline/mcp-catalog.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -52,6 +53,49 @@ interface DispatchMessage {
 
 let workerId: string | null = null;
 let pmWorkerId: string | null = null;
+
+/**
+ * ISS-581 — belt-and-suspenders sweep: after integration resolvers run, delete
+ * any remaining `true` sentinel for a known integration name. The resolvers
+ * already strip their own sentinels; this catches a declared-but-no-active-
+ * integration case so a bogus `true` never reaches the runner payload.
+ */
+function sweepIntegrationSentinels(
+  map: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!map) return map;
+  let dirty = false;
+  for (const [k, v] of Object.entries(map)) {
+    if (v === true && isIntegrationSentinelName(k)) {
+      dirty = true;
+      break;
+    }
+  }
+  if (!dirty) return map;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(map)) {
+    if (v === true && isIntegrationSentinelName(k)) continue;
+    out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * ISS-581 — when both playwright and chrome-devtools-mcp are present in the
+ * merged map, drop playwright in favour of chrome-devtools-mcp (the preferred
+ * browser MCP for pipeline jobs). Operates on the map in place (shallow copy
+ * is already owned by the caller); returns the (possibly mutated) map.
+ */
+function dedupeBrowserServers(
+  map: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!map) return map;
+  if (map.playwright && map['chrome-devtools-mcp']) {
+    const { playwright: _dropped, ...rest } = map;
+    return rest;
+  }
+  return map;
+}
 
 /**
  * Flatten stage overrides into the WS payload/job.payload shape consumed by
@@ -595,6 +639,11 @@ async function dispatchViaRunner(
     job.projectId,
     runnerStageOverrides.mcpServers,
   );
+  // ISS-581 — (1) sentinel sweep: drop any leftover `true` for integration
+  // names (declared but no active integration); (2) browser dedup: prefer
+  // chrome-devtools-mcp over playwright when both are present.
+  runnerStageOverrides.mcpServers = sweepIntegrationSentinels(runnerStageOverrides.mcpServers);
+  runnerStageOverrides.mcpServers = dedupeBrowserServers(runnerStageOverrides.mcpServers);
   const { content: runnerSystemPrompt, blocks: runnerBlocks } =
     await buildPipelinePreambleStructured(job.projectId, {
       step: job.type,
