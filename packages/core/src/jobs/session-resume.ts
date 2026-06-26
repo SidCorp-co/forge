@@ -43,15 +43,26 @@ export interface ResumeBounds {
  * ISS-580 — load the project's session-resume bounds from pipelineConfig.
  * Defaults to 150k tokens / 3 reopen cycles when absent or on DB error.
  * Mirrors the loadOnResumeFailPolicy pattern from handle-resume-failed.ts.
+ *
+ * Pass `cachedAgentConfig` (already fetched by the caller) to skip the DB
+ * round-trip — the dispatcher fetches it on the non-forced dispatch path.
  */
-export async function loadResumeBounds(projectId: string): Promise<ResumeBounds> {
+export async function loadResumeBounds(
+  projectId: string,
+  cachedAgentConfig?: Record<string, unknown>,
+): Promise<ResumeBounds> {
   try {
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    const ac = (row?.agentConfig ?? {}) as Record<string, unknown>;
+    let ac: Record<string, unknown>;
+    if (cachedAgentConfig !== undefined) {
+      ac = cachedAgentConfig;
+    } else {
+      const [row] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      ac = (row?.agentConfig ?? {}) as Record<string, unknown>;
+    }
     const pc = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
     const maxTokens =
       typeof pc.maxResumeTokens === 'number' && Number.isFinite(pc.maxResumeTokens)
@@ -81,12 +92,19 @@ export async function estimateGroupContextTokens(args: {
   sessionGroup: string;
 }): Promise<number> {
   try {
+    // session_id is a uuid-shaped text column; guard the cast so a stray
+    // non-uuid value doesn't throw "operator does not exist: text = uuid".
+    // AND s.claude_session_id IS NOT NULL allows the planner to use
+    // agent_sessions_invalidate_lookup_idx (migration 0069 partial index).
     const rows = await db.execute<{ peak: string | null }>(sql`
       SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
       FROM agent_sessions AS s
-      JOIN usage_records AS ur ON ur.session_id = s.id
+      JOIN usage_records AS ur
+        ON ur.session_id ~ '^[0-9a-fA-F-]{36}$'
+       AND ur.session_id::uuid = s.id
       WHERE s.metadata->>'issueId' = ${args.issueId}
         AND s.metadata->>'sessionGroup' = ${args.sessionGroup}
+        AND s.claude_session_id IS NOT NULL
     `);
     const peak = rows[0]?.peak;
     if (peak === null || peak === undefined) return 0;

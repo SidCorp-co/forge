@@ -268,6 +268,7 @@ async function dispatchViaRunner(
   let required: RequiredCapabilities;
   let fallbackChain: RunnerType[];
 
+  let cachedAgentConfig: Record<string, unknown> | undefined;
   if (forcedCapabilities !== undefined || forcedChain !== undefined) {
     required = forcedCapabilities ?? {};
     fallbackChain = forcedChain ?? [];
@@ -280,8 +281,8 @@ async function dispatchViaRunner(
       .from(projects)
       .where(eq(projects.id, job.projectId))
       .limit(1);
-    const agentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
-    fallbackChain = resolveRunnerChainForJob(job.type, agentConfig);
+    cachedAgentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
+    fallbackChain = resolveRunnerChainForJob(job.type, cachedAgentConfig);
   }
 
   // PR-5 — if this job belongs to a sessionGroup AND a prior session of the
@@ -303,13 +304,20 @@ async function dispatchViaRunner(
     }
   }
 
+  // Compute isRetry here so the bound check below can skip the 3-query block
+  // (+ metric/Sentry side effects) on retry dispatches — the retry path nulls
+  // priorClaudeSessionId at its own site unconditionally.
+  const isRetry = job.retryOf != null;
+
   // ISS-580 — bound check: if the accumulated context of the sessionGroup
   // exceeds the configured token limit, or the issue has been reopened more
   // than the cycle limit, drop the resume and dispatch fresh. Continuity is
   // preserved via the existing handoff/sessionContext mechanism (ISS-537).
-  // This block only runs when a prior session was actually found above.
-  if (priorClaudeSessionId && preDispatchOverrides.sessionGroup && job.issueId) {
-    const bounds = await loadResumeBounds(job.projectId);
+  // Skip on retries — the retry block unconditionally nulls priorClaudeSessionId
+  // anyway, so running this block on a retry is pure wasted work + spurious
+  // resume_bound_fresh_total increments.
+  if (!isRetry && priorClaudeSessionId && preDispatchOverrides.sessionGroup && job.issueId) {
+    const bounds = await loadResumeBounds(job.projectId, cachedAgentConfig);
     const estTokens = await estimateGroupContextTokens({
       issueId: job.issueId,
       sessionGroup: preDispatchOverrides.sessionGroup,
@@ -371,7 +379,7 @@ async function dispatchViaRunner(
   //     fight it (a device tripped after its 3 tries would be skipped for the
   //     rest of the chain instead of getting its turn next round).
   const autoRetry = readAutoRetryPayload(job.payload);
-  const isRetry = job.retryOf != null;
+  // isRetry was hoisted above to gate the ISS-580 bound check block.
 
   let excludeDeviceIds: string[];
   let skipPrimary: boolean;

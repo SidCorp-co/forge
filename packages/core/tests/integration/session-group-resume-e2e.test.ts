@@ -9,6 +9,11 @@
  * — no browser layer, no Inspector UI for `claudeSessionId` yet (PR-7b
  * deferred). The Inspector envelope is asserted only for fields that already
  * persist into `jobs.payload` (sessionGroup, state).
+ *
+ * ISS-580 — also exercises `estimateGroupContextTokens` against real Postgres
+ * to verify the text→uuid cast (`session_id::uuid`) compiles without the
+ * "operator does not exist: text = uuid" runtime error that unit tests (which
+ * mock `db.execute`) cannot catch.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -551,6 +556,63 @@ describe('ISS-195 session-group resume end-to-end', () => {
     expect(envelope.sessionGroup).toBe('implementation');
   });
 
+  it('ISS-580: bound exceeded (maxResumeTokens) → fresh dispatch on stage-2', async () => {
+    const { ownerId, projectId, token } = await seedOwnerProjectDevice();
+
+    // Configure maxResumeTokens=100 so any real usage record pushes over.
+    const patchRes = await patchPipelineConfig(projectId, token, {
+      ...SESSION_GROUP_CONFIG,
+      maxResumeTokens: 100,
+    });
+    expect(patchRes.status).toBe(200);
+
+    const issueId = await insertIssue(projectId, ownerId);
+    const jobId1 = await insertStageJob({
+      projectId,
+      issueId,
+      ownerId,
+      type: 'code',
+      stageStatus: 'approved',
+      sessionGroup: 'implementation',
+    });
+    expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
+    await completeAgentSession(jobId1, STAGE1_CLI);
+
+    // Seed a usage_records row for this session with tokens > threshold.
+    // session_id is text; its value is the uuid of the agent_session row.
+    // This exercises the `session_id::uuid = s.id` cast fix.
+    const agentSessionRows = await harness.db.execute<{ id: string }>(
+      sql`SELECT id FROM agent_sessions WHERE id = (SELECT agent_session_id FROM jobs WHERE id = ${jobId1}) LIMIT 1`,
+    );
+    const agentSessionId = agentSessionRows[0]?.id;
+    expect(agentSessionId).toBeTruthy();
+
+    await harness.db.execute(sql`
+      INSERT INTO usage_records
+        (id, project_id, source, model, input_tokens, cache_read_tokens, estimated_cost, recorded_at, session_id)
+      VALUES
+        (${randomUUID()}, ${projectId}, 'api', 'claude-3-5-sonnet', 200, 0, 0.001, now(), ${agentSessionId})
+    `);
+
+    await markJobDone(jobId1);
+
+    roomManager.publish.mockClear();
+    const jobId2 = await insertStageJob({
+      projectId,
+      issueId,
+      ownerId,
+      type: 'review',
+      stageStatus: 'developed',
+      sessionGroup: 'implementation',
+    });
+    expect(await handleDispatch({ jobId: jobId2 })).toBe('dispatched');
+
+    // Bound exceeded → fresh dispatch → claudeSessionId NOT forwarded.
+    const envelope = lastJobAssignedCall();
+    expect(Object.keys(envelope)).not.toContain('claudeSessionId');
+    expect(envelope.sessionGroup).toBe('implementation');
+  });
+
   it('removing sessionGroups config mid-flight breaks the resume chain', async () => {
     const { ownerId, projectId, token } = await seedOwnerProjectDevice();
     expect((await patchPipelineConfig(projectId, token, SESSION_GROUP_CONFIG)).status).toBe(200);
@@ -617,5 +679,112 @@ describe('ISS-195 session-group resume end-to-end', () => {
     };
     expect(body.resolvedFlags.sessionGroup).toBeNull();
     expect(body.resolvedFlags.claudeSessionId).toBeNull();
+  });
+});
+
+// ISS-580 — direct SQL verification of estimateGroupContextTokens.
+// Unit tests mock db.execute so the text→uuid cast never ran against Postgres.
+// This suite hits real PG to confirm the fix doesn't regress.
+describe('ISS-580 estimateGroupContextTokens — real-PG SQL verification', () => {
+  let harness: TestDatabase;
+  let estimateGroupContextTokens: (args: {
+    issueId: string;
+    sessionGroup: string;
+  }) => Promise<number>;
+
+  beforeAll(async () => {
+    harness = await setupTestDatabase();
+    process.env.DATABASE_URL = harness.url;
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+    process.env.NODE_ENV ??= 'test';
+    process.env.SMTP_HOST ??= 'localhost';
+    process.env.SMTP_PORT ??= '1025';
+    process.env.SMTP_USER ??= 'test';
+    process.env.SMTP_PASS ??= 'test';
+    process.env.SMTP_FROM ??= 'test@example.com';
+    process.env.APP_BASE_URL ??= 'http://localhost:3000';
+    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+
+    const mod = await import('../../src/jobs/session-resume.js');
+    estimateGroupContextTokens = mod.estimateGroupContextTokens;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (harness) await harness.cleanup();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(harness.db);
+  });
+
+  it('returns 0 when no usage_records exist for the group', async () => {
+    const tokens = await estimateGroupContextTokens({ issueId: randomUUID(), sessionGroup: 'impl' });
+    expect(tokens).toBe(0);
+  });
+
+  it('returns the MAX(input_tokens + cache_read_tokens) across sessions (verifies text::uuid cast)', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const issueId = randomUUID();
+
+    // Insert two agent_sessions in the same (issueId, sessionGroup).
+    const sessionA = randomUUID();
+    const sessionB = randomUUID();
+    for (const [sid, issId, group, claudeId] of [
+      [sessionA, issueId, 'impl', 'cli-a'],
+      [sessionB, issueId, 'impl', 'cli-b'],
+    ] as const) {
+      await harness.db.execute(sql`
+        INSERT INTO agent_sessions
+          (id, project_id, status, metadata, claude_session_id, created_at, updated_at)
+        VALUES (
+          ${sid}::uuid, ${project.id}::uuid, 'completed',
+          ${JSON.stringify({ issueId: issId, sessionGroup: group })}::jsonb,
+          ${claudeId}, now(), now()
+        )
+      `);
+    }
+
+    // Session A: 5000 input + 3000 cache_read = 8000
+    // Session B: 12000 input + 0 cache_read = 12000
+    // Expected MAX = 12000
+    await harness.db.execute(sql`
+      INSERT INTO usage_records
+        (id, project_id, source, model, input_tokens, cache_read_tokens, estimated_cost, recorded_at, session_id)
+      VALUES
+        (${randomUUID()}, ${project.id}::uuid, 'api', 'sonnet', 5000, 3000, 0.01, now(), ${sessionA}),
+        (${randomUUID()}, ${project.id}::uuid, 'api', 'sonnet', 12000, 0, 0.02, now(), ${sessionB})
+    `);
+
+    const tokens = await estimateGroupContextTokens({ issueId, sessionGroup: 'impl' });
+    expect(tokens).toBe(12000);
+  });
+
+  it('ignores sessions where claude_session_id IS NULL (partial index predicate)', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const issueId = randomUUID();
+
+    // Session with no claude_session_id — should be excluded by the predicate.
+    const sessionId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions
+        (id, project_id, status, metadata, claude_session_id, created_at, updated_at)
+      VALUES (
+        ${sessionId}::uuid, ${project.id}::uuid, 'completed',
+        ${JSON.stringify({ issueId, sessionGroup: 'impl' })}::jsonb,
+        NULL, now(), now()
+      )
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO usage_records
+        (id, project_id, source, model, input_tokens, cache_read_tokens, estimated_cost, recorded_at, session_id)
+      VALUES
+        (${randomUUID()}, ${project.id}::uuid, 'api', 'sonnet', 99999, 0, 0.1, now(), ${sessionId})
+    `);
+
+    const tokens = await estimateGroupContextTokens({ issueId, sessionGroup: 'impl' });
+    expect(tokens).toBe(0);
   });
 });
