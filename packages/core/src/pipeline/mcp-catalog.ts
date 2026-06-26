@@ -29,16 +29,36 @@ import { logger } from '../logger.js';
  * `--mcp-config`.
  */
 export const MCP_CATALOG: Record<string, Record<string, unknown>> = {
+  // CI-runner-safe flags (verified against each package's --help):
+  //   --headless           runner boxes have no X server (chrome-devtools-mcp
+  //                        defaults to HEADED → fails to launch on a headless
+  //                        host without this).
+  //   --isolated           per-session profile (in-memory for playwright, a
+  //                        temp user-data-dir auto-cleaned for chrome-devtools).
+  //                        Without it ALL jobs share one profile dir; a crash
+  //                        (Radix portal surfaces are crash-prone) leaves a
+  //                        Singleton lock that wedges the next job with
+  //                        "Browser is already in use". Critical when a project
+  //                        runs >1 concurrent issue on one runner.
+  //   --no-sandbox         Chrome won't start under root/most containers
+  //                        otherwise (chrome-devtools-mcp routes it via
+  //                        --chrome-arg, which is its only sandbox knob).
   playwright: {
     type: 'stdio',
     command: 'npx',
-    args: ['@playwright/mcp@latest'],
+    args: ['@playwright/mcp@latest', '--headless', '--isolated', '--no-sandbox'],
     env: {},
   },
   'chrome-devtools-mcp': {
     type: 'stdio',
     command: 'npx',
-    args: ['chrome-devtools-mcp@latest'],
+    args: [
+      'chrome-devtools-mcp@latest',
+      '--headless',
+      '--isolated',
+      '--chrome-arg=--no-sandbox',
+      '--chrome-arg=--disable-setuid-sandbox',
+    ],
     env: {},
   },
 };

@@ -11,7 +11,7 @@ describe('MCP_CATALOG', () => {
     expect(MCP_CATALOG.playwright).toEqual({
       type: 'stdio',
       command: 'npx',
-      args: ['@playwright/mcp@latest'],
+      args: ['@playwright/mcp@latest', '--headless', '--isolated', '--no-sandbox'],
       env: {},
     });
     expect(MCP_CATALOG_NAMES).toContain('playwright');
@@ -21,7 +21,13 @@ describe('MCP_CATALOG', () => {
     expect(MCP_CATALOG['chrome-devtools-mcp']).toEqual({
       type: 'stdio',
       command: 'npx',
-      args: ['chrome-devtools-mcp@latest'],
+      args: [
+        'chrome-devtools-mcp@latest',
+        '--headless',
+        '--isolated',
+        '--chrome-arg=--no-sandbox',
+        '--chrome-arg=--disable-setuid-sandbox',
+      ],
       env: {},
     });
     expect(MCP_CATALOG_NAMES).toContain('chrome-devtools-mcp');

@@ -192,7 +192,7 @@ describe('resolveProjectDefaultMcpServers', () => {
     expect(out.playwright).toEqual({
       type: 'stdio',
       command: 'npx',
-      args: ['@playwright/mcp@latest'],
+      args: ['@playwright/mcp@latest', '--headless', '--isolated', '--no-sandbox'],
       env: {},
     });
   });
