@@ -178,6 +178,8 @@ export interface IssueSearchOpts {
   priority?: IssuePriority;
   /** Member userId. */
   assignee?: string;
+  /** Label uuid — maps to `?label=<id>` on the search endpoint (ISS-586). */
+  label?: string;
   sort?: IssueSort;
   page?: number;
   pageSize?: number;

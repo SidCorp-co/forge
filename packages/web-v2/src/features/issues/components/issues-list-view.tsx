@@ -43,6 +43,7 @@ import { groupRows, priorityLabel } from "../derive";
 import {
   useIssues,
   usePatchIssue,
+  useProjectLabels,
   useProjectMembers,
   useTransitionIssue,
 } from "../hooks";
@@ -123,6 +124,7 @@ export function IssuesListView({
     ? (rawPriority as IssuePriority)
     : undefined;
   const assignee = sp.get("assignee") ?? "";
+  const label = sp.get("label") ?? "";
   const groupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
   const page = decodeNumber(sp, "page", 1);
@@ -209,11 +211,13 @@ export function IssuesListView({
     filter,
     priority,
     assignee: assignee || undefined,
+    label: label || undefined,
     sort,
     page,
     pageSize: ISSUES_PAGE_SIZE,
   });
   const membersQ = useProjectMembers(projectId);
+  const labelsQ = useProjectLabels(projectId);
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
 
@@ -223,6 +227,14 @@ export function IssuesListView({
       ...(membersQ.data ?? []).map((m) => ({ value: m.userId, label: m.email })),
     ],
     [membersQ.data],
+  );
+
+  const labelFilterOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: "", label: "Label: any" },
+      ...(labelsQ.data ?? []).map((l) => ({ value: l.id, label: l.name })),
+    ],
+    [labelsQ.data],
   );
 
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
@@ -250,7 +262,7 @@ export function IssuesListView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
   useEffect(() => {
     setSelected(new Set());
-  }, [q, filter, priority, assignee, sort, page]);
+  }, [q, filter, priority, assignee, label, sort, page]);
 
   const toggleRow = useCallback((id: string, next: boolean) => {
     setSelected((prev) => {
@@ -278,7 +290,7 @@ export function IssuesListView({
     [rows, selected],
   );
 
-  const isFiltered = q !== "" || filter !== "all" || !!priority || !!assignee;
+  const isFiltered = q !== "" || filter !== "all" || !!priority || !!assignee || !!label;
 
   return (
     <>
@@ -311,6 +323,13 @@ export function IssuesListView({
           value={assignee}
           options={assigneeFilterOptions}
           onChange={(v) => setParams({ assignee: v, page: "" })}
+          className="w-44"
+        />
+        <Select
+          aria-label="Label filter"
+          value={label}
+          options={labelFilterOptions}
+          onChange={(v) => setParams({ label: v, page: "" })}
           className="w-44"
         />
         <Select

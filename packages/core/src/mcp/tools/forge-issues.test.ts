@@ -325,6 +325,102 @@ describe('forge_issues tool', () => {
     expect(JSON.stringify(result).length).toBeLessThan(50_000);
   });
 
+  // ISS-586 — label filter tests
+
+  const LABEL_ID = '55555555-5555-4555-8555-555555555555';
+  const LABEL_ID_2 = '66666666-6666-4666-8666-666666666666';
+
+  it('list filters.label (uuid) pushes the EXISTS join and returns matching issues', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    // 1. resolveProjectIdFromSlug
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    // 2. assertDeviceOwnerIsMember
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // 3. issue list (uuid filter → no name-resolution query)
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { label: LABEL_ID },
+    })) as { issues: Array<{ documentId: string }> };
+
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0]?.documentId).toBe(ISSUE_ID);
+  });
+
+  it('list filters.label (name) resolves via labels query then returns matching issues', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    // 1. resolveProjectIdFromSlug
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    // 2. assertDeviceOwnerIsMember
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // 3. label name resolution: returns one resolved id
+    selectLimit.mockResolvedValueOnce([{ id: LABEL_ID }]);
+    // 4. issue list
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { label: 'bug' },
+    })) as { issues: Array<{ documentId: string }> };
+
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0]?.documentId).toBe(ISSUE_ID);
+  });
+
+  it('list filters.label with unknown name short-circuits to empty without querying issues', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    // 1. resolveProjectIdFromSlug
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    // 2. assertDeviceOwnerIsMember
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // 3. label name resolution: unknown → no rows
+    selectLimit.mockResolvedValueOnce([]);
+    // Note: NO 4th mock — if the handler queries issues after this it gets undefined (test failure).
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { label: 'nonexistent-label' },
+    })) as { issues: unknown[] };
+
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('list filters.label array mixes uuid and name, deduplicates resolved ids', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    // 1. resolveProjectIdFromSlug
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    // 2. assertDeviceOwnerIsMember
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // 3. name resolution returns LABEL_ID (the same uuid already in uuidValues → deduped)
+    selectLimit.mockResolvedValueOnce([{ id: LABEL_ID }, { id: LABEL_ID_2 }]);
+    // 4. issue list
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { label: [LABEL_ID, 'enhancement'] },
+    })) as { issues: Array<{ documentId: string }> };
+
+    expect(result.issues).toHaveLength(1);
+  });
+
   it('list throws BAD_REQUEST when no slug and no projectId', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },

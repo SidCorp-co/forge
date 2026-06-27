@@ -10,6 +10,7 @@ import type {
   IssueComplexity,
   IssueCostSummary,
   IssueDependencies,
+  IssueLabel,
   IssuePriority,
   IssueRow,
   IssueSearchOpts,
@@ -75,6 +76,7 @@ export const issuesApi = {
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.assignee) params.set("assignee", opts.assignee);
+    if (opts.label) params.set("label", opts.label);
     const { status, statusNot } = filterToStatusParams(opts.filter ?? "all");
     for (const s of status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);
@@ -105,6 +107,9 @@ export const issuesApi = {
 
   /** `GET /api/projects/:projectId/members` — assignee option source. */
   members: (projectId: string) => apiClient<ProjectMember[]>(`/projects/${projectId}/members`),
+
+  /** `GET /api/projects/:projectId/labels` — label filter option source (ISS-586). */
+  labels: (projectId: string) => apiClient<IssueLabel[]>(`/projects/${projectId}/labels`),
 
   /** `POST /api/issues/:id/run-pipeline-step` — kick the pipeline (409 if a job
    *  is already active). `stage` optional. */

@@ -13,7 +13,7 @@ import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, issuesApi } from "./api";
-import type { IssuePriority, IssueRow, IssueSearchOpts, IssueStatus } from "./types";
+import type { IssueLabel, IssuePriority, IssueRow, IssueSearchOpts, IssueStatus } from "./types";
 
 /**
  * Create an issue in `projectId`. On success invalidates `['issues']` so the
@@ -66,6 +66,16 @@ export function useProjectMembers(projectId: string | undefined) {
   return useQuery({
     queryKey: ["project", projectId, "members"],
     queryFn: () => issuesApi.members(projectId as string),
+    enabled: !!projectId,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Project labels (label filter options). Keyed `['project', projectId, 'labels']` (ISS-586). */
+export function useProjectLabels(projectId: string | undefined) {
+  return useQuery<IssueLabel[]>({
+    queryKey: ["project", projectId, "labels"],
+    queryFn: () => issuesApi.labels(projectId as string),
     enabled: !!projectId,
     staleTime: 5 * 60_000,
   });
