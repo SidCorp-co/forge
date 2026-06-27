@@ -16,11 +16,27 @@ import { dispatchLivenessMs } from './dispatch-liveness.js';
  * ISS-172 Slice A: the source of truth is the `runners` table, not the
  * deprecated `project_devices` pool. A device may be a runner for N projects
  * simultaneously; this query returns the device id for THIS project only.
+ *
+ * `excludeDeviceIds` (ISS-584 B) skips devices already tried — used by the
+ * schedule cross-runner failover so a dead-on-arrival runner is not re-picked
+ * on the retry. The default-device fallback honours the exclude list too.
  */
 export async function findAvailableDeviceForProject(
   projectId: string,
+  opts: { excludeDeviceIds?: string[] } = {},
 ): Promise<string | null> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  const exclude = (opts.excludeDeviceIds ?? []).filter((id): id is string => !!id);
+  // Build a parenthesised parameter list and use `NOT IN (...)`. Interpolating a
+  // JS array directly (`<> ALL(${exclude}::uuid[])`) expands as a record tuple
+  // ($1,$2,…) → malformed array literal at query time. Same idiom as
+  // mcp/tools/forge-metrics.ts.
+  const excludeClause = exclude.length
+    ? sql`AND r.device_id NOT IN (${sql.join(
+        exclude.map((id) => sql`${id}`),
+        sql`, `,
+      )})`
+    : sql``;
   const rows = await db.execute<{ device_id: string }>(sql`
     SELECT r.device_id
     FROM runners r
@@ -34,6 +50,7 @@ export async function findAvailableDeviceForProject(
       AND NOT EXISTS (
         SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
       )
+      ${excludeClause}
     ORDER BY r.last_seen_at DESC
     LIMIT 1
   `);
@@ -45,7 +62,7 @@ export async function findAvailableDeviceForProject(
     .where(eq(projects.id, projectId))
     .limit(1);
 
-  if (!project?.defaultDeviceId) return null;
+  if (!project?.defaultDeviceId || exclude.includes(project.defaultDeviceId)) return null;
 
   const [defaultDevice] = await db
     .select({ id: devices.id })

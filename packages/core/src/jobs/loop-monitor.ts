@@ -59,6 +59,23 @@ import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 
+// Lazily loaded (ISS-584 B). schedules/dispatch.js pulls a heavy prompt-builder
+// chain (and through it the env-validating embeddings module); importing it
+// statically here would drag that into every consumer of the loop-monitor (and
+// break hermetic unit suites that don't stub env). The sweeper only needs it at
+// runtime, so resolve it on first use and cache.
+type RedispatchFn = (
+  sessionId: string,
+) => Promise<{ ok: boolean; status: string; sessionId?: string; deviceId?: string }>;
+let _redispatchScheduleFn: RedispatchFn | null = null;
+async function getRedispatchScheduleFn(): Promise<RedispatchFn> {
+  if (!_redispatchScheduleFn) {
+    const mod = await import('../schedules/dispatch.js');
+    _redispatchScheduleFn = mod.redispatchScheduleSessionOnFailover;
+  }
+  return _redispatchScheduleFn;
+}
+
 // Hop thresholds. Clamped at MIN_TIMEOUT_MS so a low env override can't
 // slaughter healthy rows. Values + env names carried over from the demoted
 // sweepers so existing deploy configs keep working:
@@ -337,16 +354,38 @@ export async function reapZombieSessions(
 
   for (const z of noClientFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');
-    await emitPipelineWedge({
-      projectId: z.projectId,
-      issueId: await lookupIssueForRun(z.pipelineRunId),
-      hop: 'claim',
-      entity: 'session',
-      entityId: z.id,
-      reason: 'session was created running but no client ever attached (no claudeSessionId)',
-      action:
-        'Check that the target device is online and accepting agent:start. Re-run the schedule/chat turn once a device is available.',
-    });
+    // ISS-584 (B): a schedule run that never attached ran zero side effects, so
+    // it is safe to re-dispatch onto another runner (async failover, mirrors the
+    // job reaper→retry model). Plain chat returns `not-schedule` and is left for
+    // the user to retry. Best-effort: a throw here must not abort the sweep.
+    let failover: { ok: boolean; sessionId?: string; deviceId?: string } | null = null;
+    try {
+      const redispatch = await getRedispatchScheduleFn();
+      failover = await redispatch(z.id);
+      if (failover.ok) {
+        logger.info(
+          { failedSessionId: z.id, retrySessionId: failover.sessionId, deviceId: failover.deviceId },
+          'loop-monitor: schedule no_client_ack re-dispatched to another runner',
+        );
+      }
+    } catch (err) {
+      logger.error({ err, sessionId: z.id }, 'loop-monitor: schedule failover threw (skipped)');
+    }
+    // A successful failover already re-queued the work, so the wedge would be
+    // noise; only flag the genuine dead-ends (no device left / chain exhausted /
+    // plain chat) that still need a human or device.
+    if (!failover?.ok) {
+      await emitPipelineWedge({
+        projectId: z.projectId,
+        issueId: await lookupIssueForRun(z.pipelineRunId),
+        hop: 'claim',
+        entity: 'session',
+        entityId: z.id,
+        reason: 'session was created running but no client ever attached (no claudeSessionId)',
+        action:
+          'Check that the target device is online and accepting agent:start. Re-run the schedule/chat turn once a device is available.',
+      });
+    }
   }
 
   const result: ZombieSessionReapResult = {

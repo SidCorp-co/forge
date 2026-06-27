@@ -122,7 +122,7 @@ vi.mock('./messages/drift-check-prompt.js', () => ({
   buildDriftCheckPrompt: (input: unknown) => buildDriftCheckPromptMock(input as never),
 }));
 
-const { dispatchScheduleRun } = await import('./dispatch.js');
+const { dispatchScheduleRun, redispatchScheduleSessionOnFailover } = await import('./dispatch.js');
 const hooksModule = await import('../pipeline/hooks.js');
 
 const SCHEDULE_ID = 'sch-1';
@@ -481,6 +481,124 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     };
     expect(insertCall?.userId).toBe('owner-1');
     expect(insertCall?.metadata?.tick).toBe(true);
+  });
+});
+
+// ── ISS-584 (B): schedule cross-runner failover ───────────────────────────────
+
+describe('redispatchScheduleSessionOnFailover', () => {
+  const DEAD_DEVICE = 'dev-dead';
+  const NEW_DEVICE = 'dev-2';
+
+  function failedScheduleSession(over: Record<string, unknown> = {}) {
+    return {
+      id: 'failed-sess',
+      projectId: SOURCE_PROJECT_ID,
+      userId: USER_ID,
+      deviceId: DEAD_DEVICE,
+      title: 'Daily Dream',
+      messages: [{ role: 'user', content: 'do the scheduled thing', timestamp: 1 }],
+      metadata: { source: 'schedule.run', scheduleId: SCHEDULE_ID },
+      ...over,
+    };
+  }
+
+  function seedRedispatchHappy() {
+    findDeviceMock.mockResolvedValue(NEW_DEVICE);
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: 'retry-sess',
+        projectId: SOURCE_PROJECT_ID,
+        deviceId: null,
+        title: 'Daily Dream',
+        status: 'idle',
+        messages: [],
+        metadata: { source: 'schedule.run', scheduleId: SCHEDULE_ID },
+        claudeSessionId: null,
+        startedAt: null,
+      },
+    ]);
+    txUpdateReturning.mockResolvedValueOnce([
+      {
+        id: 'retry-sess',
+        projectId: SOURCE_PROJECT_ID,
+        deviceId: NEW_DEVICE,
+        status: 'running',
+        claudeSessionId: null,
+        metadata: { source: 'schedule.run', scheduleId: SCHEDULE_ID, deviceId: NEW_DEVICE },
+      },
+    ]);
+  }
+
+  it('no_client_ack schedule session → re-dispatches to a DIFFERENT runner, excluding the dead one', async () => {
+    selectLimit.mockResolvedValueOnce([failedScheduleSession()]); // failed session fetch
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]); // project
+    seedRedispatchHappy();
+
+    const result = await redispatchScheduleSessionOnFailover('failed-sess');
+
+    expect(result).toEqual({
+      ok: true,
+      status: 'redispatched',
+      sessionId: 'retry-sess',
+      deviceId: NEW_DEVICE,
+    });
+    // The dead device is excluded from the re-pick.
+    const exclude = (findDeviceMock.mock.calls[0] as unknown as [string, { excludeDeviceIds: string[] }])[1];
+    expect(exclude?.excludeDeviceIds).toContain(DEAD_DEVICE);
+    // Re-dispatch carries the bumped failover chain in the new session metadata.
+    const insertCall = insertReturning.mock.calls.length
+      ? (insertValues.mock.calls[0]?.[0] as { metadata?: { failover?: { attempt: number; triedDeviceIds: string[] } } })
+      : undefined;
+    expect(insertCall?.metadata?.failover?.attempt).toBe(1);
+    expect(insertCall?.metadata?.failover?.triedDeviceIds).toContain(DEAD_DEVICE);
+    // Re-uses the prompt from the failed session — no prompt re-build.
+    expect(publishMock).toHaveBeenCalledTimes(1);
+    const [room, msg] = publishMock.mock.calls[0] as [string, { data: Record<string, unknown> }];
+    expect(room).toBe(`device:${NEW_DEVICE}`);
+    expect(String(msg.data.prompt)).toContain('do the scheduled thing');
+  });
+
+  it('non-schedule session → not-schedule, no re-dispatch', async () => {
+    selectLimit.mockResolvedValueOnce([
+      failedScheduleSession({ metadata: { source: 'chat' } }),
+    ]);
+    const result = await redispatchScheduleSessionOnFailover('failed-sess');
+    expect(result).toEqual({ ok: false, status: 'not-schedule' });
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('failover chain exhausted (attempt > MAX) → exhausted, no re-dispatch', async () => {
+    selectLimit.mockResolvedValueOnce([
+      failedScheduleSession({
+        metadata: {
+          source: 'schedule.run',
+          scheduleId: SCHEDULE_ID,
+          failover: { attempt: 2, triedDeviceIds: ['a', 'b'] },
+        },
+      }),
+    ]);
+    const result = await redispatchScheduleSessionOnFailover('failed-sess');
+    expect(result).toEqual({ ok: false, status: 'exhausted' });
+    expect(findDeviceMock).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('no other runner available → no-device, no re-dispatch', async () => {
+    selectLimit.mockResolvedValueOnce([failedScheduleSession()]);
+    findDeviceMock.mockResolvedValue(null);
+    const result = await redispatchScheduleSessionOnFailover('failed-sess');
+    expect(result).toEqual({ ok: false, status: 'no-device' });
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('failed session has no user-message prompt → no-prompt', async () => {
+    selectLimit.mockResolvedValueOnce([failedScheduleSession({ messages: [] })]);
+    const result = await redispatchScheduleSessionOnFailover('failed-sess');
+    expect(result).toEqual({ ok: false, status: 'no-prompt' });
+    expect(findDeviceMock).not.toHaveBeenCalled();
   });
 });
 
