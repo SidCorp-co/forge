@@ -84,6 +84,15 @@ export interface ChatClient {
   deviceId: string | null;
   /** Desktop runs Claude locally — no device pick, no `agent:start` dispatch. */
   isLocal: boolean;
+  /**
+   * True when we had to pick a device OTHER than the session's existing pin
+   * (the pin went offline/disabled). The Claude on-disk session (`--resume`
+   * target) lives only on the OLD box, so a follow-up turn must NOT `--resume`
+   * here — it cold-starts on the new device and rehydrates history from the DB
+   * transcript instead. Undefined ≡ false (a brand-new session has no pin to
+   * lose, so it is a genuine cold start, not a migration).
+   */
+  migrated?: boolean;
 }
 
 /**
@@ -95,6 +104,9 @@ export interface ChatClient {
  *   online runner via `findAvailableDeviceForProject`. Verifying the pin is what
  *   keeps ISS-420 (don't dispatch to a dead device) — but instead of 409-ing on
  *   a stale pin we self-heal to a live runner, so only a truly empty pool fails.
+ *   When the self-heal lands on a DIFFERENT device than the pin, `migrated` is
+ *   set so the dispatcher rehydrates from DB history instead of issuing a
+ *   `--resume` against a session file that does not exist on the new box.
  *
  * Never throws and never persists. The caller decides what a null REMOTE device
  * means — an HTTP 409 (`noClaudeClient`) for /start + /send, a `skipped` cron
@@ -104,7 +116,7 @@ export async function resolveChatDevice(
   session: Pick<AgentSessionRow, 'projectId' | 'deviceId' | 'metadata'>,
   origin?: string | null,
 ): Promise<ChatClient> {
-  if (origin === 'desktop') return { deviceId: null, isLocal: true };
+  if (origin === 'desktop') return { deviceId: null, isLocal: true, migrated: false };
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
   if (pinned) {
@@ -115,10 +127,54 @@ export async function resolveChatDevice(
       .limit(1);
     // A turned-off device is ignored even when online + pinned — fall through to
     // pick another available device (or report no client).
-    if (dev?.status === 'online' && !dev.disabledAt) return { deviceId: pinned, isLocal: false };
+    if (dev?.status === 'online' && !dev.disabledAt)
+      return { deviceId: pinned, isLocal: false, migrated: false };
   }
   const deviceId = await findAvailableDeviceForProject(session.projectId);
-  return { deviceId, isLocal: false };
+  // Migration = we had a pin but could not honour it and landed on another live
+  // device. A pinless session is a true cold start, not a migration.
+  const migrated = !!pinned && !!deviceId && deviceId !== pinned;
+  return { deviceId, isLocal: false, migrated };
+}
+
+/**
+ * Cap on how much prior transcript we re-inject when a session migrates to a new
+ * runner. The full conversation lives in the DB; we replay the tail (newest
+ * turns first, then chronological) up to this many characters so the cold-start
+ * prompt primes Claude without blowing the context window on a long history.
+ */
+const MAX_REHYDRATION_CHARS = 12_000;
+
+/**
+ * Build a transcript block that re-establishes prior context after a session
+ * migrates to a different runner (the on-disk `--resume` state is unreachable).
+ * Returns '' when there is no prior history (a genuine cold start).
+ */
+export function buildRehydrationBlock(
+  prev: ReadonlyArray<{ role?: string; content?: unknown }>,
+): string {
+  if (!prev.length) return '';
+  const kept: string[] = [];
+  let total = 0;
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const m = prev[i];
+    if (!m) continue;
+    const role = m.role === 'assistant' ? 'Assistant' : m.role === 'user' ? 'User' : (m.role ?? '?');
+    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+    const line = `${role}: ${content}`;
+    // Always keep at least the newest turn even if it alone exceeds the budget.
+    if (kept.length && total + line.length > MAX_REHYDRATION_CHARS) break;
+    kept.push(line);
+    total += line.length;
+  }
+  kept.reverse();
+  return (
+    '[Your previous session was resumed on a different machine; its local ' +
+    'context is unavailable. The prior conversation transcript follows — treat ' +
+    'it as the established history and continue seamlessly.]\n\n' +
+    `${kept.join('\n\n')}\n\n` +
+    '[End of prior transcript. Continue with the new message below.]\n\n'
+  );
 }
 
 export interface CreateChatSessionArgs {
@@ -196,15 +252,19 @@ export interface DispatchChatTurnArgs {
 /**
  * Append one user turn to a session and dispatch it to its Claude client.
  *
- * Decides `agent:start` vs `agent:send` purely from whether a Claude session id
- * exists yet: no id → first turn → `agent:start` (system prompt + chat
- * preamble); id present → follow-up → `agent:send` (`--resume`). A web cold
- * start (empty session, first /send) therefore correctly starts a fresh Claude
- * session instead of 409-ing on a pin nobody ever set.
+ * Decides `agent:start` vs `agent:send` from whether the turn is *resumable* —
+ * a Claude session id exists AND the client did not migrate to a new device.
+ *   - no id (first turn)        → `agent:start` (system prompt + chat preamble)
+ *   - id + same device          → `agent:send` (`--resume`, fast path)
+ *   - id + migrated to new box  → `agent:start` with the DB transcript rehydrated
+ *     (the old `--resume` file is unreachable on the new runner)
+ * A web cold start (empty session, first /send) therefore correctly starts a
+ * fresh Claude session instead of 409-ing on a pin nobody ever set.
  */
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const { session, project, client, origin } = args;
   const { deviceId, isLocal } = client;
+  const migrated = !!client.migrated;
   const broadcastEvent = args.broadcastEvent ?? 'agent-session.updated';
 
   // Re-prepend the [Context: …] header only when the user switched page/issue
@@ -253,6 +313,10 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   };
   // Pin the freshly-picked device so the next /send reuses it.
   if (deviceId && session.deviceId !== deviceId) updates.deviceId = deviceId;
+  // On migration the old Claude session id points at a file on the dead box —
+  // drop it so this turn cold-starts here and the new runner stamps a fresh id
+  // (which the next follow-up will `--resume` against this device).
+  if (migrated) updates.claudeSessionId = null;
   const nextMeta = { ...prevMeta };
   if (deviceId) nextMeta.deviceId = deviceId;
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
@@ -304,12 +368,20 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // (harmless) when the project has no `pipelineConfig.mcpServers` configured.
   const mcpServersOverride = await resolveProjectDefaultMcpServers(project.id);
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
-  if (!claudeSessionId) {
-    // First turn — fresh Claude session: carry the tool reference + project preamble.
+  // Resume only when we have a Claude session id AND we are still on the device
+  // that owns it. A migration breaks resume affinity → cold-start + rehydrate.
+  const resumable = !!claudeSessionId && !migrated;
+  if (!resumable) {
+    // Cold start — fresh Claude session: carry the tool reference + project
+    // preamble. On a migration, re-inject the prior transcript from the DB so
+    // the new runner continues the conversation without the on-disk --resume
+    // state (the unlock: history lives in the DB, not only on the old box).
     let prompt = decoratedMessage;
     if (!args.preBuilt) {
       try {
-        prompt = (await buildChatPreamble(project.id)) + decoratedMessage;
+        const preamble = await buildChatPreamble(project.id);
+        const history = migrated ? buildRehydrationBlock(prevMessages) : '';
+        prompt = preamble + history + decoratedMessage;
       } catch {
         // non-fatal — proceed with the raw prompt
       }

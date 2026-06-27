@@ -105,35 +105,43 @@ beforeEach(() => {
 describe('resolveChatDevice', () => {
   it('desktop origin → local, no device', async () => {
     const r = await resolveChatDevice(baseSession(), 'desktop');
-    expect(r).toEqual({ deviceId: null, isLocal: true });
+    expect(r).toEqual({ deviceId: null, isLocal: true, migrated: false });
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
 
-  it('no pin → picks a fresh online runner', async () => {
+  it('no pin → picks a fresh online runner (not a migration)', async () => {
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE);
     const r = await resolveChatDevice(baseSession(), undefined);
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
   });
 
-  it('online pin → reuses it (no re-pick)', async () => {
+  it('online pin → reuses it (no re-pick, no migration)', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'online' }]);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
 
-  it('offline pin → self-heals to a fresh online runner', async () => {
+  it('offline pin → self-heals to a DIFFERENT runner (migrated=true)', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
     findAvailableDeviceForProject.mockResolvedValueOnce('dev-2');
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false });
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true });
+  });
+
+  it('offline pin but pool re-picks the SAME device → not a migration', async () => {
+    // (e.g. the device came back online between the pin check and the pool query)
+    selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE);
+    const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
   });
 
   it('offline pin + empty pool → null (caller 409s)', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: null, isLocal: false });
+    expect(r).toEqual({ deviceId: null, isLocal: false, migrated: false });
   });
 });
 
@@ -182,6 +190,47 @@ describe('dispatchChatTurn', () => {
     // Each follow-up re-spawns `claude` with a fresh `--mcp-config`, so the
     // project-default MCP servers must ride on `agent:send` too.
     expect(data.mcpServersOverride).toEqual({ playwright: { type: 'stdio' } });
+  });
+
+  it('migrated session (pin lost) → agent:start, rehydrates DB transcript, drops stale claudeSessionId', async () => {
+    updateReturning.mockResolvedValueOnce([
+      baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
+    ]);
+    await dispatchChatTurn({
+      session: baseSession({
+        claudeSessionId: 'c-1',
+        deviceId: DEVICE,
+        metadata: { deviceId: DEVICE },
+        messages: [
+          { role: 'user', content: 'where is the runner code' },
+          { role: 'assistant', content: 'in packages/runner' },
+        ],
+      }),
+      project: PROJECT,
+      // resolveChatDevice landed on a different live device → migration.
+      client: { deviceId: 'dev-2', isLocal: false, migrated: true },
+      message: 'and the dispatch loop?',
+    });
+    // A migration must NOT --resume on the new box: it cold-starts.
+    const sent = publishSpy.mock.calls.find(
+      ([, env]) => (env as { event: string }).event === 'agent:send',
+    );
+    expect(sent).toBeUndefined();
+    const start = publishSpy.mock.calls.find(
+      ([room, env]) =>
+        room === 'device:dev-2' && (env as { event: string }).event === 'agent:start',
+    );
+    expect(start).toBeDefined();
+    const prompt = String((start?.[1] as { data: { prompt: string } }).data.prompt);
+    // Preamble + prior transcript + the new message are all primed into the cold start.
+    expect(prompt).toContain('[Preamble]');
+    expect(prompt).toContain('resumed on a different machine');
+    expect(prompt).toContain('where is the runner code');
+    expect(prompt).toContain('in packages/runner');
+    expect(prompt).toContain('and the dispatch loop?');
+    // The stale Claude session id (file lives on the dead box) is cleared.
+    const updates = updateSet.mock.calls[0]?.[0] as { claudeSessionId?: string | null };
+    expect(updates.claudeSessionId).toBeNull();
   });
 
   it('local (desktop) → mirrors agent:user-message, no device dispatch', async () => {
