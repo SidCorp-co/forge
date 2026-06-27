@@ -104,6 +104,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Knowledge entries now stay current automatically: shipped features promote inferred entries to verified, a weekly drift check proposes updates when documentation falls behind the codebase, and durable memory lessons can be nominated for promotion into curated knowledge via a human review gate.
 - Pipeline jobs no longer get stuck in an infinite triage loop when the forge MCP server fails to connect at initialization.
 - QA evidence screenshots from forge-verify-live are now reliably attached to comments using the forge_uploads presigned-URL pattern, eliminating false 'screenshot attached' claims when FORGE_API_TOKEN was unset.
+- Filter issues by label — both in the web-v2 Issues list (new Label filter dropdown) and via the MCP forge_issues.list tool (filters.label accepts a label name or id).
 
 ## [0.3.0] - 2026-06-11
 
