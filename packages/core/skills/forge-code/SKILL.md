@@ -125,6 +125,7 @@ This takes one extra `forge_issues → get` call per relation — cheap insuranc
 1. **Plan = source of truth** — don't re-explore or re-plan
 2. **Build + review before push** — never push unvalidated code
 3. **Post a comment** — see `references/comments.md`
+4. **Build to the UX contract (if the project has one)** — when the project has a `ux-contract` projectFact and the change is user-facing, implement against it: reuse the project's design-system primitives/tokens (no 3rd-party UI lib / raw hex) and cover every applicable required state (loading / empty / empty-search / error+retry / feedback on each mutation / destructive-confirm / keyboard+visible-focus / responsive), not just the happy path. A missing applicable state will be flagged at review/QA and bounce the issue. Projects without a `ux-contract`, and backend-only changes, are unaffected.
 
 (Status discipline, branch rules, output rules, sessionContext schema — see pipeline preamble.)
 

@@ -152,7 +152,11 @@ Run the **Pass-B quality checklist** (`references/ui-quality-checklist.md`) over
 - **Role correctness** (if the project has roles) — controls a role may not use are hidden/disabled, not just unenforced; no other tenant's/user's data leaks onto the screen.
 - **Design consistency** — matches the app's existing components, spacing, and typography; no ad-hoc one-off styling.
 
+If the project has a `ux-contract` projectFact (a per-project UX standard, injected into your context), hold each affected screen to **its** *Definition of UX-Done* — that is the project's own bar; a missing applicable item there is a FAIL.
+
 Tag quality failures distinctly (`UX` / `A11y` / `Responsive`) so forge-fix can triage severity — they are real FAILs, kept separate from functional FAILs. **Scope to the change** — audit the screens this issue adds or modifies; don't re-audit the whole app. For backend-only changes with no UI surface, skip Pass B and note "no UI surface".
+
+**Emit UX findings (if the project has a `ux-contract`).** When the project has a `ux-contract` projectFact and the change is user-facing, for each UX / A11y / Responsive gap you record above, also write it via `forge_ux_findings → write { stage: "verify-live", kind: "missing-state"|"a11y"|"microcopy"|"responsive"|"design-system"|"other", detail, severity: "must"|"should" }`. This is a **non-blocking side-channel** — separate from the PASS/FAIL verdict (a failed emit never changes the verdict); issue/run are resolved server-side. It feeds the per-project contract's learning loop. Skip for projects without a `ux-contract` or backend-only changes.
 
 **If no browser tools available:** use curl/WebFetch to fetch the page HTML and verify key elements are present/absent. Note in the report that testing was HTML-only (no interactive browser) — Pass B cannot be fully verified, say so explicitly rather than claiming PASS.
 

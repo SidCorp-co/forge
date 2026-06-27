@@ -73,6 +73,10 @@ If category is not `bug`:
 
 6. **Restate the intent** so plan/code don't re-derive it from a one-line title — capture: **Outcome** (what the user can do/see after) · **User/role** · **Why now** · **Success** (how we'd know — ties to acceptanceCriteria) · **Constraint** (must-respect limits) · **Out of scope**. Where the issue is silent on a dimension, state your best assumption so it surfaces for correction instead of being buried.
 
+### Step 3c: Ground acceptance criteria in the UX contract (if the project has one)
+
+If the project has a `ux-contract` projectFact (a per-project UX completeness standard, injected into your context) and this change is **user-facing**, ground the `acceptanceCriteria` in its *Definition of UX-Done*: every applicable required-state / a11y / microcopy / responsive item becomes a checkable AC (e.g. loading, empty, empty-search-if-searchable, error+retry, success/error feedback, destructive-confirm, keyboard+visible-focus, works at the contract's min width). Functional-only ACs let a working-but-incomplete screen pass every gate — the ACs are what review and QA verify. Append the missing items via `forge_issues → update { acceptanceCriteria }`. Projects without a `ux-contract`, and backend-only changes, are unaffected.
+
 ### Step 4: Post Comment & Set Status
 
 (Release notes are NOT drafted here — they are written at the release step, where the change is fully implemented and the user-facing summary reflects what actually shipped rather than a pre-implementation guess.)
