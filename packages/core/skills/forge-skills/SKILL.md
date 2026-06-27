@@ -40,6 +40,8 @@ Need different pipeline behaviour for THIS project?
    - **Inline (always-paid):** decision logic the agent must always see — gates, exit rules, "when to X vs Y".
    - **`references/*.md` (lazy):** long checklists, templates, playbooks, examples.
    - **`projectFacts` (preamble):** per-project values referenced by many skills.
+6. **Emit structured signals — don't bury machine-consumed data in the comment.** When a stage produces data a later stage or an aggregator reads (friction, UX gaps, metrics, learnings), write it to its dedicated tool/table (`forge_feedback`, `forge_ux_findings`, …) as a **non-blocking side-channel** — *in addition to* the human-facing comment and the status transition, never instead of them. The comment is for the reader; the structured row is for the machine. A failed emit must never change the stage's verdict.
+7. **Consume a project-wide standard as a gated fact, not hardcoded prose.** A standard the pipeline must honor across issues (e.g. a UX contract) lives as an always-inject `projectFacts` key and is referenced with an *"if the project has \<fact\>"* guard, so projects without it are unaffected. Read the standard from the fact; don't bake it into the skill body (that can't be tuned per project and drifts).
 
 ## 4. Failure modes to avoid
 
