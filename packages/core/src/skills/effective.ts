@@ -53,6 +53,12 @@ export interface EffectiveSkill {
   shadowsGlobal: boolean;
   /** The same-name global's skill id (null when none). Catalog hint only. */
   shadowedGlobalSkillId: string | null;
+  /**
+   * True when this project skill is force-synced to runners without a pipeline
+   * stage binding (manual / user-invocable utility). It enters the device
+   * manifest but is never auto-dispatched. See `resolveRegisteredEffectiveSkills`.
+   */
+  installOnly: boolean;
 }
 
 /** The skill columns the resolver needs — a subset of the `skills` row. */
@@ -64,6 +70,7 @@ export interface SkillBodyRow {
   skillMd: string | null;
   prompt: string;
   files: unknown;
+  installOnly: boolean;
 }
 
 /**
@@ -107,6 +114,7 @@ export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
     scope: skill.scope,
     shadowsGlobal: false,
     shadowedGlobalSkillId: null,
+    installOnly: skill.installOnly,
   };
 }
 
@@ -118,6 +126,7 @@ const skillBodyProjection = {
   skillMd: skills.skillMd,
   prompt: skills.prompt,
   files: skills.files,
+  installOnly: skills.installOnly,
 } as const;
 
 /**
@@ -199,10 +208,13 @@ export async function resolveProjectSkills(projectId: string): Promise<Effective
 
 /**
  * The device-sync manifest set: the project's USABLE (project-scoped) skills
- * intersected with the names registered to a stage. Globals never enter this
- * set — a registration that still points at a global (legacy data; the
- * register API now rejects it) contributes nothing unless the project owns a
- * same-name project skill. See docs/skills-scope-playbook.md (Rules 2 & 4).
+ * that are EITHER (a) registered to a stage by name, OR (b) flagged
+ * `installOnly` (manual / user-invocable utilities force-synced without a stage
+ * binding — they enter the manifest but the dispatcher never auto-runs them,
+ * since stage dispatch keys off `skill_registrations`, not this set). Globals
+ * never enter this set — a registration that still points at a global (legacy
+ * data; the register API now rejects it) contributes nothing unless the project
+ * owns a same-name project skill. See docs/skills-scope-playbook.md (Rules 2 & 4).
  */
 export async function resolveRegisteredEffectiveSkills(
   projectId: string,
@@ -212,22 +224,23 @@ export async function resolveRegisteredEffectiveSkills(
     .from(skillRegistrations)
     .where(eq(skillRegistrations.projectId, projectId));
 
+  // Resolve registered ids → names. Matching by NAME (not id) keeps legacy
+  // registrations that still point at a global working IFF the project has
+  // adopted a same-name project skill — the global itself is never returned.
   const registeredIds = [...new Set(regs.map((r) => r.skillId))];
-  if (registeredIds.length === 0) return [];
+  let registeredNames = new Set<string>();
+  if (registeredIds.length > 0) {
+    const nameRows = await db
+      .select({ name: skills.name })
+      .from(skills)
+      .where(inArray(skills.id, registeredIds));
+    registeredNames = new Set(nameRows.map((n) => n.name));
+  }
 
-  // Resolve registered ids → names, then keep only the project skills whose
-  // name is registered. Matching by NAME (not id) keeps legacy registrations
-  // that still point at a global working IFF the project has adopted a
-  // same-name project skill — the global itself is never returned.
-  const nameRows = await db
-    .select({ name: skills.name })
-    .from(skills)
-    .where(inArray(skills.id, registeredIds));
-  const registeredNames = new Set(nameRows.map((n) => n.name));
-  if (registeredNames.size === 0) return [];
-
+  // installOnly skills are force-synced even with zero stage registrations, so
+  // do NOT early-return on an empty registration set.
   const projectSkills = await resolveProjectSkills(projectId);
-  return projectSkills.filter((s) => registeredNames.has(s.name));
+  return projectSkills.filter((s) => registeredNames.has(s.name) || s.installOnly);
 }
 
 /**

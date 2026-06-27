@@ -79,6 +79,7 @@ const skillProjection = {
   changelog: skills.changelog,
   localGuide: skills.localGuide,
   evalScore: skills.evalScore,
+  installOnly: skills.installOnly,
 } as const;
 
 /**
@@ -369,6 +370,7 @@ export interface UpdateProjectSkillPatch {
   target?: SkillTarget | null | undefined;
   files?: SkillFileInput[] | undefined;
   localGuide?: string | null | undefined;
+  installOnly?: boolean | undefined;
 }
 
 /**
@@ -411,6 +413,7 @@ export async function updateProjectSkill(
     updates.prompt = patch.skillMd;
   }
   if (patch.target !== undefined) updates.target = patch.target;
+  if (patch.installOnly !== undefined) updates.installOnly = patch.installOnly;
   const normalizedFiles = patch.files !== undefined ? normalizeSkillFiles(patch.files) : undefined;
   if (normalizedFiles !== undefined) updates.files = normalizedFiles;
   if (patch.localGuide !== undefined) updates.localGuide = patch.localGuide;

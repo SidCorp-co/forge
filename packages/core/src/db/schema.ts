@@ -1360,6 +1360,12 @@ export const skills = pgTable(
     files: jsonb('files').notNull().default([]),
     changelog: jsonb('changelog').notNull().default([]),
     localGuide: text('local_guide'),
+    // When true, a project-scoped skill is synced to device runners (enters the
+    // device manifest) even though it is NOT registered to any pipeline stage.
+    // Lets a manual / user-invocable utility skill (e.g. forge-product-map) live
+    // on the runner without the dispatcher ever auto-running it — stage dispatch
+    // keys off skill_registrations, which this flag does not touch.
+    installOnly: boolean('install_only').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
