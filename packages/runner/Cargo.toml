@@ -5,7 +5,7 @@ members = ["crates/forge-runner-core", "crates/forge-runner"]
 # Version is kept in lockstep with the monorepo (one version across
 # web/core/dev/runner). Bumped by .claude/skills/forge-cut-release.
 [workspace.package]
-version = "0.6.4"
+version = "0.6.5"
 edition = "2021"
 license = "MIT"
 
