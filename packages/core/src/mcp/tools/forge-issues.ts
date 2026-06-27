@@ -1,13 +1,15 @@
-import { and, asc, desc, eq, gte, ilike, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
   type IssueStatus,
   comments,
   issueComplexities,
+  issueLabels,
   issuePriorities,
   issueStatuses,
   issues,
+  labels,
   taskStatuses,
   tasks,
 } from '../../db/schema.js';
@@ -67,6 +69,11 @@ const filtersSchema = z
     // listTasks call cannot accidentally match against issue.status.
     issue: z.uuid().optional(),
     taskStatus: z.enum(taskStatuses).optional(),
+    // Label filter: accepts a label name OR uuid (or an array of either).
+    // Names are resolved to ids server-side; unknown names short-circuit to empty.
+    label: z
+      .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
+      .optional(),
   })
   .strict()
   .optional();
@@ -543,6 +550,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'list returns a lightweight summary projection per issue (no description/' +
     'plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*/releaseNotes) ' +
     'to stay under the response token cap; fetch the full body with action=get. ' +
+    'list supports filters.label (a label name or uuid, or an array of either — ' +
+    'OR semantics; unknown names return an empty set). ' +
     'Token discipline: use list (projection) to browse/triage many issues, and ' +
     'get for the single full issue you are about to work on. When forge_step_start ' +
     'returned a lean manifest (bodyTruncated:true), pull only the fields you need ' +
@@ -614,6 +623,40 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           const descMatch = ilike(issues.description, q);
           const orExpr = or(titleMatch, descMatch);
           if (orExpr) conds.push(orExpr);
+        }
+
+        if (f?.label !== undefined && f.label !== null) {
+          const rawValues = Array.isArray(f.label) ? f.label : [f.label];
+          const uuidPattern =
+            /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+          const uuidValues = rawValues.filter((v) => uuidPattern.test(v));
+          const nameValues = rawValues.filter((v) => !uuidPattern.test(v));
+
+          let resolvedIds = [...uuidValues];
+          if (nameValues.length > 0) {
+            const nameRows = await db
+              .select({ id: labels.id })
+              .from(labels)
+              .where(and(eq(labels.projectId, projectId), inArray(labels.name, nameValues)))
+              .limit(nameValues.length + 1);
+            resolvedIds = [...new Set([...resolvedIds, ...nameRows.map((r) => r.id)])];
+          }
+
+          if (resolvedIds.length === 0) {
+            // Caller supplied a label filter but no ids resolved (unknown name or empty input).
+            return { issues: [] };
+          }
+
+          conds.push(
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(issueLabels)
+                .where(
+                  and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, resolvedIds)),
+                ),
+            ),
+          );
         }
 
         // ISS-562 — SQL-level light-column projection: never load heavy TOAST
