@@ -1253,6 +1253,48 @@ agentSessionRoutes.get(
   },
 );
 
+// ISS-584 (C) — runner ack. A CLI runner POSTs this the moment it receives an
+// `agent:start`/`agent:send` frame (before claude starts), stamping
+// `metadata.acked=true`. The loop-monitor uses it to fast-fail a session that
+// ACKed but never produced a claudeSessionId (claude died on startup) without
+// waiting the full heartbeat timeout. Device-token only + own-session scoped;
+// idempotent; only flips a still-`running` session (never resurrects a terminal one).
+agentSessionRoutes.post(
+  '/:id/ack',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    if (c.get('principal') !== 'device') {
+      throw forbidden('ack is a runner-only signal');
+    }
+    const [existing] = await db
+      .select({
+        id: agentSessions.id,
+        deviceId: agentSessions.deviceId,
+        status: agentSessions.status,
+        metadata: agentSessions.metadata,
+      })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!existing) throw notFound('agent session not found');
+    if (existing.deviceId !== c.get('deviceId')) {
+      throw forbidden('device does not own this session');
+    }
+    const meta = (existing.metadata ?? {}) as Record<string, unknown>;
+    const already = meta.acked === true;
+    if (existing.status === 'running' && !already) {
+      await db
+        .update(agentSessions)
+        .set({ metadata: { ...meta, acked: true, ackedAt: new Date().toISOString() } })
+        .where(and(eq(agentSessions.id, id), eq(agentSessions.status, 'running')));
+    }
+    return c.json({ sessionId: id, acked: existing.status === 'running', already });
+  },
+);
+
 agentSessionRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema, (r) => {

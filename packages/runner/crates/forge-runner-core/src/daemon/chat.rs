@@ -308,6 +308,15 @@ async fn run_turn(
     sem: Arc<Semaphore>,
     turn: Turn,
 ) -> Result<()> {
+    // ISS-584 (C): ack the turn the moment we own it — BEFORE the chat semaphore
+    // (a queued turn is still "received") and before claude starts. Lets core
+    // tell apart "no runner ever got this" (never acked) from "runner got it but
+    // claude died on startup" (acked, no claudeSessionId), and fast-fail the
+    // latter. Best-effort: a failed ack only forfeits the speed-up, never the turn.
+    if let Err(e) = agent_sessions::ack_session(client, &turn.session_id).await {
+        tracing::debug!("[chat {}] ack failed (non-fatal): {e}", turn.session_id);
+    }
+
     // Separate chat budget — never blocks on / consumes the pipeline cap.
     let _permit = sem
         .acquire_owned()

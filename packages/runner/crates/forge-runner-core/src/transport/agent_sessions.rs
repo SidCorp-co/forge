@@ -59,6 +59,46 @@ pub struct SessionPatch {
 
 const MAX_ATTEMPTS: u32 = 4;
 
+/// `POST /api/agent-sessions/:id/ack` (ISS-584 C). Tells core "this runner
+/// received the turn and is about to spawn claude" — a positive liveness signal
+/// distinct from the first PATCH (which only lands once claude has emitted
+/// output). Core uses it to fast-fail a session that ACKed but never produced a
+/// claudeSessionId (claude died on startup) instead of waiting the full
+/// heartbeat timeout. Best-effort: a small retry budget, and callers ignore the
+/// error (the heartbeat reaper is the backstop if the ack never lands).
+pub async fn ack_session(client: &CoreClient, session_id: &str) -> Result<()> {
+    let url = client.url(&format!("/api/agent-sessions/{session_id}/ack"));
+    let mut delay_ms: u64 = 500;
+    for attempt in 1..=2u32 {
+        match client
+            .http()
+            .post(&url)
+            .bearer_auth(client.device_token())
+            .send()
+            .await
+        {
+            Ok(r) => {
+                if r.status().is_success() {
+                    return Ok(());
+                }
+                // 4xx (terminal/forbidden/not-found) is not worth retrying.
+                if r.status().is_client_error() {
+                    let status = r.status();
+                    return Err(Error::Other(format!("ack session {status}")));
+                }
+            }
+            Err(e) => {
+                if attempt == 2 {
+                    return Err(Error::Other(format!("ack_session transport: {e}")));
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        delay_ms = delay_ms.saturating_mul(2);
+    }
+    Err(Error::Other("ack_session: exhausted retries".into()))
+}
+
 /// `PATCH /api/agent-sessions/:id` with the same exponential backoff as
 /// `post_job_events`. A 409 means the session is terminal (e.g. user cancelled)
 /// — surfaced as a distinct error so the caller can stop streaming.

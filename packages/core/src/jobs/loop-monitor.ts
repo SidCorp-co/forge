@@ -86,6 +86,12 @@ const QUEUE_TIMEOUT_MS_DEFAULT = 120_000;
 const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const ACK_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const MIN_TIMEOUT_MS = 30_000;
+// ISS-584 (C): fast-fail grace for a chat/schedule session that the runner ACKed
+// (positive "I got it") but that never produced a claudeSessionId — claude died
+// on startup. Short because the ack already proved a live runner; only a dead
+// claude leaves claudeSessionId NULL past this window. Not-acked sessions keep
+// the conservative heartbeat timeout (rollout-safe for runners without ack).
+const ACK_FAST_MS_DEFAULT = 90_000;
 
 /** Result-hop quiet threshold (was runStaleSweep's STALE_THRESHOLD; ISS-258
  *  bumped 5→60 min because legit forge-release/forge-code merges run >5min
@@ -106,11 +112,13 @@ export function getLoopThresholds(): {
   queueMs: number;
   heartbeatMs: number;
   ackMs: number;
+  ackFastMs: number;
 } {
   return {
     queueMs: readTimeoutEnv('PIPELINE_QUEUE_TIMEOUT_MS', QUEUE_TIMEOUT_MS_DEFAULT),
     heartbeatMs: readTimeoutEnv('PIPELINE_HEARTBEAT_TIMEOUT_MS', HEARTBEAT_TIMEOUT_MS_DEFAULT),
     ackMs: readTimeoutEnv('PIPELINE_NEVER_CLAIMED_MS', ACK_TIMEOUT_MS_DEFAULT),
+    ackFastMs: readTimeoutEnv('PIPELINE_ACK_FAST_MS', ACK_FAST_MS_DEFAULT),
   };
 }
 
@@ -231,9 +239,10 @@ export async function reapZombieSessions(
   now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<ZombieSessionReapResult> {
-  const { queueMs, heartbeatMs } = getLoopThresholds();
+  const { queueMs, heartbeatMs, ackFastMs } = getLoopThresholds();
   const queueCutoff = new Date(now.getTime() - queueMs);
   const heartbeatCutoff = new Date(now.getTime() - heartbeatMs);
+  const ackFastCutoff = new Date(now.getTime() - ackFastMs);
   const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
 
   // Claim hop: queued past timeout. CAS via WHERE status='queued' so a worker
@@ -335,6 +344,18 @@ export async function reapZombieSessions(
       sql`${agentSessions.claudeSessionId} IS NULL`,
       sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${PIPELINE_METADATA_TYPES}`,
       or(
+        // ISS-584 (C) fast path: the runner ACKed (a live client received the
+        // turn) but claude never emitted a session id within the short grace →
+        // claude died on startup. Positive ack evidence, so a SHORT window is
+        // safe (no false-positive on runners that don't ack — they fall through
+        // to the conservative heartbeat branches below).
+        and(
+          sql`${agentSessions.metadata}->>'acked' = 'true'`,
+          lt(
+            sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt})`,
+            ackFastCutoff,
+          ),
+        ),
         and(
           isNotNull(agentSessions.lastHeartbeatAt),
           lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),

@@ -689,3 +689,66 @@ describe('agent chat isolation — owner-or-admin reads (ISS-522)', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('POST /api/agent-sessions/:id/ack (ISS-584 C — runner ack)', () => {
+  const ackReq = () =>
+    buildApp().request(`/api/agent-sessions/${SESSION_ID}/ack`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer device-token-xyz' },
+    });
+
+  it('owning device + running + not yet acked → stamps metadata.acked=true', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, deviceId: DEVICE_ID, status: 'running', metadata: { foo: 'bar' } },
+    ]);
+    const res = await ackReq();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sessionId: SESSION_ID, acked: true, already: false });
+    const meta = (updateSet.mock.calls[0]?.[0] as { metadata?: Record<string, unknown> })?.metadata;
+    expect(meta?.acked).toBe(true);
+    expect(meta?.foo).toBe('bar'); // existing metadata preserved
+    expect(meta?.ackedAt).toBeTypeOf('string');
+  });
+
+  it('idempotent — already acked → no write', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, deviceId: DEVICE_ID, status: 'running', metadata: { acked: true } },
+    ]);
+    const res = await ackReq();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ already: true });
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('terminal session → no-op, never resurrects', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, deviceId: DEVICE_ID, status: 'failed', metadata: null },
+    ]);
+    const res = await ackReq();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ acked: false });
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('403 when a different device acks', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, deviceId: '99999999-9999-4999-8999-999999999999', status: 'running', metadata: null },
+    ]);
+    const res = await ackReq();
+    expect(res.status).toBe(403);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('403 for a user principal (ack is runner-only)', async () => {
+    authVerified();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/ack`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+  });
+});

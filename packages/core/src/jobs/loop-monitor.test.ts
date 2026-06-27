@@ -163,6 +163,9 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     expect(pass3).toMatch(/IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
     expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    // ISS-584 (C): the no-client pass carries the fast-ack branch — acked=true
+    // session whose claudeSessionId never landed within the short grace.
+    expect(pass3).toMatch(/->>\s*'acked'\s*=\s*'true'/);
   });
 
   it('broadcasts + emits a wedge per reaped session, resolving the issue via the run', async () => {
