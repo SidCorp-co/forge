@@ -91,10 +91,17 @@ export function NotificationsMenu({
         <ul className="max-h-[380px] overflow-y-auto">
           {items.map((n) => (
             <li key={n.id}>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelect?.(n.id)}
-                className="flex w-full items-start gap-3 border-b border-line-subtle px-4 py-3 text-left transition-colors hover:bg-hover last:border-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect?.(n.id);
+                  }
+                }}
+                className="flex w-full cursor-pointer items-start gap-3 border-b border-line-subtle px-4 py-3 text-left transition-colors hover:bg-hover last:border-0 focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
               >
                 <span
                   className="mt-1.5 size-2 flex-none rounded-pill"
@@ -129,7 +136,7 @@ export function NotificationsMenu({
                     </div>
                   )}
                 </div>
-              </button>
+              </div>
             </li>
           ))}
         </ul>
