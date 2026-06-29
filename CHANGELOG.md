@@ -107,6 +107,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - QA evidence screenshots from forge-verify-live are now reliably attached to comments using the forge_uploads presigned-URL pattern, eliminating false 'screenshot attached' claims when FORGE_API_TOKEN was unset.
 - Filter issues by label — both in the web-v2 Issues list (new Label filter dropdown) and via the MCP forge_issues.list tool (filters.label accepts a label name or id).
 - Fixed job retries that would permanently fail when a device hits session usage limits
+- In-app notification inbox for project and organization invitations now appears in the Notifications bell.
 
 ## [0.3.0] - 2026-06-11
 
