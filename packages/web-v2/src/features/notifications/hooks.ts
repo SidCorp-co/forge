@@ -8,7 +8,7 @@
 // notification lands in the bell with no reload. Drift here silently no-ops
 // the realtime path.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { notificationsApi } from "./api";
+import { invitationsApi, notificationsApi } from "./api";
 
 export function useNotifications() {
   return useQuery({
@@ -44,6 +44,42 @@ export function useMarkAllRead() {
   const invalidate = useInvalidateNotifications();
   return useMutation({
     mutationFn: () => notificationsApi.markAllRead(),
+    onSuccess: invalidate,
+  });
+}
+
+// ISS-597 — pending invitations hooks.
+
+export function usePendingInvitations() {
+  return useQuery({
+    queryKey: ["invitations-pending"],
+    queryFn: () => invitationsApi.pending(),
+  });
+}
+
+function useInvalidateInvitations() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ["invitations-pending"] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+    qc.invalidateQueries({ queryKey: ["notifications-unread"] });
+  };
+}
+
+export function useAcceptInvitation() {
+  const invalidate = useInvalidateInvitations();
+  return useMutation({
+    mutationFn: ({ kind, token }: { kind: "project" | "org"; token: string }) =>
+      invitationsApi.accept(kind, token),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeclineInvitation() {
+  const invalidate = useInvalidateInvitations();
+  return useMutation({
+    mutationFn: ({ kind, token }: { kind: "project" | "org"; token: string }) =>
+      invitationsApi.decline(kind, token),
     onSuccess: invalidate,
   });
 }

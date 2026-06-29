@@ -17,9 +17,14 @@ const selectFrom = vi.fn(() => ({
   innerJoin: innerJoin1,
 }));
 
+const updateReturning = vi.fn();
+const updateWhere = vi.fn(() => ({ returning: updateReturning }));
+const updateSet = vi.fn(() => ({ where: updateWhere }));
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
+    update: vi.fn(() => ({ set: updateSet })),
     transaction: vi.fn(),
   },
 }));
@@ -164,5 +169,88 @@ describe('invitationRoutes — POST /:token/accept', () => {
     expect(res.status).toBe(410);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('EXPIRED_TOKEN');
+  });
+});
+
+describe('invitationRoutes — GET /pending', () => {
+  it('401 without auth', async () => {
+    const res = await buildApp().request('/api/invitations/pending');
+    expect(res.status).toBe(401);
+  });
+
+  it('200 returns combined project + org pending invitations', async () => {
+    const authToken = await signUserToken(USER_ID);
+    // User lookup (select...where...limit)
+    selectLimit.mockResolvedValueOnce([{ email: 'user@example.com' }]);
+    // Project invitations (select...from...innerJoin...innerJoin...where)
+    innerJoin2Where.mockResolvedValueOnce([
+      {
+        token: 'proj-token-abc',
+        name: 'My Project',
+        inviterEmail: 'admin@example.com',
+        role: 'member',
+        expiresAt: new Date(Date.now() + 86400000),
+        createdAt: new Date(),
+      },
+    ]);
+    // Org invitations (same chain, second call)
+    innerJoin2Where.mockResolvedValueOnce([]);
+
+    const res = await buildApp().request('/api/invitations/pending', {
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ kind: string; token: string; name: string }>;
+    expect(body).toHaveLength(1);
+    expect(body[0].kind).toBe('project');
+    expect(body[0].token).toBe('proj-token-abc');
+    expect(body[0].name).toBe('My Project');
+  });
+
+  it('200 returns empty array when no pending invitations', async () => {
+    const authToken = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ email: 'user@example.com' }]);
+    innerJoin2Where.mockResolvedValueOnce([]);
+    innerJoin2Where.mockResolvedValueOnce([]);
+
+    const res = await buildApp().request('/api/invitations/pending', {
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as unknown[];
+    expect(body).toHaveLength(0);
+  });
+});
+
+describe('invitationRoutes — POST /:token/decline', () => {
+  it('401 without auth', async () => {
+    const res = await buildApp().request('/api/invitations/tok/decline', { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('200 dismissed:true on valid token + email match', async () => {
+    const authToken = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ email: 'user@example.com' }]);
+    updateReturning.mockResolvedValueOnce([{ token: 'proj-token-abc' }]);
+
+    const res = await buildApp().request('/api/invitations/proj-token-abc/decline', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { dismissed: boolean };
+    expect(body.dismissed).toBe(true);
+  });
+
+  it('404 when token not found or email mismatch', async () => {
+    const authToken = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ email: 'user@example.com' }]);
+    updateReturning.mockResolvedValueOnce([]);
+
+    const res = await buildApp().request('/api/invitations/not-my-token/decline', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+    expect(res.status).toBe(404);
   });
 });
