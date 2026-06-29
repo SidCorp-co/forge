@@ -74,8 +74,15 @@ vi.mock('./runs.js', () => ({
 
 vi.mock('../queue/boss.js', () => ({ boss: {} }));
 
+const recordTickMock = vi.fn();
 vi.mock('../jobs/pgboss-health.js', () => ({
-  recordPipelineSweeperTick: vi.fn(),
+  recordPipelineSweeperTick: (...a: unknown[]) => recordTickMock(...a),
+}));
+
+const sentryCapture = vi.fn();
+vi.mock('../observability/sentry.js', () => ({
+  Sentry: { captureException: (...a: unknown[]) => sentryCapture(...a) },
+  isSentryEnabled: () => true,
 }));
 
 const broadcastSessionEventMock = vi.fn();
@@ -303,6 +310,28 @@ describe('runPipelineSweep — dispatcher backstop', () => {
     } finally {
       (db as unknown as { selectDistinct: typeof original }).selectDistinct = original;
     }
+  });
+});
+
+describe('runPipelineSweep — per-pass fault isolation', () => {
+  it('still runs the reapers when an upstream pass (loop monitor) throws, and re-throws to keep the missed-tick alarm', async () => {
+    runLoopMonitorMock.mockRejectedValueOnce(new Error('loop boom'));
+
+    // The sweep still rejects (pgboss-health missed-tick contract preserved)…
+    await expect(runPipelineSweep()).rejects.toThrow('loop boom');
+
+    // …but the one-shot reaper pass DID run despite the upstream throw — proven
+    // by its distinctive candidate SELECT reaching the db. This is the
+    // regression guard for the global schedule.run / interactive run leak.
+    const ranOneShotReaper = dbExecute.mock.calls.some((c) =>
+      /r\.kind\s+IN\s*\(\s*'system'\s*,\s*'interactive'\s*\)/.test(sqlText(c[0])),
+    );
+    expect(ranOneShotReaper).toBe(true);
+
+    // A failed tick must NOT record a clean heartbeat (so the alarm fires)…
+    expect(recordTickMock).not.toHaveBeenCalled();
+    // …and the failing pass is captured individually for triage.
+    expect(sentryCapture).toHaveBeenCalled();
   });
 });
 

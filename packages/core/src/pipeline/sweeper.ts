@@ -40,6 +40,7 @@ import {
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import { emitPipelineWedge } from './wedge.js';
@@ -100,52 +101,96 @@ export interface SweepResult {
 
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
   const t0 = Date.now();
+
+  // Per-pass fault isolation. Historically these passes ran as a bare
+  // sequential `await` chain, so the FIRST pass to throw aborted the whole
+  // tick — starving every pass after it. That silently broke the run-axis
+  // reapers for days: a throw in an upstream pass (loop monitor / an alarm)
+  // meant `reapOrphanedOneShotRuns` never ran, so job-less `schedule.run`
+  // system runs + chat `interactive` runs leaked `running` forever across
+  // EVERY project (they have no `jobs` row, so nothing else closes them —
+  // VISION §5.10 "state never lies"). Now each pass runs isolated: one
+  // failure is logged + captured (so the culprit pass is identifiable in
+  // Sentry) but the remaining passes — crucially the reapers — still run.
+  const errors: Array<{ pass: string; err: unknown }> = [];
+  const runPass = async <T>(name: string, fn: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await fn();
+    } catch (err) {
+      errors.push({ pass: name, err });
+      logger.error(
+        { err, pass: name },
+        `pipeline-sweeper: pass '${name}' threw (isolated — remaining passes still run)`,
+      );
+      if (isSentryEnabled()) {
+        Sentry.captureException(err, { tags: { area: 'pipeline-sweeper', sweep_pass: name } });
+      }
+      return undefined;
+    }
+  };
+
   // ISS-449 — the loop monitor runs FIRST and owns every reap. The alarm
   // passes below run against the post-loop state, so anything they match is a
   // genuine loop miss (handler threw, CAS starved, coverage gap) — not a row
   // the loop simply hadn't reached yet.
-  const loop = await runLoopMonitor(now);
-  const zombieSessions = await alarmZombieSessions(now);
-  const orphanedJobs = await alarmOrphanedJobs(now);
-  const neverClaimedDispatches = await alarmNeverClaimedDispatches(now);
+  const loop = await runPass('loopMonitor', () => runLoopMonitor(now));
+  const zombieSessions = await runPass('alarmZombieSessions', () => alarmZombieSessions(now));
+  const orphanedJobs = await runPass('alarmOrphanedJobs', () => alarmOrphanedJobs(now));
+  const neverClaimedDispatches = await runPass('alarmNeverClaimedDispatches', () =>
+    alarmNeverClaimedDispatches(now),
+  );
   // ISS-445 — close job-less system/interactive runs (schedule.run + chat)
   // whose backing agent_session is no longer live. These runs carry no `jobs`
   // row, so the job loop never fires for them and they would leak `running`
   // forever (VISION §5.10 "state never lies"). Still an ACTIVE reaper.
-  const orphanedOneShotRuns = await reapOrphanedOneShotRuns(now);
+  const orphanedOneShotRuns = await runPass('reapOrphanedOneShotRuns', () =>
+    reapOrphanedOneShotRuns(now),
+  );
   // ISS-461 — close `issue`-kind runs whose backing issue already reached a
   // terminal status (closed/released) but whose run never closed. closeOpenRunForIssue
   // fires only via applyTransition; a terminal write that bypasses it (or closes
   // predating that wiring) leaks the run `running`/`paused` forever and inflates
   // the dashboard live-run count. Run-axis backstop; still an ACTIVE reaper.
-  const orphanedIssueRuns = await reapOrphanedIssueRuns(now);
+  const orphanedIssueRuns = await runPass('reapOrphanedIssueRuns', () =>
+    reapOrphanedIssueRuns(now),
+  );
   // ISS-442 — surface dependency deadlocks the dispatcher can't resolve: a job
   // queued past the grace window whose `blocks`/`decomposes` blocker is parked
   // (merged_at NULL, not closed, no active job to ever stamp it). Static config
   // validation can't catch a no-op skill on an enabled+auto merge stage, so this
   // runtime pass is the backstop (anhome-class wedge). Detect + escalate only —
   // never mutates state (operator fixes mergeStates or marks the blocker merged).
-  const stalledDependencies = await detectStalledDependencies(now);
-  const backstopProjects = await runDispatcherBackstop();
-  // ISS-381 (2.2) — snapshot per-project queue depth. Best-effort: a failure
-  // here must never abort the tick or block the heartbeat below.
-  const queueSnapshots = await recordQueueSnapshots();
-  // Record the heartbeat ONLY after every pass succeeded. Recording at the
-  // top would leave `pgboss-health` blind to a silent backstop failure
-  // (lastTickAt fresh, dispatcher.tick_missing never fires). Letting either
-  // pass throw lets pg-boss retry and pgboss-health alert.
+  const stalledDependencies = await runPass('detectStalledDependencies', () =>
+    detectStalledDependencies(now),
+  );
+  const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
+  // ISS-381 (2.2) — snapshot per-project queue depth.
+  const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
+
+  // Preserve the ISS-449 missed-tick contract: if ANY pass failed, do NOT
+  // record a clean heartbeat — re-throw so `pgboss-health` still sees the
+  // missed tick and pg-boss retries the (idempotent) tick. The difference from
+  // the old code is purely ordering: every pass has already RUN this tick
+  // before we surface the failure, so a single buggy pass can no longer starve
+  // the reapers. Each error was logged + captured individually above; re-throw
+  // the first so its original cause/message surfaces unchanged.
+  if (errors.length > 0) {
+    throw errors[0]?.err;
+  }
+
   recordPipelineSweeperTick(t0);
   return {
     durationMs: Date.now() - t0,
-    loop,
-    zombieSessions,
-    orphanedJobs,
-    neverClaimedDispatches,
-    orphanedOneShotRuns,
-    orphanedIssueRuns,
-    stalledDependencies,
-    backstopProjects,
-    queueSnapshots,
+    // Safe: reached only when `errors` is empty, i.e. every pass returned a value.
+    loop: loop as LoopMonitorResult,
+    zombieSessions: zombieSessions as ZombieSweepResult,
+    orphanedJobs: orphanedJobs as OrphanReconcileResult,
+    neverClaimedDispatches: neverClaimedDispatches as OrphanReconcileResult,
+    orphanedOneShotRuns: orphanedOneShotRuns as OneShotRunReapResult,
+    orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
+    stalledDependencies: stalledDependencies as StallDetectResult,
+    backstopProjects: backstopProjects as number,
+    queueSnapshots: queueSnapshots as number,
   };
 }
 
