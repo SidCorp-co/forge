@@ -1100,6 +1100,38 @@ describe('forge_issues tool', () => {
     ).rejects.toThrow(/ILLEGAL_TRANSITION/);
   });
 
+  // ISS-596: data.unblock:true threads reason:'operator_unblock' through the
+  // outbox so the orchestrator's ISS-411 hard-stop allows the transition.
+  it('ISS-596: update with unblock:true on on_hold issue threads operator_unblock reason', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    const onHoldRow = { ...baseIssueRow, status: 'on_hold' as const };
+    // loadIssue (on_hold)
+    selectLimit.mockResolvedValueOnce([onHoldRow]);
+    // membership check
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // conditional UPDATE returning the new row (inside transaction)
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
+    ]);
+    // re-load fresh
+    selectLimit.mockResolvedValueOnce([{ ...onHoldRow, status: 'open' }]);
+
+    await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: { status: 'open', unblock: true },
+    });
+
+    // withActorContext calls tx.execute with SET LOCAL pipeline.reason = '...'
+    // Verify the executed SQL contains 'operator_unblock' as a bound param.
+    const executeArgs = txExecute.mock.calls.map((c: unknown[]) => JSON.stringify(c[0]));
+    expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(true);
+  });
+
   it('transition open→confirmed updates status and emits hook', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },

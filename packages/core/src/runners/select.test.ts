@@ -281,10 +281,11 @@ describe('selectRunnerForJob', () => {
     expect(r?.id).toBe('r-next');
   });
 
-  it('skipPrimary: returns null instead of wrapping around to primary when the sweep is dry', async () => {
+  it('skipPrimary: all-runners-limited retry still returns null after wrap-around (ISS-596)', async () => {
     limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
-    // Standby query finds nothing; with skipPrimary the all-excluded
-    // wrap-around is DISABLED, so we get null (the retry policy owns rounds).
+    // First standby (with exclusion) finds nothing.
+    execute.mockResolvedValueOnce([]);
+    // Wrap-around standby (no exclusion) also finds nothing → all runners limited.
     execute.mockResolvedValueOnce([]);
     const r = await selectRunnerForJob({
       projectId: PROJECT_A,
@@ -293,8 +294,73 @@ describe('selectRunnerForJob', () => {
       skipPrimary: true,
     });
     expect(r).toBeNull();
-    // Exactly one selection query — NO second (empty-exclusion) wrap-around run.
-    expect(execute).toHaveBeenCalledTimes(1);
+    // Two standby queries: initial (with exclusion) + wrap-around (no exclusion).
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  // ISS-596 — retry wedge fix: primary reachable via standby when skipPrimary.
+  it('ISS-596: retry pinned to rate-limited target picks healthy primary via standby', async () => {
+    const primary = {
+      id: 'r-primary',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-primary',
+      name: 'primary',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // Pin lookup for the rate-limited target returns nothing.
+    execute.mockResolvedValueOnce([]);
+    // Project has defaultDeviceId=dev-primary (the healthy device).
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    // Standby query: primary is NOT excluded (skipPrimary removes its exclusion).
+    execute.mockResolvedValueOnce([primary]);
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: 'dev-limited',
+      excludeDeviceIds: [],
+      skipPrimary: true,
+    });
+    expect(r?.id).toBe('r-primary');
+  });
+
+  it('ISS-596: retry wrap-around recovers when all-done devices excluded but a fresh device exists', async () => {
+    const fresh = {
+      id: 'r-fresh',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-fresh',
+      name: 'fresh',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // pin ('dev-limited') is in excludeDeviceIds → skip pin step.
+    // Project lookup for first pickRunner.
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    // First standby with exclusion (['dev-primary', 'dev-limited']) → nothing.
+    execute.mockResolvedValueOnce([]);
+    // Wrap-around: pin query for 'dev-limited' (no longer excluded) → still empty.
+    execute.mockResolvedValueOnce([]);
+    // Wrap-around: project lookup (default: no primary configured).
+    // Standby with no exclusion → returns fresh runner.
+    execute.mockResolvedValueOnce([fresh]);
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: 'dev-limited',
+      excludeDeviceIds: ['dev-primary', 'dev-limited'],
+      skipPrimary: true,
+    });
+    expect(r?.id).toBe('r-fresh');
   });
 
   it('falls back to freshest when neither pin nor default are available', async () => {

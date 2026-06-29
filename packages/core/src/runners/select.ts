@@ -227,10 +227,22 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
 
   // First-dispatch wrap-around: when every device is excluded (e.g. all
   // tripped by the circuit breaker) re-run without the exclusion so a
-  // single-/few-device project still gets a probe rather than wedging. This
-  // is DISABLED for retry rotation (`skipPrimary`) — there the retry policy
-  // owns round resets, and wrapping would silently re-hammer one device.
+  // single-/few-device project still gets a probe rather than wedging.
   if (!skipPrimary && excludeDeviceIds.length > 0) {
+    return pickRunner(projectId, required, livenessSeconds, {
+      pinDeviceId: pinDeviceId ?? null,
+      excludeDeviceIds: [],
+      skipPrimary,
+      projectCap,
+    });
+  }
+  // Retry-specific last-resort wrap-around (ISS-596): when a retry rotation's
+  // full exclude set has no healthy runner, re-run once with an empty exclude
+  // set so that any online + non-limited device can be claimed. A genuinely
+  // all-runners-limited project still returns null and self-heals on the next
+  // tick once a limit window expires. The retry policy (nextRotation /
+  // RETRY_MAX_ROUNDS) owns round boundaries and termination.
+  if (skipPrimary && excludeDeviceIds.length > 0) {
     return pickRunner(projectId, required, livenessSeconds, {
       pinDeviceId: pinDeviceId ?? null,
       excludeDeviceIds: [],
@@ -301,13 +313,20 @@ async function pickRunner(
     // Primary offline / stale / lacks capability → fallthrough to standby.
   }
 
-  // Step 3 — standby. Excludes the primary device so a one-device project
-  // doesn't double-pick its own primary; if defaultDeviceId is null the
-  // exclusion clause collapses to a no-op. Also excludes every device already
-  // tried in this retry chain.
-  const standby = await findStandby(projectId, defaultDeviceId, required, livenessSeconds, {
-    excludeDeviceIds: opts.excludeDeviceIds,
-  });
+  // Step 3 — standby. For a first dispatch, excludes the primary device so a
+  // one-device project doesn't double-pick its own primary. For a retry
+  // rotation (`skipPrimary`) every online device is equal — the primary carries
+  // no special status, so its exclusion here would stranded a retry whose
+  // non-primary target is temporarily rate-limited (ISS-596 wedge fix).
+  // `defaultDeviceId` null collapses the exclusion clause to a no-op in both
+  // cases. Also excludes every device already tried in this retry chain.
+  const standby = await findStandby(
+    projectId,
+    opts.skipPrimary ? null : defaultDeviceId,
+    required,
+    livenessSeconds,
+    { excludeDeviceIds: opts.excludeDeviceIds },
+  );
   return standby;
 }
 

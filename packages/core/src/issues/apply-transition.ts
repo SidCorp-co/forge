@@ -35,6 +35,15 @@ export interface ApplyStatusTransitionOptions {
    * transition) still apply. Only the orchestrator should pass this.
    */
   skip?: boolean;
+  /**
+   * ISS-596 — operator/tooling unblock sentinel. When set, passed as the
+   * `pipeline.reason` outbox session setting so the orchestrator can allow
+   * an `on_hold → *` transition from a non-user (device/MCP) actor without
+   * breaching the ISS-411 hard-stop. Only callers with explicit operator
+   * intent (e.g. the `data.unblock` flag on forge_issues.update) should set
+   * this; a stray aborted-agent advance will never carry it.
+   */
+  reason?: string;
 }
 
 /**
@@ -78,7 +87,7 @@ export async function applyStatusTransition(
     withActorContext(
       tx,
       { type: 'device', id: device.id },
-      null,
+      options.reason ?? null,
       async (t) => {
         const [row] = await t
           .update(issues)

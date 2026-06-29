@@ -54,11 +54,21 @@
  *         different-device failover).
  *       • [RESULT_ERROR] → falls through to the message patterns below so a
  *         real provider error in the detail still routes to code/infra.
+ *   v5 — ISS-596 usage/session limit → transient-cc. Claude CLI usage limits
+ *     ("You've hit your session limit · resets …") and the runner's explicit
+ *     `[USAGE_LIMIT]` token now classify as `transient-cc` (immediate cross-
+ *     device failover) instead of falling through to `infra` (same-device
+ *     round-robin). Same-device retries against a time-locked window exhaust
+ *     the retry budget uselessly; the correct action is to rotate to a device
+ *     whose account is not limited. Detection reuses `isUsageLimitError` from
+ *     `runners/limit-detect.ts`. Checked after the explicit runner token (so
+ *     [MCP_INIT_FAILED]/[SIGNAL_KILLED] still win) but before cc-startup.
  */
 
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
+import { isUsageLimitError } from '../runners/limit-detect.js';
 
-export const CLASSIFIER_VERSION = 4;
+export const CLASSIFIER_VERSION = 5;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -201,6 +211,20 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
     return {
       kind: runnerKind,
       reason: reasonExcerpt,
+      meta,
+      version: CLASSIFIER_VERSION,
+      retryAfter,
+    };
+  }
+
+  // ISS-596 — usage/session limit → immediate cross-device failover. Checked
+  // after runner tokens (so [MCP_INIT_FAILED]/[SIGNAL_KILLED] still win) but
+  // before the cc-startup signal so a limit error that also looks like a
+  // startup death correctly routes to the failover policy.
+  if (isUsageLimitError(text)) {
+    return {
+      kind: 'transient-cc',
+      reason: 'usage/session limit → cross-device failover',
       meta,
       version: CLASSIFIER_VERSION,
       retryAfter,

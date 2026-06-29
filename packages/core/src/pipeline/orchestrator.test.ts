@@ -191,6 +191,7 @@ type TransitionPayload = {
   from: string;
   to: string;
   reopenCount: number;
+  reason?: string;
 };
 
 type CreatedPayload = {
@@ -443,6 +444,45 @@ describe('pipeline/orchestrator', () => {
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'resume-job' }));
+  });
+
+  // ISS-596 — operator_unblock escape hatch: a non-user actor carrying
+  // reason:'operator_unblock' must re-engage the pipeline (MCP unblock).
+  it('ISS-596: DOES enqueue on non-user on_hold advance with reason:operator_unblock', async () => {
+    cfgResolved({ enabled: true, autoTriage: true });
+    skillRegistered('forge-triage', 'triage', 'autoTriage');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'unblock-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({
+        from: 'on_hold',
+        to: 'open',
+        actor: { type: 'device', id: 'dev-1' },
+        reason: 'operator_unblock',
+      }) as never,
+    );
+
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'unblock-job' }));
+  });
+
+  it('ISS-596: does NOT enqueue on non-user on_hold advance without reason (hard-stop intact)', async () => {
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({
+        from: 'on_hold',
+        to: 'open',
+        actor: { type: 'device', id: 'dev-1' },
+        // no reason field → stale agent advance
+      }) as never,
+    );
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(nextSelect).not.toHaveBeenCalled();
   });
 
   it('dedupes when an active job of the same type already exists', async () => {

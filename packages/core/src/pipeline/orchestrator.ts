@@ -763,9 +763,17 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
       // the pipeline. This is what makes an operator Cancel a HARD STOP: parking
       // the issue at `on_hold` (runs-control.ts) plus this guard means a stray
       // status advance can never silently restart the run.
-      if (payload.from === 'on_hold' && payload.actor.type !== 'user') {
+      // ISS-596 — escape hatch: an explicit `reason:'operator_unblock'` sentinel
+      // (set by forge_issues.update data.unblock:true) identifies a deliberate
+      // tooling-driven unblock. A stray agent termination advance never carries
+      // this reason, so the hard-stop guarantee remains intact for all other paths.
+      if (
+        payload.from === 'on_hold' &&
+        payload.actor.type !== 'user' &&
+        payload.reason !== 'operator_unblock'
+      ) {
         logger.info(
-          { issueId: payload.issueId, to: payload.to, actor: payload.actor.type },
+          { issueId: payload.issueId, to: payload.to, actor: payload.actor.type, reason: payload.reason },
           'orchestrator: skip enqueue — non-user advance out of operator on_hold',
         );
         return;

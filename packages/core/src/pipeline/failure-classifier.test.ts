@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure } from './failure-classifier.js';
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(4);
+    expect(CLASSIFIER_VERSION).toBe(5);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -44,6 +44,35 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     it('[RESULT_ERROR] falls through to message patterns (invalid_request → code)', () => {
       const r = classifyFailure({ error: '[RESULT_ERROR] invalid_request_error: bad input' });
       expect(r.kind).toBe('code');
+    });
+  });
+
+  describe('ISS-596 — usage/session limit → transient-cc (cross-device failover)', () => {
+    it('routes CLI session-limit text to transient-cc', () => {
+      const r = classifyFailure({
+        error:
+          "[RESULT_ERROR] success: You've hit your session limit · resets 1pm (Asia/Ho_Chi_Minh)",
+      });
+      expect(r.kind).toBe('transient-cc');
+      expect(r.reason).toContain('usage/session limit');
+    });
+
+    it('routes [USAGE_LIMIT] runner token to transient-cc', () => {
+      const r = classifyFailure({ error: '[USAGE_LIMIT] usage limit reached; resets 6pm (UTC)' });
+      expect(r.kind).toBe('transient-cc');
+    });
+
+    it('plain 429 / rate-limit still classifies as infra (unchanged)', () => {
+      expect(classifyFailure({ error: '429 too many requests' }).kind).toBe('infra');
+      expect(classifyFailure({ error: 'rate limit exceeded' }).kind).toBe('infra');
+    });
+
+    it('[MCP_INIT_FAILED] still wins as infra (runner token beats usage-limit check)', () => {
+      // MCP init failures should not be reclassified as transient-cc.
+      const r = classifyFailure({
+        error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
+      });
+      expect(r.kind).toBe('infra');
     });
   });
 

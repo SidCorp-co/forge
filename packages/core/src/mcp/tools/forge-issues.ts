@@ -162,6 +162,11 @@ const dataSchema = z
       )
       .max(20)
       .optional(),
+    // ISS-596 — explicit operator-unblock intent. When true on an update that
+    // also changes status away from `on_hold`, threads `reason:'operator_unblock'`
+    // through the outbox so the orchestrator's ISS-411 hard-stop allows the
+    // transition. A stray aborted-agent advance will never carry this flag.
+    unblock: z.boolean().optional(),
   })
   .strict()
   .optional();
@@ -845,8 +850,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // Status changes always route through the state machine so the
         // transitions stay aligned with REST `/transition` (reopen-cap +
         // illegal-transition guards). The hook + WS broadcast match too.
+        // ISS-596: when `data.unblock:true` is set on an `on_hold → *` update,
+        // thread `reason:'operator_unblock'` so the orchestrator's ISS-411
+        // hard-stop lets the transition re-engage the pipeline.
         if (input.data.status && input.data.status !== issue.status) {
-          await applyStatusTransition(issue, input.data.status, device);
+          const useOperatorUnblock =
+            input.data.unblock === true &&
+            issue.status === 'on_hold' &&
+            input.data.status !== 'on_hold';
+          await applyStatusTransition(
+            issue,
+            input.data.status,
+            device,
+            useOperatorUnblock ? { reason: 'operator_unblock' } : {},
+          );
         }
 
         const updates: Record<string, unknown> = {};
