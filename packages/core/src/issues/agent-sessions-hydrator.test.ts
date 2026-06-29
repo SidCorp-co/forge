@@ -51,8 +51,23 @@ describe('deriveAgentStatus', () => {
     expect(deriveAgentStatus([s('completed'), s('queued'), s('failed')])).toBe('queued');
   });
 
-  it('reports failed for terminal-only buckets containing a failure', () => {
-    expect(deriveAgentStatus([s('completed'), s('failed')])).toBe('failed');
+  // Callers pass sessions ordered updated_at DESC (most-recent first).
+  it('reports the most-recent terminal status: newer completed beats older failed', () => {
+    const newer = new Date();
+    const older = new Date(newer.getTime() - 60_000);
+    // A superseded/cancelled run's stale failure must NOT mask a newer success
+    // (the `tested` issue showing a red "failed" badge bug).
+    expect(deriveAgentStatus([s('completed', newer), s('failed', older)])).toBe('completed');
+  });
+
+  it('reports the most-recent terminal status: newer failed beats older completed', () => {
+    const newer = new Date();
+    const older = new Date(newer.getTime() - 60_000);
+    expect(deriveAgentStatus([s('failed', newer), s('completed', older)])).toBe('failed');
+  });
+
+  it('treats completed_via_recovery as completed', () => {
+    expect(deriveAgentStatus([s('completed_via_recovery' as never)])).toBe('completed');
   });
 
   it('reports completed when only completed sessions exist', () => {

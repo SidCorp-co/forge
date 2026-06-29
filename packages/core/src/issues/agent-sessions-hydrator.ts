@@ -32,15 +32,21 @@ export interface HydratedAgentAttachment {
   agentStatus: DerivedAgentStatus;
 }
 
-// Precedence: running > queued > most-recent terminal (failed wins over
-// completed when present). Returns null when the input is empty or contains
-// only sessions in unrecognized states (e.g. `idle`).
+// Precedence: a live state (running > queued) always surfaces; otherwise the
+// MOST-RECENT terminal session wins. Callers pass `sessions` ordered
+// updated_at DESC, so the first terminal one is the latest. A stale failure
+// from a superseded / cancelled run must NOT mask a newer success — else a
+// `tested`/`closed` issue whose latest run passed still shows a red "failed"
+// badge (state-lie). `completed_via_recovery` counts as success; `idle` /
+// `cancelled_stale` are skipped. Returns null when empty or terminal-less.
 export function deriveAgentStatus(sessions: HydratedAgentSession[]): DerivedAgentStatus {
   if (sessions.length === 0) return null;
   if (sessions.some((s) => s.status === 'running')) return 'running';
   if (sessions.some((s) => s.status === 'queued')) return 'queued';
-  if (sessions.some((s) => s.status === 'failed')) return 'failed';
-  if (sessions.some((s) => s.status === 'completed')) return 'completed';
+  for (const s of sessions) {
+    if (s.status === 'failed') return 'failed';
+    if (s.status === 'completed' || s.status === 'completed_via_recovery') return 'completed';
+  }
   return null;
 }
 
