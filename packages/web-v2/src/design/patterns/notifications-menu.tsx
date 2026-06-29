@@ -1,6 +1,16 @@
 "use client";
 
+import { Button } from "@/design/primitives/button";
 import { MonoTag } from "@/design/primitives/mono-tag";
+
+export interface NotificationAction {
+  id: string;
+  label: string;
+  variant: "primary" | "ghost";
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+}
 
 export interface NotificationItem {
   id: string;
@@ -11,6 +21,8 @@ export interface NotificationItem {
   time: string;
   unread?: boolean;
   hue: "amber" | "red" | "green" | "cobalt";
+  /** Optional inline action buttons (e.g. Accept / Decline for invitations). */
+  actions?: NotificationAction[];
 }
 
 const HUE_DOT: Record<NotificationItem["hue"], string> = {
@@ -59,7 +71,7 @@ export function NotificationsMenu({
         </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-          <p className="fg-body-sm text-fg">Couldn’t load notifications.</p>
+          <p className="fg-body-sm text-fg">Couldn't load notifications.</p>
           {onRetry && (
             <button
               type="button"
@@ -72,31 +84,59 @@ export function NotificationsMenu({
         </div>
       ) : !hasItems ? (
         <div className="px-4 py-8 text-center">
-          <p className="fg-body-sm text-fg">You’re all caught up</p>
+          <p className="fg-body-sm text-fg">You're all caught up</p>
           <p className="fg-caption mt-0.5">New pipeline and issue events show up here.</p>
         </div>
       ) : (
         <ul className="max-h-[380px] overflow-y-auto">
           {items.map((n) => (
             <li key={n.id}>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelect?.(n.id)}
-                className="flex w-full items-start gap-3 border-b border-line-subtle px-4 py-3 text-left transition-colors hover:bg-hover last:border-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect?.(n.id);
+                  }
+                }}
+                className="flex w-full cursor-pointer items-start gap-3 border-b border-line-subtle px-4 py-3 text-left transition-colors hover:bg-hover last:border-0 focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
               >
                 <span
                   className="mt-1.5 size-2 flex-none rounded-pill"
                   style={{ background: n.unread ? HUE_DOT[n.hue] : "var(--border-strong)" }}
                 />
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <MonoTag>{n.label}</MonoTag>
                     <span className="fg-caption ml-auto">{n.time}</span>
                   </div>
                   <p className="fg-body-sm mt-1 text-fg">{n.text}</p>
                   {n.sub && <p className="fg-caption mt-0.5">{n.sub}</p>}
+                  {n.actions && n.actions.length > 0 && (
+                    <div
+                      className="mt-2 flex items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      {n.actions.map((action) => (
+                        <Button
+                          key={action.id}
+                          type="button"
+                          variant={action.variant}
+                          size="sm"
+                          loading={action.loading}
+                          disabled={action.disabled}
+                          onClick={action.onClick}
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </button>
+              </div>
             </li>
           ))}
         </ul>

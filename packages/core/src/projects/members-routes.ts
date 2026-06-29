@@ -15,6 +15,7 @@ import {
 import { assertProjectRole, loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { emitNotification } from '../notifications/emit.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
 
@@ -242,6 +243,22 @@ memberRoutes.post(
       });
     } catch (sendErr) {
       logger.error({ err: sendErr, projectId, email }, 'failed to send project invitation email');
+    }
+
+    // ISS-597: notify registered invitees in-app so they see the invite
+    // in the bell without needing the email. Unregistered users (no userId
+    // FK) get email only — the pending list surfaces the invite once they sign up.
+    if (existingUser) {
+      try {
+        await emitNotification({
+          userId: existingUser.id,
+          projectId,
+          type: 'invitation_received',
+          title: `${inviter.email} invited you to ${project.name} as ${role}`,
+        });
+      } catch (notifyErr) {
+        logger.error({ err: notifyErr, projectId, email }, 'failed to emit invitation_received');
+      }
     }
 
     const body: { expiresAt: Date; token?: string } = { expiresAt };

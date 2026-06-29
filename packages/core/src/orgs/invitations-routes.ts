@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -90,4 +90,38 @@ orgInvitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
     case 'ok':
       return c.json({ orgId: result.orgId, role: result.role });
   }
+});
+
+// POST /api/org-invitations/:token/decline — ISS-597.
+// Sets dismissedAt. Idempotent. Email-match guard mirrors accept.
+orgInvitationRoutes.post('/:token/decline', requireAuth(), async (c) => {
+  const token = c.req.param('token');
+  if (!token || token.length === 0) {
+    throw badRequest('INVALID_TOKEN', 'invalid invitation token');
+  }
+
+  const userId = c.get('userId');
+  const [user] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!user) {
+    throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
+  }
+
+  const [updated] = await db
+    .update(orgInvitations)
+    .set({ dismissedAt: new Date() })
+    .where(
+      and(
+        eq(orgInvitations.token, token),
+        sql`lower(${orgInvitations.email}) = lower(${user.email})`,
+        isNull(orgInvitations.acceptedAt),
+      ),
+    )
+    .returning({ token: orgInvitations.token });
+
+  if (!updated) throw notFound('NOT_FOUND', 'invitation not found or email mismatch');
+  return c.json({ dismissed: true });
 });

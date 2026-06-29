@@ -3,7 +3,7 @@
 // relative time) out of both the API layer and the layout.
 import type { NotificationItem } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import type { NotificationRow } from "./types";
+import type { NotificationRow, PendingInvitation } from "./types";
 
 /** Short uppercase tag shown in the row's leading MonoTag. */
 function typeLabel(type: string): string {
@@ -18,6 +18,8 @@ function typeLabel(type: string): string {
       return "COMMENT";
     case "agent_completed":
       return "AGENT";
+    case "invitation_received":
+      return "INVITE";
     default:
       return "EVENT";
   }
@@ -55,5 +57,22 @@ export function toNotificationItem(row: NotificationRow): NotificationItem {
     time: formatRelativeTime(row.createdAt),
     unread: !row.read,
     hue: hueFor(row),
+  };
+}
+
+// ISS-597 — builds the actionable invite item for the bell. Actions are
+// provided by the layout (which owns the mutation callbacks).
+export function toInvitationItem(
+  inv: PendingInvitation,
+  actions: NotificationItem["actions"],
+): NotificationItem {
+  return {
+    id: `invite-${inv.token}`,
+    label: "INVITE",
+    text: `${inv.inviterEmail} invited you to ${inv.name} as ${inv.role}`,
+    time: formatRelativeTime(inv.createdAt),
+    unread: true,
+    hue: "amber",
+    actions,
   };
 }

@@ -18,6 +18,7 @@ export const NOTIFICATION_TYPES = [
   'mention',
   'pm_escalation',
   'pipeline_wedge',
+  'invitation_received',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -43,6 +44,7 @@ export const NOTIFICATION_CONTRACT: Record<NotificationType, NotificationTypeCon
   mention: { severity: 'info', channels: ['bell', 'toast', 'browser'] },
   pm_escalation: { severity: 'warning', channels: ['bell', 'toast', 'browser'] },
   pipeline_wedge: { severity: 'error', channels: ['bell', 'toast', 'browser'] },
+  invitation_received: { severity: 'warning', channels: ['bell', 'toast'] },
 };
 
 /** Channels a type targets; defaults to bell-only for an unknown/legacy type. */

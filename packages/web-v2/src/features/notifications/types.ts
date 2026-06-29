@@ -22,3 +22,14 @@ export interface NotificationRow {
   agentSessionId: string | null;
   createdAt: string;
 }
+
+// ISS-597 — pending invitation returned by GET /api/invitations/pending.
+export interface PendingInvitation {
+  kind: "project" | "org";
+  token: string;
+  name: string;
+  inviterEmail: string;
+  role: string;
+  expiresAt: string;
+  createdAt: string;
+}

@@ -229,6 +229,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			qc.invalidateQueries({ queryKey: ["notifications-unread"] });
 			// ISS-307 — unread @-mentions feed Attention's mentions bucket.
 			qc.invalidateQueries({ queryKey: ["attention"] });
+			// ISS-597 — an invitation_received notification means a new pending
+			// invite; refresh the pending list so the actionable item appears live.
+			qc.invalidateQueries({ queryKey: ["invitations-pending"] });
 			return;
 		}
 		case "dependencyChanged": {

@@ -2,7 +2,7 @@
 // Workspace-global (NO projectId filter); the bell shows every notification
 // for the current user. Routes verified against core notifications/routes.ts.
 import { apiClient, apiClientList } from "@/lib/api/client";
-import type { NotificationRow } from "./types";
+import type { NotificationRow, PendingInvitation } from "./types";
 
 /** How many rows the bell dropdown pulls. */
 export const BELL_PAGE_SIZE = 20;
@@ -28,4 +28,23 @@ export const notificationsApi = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+};
+
+export const invitationsApi = {
+  /** `GET /api/invitations/pending` — unified project + org pending invitations. */
+  pending: () => apiClient<PendingInvitation[]>(`/invitations/pending`),
+
+  /** Accept a project or org invitation using the existing token endpoint. */
+  accept: (kind: "project" | "org", token: string) =>
+    apiClient<{ projectId?: string; orgId?: string; role: string }>(
+      `/${kind === "org" ? "org-invitations" : "invitations"}/${token}/accept`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  /** Decline a project or org invitation (sets dismissedAt). */
+  decline: (kind: "project" | "org", token: string) =>
+    apiClient<{ dismissed: boolean }>(
+      `/${kind === "org" ? "org-invitations" : "invitations"}/${token}/decline`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
 };

@@ -36,8 +36,14 @@ import {
   useUnreadCount,
   useMarkRead,
   useMarkAllRead,
+  usePendingInvitations,
+  useAcceptInvitation,
+  useDeclineInvitation,
 } from "@/features/notifications/hooks";
-import { toNotificationItem } from "@/features/notifications/map";
+import { toNotificationItem, toInvitationItem } from "@/features/notifications/map";
+import type { PendingInvitation } from "@/features/notifications/types";
+import { ConfirmDialog } from "@/features/orgs/components/confirm-dialog";
+import { formatApiError } from "@/lib/api/error";
 import {
   type DeliveryNotification,
   useNotificationDelivery,
@@ -148,13 +154,87 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { data: unread } = useUnreadCount();
   const markRead = useMarkRead();
   const markAllRead = useMarkAllRead();
+
+  // ISS-597 — pending invitations (Accept/Decline from the bell).
+  const pendingQuery = usePendingInvitations();
+  const acceptInvitation = useAcceptInvitation();
+  const declineInvitation = useDeclineInvitation();
+  const [declineTarget, setDeclineTarget] = useState<PendingInvitation | null>(null);
+
+  const onAccept = useCallback(
+    (inv: PendingInvitation) => {
+      acceptInvitation.mutate(
+        { kind: inv.kind, token: inv.token },
+        {
+          onSuccess: () =>
+            toast({ title: `You joined ${inv.name} as ${inv.role}`, tone: "success" }),
+          onError: (err) =>
+            toast({ title: "Failed to accept invitation", description: formatApiError(err), tone: "error" }),
+        },
+      );
+    },
+    [acceptInvitation, toast],
+  );
+
+  const onDeclineConfirm = useCallback(() => {
+    if (!declineTarget) return;
+    const inv = declineTarget;
+    declineInvitation.mutate(
+      { kind: inv.kind, token: inv.token },
+      {
+        onSuccess: () => {
+          toast({ title: "Invitation declined", tone: "success" });
+          setDeclineTarget(null);
+        },
+        onError: (err) => {
+          toast({ title: "Failed to decline invitation", description: formatApiError(err), tone: "error" });
+          setDeclineTarget(null);
+        },
+      },
+    );
+  }, [declineTarget, declineInvitation, toast]);
+
   const notificationRows = useMemo(
     () => notificationsQuery.data?.items ?? [],
     [notificationsQuery.data],
   );
+
+  // Actionable invite items prepended to the bell; passive invitation_received
+  // rows are filtered out so each invite appears once (as the actionable item).
+  // The passive rows still count toward the unread badge via the unread-count API.
+  const pendingItems = useMemo(
+    () =>
+      (pendingQuery.data ?? []).map((inv) =>
+        toInvitationItem(inv, [
+          {
+            id: "accept",
+            label: "Accept",
+            variant: "primary",
+            loading: acceptInvitation.isPending && acceptInvitation.variables?.token === inv.token,
+            disabled: acceptInvitation.isPending || declineInvitation.isPending,
+            onClick: () => onAccept(inv),
+          },
+          {
+            id: "decline",
+            label: "Decline",
+            variant: "ghost",
+            loading: declineInvitation.isPending && declineInvitation.variables?.token === inv.token,
+            disabled: acceptInvitation.isPending || declineInvitation.isPending,
+            onClick: () => setDeclineTarget(inv),
+          },
+        ]),
+      ),
+    [pendingQuery.data, acceptInvitation.isPending, acceptInvitation.variables, declineInvitation.isPending, declineInvitation.variables, onAccept],
+  );
+
   const notificationItems = useMemo(
-    () => notificationRows.map(toNotificationItem),
-    [notificationRows],
+    () => [
+      ...pendingItems,
+      ...notificationRows
+        .filter((r) => r.type !== "invitation_received")
+        .map(toNotificationItem),
+    ],
+    [pendingItems, notificationRows],
   );
   const onSelectNotification = useCallback(
     (id: string) => {
@@ -969,9 +1049,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               <div className="absolute right-4 top-[52px] z-50">
                 <NotificationsMenu
                   items={notificationItems}
-                  loading={notificationsQuery.isLoading}
-                  error={notificationsQuery.isError}
-                  onRetry={() => notificationsQuery.refetch()}
+                  loading={notificationsQuery.isLoading || pendingQuery.isLoading}
+                  error={notificationsQuery.isError || pendingQuery.isError}
+                  onRetry={() => {
+                    notificationsQuery.refetch();
+                    pendingQuery.refetch();
+                  }}
                   onSelect={onSelectNotification}
                   onMarkAllRead={() => markAllRead.mutate()}
                 />
@@ -1021,6 +1104,18 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         commands={commands}
+      />
+
+      {/* ISS-597 — decline confirmation modal */}
+      <ConfirmDialog
+        open={declineTarget !== null}
+        title={`Decline invitation to ${declineTarget?.name ?? ""}?`}
+        message={`You will no longer see this invitation in your notifications. You can still accept it via the original email link.`}
+        confirmLabel="Yes, decline"
+        tone="danger"
+        loading={declineInvitation.isPending}
+        onConfirm={onDeclineConfirm}
+        onClose={() => setDeclineTarget(null)}
       />
     </div>
   );
