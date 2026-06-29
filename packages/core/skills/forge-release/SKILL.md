@@ -7,9 +7,9 @@ arguments: "documentId"
 
 # Forge Release
 
-The final step in the issue pipeline: `released → closed`. Squash-merges the ISS-* feature branch to the production branch and triggers deployment. This is a lightweight skill — no codebase exploration, no review. Just merge, deploy, clean up.
+The final step in the issue pipeline: `released → closed`. Lands the issue's own changes onto the production branch and triggers deployment. This is a lightweight skill — no codebase exploration, no review. Just land the diff, deploy, clean up.
 
-The ISS-* branch is the single source of truth for the issue's changes. It has been kept alive through the entire pipeline (coding, fixes, reviews). baseBranch (staging) may have commits from other issues mixed in — we never merge baseBranch to production. We merge ISS-* directly.
+The ISS-* branch holds this issue's changes. Release = get **this issue's own changes — and only those** — onto `productionBranch`, then deploy and close. The one non-obvious trap is called out in Step 6.
 
 ## Usage
 
@@ -98,56 +98,17 @@ Otherwise (a real two-branch gitflow where the code is NOT yet on production) �
 
 If there is no ISS-* branch AND the code is not on production → nothing to release: post a comment and set `reopen`, stop.
 
-### Step 5: Diff Audit (only when a merge is needed)
+### Step 5: Diff Audit (only when a land is needed)
 
-Before merging, compare what will land on production:
+Sanity-check that what will land on production is just this issue's own net change (its diff against `baseBranch`) and lines up with the issue's `plan`. If unexpected files show up, flag them in a comment but proceed — the code already passed review + QA.
 
-```bash
-git checkout <productionBranch> && git pull origin <productionBranch>
-git diff <productionBranch>...origin/ISS-XX-short-title --stat
-```
+### Step 6: Land the issue's changes on production (only when a land is needed)
 
-Check the changed files against the issue's `plan` field (affected files list). If there are unexpected files not mentioned in the plan:
-- Post a warning comment listing the unexpected files
-- Still proceed (the code passed review + QA), but flag it for visibility
+Goal: put **this issue's own changes — and only those — on `productionBranch`** as one clean squashed commit, then continue to deploy. Skip if Step 4 already found them on production.
 
-### Step 6: Squash Merge to Production (only when a merge is needed)
+The one non-obvious trap (it has caused real release loops): the `ISS-*` branch is cut from `baseBranch`, and `baseBranch` can sit far ahead of `productionBranch` (it accumulates every issue, released or not). So carry across **only the commits this issue added on top of `baseBranch`** — never merge the whole branch into production, which drags in other issues' unreleased work and conflicts on files this issue never touched. *How* you isolate that diff (cherry-pick the issue's commits, apply its net diff vs base, …) is your call from the live repo state.
 
-Skip this entirely if Step 4 said the code is already on production.
-
-```bash
-git checkout <productionBranch>
-git pull origin <productionBranch>
-git merge --squash origin/ISS-XX-short-title
-git commit -m "ISS-XX: <issue title>"
-git push origin <productionBranch>
-```
-
-Squash merge creates one clean atomic commit per issue on the production branch. All intermediate commits (implementation + fixes + review cycles) are collapsed.
-
-If `git commit` reports **nothing to commit**, the branch was already merged — do NOT loop: treat it as already-on-production and continue to Step 7.
-
-**On merge conflict — never bail into a mechanical failure.** An uncaught non-zero git exit ends the turn dirty; the system then retries the release and, when the budget is exhausted, silently parks the issue at `waiting` — looking like "release gave up". Always `git merge --abort` first so the tree is clean, then finish with a *posted comment + an explicit status*. Handle in two tiers:
-
-**Tier 1 — auto-rebase + retry ONCE** (the common case: `ISS-*` is simply behind a production branch that moved forward; the "conflict" is just drift):
-
-```bash
-git merge --abort
-git fetch origin
-git checkout ISS-XX-short-title && git rebase origin/<productionBranch>
-```
-
-- **Rebase completes clean** (drift only, no overlapping edits) → the conflict is resolved. Re-run Step 6 against the rebased branch — `git checkout <productionBranch> && git merge --squash ISS-XX-short-title && git commit -m "ISS-XX: <title>" && git push origin <productionBranch>` — and `git push --force-with-lease origin ISS-XX-short-title` to keep the remote branch consistent. Release proceeds normally.
-
-**Tier 2 — genuine semantic conflict** (the rebase itself conflicts → the same lines changed on both sides; resolving needs code judgement):
-
-```bash
-git rebase --abort
-```
-
-Set `reopen` with an explicit handoff comment: forge-fix must **rebase `ISS-XX` onto `<productionBranch>` (NOT `baseBranch`) and resolve the conflict there**. This is critical — forge-fix rebases onto base by default, but a *release* conflict resolved against base re-hits the identical conflict at the next release and loops forever. Name the conflicted files so forge-fix doesn't rediscover them.
-
-Set `waiting` **only** as a last resort — when even a rebase onto production can't resolve it (e.g. the branch builds on a production change that was reverted/abandoned) and a human must decide. Say exactly why. `waiting` is never the default reaction to a conflict; `reopen` (Tier 2) is.
+If you can't land cleanly — the issue's files have diverged on production, or it depends on other unreleased work — do NOT force a whole-branch merge or rebase the base-derived branch onto production (that re-drags the divergence and loops). Set `reopen` with a clear note so forge-fix lands the issue's diff onto production and resolves the conflict there; if it genuinely can't be released on its own, set `waiting` for a human and say why.
 
 ### Step 7: Deploy (if Coolify configured)
 
