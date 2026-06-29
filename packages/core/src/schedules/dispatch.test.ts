@@ -122,6 +122,15 @@ vi.mock('./messages/drift-check-prompt.js', () => ({
   buildDriftCheckPrompt: (input: unknown) => buildDriftCheckPromptMock(input as never),
 }));
 
+// ISS-587 — mock the product-map-refresh prompt builder.
+const buildProductMapRefreshPromptMock = vi.fn<
+  (input: { mode: string; projectId: string }) => string
+>(() => 'BUILT_PRODUCT_MAP_PROMPT');
+vi.mock('./messages/product-map-refresh-prompt.js', () => ({
+  buildProductMapRefreshPrompt: (input: unknown) =>
+    buildProductMapRefreshPromptMock(input as never),
+}));
+
 const { dispatchScheduleRun, redispatchScheduleSessionOnFailover } = await import('./dispatch.js');
 const hooksModule = await import('../pipeline/hooks.js');
 
@@ -959,5 +968,91 @@ describe('dispatchScheduleRun — knowledge drift-check (ISS-568)', () => {
       metadata?: { steward?: boolean };
     };
     expect(insertCall?.metadata?.steward).toBe(true);
+  });
+});
+
+// ── ISS-587: product-map-refresh standing dispatch path ───────────────────────
+
+describe('dispatchScheduleRun — product-map-refresh (ISS-587)', () => {
+  beforeEach(() => {
+    buildProductMapRefreshPromptMock.mockReset();
+    buildProductMapRefreshPromptMock.mockReturnValue('BUILT_PRODUCT_MAP_PROMPT');
+  });
+
+  it('product-map-refresh key → builds product-map prompt, NOT steward/drift', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'fallback-should-not-be-used',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'product-map-refresh',
+        mode: 'auto',
+        appliedMessageVersions: { 'product-map-refresh': 1 }, // standing ignores
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(buildProductMapRefreshPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'auto', projectId: SOURCE_PROJECT_ID }),
+    );
+    expect(buildSkillStewardPromptMock).not.toHaveBeenCalled();
+    expect(buildDriftCheckPromptMock).not.toHaveBeenCalled();
+    expect(buildSkillImprovePromptMock).not.toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('product-map-refresh does NOT set metadata.steward (completion parser must skip it)', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'product-map-refresh',
+        mode: 'auto',
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      metadata?: { steward?: boolean; templateKey?: string };
+    };
+    expect(insertCall?.metadata?.templateKey).toBe('product-map-refresh');
+    expect(insertCall?.metadata?.steward).toBeUndefined();
+  });
+
+  it('mode null → defaults to auto', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'product-map-refresh',
+        mode: null,
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(buildProductMapRefreshPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'auto', projectId: SOURCE_PROJECT_ID }),
+    );
   });
 });

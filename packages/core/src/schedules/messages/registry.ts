@@ -199,6 +199,34 @@ export const improvementMessages: ImprovementMessage[] = [
     defaultMode: 'propose',
     standing: true,
   },
+  {
+    key: 'product-map-refresh',
+    title: 'Standing product-map refresh — keep user-journey & module diagrams current',
+    message:
+      'The product-map refresh agent reads the project\'s curated product knowledge ' +
+      '(overview mindmap, scenario flowcharts, workflow state-diagrams, per-module ' +
+      'overviews) and the issues shipped since each entry was last updated, then ' +
+      'upserts the entries that changed and adds scenarios for newly-shipped user ' +
+      'journeys. All nodes stay user-facing (issue id / acceptance-criterion / route) ' +
+      'under the same verification gate forge-product-map uses — never source-code ' +
+      'identifiers. It refreshes the map in place; it does not file issues.',
+    rationale:
+      'A product map bootstrapped once rots as features ship — diagrams that no longer ' +
+      'match the product mislead both humans and agents. A standing refresh keeps the ' +
+      'overview / scenarios / workflows / module nodes current from the issue stream, ' +
+      'so the map stays a living source for mindmap / context / user-flow / swimlane ' +
+      'views rather than a stale snapshot. Pairs with knowledge-drift-check (which only ' +
+      'flags drift): this one closes the loop by actually refreshing.',
+    appliesWhen:
+      'The project maintains a product map — curated knowledge_entries of kind ' +
+      'overview/scenario/workflow authored by forge-product-map (or equivalent). ' +
+      'If no such entries exist yet, the agent bootstraps the core set on first run.',
+    category: 'documentation',
+    version: 1,
+    recommended: true,
+    defaultMode: 'auto',
+    standing: true,
+  },
 ];
 
 // ── Lookups ───────────────────────────────────────────────────────────────────

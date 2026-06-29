@@ -67,14 +67,30 @@ describe('improvementMessages registry', () => {
     expect(msg!.rationale).toBeTruthy();
   });
 
-  it('registry contains exactly 1 entry (the standing steward)', () => {
-    expect(listImprovementMessages()).toHaveLength(1);
+  it('registry contains the standing templates (steward + drift-check + product-map-refresh)', () => {
+    const keys = listImprovementMessages().map((m) => m.key);
+    expect(keys).toEqual(
+      expect.arrayContaining(['optimize-skills', 'knowledge-drift-check', 'product-map-refresh']),
+    );
+    expect(listImprovementMessages()).toHaveLength(3);
   });
 
-  it('standing entries have standing=true', () => {
+  it('all registry entries are standing', () => {
     const standing = listImprovementMessages().filter((m) => m.standing === true);
-    expect(standing).toHaveLength(1);
-    expect(standing[0]!.key).toBe('optimize-skills');
+    expect(standing.map((m) => m.key).sort()).toEqual(
+      ['knowledge-drift-check', 'optimize-skills', 'product-map-refresh'].sort(),
+    );
+  });
+
+  // product-map-refresh standing entry (ISS-587 Tier-3 MVP)
+  it('registry contains the product-map-refresh standing entry with auto default', () => {
+    const msg = getImprovementMessage('product-map-refresh');
+    expect(msg).toBeDefined();
+    expect(msg!.standing).toBe(true);
+    expect(msg!.category).toBe('documentation');
+    expect(msg!.recommended).toBe(true);
+    expect(msg!.defaultMode).toBe('auto');
+    expect(msg!.appliesWhen).toBeTruthy();
   });
 });
 
