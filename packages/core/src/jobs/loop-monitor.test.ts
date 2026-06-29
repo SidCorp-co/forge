@@ -131,7 +131,12 @@ describe('reapAckMisses — dispatch→ack hop', () => {
       expect.objectContaining({ error: 'dispatch_unclaimed' }),
     );
     expect(emitWedgeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ hop: 'ack', entity: 'job', entityId: 'unclaimed-1', issueId: 'i1' }),
+      expect.objectContaining({
+        hop: 'ack',
+        entity: 'job',
+        entityId: 'unclaimed-1',
+        issueId: 'i1',
+      }),
     );
   });
 
@@ -166,6 +171,12 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     // ISS-584 (C): the no-client pass carries the fast-ack branch — acked=true
     // session whose claudeSessionId never landed within the short grace.
     expect(pass3).toMatch(/->>\s*'acked'\s*=\s*'true'/);
+    // FORGE-CORE-K regression: the fast-ack COALESCE comparison binds its cutoff
+    // as an ISO STRING (`< ${ackFastCutoffIso}`), not a raw Date. The left
+    // operand is a raw `sql` template, so drizzle has no column type to
+    // serialise a Date against and postgres-js threw on bind, aborting the loop
+    // monitor (the sweep's first pass). The literal surfaces in the SQL text.
+    expect(pass3).toMatch(/COALESCE[\s\S]*<\s*['"]?\d{4}-\d{2}-\d{2}T/i);
   });
 
   it('broadcasts + emits a wedge per reaped session, resolving the issue via the run', async () => {

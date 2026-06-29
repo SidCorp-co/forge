@@ -242,7 +242,13 @@ export async function reapZombieSessions(
   const { queueMs, heartbeatMs, ackFastMs } = getLoopThresholds();
   const queueCutoff = new Date(now.getTime() - queueMs);
   const heartbeatCutoff = new Date(now.getTime() - heartbeatMs);
-  const ackFastCutoff = new Date(now.getTime() - ackFastMs);
+  // ISO string, NOT a Date: this cutoff is bound inside a raw `sql` COALESCE
+  // template (below), where drizzle has no column type to serialise a Date
+  // against — postgres-js then throws `TypeError: ... Received an instance of
+  // Date` on bind, aborting the loop monitor (the sweep's first pass) and, pre
+  // per-pass isolation, every reaper after it. The column-based `lt()` cutoffs
+  // above are fine (drizzle knows the column type); only this template needs ISO.
+  const ackFastCutoffIso = new Date(now.getTime() - ackFastMs).toISOString();
   const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
 
   // Claim hop: queued past timeout. CAS via WHERE status='queued' so a worker
@@ -351,10 +357,7 @@ export async function reapZombieSessions(
         // to the conservative heartbeat branches below).
         and(
           sql`${agentSessions.metadata}->>'acked' = 'true'`,
-          lt(
-            sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt})`,
-            ackFastCutoff,
-          ),
+          sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt}) < ${ackFastCutoffIso}`,
         ),
         and(
           isNotNull(agentSessions.lastHeartbeatAt),
@@ -385,7 +388,11 @@ export async function reapZombieSessions(
       failover = await redispatch(z.id);
       if (failover.ok) {
         logger.info(
-          { failedSessionId: z.id, retrySessionId: failover.sessionId, deviceId: failover.deviceId },
+          {
+            failedSessionId: z.id,
+            retrySessionId: failover.sessionId,
+            deviceId: failover.deviceId,
+          },
           'loop-monitor: schedule no_client_ack re-dispatched to another runner',
         );
       }
