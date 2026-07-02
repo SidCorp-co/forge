@@ -4,7 +4,11 @@ Request for Comments — long-form design proposals for significant changes. Eac
 
 ## Index
 
-_No active RFCs._ Write the next one as `0001-kebab-case-title.md` (numbering restarts at 0001 — the previous archive was retired as outdated).
+| RFC | Title | Status |
+|---|---|---|
+| [0001](0001-skill-delta-override.md) | Skill delta-override composition | Draft |
+
+Write the next one as `NNNN-kebab-case-title.md` (numbering restarted at 0001 — the previous archive was retired as outdated).
 
 ## When an RFC is required
 
