@@ -177,6 +177,20 @@ export type GitCredentialView =
 			createdAt: string;
 	  };
 
+/** `POST /api/projects/:id/git-credential/test` — deploy-key reachability probe. */
+export type GitCredentialTestResult = {
+	ok: boolean;
+	code:
+		| "authenticated"
+		| "auth_denied"
+		| "host_unreachable"
+		| "not_found"
+		| "timeout"
+		| "error";
+	message: string;
+	headSha?: string;
+};
+
 /** Ordered provision steps for rendering a stepper. */
 export const PROVISION_STEPS: ProvisionStatus[] = [
 	"queued",

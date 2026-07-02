@@ -24,8 +24,9 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects } from '../db/schema.js';
-import { derivePublicFromPrivate, generateSshKeypair } from '../git/ssh-keys.js';
-import { encryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { classifyGitRemote } from '../git/provision-credential.js';
+import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
+import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -171,6 +172,74 @@ gitCredentialRoutes.post(
     }
     logger.info({ projectId, source }, 'git-credential: upserted project SSH key');
     return c.json(publicView(row), 201);
+  },
+);
+
+/**
+ * POST /:projectId/git-credential/test — probe the stored deploy key against
+ * the project's SSH repo URL (git ls-remote). Non-mutating; any project member
+ * may run it. Never returns the private key. Requires the repo URL to be in SSH
+ * form (the deploy key isn't used for HTTPS remotes).
+ */
+gitCredentialRoutes.post(
+  '/:projectId/git-credential/test',
+  zValidator('param', paramSchema),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'viewer', 'project member required');
+
+    if (!isVaultConfigured()) {
+      throw new HTTPException(503, {
+        message: 'secret vault not configured (INTEGRATION_MASTER_KEY missing)',
+        cause: { code: 'VAULT_NOT_CONFIGURED' },
+      });
+    }
+
+    const [project] = await db
+      .select({ repoUrl: projects.repoUrl })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!project) {
+      throw new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
+    }
+
+    const [cred] = await db
+      .select({ privateKeyEnc: projectGitCredentials.privateKeyEnc })
+      .from(projectGitCredentials)
+      .where(eq(projectGitCredentials.projectId, projectId))
+      .limit(1);
+    if (!cred) {
+      throw new HTTPException(404, {
+        message: 'no deploy key configured for this project',
+        cause: { code: 'NOT_CONFIGURED' },
+      });
+    }
+
+    const repoUrl = project.repoUrl?.trim();
+    if (!repoUrl || classifyGitRemote(repoUrl) !== 'ssh') {
+      throw new HTTPException(400, {
+        message: 'set an SSH clone URL (git@host:org/repo.git) to test the deploy key',
+        cause: { code: 'NEEDS_SSH_URL' },
+      });
+    }
+
+    let privateKey: string;
+    try {
+      privateKey = decryptSecret(cred.privateKeyEnc);
+    } catch (err) {
+      logger.error({ err, projectId }, 'git-credential: decrypt failed on connection test');
+      throw new HTTPException(500, {
+        message: 'failed to decrypt the stored key (vault master key may have rotated)',
+        cause: { code: 'DECRYPT_FAILED' },
+      });
+    }
+
+    const result = await testSshConnection(repoUrl, privateKey);
+    logger.info({ projectId, code: result.code, ok: result.ok }, 'git-credential: connection test');
+    return c.json(result);
   },
 );
 

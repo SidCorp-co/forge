@@ -47,6 +47,7 @@ import {
 	useRunnerActivity,
 	useSetDefaultDevice,
 	useSetGitCredential,
+	useTestGitCredential,
 	useUnassignDeviceFromProject,
 } from "../hooks";
 import {
@@ -96,6 +97,7 @@ function GitConfigCard({
 	const cred = useGitCredential(projectId);
 	const setCred = useSetGitCredential(projectId);
 	const delCred = useDeleteGitCredential(projectId);
+	const testCred = useTestGitCredential(projectId);
 	const [url, setUrl] = useState(repoUrl ?? "");
 	const [paste, setPaste] = useState("");
 	const [showPaste, setShowPaste] = useState(false);
@@ -180,8 +182,25 @@ function GitConfigCard({
 									Add this public key to your repo&apos;s deploy keys (write
 									access) so runners can clone + push.
 								</p>
-								{canEdit && (
-									<div className="flex justify-end">
+								{testCred.data && (
+									<Banner tone={testCred.data.ok ? "success" : "danger"}>
+										{testCred.data.message}
+										{testCred.data.headSha
+											? ` (HEAD ${testCred.data.headSha.slice(0, 10)})`
+											: ""}
+									</Banner>
+								)}
+								<div className="flex items-center justify-between gap-2">
+									<Button
+										variant="secondary"
+										size="sm"
+										icon="activity"
+										loading={testCred.isPending}
+										onClick={() => testCred.mutate()}
+									>
+										Test connection
+									</Button>
+									{canEdit && (
 										<Button
 											variant="ghost"
 											size="sm"
@@ -191,8 +210,8 @@ function GitConfigCard({
 										>
 											Remove key
 										</Button>
-									</div>
-								)}
+									)}
+								</div>
 							</div>
 						) : (
 							<div className="mt-2 flex flex-col gap-3">

@@ -281,6 +281,24 @@ export function useDeleteGitCredential(projectId: string) {
 }
 
 /**
+ * Probe the stored deploy key against the repo (git ls-remote). Non-mutating —
+ * exposes the result via `mutation.data` for an inline banner; only surfaces a
+ * toast when the request itself fails (misconfig: no key / non-SSH URL / 503).
+ */
+export function useTestGitCredential(projectId: string) {
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: () => runnersApi.testGitCredential(projectId),
+		onError: (err) =>
+			toast({
+				title: "Could not test connection",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/**
  * Bind a device to a project (project-centric variant — invalidates the project
  * runners list rather than the device pools).
  */

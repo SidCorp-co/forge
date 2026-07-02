@@ -6,6 +6,7 @@ import type {
 	ActiveRunnersSnapshot,
 	DeviceRow,
 	DeviceRunnerAssignment,
+	GitCredentialTestResult,
 	GitCredentialView,
 	PairingCode,
 	ProjectRunner,
@@ -135,6 +136,16 @@ export const runnersApi = {
 			method: "POST",
 			body: JSON.stringify(body),
 		}),
+
+	/**
+	 * `POST /api/projects/:id/git-credential/test` — probe the stored deploy key
+	 * against the project's SSH repo URL (git ls-remote). Non-mutating.
+	 */
+	testGitCredential: (projectId: string) =>
+		apiClient<GitCredentialTestResult>(
+			`/projects/${projectId}/git-credential/test`,
+			{ method: "POST" },
+		),
 
 	/** `DELETE /api/projects/:id/git-credential` — remove the deploy key. */
 	deleteGitCredential: (projectId: string) =>
