@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::error::{Error, Result};
 
@@ -40,11 +39,75 @@ pub fn write(
     }
 
     let doc = serde_json::json!({ "mcpServers": servers });
-    let path = std::env::temp_dir().join(format!("forge-mcp-{}.json", Uuid::new_v4()));
+
+    // Stable, reused path inside a dedicated Forge folder — NOT a per-run UUID in
+    // the shared `/tmp` root. The runner keeps all its state under
+    // `~/.config/forge-runner/` (credentials, config, skills-cache); the per-job
+    // MCP config lives beside them in `mcp/`, one file per project slug, simply
+    // overwritten by the next same-slug run. So the runner neither scatters
+    // `/tmp/forge-mcp-*.json` files nor accumulates one per run. For a given slug
+    // the content is deterministic (same core_url + device token + per-project
+    // overrides), so a rare concurrent same-slug writer produces identical bytes.
+    let path = mcp_config_dir().join(format!("forge-mcp-{}.json", sanitize_slug(project_slug)));
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
     std::fs::write(&path, body)?;
+    restrict_perms(&path); // the file carries a device token — 0600 it
     Ok(path)
 }
+
+/// Dedicated folder for the runner's per-job MCP configs:
+/// `~/.config/forge-runner/mcp/`. Falls back to `<tmp>/forge-runner/mcp/` only
+/// when no config dir is resolvable. Created on demand; best-effort `0700`.
+fn mcp_config_dir() -> PathBuf {
+    let base = dirs_next::config_dir()
+        .map(|d| d.join("forge-runner"))
+        .unwrap_or_else(|| std::env::temp_dir().join("forge-runner"));
+    let dir = base.join("mcp");
+    let _ = std::fs::create_dir_all(&dir);
+    restrict_dir_perms(&dir);
+    dir
+}
+
+/// Sanitize a project slug into a filesystem-safe token. Non `[A-Za-z0-9_-]`
+/// chars become `-`; an empty / all-stripped slug falls back to `default`, so
+/// the runner still resolves to a single stable path.
+fn sanitize_slug(slug: &str) -> String {
+    let cleaned: String = slug
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim_matches('-');
+    if trimmed.is_empty() {
+        "default".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Restrict the MCP folder to owner-only (`0700`). Best-effort; no-op on non-unix.
+#[cfg(unix)]
+fn restrict_dir_perms(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+}
+#[cfg(not(unix))]
+fn restrict_dir_perms(_dir: &Path) {}
+
+/// Restrict the config file to owner-only (`0600`) — it carries a device token.
+/// Best-effort; no-op on non-unix.
+#[cfg(unix)]
+fn restrict_perms(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+}
+#[cfg(not(unix))]
+fn restrict_perms(_path: &Path) {}
 
 /// Write a persistent `<repo>/.mcp.json` wiring the project's Forge MCP server
 /// (device-token authed) so a human running `claude` in the provisioned folder
@@ -201,6 +264,29 @@ mod tests {
         );
         assert_eq!(doc["mcpServers"]["other"]["x"], 1);
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn sanitizes_slug_to_fs_safe_token() {
+        assert_eq!(sanitize_slug("home-kieutrung-anhome"), "home-kieutrung-anhome");
+        assert_eq!(sanitize_slug("a/b c.d"), "a-b-c-d");
+        assert_eq!(sanitize_slug(""), "default");
+        assert_eq!(sanitize_slug("///"), "default");
+    }
+
+    #[test]
+    fn write_uses_stable_slug_path_not_uuid() {
+        let slug = "forge-test-stable-slug-xyz";
+        let p1 = write("https://core.example", "tok", slug, None).unwrap();
+        let p2 = write("https://core.example", "tok", slug, None).unwrap();
+        assert_eq!(p1, p2, "same slug must resolve to the same reused path");
+        assert_eq!(
+            p1.file_name().unwrap().to_str().unwrap(),
+            "forge-mcp-forge-test-stable-slug-xyz.json"
+        );
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&p1).unwrap()).unwrap();
+        assert_eq!(doc["mcpServers"]["forge"]["url"], "https://core.example/mcp");
+        let _ = std::fs::remove_file(&p1);
     }
 
     #[test]
