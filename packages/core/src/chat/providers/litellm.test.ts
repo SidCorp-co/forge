@@ -93,7 +93,9 @@ describe('litellm provider', () => {
   });
 
   it('yields error event on non-2xx response', async () => {
-    const fetchImpl = vi.fn(async (..._args: unknown[]) => new Response('rate limited', { status: 429 }));
+    const fetchImpl = vi.fn(
+      async (..._args: unknown[]) => new Response('rate limited', { status: 429 }),
+    );
     const provider = createLiteLLMProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
@@ -129,6 +131,69 @@ describe('litellm provider', () => {
     );
 
     expect(events).toEqual([{ type: 'error', message: 'network down' }]);
+  });
+
+  it('reassembles streamed tool_call fragments and flushes on finish_reason', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          sseBody([
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"forge_issues","arguments":"{\\"act"}}]}}]}\n\n',
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ion\\":\\"list\\"}"}}]}}]}\n\n',
+            'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+            'data: [DONE]\n\n',
+          ]),
+          { status: 200 },
+        ),
+    );
+    const provider = createLiteLLMProvider({
+      baseUrl: 'http://lite',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const events = await collect(
+      provider.stream({ model: 'm', messages: [{ role: 'user', content: 'list issues' }] }),
+    );
+
+    const toolCall = events.find((e) => e.type === 'tool_call');
+    expect(toolCall).toEqual({
+      type: 'tool_call',
+      id: 'call_1',
+      name: 'forge_issues',
+      arguments: '{"action":"list"}',
+    });
+    expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('includes tools in the request body when provided', async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(sseBody(['data: [DONE]\n\n']), { status: 200 }),
+    );
+    const provider = createLiteLLMProvider({
+      baseUrl: 'http://lite',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    await collect(
+      provider.stream({
+        model: 'm',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [
+          {
+            type: 'function',
+            function: { name: 'forge_issues', description: 'd', parameters: { type: 'object' } },
+          },
+        ],
+      }),
+    );
+
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { tools?: unknown[] };
+    expect(body.tools).toHaveLength(1);
   });
 
   it('handles split SSE frames across reads', async () => {

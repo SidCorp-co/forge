@@ -17,9 +17,17 @@ export interface LiteLLMConfig {
   fetchImpl?: typeof fetch;
 }
 
+interface OpenAIToolCallDelta {
+  index?: number;
+  id?: string;
+  type?: string;
+  function?: { name?: string; arguments?: string };
+}
+
 interface OpenAIDelta {
   content?: string | null;
   role?: string;
+  tool_calls?: OpenAIToolCallDelta[];
 }
 
 interface OpenAIChunk {
@@ -29,6 +37,12 @@ interface OpenAIChunk {
     completion_tokens?: number;
     total_tokens?: number;
   };
+}
+
+interface ToolCallAccumulator {
+  id: string;
+  name: string;
+  args: string;
 }
 
 export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
@@ -52,6 +66,7 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
             messages: req.messages,
             stream: true,
             stream_options: { include_usage: true },
+            ...(req.tools && req.tools.length > 0 ? { tools: req.tools } : {}),
           }),
         };
         if (req.signal) init.signal = req.signal;
@@ -70,6 +85,18 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
         return;
       }
 
+      // Tool-call deltas arrive fragmented across chunks, keyed by `index`.
+      // Reassemble here and flush complete calls when `finish_reason` says so
+      // (or at stream end as a fallback).
+      const toolAcc = new Map<number, ToolCallAccumulator>();
+      const flushToolCalls = function* (): Generator<ChatStreamEvent> {
+        for (const [, acc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
+          if (!acc.name) continue;
+          yield { type: 'tool_call', id: acc.id, name: acc.name, arguments: acc.args };
+        }
+        toolAcc.clear();
+      };
+
       try {
         for await (const event of parseSseStream(res.body)) {
           if (event === '[DONE]') break;
@@ -79,9 +106,27 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
           } catch {
             continue;
           }
-          const text = chunk.choices?.[0]?.delta?.content;
+          const choice = chunk.choices?.[0];
+          const text = choice?.delta?.content;
           if (typeof text === 'string' && text.length > 0) {
             yield { type: 'chunk', text };
+          }
+          const toolDeltas = choice?.delta?.tool_calls;
+          if (toolDeltas) {
+            for (const td of toolDeltas) {
+              const idx = td.index ?? 0;
+              let acc = toolAcc.get(idx);
+              if (!acc) {
+                acc = { id: '', name: '', args: '' };
+                toolAcc.set(idx, acc);
+              }
+              if (td.id) acc.id = td.id;
+              if (td.function?.name) acc.name = td.function.name;
+              if (td.function?.arguments) acc.args += td.function.arguments;
+            }
+          }
+          if (choice?.finish_reason === 'tool_calls') {
+            yield* flushToolCalls();
           }
           if (chunk.usage) {
             const usage: ChatStreamUsage = {};
@@ -97,6 +142,9 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
             yield { type: 'usage', usage };
           }
         }
+        // Fallback: some proxies end the stream without a `tool_calls`
+        // finish_reason — flush anything still buffered before terminating.
+        yield* flushToolCalls();
         yield { type: 'done' };
       } catch (err) {
         yield { type: 'error', message: errorMessage(err) };

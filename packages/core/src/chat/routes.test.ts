@@ -11,10 +11,12 @@ const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
 // .where().limit() — route the join chain back into the same where/limit FIFO.
-const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
-  leftJoin: selectLeftJoin,
-  where: selectWhere,
-}));
+const selectLeftJoin = vi.fn(
+  (): Record<string, unknown> => ({
+    leftJoin: selectLeftJoin,
+    where: selectWhere,
+  }),
+);
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 const updateWhere = vi.fn(() => Promise.resolve(undefined));
@@ -277,11 +279,11 @@ describe('POST /api/chat (mounted)', () => {
   });
 
   it('second turn with same sessionId includes prior turn in provider call', async () => {
-    let captured: Array<{ role: string; content: string }> = [];
+    let captured: Array<{ role: string; content: string | null }> = [];
     register('mock', () => ({
       id: 'mock',
       defaultModel: 'mock-default',
-      async *stream(req: { messages: Array<{ role: string; content: string }> }) {
+      async *stream(req: { messages: Array<{ role: string; content: string | null }> }) {
         captured = req.messages;
         yield { type: 'chunk' as const, text: 'po' };
         yield { type: 'chunk' as const, text: 'ng' };

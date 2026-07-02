@@ -124,13 +124,16 @@ function mapMessages(messages: ChatMessage[]): {
   const systemParts: string[] = [];
   const contents: GeminiContent[] = [];
   for (const m of messages) {
+    const text = m.content ?? '';
     if (m.role === 'system') {
-      systemParts.push(m.content);
+      systemParts.push(text);
       continue;
     }
+    // Gemini's simple adapter has no tool-calling path (only LiteLLM is wired
+    // for tools in ISS-604); fold any tool/assistant text in as plain turns.
     contents.push({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
+      parts: [{ text }],
     });
   }
   if (systemParts.length === 0) return { contents };

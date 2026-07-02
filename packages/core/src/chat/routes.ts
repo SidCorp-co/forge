@@ -22,6 +22,8 @@ import { resolveForProject } from './providers/registry.js';
 import { runChatTurn } from './run-turn.js';
 import { appendUserMessage, loadOrCreateSession, toProviderMessages } from './session.js';
 import { buildSystemPrompt } from './system-prompt.js';
+import { buildChatToolContext } from './tools/principal.js';
+import { buildProjectToolset } from './tools/registry.js';
 
 const chatRequestSchema = z
   .object({
@@ -94,11 +96,17 @@ chatRoutes.post(
       ...toProviderMessages(session),
     ];
 
+    // Read-only Forge toolset, fenced to this project + the calling user.
+    const tools = buildProjectToolset(
+      buildChatToolContext({ userId, projectId, projectSlug: project.slug }),
+    );
+
     return runChatTurn({
       c,
       session,
       resolved,
       providerMessages,
+      tools,
       projectSlug: project.slug,
       userMessage: message,
       userKey: userId,

@@ -6,16 +6,44 @@
  * supply credentials. Keep this file dependency-free — adapter modules import
  * the types but the types do not import adapters.
  *
- * `tool_call` / `tool_result` are reserved in the event vocabulary so the SSE
- * contract is stable for the future agent-tools epic; no v1 provider emits
- * them.
+ * ISS-604 — the contract mirrors the OpenAI Chat Completions wire so LiteLLM
+ * (and any OpenAI-compatible proxy) maps 1:1. Tool/function calling is a live
+ * path: a request carries `tools`, the stream emits `tool_call` events, and
+ * the caller feeds `role:'tool'` results back for the next round.
  */
 
-export type ChatRole = 'system' | 'user' | 'assistant';
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
+
+/**
+ * An assistant's request to invoke a tool (OpenAI shape). `arguments` is a
+ * JSON string exactly as the model emitted it — the executor parses it, and
+ * it is echoed verbatim into the follow-up assistant message.
+ */
+export interface ChatToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
 
 export interface ChatMessage {
   role: ChatRole;
-  content: string;
+  /** `null` on an assistant message that only carries `tool_calls`. */
+  content: string | null;
+  /** Assistant-only: tool invocations requested this turn. */
+  tool_calls?: ChatToolCall[];
+  /** `tool`-role only: the id of the `ChatToolCall` this result answers. */
+  tool_call_id?: string;
+}
+
+/** A tool offered to the model (OpenAI `tools[]` entry). */
+export interface ChatTool {
+  type: 'function';
+  function: {
+    name: string;
+    description?: string;
+    /** JSON Schema for the arguments object. */
+    parameters: Record<string, unknown>;
+  };
 }
 
 export interface ChatStreamUsage {
@@ -35,6 +63,8 @@ export type ChatStreamEvent =
 export interface ChatStreamRequest {
   model: string;
   messages: ChatMessage[];
+  /** Tools offered to the model this round; omit for a plain completion. */
+  tools?: ChatTool[] | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -47,6 +77,10 @@ export interface ChatProvider {
    * Stream a chat completion as a sequence of `ChatStreamEvent`s. The
    * iterator MUST end with exactly one of `{ type: 'done' }` or
    * `{ type: 'error' }` and MUST NOT emit further events after either.
+   *
+   * When the model requests tools, emit one `tool_call` per requested call
+   * (arguments reassembled from streamed fragments) BEFORE the terminal
+   * `done`; the caller executes them and re-invokes with the results.
    */
   stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent>;
 }
