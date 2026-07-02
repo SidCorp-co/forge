@@ -60,6 +60,10 @@ export type SkillRow = {
   changelog: unknown;
   localGuide: string | null;
   evalScore: number | null;
+  installOnly?: boolean;
+  /** ISS-605 template lineage (null = not adopted from a template / pre-tracking). */
+  basedOnGlobalSkillId?: string | null;
+  basedOnGlobalVersion?: number | null;
 };
 
 const skillProjection = {
@@ -80,6 +84,8 @@ const skillProjection = {
   localGuide: skills.localGuide,
   evalScore: skills.evalScore,
   installOnly: skills.installOnly,
+  basedOnGlobalSkillId: skills.basedOnGlobalSkillId,
+  basedOnGlobalVersion: skills.basedOnGlobalVersion,
 } as const;
 
 /**
@@ -321,6 +327,9 @@ export interface CreateProjectSkillInput {
   target?: SkillTarget | null | undefined;
   files?: SkillFileInput[] | undefined;
   localGuide?: string | null | undefined;
+  /** ISS-605 template lineage — set when the skill is adopted from a global. */
+  basedOnGlobalSkillId?: string | undefined;
+  basedOnGlobalVersion?: number | undefined;
 }
 
 export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
@@ -357,6 +366,8 @@ export async function createProjectSkill(input: CreateProjectSkillInput): Promis
       target: input.target ?? null,
       files: files as never,
       localGuide: input.localGuide ?? null,
+      basedOnGlobalSkillId: input.basedOnGlobalSkillId ?? null,
+      basedOnGlobalVersion: input.basedOnGlobalVersion ?? null,
     })
     .returning(skillProjection)) as SkillRow[];
   if (!inserted) throw new Error('skills: insert returned no row');
@@ -448,6 +459,8 @@ export async function deleteProjectSkill(skillId: string): Promise<void> {
 export async function applyGlobalSkillDefault(input: {
   projectId: string;
   global: {
+    id: string;
+    version: number;
     name: string;
     description: string;
     skillMd: string | null;
@@ -479,6 +492,8 @@ export async function applyGlobalSkillDefault(input: {
     skillMd: global.skillMd ?? global.prompt ?? '',
     target: global.target,
     files,
+    basedOnGlobalSkillId: global.id,
+    basedOnGlobalVersion: global.version,
   });
 }
 
@@ -517,6 +532,8 @@ export async function resolveOrAdoptProjectSkill(
 
   const [global] = await db
     .select({
+      id: skills.id,
+      version: skills.version,
       name: skills.name,
       description: skills.description,
       skillMd: skills.skillMd,
@@ -536,6 +553,8 @@ export async function resolveOrAdoptProjectSkill(
     skillMd: global.skillMd ?? global.prompt ?? '',
     target: global.target,
     files: (Array.isArray(global.files) ? global.files : []) as SkillFileInput[],
+    basedOnGlobalSkillId: global.id,
+    basedOnGlobalVersion: global.version,
   });
   return created.id;
 }

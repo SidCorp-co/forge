@@ -9,9 +9,12 @@ import { skills } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { hashSkillBody } from './hash.js';
 import { parseManifest } from './parse-manifest.js';
+import { sweepTemplateBumps } from './template-propagation.js';
 
 export interface SeedChange {
   name: string;
+  /** Row id of the global template — set on 'updated' bumps (ISS-605 sweep key). */
+  globalSkillId?: string;
   oldVersion: number;
   newVersion: number;
   contentHash: string;
@@ -209,6 +212,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     // contentHash already matches.
     const existing = await db
       .select({
+        id: skills.id,
         contentHash: skills.contentHash,
         version: skills.version,
         skillMd: skills.skillMd,
@@ -284,6 +288,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     if (versionChanged) {
       result.changes.push({
         name,
+        globalSkillId: current.id,
         oldVersion: current.version,
         newVersion,
         contentHash,
@@ -304,6 +309,19 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     unchanged: result.unchanged,
     at: new Date(),
   };
+
+  // ISS-605 template-propagation: every real version bump sweeps for project
+  // copies left behind and drafts their rebase issues (idempotent, never
+  // throws — see template-propagation.ts).
+  const bumps = result.changes
+    .filter((c) => c.reason === 'updated' && c.globalSkillId)
+    .map((c) => ({
+      globalSkillId: c.globalSkillId as string,
+      name: c.name,
+      oldVersion: c.oldVersion ?? 0,
+      newVersion: c.newVersion,
+    }));
+  if (bumps.length > 0) await sweepTemplateBumps(bumps);
 
   return result;
 }

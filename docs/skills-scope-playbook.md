@@ -116,3 +116,21 @@ error.")
   are not auto-fixed: re-run `POST /projects/:id/skills/bootstrap` (after
   clearing stale registrations) or adopt the needed skills. Until then those
   stages have no usable skill and error rather than silently run a template.
+
+## Template-propagation protocol (ISS-605)
+
+Every project copy is a fork frozen at adoption time — this protocol is how a
+template improvement reaches existing projects. It runs on EVERY global bump
+(the only bump path is `seedBuiltinSkills`; the CRUD route rejects globals):
+
+| Step | What | Where |
+|---|---|---|
+| 0. Altitude gate | **A sentence that is true for every project is forbidden in a skill body** — it goes to the server-rendered layer (prompt facts / state-prompts / MCP descriptions), which propagates on deploy with zero sync. Only project-shaped content belongs in templates/copies. | authoring rule; `forge-skill-audit` flags violations |
+| 1. Lineage stamp | Adoption records `based_on_global_skill_id` + `based_on_global_version` (migration 0145; pre-tracking copies backfilled with NULL version = treated as behind). | `createProjectSkill` via `applyGlobalSkillDefault` / `resolveOrAdoptProjectSkill` |
+| 2. Drift surface | Catalog reads flag `behindTemplate` (+ `basedOnGlobalVersion` / `templateVersion`) on project rows adopted at an older or unknown version. | `effective.ts` dedup, `forge_skills.list` |
+| 3. Rebase lane | Per behind-template project, the bump sweep drafts ONE idempotent `skill-rebase: <name> vX→vY` issue (**draft = human gate, never `open`**) instructing a three-way merge that preserves project deltas; ship via the existing explicit `skill.sync`. | `template-propagation.ts`, hooked in `builtin-seed.ts` |
+| 4. No silent auto-push | Sync stays explicit (ISS-388). The sweep only creates draft issues. | — |
+
+Long-term direction (delta-override composition — customize as delta over the
+template so most rebases disappear): RFC
+[0001-skill-delta-override](rfcs/0001-skill-delta-override.md).

@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { issueStatuses, skillTargets } from '../../db/schema.js';
-import { loadProjectSkillSyncStatus, resolveEffectiveSkillsForProject } from '../../skills/effective.js';
+import {
+  loadProjectSkillSyncStatus,
+  resolveEffectiveSkillsForProject,
+} from '../../skills/effective.js';
 import {
   SkillAlreadyShadowedError,
   SkillDeleteBlockedError,
@@ -84,6 +87,9 @@ const pushInputSchema = z
 type SkillListRow = SkillRow & {
   shadowsGlobal: boolean;
   shadowedGlobalSkillId: string | null;
+  /** ISS-605 drift hints — see forge_skills.list description. */
+  templateVersion: number | null;
+  behindTemplate: boolean;
 };
 
 /**
@@ -107,12 +113,23 @@ function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
       ...r,
       shadowsGlobal: shadowed != null,
       shadowedGlobalSkillId: shadowed?.id ?? null,
+      // ISS-605 drift hints (project rows only).
+      templateVersion: shadowed?.version ?? null,
+      behindTemplate:
+        shadowed != null &&
+        (r.basedOnGlobalVersion == null || r.basedOnGlobalVersion < shadowed.version),
     });
   }
   for (const r of rows) {
     if (r.scope !== 'global') continue;
     if (shadowedNames.has(r.name)) continue;
-    out.push({ ...r, shadowsGlobal: false, shadowedGlobalSkillId: null });
+    out.push({
+      ...r,
+      shadowsGlobal: false,
+      shadowedGlobalSkillId: null,
+      templateVersion: null,
+      behindTemplate: false,
+    });
   }
   return out;
 }
@@ -137,13 +154,16 @@ function toSkillListRow(row: SkillListRow): Record<string, unknown> {
     evalScore: row.evalScore,
     shadowsGlobal: row.shadowsGlobal,
     shadowedGlobalSkillId: row.shadowedGlobalSkillId,
+    basedOnGlobalVersion: row.basedOnGlobalVersion ?? null,
+    templateVersion: row.templateVersion,
+    behindTemplate: row.behindTemplate,
   };
 }
 
 export const forgeSkillsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_skills.list',
   description:
-    'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. Requires device owner to be a project member.',
+    'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. `behindTemplate: true` on a project row = its copy was adopted at an older (or untracked) template version (`basedOnGlobalVersion` vs `templateVersion`) — a drafted `skill-rebase` issue carries the update (ISS-605). Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
@@ -241,7 +261,9 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     const row = await getSkillForProject(skillId, projectId);
     if (!row) throw new Error('NOT_FOUND: skill not found');
     if (row.scope !== 'project') {
-      throw new Error('BAD_REQUEST: global skills are immutable templates; create a same-name project skill to shadow one');
+      throw new Error(
+        'BAD_REQUEST: global skills are immutable templates; create a same-name project skill to shadow one',
+      );
     }
     const skill = await updateProjectSkill(row, { ...patch, target: patch.target ?? undefined });
     return { skill };
@@ -258,7 +280,8 @@ export const forgeSkillsDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
     await assertPrincipalIsAdmin(ctx.principal, projectId);
     const row = await getSkillForProject(skillId, projectId);
     if (!row) throw new Error('NOT_FOUND: skill not found');
-    if (row.scope !== 'project') throw new Error('BAD_REQUEST: global skills cannot be deleted here');
+    if (row.scope !== 'project')
+      throw new Error('BAD_REQUEST: global skills cannot be deleted here');
     await deleteProjectSkill(skillId);
     return { deleted: true, skillId };
   },
@@ -294,6 +317,8 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
       const skill = await applyGlobalSkillDefault({
         projectId,
         global: {
+          id: global.id,
+          version: global.version,
           name: global.name,
           description: global.description,
           skillMd: global.skillMd,

@@ -1362,6 +1362,13 @@ export const skills = pgTable(
     files: jsonb('files').notNull().default([]),
     changelog: jsonb('changelog').notNull().default([]),
     localGuide: text('local_guide'),
+    // ISS-605 template lineage: which global template this project copy was
+    // adopted from, and at which template version. NULL version on a row with
+    // a lineage id = adopted before tracking (unknown) — the drift sweep
+    // treats it as behind-template. Plain uuid (no FK): a deleted template
+    // must not cascade into project copies.
+    basedOnGlobalSkillId: uuid('based_on_global_skill_id'),
+    basedOnGlobalVersion: integer('based_on_global_version'),
     // When true, a project-scoped skill is synced to device runners (enters the
     // device manifest) even though it is NOT registered to any pipeline stage.
     // Lets a manual / user-invocable utility skill (e.g. forge-product-map) live

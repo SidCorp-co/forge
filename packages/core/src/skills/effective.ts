@@ -1,12 +1,6 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  deviceSkills,
-  devices,
-  runners,
-  skillRegistrations,
-  skills,
-} from '../db/schema.js';
+import { deviceSkills, devices, runners, skillRegistrations, skills } from '../db/schema.js';
 import { hashSkillBody } from './hash.js';
 
 /**
@@ -54,6 +48,16 @@ export interface EffectiveSkill {
   /** The same-name global's skill id (null when none). Catalog hint only. */
   shadowedGlobalSkillId: string | null;
   /**
+   * ISS-605 template drift (catalog hints, project rows only). `templateVersion`
+   * = the same-name global's current version; `basedOnGlobalVersion` = the
+   * template version this copy was adopted at (null = unknown / pre-tracking);
+   * `behindTemplate` = a same-name global exists AND the copy's adopted version
+   * is unknown or older. Globals and unshadowed rows carry null/null/false.
+   */
+  basedOnGlobalVersion: number | null;
+  templateVersion: number | null;
+  behindTemplate: boolean;
+  /**
    * True when this project skill is force-synced to runners without a pipeline
    * stage binding (manual / user-invocable utility). It enters the device
    * manifest but is never auto-dispatched. See `resolveRegisteredEffectiveSkills`.
@@ -71,6 +75,8 @@ export interface SkillBodyRow {
   prompt: string;
   files: unknown;
   installOnly: boolean;
+  /** ISS-605 lineage; optional so pure helpers accept legacy fixtures. */
+  basedOnGlobalVersion?: number | null;
 }
 
 /**
@@ -114,6 +120,9 @@ export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
     scope: skill.scope,
     shadowsGlobal: false,
     shadowedGlobalSkillId: null,
+    basedOnGlobalVersion: null,
+    templateVersion: null,
+    behindTemplate: false,
     installOnly: skill.installOnly,
   };
 }
@@ -127,6 +136,7 @@ const skillBodyProjection = {
   prompt: skills.prompt,
   files: skills.files,
   installOnly: skills.installOnly,
+  basedOnGlobalVersion: skills.basedOnGlobalVersion,
 } as const;
 
 /**
@@ -152,6 +162,13 @@ export function dedupEffectiveSkills(rows: SkillBodyRow[]): EffectiveSkill[] {
     const eff = computeEffectiveSkill(r);
     eff.shadowsGlobal = shadowed != null;
     eff.shadowedGlobalSkillId = shadowed?.id ?? null;
+    // ISS-605 drift hint: adopted-version unknown (pre-tracking) or older than
+    // the template's current version ⇒ behind.
+    eff.basedOnGlobalVersion = r.basedOnGlobalVersion ?? null;
+    eff.templateVersion = shadowed?.version ?? null;
+    eff.behindTemplate =
+      shadowed != null &&
+      (r.basedOnGlobalVersion == null || r.basedOnGlobalVersion < shadowed.version);
     result.push(eff);
   }
 
@@ -272,7 +289,10 @@ export async function resolveManagedMetaPrompts(
   if (MANAGED_META_SKILLS.length === 0) return [];
   const names = [...MANAGED_META_SKILLS];
   const scopeCond = projectId
-    ? or(eq(skills.scope, 'global'), and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)))
+    ? or(
+        eq(skills.scope, 'global'),
+        and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)),
+      )
     : eq(skills.scope, 'global');
   const rows = await db
     .select({
