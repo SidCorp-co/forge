@@ -177,6 +177,14 @@ export interface PipelineConfig {
 	 */
 	maxConcurrentIssues?: number;
 	/**
+	 * ISS-606 — per-project intake gate. When enabled, EVERY create that would
+	 * land at `open` (all channels, member-created included) parks at `draft`
+	 * + label `intake` until a human approves via draft→open. `notify`
+	 * (default true) pings the project owner on each gated arrival. Mirrors
+	 * `intakeGate` in core `pipeline/pipeline-config-schema.ts`.
+	 */
+	intakeGate?: { enabled: boolean; notify?: boolean };
+	/**
 	 * When true, production Coolify deploys auto-dispatch on release instead of
 	 * parking at the manual human-confirm gate (mirrors `autoProdDeploy` in core
 	 * `pipeline/pipeline-config-schema.ts`). Absent/false (the default) keeps the

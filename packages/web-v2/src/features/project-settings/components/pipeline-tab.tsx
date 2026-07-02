@@ -49,6 +49,7 @@ import { McpServersSection } from "./mcp-servers-section";
 import { SessionGroupsSection } from "./session-groups-section";
 import { MergeStatesSection } from "./merge-states-section";
 import { ConcurrencySection } from "./concurrency-section";
+import { IntakeGateSection } from "./intake-gate-section";
 import {
   applyCheckpointMode,
   applyJobStageMode,
@@ -458,6 +459,8 @@ export function PipelineTab({
 
         {/* Concurrency (maxConcurrentIssues) — round-trips the full fetched config. */}
         <ConcurrencySection projectId={projectId} config={server} canEdit={canEdit} />
+
+        <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
       </CardContent>
     </Card>
   );
