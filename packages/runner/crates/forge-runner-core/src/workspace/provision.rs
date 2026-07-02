@@ -95,7 +95,14 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
             return;
         };
         report(client, &p.runner_id, "cloning", None).await;
-        if let Err(detail) = clone_repo(repo_url, &repo_path, ssh_cmd.as_deref()) {
+        // `branch` = the project's base branch (server sends `runner.branch ??
+        // project.baseBranch`). Check it out right after clone — BEFORE we write
+        // the orientation/MCP files below — so the main worktree sits on the base
+        // branch, which the job dispatcher assumes is already checked out. Doing
+        // it pre-orientation also avoids the untracked-file collision you'd hit
+        // switching branches after those files land.
+        if let Err(detail) = clone_repo(repo_url, &repo_path, ssh_cmd.as_deref(), p.branch.as_deref())
+        {
             // A clone we can't complete is a manual-setup situation, not a hard
             // failure: the user can clone it themselves and re-assign.
             report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
@@ -146,12 +153,15 @@ fn resolve_path(cfg: &Config, p: &Provision) -> Option<PathBuf> {
 }
 
 /// `git clone <url> <path>` with the deploy key (if any) via `GIT_SSH_COMMAND`.
-/// Returns the trimmed git stderr on failure. Clones the default branch — the
-/// per-job dispatch resolves/checks out the working branch later.
+/// Returns the trimmed git stderr on failure. When `branch` is set (the
+/// project's base branch), check it out after cloning so the main worktree
+/// lands on the base branch rather than the repo's default HEAD — the job
+/// dispatcher assumes the base branch is already checked out here.
 fn clone_repo(
     repo_url: &str,
     repo_path: &Path,
     ssh_cmd: Option<&str>,
+    branch: Option<&str>,
 ) -> std::result::Result<(), String> {
     if let Some(parent) = repo_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {e}"))?;
@@ -162,14 +172,35 @@ fn clone_repo(
         cmd.env("GIT_SSH_COMMAND", ssh);
     }
     let out = cmd.output().map_err(|e| format!("spawn git clone: {e}"))?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
+    if !out.status.success() {
+        return Err(format!(
             "git clone failed: {}",
             String::from_utf8_lossy(&out.stderr).trim()
-        ))
+        ));
     }
+
+    // A full clone already fetched every remote branch, so a local `git checkout
+    // <branch>` creates a tracking branch off origin/<branch> with no network.
+    // Best-effort: if the base branch doesn't exist upstream (or equals the
+    // default already checked out), stay put and let provisioning continue —
+    // a missing base branch shouldn't turn a good clone into needs_manual_setup.
+    if let Some(branch) = branch.map(str::trim).filter(|b| !b.is_empty()) {
+        let checkout = Command::new("git")
+            .arg("-C")
+            .arg(repo_path)
+            .arg("checkout")
+            .arg(branch)
+            .output();
+        match checkout {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => tracing::warn!(
+                "[provision] base-branch checkout '{branch}' failed (staying on default): {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            ),
+            Err(e) => tracing::warn!("[provision] spawn git checkout '{branch}': {e}"),
+        }
+    }
+    Ok(())
 }
 
 /// Set repo-local `core.sshCommand` so pushes use the project deploy key.
