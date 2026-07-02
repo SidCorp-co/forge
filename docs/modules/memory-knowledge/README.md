@@ -22,7 +22,6 @@ Postgres `pgvector` + FTS memory with a cognitive layer: hybrid retrieval, usage
     PM policy create/update ───────────────────┤  (best-effort; delete cleans up row)
     CI fix patterns (reopen→developed) ────────┤  (source:'note', kind:'ci_fix_pattern')
     fact extraction (review/test/fix done) ────┤  (≤3 facts as source:'knowledge' + ≤3 knowledge_edges)
-    knowledge ingest (.forge/knowledge.json) ──┤  (strict — errors reported)
     forge_memory.write (MCP) / POST /api/memory┘  (strict; note/knowledge get semantic dedup)
           │
           ▼

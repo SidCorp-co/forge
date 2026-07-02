@@ -16,7 +16,7 @@ Owner learns a practice → writes one MESSAGE to the registry (one commit)
           MESSAGE REGISTRY (global, git-versioned, source of ideas)
                           ▼ project enables it in Automation → Improve
 SCHEDULE (cron) → skill-improve agent runs SEPARATELY per project
-     ▼ reads: project skills · .forge/knowledge.json · forge_memory · recent runs
+     ▼ reads: project skills · forge_knowledge · forge_memory · recent runs
 appliesWhen? ── no ──► skip (reason recorded)
      │ yes
      ▼ compose TAILORED skill edit — does NOT copy the global skill verbatim
@@ -56,7 +56,7 @@ On each scheduled run the agent executes five steps in order:
 
 | Step | What it does |
 |------|-------------|
-| **1 — Read context** | Loads project skills (`scope=project`), `.forge/knowledge.json`, `forge_memory` (`knowledge`/`decision`/`fix-pattern`), and the 20 most-recent pipeline runs (looking for reopen/failure patterns). |
+| **1 — Read context** | Loads project skills (`scope=project`), `forge_knowledge` (curated entries), `forge_memory` (`knowledge`/`decision`/`fix-pattern`), and the 20 most-recent pipeline runs (looking for reopen/failure patterns). |
 | **2 — Evaluate `appliesWhen`** | Reads project config (baseBranch, productionBranch, mergeStates, pipelineConfig, projectFacts) and judges whether the condition holds. Records its reasoning. If the condition is not met, goes directly to Step 5 with `status=skipped`. |
 | **3 — Compose tailored improvement** | Reads the current target skill body and writes a **minimal, targeted** change that incorporates the message guidance in a way that fits the project's existing idiom and conventions. Does NOT wholesale-replace the skill. |
 | **4 — Apply per mode** | `propose` → creates a draft issue with the proposed change as a fenced diff. `auto` → calls `forge_skills.update` and reports the change. |

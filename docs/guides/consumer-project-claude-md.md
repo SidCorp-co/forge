@@ -53,7 +53,7 @@ explain the tools.
   that needs project context:
   `forge_memory_search({ projectId: '<uuid>', query: <topic>, topK: 5 })`
   Treat hits as point-in-time — verify against live code/git.
-- Codebase orientation: `forge_config` action `get_knowledge` before broad search.
+- Codebase orientation: `forge_knowledge` (list/get/search) before broad search.
 - Issues / status / deps: `forge_issues`, `forge_comments`, `forge_pm_*`.
 
 > Keep this block thin. Forge *usage* guidance lives in the live `forge-skills`
