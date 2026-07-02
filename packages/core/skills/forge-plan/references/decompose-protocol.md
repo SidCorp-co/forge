@@ -30,11 +30,20 @@ Your job is only to create the child rows, add the edges, and write the index pl
 
 ## How to decompose
 
-1. For each child workstream, create a child issue **at `draft`**:
+1. Create the child issues **at `draft`**, in dependency order — any child that ships FIRST before the sibling that waits on it (you need the blocker's id to wire the wait atomically, below):
    ```
    forge_issues → create → { data: { title: "<child slice title>", description: "<scoped description>", status: "draft", priority: <inherit>, category: <inherit> } }
    ```
    `draft` is the inert proposal state: the orchestrator does NOT auto-dispatch forge-triage. The cascade-approve hook on parent `waiting → approved` flips every parked child to `approved` and the normal pipeline resumes. (Do not use `on_hold` — `draft` is the canonical parked state core itself uses; the cascade accepts both only for backward compatibility.)
+
+   **Sibling ordering: set the `blocks` edge ATOMICALLY at create, never after.** If a child must wait for a sibling to ship first, create the waiting child with the edge inline via `data.relations` so it lands in the SAME transaction as the row — before any dispatch could pick it up:
+   ```
+   forge_issues → create → { data: {
+     title: "<waiting child>", description: "...", status: "draft", priority: <inherit>, category: <inherit>,
+     relations: [{ kind: "blocks", dependsOnId: "<blockerChildId>" }]   // this child is blocked-BY the blocker
+   } }
+   ```
+   `data.relations` carries only `blocks`/`relates` (each entry sets exactly one of `dependsOnId` = blocked-by, or `blocksId` = blocks). It does NOT carry `decomposes` — route that through `forge_project_pm` in step 2. Wiring the wait after the fact risks the child dispatching in the gap before the edge lands (the "block a task that's already processing" race); the atomic form closes that gap.
 
 2. For each created child, add a `decomposes` dependency edge with the parent as the `from` side via the MCP tool:
    ```
@@ -50,17 +59,7 @@ Your job is only to create the child rows, add the edges, and write the index pl
 
    **The FIRST decomposes edge triggers integration-branch creation + `branchConfig` auto-fill on the parent and child** (core, default on). You do not pass any branch option — leave `useIntegrationBranch` at its default. Only pass `decomposeOpts.useIntegrationBranch: false` if this epic genuinely should NOT share a branch (rare — e.g. children touch entirely disjoint repos); then children branch off the project default and the parent has nothing to integrate.
 
-   **If the parent's plan declares sibling-blocks ordering** (e.g., Sub 2 must wait for Sub 1 to ship before its `forge-triage` dispatches), add those edges immediately after creating all children:
-   ```
-   forge_project_pm → {
-     action: "set_dependency",
-     projectId: "<projectId>",
-     fromIssueId: "<sub1Id>",    // the issue that ships FIRST
-     toIssueId:   "<sub2Id>",    // the issue that WAITS
-     kind: "blocks"
-   }
-   ```
-   Verify each call returns `{ id, created: true|false }`. If a call throws `FORBIDDEN` or `CYCLE_DETECTED`, stop and post a comment — silently writing "Added blocks edges" in the plan text without the rows landing is the failure mode that caused ISS-131. Never claim a dependency in prose unless the MCP call succeeded.
+   Sibling-`blocks` ordering was already wired **atomically at create** (step 1's `data.relations`) — do NOT re-add it here as a separate `set_dependency` call. Verify every edge landed: the child `create` echoes its `relations`, and `set_dependency` returns `{ id, created: true|false }`. If a call throws `FORBIDDEN` or `CYCLE_DETECTED`, stop and post a comment — silently writing "Added blocks edges" in the plan text without the rows landing is the failure mode that caused ISS-131. Never claim a dependency in prose unless the call succeeded.
 
 3. Write the parent's `plan` field with one section per child — title, scope, files, acceptance criteria — PLUS a **parent integration step** section describing the end-to-end check the parent will run on the integration branch after all children land. The parent plan is the index; each child's own `description` carries the child-specific implementation detail.
 
@@ -78,4 +77,4 @@ Your job is only to create the child rows, add the edges, and write the index pl
 
 ## Verifying sibling-blocks edges took effect (ISS-131 breadcrumb)
 
-The L2 dispatcher gate evaluates `blocks` parents at dispatch time for every job type (not just `release`). When a downstream child's `forge-triage` job is queued behind a non-terminal blocker, the child's `agent_sessions` row stays at `status='queued'` with `failure_reason='waiting_on_dep'` and `metadata.waitingOn` listing the blocking parents. If after cascade-approve you see every child's `forge-triage` immediately dispatch in parallel, the most likely cause is that `forge_project_pm (set_dependency)` never ran or threw silently — go back and re-call it for each declared blocks edge.
+The L2 dispatcher gate evaluates `blocks` parents at dispatch time for every job type (not just `release`). When a downstream child's `forge-triage` job is queued behind a non-terminal blocker, the child's `agent_sessions` row stays at `status='queued'` with `failure_reason='waiting_on_dep'` and `metadata.waitingOn` listing the blocking parents. If after cascade-approve you see every child's `forge-triage` immediately dispatch in parallel, the most likely cause is that the create-time `data.relations` `blocks` edge never landed — re-check the waiting child's `relations` (and re-create/repair the edge) rather than assuming ordering held.

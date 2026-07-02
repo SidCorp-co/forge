@@ -57,7 +57,7 @@ When the issue has a plan and triage/plan comments from Forge AI:
     - **deploy mode** — `xs`/`s` → **`testing`** (skip independent review — the inline self-review is enough for a trivial change; set `previewUrl`/`previewApiUrl` to the staging URLs). `m`/`l`/`xl` → **`developed`** (independent forge-review runs, then advances to testing).
     - **local-only mode** — **`developed`** for ALL complexities (human reviews at `developed` and closes manually).
 
-**Do NOT:** re-read knowledge.json (plan has the file paths), re-explore the codebase, second-guess the plan, read files that aren't in the plan.
+**Do NOT:** re-derive the file map (the plan already has the paths), re-explore the codebase, second-guess the plan, read files that aren't in the plan.
 
 Build and review happen BEFORE push. Only clean, reviewed code gets pushed (and, in deploy mode, deployed).
 
@@ -107,7 +107,7 @@ Bug-hunting is the opposite concern and lives elsewhere — your self-review abo
 
 **Standalone mode** (manual invocation, no pipeline comments):
 - May not have a plan → explore and self-plan
-- Read `.forge/knowledge.json` for conventions
+- Look up conventions via project knowledge (`forge_knowledge`); recall prior gotchas via `forge_memory.search`
 - Exit: `closed`
 
 ## Relation Awareness

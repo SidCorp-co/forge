@@ -51,7 +51,7 @@ You have the issue in your check-in bundle (else `forge_issues → get`). Before
 
 Detect the stack from the changed files, then load only what applies:
 - Load any matching `.claude/skills/*/SKILL.md` that exists for the detected stack — don't assume a framework.
-- Also read `forge/.forge/lessons.md` if it exists — past gotchas to check against
+- Also recall past gotchas via `forge_memory.search` (`sourceFilter: ['knowledge']`) — conventions and fix-patterns to check against
 
 ### 3. Review along five axes
 

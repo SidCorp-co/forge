@@ -51,9 +51,9 @@ git checkout <baseBranch> && git pull origin <baseBranch> && git checkout -b ISS
 
 ## Step 5: Read Context (Conditional)
 
-**If plan has file paths** (pipeline mode): Skip knowledge.json. The plan already tells you which files to touch and what patterns to follow. Go straight to implementation.
+**If plan has file paths** (pipeline mode): Skip the file-map lookup. The plan already tells you which files to touch and what patterns to follow. Go straight to implementation.
 
-**If no plan** (standalone mode): Read `.forge/knowledge.json` and `.forge/lessons.md` for conventions.
+**If no plan** (standalone mode): Look up conventions via project knowledge (`forge_knowledge`) and recall prior gotchas via `forge_memory.search` — there is no local `knowledge.json`/`lessons.md` file.
 
 **Attachments**: If the issue has `attachments` (screenshots, mockups, files), read them using the Read tool (images) or WebFetch (URLs). Screenshots show the bug or desired UI — use them to understand what the user actually sees.
 
@@ -67,7 +67,7 @@ forge_issues → update → { documentId: "<id>", data: { status: "in_progress" 
 
 **If plan exists:** Follow it step-by-step. Read each file as you get to it — don't pre-read everything upfront. The plan lists the file, what to change, and why.
 
-**If no plan:** Explore the affected area using knowledge.json paths, then implement.
+**If no plan:** Explore the affected area using project-knowledge paths, then implement.
 
 Either way:
 - Follow acceptance criteria
@@ -190,4 +190,4 @@ forge_issues → update → { documentId: "<id>", data: { status: "developed" } 
 
 ## Step 16: Capture Learnings
 
-If you discovered anything useful, append to `.forge/lessons.md`. Only genuine learnings.
+If you discovered a genuine, reusable learning (convention, gotcha, fix-pattern), capture it via `forge_memory` — search first (`sourceFilter: ['knowledge']`), then `write` with `source: 'knowledge'` and a stable kebab `sourceRef` so it refines rather than duplicates. Not a local file.

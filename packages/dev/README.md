@@ -66,7 +66,6 @@ src-tauri/src/            Rust backend (process + WS + filesystem)
 - **Tauri IPC** via `@tauri-apps/api` `invoke("command_name", { args })` for local operations; the `#[tauri::command]` handlers are registered in `src-tauri/src/main.rs`, with their logic delegated to the relevant `src-tauri/src/<module>/`.
 - **Streaming**: agent sessions stream via `agent:chunk` / `agent:complete` Tauri events emitted from Rust into React.
 - **Per-project MCP config**: each project gets its own `.forge/mcp.json` generated under the project root.
-- **Knowledge indexing**: `claude_cli/agent.rs` indexes the repo into `.forge/knowledge.json`.
 - **Auto-update**: `tauri-plugin-updater` with signed releases — see `src/hooks/use-auto-updater.ts`.
 
 ## Tests

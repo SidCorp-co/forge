@@ -25,7 +25,7 @@ Planning is the highest-value step in the pipeline. A good plan saves the coding
 
 Not every issue needs deep codebase exploration. The planning depth should match the complexity:
 
-**Lightweight plan (xs/s/m):** Use `knowledge.json` + issue description + targeted Glob to identify files and write the plan. Read at most 1-2 source files — only when you need to check an existing pattern or verify a component's current props/API. The coding agent will read the files during implementation anyway, so duplicate deep-reading wastes tokens.
+**Lightweight plan (xs/s/m):** Use project knowledge (`forge_knowledge`) + issue description + targeted Glob to identify files and write the plan. Read at most 1-2 source files — only when you need to check an existing pattern or verify a component's current props/API. The coding agent will read the files during implementation anyway, so duplicate deep-reading wastes tokens.
 
 **Deep plan (l/xl):** Full codebase exploration. Read all affected files, trace dependencies, verify patterns. `l`/`xl` issues involve architectural decisions where a wrong plan costs more than the exploration.
 
@@ -82,28 +82,24 @@ Include a **Relations** section in the plan when relations affect implementation
 
 ### Step 3: Build the File Map
 
-Read `.forge/knowledge.json` to resolve the issue into concrete file paths:
-
-```
-Read: .forge/knowledge.json
-```
+Resolve the issue into concrete file paths using **project knowledge** — there is no local `knowledge.json` file. Query the knowledge store via `forge_knowledge` (`list` for the body-free index, `get` a slug for its body, `search` topically); for prior conventions/gotchas, also `forge_memory.search`.
 
 Use it to:
-- Look up `paths` to find exact file locations — infer affected paths from the repo's own structure / knowledge.json `paths` (e.g. a `paths.frontend-feature` entry → the project's feature directory), don't assume a fixed layout
-- Check `domains` to identify which content types are involved
-- Check `recipes` — if a recipe matches the issue type (new endpoint, new page, new tool), it provides the implementation steps template
-- Reference `conventions` for naming and state management patterns
+- Resolve the affected area into exact file locations — infer paths from the project's own structure and any `paths`-style knowledge entries (e.g. a frontend-feature path → the project's feature dir); don't assume a fixed layout
+- Identify which domains / content types are involved
+- Pull any recipe matching the issue type (new endpoint, new page, new tool) for its implementation-steps template
+- Reference naming and state-management conventions
 
-Then use targeted Glob to confirm the files exist and find exact paths:
+Then use a targeted Glob to confirm the files exist:
 
 ```
-Glob: <source-root from knowledge.json paths>/**/*<keyword>*
+Glob: <source-root>/**/*<keyword>*
 ```
 
 ### Step 4: Explore (Depth Depends on Tier)
 
 **For xs/s/m (lightweight):**
-- You now have the file list from knowledge.json + Glob. That's usually enough.
+- You now have the file list from project knowledge + Glob. That's usually enough.
 - Only read a source file if you need to check: a component's current props/API, an existing pattern to reference, or whether a utility already exists.
 - Limit to 1-2 file reads max. The coding agent will read everything during implementation.
 
@@ -122,7 +118,7 @@ Write the implementation plan following the format in `references/plan-format.md
 forge_issues → update → { documentId: "<id>", data: { plan: "<markdown plan>" } }
 ```
 
-**For lightweight plans:** Focus on the **what** — which files, what changes, what approach. The coding agent will figure out the **how** when it reads the code. Reference knowledge.json recipes when applicable.
+**For lightweight plans:** Focus on the **what** — which files, what changes, what approach. The coding agent will figure out the **how** when it reads the code. Reference project-knowledge recipes when applicable.
 
 **For deep plans:** Be concrete about both **what** and **how** — file paths, function names, pattern references. The coding agent should be able to follow the plan step-by-step without re-exploring.
 

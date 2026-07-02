@@ -4,28 +4,26 @@ Every file you read costs tokens. The goal is to build enough understanding to w
 
 ## Key Principle: Go Direct
 
-Do NOT browse the project structure or read overview files to "understand the codebase." Use `.forge/knowledge.json` as your lookup table and jump straight to the files that matter.
+Do NOT browse the project structure or read overview files to "understand the codebase." Use **project knowledge** as your lookup table and jump straight to the files that matter.
 
-## Step 1: Read knowledge.json
+## Step 1: Look up project knowledge
 
-```
-Read: .forge/knowledge.json
-```
+There is no local `knowledge.json` file — query the curated knowledge store via `forge_knowledge`: `list` for the body-free index, `get` a slug for its body, or `search` (topical). For accumulated conventions/gotchas/decisions, also `forge_memory.search`.
 
-This gives you:
-- **`paths`** — file path patterns for every layer (API, frontend features, pages, tools)
-- **`domains`** — which content types belong to which area (e.g., `issues` → `["issue", "comment"]`)
-- **`recipes`** — step-by-step for common change types (new endpoint, new page, new tool)
-- **`conventions`** — naming, API patterns, state management
+Knowledge entries typically give you:
+- **paths** — where each layer lives (API, frontend features, pages, tools)
+- **domains** — which content types belong to which area (e.g. `issues` → `["issue", "comment"]`)
+- **recipes** — step-by-step for common change types (new endpoint, new page, new tool)
+- **conventions** — naming, API patterns, state management
 
-Use this to resolve the issue description into concrete file paths. For example:
-- Issue mentions "issues list" → `domains.issues` + `paths.frontend-feature` → `web/src/features/issue/`
-- Issue mentions "new API endpoint" → `recipes.new-endpoint` gives you the exact steps
-- Issue mentions "agent tool" → `paths.agent-tools` → `strapi/src/services/agent/tools.ts`
+Use them to resolve the issue description into concrete file paths. For example:
+- Issue mentions "issues list" → the issues domain + the frontend-feature path → the project's issue feature dir
+- Issue mentions "new API endpoint" → the matching recipe gives you the exact steps
+- Issue mentions "agent tool" → the agent-tools path
 
 ## Step 2: Jump to the Affected Files
 
-If knowledge.json gave you exact paths, read them directly. If you need to narrow further, use one targeted Glob or Grep:
+If knowledge gave you exact paths, read them directly. If you need to narrow further, use one targeted Glob or Grep:
 
 ```
 Grep: "function name or component name from the issue"
