@@ -34,6 +34,12 @@ RUN pnpm deploy --filter=@forge/core --prod /prod/core
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# `ssh-keygen` is required at runtime by the per-project git deploy-key flow
+# (packages/core/src/git/ssh-keys.ts shells out to it). Alpine's base image
+# omits it — without this apk the git-credential generate/derive endpoints
+# fail with KEYPAIR_FAILED (ENOENT on the spawn). `openssh-keygen` is the
+# minimal package that provides just the ssh-keygen binary.
+RUN apk add --no-cache openssh-keygen
 COPY --from=build /prod/core ./
 # NOTE: the repo `docs/` tree is INTERNAL engineering documentation and is
 # deliberately NOT shipped here or served to users. End-user product docs live
