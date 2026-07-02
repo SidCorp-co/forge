@@ -169,7 +169,7 @@ describe('litellm provider', () => {
 
   it('includes tools in the request body when provided', async () => {
     const fetchImpl = vi.fn(
-      async () => new Response(sseBody(['data: [DONE]\n\n']), { status: 200 }),
+      async (..._args: unknown[]) => new Response(sseBody(['data: [DONE]\n\n']), { status: 200 }),
     );
     const provider = createLiteLLMProvider({
       baseUrl: 'http://lite',
