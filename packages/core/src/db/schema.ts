@@ -1479,6 +1479,10 @@ export const memories = pgTable(
     // (not natural-key gets) and read by the decay/consolidation jobs.
     retrievalCount: integer('retrieval_count').notNull().default(0),
     lastRetrievedAt: timestamp('last_retrieved_at', { withTimezone: true }),
+    // Recall-feedback loop (ISS-603): stamped when an agent verifies the row
+    // against live code (`feedback` verdict=confirmed). Decay treats it as
+    // activity so a recently-confirmed row is never archived as unused.
+    lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
     // Soft delete for decay/consolidation. Archived rows are excluded from
     // every read surface; hard purge happens after a further grace period.
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -1873,10 +1877,7 @@ export const notifications = pgTable(
     ),
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
     // ISS-510 — resolver lookup: unread rows for a given resolution key.
-    resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(
-      t.resolutionKey,
-      t.read,
-    ),
+    resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(t.resolutionKey, t.read),
   }),
 );
 
@@ -2604,9 +2605,12 @@ export const integrationBindings = pgTable(
     // ISS-558: label column added. UNIQUE(project_id, provider, environment, label)
     // preserves the one-per-(project,provider,env) invariant for all providers
     // (label='' for non-epodsystem) while allowing multiple labeled epodsystem bindings.
-    projectProviderEnvLabelUq: uniqueIndex(
-      'integration_bindings_project_provider_env_label_uq',
-    ).on(t.projectId, t.provider, t.environment, t.label),
+    projectProviderEnvLabelUq: uniqueIndex('integration_bindings_project_provider_env_label_uq').on(
+      t.projectId,
+      t.provider,
+      t.environment,
+      t.label,
+    ),
   }),
 );
 
@@ -2814,7 +2818,9 @@ export const feedbackReports = pgTable(
     detail: text('detail'),
     suggestion: text('suggestion'),
     // FK added by C2 (ISS-553).
-    candidateId: uuid('candidate_id').references(() => memoryCandidates.id, { onDelete: 'set null' }),
+    candidateId: uuid('candidate_id').references(() => memoryCandidates.id, {
+      onDelete: 'set null',
+    }),
     // Server-computed `self_report:<target>:<targetRef|'-'>:<kind>`.
     // Stored for C2 signal accrual + list dedup.
     signalKey: text('signal_key').notNull(),
@@ -2854,12 +2860,10 @@ export const improvementMessageDraftStatuses = [
   'published',
   'dismissed',
 ] as const;
-export type ImprovementMessageDraftStatus =
-  (typeof improvementMessageDraftStatuses)[number];
+export type ImprovementMessageDraftStatus = (typeof improvementMessageDraftStatuses)[number];
 
 export const improvementMessageDraftSources = ['bottom_up'] as const;
-export type ImprovementMessageDraftSource =
-  (typeof improvementMessageDraftSources)[number];
+export type ImprovementMessageDraftSource = (typeof improvementMessageDraftSources)[number];
 
 export const improvementMessageDrafts = pgTable(
   'improvement_message_drafts',
@@ -2877,9 +2881,7 @@ export const improvementMessageDrafts = pgTable(
     status: text('status', { enum: improvementMessageDraftStatuses })
       .notNull()
       .default('pending_review'),
-    source: text('source', { enum: improvementMessageDraftSources })
-      .notNull()
-      .default('bottom_up'),
+    source: text('source', { enum: improvementMessageDraftSources }).notNull().default('bottom_up'),
     // Provenance: the candidate and signal that seeded this draft.
     candidateId: uuid('candidate_id').references(() => memoryCandidates.id, {
       onDelete: 'set null',

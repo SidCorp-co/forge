@@ -30,6 +30,7 @@ import {
 import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
 import {
   forgeMemoryDeleteTool,
+  forgeMemoryFeedbackTool,
   forgeMemoryGetTool,
   forgeMemorySearchTool,
   forgeMemoryWriteTool,
@@ -196,6 +197,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeMemoryWriteTool(ctx.device),
     forgeMemoryGetTool(ctx.device),
     forgeMemoryDeleteTool(ctx.device),
+    forgeMemoryFeedbackTool(ctx.device),
     forgeStepHandoffWriteTool(ctx.device),
     forgeStepHandoffGetTool(ctx.device),
     forgeStepHandoffDeleteTool(ctx.device),

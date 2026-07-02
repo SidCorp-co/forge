@@ -1,13 +1,16 @@
 import { z } from 'zod';
 import { memorySources } from '../../db/schema.js';
 import { EmbeddingUnavailableError } from '../../embeddings/index.js';
+import {
+  MemoryFeedbackValidationError,
+  memoryFeedbackInputSchema,
+  runMemoryFeedback,
+} from '../../memory/feedback-service.js';
 import { getMemoryInputSchema, runMemoryGet } from '../../memory/get-service.js';
 import { deleteMemory } from '../../memory/indexer.js';
 import { memorySearchStrategies, runMemorySearch } from '../../memory/search-service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from '../../memory/write-service.js';
-import { assertDeviceOwnerIsMember, zodToMcpSchema,
-  assertDeviceOwnerIsWriter,
-} from './lib.js';
+import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter, zodToMcpSchema } from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
 
 const deleteInputSchema = z.object({
@@ -35,7 +38,7 @@ const searchInputSchema = z.object({
 export const forgeMemorySearchTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.search',
   description:
-    'Search project memory (issues, comments, jobs, notes, knowledge, decisions, policies). strategy: "semantic" (default, cosine-similarity scores), "keyword" (Postgres FTS — exact identifiers, error codes), or "hybrid" (RRF fusion of both; scores are fused ranks, not similarity). Step handoffs live in their own table — use `forge_step_handoff.get` for those. Requires the authenticated device owner to be a member of the given projectId.',
+    'Search project memory (issues, comments, jobs, notes, knowledge, decisions, policies). strategy: "semantic" (default, cosine-similarity scores), "keyword" (Postgres FTS — exact identifiers, error codes), or "hybrid" (RRF fusion of both; scores are fused ranks, not similarity). Hits are point-in-time: verify against live code before acting, then report the outcome via `forge_memory.feedback` (confirmed|outdated) — that write-back is how stale memory gets cleaned instead of waiting on slow usage decay. Step handoffs live in their own table — use `forge_step_handoff.get` for those. Requires the authenticated device owner to be a member of the given projectId.',
   inputSchema: zodToMcpSchema(searchInputSchema),
   handler: async (args) => {
     const input = searchInputSchema.parse(args);
@@ -94,6 +97,31 @@ export const forgeMemoryDeleteTool: DeviceScopedMcpToolFactory = (device) => ({
  * to record step handoffs, decisions, notes, etc. Wraps the same service
  * function as `POST /api/memory` so REST + MCP behave identically.
  */
+/**
+ * `forge_memory.feedback` — recall-feedback loop (ISS-603). The write-back
+ * half of "verify hits against live code before trusting": a confirmed
+ * verification protects the row from usage decay, a disproved one archives
+ * it immediately instead of letting it stay searchable for months.
+ */
+export const forgeMemoryFeedbackTool: DeviceScopedMcpToolFactory = (device) => ({
+  name: 'forge_memory.feedback',
+  description:
+    'Report the outcome of verifying a memory row against live code/state. verdict=confirmed stamps last_verified_at (protects the row from usage decay); verdict=outdated archives the row immediately (evidence required — what disproved it; a fresh write to the same sourceRef revives it). Agent-curated sources only (note/knowledge) — lifecycle mirrors track their source records. Call after acting on a forge_memory.search hit. Requires the device owner to be a project writer.',
+  inputSchema: zodToMcpSchema(memoryFeedbackInputSchema),
+  handler: async (args) => {
+    const input = memoryFeedbackInputSchema.parse(args);
+    await assertDeviceOwnerIsWriter(device, input.projectId);
+    try {
+      return await runMemoryFeedback(input);
+    } catch (err) {
+      if (err instanceof MemoryFeedbackValidationError) {
+        throw new Error(`INVALID: ${err.message}`);
+      }
+      throw err;
+    }
+  },
+});
+
 export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.write',
   description:

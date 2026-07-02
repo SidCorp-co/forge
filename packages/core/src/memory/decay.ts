@@ -52,10 +52,13 @@ export async function runMemoryDecay(): Promise<DecayResult> {
       and(
         isNull(memories.archivedAt),
         inArray(memories.source, DECAY_SOURCES),
+        // A confirmed verification (last_verified_at, ISS-603) counts as
+        // activity: an agent just proved the row correct, so it must not be
+        // archived as "unused" even with a low retrieval count.
         sql`(
-          (${memories.retrievalCount} = 0 AND ${memories.createdAt} < ${daysAgo(PRUNE_ZERO_RETRIEVAL_DAYS)})
+          (${memories.retrievalCount} = 0 AND GREATEST(${memories.createdAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.createdAt})) < ${daysAgo(PRUNE_ZERO_RETRIEVAL_DAYS)})
           OR
-          (${memories.retrievalCount} < ${PRUNE_LOW_RETRIEVAL_THRESHOLD} AND ${memories.updatedAt} < ${daysAgo(PRUNE_LOW_RETRIEVAL_DAYS)})
+          (${memories.retrievalCount} < ${PRUNE_LOW_RETRIEVAL_THRESHOLD} AND GREATEST(${memories.updatedAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.updatedAt})) < ${daysAgo(PRUNE_LOW_RETRIEVAL_DAYS)})
         )`,
       ),
     )

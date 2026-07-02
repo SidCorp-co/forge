@@ -39,6 +39,9 @@ Postgres `pgvector` + FTS memory with a cognitive layer: hybrid retrieval, usage
     forge_memory.get (MCP) / GET /api/memory        natural-key + JSONB metadata filter (no usage bump)
     ci-fix-pattern-query                            auto-injected into forge-code payloads
 
+  Feedback (recall write-back, ISS-603):
+    forge_memory.feedback / POST /api/memory/feedback   confirmed → stamp last_verified_at · outdated → archive now (evidence required); note/knowledge only
+
   Background jobs (pg-boss):
     memory-embedding-backfill  */5        re-embed degraded rows
     memory-consolidation       03:00      LLM CREATE/UPDATE/ARCHIVE (caps 5/5/10) from 24h signal
@@ -60,6 +63,7 @@ Comments are **deliberately not auto-indexed**: in a pipeline-driven project mos
 | `text_search` | `tsvector` GENERATED ALWAYS from `text_content`, GIN-indexed — keyword strategy |
 | `metadata` | jsonb, queried via `@>` containment |
 | `retrieval_count` / `last_retrieved_at` | usage tracking — bumped on search hits and ci-fix injections, not natural-key gets |
+| `last_verified_at` | recall feedback (ISS-603): agent confirmed the row against live code; decay counts it as activity |
 | `archived_at` | soft delete (decay/consolidation); archived rows invisible to all reads; a fresh write to the key revives |
 | `embedded_at` / `created_at` / `updated_at` | timestamps (`embedded_at` meaningful only when `embedding` is set) |
 
@@ -73,14 +77,15 @@ Indexes: unique `(project_id, source, source_ref)` (upsert target — exact-key 
 | `write-service.ts`, `get-service.ts`, `search-service.ts` | shared service layer — REST routes and MCP tools wrap the **same** functions so validation and response shapes are identical. Services do NOT check authorization; callers must. |
 | `search.ts` | strategies: semantic (cosine, `score = 1 - distance`), keyword (`websearch_to_tsquery` + `ts_rank`), hybrid (weighted RRF, k=60, α=0.7); `touchMemories` usage bump; topK ≤ 50 |
 | `embedding-backfill.ts` | pg-boss `*/5` job re-embedding rows with NULL vectors (degraded writes) |
-| `decay.ts` | daily 03:30 job: archive unused `note`/`knowledge` (0 retrievals > 30d, <3 retrievals > 90d), purge archives older than 90d |
+| `decay.ts` | daily 03:30 job: archive unused `note`/`knowledge` (0 retrievals > 30d, <3 retrievals > 90d; `last_verified_at` counts as activity), purge archives older than 90d |
+| `feedback-service.ts` | recall write-back (ISS-603): `confirmed` stamps `last_verified_at`; `outdated` archives immediately + appends evidence to `metadata.feedback` (cap 10); already-archived rows noop |
 | `extraction.ts` | post-job (review/test/fix) LLM fact extraction → `source:'knowledge'` + `knowledge_edges`; gated, detached, off without `LITELLM_API_URL` |
 | `consolidation.ts` | nightly 03:00 LLM consolidation (CREATE/UPDATE/ARCHIVE, caps 5/5/10) from 24h pipeline signal; archive-only, id-validated, audit `decision` row |
 | `llm.ts` | shared non-streaming `LITELLM_*` completion for the background intelligence |
 | `write-routes.ts`, `list-routes.ts`, `search-routes.ts` | Hono REST routes; auth = `requireAuth` + email verified + per-user rate limit + `assertProjectMemberAccess` |
 | `step-handoff-schema.ts` | structured handoff payloads (separate `step_handoffs` table — see sub-doc) |
 
-MCP tools (`mcp/tools/forge-memory.ts`): `forge_memory.search` / `.get` / `.write` / `.delete`, device-scoped via `assertDeviceOwnerIsMember`.
+MCP tools (`mcp/tools/forge-memory.ts`): `forge_memory.search` / `.get` / `.write` / `.delete` / `.feedback`, device-scoped via `assertDeviceOwnerIsMember` (writes/feedback: `assertDeviceOwnerIsWriter`).
 
 ## API Endpoints
 

@@ -995,6 +995,13 @@
       "when": 1786320000000,
       "tag": "0143_invitation_dismissed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1786406400000,
+      "tag": "0144_memory_last_verified_at",
+      "breakpoints": true
     }
   ]
 }
