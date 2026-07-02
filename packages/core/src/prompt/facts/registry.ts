@@ -116,7 +116,7 @@ const TOOL_REFERENCE_TEXT = `## Tool Reference
 - **forge_issues** — list/get/create/update issues. get/update/transition return the issue with \`attachments[]\` ({id,name,mime,size,url}). get accepts optional \`fields:[...]\` to fetch only specific heavy fields (description/plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*/releaseNotes) when the step_start bundle was lean. update.documentId is required. Writable: title, description, status, priority, category, complexity, acceptanceCriteria, plan, sessionContext, relations.
 - **forge_comments** — create requires issueDocumentId + body. list returns actor, body, isAI, timestamps, and \`attachments[]\` per comment.
 - **forge_uploads** — attachment I/O. action=request mints a presigned upload URL (attach a file). action=fetch reads an EXISTING attachment by {target:"issue"|"comment", attachmentId} — images (png/jpeg/gif/webp) return as a viewable image block (vision), text/markdown inline; PDFs/video/oversized return metadata + download url only. Use fetch whenever an issue/comment references an attached image or file.
-- **forge_memory** — per-project semantic memory. \`.search({projectId, query, topK, sourceFilter?})\` → scored hits; \`.write({projectId, source, sourceRef, textContent, metadata?})\` upserts on (projectId, source, sourceRef); \`.get\` for natural-key lookups, \`.delete\` to remove. Sources: issue, comment, job, note, knowledge, decision, policy.
+- **forge_memory** — per-project semantic memory. \`.search({projectId, query, topK, sourceFilter?})\` → scored hits; \`.write({projectId, source, sourceRef, textContent, metadata?})\` upserts on (projectId, source, sourceRef); \`.get\` for natural-key lookups, \`.delete\` to remove; \`.feedback({projectId, source, sourceRef, verdict: 'confirmed'|'outdated', evidence?})\` reports a verify-at-recall outcome (note/knowledge only — confirmed protects from decay, outdated archives immediately, evidence required). Sources: issue, comment, job, note, knowledge, decision, policy.
 - **forge_knowledge** — curated project knowledge entries (list/get/upsert/delete/search). \`search\` supports \`scope: 'knowledge'|'memory'|'all'\` — scope \`all\` queries both stores and labels each hit with \`origin\`. On-demand guides: fetch via \`action=get\` + slug. Upsert embeds for semantic search; tolerates embeddings outage (degraded write).
 - **forge_config** — read/write per-project settings: baseBranch, repoPath, productionBranch, categories, pipelineConfig, stateContext, projectFacts (+ projectFactsConfig for the always-inject tier).
 - **forge_skills** — list available skills + per-project enable/disable.`;
@@ -319,11 +319,11 @@ Post your findings/decision comment via \`forge_comments.create\` BEFORE the fin
 		// code is intentionally OUT: the orchestrator already injects a search-first
 		// `preventiveContext` into code jobs, so mandating it here would duplicate.
 		appliesTo: ["clarify", "plan", "fix"],
-		version: 1,
+		version: 2,
 		render: () => `## Recall memory first
 Project memory is NOT auto-loaded into this prompt. BEFORE you design/reproduce/fix, recall what prior work already established for the area you are about to touch — conventions, gotchas, decisions, fix-patterns — so you neither contradict them nor rediscover from scratch:
 \`forge_memory.search({ projectId, query: <the feature / file / error you're about to work on>, topK: 3, sourceFilter: ['knowledge', 'policy'] })\`
-Run one or two focused queries on the concrete nouns of THIS task. Hits are point-in-time — verify against the live code/git before relying on them. This READ step is the counterpart to the "Capture Learnings" write step in Pipeline Rules.`,
+Run one or two focused queries on the concrete nouns of THIS task. Hits are point-in-time — verify against the live code/git before relying on them. Then REPORT the verification outcome for note/knowledge hits: \`forge_memory.feedback({ projectId, source, sourceRef, verdict: 'confirmed' })\` when the code agrees, or \`verdict: 'outdated', evidence: '<what disproved it>'\` to archive a stale row on the spot — a verification you don't report is a cleaning signal thrown away. This READ step is the counterpart to the "Capture Learnings" write step in Pipeline Rules.`,
 	},
 
 	// ── Tier 2: format facts ────────────────────────────────────────────────
