@@ -166,7 +166,17 @@ export const userPromptPolicySchema = z
         enabled: z.boolean().default(false),
         injectFromSteps: z
           .array(
-            z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'stage', 'release', 'fix']),
+            z.enum([
+              'triage',
+              'clarify',
+              'plan',
+              'code',
+              'review',
+              'test',
+              'stage',
+              'release',
+              'fix',
+            ]),
           )
           .default([]),
         fallbackToRawIssueFieldIfMissing: z.boolean().default(true),
@@ -262,7 +272,14 @@ export type StatesConfig = z.infer<typeof statesConfigSchema>;
  * upgrades, whereas a denylist is expansion-safe.
  */
 const STAGE_DEFAULT_DISALLOWED: Partial<Record<StageName, string[]>> = {
-  developed: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
+  developed: [
+    'CronCreate',
+    'CronDelete',
+    'CronList',
+    'Workflow',
+    'RemoteTrigger',
+    'ScheduleWakeup',
+  ],
   testing: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
   released: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
 };
@@ -362,6 +379,18 @@ export const pipelineConfigSchema = z
     // one repo collide at merge often enough that separate projects are the
     // right tool.
     maxConcurrentIssues: z.number().int().min(1).max(20).optional(),
+    // ISS-606 — per-project intake gate. When enabled, EVERY create that
+    // would land at `open` (all channels, member-created included) is parked
+    // at `draft` + label `intake`; a human approves via the existing
+    // draft→open transition. `notify` (default true) pings the project owner
+    // on each gated arrival. Absent = off — other projects are unchanged.
+    intakeGate: z
+      .object({
+        enabled: z.boolean(),
+        notify: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     // ISS-108 Phase 1 / ISS-110 Phase 3 — per-stage enable/mode toggle. When
     // `states[X].enabled === false`, the orchestrator auto-transitions past
     // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection

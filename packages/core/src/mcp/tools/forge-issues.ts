@@ -21,11 +21,12 @@ import {
   listIssueAttachments,
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
-import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
+import { applyIntakeGate, finalizeIntake } from '../../issues/intake-gate.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
+import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,
@@ -194,10 +195,7 @@ export type StepStartHeavyField = (typeof STEP_START_HEAVY_FIELDS)[number];
 // Fields allowed in the get action's selective-projection param.
 // Mirrors STEP_START_HEAVY_FIELDS (the body fields omitted in lean step_start)
 // plus releaseNotes (small structured value sometimes worth fetching alone).
-const GET_SELECTABLE_FIELDS = [
-  ...STEP_START_HEAVY_FIELDS,
-  'releaseNotes',
-] as const;
+const GET_SELECTABLE_FIELDS = [...STEP_START_HEAVY_FIELDS, 'releaseNotes'] as const;
 
 const inputSchema = z
   .object({
@@ -444,12 +442,19 @@ export function serializeManifest(row: IssueRow): Record<string, unknown> {
     bodyManifest: {
       description: row.description != null ? { chars: row.description.length } : null,
       plan: row.plan != null ? { chars: row.plan.length } : null,
-      acceptanceCriteria: row.acceptanceCriteria != null ? { chars: row.acceptanceCriteria.length } : null,
-      suggestedSolution: row.suggestedSolution != null ? { chars: row.suggestedSolution.length } : null,
-      sessionContext: row.sessionContext != null ? { chars: JSON.stringify(row.sessionContext).length } : null,
+      acceptanceCriteria:
+        row.acceptanceCriteria != null ? { chars: row.acceptanceCriteria.length } : null,
+      suggestedSolution:
+        row.suggestedSolution != null ? { chars: row.suggestedSolution.length } : null,
+      sessionContext:
+        row.sessionContext != null ? { chars: JSON.stringify(row.sessionContext).length } : null,
       aiSummary: row.aiSummary != null ? { chars: row.aiSummary.length } : null,
-      aiSuggestedSolution: row.aiSuggestedSolution != null ? { chars: row.aiSuggestedSolution.length } : null,
-      aiAcceptanceCriteria: row.aiAcceptanceCriteria != null ? { chars: JSON.stringify(row.aiAcceptanceCriteria).length } : null,
+      aiSuggestedSolution:
+        row.aiSuggestedSolution != null ? { chars: row.aiSuggestedSolution.length } : null,
+      aiAcceptanceCriteria:
+        row.aiAcceptanceCriteria != null
+          ? { chars: JSON.stringify(row.aiAcceptanceCriteria).length }
+          : null,
     },
   };
 }
@@ -658,7 +663,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
                 .select({ one: sql`1` })
                 .from(issueLabels)
                 .where(
-                  and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, resolvedIds)),
+                  and(
+                    eq(issueLabels.issueId, issues.id),
+                    inArray(issueLabels.labelId, resolvedIds),
+                  ),
                 ),
             ),
           );
@@ -746,12 +754,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // ISS-236 adds `draft` for AI-generated proposals that wait for human
         // promote/discard before entering the pipeline. Anything else must go
         // through the transition action so the state machine + activity log run.
-        const createStatus: IssueStatus = input.data.status ?? 'open';
-        if (createStatus !== 'open' && createStatus !== 'on_hold' && createStatus !== 'draft') {
+        const requestedStatus: IssueStatus = input.data.status ?? 'open';
+        if (
+          requestedStatus !== 'open' &&
+          requestedStatus !== 'on_hold' &&
+          requestedStatus !== 'draft'
+        ) {
           throw new Error(
-            `BAD_REQUEST: status at create must be 'open', 'on_hold', or 'draft' (got '${createStatus}'); use the transition action for other statuses`,
+            `BAD_REQUEST: status at create must be 'open', 'on_hold', or 'draft' (got '${requestedStatus}'); use the transition action for other statuses`,
           );
         }
+
+        // ISS-606: a gated project parks every would-be `open` create at draft.
+        const intake = await applyIntakeGate(projectId, requestedStatus);
+        const createStatus = intake.status;
 
         // Decode + size-cap attachments BEFORE insert so a bad payload doesn't
         // leave a half-created issue with no files.
@@ -792,6 +808,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!inserted) throw new Error('issues: insert returned no row');
 
         const created = inserted as IssueRow;
+
+        // ISS-606: label + owner notification for a gated (parked) create.
+        if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
 
         // ISS-571 — insert dependency edges BEFORE issueCreated fires.
         // issueCreated is the synchronous trigger for considerEnqueue→dispatch,

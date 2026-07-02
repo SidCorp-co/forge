@@ -18,8 +18,8 @@ import {
   projectMembers,
   usageRecords,
 } from '../db/schema.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -34,6 +34,7 @@ import {
   decodeAndValidateAttachments,
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
+import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
 import { type PipelineHealth, hydratePipelineHealthForIssues } from './pipeline-health.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
@@ -254,6 +255,9 @@ issueProjectRoutes.post(
       }
     }
 
+    // ISS-606: a gated project parks every would-be `open` create at draft.
+    const intake = await applyIntakeGate(projectId, input.status ?? 'open');
+
     const created = await db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(issues)
@@ -261,7 +265,7 @@ issueProjectRoutes.post(
           projectId,
           title: input.title,
           description: input.description ?? null,
-          status: input.status ?? 'open',
+          status: intake.status,
           priority: input.priority ?? 'medium',
           category: input.category ?? null,
           complexity: input.complexity ?? null,
@@ -296,6 +300,9 @@ issueProjectRoutes.post(
         userId,
       );
     }
+
+    // ISS-606: label + owner notification for a gated (parked) create.
+    if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
 
     await hooks.emit('issueCreated', {
       issueId: created.id,

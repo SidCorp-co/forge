@@ -1846,6 +1846,8 @@ export const notificationTypes = [
   'pipeline_wedge',
   // ISS-597 — pending project/org invitation surfaced to the invitee's bell.
   'invitation_received',
+  // ISS-606 — intake gate parked a new issue at draft; owner must approve.
+  'intake_pending',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

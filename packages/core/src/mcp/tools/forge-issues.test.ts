@@ -83,6 +83,13 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+// ISS-606: pass-through — the intake gate has its own unit tests
+// (issues/intake-gate.test.ts); create tests here exercise create mechanics.
+vi.mock('../../issues/intake-gate.js', () => ({
+  applyIntakeGate: vi.fn(async (_projectId: string, status: string) => ({ status, gated: false })),
+  finalizeIntake: vi.fn(async () => undefined),
+}));
+
 vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
@@ -285,11 +292,36 @@ describe('forge_issues tool', () => {
     const callArg = selectSpy.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
     expect(callArg).toBeDefined();
     // Light fields present in projection
-    for (const light of ['id', 'issSeq', 'title', 'status', 'priority', 'category', 'complexity', 'assigneeId', 'parentIssueId', 'reopenCount', 'mergedAt', 'createdAt', 'updatedAt']) {
+    for (const light of [
+      'id',
+      'issSeq',
+      'title',
+      'status',
+      'priority',
+      'category',
+      'complexity',
+      'assigneeId',
+      'parentIssueId',
+      'reopenCount',
+      'mergedAt',
+      'createdAt',
+      'updatedAt',
+    ]) {
       expect(callArg).toHaveProperty(light);
     }
     // Heavy fields absent from projection
-    for (const heavy of ['description', 'plan', 'acceptanceCriteria', 'suggestedSolution', 'sessionContext', 'aiSummary', 'aiSuggestedSolution', 'aiAcceptanceCriteria', 'aiConfidence', 'releaseNotes']) {
+    for (const heavy of [
+      'description',
+      'plan',
+      'acceptanceCriteria',
+      'suggestedSolution',
+      'sessionContext',
+      'aiSummary',
+      'aiSuggestedSolution',
+      'aiAcceptanceCriteria',
+      'aiConfidence',
+      'releaseNotes',
+    ]) {
       expect(callArg).not.toHaveProperty(heavy);
     }
   });
@@ -519,11 +551,19 @@ describe('forge_issues tool', () => {
       device: fakeDevice,
       projectSlug: PROJECT_SLUG,
     });
-    const rowWithPlan = { ...baseIssueRow, plan: 'the implementation plan', description: 'some description' };
+    const rowWithPlan = {
+      ...baseIssueRow,
+      plan: 'the implementation plan',
+      description: 'some description',
+    };
     selectLimit.mockResolvedValueOnce([rowWithPlan]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
-    const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID, fields: ['plan'] })) as Record<string, unknown>;
+    const result = (await tool.handler({
+      action: 'get',
+      documentId: ISSUE_ID,
+      fields: ['plan'],
+    })) as Record<string, unknown>;
 
     // Identity fields always present
     expect(result.documentId).toBe(ISSUE_ID);
@@ -577,7 +617,10 @@ describe('forge_issues tool', () => {
     selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, plan: 'a plan' }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
-    const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as Record<string, unknown>;
+    const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as Record<
+      string,
+      unknown
+    >;
 
     // Full body: status and other scalars present
     expect(result.status).toBe('open');
@@ -596,7 +639,11 @@ describe('forge_issues tool', () => {
     });
 
     await expect(
-      tool.handler({ action: 'get', documentId: ISSUE_ID, fields: ['invalidField' as unknown as 'plan'] }),
+      tool.handler({
+        action: 'get',
+        documentId: ISSUE_ID,
+        fields: ['invalidField' as unknown as 'plan'],
+      }),
     ).rejects.toThrow();
   });
 
@@ -890,7 +937,9 @@ describe('forge_issues tool', () => {
       insertReturning.mockResolvedValueOnce([baseIssueRow]);
 
       const { hooks } = await import('../../pipeline/hooks.js');
-      pmSetDependencyMock.mockRejectedValueOnce(new Error('CYCLE_DETECTED: adding this blocks edge would form a loop'));
+      pmSetDependencyMock.mockRejectedValueOnce(
+        new Error('CYCLE_DETECTED: adding this blocks edge would form a loop'),
+      );
 
       await expect(
         tool.handler({
@@ -1801,7 +1850,20 @@ describe('forge_issues tool', () => {
       const callArg = selectSpy.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
       expect(callArg).toBeDefined();
       // Light task fields present
-      for (const light of ['id', 'issueId', 'projectId', 'title', 'status', 'priority', 'assigneeId', 'isAgentTask', 'agentStatus', 'acceptanceCriteria', 'createdAt', 'updatedAt']) {
+      for (const light of [
+        'id',
+        'issueId',
+        'projectId',
+        'title',
+        'status',
+        'priority',
+        'assigneeId',
+        'isAgentTask',
+        'agentStatus',
+        'acceptanceCriteria',
+        'createdAt',
+        'updatedAt',
+      ]) {
         expect(callArg).toHaveProperty(light);
       }
       // description is absent from the projection

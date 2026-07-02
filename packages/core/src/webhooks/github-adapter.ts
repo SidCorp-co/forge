@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
+import { applyIntakeGate, finalizeIntake } from '../issues/intake-gate.js';
 import { logger } from '../logger.js';
 
 export interface GitHubAdapterResult {
@@ -48,14 +49,21 @@ async function upsertExternalIssue(
     return 'updated';
   }
 
+  // ISS-606: a gated project parks the webhook-created issue at draft.
+  const intake = await applyIntakeGate(projectId, 'open');
+
   // INSERT ON CONFLICT DO NOTHING to guard against a racing replay.
   const inserted = await db.execute<{ id: string }>(sql`
-    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id)
-    VALUES (${projectId}, ${fields.title}, ${fields.description}, ${fields.createdById}, ${source}, ${externalId})
+    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, status)
+    VALUES (${projectId}, ${fields.title}, ${fields.description}, ${fields.createdById}, ${source}, ${externalId}, ${intake.status})
     ON CONFLICT (project_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING
     RETURNING id
   `);
-  return (inserted[0] as { id?: string } | undefined)?.id ? 'created' : 'noop';
+  const createdId = (inserted[0] as { id?: string } | undefined)?.id;
+  if (createdId && intake.gated) {
+    await finalizeIntake(projectId, { id: createdId, title: fields.title });
+  }
+  return createdId ? 'created' : 'noop';
 }
 
 async function closeExternalIssue(
