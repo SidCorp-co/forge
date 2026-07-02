@@ -47,30 +47,59 @@ function truncate(s: string, cap: number): string {
 }
 
 /**
+ * Return a shallow clone of a JSON-Schema object with `key` removed from both
+ * `properties` and `required`. Used to hide the server-pinned `projectId` from
+ * the model so it never asks for or guesses it.
+ */
+function stripProperty(schema: Record<string, unknown>, key: string): Record<string, unknown> {
+  const props = schema.properties as Record<string, unknown> | undefined;
+  if (!props || !(key in props)) return schema;
+  const { [key]: _drop, ...rest } = props;
+  const out: Record<string, unknown> = { ...schema, properties: rest };
+  if (Array.isArray(schema.required)) {
+    out.required = (schema.required as unknown[]).filter((r) => r !== key);
+  }
+  return out;
+}
+
+/**
  * Build the toolset for a project-scoped context. Instantiates each allowed
  * factory once, converts to OpenAI tools, and closes over a dispatch map.
  */
 export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolset {
   const tools: ChatTool[] = [];
+  // The session is fenced to one project; force every tool's projectId to it so
+  // the model never has to guess a UUID (and can't address another project).
+  const boundProjectId = ctx.boundProjectId ?? null;
   const bySanitized = new Map<
     string,
-    { spec: ChatToolSpec; handler: (a: Record<string, unknown>) => Promise<unknown> }
+    {
+      spec: ChatToolSpec;
+      handler: (a: Record<string, unknown>) => Promise<unknown>;
+      hasProjectId: boolean;
+    }
   >();
 
   for (const spec of specs) {
     const tool = spec.factory(ctx);
     const name = sanitizeName(tool.name);
     if (bySanitized.has(name)) continue; // defensive: skip a name collision
-    bySanitized.set(name, { spec, handler: tool.handler });
+    const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
+    const hasProjectId = !!props && 'projectId' in props;
+    const willInject = hasProjectId && boundProjectId !== null;
+    bySanitized.set(name, { spec, handler: tool.handler, hasProjectId });
     const readNote = spec.readActions
       ? ` (chat is read-only: only actions ${spec.readActions.join('/')} are permitted)`
       : '';
+    // When we pin projectId server-side, hide it from the model so it neither
+    // asks for nor invents one.
+    const parameters = willInject ? stripProperty(tool.inputSchema, 'projectId') : tool.inputSchema;
     tools.push({
       type: 'function',
       function: {
         name,
         description: truncate(tool.description + readNote, DESCRIPTION_CAP),
-        parameters: tool.inputSchema,
+        parameters,
       },
     });
   }
@@ -93,6 +122,11 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
           error: `action "${String(action)}" is not permitted in chat (read-only). Allowed: ${entry.spec.readActions.join(', ')}`,
         });
       }
+    }
+
+    // Pin the project to the session's — ignore whatever the model supplied.
+    if (entry.hasProjectId && boundProjectId) {
+      args.projectId = boundProjectId;
     }
 
     try {

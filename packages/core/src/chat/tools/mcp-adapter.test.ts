@@ -77,4 +77,67 @@ describe('chat mcp-adapter', () => {
     const out = await execute('forge_projects_get', '{}');
     expect(JSON.parse(out).error).toBe('boom');
   });
+
+  it('pins projectId to the session-bound project, overriding what the model passed', async () => {
+    const boundCtx = { boundProjectId: 'bound-proj-uuid' } as unknown as McpContext;
+    let received: Record<string, unknown> | null = null;
+    const withProjectId: McpTool = {
+      name: 'forge_issues',
+      description: 'stub',
+      inputSchema: {
+        type: 'object',
+        properties: { action: { type: 'string' }, projectId: { type: 'string' } },
+      },
+      handler: async (a) => {
+        received = a;
+        return { ok: true };
+      },
+    };
+    const { execute } = buildToolset(boundCtx, [
+      { factory: () => withProjectId, readActions: ['list'] },
+    ]);
+    // Model passes a bogus projectId — the adapter must overwrite it.
+    await execute('forge_issues', '{"action":"list","projectId":"Some Project Name"}');
+    expect(received).toEqual({ action: 'list', projectId: 'bound-proj-uuid' });
+  });
+
+  it('hides projectId from the advertised schema when it pins it server-side', () => {
+    const boundCtx = { boundProjectId: 'bound-proj-uuid' } as unknown as McpContext;
+    const withProjectId: McpTool = {
+      name: 'forge_issues',
+      description: 'stub',
+      inputSchema: {
+        type: 'object',
+        properties: { action: { type: 'string' }, projectId: { type: 'string' } },
+        required: ['action', 'projectId'],
+      },
+      handler: async () => ({}),
+    };
+    const { tools } = buildToolset(boundCtx, [
+      { factory: () => withProjectId, readActions: ['list'] },
+    ]);
+    const params = tools[0]?.function.parameters as {
+      properties: Record<string, unknown>;
+      required?: string[];
+    };
+    expect('projectId' in params.properties).toBe(false);
+    expect(params.required).toEqual(['action']);
+  });
+
+  it('does not inject projectId into tools whose schema lacks it', async () => {
+    const boundCtx = { boundProjectId: 'bound-proj-uuid' } as unknown as McpContext;
+    let received: Record<string, unknown> | null = null;
+    const { execute } = buildToolset(boundCtx, [
+      {
+        factory: () =>
+          stubTool('forge_comments', (a) => {
+            received = a;
+            return { ok: true };
+          }),
+        readActions: ['list'],
+      },
+    ]);
+    await execute('forge_comments', '{"action":"list"}');
+    expect(received).toEqual({ action: 'list' });
+  });
 });
