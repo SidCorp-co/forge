@@ -35,13 +35,31 @@ interface RawRestMessage {
   ts?: string;
   t?: string;
   u?: { _id?: string; username?: string };
+  attachments?: Array<{ title?: string; text?: string; description?: string }>;
+}
+
+/**
+ * A message's real content may live entirely in `attachments[]` — webhook/bot
+ * notifications (and the quoted block of a reply) post with an EMPTY `msg`.
+ * Flatten attachment title/text/description into the text so the conversation
+ * seed and the history tool actually see what the channel saw.
+ */
+export function extractMessageText(raw: Pick<RawRestMessage, 'msg' | 'attachments'>): string {
+  const parts: string[] = [];
+  if (typeof raw.msg === 'string' && raw.msg.length > 0) parts.push(raw.msg);
+  for (const a of raw.attachments ?? []) {
+    for (const field of [a.title, a.text, a.description]) {
+      if (typeof field === 'string' && field.trim().length > 0) parts.push(field);
+    }
+  }
+  return parts.join('\n');
 }
 
 function mapMessage(raw: RawRestMessage): RocketChatRestMessage | null {
   if (!raw || typeof raw._id !== 'string' || !raw.u?._id) return null;
   return {
     id: raw._id,
-    text: typeof raw.msg === 'string' ? raw.msg : '',
+    text: extractMessageText(raw),
     userId: raw.u._id,
     username: raw.u.username ?? raw.u._id,
     ts: typeof raw.ts === 'string' ? raw.ts : '',

@@ -13,6 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
+import { extractMessageText } from './rest-client.js';
 
 export interface RocketChatIncomingMessage {
   id: string;
@@ -77,7 +78,9 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
   return {
     id: m._id,
     rid,
-    text: typeof m.msg === 'string' ? m.msg : '',
+    // Includes attachment text — a reply-quote's quoted content (and a webhook
+    // bot's entire body) lives in attachments, not msg.
+    text: extractMessageText(m as Parameters<typeof extractMessageText>[0]),
     userId: u._id,
     username: u.username,
     ts: typeof m.ts === 'string' ? m.ts : undefined,

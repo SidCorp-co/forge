@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildRocketChatHistoryToolset, formatConversationLines } from './context.js';
-import type { RocketChatRestMessage } from './rest-client.js';
+import { parseStreamMessage } from './ddp-client.js';
+import { type RocketChatRestMessage, extractMessageText } from './rest-client.js';
 
 const msg = (over: Partial<RocketChatRestMessage>): RocketChatRestMessage => ({
   id: 'm1',
@@ -47,6 +48,36 @@ describe('formatConversationLines', () => {
     expect(out).not.toBeNull();
     expect(out?.startsWith('… [older messages truncated]')).toBe(true);
     expect(out).toContain('39-');
+  });
+});
+
+describe('extractMessageText', () => {
+  it('flattens attachment title/text into the body (webhook bots post with empty msg)', () => {
+    expect(
+      extractMessageText({
+        msg: '',
+        attachments: [{ title: 'Job report', text: '*Job:* SyncInteractJob\n*Total:* 3' }],
+      }),
+    ).toBe('Job report\n*Job:* SyncInteractJob\n*Total:* 3');
+  });
+
+  it('keeps msg first and skips blank attachment fields', () => {
+    expect(
+      extractMessageText({ msg: 'look at this', attachments: [{ text: ' ' }, { text: 'quoted' }] }),
+    ).toBe('look at this\nquoted');
+  });
+
+  it('is used by the DDP stream parser (quote content reaches the trigger text)', () => {
+    const m = parseStreamMessage({
+      _id: 'm1',
+      rid: 'R1',
+      msg: '[ ](https://rc/link) \nanalyze this @bot',
+      u: { _id: 'u1', username: 'an' },
+      attachments: [{ text: 'the quoted notification body' }],
+      mentions: [{ _id: 'bot' }],
+    });
+    expect(m?.text).toContain('analyze this @bot');
+    expect(m?.text).toContain('the quoted notification body');
   });
 });
 
