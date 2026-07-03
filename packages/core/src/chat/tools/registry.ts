@@ -13,6 +13,7 @@
 import { forgeCommentsTool } from '../../mcp/tools/forge-comments.js';
 import { forgeIssuesTool } from '../../mcp/tools/forge-issues.js';
 import { forgeKnowledgeTool } from '../../mcp/tools/forge-knowledge.js';
+import { forgeMemorySearchTool } from '../../mcp/tools/forge-memory.js';
 import {
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
@@ -33,6 +34,10 @@ export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   },
   { factory: forgeCommentsTool, allowedActions: ['list', 'create'] },
   { factory: forgeKnowledgeTool, allowedActions: ['list', 'get', 'search'] },
+  // Project memory (ISS-609 agency follow-up) — the deepest project-context
+  // source; memory tools are device-scoped, so adapt via the ctx stub device
+  // (its ownerId carries the chat principal for the membership fence).
+  { factory: (ctx) => forgeMemorySearchTool(ctx.device) },
   { factory: forgeProjectsGetTool },
   { factory: forgePipelineRunsGetTool },
   { factory: forgeProjectPipelineRunsTool },
