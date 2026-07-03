@@ -23,7 +23,7 @@ import { logger } from '../../logger.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
 import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
-import { decideHandling } from './inbound-gate.js';
+import { createSeenTracker, decideHandling } from './inbound-gate.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
 /** ISS-609 (piece B) — the Forge-assistant persona for in-channel chat.
@@ -66,6 +66,9 @@ class RocketChatConnectionManager {
   private readonly conns = new Map<string, ActiveConnection>();
   /** rid → chat session id, so a room keeps one multi-turn conversation. */
   private readonly sessionByRid = new Map<string, string>();
+  /** Duplicate-delivery guard — RC re-emits messages after URL-preview
+   *  enrichment; without this one mention yields two racing replies. */
+  private readonly seenMessage = createSeenTracker();
   private started = false;
 
   async start(): Promise<void> {
@@ -207,6 +210,7 @@ class RocketChatConnectionManager {
     if (!ac) return;
     const decision = decideHandling(m, ac.botUserId);
     if (!decision.handle) return;
+    if (this.seenMessage(m.id)) return; // enrichment re-emit / reconnect replay
     const route = ac.routes.get(m.rid);
     if (!route) {
       logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');

@@ -20,3 +20,28 @@ export function decideHandling(
   if (!msg.mentions.includes(botUserId)) return { handle: false, reason: 'not-mentioned' };
   return { handle: true, reason: 'ok' };
 }
+
+/**
+ * Duplicate-delivery tracker. RC's `stream-room-messages` RE-EMITS a message
+ * after server-side enrichment (URL previews on links/quotes) WITHOUT setting
+ * `editedAt`, so a single mention arrives twice within ~50ms and — pre-fix —
+ * produced two contradictory replies. Track recently seen message ids with a
+ * FIFO cap so reconnect replays are also swallowed.
+ */
+export function createSeenTracker(cap = 1000): (id: string) => boolean {
+  const seen = new Set<string>();
+  return (id: string) => {
+    if (seen.has(id)) return true;
+    seen.add(id);
+    if (seen.size > cap) {
+      // Set iterates in insertion order — drop the oldest fifth.
+      const it = seen.values();
+      for (let i = 0; i < cap / 5; i++) {
+        const next = it.next();
+        if (next.done) break;
+        seen.delete(next.value);
+      }
+    }
+    return false;
+  };
+}
