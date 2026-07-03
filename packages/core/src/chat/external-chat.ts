@@ -39,6 +39,10 @@ export interface ExternalChatTurnArgs {
   tools?: ChatToolset | undefined;
   /** `chat_logs.user_key` audit key (e.g. the external user id). */
   userKey?: string | null;
+  /** Channel persona for the system prompt (ISS-609); override still wins. */
+  persona?: string | null;
+  /** Seeded recent-conversation block for the system prompt (ISS-609). */
+  conversationContext?: string | null;
   db?: typeof defaultDb;
 }
 
@@ -92,6 +96,8 @@ export async function runExternalChatTurn(
     project: { name: project.name, agentConfig: project.agentConfig },
     appConfig: appCfg ?? null,
     pageContext: null,
+    persona: args.persona ?? null,
+    conversationContext: args.conversationContext ?? null,
   });
   const providerMessages = [
     { role: 'system' as const, content: systemPrompt },

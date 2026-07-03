@@ -28,6 +28,7 @@ import { buildPostmanMcpEntry } from './postman/resolver.js';
 import { raceWithTimeout } from './probe.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
+import { rocketChatManager } from './rocketchat/connection-manager.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
 import { buildSentryMcpEntry } from './sentry/resolver.js';
 import { resolveSentryTargets } from './sentry/targets.js';
@@ -76,6 +77,13 @@ const forbidden = () =>
 const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
 
+/** ISS-609 — apply rocketchat connection/binding CRUD to the live bot socket
+ *  (dial / teardown / re-subscribe) without a core restart. Fire-and-forget. */
+function reloadRocketChatIfNeeded(provider: string, connectionId: string): void {
+  if (provider !== 'rocketchat') return;
+  void rocketChatManager.reload(connectionId).catch(() => {});
+}
+
 async function assertProjectMember(
   projectId: string,
   userId: string,
@@ -114,16 +122,25 @@ const coolifyConfigSchema = z.object({
 // wins). Everything else (baseUrl) stays connection-tier with the credential.
 const COOLIFY_BINDING_CONFIG_KEYS = ['targets'] as const;
 
+/** Provider → binding-tier config keys (everything else stays on the
+ *  connection with the credential). Coolify: per-project deploy targets;
+ *  Rocket.Chat: the per-project room id. */
+const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
+  coolify: COOLIFY_BINDING_CONFIG_KEYS,
+  rocketchat: ['rid'],
+};
+
 /** Split a validated provider config into its connection-tier and binding-tier
- *  halves. Non-coolify providers have no binding-tier fields today. */
+ *  halves. Providers without binding-tier keys pass through untouched. */
 function splitProviderConfig(
   provider: string,
   config: Record<string, unknown>,
 ): { connection: Record<string, unknown>; binding: Record<string, unknown> } {
-  if (provider !== 'coolify') return { connection: config, binding: {} };
+  const bindingKeys = BINDING_CONFIG_KEYS[provider];
+  if (!bindingKeys) return { connection: config, binding: {} };
   const connection: Record<string, unknown> = { ...config };
   const binding: Record<string, unknown> = {};
-  for (const key of COOLIFY_BINDING_CONFIG_KEYS) {
+  for (const key of bindingKeys) {
     if (key in connection) {
       binding[key] = connection[key];
       delete connection[key];
@@ -203,6 +220,20 @@ const sentrySecretsSchema = z.object({
   authToken: z.string().min(8).max(2000),
 });
 
+// ISS-609 — Rocket.Chat provider (connection-only archetype, bot credential).
+// Connection-tier config is the server URL; the room id (`rid`) is BINDING-tier
+// (see splitProviderConfig) so one org bot credential serves N project channels.
+// Secrets are the bot PAT (X-Auth-Token / DDP resume) + its user id.
+const rocketchatConfigBase = z.object({
+  serverUrl: z.string().url().max(500),
+  rid: z.string().min(1).max(200).optional(),
+});
+
+const rocketchatSecretsSchema = z.object({
+  authToken: z.string().min(8).max(2000),
+  userId: z.string().min(1).max(200),
+});
+
 // Discriminated on `provider` so each provider validates its own config +
 // secrets shape. `environment` defaults to 'prod' for postman (it has no
 // staging/prod split, but the binding column + unique index require a value).
@@ -245,6 +276,13 @@ const createSchema = z.discriminatedUnion('provider', [
     secrets: sentrySecretsSchema,
     orgId: z.uuid().optional(),
   }),
+  z.object({
+    provider: z.literal('rocketchat'),
+    environment: environmentSchema.default('prod'),
+    config: rocketchatConfigBase,
+    secrets: rocketchatSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
 ]);
 
 // PATCH carries no provider, so config/secrets are validated loosely here and
@@ -261,7 +299,48 @@ function configSchemaForProvider(provider: string): z.ZodTypeAny {
   if (provider === 'postman') return postmanConfigBase.partial();
   if (provider === 'epodsystem') return epodsystemConfigBase.partial();
   if (provider === 'sentry') return sentryConfigBase.partial();
+  if (provider === 'rocketchat') return rocketchatConfigBase.partial();
   return coolifyConfigSchema.partial();
+}
+
+/** Per-provider partial secrets schema for the two PATCH paths. */
+function secretsSchemaForProvider(provider: RotatingProvider): z.ZodTypeAny {
+  if (provider === 'coolify') return coolifySecretsSchema.partial();
+  if (provider === 'sentry') return sentrySecretsSchema.partial();
+  if (provider === 'rocketchat') return rocketchatSecretsSchema.partial();
+  return postmanSecretsSchema.partial();
+}
+
+/** Provider → primary (rotating) credential field, mirroring rotation.ts. */
+function primaryFieldForProvider(provider: RotatingProvider): string {
+  if (provider === 'coolify') return 'apiToken';
+  if (provider === 'sentry' || provider === 'rocketchat') return 'authToken';
+  return 'apiKey';
+}
+
+/**
+ * Rotate the primary credential via the shared dual-token helper, carrying
+ * provider fields the rotation window doesn't know about (rocketchat's bot
+ * `userId` must survive an authToken-only rotation). Also supports a
+ * rocketchat userId-only update (no token change → plain merge, no rotation).
+ */
+function mergeProviderSecretsPatch(
+  provider: RotatingProvider,
+  currentSecrets: Record<string, unknown> | null,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const merged = mergeRotatedSecrets(provider, currentSecrets, incoming);
+  if (provider !== 'rocketchat') return merged;
+  const userId = typeof incoming.userId === 'string' ? incoming.userId : currentSecrets?.userId;
+  if (merged) {
+    if (typeof userId === 'string') merged.userId = userId;
+    return merged;
+  }
+  // No new token — allow updating the bot userId alone.
+  if (typeof incoming.userId === 'string') {
+    return { ...(currentSecrets ?? {}), userId: incoming.userId };
+  }
+  return null;
 }
 
 /**
@@ -508,6 +587,7 @@ integrationsRoutes.post(
       }
       throw err;
     }
+    reloadRocketChatIfNeeded(body.provider, connection.id);
     // Probe immediately so the new integration starts with real health (and
     // epodsystem store identity) instead of an unverified card (ISS-429).
     return c.json(
@@ -578,30 +658,24 @@ integrationsRoutes.patch(
     // stays here so each provider's input shape is validated before the merge.
     if (patch.secrets && isRotatingProvider(binding.provider)) {
       const provider: RotatingProvider = binding.provider;
-      let incoming: Record<string, unknown> | null = null;
-      if (provider === 'coolify') {
-        const parsed = coolifySecretsSchema.partial().safeParse(patch.secrets);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        incoming = parsed.data;
-      } else if (provider === 'sentry') {
-        const parsed = sentrySecretsSchema.partial().safeParse(patch.secrets);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        incoming = parsed.data;
-      } else {
-        const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        incoming = parsed.data;
-      }
-      // Skip the vault guard for a config-only PATCH (no primary credential
-      // change) — same conditional as the prior coolify branch.
-      const primaryField =
-        provider === 'coolify' ? 'apiToken' : provider === 'sentry' ? 'authToken' : 'apiKey';
-      if (typeof incoming[primaryField] === 'string') {
+      // All providers route through the shared rotation helper so the dual-token
+      // overlap window applies uniformly (ISS-405); per-provider zod parsing
+      // validates the input shape before the merge.
+      const parsedSecrets = secretsSchemaForProvider(provider).safeParse(patch.secrets);
+      if (!parsedSecrets.success) throw badRequest(z.flattenError(parsedSecrets.error));
+      const incoming = parsedSecrets.data as Record<string, unknown>;
+      // Skip the vault guard for a config-only PATCH (no credential fields) —
+      // same conditional as the prior coolify branch. Rocketchat also accepts a
+      // userId-only update (non-rotating secondary field).
+      const hasSecretInput =
+        typeof incoming[primaryFieldForProvider(provider)] === 'string' ||
+        (provider === 'rocketchat' && typeof incoming.userId === 'string');
+      if (hasSecretInput) {
         assertVaultConfigured();
         const currentSecrets = connection.secretsEnc
           ? (await import('./vault.js')).decryptJson<Record<string, unknown>>(connection.secretsEnc)
           : null;
-        const merged = mergeRotatedSecrets(provider, currentSecrets, incoming);
+        const merged = mergeProviderSecretsPatch(provider, currentSecrets, incoming);
         if (merged) mergedSecrets = merged;
       }
     }
@@ -625,6 +699,7 @@ integrationsRoutes.patch(
     const refreshed = await findBindingWithConnectionById(id);
     if (!refreshed) throw notFound();
     broadcastIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
+    reloadRocketChatIfNeeded(binding.provider, connection.id);
     return c.json({ integration: summarizeBinding(refreshed) });
   },
 );
@@ -647,6 +722,7 @@ integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
     bindingId: id,
     connectionId: existing.connection.id,
   });
+  reloadRocketChatIfNeeded(existing.binding.provider, existing.connection.id);
   return c.json({ ok: true });
 });
 
@@ -1030,6 +1106,19 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
         };
       },
     }),
+    // ISS-609 — Rocket.Chat bot: connection-only provider; card surfaces the
+    // server + bound room so the project settings tab shows the live wiring.
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'rocketchat'),
+      provider: 'rocketchat',
+      label: 'Rocket.Chat',
+      alwaysEnvKeyed: false,
+      neverCheckedDetail: 'never test-connected',
+      extraMeta: (row) => {
+        const cfg = (row.config ?? {}) as { serverUrl?: string; rid?: string };
+        return { serverUrl: cfg.serverUrl ?? null, rid: cfg.rid ?? null };
+      },
+    }),
   );
 
   // --- Runners / devices online ---
@@ -1166,18 +1255,19 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
     // For non-epodsystem: resolve the winning binding once outside the loop.
     const resolverPick = isEpodsystem
       ? null
-      : (await listActiveBindingsForProjectProvider(projectId, provider))[0] ?? null;
+      : ((await listActiveBindingsForProjectProvider(projectId, provider))[0] ?? null);
 
     for (const pair of rows) {
       const active = pair.binding.active && pair.connection.active;
       const hasSecrets = pair.connection.secretsEnc !== null;
-      const bindingLabel = (pair.binding as Record<string, unknown>).label as string ?? '';
+      const bindingLabel = ((pair.binding as Record<string, unknown>).label as string) ?? '';
       const serverName = isEpodsystem
         ? `epodsystem${bindingLabel ? `_${bindingLabel.replace(/-/g, '_')}` : ''}`
         : provider;
       // Epodsystem: every active+credentialed binding gets its own injected key.
       // Others: only the resolver's winning pick is injected; rest are shadowed.
-      const willInject = active && hasSecrets && (isEpodsystem || resolverPick?.binding.id === pair.binding.id);
+      const willInject =
+        active && hasSecrets && (isEpodsystem || resolverPick?.binding.id === pair.binding.id);
       const entry = buildMcpEntryFor(provider, pair);
       servers.push({
         provider,
@@ -1238,6 +1328,13 @@ const connectionCreateSchema = z.discriminatedUnion('provider', [
     displayName: z.string().min(1).max(200).optional(),
     config: sentryConfigBase,
     secrets: sentrySecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
+  z.object({
+    provider: z.literal('rocketchat'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: rocketchatConfigBase,
+    secrets: rocketchatSecretsSchema,
     orgId: z.uuid().optional(),
   }),
 ]);
@@ -1302,6 +1399,7 @@ integrationConnectionsRoutes.post(
       config: body.config,
       secrets: body.secrets,
     });
+    reloadRocketChatIfNeeded(body.provider, connection.id);
     return c.json({ connection: summarizeConnection(connection) }, 201);
   },
 );
@@ -1390,6 +1488,7 @@ integrationConnectionsRoutes.post(
       }
       throw err;
     }
+    reloadRocketChatIfNeeded(provider, id);
     // Re-probe on bind so the target project starts from current health rather
     // than whatever the connection last recorded (ISS-429).
     return c.json(
@@ -1474,33 +1573,24 @@ integrationConnectionsRoutes.patch(
     if (patch.secrets && isRotatingProvider(existing.provider)) {
       assertVaultConfigured();
       const provider: RotatingProvider = existing.provider;
-      let incoming: Record<string, unknown> | null = null;
-      if (provider === 'coolify') {
-        const parsed = coolifySecretsSchema.partial().safeParse(patch.secrets);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        incoming = parsed.data;
-      } else if (provider === 'sentry') {
-        const parsed = sentrySecretsSchema.partial().safeParse(patch.secrets);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        incoming = parsed.data;
-      } else {
-        const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        incoming = parsed.data;
-      }
-      const primaryField =
-        provider === 'coolify' ? 'apiToken' : provider === 'sentry' ? 'authToken' : 'apiKey';
-      if (typeof incoming[primaryField] === 'string') {
+      const parsedSecrets = secretsSchemaForProvider(provider).safeParse(patch.secrets);
+      if (!parsedSecrets.success) throw badRequest(z.flattenError(parsedSecrets.error));
+      const incoming = parsedSecrets.data as Record<string, unknown>;
+      const hasSecretInput =
+        typeof incoming[primaryFieldForProvider(provider)] === 'string' ||
+        (provider === 'rocketchat' && typeof incoming.userId === 'string');
+      if (hasSecretInput) {
         const currentSecrets = existing.secretsEnc
           ? (await import('./vault.js')).decryptJson<Record<string, unknown>>(existing.secretsEnc)
           : null;
-        const merged = mergeRotatedSecrets(provider, currentSecrets, incoming);
+        const merged = mergeProviderSecretsPatch(provider, currentSecrets, incoming);
         if (merged) connPatch.secrets = merged;
       }
     }
 
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
+    reloadRocketChatIfNeeded(existing.provider, id);
     return c.json({ connection: summarizeConnection(updated) });
   },
 );
@@ -1508,10 +1598,11 @@ integrationConnectionsRoutes.patch(
 integrationConnectionsRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadManageableConnection(id, userId);
+  const existing = await loadManageableConnection(id, userId);
   // Cascade: bindings reference the connection with ON DELETE CASCADE, but we
   // only soft-delete here (active=false) so existing bindings stop resolving via
   // findActiveBinding's `connection.active` filter without dropping audit rows.
   await softDeleteConnection(id);
+  reloadRocketChatIfNeeded(existing.provider, id);
   return c.json({ ok: true });
 });

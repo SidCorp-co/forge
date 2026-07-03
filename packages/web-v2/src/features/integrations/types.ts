@@ -18,6 +18,8 @@ import type {
   PostmanMode,
   PostmanRegion,
   PostmanSecretsInput,
+  RocketchatConfigInput,
+  RocketchatSecretsInput,
   SentryConfigInput,
   SentrySecretsInput,
 } from "@forge/contracts";
@@ -38,6 +40,8 @@ export type {
   PostmanMode,
   SentryConfigInput,
   SentrySecretsInput,
+  RocketchatConfigInput,
+  RocketchatSecretsInput,
   // === ISS-401/C — connection/binding cutover ===
   // The project-facing binding summary + the owner-facing connection summary,
   // plus the connection CRUD request/response envelopes. All exclude secret
@@ -154,6 +158,9 @@ export interface ProviderConfig {
   organizationSlug?: string;
   projectSlug?: string;
   environment?: "staging" | "prod";
+  // rocketchat
+  serverUrl?: string;
+  rid?: string;
 }
 
 /** Discriminated create body for the generic `POST .../integrations`. */
@@ -188,6 +195,13 @@ export type CreateIntegrationInput =
       config: SentryConfigInput;
       secrets: SentrySecretsInput;
       orgId?: string;
+    }
+  | {
+      provider: "rocketchat";
+      environment?: "staging" | "prod";
+      config: RocketchatConfigInput;
+      secrets: RocketchatSecretsInput;
+      orgId?: string;
     };
 
 /**
@@ -202,11 +216,13 @@ export interface UpdateIntegrationInput {
     | Partial<CoolifyConfigInput>
     | Partial<EpodsystemConfigInput>
     | Partial<PostmanConfigInput>
-    | Partial<SentryConfigInput>;
+    | Partial<SentryConfigInput>
+    | Partial<RocketchatConfigInput>;
   secrets?:
     | Partial<CoolifySecretsInput>
     | Partial<EpodsystemSecretsInput>
     | Partial<PostmanSecretsInput>
-    | Partial<SentrySecretsInput>;
+    | Partial<SentrySecretsInput>
+    | Partial<RocketchatSecretsInput>;
   active?: boolean;
 }

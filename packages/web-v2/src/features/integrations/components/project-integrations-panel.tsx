@@ -24,6 +24,7 @@ const PROVIDER_ICON: Record<string, IconName> = {
   postgres: "archive",
   mcp: "command",
   sentry: "shield",
+  rocketchat: "inbox",
   claude: "agent",
 };
 

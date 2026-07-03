@@ -20,6 +20,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   postman: "Postman",
   epodsystem: "Epodsystem",
   sentry: "Sentry",
+  rocketchat: "Rocket.Chat",
 };
 
 /** One provider→icon map for every integrations surface (card, drawers, panel). */
@@ -28,6 +29,7 @@ export const PROVIDER_ICON: Record<string, IconName> = {
   postman: "command",
   epodsystem: "command",
   sentry: "shield",
+  rocketchat: "inbox",
 };
 
 /** The bare icon + text + tinted pill; feed it any `{icon,label,fg,bg}` meta. */

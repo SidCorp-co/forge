@@ -27,6 +27,8 @@ export interface RocketChatIncomingMessage {
   isEdited: boolean;
   /** User ids @-mentioned in the message — used for bot mention-gating. */
   mentions: string[];
+  /** Parent thread message id when the message was posted inside a thread. */
+  tmid?: string | undefined;
 }
 
 export type DdpClientState =
@@ -82,6 +84,7 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
     isSystem: typeof m.t === 'string' && m.t.length > 0,
     isEdited: m.editedAt != null,
     mentions,
+    tmid: typeof m.tmid === 'string' ? m.tmid : undefined,
   };
 }
 
@@ -253,8 +256,8 @@ export class RocketChatDdpClient {
     }
   }
 
-  /** Post a message to a room. Resolves when RC acks the method. */
-  sendMessage(rid: string, text: string): Promise<unknown> {
+  /** Post a message to a room (optionally inside a thread). Resolves on RC ack. */
+  sendMessage(rid: string, text: string, tmid?: string): Promise<unknown> {
     const id = this.nextId();
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -262,7 +265,9 @@ export class RocketChatDdpClient {
         msg: 'method',
         method: 'sendMessage',
         id,
-        params: [{ _id: randomUUID().replace(/-/g, ''), rid, msg: text }],
+        params: [
+          { _id: randomUUID().replace(/-/g, ''), rid, msg: text, ...(tmid ? { tmid } : {}) },
+        ],
       });
     });
   }

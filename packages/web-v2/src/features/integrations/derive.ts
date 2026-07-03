@@ -41,7 +41,13 @@ export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
 /** The provider keys that resolve to a connection/binding the user can drill
  *  into (Test / Rotate / Disconnect + delivery log). Other status cards
  *  (github, runners, postgres, …) are read-only telemetry. */
-export const DRILLABLE_PROVIDERS = ["coolify", "postman", "epodsystem", "sentry"] as const;
+export const DRILLABLE_PROVIDERS = [
+  "coolify",
+  "postman",
+  "epodsystem",
+  "sentry",
+  "rocketchat",
+] as const;
 export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
 
 /** Card key → provider; `coolify:staging` and `coolify` both map to `coolify`. */

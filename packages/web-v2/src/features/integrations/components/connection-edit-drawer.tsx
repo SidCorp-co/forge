@@ -52,12 +52,16 @@ const SECRET_FIELD: Record<string, string> = {
   coolify: "apiToken",
   postman: "apiKey",
   epodsystem: "apiKey",
+  sentry: "authToken",
+  rocketchat: "authToken",
 };
 
 const SECRET_PLACEHOLDER: Record<string, string> = {
   coolify: "Coolify API token",
   postman: "PMAK-…",
   epodsystem: "crmk_…",
+  sentry: "sntryu_…",
+  rocketchat: "bot personal-access token",
 };
 
 /** Inline rename in the drawer header (AC1). */
@@ -263,6 +267,43 @@ function ConfigSection({
             ? `${cfg.storeName ?? cfg.storeSlug}${cfg.storeSlug ? ` (${cfg.storeSlug})` : ""}`
             : "Store identity is filled in automatically by a successful Test."}
         </p>
+      </section>
+    );
+  }
+
+  if (connection.provider === "rocketchat") {
+    return (
+      <section className="flex flex-col gap-3">
+        <h3 className="fg-h4">Configuration</h3>
+        <Field label="Server URL" hint="e.g. https://chat.example.com">
+          <Input
+            value={form.serverUrl ?? ""}
+            onChange={(e) => set("serverUrl", e.target.value)}
+            disabled={!canManage}
+          />
+        </Field>
+        <p className="fg-body-sm text-muted">
+          This is the shared bot credential (server URL + bot token). The room each
+          project listens on is configured per project under project settings →
+          Integrations.
+        </p>
+        {canManage && (
+          <div>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={update.isPending}
+              onClick={() =>
+                update.mutate({
+                  id: connection.id,
+                  body: { config: { serverUrl: (form.serverUrl ?? "").trim() } },
+                })
+              }
+            >
+              Save configuration
+            </Button>
+          </div>
+        )}
       </section>
     );
   }

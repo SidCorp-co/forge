@@ -10,8 +10,10 @@
  *   1. name sanitize — OpenAI function names must match `[A-Za-z0-9_-]{1,64}`,
  *      but MCP names contain dots (`forge_projects.get`). Map `.`→`_` and keep
  *      a reverse lookup for dispatch.
- *   2. read-only action gate — multi-action tools (`forge_issues`, …) can also
- *      write; a spec's `readActions` allowlist rejects any other `action`.
+ *   2. action gate — multi-action tools (`forge_issues`, …) expose more actions
+ *      than chat should reach; a spec's `allowedActions` allowlist rejects any
+ *      other `action`, and an optional `guard` vets/normalizes the args of the
+ *      permitted ones (e.g. force bot-created issues to status `draft`).
  */
 
 import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
@@ -22,9 +24,14 @@ export interface ChatToolSpec {
   factory: ContextScopedMcpToolFactory;
   /**
    * When set, the tool dispatches on an `action` arg and only these values are
-   * permitted (read-only gate). Omit for tools that are inherently read-only.
+   * permitted. Omit for tools that are inherently single-action/read-only.
    */
-  readActions?: string[];
+  allowedActions?: string[];
+  /**
+   * Vet/normalize args before dispatch (runs after the action gate; may mutate
+   * `args` in place). Return an error string to reject the call, null to allow.
+   */
+  guard?: (args: Record<string, unknown>) => string | null;
 }
 
 export interface ChatToolset {
@@ -88,8 +95,8 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     const hasProjectId = !!props && 'projectId' in props;
     const willInject = hasProjectId && boundProjectId !== null;
     bySanitized.set(name, { spec, handler: tool.handler, hasProjectId });
-    const readNote = spec.readActions
-      ? ` (chat is read-only: only actions ${spec.readActions.join('/')} are permitted)`
+    const readNote = spec.allowedActions
+      ? ` (in chat only actions ${spec.allowedActions.join('/')} are permitted)`
       : '';
     // When we pin projectId server-side, hide it from the model so it neither
     // asks for nor invents one.
@@ -115,13 +122,18 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
       return JSON.stringify({ error: 'arguments were not valid JSON' });
     }
 
-    if (entry.spec.readActions) {
+    if (entry.spec.allowedActions) {
       const action = args.action;
-      if (typeof action !== 'string' || !entry.spec.readActions.includes(action)) {
+      if (typeof action !== 'string' || !entry.spec.allowedActions.includes(action)) {
         return JSON.stringify({
-          error: `action "${String(action)}" is not permitted in chat (read-only). Allowed: ${entry.spec.readActions.join(', ')}`,
+          error: `action "${String(action)}" is not permitted in chat. Allowed: ${entry.spec.allowedActions.join(', ')}`,
         });
       }
+    }
+
+    if (entry.spec.guard) {
+      const rejection = entry.spec.guard(args);
+      if (rejection) return JSON.stringify({ error: rejection });
     }
 
     // Pin the project to the session's — ignore whatever the model supplied.
@@ -138,4 +150,28 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
   }
 
   return { tools, execute };
+}
+
+/**
+ * Compose several toolsets into one (e.g. the forge_* MCP set + RC-scoped room
+ * tools). Dispatch routes by tool name, first toolset owning a name wins.
+ */
+export function mergeToolsets(...sets: ChatToolset[]): ChatToolset {
+  const owner = new Map<string, ChatToolset>();
+  const tools: ChatTool[] = [];
+  for (const set of sets) {
+    for (const tool of set.tools) {
+      if (owner.has(tool.function.name)) continue;
+      owner.set(tool.function.name, set);
+      tools.push(tool);
+    }
+  }
+  return {
+    tools,
+    execute(name, argsJson) {
+      const set = owner.get(name);
+      if (!set) return Promise.resolve(JSON.stringify({ error: `unknown tool "${name}"` }));
+      return set.execute(name, argsJson);
+    },
+  };
 }

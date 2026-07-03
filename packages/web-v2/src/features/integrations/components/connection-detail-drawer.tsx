@@ -12,6 +12,7 @@ import { CoolifySection } from "./coolify-section";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { EpodsystemSection } from "./epodsystem-section";
 import { PostmanSection } from "./postman-section";
+import { RocketchatSection } from "./rocketchat-section";
 import { SentrySection } from "./sentry-section";
 import { ENV_LABEL, ENV_OPTIONS, PROVIDER_LABEL, StatusPill } from "./status-pill";
 
@@ -31,6 +32,7 @@ function ProviderSection({ provider, projectId }: { provider: DrillableProvider;
   if (provider === "coolify") return <CoolifySection projectId={projectId} />;
   if (provider === "postman") return <PostmanSection projectId={projectId} />;
   if (provider === "sentry") return <SentrySection projectId={projectId} />;
+  if (provider === "rocketchat") return <RocketchatSection projectId={projectId} />;
   return <EpodsystemSection projectId={projectId} />;
 }
 

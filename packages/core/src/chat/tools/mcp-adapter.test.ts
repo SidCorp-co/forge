@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { McpTool } from '../../mcp/tools/forge-version.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
-import { buildToolset } from './mcp-adapter.js';
+import { guardIssueWrites } from './guards.js';
+import { buildToolset, mergeToolsets } from './mcp-adapter.js';
 
 // Minimal stub context — the read-only gate rejects before any handler runs,
 // and tools[] building only reads the descriptor, so no DB/principal is hit.
@@ -49,7 +50,7 @@ describe('chat mcp-adapter', () => {
             called = true;
             return { ok: true };
           }),
-        readActions: ['list', 'get'],
+        allowedActions: ['list', 'get'],
       },
     ]);
     const out = await execute('forge_issues', '{"action":"create"}');
@@ -59,7 +60,7 @@ describe('chat mcp-adapter', () => {
 
   it('allows a whitelisted read action', async () => {
     const { execute } = buildToolset(ctx, [
-      { factory: () => stubTool('forge_issues', () => ({ items: [] })), readActions: ['list'] },
+      { factory: () => stubTool('forge_issues', () => ({ items: [] })), allowedActions: ['list'] },
     ]);
     const out = await execute('forge_issues', '{"action":"list"}');
     expect(JSON.parse(out)).toEqual({ items: [] });
@@ -94,7 +95,7 @@ describe('chat mcp-adapter', () => {
       },
     };
     const { execute } = buildToolset(boundCtx, [
-      { factory: () => withProjectId, readActions: ['list'] },
+      { factory: () => withProjectId, allowedActions: ['list'] },
     ]);
     // Model passes a bogus projectId — the adapter must overwrite it.
     await execute('forge_issues', '{"action":"list","projectId":"Some Project Name"}');
@@ -114,7 +115,7 @@ describe('chat mcp-adapter', () => {
       handler: async () => ({}),
     };
     const { tools } = buildToolset(boundCtx, [
-      { factory: () => withProjectId, readActions: ['list'] },
+      { factory: () => withProjectId, allowedActions: ['list'] },
     ]);
     const params = tools[0]?.function.parameters as {
       properties: Record<string, unknown>;
@@ -134,10 +135,60 @@ describe('chat mcp-adapter', () => {
             received = a;
             return { ok: true };
           }),
-        readActions: ['list'],
+        allowedActions: ['list'],
       },
     ]);
     await execute('forge_comments', '{"action":"list"}');
     expect(received).toEqual({ action: 'list' });
+  });
+
+  // === ISS-609 — guard hook + toolset composition ===
+
+  it('guard can normalize args before dispatch (draft-first create)', async () => {
+    let received: Record<string, unknown> | null = null;
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', (a) => {
+            received = a;
+            return { ok: true };
+          }),
+        allowedActions: ['create'],
+        guard: guardIssueWrites,
+      },
+    ]);
+    await execute('forge_issues', '{"action":"create","data":{"title":"t","status":"open"}}');
+    expect((received as unknown as { data: { status: string } }).data.status).toBe('draft');
+  });
+
+  it('guard can reject a call (chat must not open an issue)', async () => {
+    let called = false;
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', () => {
+            called = true;
+            return { ok: true };
+          }),
+        allowedActions: ['update'],
+        guard: guardIssueWrites,
+      },
+    ]);
+    const out = await execute('forge_issues', '{"action":"update","data":{"status":"open"}}');
+    expect(called).toBe(false);
+    expect(JSON.parse(out).error).toMatch(/must not set an issue to 'open'/);
+  });
+
+  it('mergeToolsets routes by name, first owner wins', async () => {
+    const a = buildToolset(ctx, [{ factory: () => stubTool('alpha', () => ({ from: 'a' })) }]);
+    const b = buildToolset(ctx, [
+      { factory: () => stubTool('alpha', () => ({ from: 'b-shadowed' })) },
+      { factory: () => stubTool('beta', () => ({ from: 'b' })) },
+    ]);
+    const merged = mergeToolsets(a, b);
+    expect(merged.tools.map((t) => t.function.name)).toEqual(['alpha', 'beta']);
+    expect(JSON.parse(await merged.execute('alpha', '{}'))).toEqual({ from: 'a' });
+    expect(JSON.parse(await merged.execute('beta', '{}'))).toEqual({ from: 'b' });
+    expect(JSON.parse(await merged.execute('gamma', '{}')).error).toMatch(/unknown tool/);
   });
 });

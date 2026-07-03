@@ -264,6 +264,21 @@ export interface SentrySecretsInput {
   authToken: string;
 }
 
+/**
+ * Rocket.Chat bot config (ISS-609). `serverUrl` is connection-tier (the org's
+ * chat server); `rid` — the room the project's channel binding listens/replies
+ * on — is binding-tier, split server-side like Coolify's deploy targets. The
+ * bot credential is a personal-access token + its user id (both secrets).
+ */
+export interface RocketchatConfigInput {
+  serverUrl: string;
+  rid?: string;
+}
+export interface RocketchatSecretsInput {
+  authToken: string;
+  userId: string;
+}
+
 // === Request bodies ===
 
 /**
@@ -299,6 +314,12 @@ export type IntegrationBindingCreateInput =
       environment?: IntegrationEnvironment;
       config: SentryConfigInput;
       secrets: SentrySecretsInput;
+    }
+  | {
+      provider: 'rocketchat';
+      environment?: IntegrationEnvironment;
+      config: RocketchatConfigInput;
+      secrets: RocketchatSecretsInput;
     };
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
@@ -340,6 +361,13 @@ export type ConnectionCreateInput =
       displayName?: string;
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+      orgId?: string;
+    }
+  | {
+      provider: 'rocketchat';
+      displayName?: string;
+      config: RocketchatConfigInput;
+      secrets: RocketchatSecretsInput;
       orgId?: string;
     };
 

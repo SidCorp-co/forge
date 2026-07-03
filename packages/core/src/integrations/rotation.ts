@@ -17,6 +17,7 @@ const PRIMARY_FIELD = {
   postman: 'apiKey',
   epodsystem: 'apiKey',
   sentry: 'authToken',
+  rocketchat: 'authToken',
 } as const;
 
 /** Provider → name of the field used to retain the previous credential. */
@@ -25,6 +26,7 @@ const PREVIOUS_FIELD = {
   postman: 'previousApiKey',
   epodsystem: 'previousApiKey',
   sentry: 'previousAuthToken',
+  rocketchat: 'previousAuthToken',
 } as const;
 
 export type RotatingProvider = keyof typeof PRIMARY_FIELD;

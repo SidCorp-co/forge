@@ -13,6 +13,7 @@
 import { and, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
+import { mergeToolsets } from '../../chat/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../chat/tools/principal.js';
 import { buildProjectToolset } from '../../chat/tools/registry.js';
 import { env } from '../../config/env.js';
@@ -20,9 +21,22 @@ import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
+import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { decideHandling } from './inbound-gate.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
+
+/** ISS-609 (piece B) — the Forge-assistant persona for in-channel chat.
+ *  `systemPromptOverride` on the project still wins over this. */
+export function rocketChatPersona(projectName: string): string {
+  return [
+    `You are the Forge assistant for project "${projectName}", answering inside the team's Rocket.Chat channel.`,
+    '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
+    '- Prefer the forge_* tools over guessing: look up issues, knowledge, and pipeline state instead of inventing answers.',
+    '- When asked to capture the discussion as an issue, create it with forge_issues (it always enters as a `draft`) and reply with a short summary of what you created so the team can confirm — a human moves it to `open` to start the pipeline.',
+    '- Reply concisely in Vietnamese (switch language only if the user clearly writes another one). Plain chat text, no markdown headers.',
+  ].join('\n');
+}
 
 const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;
@@ -31,7 +45,8 @@ interface Route {
   rid: string;
   projectId: string;
   projectSlug: string;
-  /** Forge user the read-only tools run as (project's org owner). */
+  projectName: string;
+  /** Forge user the chat tools run as (project's org owner). */
   principalUserId: string;
 }
 
@@ -131,7 +146,7 @@ class RocketChatConnectionManager {
       const rid = (b.config as { rid?: string } | null)?.rid;
       if (!rid) continue;
       const [proj] = await db
-        .select({ slug: projects.slug, orgId: projects.orgId })
+        .select({ slug: projects.slug, name: projects.name, orgId: projects.orgId })
         .from(projects)
         .where(eq(projects.id, b.projectId))
         .limit(1);
@@ -146,6 +161,7 @@ class RocketChatConnectionManager {
         rid,
         projectId: b.projectId,
         projectSlug: proj.slug,
+        projectName: proj.name,
         principalUserId: org.createdBy,
       });
     }
@@ -206,12 +222,24 @@ class RocketChatConnectionManager {
     route: Route,
     m: RocketChatIncomingMessage,
   ): Promise<void> {
-    const tools = buildProjectToolset(
-      buildChatToolContext({
-        userId: route.principalUserId,
-        projectId: route.projectId,
-        projectSlug: route.projectSlug,
-      }),
+    const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
+    // ISS-609 (piece A) — seed the turn with the recent room discussion (+ full
+    // thread when the mention is threaded); deeper recall stays agentic via the
+    // bounded rocketchat_history tool merged into the forge_* toolset.
+    const conversationContext = await buildConversationContext(restAuth, {
+      rid: m.rid,
+      tmid: m.tmid,
+      excludeMessageId: m.id,
+    });
+    const tools = mergeToolsets(
+      buildProjectToolset(
+        buildChatToolContext({
+          userId: route.principalUserId,
+          projectId: route.projectId,
+          projectSlug: route.projectSlug,
+        }),
+      ),
+      buildRocketChatHistoryToolset(restAuth, m.rid),
     );
     const result = await runExternalChatTurn({
       projectId: route.projectId,
@@ -220,32 +248,55 @@ class RocketChatConnectionManager {
       message: m.text,
       tools,
       userKey: m.userId,
+      persona: rocketChatPersona(route.projectName),
+      conversationContext,
     });
     this.sessionByRid.set(m.rid, result.sessionId);
     const reply = result.reply.trim() || "Sorry, I couldn't produce a reply.";
-    await ac.client?.sendMessage(m.rid, reply);
+    // A threaded mention gets its reply in the same thread.
+    await ac.client?.sendMessage(m.rid, reply, m.tmid);
+  }
+
+  private async teardown(connectionId: string): Promise<void> {
+    const ac = this.conns.get(connectionId);
+    if (!ac) return;
+    ac.closing = true;
+    if (ac.reconnectTimer) clearTimeout(ac.reconnectTimer);
+    try {
+      ac.client?.close();
+    } catch {
+      // ignore
+    }
+    try {
+      await ac.lockClient.query('select pg_advisory_unlock(hashtext($1), hashtext($2))', [
+        LOCK_NAMESPACE,
+        connectionId,
+      ]);
+      await ac.lockClient.end();
+    } catch {
+      // ignore
+    }
+    this.conns.delete(connectionId);
+  }
+
+  /**
+   * ISS-609 — config hot-reload: connection/binding CRUD (web UI / REST)
+   * applies live without a core restart. Tears the socket down (if we own it)
+   * and re-acquires; `acquire` no-ops when the connection is now inactive,
+   * deleted, or owned by another process.
+   */
+  async reload(connectionId: string): Promise<void> {
+    this.started = true; // an idle manager (no connections at boot) can start owning one now
+    await this.teardown(connectionId);
+    await this.acquire(connectionId).catch((err) =>
+      logger.error({ err, connectionId }, 'rocketchat: reload failed'),
+    );
   }
 
   async stop(): Promise<void> {
-    for (const [connectionId, ac] of this.conns) {
-      ac.closing = true;
-      if (ac.reconnectTimer) clearTimeout(ac.reconnectTimer);
-      try {
-        ac.client?.close();
-      } catch {
-        // ignore
-      }
-      try {
-        await ac.lockClient.query('select pg_advisory_unlock(hashtext($1), hashtext($2))', [
-          LOCK_NAMESPACE,
-          connectionId,
-        ]);
-        await ac.lockClient.end();
-      } catch {
-        // ignore
-      }
+    for (const connectionId of [...this.conns.keys()]) {
+      await this.teardown(connectionId);
     }
-    this.conns.clear();
     this.started = false;
   }
 }
