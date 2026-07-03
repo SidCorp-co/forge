@@ -95,6 +95,9 @@ importers:
       nodemailer:
         specifier: ^9.0.1
         version: 9.0.1
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
       pg-boss:
         specifier: ^10.1.5
         version: 10.4.2
@@ -126,6 +129,9 @@ importers:
       '@types/nodemailer':
         specifier: ^8.0.0
         version: 8.0.0
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
@@ -3812,9 +3818,6 @@ packages:
     peerDependencies:
       pg: '>=8.0'
 
-  pg-protocol@1.13.0:
-    resolution: {integrity: sha512-zzdvXfS6v89r6v7OcFCHfHlyG/wvry1ALxZo4LqgUoy7W9xhBDMaqOuMiF3qEV45VqsN6rdlcehHrfDtlCPc8w==}
-
   pg-protocol@1.14.0:
     resolution: {integrity: sha512-n5taZ1kO3s9ngDTVxsEznOqCyToTgz0FLuPq0B33COy5pPpuWJpY3/2oRBVETuOgzdqRXfWpM9HIhp2LBBT1BA==}
 
@@ -6256,7 +6259,6 @@ snapshots:
       '@types/node': 20.19.41
       pg-protocol: 1.14.0
       pg-types: 2.2.0
-    optional: true
 
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
@@ -8450,10 +8452,7 @@ snapshots:
     dependencies:
       pg: 8.20.0
 
-  pg-protocol@1.13.0: {}
-
-  pg-protocol@1.14.0:
-    optional: true
+  pg-protocol@1.14.0: {}
 
   pg-types@2.2.0:
     dependencies:
@@ -8467,7 +8466,7 @@ snapshots:
     dependencies:
       pg-connection-string: 2.12.0
       pg-pool: 3.13.0(pg@8.20.0)
-      pg-protocol: 1.13.0
+      pg-protocol: 1.14.0
       pg-types: 2.2.0
       pgpass: 1.0.5
     optionalDependencies:
