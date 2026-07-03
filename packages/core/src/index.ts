@@ -58,6 +58,10 @@ import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js'
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { registerRocketChatAdapter } from './integrations/rocketchat/adapter.js';
+import {
+  startRocketChatManager,
+  stopRocketChatManager,
+} from './integrations/rocketchat/connection-manager.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
 import { registerSentryAdapter } from './integrations/sentry/adapter.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
@@ -249,6 +253,7 @@ export async function runShutdown(
 
   const sequence = (async () => {
     await closeWs();
+    await stopRocketChatManager();
     await unregisterDispatcher();
     await unregisterPmDispatcher();
     await unregisterScheduleTicker();
@@ -548,6 +553,12 @@ if (isMain) {
   // default HTTP/1 server. Narrow for ws's WebSocketServer which only accepts
   // http/https servers.
   attachWs(server as unknown as HttpServer);
+
+  // ISS-604 (P2c) — open bot-user DDP sockets for active Rocket.Chat
+  // connections. Best-effort: never block boot; single-owner via advisory lock.
+  void startRocketChatManager().catch((err) =>
+    logger.error({ err }, 'rocketchat: manager start failed'),
+  );
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {

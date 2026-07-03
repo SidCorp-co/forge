@@ -32,7 +32,19 @@ describe('parseStreamMessage', () => {
       ts: '2026-07-03T00:00:00.000Z',
       isSystem: false,
       isEdited: false,
+      mentions: [],
     });
+  });
+
+  it('extracts @-mention user ids', () => {
+    const m = parseStreamMessage({
+      _id: 'm2',
+      rid: 'r1',
+      msg: '@chuong_bot hi',
+      u: { _id: 'u1' },
+      mentions: [{ _id: 'botid', username: 'chuong_bot' }],
+    });
+    expect(m?.mentions).toEqual(['botid']);
   });
 
   it('flags system + edited messages and rejects malformed', () => {

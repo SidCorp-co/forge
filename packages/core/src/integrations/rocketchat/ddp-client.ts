@@ -25,6 +25,8 @@ export interface RocketChatIncomingMessage {
   isSystem: boolean;
   /** An edit of an existing message, not a new one. */
   isEdited: boolean;
+  /** User ids @-mentioned in the message — used for bot mention-gating. */
+  mentions: string[];
 }
 
 export type DdpClientState =
@@ -67,6 +69,9 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
   const rid = m.rid;
   const u = m.u as { _id?: string; username?: string } | undefined;
   if (typeof rid !== 'string' || typeof m._id !== 'string' || !u?._id) return null;
+  const mentions = Array.isArray(m.mentions)
+    ? (m.mentions as Array<{ _id?: string }>).map((x) => x?._id).filter((x): x is string => !!x)
+    : [];
   return {
     id: m._id,
     rid,
@@ -76,6 +81,7 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
     ts: typeof m.ts === 'string' ? m.ts : undefined,
     isSystem: typeof m.t === 'string' && m.t.length > 0,
     isEdited: m.editedAt != null,
+    mentions,
   };
 }
 
