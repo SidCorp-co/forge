@@ -122,7 +122,14 @@ connection. No dedicated worker process — same in-process single-owner model a
 
 Verified live on `chat.sidcorp.co` (RC 8.0.1): @-mention → reply in-channel, `chat_logs.source='rocketchat'`.
 
-## Lane A intelligence — conversation context + write-to-Forge (design, next)
+## Lane A intelligence — conversation context + write-to-Forge (SHIPPED 2026-07-03, ISS-609)
+
+As-built deltas vs the design below: `rocketchat_search` deferred (phase-2); threaded mentions reply
+in-thread; RC config now has full web-v2 UI (project settings → Integrations → Rocket.Chat card:
+connect/rid/rotate/test; workspace drawer: serverUrl + token) backed by real REST provider schemas
+(`rid` binding-tier) + `manager.reload()` hot-reload on every rocketchat CRUD. Key files:
+`integrations/rocketchat/{rest-client,context}.ts`, `chat/tools/{guards,mcp-adapter,registry}.ts`,
+`web-v2 features/integrations/components/rocketchat-section.tsx`.
 
 Goal: a discussion happens in-channel → user @-mentions the bot → bot reads the discussion, understands
 the problem, and uses tools to answer OR act on Forge (e.g. capture the discussion as an issue).
