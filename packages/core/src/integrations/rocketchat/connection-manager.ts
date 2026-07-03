@@ -13,6 +13,7 @@
 import { and, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
+import { buildExternalMcpToolsets } from '../../chat/tools/external-mcp.js';
 import { mergeToolsets } from '../../chat/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../chat/tools/principal.js';
 import { buildProjectToolset } from '../../chat/tools/registry.js';
@@ -33,6 +34,7 @@ export function rocketChatPersona(projectName: string): string {
     `You are the working assistant for project "${projectName}", answering inside the team's Rocket.Chat channel. You OWN the requests addressed to you — investigate and act with your tools; never hand the task back to the humans.`,
     '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
     '- INVESTIGATE before answering: use the forge_* tools instead of guessing. Search issues with SHORT keyword fragments (2-4 words) and retry with different fragments if empty — long exact titles rarely match. Cross-check forge_memory.search and forge_knowledge for project context, and read issue comments when a discussion references one.',
+    '- Tools prefixed with an external system name (e.g. `Sidcorp-Hub__…`) query that system directly. Tasks people discuss often live THERE, not in Forge — when a referenced task/item is not found in forge_issues, search the external system before concluding.',
     '- ACT, do not delegate: when something needs recording or follow-up, DO it yourself — create the issue (it always enters as `draft`; a human later moves it to `open`) or add a comment via forge_comments, then report what you did. Only mention a person when the action truly requires something outside your tools (a credential, a manual test, a business decision) — and even then, first do every part you CAN do and state exactly what remains and why.',
     '- Never reply with only "ask X to do Y" or "please provide more info" if a tool call could find the answer or capture the work as a draft issue.',
     '- Reply concisely in Vietnamese (switch language only if the user clearly writes another one). Plain chat text, no markdown headers.',
@@ -230,36 +232,52 @@ class RocketChatConnectionManager {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
     // ISS-609 (piece A) — seed the turn with the recent room discussion (+ full
     // thread when the mention is threaded); deeper recall stays agentic via the
-    // bounded rocketchat_history tool merged into the forge_* toolset.
-    const conversationContext = await buildConversationContext(restAuth, {
-      rid: m.rid,
-      tmid: m.tmid,
-      excludeMessageId: m.id,
-    });
-    const tools = mergeToolsets(
-      buildProjectToolset(
-        buildChatToolContext({
-          userId: route.principalUserId,
-          projectId: route.projectId,
-          projectSlug: route.projectSlug,
-        }),
-      ),
-      buildRocketChatHistoryToolset(restAuth, m.rid),
-    );
-    const result = await runExternalChatTurn({
-      projectId: route.projectId,
-      source: 'rocketchat',
-      sessionId: this.sessionByRid.get(m.rid),
-      message: m.text,
-      tools,
-      userKey: m.userId,
-      persona: rocketChatPersona(route.projectName),
-      conversationContext,
-    });
-    this.sessionByRid.set(m.rid, result.sessionId);
-    const reply = result.reply.trim() || "Sorry, I couldn't produce a reply.";
-    // A threaded mention gets its reply in the same thread.
-    await ac.client?.sendMessage(m.rid, reply, m.tmid);
+    // bounded rocketchat_history tool merged into the forge_* toolset. The
+    // project's configured external MCP servers (task hub, …) are bridged in
+    // fresh each turn so the bot investigates the same systems the pipeline
+    // agents get injected.
+    const [conversationContext, agentConfigRow] = await Promise.all([
+      buildConversationContext(restAuth, {
+        rid: m.rid,
+        tmid: m.tmid,
+        excludeMessageId: m.id,
+      }),
+      db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, route.projectId))
+        .limit(1),
+    ]);
+    const external = await buildExternalMcpToolsets(agentConfigRow[0]?.agentConfig);
+    try {
+      const tools = mergeToolsets(
+        buildProjectToolset(
+          buildChatToolContext({
+            userId: route.principalUserId,
+            projectId: route.projectId,
+            projectSlug: route.projectSlug,
+          }),
+        ),
+        buildRocketChatHistoryToolset(restAuth, m.rid),
+        ...external.toolsets,
+      );
+      const result = await runExternalChatTurn({
+        projectId: route.projectId,
+        source: 'rocketchat',
+        sessionId: this.sessionByRid.get(m.rid),
+        message: m.text,
+        tools,
+        userKey: m.userId,
+        persona: rocketChatPersona(route.projectName),
+        conversationContext,
+      });
+      this.sessionByRid.set(m.rid, result.sessionId);
+      const reply = result.reply.trim() || "Sorry, I couldn't produce a reply.";
+      // A threaded mention gets its reply in the same thread.
+      await ac.client?.sendMessage(m.rid, reply, m.tmid);
+    } finally {
+      await external.dispose();
+    }
   }
 
   private async teardown(connectionId: string): Promise<void> {
