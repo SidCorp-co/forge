@@ -13,9 +13,12 @@ import {
   Button,
   Field,
   Input,
+  Textarea,
   Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useUpdateProject } from "@/features/project-settings/hooks";
+import { useProject } from "@/features/projects/hooks";
 import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
@@ -56,7 +59,79 @@ export function RocketchatSection({ projectId }: { projectId: string }) {
 
   if (list.isLoading) return <p className="fg-body-sm text-muted">Loading…</p>;
   if (!binding) return <AddRocketchatForm projectId={projectId} />;
-  return <RocketchatBindingPanel projectId={projectId} binding={binding} />;
+  return (
+    <div className="flex flex-col gap-4">
+      <RocketchatBindingPanel projectId={projectId} binding={binding} />
+      <BotPersonalityPanel projectId={projectId} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bot personality (agentConfig.personaStyle — additive style knob)
+// ─────────────────────────────────────────────────────────────
+
+// The example is deliberately in the operator's own language — the knob exists
+// precisely to style the bot in whatever language the channel speaks.
+const STYLE_PLACEHOLDER = `e.g. "Xưng 'em', gọi user là 'anh'. Tone thân thiện. Khi phân tích alert luôn kết bằng đề xuất hành động."`; // i18n-allow: demonstrates styling in the user's language
+
+function BotPersonalityPanel({ projectId }: { projectId: string }) {
+  const projectQ = useProject(projectId);
+  const update = useUpdateProject(projectId);
+
+  const saved =
+    ((projectQ.data?.agentConfig as Record<string, unknown> | null)?.personaStyle as
+      | string
+      | undefined) ?? "";
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? saved;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+      <span className="fg-label font-semibold">Bot personality</span>
+      <p className="fg-body-sm text-muted">
+        Per-project reply style for the chat bot — tone, address form, language,
+        formatting habits. Layered on top of the built-in rules (draft-first issue
+        capture, tool use), so it can&apos;t break them. Leave empty for the default
+        style.
+      </p>
+      <Textarea
+        rows={4}
+        placeholder={STYLE_PLACEHOLDER}
+        value={value}
+        onChange={(e) => setDraft(e.target.value)}
+        disabled={projectQ.isLoading}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={update.isPending}
+          disabled={draft === null || draft === saved}
+          onClick={() =>
+            update.mutate(
+              { personaStyle: value.trim() ? value.trim() : null },
+              { onSuccess: () => setDraft(null) },
+            )
+          }
+        >
+          Save personality
+        </Button>
+        {saved && (
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={update.isPending}
+            onClick={() =>
+              update.mutate({ personaStyle: null }, { onSuccess: () => setDraft(null) })
+            }
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────

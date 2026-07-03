@@ -115,6 +115,10 @@ export const updateProjectSchema = z
     productionBranch: z.string().trim().max(100).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
+    // ISS-609 follow-up — scoped write for `agentConfig.personaStyle` (the
+    // chat/RC-bot reply-style knob) so the UI never round-trips the whole
+    // agentConfig jsonb. null/'' clears the style.
+    personaStyle: z.string().trim().max(4000).nullable().optional(),
     previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     stateContext: stateContextSchema.nullable().optional(),
@@ -477,6 +481,25 @@ projectRoutes.patch(
       updates.agentConfig = baseAc;
     } else if (patch.agentConfig !== undefined) {
       updates.agentConfig = patch.agentConfig;
+    }
+    if (patch.personaStyle !== undefined) {
+      // Scoped agentConfig.personaStyle write — read-modify-write (like
+      // stateContext above) so a style-only patch can't wipe sibling keys.
+      let baseAc = updates.agentConfig as Record<string, unknown> | undefined;
+      if (baseAc === undefined) {
+        const [row] = await db
+          .select({ agentConfig: projects.agentConfig })
+          .from(projects)
+          .where(eq(projects.id, id))
+          .limit(1);
+        baseAc = { ...((row?.agentConfig ?? {}) as Record<string, unknown>) };
+      }
+      if (patch.personaStyle === null || patch.personaStyle.length === 0) {
+        baseAc.personaStyle = undefined;
+      } else {
+        baseAc.personaStyle = patch.personaStyle;
+      }
+      updates.agentConfig = baseAc;
     }
     if (patch.previewDeploy !== undefined) updates.previewDeploy = patch.previewDeploy;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;

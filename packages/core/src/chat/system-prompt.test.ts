@@ -89,4 +89,31 @@ describe('buildSystemPrompt', () => {
     });
     expect(prompt).not.toContain('Conversation context');
   });
+
+  // === ISS-609 follow-up — personaStyle knob ===
+
+  it('personaStyle appends a style section on top of the persona', () => {
+    const prompt = buildSystemPrompt({
+      project: {
+        name: 'Acme',
+        agentConfig: { personaStyle: 'Warm tone, address the user informally.' },
+      },
+      persona: 'You are the Forge channel bot.',
+    });
+    expect(prompt).toContain('You are the Forge channel bot.');
+    expect(prompt).toContain('Reply style & personality');
+    expect(prompt).toContain('Warm tone, address the user informally.');
+  });
+
+  it('personaStyle still applies when an override replaced the persona', () => {
+    const prompt = buildSystemPrompt({
+      project: {
+        name: 'Acme',
+        agentConfig: { personaStyle: 'Always end with a suggested action.' },
+      },
+      appConfig: { systemPromptOverride: 'Override.' },
+    });
+    expect(prompt.startsWith('Override.')).toBe(true);
+    expect(prompt).toContain('Always end with a suggested action.');
+  });
 });

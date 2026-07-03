@@ -58,6 +58,9 @@ export interface ProjectUpdateInput {
 	productionBranch?: string | null;
 	previewDeploy?: PreviewDeployConfig | null;
 	orgId?: string;
+	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
+	 *  `agentConfig.personaStyle`. null/'' clears it. */
+	personaStyle?: string | null;
 }
 
 /** One `previewDeploy.testingUrls` row — mirrors `testingUrlSchema` in core. */
