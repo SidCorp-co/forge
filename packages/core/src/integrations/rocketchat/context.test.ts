@@ -81,6 +81,23 @@ describe('extractMessageText', () => {
     ).toBe('look at this\nquoted');
   });
 
+  it('keeps the title link inline — the URL is often the only place the entity id appears', () => {
+    expect(
+      extractMessageText({
+        msg: '@chuongld commented',
+        attachments: [
+          {
+            title: '[Supplier] Add API key for BurgerPrint',
+            title_link: 'https://hub.example.co/tasks?projectId=53&task=12608',
+            text: 'please check',
+          },
+        ],
+      }),
+    ).toBe(
+      '@chuongld commented\n[Supplier] Add API key for BurgerPrint (https://hub.example.co/tasks?projectId=53&task=12608)\nplease check',
+    );
+  });
+
   it('is used by the DDP stream parser (quote content reaches the trigger text)', () => {
     const m = parseStreamMessage({
       _id: 'm1',

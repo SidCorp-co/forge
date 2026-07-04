@@ -35,20 +35,31 @@ interface RawRestMessage {
   ts?: string;
   t?: string;
   u?: { _id?: string; username?: string };
-  attachments?: Array<{ title?: string; text?: string; description?: string }>;
+  attachments?: Array<{
+    title?: string;
+    text?: string;
+    description?: string;
+    title_link?: string;
+    message_link?: string;
+  }>;
 }
 
 /**
  * A message's real content may live entirely in `attachments[]` — webhook/bot
  * notifications (and the quoted block of a reply) post with an EMPTY `msg`.
  * Flatten attachment title/text/description into the text so the conversation
- * seed and the history tool actually see what the channel saw.
+ * seed and the history tool actually see what the channel saw. The title's
+ * link is kept inline — a webhook card's URL is often the ONLY place the
+ * source entity's id appears (e.g. `…/tasks?projectId=53&task=12608`).
  */
 export function extractMessageText(raw: Pick<RawRestMessage, 'msg' | 'attachments'>): string {
   const parts: string[] = [];
   if (typeof raw.msg === 'string' && raw.msg.length > 0) parts.push(raw.msg);
   for (const a of raw.attachments ?? []) {
-    for (const field of [a.title, a.text, a.description]) {
+    const title = [a.title, a.title_link ? `(${a.title_link})` : null]
+      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+      .join(' ');
+    for (const field of [title, a.text, a.description, a.message_link]) {
       if (typeof field === 'string' && field.trim().length > 0) parts.push(field);
     }
   }
