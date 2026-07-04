@@ -160,7 +160,7 @@ export interface ProviderConfig {
   environment?: "staging" | "prod";
   // rocketchat
   serverUrl?: string;
-  rid?: string;
+  rids?: string[];
 }
 
 /** Discriminated create body for the generic `POST .../integrations`. */

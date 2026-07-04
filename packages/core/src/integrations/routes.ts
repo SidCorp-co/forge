@@ -126,10 +126,10 @@ const COOLIFY_BINDING_CONFIG_KEYS = ['targets'] as const;
 
 /** Provider → binding-tier config keys (everything else stays on the
  *  connection with the credential). Coolify: per-project deploy targets;
- *  Rocket.Chat: the per-project room id. */
+ *  Rocket.Chat: the per-project room ids. */
 const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
   coolify: COOLIFY_BINDING_CONFIG_KEYS,
-  rocketchat: ['rid'],
+  rocketchat: ['rids'],
 };
 
 /** Split a validated provider config into its connection-tier and binding-tier
@@ -223,12 +223,14 @@ const sentrySecretsSchema = z.object({
 });
 
 // ISS-609 — Rocket.Chat provider (connection-only archetype, bot credential).
-// Connection-tier config is the server URL; the room id (`rid`) is BINDING-tier
-// (see splitProviderConfig) so one org bot credential serves N project channels.
+// Connection-tier config is the server URL; the room ids (`rids`) are
+// BINDING-tier (see splitProviderConfig) so one org bot credential serves N
+// project channels, and one project can listen on several rooms (mirrors the
+// coolify targets[] pattern; migration 0146 rewrote legacy single-`rid` rows).
 // Secrets are the bot PAT (X-Auth-Token / DDP resume) + its user id.
 const rocketchatConfigBase = z.object({
   serverUrl: z.string().url().max(500),
-  rid: z.string().min(1).max(200).optional(),
+  rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
 });
 
 const rocketchatSecretsSchema = z.object({
@@ -1117,8 +1119,8 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       alwaysEnvKeyed: false,
       neverCheckedDetail: 'never test-connected',
       extraMeta: (row) => {
-        const cfg = (row.config ?? {}) as { serverUrl?: string; rid?: string };
-        return { serverUrl: cfg.serverUrl ?? null, rid: cfg.rid ?? null };
+        const cfg = (row.config ?? {}) as { serverUrl?: string; rids?: string[] };
+        return { serverUrl: cfg.serverUrl ?? null, rids: cfg.rids ?? null };
       },
     }),
   );

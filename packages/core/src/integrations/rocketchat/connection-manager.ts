@@ -195,8 +195,10 @@ class RocketChatConnectionManager {
     const bindings = await listBindingsForConnection(connectionId);
     for (const { binding: b } of bindings) {
       if (!b.active) continue;
-      const rid = (b.config as { rid?: string } | null)?.rid;
-      if (!rid) continue;
+      // Binding-tier `rids` — one binding may listen on several rooms
+      // (migration 0146 rewrote legacy single-`rid` rows to `rids: [rid]`).
+      const rids = (b.config as { rids?: string[] } | null)?.rids ?? [];
+      if (rids.length === 0) continue;
       const [proj] = await db
         .select({ slug: projects.slug, name: projects.name, orgId: projects.orgId })
         .from(projects)
@@ -209,13 +211,23 @@ class RocketChatConnectionManager {
         .where(eq(organizations.id, proj.orgId))
         .limit(1);
       if (!org?.createdBy) continue;
-      routes.set(rid, {
-        rid,
-        projectId: b.projectId,
-        projectSlug: proj.slug,
-        projectName: proj.name,
-        principalUserId: org.createdBy,
-      });
+      for (const rid of rids) {
+        if (routes.has(rid)) {
+          // One room routes to exactly one project — first active binding wins.
+          logger.warn(
+            { connectionId, rid, projectId: b.projectId },
+            'rocketchat: room already routed to another project; skipping duplicate',
+          );
+          continue;
+        }
+        routes.set(rid, {
+          rid,
+          projectId: b.projectId,
+          projectSlug: proj.slug,
+          projectName: proj.name,
+          principalUserId: org.createdBy,
+        });
+      }
     }
     return routes;
   }

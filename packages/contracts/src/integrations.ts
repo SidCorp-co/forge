@@ -266,13 +266,13 @@ export interface SentrySecretsInput {
 
 /**
  * Rocket.Chat bot config (ISS-609). `serverUrl` is connection-tier (the org's
- * chat server); `rid` — the room the project's channel binding listens/replies
- * on — is binding-tier, split server-side like Coolify's deploy targets. The
- * bot credential is a personal-access token + its user id (both secrets).
+ * chat server); `rids` — the rooms the project's channel binding listens/replies
+ * on (1..20) — is binding-tier, split server-side like Coolify's deploy targets.
+ * The bot credential is a personal-access token + its user id (both secrets).
  */
 export interface RocketchatConfigInput {
   serverUrl: string;
-  rid?: string;
+  rids?: string[];
 }
 export interface RocketchatSecretsInput {
   authToken: string;

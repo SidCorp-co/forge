@@ -3,8 +3,8 @@
 // ISS-609 — Rocket.Chat bot integration config (project settings →
 // Integrations → Rocket.Chat card). One binding per project: the org-shared
 // bot credential (server URL + bot PAT + bot user id) lives on the connection;
-// the room this project's channel maps to (`rid`) is binding-tier. Saving any
-// of it hot-reloads the live bot socket server-side — no core restart.
+// the rooms this project listens on (`rids`, 1..20) are binding-tier. Saving
+// any of it hot-reloads the live bot socket server-side — no core restart.
 
 import {
   Badge,
@@ -135,7 +135,7 @@ function BotPersonalityPanel({ projectId }: { projectId: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Existing binding: rid editor + credential rotate + test/toggle/delete
+// Existing binding: rooms editor + credential rotate + test/toggle/delete
 // ─────────────────────────────────────────────────────────────
 
 function RocketchatBindingPanel({
@@ -152,7 +152,8 @@ function RocketchatBindingPanel({
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
 
   const cfg = binding.config as ProviderConfig;
-  const [rid, setRid] = useState(cfg.rid ?? "");
+  const savedRids = useMemo(() => cfg.rids ?? [], [cfg.rids]);
+  const [newRid, setNewRid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [botUserId, setBotUserId] = useState("");
   const [showRotate, setShowRotate] = useState(false);
@@ -161,10 +162,11 @@ function RocketchatBindingPanel({
 
   const badge = badgeFor(binding);
 
-  async function saveRid() {
+  async function saveRids(next: string[]) {
     setError(null);
     try {
-      await update.mutateAsync({ id: binding.id, body: { config: { rid: rid.trim() } } });
+      await update.mutateAsync({ id: binding.id, body: { config: { rids: next } } });
+      setNewRid("");
     } catch (err) {
       setError(formatApiError(err));
     }
@@ -212,7 +214,7 @@ function RocketchatBindingPanel({
       </div>
 
       <p className="fg-body-sm text-muted">
-        The bot answers @-mentions in the bound room, reads the discussion, and can
+        The bot answers @-mentions in the bound rooms, reads the discussion, and can
         capture it as a <span className="font-mono">draft</span> Forge issue. A human
         moves drafts to <span className="font-mono">open</span> to start the pipeline.
       </p>
@@ -226,24 +228,41 @@ function RocketchatBindingPanel({
         ))}
 
       <Field
-        label="Room ID"
-        hint="The Rocket.Chat room (rid) this project listens on — admin → Rooms, or the room's admin info panel."
+        label="Rooms"
+        hint="Rocket.Chat room ids (rid) this project listens on — admin → Rooms, or the room's admin info panel. The bot must be a member of each room."
       >
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="GENERAL"
-            value={rid}
-            onChange={(e) => setRid(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={update.isPending}
-            disabled={!rid.trim() || rid.trim() === (cfg.rid ?? "")}
-            onClick={saveRid}
-          >
-            Save room
-          </Button>
+        <div className="flex flex-col gap-2">
+          {savedRids.map((r) => (
+            <div key={r} className="flex items-center gap-2">
+              <span className="fg-body-sm flex-1 truncate font-mono">{r}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="trash"
+                loading={update.isPending}
+                disabled={savedRids.length === 1}
+                onClick={() => saveRids(savedRids.filter((x) => x !== r))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="add room id…"
+              value={newRid}
+              onChange={(e) => setNewRid(e.target.value)}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={update.isPending}
+              disabled={!newRid.trim() || savedRids.includes(newRid.trim())}
+              onClick={() => saveRids([...savedRids, newRid.trim()])}
+            >
+              Add room
+            </Button>
+          </div>
         </div>
       </Field>
 
@@ -347,7 +366,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
     try {
       await create.mutateAsync({
         provider: "rocketchat",
-        config: { serverUrl: serverUrl.trim().replace(/\/+$/, ""), rid: rid.trim() },
+        config: { serverUrl: serverUrl.trim().replace(/\/+$/, ""), rids: [rid.trim()] },
         secrets: { authToken: authToken.trim(), userId: botUserId.trim() },
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
@@ -407,7 +426,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
 
       <Field
         label="Room ID"
-        hint="The room (rid) this project listens on — admin → Rooms, or the room's admin info panel."
+        hint="The first room (rid) this project listens on — admin → Rooms, or the room's admin info panel. More rooms can be added after connecting."
         required
       >
         <Input placeholder="GENERAL" value={rid} onChange={(e) => setRid(e.target.value)} />

@@ -1009,6 +1009,13 @@
       "when": 1786492800000,
       "tag": "0145_skill_template_lineage",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1786579200000,
+      "tag": "0146_rocketchat_multi_room",
+      "breakpoints": true
     }
   ]
 }
