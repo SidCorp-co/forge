@@ -40,6 +40,20 @@ describe('formatConversationLines', () => {
     expect(formatConversationLines([msg({ userId: 'bot' })], { botUserId: 'bot' })).toBeNull();
   });
 
+  it('keeps the bot own replies when includeBot is set (thread dialogue)', () => {
+    const out = formatConversationLines(
+      [
+        msg({ id: 'root', username: 'it_bot', text: 'Task: add API key for BurgerPrint' }),
+        msg({ id: 'q', username: 'an', text: '@bot check this task' }),
+        msg({ id: 'r', userId: 'bot', username: 'babo', text: 'could not find the task' }),
+      ],
+      { botUserId: 'bot', includeBot: true },
+    );
+    expect(out).toBe(
+      '[it_bot]: Task: add API key for BurgerPrint\n[an]: @bot check this task\n[babo]: could not find the task',
+    );
+  });
+
   it('keeps the tail when over the block cap', () => {
     const big = Array.from({ length: 40 }, (_, i) =>
       msg({ id: `m${i}`, text: `${i}-${'x'.repeat(590)}` }),

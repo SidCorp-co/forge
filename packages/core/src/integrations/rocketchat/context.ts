@@ -14,6 +14,7 @@ import type { ChatToolset } from '../../chat/tools/mcp-adapter.js';
 import {
   type RocketChatRestAuth,
   type RocketChatRestMessage,
+  fetchMessage,
   fetchRoomHistory,
   fetchThreadMessages,
 } from './rest-client.js';
@@ -31,17 +32,18 @@ function clip(s: string, cap: number): string {
 
 /**
  * Render REST messages as `[user]: text` lines (oldest first), dropping system
- * messages, the bot's own replies, empty bodies, and the triggering mention
+ * messages, the bot's own replies (unless `includeBot` — a thread's earlier
+ * bot turns ARE the conversation), empty bodies, and the triggering mention
  * itself (it is the turn's user message). Returns null when nothing remains.
  */
 export function formatConversationLines(
   messages: RocketChatRestMessage[],
-  opts: { botUserId: string; excludeMessageId?: string | undefined },
+  opts: { botUserId: string; excludeMessageId?: string | undefined; includeBot?: boolean },
 ): string | null {
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const m of messages) {
-    if (m.isSystem || m.userId === opts.botUserId) continue;
+    if (m.isSystem || (m.userId === opts.botUserId && !opts.includeBot)) continue;
     if (m.id === opts.excludeMessageId || seen.has(m.id)) continue;
     if (!m.text.trim()) continue;
     seen.add(m.id);
@@ -65,24 +67,43 @@ export async function buildConversationContext(
   opts: { rid: string; tmid?: string | undefined; excludeMessageId: string },
 ): Promise<string | null> {
   try {
-    const [room, thread] = await Promise.all([
+    const [room, thread, threadRoot] = await Promise.all([
       fetchRoomHistory(auth, opts.rid, { count: SEED_MESSAGE_COUNT }),
       opts.tmid ? fetchThreadMessages(auth, opts.tmid, HISTORY_MAX_PER_CALL) : Promise.resolve([]),
+      // getThreadMessages returns REPLIES only — without the root message the
+      // thing the thread is about is missing, and "the task above" in a
+      // threaded mention resolves against unrelated room noise.
+      opts.tmid ? fetchMessage(auth, opts.tmid) : Promise.resolve(null),
     ]);
     const roomBlock = formatConversationLines(room, {
       botUserId: auth.userId,
       excludeMessageId: opts.excludeMessageId,
     });
+    const threadMessages = threadRoot ? [threadRoot, ...thread] : thread;
     const threadBlock =
-      thread.length > 0
-        ? formatConversationLines(thread, {
+      threadMessages.length > 0
+        ? formatConversationLines(threadMessages, {
             botUserId: auth.userId,
             excludeMessageId: opts.excludeMessageId,
+            // The bot's earlier replies in the thread are part of the dialogue.
+            includeBot: true,
           })
         : null;
     const parts: string[] = [];
-    if (roomBlock) parts.push(`Recent channel messages (oldest first):\n${roomBlock}`);
-    if (threadBlock) parts.push(`The mention is inside a thread. Full thread:\n${threadBlock}`);
+    // Thread first — it is what the user is talking about; the room stream is
+    // background and often webhook noise.
+    if (threadBlock) {
+      parts.push(
+        `The mention was posted INSIDE A THREAD — the thread below (root message first) is what the user is referring to:\n${threadBlock}`,
+      );
+    }
+    if (roomBlock) {
+      parts.push(
+        threadBlock
+          ? `Recent channel messages (background only — may be unrelated to the thread):\n${roomBlock}`
+          : `Recent channel messages (oldest first):\n${roomBlock}`,
+      );
+    }
     return parts.length > 0 ? parts.join('\n\n') : null;
   } catch {
     return null;

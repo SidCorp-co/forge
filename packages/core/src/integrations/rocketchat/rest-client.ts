@@ -161,6 +161,21 @@ export async function fetchBotRooms(auth: RocketChatRestAuth): Promise<RocketCha
   return rooms.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Fetch one message by id — used for a thread's ROOT message: RC's
+ * `chat.getThreadMessages` returns the REPLIES only, so the message the
+ * thread hangs off (usually the very thing a threaded mention refers to)
+ * must be fetched separately. Null on any failure.
+ */
+export async function fetchMessage(
+  auth: RocketChatRestAuth,
+  msgId: string,
+): Promise<RocketChatRestMessage | null> {
+  const body = await rcGet(auth, 'chat.getMessage', { msgId });
+  const raw = (body as { message?: RawRestMessage } | null)?.message;
+  return raw ? mapMessage(raw) : null;
+}
+
 /** Fetch a thread's messages (oldest-first). Empty array on any failure. */
 export async function fetchThreadMessages(
   auth: RocketChatRestAuth,
