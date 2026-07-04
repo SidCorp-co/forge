@@ -272,7 +272,11 @@ class RocketChatConnectionManager {
         conversationContext,
       });
       this.sessionByRid.set(m.rid, result.sessionId);
-      const reply = result.reply.trim() || "Sorry, I couldn't produce a reply.";
+      const reply =
+        result.reply.trim() ||
+        (result.terminal === 'error'
+          ? 'Xin lỗi, hệ thống model đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.' // i18n-allow: user-facing channel reply
+          : "Sorry, I couldn't produce a reply.");
       // A threaded mention gets its reply in the same thread.
       await ac.client?.sendMessage(m.rid, reply, m.tmid);
     } finally {

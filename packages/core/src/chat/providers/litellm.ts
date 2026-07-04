@@ -15,7 +15,14 @@ export interface LiteLLMConfig {
   defaultModel: string;
   /** Override the global `fetch` for tests. */
   fetchImpl?: typeof fetch;
+  /** Backoff between pre-stream retries; tests pass [0] to skip waiting. */
+  retryDelaysMs?: number[];
 }
+
+/** Transient upstream statuses worth a pre-stream retry (Vertex "high demand"
+ *  surfaces as 503 through LiteLLM; 429 is straight rate limiting). */
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529]);
+const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 
 interface OpenAIToolCallDelta {
   index?: number;
@@ -52,9 +59,9 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
     id: 'litellm',
     defaultModel: cfg.defaultModel,
     async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
-      let res: Response;
-      try {
-        const init: RequestInit = {
+      const retryDelays = cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
+      const init = (): RequestInit => {
+        const i: RequestInit = {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -69,19 +76,40 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
             ...(req.tools && req.tools.length > 0 ? { tools: req.tools } : {}),
           }),
         };
-        if (req.signal) init.signal = req.signal;
-        res = await fetchImpl(`${baseUrl}/v1/chat/completions`, init);
-      } catch (err) {
-        yield { type: 'error', message: errorMessage(err) };
-        return;
-      }
+        if (req.signal) i.signal = req.signal;
+        return i;
+      };
 
-      if (!res.ok || !res.body) {
-        const body = await safeReadText(res);
-        yield {
-          type: 'error',
-          message: `litellm http ${res.status}${body ? `: ${body.slice(0, 500)}` : ''}`,
-        };
+      // Pre-stream retry: nothing has been consumed yet, so a transient 429/5xx
+      // (or a network hiccup) is safely retried with backoff. Mid-stream errors
+      // below are NOT retried — partial output may already have been yielded.
+      let res: Response | null = null;
+      let lastError = '';
+      for (let attempt = 0; ; attempt++) {
+        try {
+          res = await fetchImpl(`${baseUrl}/v1/chat/completions`, init());
+        } catch (err) {
+          res = null;
+          lastError = errorMessage(err);
+        }
+        if (res?.ok && res.body) break;
+        if (res) {
+          const body = await safeReadText(res);
+          lastError = `litellm http ${res.status}${body ? `: ${body.slice(0, 500)}` : ''}`;
+          if (!RETRYABLE_STATUS.has(res.status)) {
+            yield { type: 'error', message: lastError };
+            return;
+          }
+        }
+        if (attempt >= retryDelays.length || req.signal?.aborted) {
+          yield { type: 'error', message: lastError };
+          return;
+        }
+        await new Promise((r) => setTimeout(r, retryDelays[attempt]));
+      }
+      if (!res?.body) {
+        // Unreachable (the loop only breaks with a body) — narrows for TS.
+        yield { type: 'error', message: lastError };
         return;
       }
 

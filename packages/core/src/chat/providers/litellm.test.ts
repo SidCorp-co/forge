@@ -92,15 +92,16 @@ describe('litellm provider', () => {
     });
   });
 
-  it('yields error event on non-2xx response', async () => {
+  it('yields error event on non-retryable non-2xx response without retrying', async () => {
     const fetchImpl = vi.fn(
-      async (..._args: unknown[]) => new Response('rate limited', { status: 429 }),
+      async (..._args: unknown[]) => new Response('bad request', { status: 400 }),
     );
     const provider = createLiteLLMProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
       fetchImpl: fetchImpl as unknown as typeof fetch,
+      retryDelaysMs: [0, 0],
     });
 
     const events = await collect(
@@ -111,11 +112,60 @@ describe('litellm provider', () => {
     const ev = events[0];
     expect(ev?.type).toBe('error');
     if (ev?.type === 'error') {
-      expect(ev.message).toMatch(/429/);
+      expect(ev.message).toMatch(/400/);
     }
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('yields error event when fetch throws', async () => {
+  it('retries a transient 503 and succeeds on the next attempt', async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async (..._args: unknown[]) => {
+      calls += 1;
+      if (calls === 1) return new Response('overloaded', { status: 503 });
+      return new Response(
+        sseBody(['data: {"choices":[{"delta":{"content":"ok"}}]}\n\n', 'data: [DONE]\n\n']),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    });
+    const provider = createLiteLLMProvider({
+      baseUrl: 'http://lite',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      retryDelaysMs: [0, 0],
+    });
+
+    const events = await collect(
+      provider.stream({ model: 'm', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(events.filter((e) => e.type === 'chunk')).toEqual([{ type: 'chunk', text: 'ok' }]);
+    expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('gives up after exhausting retries on persistent 503', async () => {
+    const fetchImpl = vi.fn(
+      async (..._args: unknown[]) => new Response('overloaded', { status: 503 }),
+    );
+    const provider = createLiteLLMProvider({
+      baseUrl: 'http://lite',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      retryDelaysMs: [0, 0],
+    });
+
+    const events = await collect(
+      provider.stream({ model: 'm', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3); // initial + 2 retries
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe('error');
+  });
+
+  it('yields error event when fetch keeps throwing (network retried then reported)', async () => {
     const fetchImpl = vi.fn(async (..._args: unknown[]) => {
       throw new Error('network down');
     });
@@ -124,12 +174,14 @@ describe('litellm provider', () => {
       apiKey: 'k',
       defaultModel: 'm',
       fetchImpl: fetchImpl as unknown as typeof fetch,
+      retryDelaysMs: [0],
     });
 
     const events = await collect(
       provider.stream({ model: 'm', messages: [{ role: 'user', content: 'hi' }] }),
     );
 
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(events).toEqual([{ type: 'error', message: 'network down' }]);
   });
 
