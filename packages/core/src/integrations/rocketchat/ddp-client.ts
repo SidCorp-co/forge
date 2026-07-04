@@ -91,6 +91,18 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
   };
 }
 
+/**
+ * Liveness watchdog. RC's DDP server pings periodically, so a healthy link is
+ * never silent for long — but a half-open TCP connection (server died without
+ * FIN) stays "live" forever and the bot goes silently deaf. After a quiet
+ * spell we nudge with a client ping (server must pong); if NOTHING arrives for
+ * DEAD_AFTER_MS we close, which hands lifecycle back to the connection-manager
+ * (its onClose schedules the redial).
+ */
+const WATCHDOG_INTERVAL_MS = 30_000;
+const QUIET_PING_AFTER_MS = 60_000;
+const DEAD_AFTER_MS = 150_000;
+
 interface DdpFrame {
   msg?: string;
   id?: string;
@@ -113,6 +125,8 @@ export class RocketChatDdpClient {
   private connectReject?: ((e: Error) => void) | undefined;
   private loginId?: string | undefined;
   private subId?: string | undefined;
+  private lastFrameAt = 0;
+  private watchdog?: NodeJS.Timeout | undefined;
 
   constructor(private readonly opts: RocketChatDdpOptions) {}
 
@@ -148,7 +162,11 @@ export class RocketChatDdpClient {
         reject(err instanceof Error ? err : new Error(String(err)));
         return;
       }
-      this.ws.on('open', () => this.send({ msg: 'connect', version: '1', support: ['1'] }));
+      this.ws.on('open', () => {
+        this.lastFrameAt = Date.now();
+        this.startWatchdog();
+        this.send({ msg: 'connect', version: '1', support: ['1'] });
+      });
       this.ws.on('message', (data: unknown) => this.onRaw(String(data)));
       this.ws.on('error', (err: unknown) => {
         const e = err instanceof Error ? err : new Error(String(err));
@@ -157,6 +175,7 @@ export class RocketChatDdpClient {
         this.connectReject = undefined;
       });
       this.ws.on('close', (code: unknown, reason: unknown) => {
+        this.stopWatchdog();
         this.setState('closed');
         for (const p of this.pending.values()) p.reject(new Error('connection closed'));
         this.pending.clear();
@@ -170,7 +189,27 @@ export class RocketChatDdpClient {
     });
   }
 
+  private startWatchdog(): void {
+    this.stopWatchdog();
+    this.watchdog = setInterval(() => {
+      const idle = Date.now() - this.lastFrameAt;
+      if (idle >= DEAD_AFTER_MS) {
+        this.opts.onError?.(new Error(`DDP link silent for ${idle}ms; closing as dead`));
+        this.close();
+      } else if (idle >= QUIET_PING_AFTER_MS) {
+        this.send({ msg: 'ping' });
+      }
+    }, WATCHDOG_INTERVAL_MS);
+    this.watchdog.unref?.();
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = undefined;
+  }
+
   private onRaw(raw: string): void {
+    this.lastFrameAt = Date.now();
     let frame: DdpFrame;
     try {
       frame = JSON.parse(raw) as DdpFrame;
@@ -276,6 +315,7 @@ export class RocketChatDdpClient {
   }
 
   close(): void {
+    this.stopWatchdog();
     try {
       this.ws?.close();
     } catch {

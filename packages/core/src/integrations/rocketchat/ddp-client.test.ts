@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   RocketChatDdpClient,
   type RocketChatIncomingMessage,
@@ -127,5 +127,45 @@ describe('RocketChatDdpClient handshake', () => {
     // answers server ping with pong
     fake.emit({ msg: 'ping' });
     expect(fake.sent.map((s) => JSON.parse(s)).some((f) => f.msg === 'pong')).toBe(true);
+
+    client.close();
+  });
+});
+
+describe('RocketChatDdpClient watchdog', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('pings a quiet link, then closes a dead one so the manager redials', async () => {
+    vi.useFakeTimers();
+    const fake = new FakeWs();
+    const client = new RocketChatDdpClient({
+      serverUrl: 'https://rc.test',
+      authToken: 'tok',
+      userId: 'bot',
+      onMessage: () => {},
+      wsFactory: () => fake,
+    });
+    const connected = client.connect();
+    fake.emitOpen();
+    fake.emit({ msg: 'connected', session: 's' });
+    const loginFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.method === 'login');
+    fake.emit({ msg: 'result', id: loginFrame.id });
+    const subFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.msg === 'sub');
+    fake.emit({ msg: 'ready', subs: [subFrame.id] });
+    await connected;
+    expect(client.getState()).toBe('live');
+
+    // Quiet for 60s → client nudges with its own ping.
+    vi.advanceTimersByTime(60_000);
+    expect(fake.sent.map((s) => JSON.parse(s)).filter((f) => f.msg === 'ping')).toHaveLength(1);
+    // Traffic resets the clock — no premature close.
+    fake.emit({ msg: 'pong' });
+    vi.advanceTimersByTime(60_000);
+    expect(client.getState()).toBe('live');
+    // Total silence past the dead threshold → the client closes itself.
+    vi.advanceTimersByTime(150_000);
+    expect(client.getState()).toBe('closed');
   });
 });

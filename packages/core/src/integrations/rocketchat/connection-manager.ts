@@ -10,7 +10,7 @@
  * bot's own messages / system / edits are ignored (no reply loops).
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
 import { buildExternalMcpToolsets } from '../../chat/tools/external-mcp.js';
@@ -39,7 +39,7 @@ export function rocketChatPersona(projectName: string, authorUsername?: string):
       : []),
     '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
     '- INVESTIGATE before answering: use the forge_* tools instead of guessing. Search issues with SHORT keyword fragments (2-4 words) and retry with different fragments if empty — long exact titles rarely match. Cross-check forge_memory.search and forge_knowledge for project context, and read issue comments when a discussion references one.',
-    '- Tools prefixed with an external system name (e.g. `Sidcorp-Hub__…`) query that system directly. The team\'s day-to-day tasks usually live THERE, not in Forge. MANDATORY for ANY question about tasks/work items — a specific task, someone\'s pending/assigned tasks, counts, statuses: (1) call the external schema tool (e.g. `Sidcorp-Hub__graphql_schema`) to learn the available queries and filters, (2) then query (e.g. `Sidcorp-Hub__graphql_query`) filtering by the keywords/username involved. NEVER claim "the tools cannot do this" or ask the user for an ID before you have introspected the schema and tried a query. Schemas often expose `my*` queries (e.g. `myTasks`) scoped to the connection identity — they need NO user id; prefer them for the requester\'s own items, and never ask the user for an internal ID.',
+    "- Tools prefixed with an external system name (e.g. `Sidcorp-Hub__…`) query that system directly. The team's day-to-day tasks usually live THERE, not in Forge. MANDATORY for ANY question about tasks/work items — a specific task, someone's pending/assigned tasks, counts, statuses: (1) call the external schema tool (e.g. `Sidcorp-Hub__graphql_schema`) to learn the available queries and filters, (2) then query (e.g. `Sidcorp-Hub__graphql_query`) filtering by the keywords/username involved. NEVER claim \"the tools cannot do this\" or ask the user for an ID before you have introspected the schema and tried a query. Schemas often expose `my*` queries (e.g. `myTasks`) scoped to the connection identity — they need NO user id; prefer them for the requester's own items, and never ask the user for an internal ID.",
     '- ACT, do not delegate: when something needs recording or follow-up, DO it yourself — create the issue (it always enters as `draft`; a human later moves it to `open`) or add a comment via forge_comments, then report what you did. Only mention a person when the action truly requires something outside your tools (a credential, a manual test, a business decision) — and even then, first do every part you CAN do and state exactly what remains and why.',
     '- Never reply with only "ask X to do Y" or "please provide more info" if a tool call could find the answer or capture the work as a draft issue.',
     '- Your reply is the ONLY message the user receives — there is no follow-up turn. NEVER announce what you are about to do ("mình sẽ truy vấn…", "đang kiểm tra…"): CALL the tool now instead, and reply only when you have the result (or a concrete failure to report).', // i18n-allow: quotes the Vietnamese announcement phrases being banned
@@ -50,6 +50,24 @@ export function rocketChatPersona(projectName: string, authorUsername?: string):
 
 const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;
+/** Delay before re-acquiring after the advisory-lock connection dies — gives
+ *  the DB a beat to come back and lets another instance win the lock first. */
+const LOCK_REACQUIRE_DELAY_MS = 5000;
+/** pg NOTIFY channel fanning connection/binding CRUD out to EVERY core
+ *  instance — the advisory-lock owner may not be the process that served the
+ *  HTTP request. */
+const RELOAD_CHANNEL = 'forge_rocketchat_reload';
+const LISTEN_RETRY_MS = 5000;
+/** Rocket.Chat rejects messages over `Message_MaxAllowedSize` (default 5000)
+ *  outright — the user would get silence. Truncate below that. */
+const MAX_REPLY_CHARS = 4500;
+
+const FALLBACK_ERROR_REPLY =
+  'Xin lỗi, hệ thống model đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.'; // i18n-allow: user-facing channel reply
+
+function clipReply(reply: string): string {
+  return reply.length > MAX_REPLY_CHARS ? `${reply.slice(0, MAX_REPLY_CHARS)}… [truncated]` : reply;
+}
 
 interface Route {
   rid: string;
@@ -80,10 +98,15 @@ class RocketChatConnectionManager {
    *  enrichment; without this one mention yields two racing replies. */
   private readonly seenMessage = createSeenTracker();
   private started = false;
+  private listenClient?: pg.Client | undefined;
+  private listenRetryTimer?: NodeJS.Timeout | undefined;
 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    // Listen even with zero connections — the first-ever connect arrives as a
+    // NOTIFY from whichever instance served the HTTP request.
+    this.startReloadListener();
     const rows = await db
       .select()
       .from(integrationConnections)
@@ -124,6 +147,22 @@ class RocketChatConnectionManager {
       logger.info({ connectionId }, 'rocketchat: another process owns this connection; skipping');
       return;
     }
+
+    // A dead lock connection means the advisory lock is GONE (session-scoped)
+    // and, without a listener, pg.Client's 'error' event would crash the
+    // process. Tear down and retry — another instance may own it by then.
+    lockClient.on('error', (err) => {
+      logger.warn({ err, connectionId }, 'rocketchat: advisory-lock connection lost');
+      const ac = this.conns.get(connectionId);
+      if (!ac || ac.closing) return;
+      void this.teardown(connectionId).then(() => {
+        setTimeout(() => {
+          void this.acquire(connectionId).catch((e) =>
+            logger.error({ err: e, connectionId }, 'rocketchat: re-acquire after lock loss failed'),
+          );
+        }, LOCK_REACQUIRE_DELAY_MS).unref?.();
+      });
+    });
 
     const secrets = decryptConnectionSecrets<RocketChatSecrets>(conn);
     const config = (conn.config ?? {}) as RocketChatConfig;
@@ -184,12 +223,25 @@ class RocketChatConnectionManager {
   private async dial(connectionId: string): Promise<void> {
     const ac = this.conns.get(connectionId);
     if (!ac || ac.closing) return;
-    const client = new RocketChatDdpClient({
+    // A redial replaces the client; close the old socket and gate callbacks on
+    // still being current, so a slow-dying socket can't trigger a second dial
+    // (two live sockets = duplicate deliveries).
+    try {
+      ac.client?.close();
+    } catch {
+      // ignore
+    }
+    const isCurrent = () => this.conns.get(connectionId)?.client === client;
+    const client: RocketChatDdpClient = new RocketChatDdpClient({
       serverUrl: ac.serverUrl,
       authToken: ac.authToken,
       userId: ac.botUserId,
-      onMessage: (m) => this.onMessage(connectionId, m),
-      onClose: () => this.scheduleReconnect(connectionId),
+      onMessage: (m) => {
+        if (isCurrent()) this.onMessage(connectionId, m);
+      },
+      onClose: () => {
+        if (isCurrent()) this.scheduleReconnect(connectionId);
+      },
       onError: (e) => logger.warn({ err: e, connectionId }, 'rocketchat: DDP error'),
     });
     ac.client = client;
@@ -256,6 +308,7 @@ class RocketChatConnectionManager {
         .limit(1),
     ]);
     const external = await buildExternalMcpToolsets(agentConfigRow[0]?.agentConfig);
+    let reply: string;
     try {
       const tools = mergeToolsets(
         buildProjectToolset(
@@ -279,16 +332,21 @@ class RocketChatConnectionManager {
         conversationContext,
       });
       this.sessionByRid.set(m.rid, result.sessionId);
-      const reply =
+      reply =
         result.reply.trim() ||
-        (result.terminal === 'error'
-          ? 'Xin lỗi, hệ thống model đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.' // i18n-allow: user-facing channel reply
-          : "Sorry, I couldn't produce a reply.");
-      // A threaded mention gets its reply in the same thread.
-      await ac.client?.sendMessage(m.rid, reply, m.tmid);
+        (result.terminal === 'error' ? FALLBACK_ERROR_REPLY : "Sorry, I couldn't produce a reply.");
+    } catch (err) {
+      // The mention was seen — never leave the user in silence. Drop the room's
+      // session pointer so a poisoned session (e.g. deleted row) can't wedge
+      // every future turn; the next mention starts a fresh conversation.
+      logger.error({ err, rid: m.rid, projectId: route.projectId }, 'rocketchat: chat turn threw');
+      this.sessionByRid.delete(m.rid);
+      reply = FALLBACK_ERROR_REPLY;
     } finally {
       await external.dispose();
     }
+    // A threaded mention gets its reply in the same thread.
+    await ac.client?.sendMessage(m.rid, clipReply(reply), m.tmid);
   }
 
   private async teardown(connectionId: string): Promise<void> {
@@ -317,7 +375,8 @@ class RocketChatConnectionManager {
    * ISS-609 — config hot-reload: connection/binding CRUD (web UI / REST)
    * applies live without a core restart. Tears the socket down (if we own it)
    * and re-acquires; `acquire` no-ops when the connection is now inactive,
-   * deleted, or owned by another process.
+   * deleted, or owned by another process. Reached via the pg NOTIFY listener
+   * so it runs on every instance, not just the one that served the request.
    */
   async reload(connectionId: string): Promise<void> {
     this.started = true; // an idle manager (no connections at boot) can start owning one now
@@ -327,14 +386,64 @@ class RocketChatConnectionManager {
     );
   }
 
+  /** Dedicated LISTEN connection for {@link RELOAD_CHANNEL}; self-heals with a
+   *  flat retry so a DB blip can't permanently sever hot-reload. */
+  private startReloadListener(): void {
+    if (this.listenClient) return;
+    const client = new pg.Client({ connectionString: env.DATABASE_URL });
+    this.listenClient = client;
+    client.on('error', (err) => {
+      logger.warn({ err }, 'rocketchat: reload listener connection lost');
+      this.restartReloadListener(client);
+    });
+    client.on('notification', (n) => {
+      if (n.channel !== RELOAD_CHANNEL || !n.payload) return;
+      void this.reload(n.payload);
+    });
+    client
+      .connect()
+      .then(() => client.query(`listen ${RELOAD_CHANNEL}`))
+      .then(() => logger.info('rocketchat: reload listener live'))
+      .catch((err) => {
+        logger.warn({ err }, 'rocketchat: reload listener failed to connect');
+        this.restartReloadListener(client);
+      });
+  }
+
+  private restartReloadListener(failed: pg.Client): void {
+    if (this.listenClient !== failed) return; // stale event from a replaced client
+    this.listenClient = undefined;
+    void failed.end().catch(() => {});
+    if (!this.started || this.listenRetryTimer) return;
+    this.listenRetryTimer = setTimeout(() => {
+      this.listenRetryTimer = undefined;
+      if (this.started) this.startReloadListener();
+    }, LISTEN_RETRY_MS);
+    this.listenRetryTimer.unref?.();
+  }
+
   async stop(): Promise<void> {
+    this.started = false;
+    if (this.listenRetryTimer) clearTimeout(this.listenRetryTimer);
+    this.listenRetryTimer = undefined;
+    const listen = this.listenClient;
+    this.listenClient = undefined;
+    if (listen) await listen.end().catch(() => {});
     for (const connectionId of [...this.conns.keys()]) {
       await this.teardown(connectionId);
     }
-    this.started = false;
   }
 }
 
 export const rocketChatManager = new RocketChatConnectionManager();
 export const startRocketChatManager = (): Promise<void> => rocketChatManager.start();
 export const stopRocketChatManager = (): Promise<void> => rocketChatManager.stop();
+
+/**
+ * Fan a connection/binding CRUD out to every core instance via pg NOTIFY —
+ * the advisory-lock owner may not be the process that served the HTTP request.
+ * The serving instance receives its own notification through the listener.
+ */
+export async function requestRocketChatReload(connectionId: string): Promise<void> {
+  await db.execute(sql`select pg_notify(${RELOAD_CHANNEL}, ${connectionId})`);
+}

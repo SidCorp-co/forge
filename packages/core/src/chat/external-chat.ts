@@ -13,6 +13,7 @@
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
+import { logger } from '../logger.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
 import { runTurnEvents } from './run-turn-core.js';
@@ -45,6 +46,14 @@ export interface ExternalChatTurnArgs {
   conversationContext?: string | null;
   db?: typeof defaultDb;
 }
+
+/**
+ * External sessions live as long as the room (one per RC room, never rotated),
+ * so both the model-visible window and the persisted transcript must be
+ * bounded or a chatty room grows the prompt until every turn fails on context.
+ */
+const PROVIDER_HISTORY_WINDOW = 30;
+const PERSISTED_MESSAGES_CAP = 200;
 
 export interface ExternalChatTurnResult {
   sessionId: string;
@@ -101,7 +110,7 @@ export async function runExternalChatTurn(
   });
   const providerMessages = [
     { role: 'system' as const, content: systemPrompt },
-    ...toProviderMessages(session),
+    ...toProviderMessages(session).slice(-PROVIDER_HISTORY_WINDOW),
   ];
 
   const startedAt = Date.now();
@@ -123,6 +132,9 @@ export async function runExternalChatTurn(
   if (result.terminal === 'done' && result.finalText.length > 0) {
     appendAssistantMessage(session, result.finalText);
   }
+  if (session.messages.length > PERSISTED_MESSAGES_CAP) {
+    session.messages = session.messages.slice(-PERSISTED_MESSAGES_CAP);
+  }
   await persistMessages(session, { db: dbi });
 
   try {
@@ -143,7 +155,7 @@ export async function runExternalChatTurn(
       source: session.source,
     });
   } catch (err) {
-    console.error('chat_logs insert failed', err);
+    logger.error({ err, sessionId: session.id }, 'chat_logs insert failed');
   }
 
   return {

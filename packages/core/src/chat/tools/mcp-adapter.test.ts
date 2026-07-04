@@ -161,7 +161,7 @@ describe('chat mcp-adapter', () => {
     expect((received as unknown as { data: { status: string } }).data.status).toBe('draft');
   });
 
-  it('guard can reject a call (chat must not open an issue)', async () => {
+  it('guard rejects any pipeline-dispatching status on update', async () => {
     let called = false;
     const { execute } = buildToolset(ctx, [
       {
@@ -174,9 +174,61 @@ describe('chat mcp-adapter', () => {
         guard: guardIssueWrites,
       },
     ]);
-    const out = await execute('forge_issues', '{"action":"update","data":{"status":"open"}}');
+    // Every registry status dispatches a job on transition — all must bounce.
+    for (const status of ['open', 'approved', 'released', 'testing', 'in_progress', 'tested']) {
+      const out = await execute(
+        'forge_issues',
+        `{"action":"update","data":{"status":"${status}"}}`,
+      );
+      expect(called).toBe(false);
+      expect(JSON.parse(out).error).toMatch(/leave that transition to a human/);
+    }
+  });
+
+  it('guard allows the non-dispatching statuses and status-less updates', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', (a) => {
+            received.push(a);
+            return { ok: true };
+          }),
+        allowedActions: ['update'],
+        guard: guardIssueWrites,
+      },
+    ]);
+    for (const status of ['draft', 'waiting', 'needs_info', 'on_hold', 'closed']) {
+      const out = await execute(
+        'forge_issues',
+        `{"action":"update","data":{"status":"${status}"}}`,
+      );
+      expect(JSON.parse(out)).toEqual({ ok: true });
+    }
+    const out = await execute('forge_issues', '{"action":"update","data":{"title":"renamed"}}');
+    expect(JSON.parse(out)).toEqual({ ok: true });
+    expect(received).toHaveLength(6);
+  });
+
+  it("guard rejects the 'unblock' operator escape hatch", async () => {
+    let called = false;
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', () => {
+            called = true;
+            return { ok: true };
+          }),
+        allowedActions: ['update'],
+        guard: guardIssueWrites,
+      },
+    ]);
+    const out = await execute(
+      'forge_issues',
+      '{"action":"update","data":{"status":"draft","unblock":true}}',
+    );
     expect(called).toBe(false);
-    expect(JSON.parse(out).error).toMatch(/must not set an issue to 'open'/);
+    expect(JSON.parse(out).error).toMatch(/unblock/);
   });
 
   it('mergeToolsets routes by name, first owner wins', async () => {

@@ -28,7 +28,7 @@ import { buildPostmanMcpEntry } from './postman/resolver.js';
 import { raceWithTimeout } from './probe.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
-import { rocketChatManager } from './rocketchat/connection-manager.js';
+import { requestRocketChatReload } from './rocketchat/connection-manager.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
 import { buildSentryMcpEntry } from './sentry/resolver.js';
 import { resolveSentryTargets } from './sentry/targets.js';
@@ -78,10 +78,12 @@ const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
 
 /** ISS-609 — apply rocketchat connection/binding CRUD to the live bot socket
- *  (dial / teardown / re-subscribe) without a core restart. Fire-and-forget. */
+ *  (dial / teardown / re-subscribe) without a core restart. Fire-and-forget;
+ *  goes via pg NOTIFY so the instance owning the socket reloads even when it
+ *  isn't the one that served this request. */
 function reloadRocketChatIfNeeded(provider: string, connectionId: string): void {
   if (provider !== 'rocketchat') return;
-  void rocketChatManager.reload(connectionId).catch(() => {});
+  void requestRocketChatReload(connectionId).catch(() => {});
 }
 
 async function assertProjectMember(

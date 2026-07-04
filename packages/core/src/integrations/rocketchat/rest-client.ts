@@ -95,6 +95,13 @@ async function rcGet(
   }
 }
 
+const HISTORY_ENDPOINTS = ['channels.history', 'groups.history', 'im.history'] as const;
+/** rid → the history endpoint that worked last time. A room's type never
+ *  changes, and probing costs a failed round-trip per fetch on private rooms
+ *  (channels.history 404s), so remember the winner. Bounded by the rooms the
+ *  bot is in. */
+const endpointByRoom = new Map<string, string>();
+
 /**
  * Fetch up to `count` most-recent messages in a room, optionally older than
  * `before` (ISO timestamp). Returns messages OLDEST-FIRST. Empty array when the
@@ -108,10 +115,15 @@ export async function fetchRoomHistory(
 ): Promise<RocketChatRestMessage[]> {
   const params: Record<string, string> = { roomId: rid, count: String(opts.count) };
   if (opts.before) params.latest = opts.before;
-  for (const endpoint of ['channels.history', 'groups.history', 'im.history']) {
+  const cached = endpointByRoom.get(rid);
+  const order = cached
+    ? [cached, ...HISTORY_ENDPOINTS.filter((e) => e !== cached)]
+    : [...HISTORY_ENDPOINTS];
+  for (const endpoint of order) {
     const body = await rcGet(auth, endpoint, params);
     const raw = body?.messages;
     if (Array.isArray(raw)) {
+      endpointByRoom.set(rid, endpoint);
       const mapped = raw
         .map((m) => mapMessage(m as RawRestMessage))
         .filter((m): m is RocketChatRestMessage => m !== null);
