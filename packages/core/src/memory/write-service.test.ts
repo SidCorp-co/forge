@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const indexMemoryMock = vi.fn();
 vi.mock('./indexer.js', () => ({
+  MAX_EMBED_CHARS: 8192,
   indexMemory: (input: unknown, opts: unknown) => indexMemoryMock(input, opts),
 }));
 
-const { runMemoryWrite, writeMemoryInputSchema } = await import('./write-service.js');
+const { MemoryWriteValidationError, runMemoryWrite, writeMemoryInputSchema } = await import(
+  './write-service.js'
+);
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -154,6 +157,83 @@ describe('runMemoryWrite', () => {
     const call = indexMemoryMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(call).toBeDefined();
     expect('metadata' in call).toBe(false);
+  });
+
+  it('rejects agent-authored text over the embedding window (8192)', async () => {
+    await expect(
+      runMemoryWrite({
+        projectId: PROJECT_ID,
+        source: 'knowledge',
+        sourceRef: 'k-big',
+        textContent: 'x'.repeat(8193),
+      }),
+    ).rejects.toThrow(MemoryWriteValidationError);
+    expect(indexMemoryMock).not.toHaveBeenCalled();
+  });
+
+  it('allows long text on lifecycle-mirror sources (issue mirrors store verbatim)', async () => {
+    indexMemoryMock.mockResolvedValueOnce({
+      id: 'm-issue',
+      embeddedAt: new Date(),
+      truncated: true,
+      degraded: false,
+    });
+    await expect(
+      runMemoryWrite({
+        projectId: PROJECT_ID,
+        source: 'issue',
+        sourceRef: 'iss-1',
+        textContent: 'x'.repeat(20_000),
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects a fenced code block longer than 5 lines in agent-authored memory', async () => {
+    const block = ['```ts', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', '```'].join('\n');
+    await expect(
+      runMemoryWrite({
+        projectId: PROJECT_ID,
+        source: 'note',
+        sourceRef: 'n-code',
+        textContent: `context\n${block}\nmore`,
+      }),
+    ).rejects.toThrow(/fenced code block/);
+    expect(indexMemoryMock).not.toHaveBeenCalled();
+  });
+
+  it('counts an unterminated fence to the end of the text', async () => {
+    const text = ['intro', '```', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6'].join('\n');
+    await expect(
+      runMemoryWrite({
+        projectId: PROJECT_ID,
+        source: 'policy',
+        sourceRef: 'p-code',
+        textContent: text,
+      }),
+    ).rejects.toThrow(MemoryWriteValidationError);
+  });
+
+  it('allows short fenced one-liners (verify commands) and inline code', async () => {
+    indexMemoryMock.mockResolvedValueOnce({
+      id: 'm-ok',
+      embeddedAt: new Date(),
+      truncated: false,
+      degraded: false,
+    });
+    const text = [
+      'invariant: cascade routes through `cascadeCancelChildJobs` (runs-cascade.ts:12)',
+      '```sql',
+      "SELECT status FROM issues WHERE id='x';",
+      '```',
+    ].join('\n');
+    await expect(
+      runMemoryWrite({
+        projectId: PROJECT_ID,
+        source: 'knowledge',
+        sourceRef: 'k-ok',
+        textContent: text,
+      }),
+    ).resolves.toBeDefined();
   });
 
   it('propagates indexer errors (strict mode)', async () => {

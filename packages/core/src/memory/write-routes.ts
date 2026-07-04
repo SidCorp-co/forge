@@ -12,7 +12,11 @@ import {
   memoryFeedbackInputSchema,
   runMemoryFeedback,
 } from './feedback-service.js';
-import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
+import {
+  MemoryWriteValidationError,
+  runMemoryWrite,
+  writeMemoryInputSchema,
+} from './write-service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -40,6 +44,9 @@ memoryWriteRoutes.post(
       const result = await runMemoryWrite(body);
       return c.json(result, 201);
     } catch (err) {
+      if (err instanceof MemoryWriteValidationError) {
+        throw badRequest({ textContent: [err.message] });
+      }
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
           message: 'embeddings service unavailable',

@@ -2,11 +2,10 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { createImprovementMessageDraft } from '../improvement-messages/drafts-service.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { createImprovementMessageDraft } from '../improvement-messages/drafts-service.js';
-import { runMemoryWrite } from './write-service.js';
 import {
   acceptCandidate,
   getCandidate,
@@ -14,6 +13,7 @@ import {
   markCandidatePromoted,
   rejectCandidate,
 } from './candidates-service.js';
+import { MemoryWriteValidationError, runMemoryWrite } from './write-service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -53,18 +53,26 @@ memoryCandidatesRoutes.post(
     if (!candidate) throw new HTTPException(404, { message: 'Candidate not found' });
     await assertProjectAccess(candidate.projectId, userId);
 
-    const result = await runMemoryWrite({
-      projectId: candidate.projectId,
-      source: 'knowledge',
-      sourceRef: candidate.signalKey,
-      textContent: candidate.summary,
-      metadata: {
-        signalType: candidate.signalType,
-        evidenceCount: candidate.evidenceCount,
-        evidence: candidate.evidence,
-        candidateId: candidate.id,
-      },
-    });
+    let result: Awaited<ReturnType<typeof runMemoryWrite>>;
+    try {
+      result = await runMemoryWrite({
+        projectId: candidate.projectId,
+        source: 'knowledge',
+        sourceRef: candidate.signalKey,
+        textContent: candidate.summary,
+        metadata: {
+          signalType: candidate.signalType,
+          evidenceCount: candidate.evidenceCount,
+          evidence: candidate.evidence,
+          candidateId: candidate.id,
+        },
+      });
+    } catch (err) {
+      if (err instanceof MemoryWriteValidationError) {
+        throw badRequest({ textContent: [err.message] });
+      }
+      throw err;
+    }
 
     await acceptCandidate(id);
     return c.json(result, 200);

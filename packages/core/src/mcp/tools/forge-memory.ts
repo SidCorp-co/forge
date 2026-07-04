@@ -9,7 +9,11 @@ import {
 import { getMemoryInputSchema, runMemoryGet } from '../../memory/get-service.js';
 import { deleteMemory } from '../../memory/indexer.js';
 import { memorySearchStrategies, runMemorySearch } from '../../memory/search-service.js';
-import { runMemoryWrite, writeMemoryInputSchema } from '../../memory/write-service.js';
+import {
+  MemoryWriteValidationError,
+  runMemoryWrite,
+  writeMemoryInputSchema,
+} from '../../memory/write-service.js';
 import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter, zodToMcpSchema } from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
 
@@ -125,7 +129,7 @@ export const forgeMemoryFeedbackTool: DeviceScopedMcpToolFactory = (device) => (
 export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.write',
   description:
-    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef). Returns {id, embeddedAt, truncated, degraded, dedupedInto?}. For note/knowledge a semantically near-identical existing row absorbs the write instead of duplicating — dedupedInto then holds the absorbing sourceRef; reuse it for future refinements. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Requires the device owner to be a project member.',
+    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef). Returns {id, embeddedAt, truncated, degraded, dedupedInto?}. For note/knowledge a semantically near-identical existing row absorbs the write instead of duplicating — dedupedInto then holds the absorbing sourceRef; reuse it for future refinements. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Agent-authored sources (note/knowledge/policy) are quality-gated: textContent ≤8192 chars (the embedding window) and no fenced code block >5 lines — write the invariant + a file:line/SHA pointer instead of code; one-line runnable commands are fine. Requires the device owner to be a project member.',
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),
   handler: async (args) => {
     const input = writeMemoryInputSchema.parse(args);
@@ -135,6 +139,9 @@ export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {
         throw new Error(`UNAVAILABLE: ${err.message}`);
+      }
+      if (err instanceof MemoryWriteValidationError) {
+        throw new Error(`INVALID: ${err.message}`);
       }
       throw err;
     }

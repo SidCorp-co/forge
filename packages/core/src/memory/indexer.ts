@@ -20,7 +20,7 @@ import { searchMemories } from './search.js';
  * migrate the detached call to a pg-boss job; the queue is already running.
  */
 
-const MAX_EMBED_CHARS = 8192;
+export const MAX_EMBED_CHARS = 8192;
 
 export interface IndexInput {
   projectId: string;
