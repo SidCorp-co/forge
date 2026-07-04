@@ -13,6 +13,7 @@ import {
   Button,
   Field,
   Input,
+  Select,
   Textarea,
   Toggle,
 } from "@/design";
@@ -25,6 +26,8 @@ import {
   useDeleteProviderIntegration,
   useIntegrationsList,
   useOrgConnectionLocked,
+  useProbeRocketchatRooms,
+  useRocketchatRooms,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../hooks";
@@ -32,6 +35,7 @@ import type {
   IntegrationSummary,
   IntegrationTestResult,
   ProviderConfig,
+  RocketchatRoom,
 } from "../types";
 import { ConnectionOwnerField } from "./connection-owner-field";
 
@@ -153,6 +157,10 @@ function RocketchatBindingPanel({
 
   const cfg = binding.config as ProviderConfig;
   const savedRids = useMemo(() => cfg.rids ?? [], [cfg.rids]);
+  const roomsQ = useRocketchatRooms(projectId, binding.id);
+  const rooms = useMemo(() => roomsQ.data?.rooms ?? [], [roomsQ.data]);
+  const availableRooms = rooms.filter((r) => !savedRids.includes(r.rid));
+  const roomLabel = (rid: string) => rooms.find((r) => r.rid === rid)?.name;
   const [newRid, setNewRid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [botUserId, setBotUserId] = useState("");
@@ -229,12 +237,15 @@ function RocketchatBindingPanel({
 
       <Field
         label="Rooms"
-        hint="Rocket.Chat room ids (rid) this project listens on — admin → Rooms, or the room's admin info panel. The bot must be a member of each room."
+        hint="The rooms this project listens on. The picker lists every room the bot is a member of — invite the bot to a room to make it appear here."
       >
         <div className="flex flex-col gap-2">
           {savedRids.map((r) => (
             <div key={r} className="flex items-center gap-2">
-              <span className="fg-body-sm flex-1 truncate font-mono">{r}</span>
+              <span className="fg-body-sm flex-1 truncate">
+                {roomLabel(r) ?? "unknown room"}{" "}
+                <span className="text-muted font-mono">{r}</span>
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -248,11 +259,27 @@ function RocketchatBindingPanel({
             </div>
           ))}
           <div className="flex items-center gap-2">
-            <Input
-              placeholder="add room id…"
-              value={newRid}
-              onChange={(e) => setNewRid(e.target.value)}
-            />
+            {availableRooms.length > 0 ? (
+              <div className="min-w-0 flex-1">
+                <Select
+                  placeholder="pick a room…"
+                  value={newRid}
+                  onChange={setNewRid}
+                  options={availableRooms.map((r) => ({
+                    value: r.rid,
+                    label: `${r.name}${r.type === "p" ? " (private)" : ""}`,
+                  }))}
+                />
+              </div>
+            ) : (
+              <Input
+                placeholder={
+                  roomsQ.isLoading ? "loading rooms…" : "room id (rid)…"
+                }
+                value={newRid}
+                onChange={(e) => setNewRid(e.target.value)}
+              />
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -347,19 +374,40 @@ function RocketchatBindingPanel({
 
 function AddRocketchatForm({ projectId }: { projectId: string }) {
   const create = useCreateProviderIntegration(projectId);
+  const probe = useProbeRocketchatRooms(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const [serverUrl, setServerUrl] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [botUserId, setBotUserId] = useState("");
   const [rid, setRid] = useState("");
+  const [rooms, setRooms] = useState<RocketchatRoom[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit =
+  const credsValid =
     /^https?:\/\/.+/.test(serverUrl.trim()) &&
     authToken.trim().length >= 8 &&
-    botUserId.trim().length > 0 &&
-    rid.trim().length > 0 &&
-    !create.isPending;
+    botUserId.trim().length > 0;
+
+  const canSubmit = credsValid && rid.trim().length > 0 && !create.isPending;
+
+  async function loadRooms() {
+    setError(null);
+    try {
+      const res = await probe.mutateAsync({
+        serverUrl: serverUrl.trim().replace(/\/+$/, ""),
+        authToken: authToken.trim(),
+        userId: botUserId.trim(),
+      });
+      setRooms(res.rooms);
+      if (res.rooms.length === 0) {
+        setError(
+          "The bot isn't a member of any room yet — invite it to the project's channel, then load again.",
+        );
+      }
+    } catch (err) {
+      setError(formatApiError(err));
+    }
+  }
 
   async function handleCreate() {
     setError(null);
@@ -425,11 +473,40 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
       </Field>
 
       <Field
-        label="Room ID"
-        hint="The first room (rid) this project listens on — admin → Rooms, or the room's admin info panel. More rooms can be added after connecting."
+        label="Room"
+        hint="The first room this project listens on — more rooms can be added after connecting. Load rooms lists every room the bot is a member of."
         required
       >
-        <Input placeholder="GENERAL" value={rid} onChange={(e) => setRid(e.target.value)} />
+        <div className="flex items-center gap-2">
+          {rooms && rooms.length > 0 ? (
+            <div className="min-w-0 flex-1">
+              <Select
+                placeholder="pick a room…"
+                value={rid}
+                onChange={setRid}
+                options={rooms.map((r) => ({
+                  value: r.rid,
+                  label: `${r.name}${r.type === "p" ? " (private)" : ""}`,
+                }))}
+              />
+            </div>
+          ) : (
+            <Input
+              placeholder="room id (rid)…"
+              value={rid}
+              onChange={(e) => setRid(e.target.value)}
+            />
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={probe.isPending}
+            disabled={!credsValid}
+            onClick={loadRooms}
+          >
+            Load rooms
+          </Button>
+        </div>
       </Field>
 
       {error && <Banner tone="danger">{error}</Banner>}

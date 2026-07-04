@@ -53,6 +53,32 @@ export function useMcpPreview(projectId: string | undefined) {
   });
 }
 
+/** Rooms the RC bot is a member of, via an existing binding's stored credential
+ *  — feeds the room name picker. Keyed `['integrations','rc-rooms',project,id]`. */
+export function useRocketchatRooms(
+  projectId: string | undefined,
+  integrationId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["integrations", "rc-rooms", projectId, integrationId],
+    queryFn: () =>
+      integrationsApi.rocketchatRooms(projectId as string, {
+        integrationId: integrationId as string,
+      }),
+    enabled: !!projectId && !!integrationId,
+    staleTime: 60_000,
+  });
+}
+
+/** Same probe with bare credentials — the connect form's "Load rooms" button
+ *  (nothing persisted yet, so the caller supplies the credential). */
+export function useProbeRocketchatRooms(projectId: string | undefined) {
+  return useMutation({
+    mutationFn: (body: { serverUrl: string; authToken: string; userId: string }) =>
+      integrationsApi.rocketchatRooms(projectId as string, body),
+  });
+}
+
 /** Test connection. Does NOT toast on its own — the caller renders the result
  *  inline (user/email on success, clear error on a bad key). Invalidates the
  *  integrations list on settle so health/breaker badges refresh without a manual

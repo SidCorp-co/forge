@@ -29,6 +29,7 @@ import { raceWithTimeout } from './probe.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
 import { requestRocketChatReload } from './rocketchat/connection-manager.js';
+import { fetchBotRooms } from './rocketchat/rest-client.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
 import { buildSentryMcpEntry } from './sentry/resolver.js';
 import { resolveSentryTargets } from './sentry/targets.js';
@@ -750,6 +751,67 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
   const result = await adapter.healthcheck(ctx);
   return c.json(result);
 });
+
+// List the Rocket.Chat rooms the bot can serve, so the UI offers a name picker
+// instead of making the operator dig up raw rids. Two modes: `integrationId`
+// reuses the stored (decrypted) bot credential of an existing binding; the
+// bare credential fields serve the first-time connect form, before anything
+// is persisted. Rooms = whatever the bot user is a member of (channels +
+// private groups) — exactly the set it can read/reply in.
+const rocketchatRoomsSchema = z
+  .object({
+    integrationId: z.string().uuid().optional(),
+    serverUrl: z.string().url().max(500).optional(),
+    authToken: z.string().min(8).max(2000).optional(),
+    userId: z.string().min(1).max(200).optional(),
+  })
+  .refine((b) => b.integrationId || (b.serverUrl && b.authToken && b.userId), {
+    message: 'pass integrationId, or serverUrl + authToken + userId',
+  });
+
+integrationsRoutes.post(
+  '/:projectId/integrations/rocketchat/rooms',
+  zValidator('json', rocketchatRoomsSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const projectId = c.req.param('projectId');
+    const userId = c.get('userId');
+    await assertProjectMember(projectId, userId);
+    const body = c.req.valid('json');
+
+    let auth: { serverUrl: string; authToken: string; userId: string };
+    if (body.integrationId) {
+      const existing = await findBindingWithConnectionById(body.integrationId);
+      if (
+        !existing ||
+        existing.binding.projectId !== projectId ||
+        existing.binding.provider !== 'rocketchat'
+      ) {
+        throw notFound();
+      }
+      const ctx = buildContextFromBinding(existing);
+      const cfg = ctx.config as { serverUrl?: string } | null;
+      const secrets = ctx.secrets as { authToken?: string; userId?: string } | null;
+      if (!cfg?.serverUrl || !secrets?.authToken || !secrets?.userId) {
+        throw new HTTPException(409, {
+          message: 'rocketchat connection is missing serverUrl/credentials',
+          cause: { code: 'MISSING_CREDENTIALS' },
+        });
+      }
+      auth = { serverUrl: cfg.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
+    } else {
+      auth = {
+        serverUrl: (body.serverUrl as string).replace(/\/+$/, ''),
+        authToken: body.authToken as string,
+        userId: body.userId as string,
+      };
+    }
+
+    const rooms = (await fetchBotRooms(auth)).slice(0, 200);
+    return c.json({ rooms });
+  },
+);
 
 integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) => {
   const projectId = c.req.param('projectId');

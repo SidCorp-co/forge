@@ -163,6 +163,14 @@ export interface ProviderConfig {
   rids?: string[];
 }
 
+/** One Rocket.Chat room the bot is a member of (room picker source). */
+export interface RocketchatRoom {
+  rid: string;
+  name: string;
+  /** c = public channel, p = private group. */
+  type: "c" | "p";
+}
+
 /** Discriminated create body for the generic `POST .../integrations`. */
 export type CreateIntegrationInput =
   | {

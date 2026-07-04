@@ -17,6 +17,7 @@ import type {
   IntegrationTestResult,
   IntegrationsStatus,
   McpPreviewResponse,
+  RocketchatRoom,
   UpdateIntegrationInput,
 } from "./types";
 
@@ -94,6 +95,20 @@ export const integrationsApi = {
     apiClient<DeliveryRetryResponse>(
       `/projects/${projectId}/integrations/${bindingId}/deliveries/${deliveryId}/retry`,
       { method: "POST" },
+    ),
+
+  /** `POST .../integrations/rocketchat/rooms` — rooms the bot is a member of
+   *  (name picker source). Pass `integrationId` to use the stored credential,
+   *  or the bare credential fields from the connect form (pre-persist probe). */
+  rocketchatRooms: (
+    projectId: string,
+    body:
+      | { integrationId: string }
+      | { serverUrl: string; authToken: string; userId: string },
+  ) =>
+    apiClient<{ rooms: RocketchatRoom[] }>(
+      `/projects/${projectId}/integrations/rocketchat/rooms`,
+      { method: "POST", body: JSON.stringify(body) },
     ),
 };
 

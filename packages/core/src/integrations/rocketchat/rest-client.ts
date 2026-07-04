@@ -134,6 +134,33 @@ export async function fetchRoomHistory(
   return [];
 }
 
+export interface RocketChatRoomInfo {
+  rid: string;
+  name: string;
+  /** c = public channel, p = private group. */
+  type: 'c' | 'p';
+}
+
+/**
+ * List the rooms the BOT is a member of (public channels + private groups;
+ * DMs/livechat excluded) — the candidate set for binding a project room,
+ * since the bot must be a member to read/reply anyway. Empty array on any
+ * failure (bad credential, unreachable server).
+ */
+export async function fetchBotRooms(auth: RocketChatRestAuth): Promise<RocketChatRoomInfo[]> {
+  const body = await rcGet(auth, 'rooms.get', {});
+  const raw = (body as { update?: unknown[] } | null)?.update;
+  if (!Array.isArray(raw)) return [];
+  const rooms: RocketChatRoomInfo[] = [];
+  for (const r of raw) {
+    const room = r as { _id?: string; t?: string; name?: string; fname?: string };
+    if (typeof room._id !== 'string') continue;
+    if (room.t !== 'c' && room.t !== 'p') continue;
+    rooms.push({ rid: room._id, name: room.fname ?? room.name ?? room._id, type: room.t });
+  }
+  return rooms.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Fetch a thread's messages (oldest-first). Empty array on any failure. */
 export async function fetchThreadMessages(
   auth: RocketChatRestAuth,
