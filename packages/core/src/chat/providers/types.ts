@@ -65,6 +65,9 @@ export interface ChatStreamRequest {
   messages: ChatMessage[];
   /** Tools offered to the model this round; omit for a plain completion. */
   tools?: ChatTool[] | undefined;
+  /** Sampling temperature; omit for the provider default. Agentic callers
+   *  (RC bot) pass a low value for deterministic tool use. */
+  temperature?: number | undefined;
   signal?: AbortSignal | undefined;
 }
 

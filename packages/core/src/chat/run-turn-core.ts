@@ -30,6 +30,8 @@ export interface TurnCoreArgs {
   /** system + history + new user turn. Copied internally, not mutated. */
   messages: ChatMessage[];
   tools?: ChatToolset | undefined;
+  /** Sampling temperature forwarded to the provider (agentic callers pass low). */
+  temperature?: number | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -66,7 +68,7 @@ function addUsage(into: ChatStreamUsage, from: ChatStreamUsage): void {
 export async function* runTurnEvents(
   args: TurnCoreArgs,
 ): AsyncGenerator<ChatStreamEvent, TurnCoreResult> {
-  const { provider, model, tools, signal } = args;
+  const { provider, model, tools, temperature, signal } = args;
   const messages: ChatMessage[] = [...args.messages];
   const usage: ChatStreamUsage = {};
   const toolCalls: Array<{ name: string; arguments: string }> = [];
@@ -82,7 +84,13 @@ export async function* runTurnEvents(
       const turnToolCalls: CollectedToolCall[] = [];
       let sawError = false;
 
-      for await (const event of provider.stream({ model, messages, tools: tools?.tools, signal })) {
+      for await (const event of provider.stream({
+        model,
+        messages,
+        tools: tools?.tools,
+        temperature,
+        signal,
+      })) {
         if (event.type === 'chunk') {
           turnText += event.text;
           yield event;

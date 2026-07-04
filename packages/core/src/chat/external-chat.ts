@@ -110,6 +110,10 @@ export async function runExternalChatTurn(
     model: resolved.model,
     messages: providerMessages,
     tools: args.tools,
+    // External-channel turns are agentic workers, not creative chat — a low
+    // temperature keeps small models on the call-the-tool path instead of
+    // narrating what they are "about to" do.
+    temperature: 0.2,
   });
   let step = await gen.next();
   while (!step.done) step = await gen.next();
