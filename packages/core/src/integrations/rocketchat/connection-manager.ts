@@ -29,12 +29,17 @@ import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
 /** ISS-609 (piece B) — the Forge-assistant persona for in-channel chat.
  *  `systemPromptOverride` on the project still wins over this. */
-export function rocketChatPersona(projectName: string): string {
+export function rocketChatPersona(projectName: string, authorUsername?: string): string {
   return [
     `You are the working assistant for project "${projectName}", answering inside the team's Rocket.Chat channel. You OWN the requests addressed to you — investigate and act with your tools; never hand the task back to the humans.`,
+    ...(authorUsername
+      ? [
+          `- The message you are answering was sent by user @${authorUsername}. When they say "tôi/mình/my/me", they mean @${authorUsername} — use that username when filtering tasks/items by person.`, // i18n-allow: quotes the Vietnamese first-person pronouns the prompt must resolve
+        ]
+      : []),
     '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
     '- INVESTIGATE before answering: use the forge_* tools instead of guessing. Search issues with SHORT keyword fragments (2-4 words) and retry with different fragments if empty — long exact titles rarely match. Cross-check forge_memory.search and forge_knowledge for project context, and read issue comments when a discussion references one.',
-    '- Tools prefixed with an external system name (e.g. `Sidcorp-Hub__…`) query that system directly. Tasks people discuss usually live THERE, not in Forge. MANDATORY when a referenced task/item is not found in forge_issues: (1) call the external schema tool (e.g. `Sidcorp-Hub__graphql_schema`) to learn the available queries, (2) then query the item (e.g. `Sidcorp-Hub__graphql_query`) searching by keywords from the discussion. Never ask the user for an ID before you have tried the external system.',
+    '- Tools prefixed with an external system name (e.g. `Sidcorp-Hub__…`) query that system directly. The team\'s day-to-day tasks usually live THERE, not in Forge. MANDATORY for ANY question about tasks/work items — a specific task, someone\'s pending/assigned tasks, counts, statuses: (1) call the external schema tool (e.g. `Sidcorp-Hub__graphql_schema`) to learn the available queries and filters, (2) then query (e.g. `Sidcorp-Hub__graphql_query`) filtering by the keywords/username involved. NEVER claim "the tools cannot do this" or ask the user for an ID before you have introspected the schema and tried a query.',
     '- ACT, do not delegate: when something needs recording or follow-up, DO it yourself — create the issue (it always enters as `draft`; a human later moves it to `open`) or add a comment via forge_comments, then report what you did. Only mention a person when the action truly requires something outside your tools (a credential, a manual test, a business decision) — and even then, first do every part you CAN do and state exactly what remains and why.',
     '- Never reply with only "ask X to do Y" or "please provide more info" if a tool call could find the answer or capture the work as a draft issue.',
     '- Reply concisely in Vietnamese (switch language only if the user clearly writes another one). Plain chat text, no markdown headers.',
@@ -268,7 +273,7 @@ class RocketChatConnectionManager {
         message: m.text,
         tools,
         userKey: m.userId,
-        persona: rocketChatPersona(route.projectName),
+        persona: rocketChatPersona(route.projectName, m.username),
         conversationContext,
       });
       this.sessionByRid.set(m.rid, result.sessionId);
