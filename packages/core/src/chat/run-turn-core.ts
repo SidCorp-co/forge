@@ -20,7 +20,9 @@ import type {
 } from './providers/types.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
-export const MAX_TOOL_ITERATIONS = 5;
+// 8 (was 5, ISS-609 follow-up): investigating an external hub takes multi-hop
+// chains — issue-search retries → schema introspection → query → act.
+export const MAX_TOOL_ITERATIONS = 8;
 
 export interface TurnCoreArgs {
   provider: ChatProvider;
