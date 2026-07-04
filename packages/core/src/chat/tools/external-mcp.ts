@@ -22,6 +22,10 @@ export interface ExternalMcpServerConfig {
   url?: string;
   type?: string;
   headers?: Record<string, string>;
+  /** Operator-written usage guidance appended to every bridged tool's
+   *  description (e.g. which GraphQL queries answer common questions) —
+   *  smaller models need the map, not just the raw schema. */
+  notes?: string;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -112,6 +116,10 @@ export async function buildExternalMcpToolsets(agentConfig: unknown): Promise<Ex
       clients.push(client);
 
       const prefix = sanitize(key);
+      const notes =
+        typeof config.notes === 'string' && config.notes.trim().length > 0
+          ? ` Usage notes: ${config.notes.trim()}`
+          : '';
       const byName = new Map<string, string>(); // exposed name → real tool name
       const tools: ChatTool[] = [];
       for (const tool of listed.tools.slice(0, MAX_TOOLS_PER_SERVER)) {
@@ -122,7 +130,10 @@ export async function buildExternalMcpToolsets(agentConfig: unknown): Promise<Ex
           type: 'function',
           function: {
             name: exposed,
-            description: truncate(`[${key}] ${tool.description ?? tool.name}`, DESCRIPTION_CAP),
+            description: truncate(
+              `[${key}] ${tool.description ?? tool.name}${notes}`,
+              DESCRIPTION_CAP,
+            ),
             parameters: (tool.inputSchema as Record<string, unknown>) ?? { type: 'object' },
           },
         });
