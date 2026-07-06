@@ -367,6 +367,22 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).not.toMatch(/capabilities->>\s*'maxConcurrent'/);
     expect(text).not.toMatch(/CASE\s+r\.type/);
   });
+
+  // Divergence fix — fresh_capable_runners MUST exclude runners on a disabled
+  // device, mirroring `runners/select.ts` (NOT_DISABLED_DEVICE). Otherwise the
+  // picker declares a job DISPATCHABLE while `selectRunnerForJob` (which does
+  // filter disabled devices) returns null → the job spins queued forever.
+  it('fresh_capable_runners CTE excludes runners on a disabled device (selector parity)', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    // The disabled-device NOT EXISTS correlates devices.id to r.device_id and
+    // gates on disabled_at — same shape as select.ts NOT_DISABLED_DEVICE.
+    expect(text).toMatch(
+      /NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+devices\s+d\s+WHERE\s+d\.id\s*=\s*r\.device_id\s+AND\s+d\.disabled_at\s+IS\s+NOT\s+NULL/,
+    );
+  });
 });
 
 describe('hasNonTerminalPriorSession', () => {

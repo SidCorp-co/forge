@@ -75,6 +75,13 @@ export interface ProjectRunner {
 	deviceName: string | null;
 	platform: "macos" | "linux" | "windows" | null;
 	deviceStatus: "online" | "offline" | "revoked" | null;
+	/**
+	 * Operator "turn off" timestamp on the device (reversible). A disabled
+	 * device's runner can still heartbeat (deviceStatus stays "online"), so this
+	 * is the only signal that explains why an online-looking runner never
+	 * receives jobs — the dispatcher excludes disabled devices. Null = enabled.
+	 */
+	deviceDisabledAt: string | null;
 	runnerStatus: string;
 	/** Last health/heartbeat error string, cleared on a healthy heartbeat. */
 	lastError: string | null;

@@ -46,6 +46,7 @@ import {
 	useReprovision,
 	useRunnerActivity,
 	useSetDefaultDevice,
+	useSetDeviceDisabled,
 	useSetGitCredential,
 	useTestGitCredential,
 	useUnassignDeviceFromProject,
@@ -445,9 +446,15 @@ function RunnerRow({
 }) {
 	const reprovision = useReprovision(projectId);
 	const unassign = useUnassignDeviceFromProject(projectId);
+	const setDisabled = useSetDeviceDisabled();
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [showActivity, setShowActivity] = useState(false);
-	const online = runner.deviceStatus === "online";
+	// A disabled device's runner keeps heartbeating (deviceStatus stays
+	// "online"), so `deviceDisabledAt` is the real reason it receives no jobs —
+	// the dispatcher excludes disabled devices. Surface it explicitly instead of
+	// showing a misleading healthy dot.
+	const deviceDisabled = Boolean(runner.deviceDisabledAt);
+	const online = runner.deviceStatus === "online" && !deviceDisabled;
 	// Tick once a second while this runner is limited (live reset countdown) OR
 	// busy (live elapsed counter on the current job).
 	const now = useNow(1000, Boolean(runner.limitReason) || Boolean(current));
@@ -462,6 +469,14 @@ function RunnerRow({
 					<span className="truncate font-semibold text-fg">
 						{runner.deviceName ?? "Unknown device"}
 					</span>
+					{deviceDisabled && (
+						<Badge tone="neutral">
+							<span className="inline-flex items-center gap-1">
+								<Icon name="alert" size={11} />
+								Device off
+							</span>
+						</Badge>
+					)}
 					{limit && (
 						<Badge tone={limit.health === "down" ? "red" : "amber"}>
 							<span className="inline-flex items-center gap-1">
@@ -511,6 +526,22 @@ function RunnerRow({
 						</span>
 					) : (
 						<span className="inline-flex items-center gap-1">
+							{runner.deviceId && deviceDisabled && (
+								<Button
+									variant="secondary"
+									size="sm"
+									icon="play"
+									loading={setDisabled.isPending}
+									onClick={() =>
+										setDisabled.mutate({
+											id: runner.deviceId as string,
+											disabled: false,
+										})
+									}
+								>
+									Turn on
+								</Button>
+							)}
 							{runner.deviceId &&
 								(isPrimary ? (
 									<Button

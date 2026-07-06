@@ -564,6 +564,11 @@ projectRoutes.get(
         deviceName: devices.name,
         platform: devices.platform,
         deviceStatus: devices.status,
+        // Operator "turn off" timestamp. A disabled device's runner can still
+        // heartbeat (status stays 'online'), so the UI needs this to explain
+        // why an "online"-looking runner receives no jobs (mirrors the
+        // dispatch gate that excludes disabled devices).
+        deviceDisabledAt: devices.disabledAt,
         runnerStatus: runners.status,
         lastError: runners.lastError,
         limitReason: runners.limitReason,

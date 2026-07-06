@@ -413,6 +413,19 @@ function buildBarrierFragments(args: {
         -- rate_limited_until is NULL for auth limits (no auto-recovery), so
         -- those do not gate here; they keep failing and trip the breaker.
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+        -- Device turn-off gate — MUST mirror runners/select.ts
+        -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner
+        -- on a disabled device as available and declares the job dispatchable,
+        -- but selectRunnerForJob filters that runner out, returns null,
+        -- handleDispatch skips, and the job spins queued forever (picker offers,
+        -- selector rejects). A disabled device's runner can keep heartbeating
+        -- (status stays online), so status alone does not cover this.
+        -- Remote/server runners (NULL device_id) have no device row, so the
+        -- NOT EXISTS holds and they stay eligible.
+        AND NOT EXISTS (
+          SELECT 1 FROM devices d
+          WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
+        )
     )`;
 
   const predicates = {

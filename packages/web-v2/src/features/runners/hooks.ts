@@ -52,6 +52,11 @@ export function useSetDeviceDisabled() {
 			runnersApi.setDeviceDisabled(id, disabled),
 		onSuccess: (_data, { disabled }) => {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
+			// A device toggle changes runner eligibility, so refresh the
+			// project-runners projection (drives the "Device off" badge) and the
+			// active-runners view.
+			qc.invalidateQueries({ queryKey: ["projects"] });
+			qc.invalidateQueries({ queryKey: ["runners"] });
 			toast({
 				title: disabled ? "Device turned off" : "Device turned on",
 				tone: "success",
