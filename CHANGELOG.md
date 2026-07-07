@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Pipeline notifications now display clear, user-friendly messages when a job gets stuck — showing the actual blocker and next steps instead of technical implementation details.
 - Auto-retry jobs no longer wedge permanently after a usage/session limit failure — they now fail over to a different device immediately, and stuck retries no longer require manual cancellation to recover.
 - A project's UX completeness standard can now be generated from a reusable preset (app-strict / marketing / internal-tool) plus your project's own design-system details, instead of being hand-written — and it adapts to any project, not just the reference app.
 - Code review and live verification now check UI changes against your project's UX completeness standard — flagging missing loading/empty/error states, accessibility, and responsive gaps and recording them so the standard can improve over time.
