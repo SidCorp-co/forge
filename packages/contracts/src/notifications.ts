@@ -20,6 +20,7 @@ export const NOTIFICATION_TYPES = [
   'pipeline_wedge',
   'invitation_received',
   'intake_pending',
+  'schedule_report',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -47,6 +48,7 @@ export const NOTIFICATION_CONTRACT: Record<NotificationType, NotificationTypeCon
   pipeline_wedge: { severity: 'error', channels: ['bell', 'toast', 'browser'] },
   invitation_received: { severity: 'warning', channels: ['bell', 'toast'] },
   intake_pending: { severity: 'info', channels: ['bell', 'toast'] },
+  schedule_report: { severity: 'info', channels: ['bell', 'toast'] },
 };
 
 /** Channels a type targets; defaults to bell-only for an unknown/legacy type. */

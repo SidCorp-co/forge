@@ -6,12 +6,19 @@ import type { StatusKey } from "@/design/status";
 
 export type ScheduleLastStatus = "success" | "failed" | "running" | null;
 
+/** A schedule is either 'prompt' (existing agent-session behavior) or
+ *  'script' (a standalone sandboxed Node.js script, no LLM/agent at all). */
+export type ScheduleKind = "prompt" | "script";
+
 export interface ScheduleRow {
   id: string;
   projectId: string;
   name: string;
   cron: string;
-  prompt: string;
+  /** Nullable — a kind='script' row carries no prompt. */
+  prompt: string | null;
+  kind: ScheduleKind;
+  script: string | null;
   runner: string | null;
   enabled: boolean;
   targetProjectSlug: string | null;
@@ -80,6 +87,9 @@ export interface ScheduleRun {
   finishedAt: string | null;
   durationSeconds: number | null;
   stewardReport: StewardRunReport | null;
+  /** script-kind runs only: captured console output + failure message. */
+  output?: string | null;
+  error?: string | null;
 }
 
 /** Map an agent-session status to a design-kit StatusChip key (session domain). */

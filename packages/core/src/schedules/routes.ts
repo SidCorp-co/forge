@@ -44,27 +44,18 @@ const apiScheduleRunner = z.enum(['desktop']);
 
 const scheduleMode = z.enum(['propose', 'auto']);
 
+// ISS-618 — a schedule is either 'prompt' (existing agent-session behavior) or
+// 'script' (a standalone sandboxed Node.js script, no LLM/agent involved).
+const apiScheduleKind = z.enum(['prompt', 'script']);
+
 const createSchema = z
   .object({
     projectId: z.uuid(),
     name: z.string().trim().min(1).max(200),
     cron: z.string().trim().min(1).max(200),
-    prompt: z.string().trim().min(1).max(20_000),
-    runner: apiScheduleRunner.optional(),
-    enabled: z.boolean().optional(),
-    targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
-    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-    templateKey: z.string().trim().min(1).max(200).nullable().optional(),
-    params: z.record(z.string(), z.unknown()).nullable().optional(),
-    mode: scheduleMode.optional(),
-  })
-  .strict();
-
-const updateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(200).optional(),
-    cron: z.string().trim().min(1).max(200).optional(),
     prompt: z.string().trim().min(1).max(20_000).optional(),
+    kind: apiScheduleKind.optional(),
+    script: z.string().trim().min(1).max(50_000).optional(),
     runner: apiScheduleRunner.optional(),
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
@@ -74,7 +65,75 @@ const updateSchema = z
     mode: scheduleMode.optional(),
   })
   .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
+  .superRefine((data, ctx) => {
+    const kind = data.kind ?? 'prompt';
+    if (kind === 'script') {
+      if (!data.script) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['script'],
+          message: 'script is required when kind is "script"',
+        });
+      }
+      if (data.prompt !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['prompt'],
+          message: 'prompt must be omitted when kind is "script"',
+        });
+      }
+      if (data.templateKey) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['templateKey'],
+          message: 'templateKey must be omitted when kind is "script"',
+        });
+      }
+    } else if (!data.prompt) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['prompt'],
+        message: 'prompt is required when kind is "prompt"',
+      });
+    }
+  });
+
+const updateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    cron: z.string().trim().min(1).max(200).optional(),
+    prompt: z.string().trim().min(1).max(20_000).optional(),
+    kind: apiScheduleKind.optional(),
+    script: z.string().trim().min(1).max(50_000).optional(),
+    runner: apiScheduleRunner.optional(),
+    enabled: z.boolean().optional(),
+    targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
+    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+    templateKey: z.string().trim().min(1).max(200).nullable().optional(),
+    params: z.record(z.string(), z.unknown()).nullable().optional(),
+    mode: scheduleMode.optional(),
+  })
+  .strict()
+  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
+  .superRefine((data, ctx) => {
+    // Only catch the obviously-wrong combination within THIS patch — full
+    // consistency against the persisted row (e.g. kind already 'script' on
+    // the row, patch only sets `enabled`) is enforced in updateSchedule().
+    if (data.kind === 'script' && data.prompt !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['prompt'],
+        message: 'prompt must be omitted when kind is "script"',
+      });
+    }
+    if (data.kind === 'prompt' && data.script !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['script'],
+        message: 'script must be omitted when kind is "prompt"',
+      });
+    }
+  });
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -89,7 +148,11 @@ scheduleRoutes.get(
   }),
   async (c) => {
     const { projectId, enabled } = c.req.valid('query');
-    const rows = await listSchedules(projectId, c.get('userId'), enabled === 'true' ? true : enabled === 'false' ? false : undefined);
+    const rows = await listSchedules(
+      projectId,
+      c.get('userId'),
+      enabled === 'true' ? true : enabled === 'false' ? false : undefined,
+    );
     return c.json(rows);
   },
 );
@@ -230,6 +293,8 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
             mode: schedule.mode ?? null,
             appliedMessageVersions:
               (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
+            kind: schedule.kind,
+            script: schedule.script ?? null,
           },
           // FIXME(iss-257): system-initiated sessions attribute to the
           // project creator (audit `projects.created_by`) because
@@ -242,7 +307,10 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
       } catch (dispatchErr) {
         // Don't leave `lastStatus='running'` if dispatch throws after the
         // atomic claim — flip to 'failed' so the row reflects reality.
-        logger.error({ err: dispatchErr, scheduleId: schedule.id }, 'schedule.tick: dispatch threw');
+        logger.error(
+          { err: dispatchErr, scheduleId: schedule.id },
+          'schedule.tick: dispatch threw',
+        );
         await markScheduleFailed(schedule.id, 'schedule.tick');
         continue;
       }

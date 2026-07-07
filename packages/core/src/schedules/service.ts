@@ -1,7 +1,14 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { agentSessions, pipelineRuns, projects, schedules } from '../db/schema.js';
+import {
+  type ScheduleKind,
+  agentSessions,
+  pipelineRuns,
+  projects,
+  scheduleRuns,
+  schedules,
+} from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { nextRunFor, validateCron } from './cron.js';
@@ -55,18 +62,18 @@ export async function markScheduleFailed(scheduleId: string, ctx: string): Promi
   }
 }
 
-export async function listSchedules(
-  projectId: string,
-  actorUserId: string,
-  enabled?: boolean,
-) {
+export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
   const access = await loadProjectAccess(projectId, actorUserId);
   assertProjectRole(access, 'viewer', 'not a project member');
 
   const conditions = [eq(schedules.projectId, projectId)];
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
 
-  return db.select().from(schedules).where(and(...conditions)).orderBy(asc(schedules.createdAt));
+  return db
+    .select()
+    .from(schedules)
+    .where(and(...conditions))
+    .orderBy(asc(schedules.createdAt));
 }
 
 export async function getSchedule(id: string, actorUserId: string) {
@@ -81,7 +88,7 @@ export async function getSchedule(id: string, actorUserId: string) {
 
 export async function listScheduleRuns(id: string, actorUserId: string, limit?: number) {
   const [schedule] = await db
-    .select({ projectId: schedules.projectId })
+    .select({ projectId: schedules.projectId, kind: schedules.kind })
     .from(schedules)
     .where(eq(schedules.id, id))
     .limit(1);
@@ -89,6 +96,40 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
   assertProjectRole(access, 'viewer', 'not a project member');
+
+  if (schedule.kind === 'script') {
+    const scriptRows = await db
+      .select()
+      .from(scheduleRuns)
+      .where(eq(scheduleRuns.scheduleId, id))
+      .orderBy(desc(scheduleRuns.createdAt))
+      .limit(limit ?? 20);
+
+    const toIso = (d: Date | null): string | null => (d == null ? null : d.toISOString());
+    const runs = scriptRows.map((r) => {
+      const durationSeconds =
+        r.startedAt && r.finishedAt
+          ? Math.max(0, Math.round((r.finishedAt.getTime() - r.startedAt.getTime()) / 1000))
+          : null;
+      return {
+        sessionId: r.id,
+        pipelineRunId: null,
+        status: r.status,
+        runStatus: r.status,
+        trigger: r.trigger,
+        title: null,
+        failureReason: r.error,
+        startedAt: toIso(r.startedAt),
+        finishedAt: toIso(r.finishedAt),
+        durationSeconds,
+        stewardReport: null,
+        output: r.output,
+        error: r.error,
+      };
+    });
+
+    return { runs };
+  }
 
   const rows = await db
     .select({
@@ -143,7 +184,9 @@ export interface CreateScheduleInput {
   projectId: string;
   name: string;
   cron: string;
-  prompt: string;
+  prompt?: string | undefined;
+  kind?: ScheduleKind | undefined;
+  script?: string | undefined;
   runner?: 'desktop' | undefined;
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
@@ -176,19 +219,30 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
     }
   }
 
+  const kind: ScheduleKind = input.kind ?? 'prompt';
+  if (kind === 'script' && !input.script) {
+    throw badRequest('script is required when kind is "script"');
+  }
+  if (kind === 'prompt' && !input.prompt) {
+    throw badRequest('prompt is required when kind is "prompt"');
+  }
+
   const enabled = input.enabled ?? true;
   const nextRunAt = enabled ? nextRunFor(input.cron) : null;
   const mode = input.mode ?? (input.templateKey ? 'propose' : undefined);
 
   // ISS-244 — desktop is the only runner supported on the new interactive
   // dispatch path. Pin to 'desktop' so newly-created schedules are dispatchable.
+  // (Irrelevant for kind='script', which never touches the runner/device path.)
   const [inserted] = await db
     .insert(schedules)
     .values({
       projectId: input.projectId,
       name: input.name,
       cron: input.cron,
-      prompt: input.prompt,
+      prompt: kind === 'script' ? null : (input.prompt ?? null),
+      kind,
+      script: kind === 'script' ? (input.script ?? null) : null,
       runner: input.runner ?? 'desktop',
       enabled,
       targetProjectSlug: input.targetProjectSlug ?? null,
@@ -208,6 +262,8 @@ export interface UpdateSchedulePatch {
   name?: string | undefined;
   cron?: string | undefined;
   prompt?: string | undefined;
+  kind?: ScheduleKind | undefined;
+  script?: string | undefined;
   runner?: 'desktop' | undefined;
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
@@ -235,9 +291,25 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
     }
   }
 
+  // Cross-field consistency against the PERSISTED row, not just this patch —
+  // a patch that only sets `enabled` must not be rejected, but the row must
+  // never end up kind='script' with no script (or kind='prompt' with no
+  // prompt), which would make every future dispatch fail silently at runtime.
+  const effectiveKind: ScheduleKind = patch.kind ?? row.kind;
+  const effectiveScript = patch.script !== undefined ? patch.script : row.script;
+  const effectivePrompt = patch.prompt !== undefined ? patch.prompt : row.prompt;
+  if (effectiveKind === 'script' && !effectiveScript) {
+    throw badRequest('script is required when kind is "script"');
+  }
+  if (effectiveKind === 'prompt' && !effectivePrompt) {
+    throw badRequest('prompt is required when kind is "prompt"');
+  }
+
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.name !== undefined) updates.name = patch.name;
   if (patch.prompt !== undefined) updates.prompt = patch.prompt;
+  if (patch.kind !== undefined) updates.kind = patch.kind;
+  if (patch.script !== undefined) updates.script = patch.script;
   if (patch.runner !== undefined) updates.runner = patch.runner;
   if (patch.targetProjectSlug !== undefined) updates.targetProjectSlug = patch.targetProjectSlug;
   if (patch.metadata !== undefined) updates.metadata = patch.metadata;
@@ -264,11 +336,7 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
     updates.nextRunAt = enabled ? nextRunFor(cron) : null;
   }
 
-  const [updated] = await db
-    .update(schedules)
-    .set(updates)
-    .where(eq(schedules.id, id))
-    .returning();
+  const [updated] = await db.update(schedules).set(updates).where(eq(schedules.id, id)).returning();
   if (!updated) throw notFound('schedule not found');
 
   return updated;
@@ -320,6 +388,8 @@ export async function runScheduleNow(
         mode: schedule.mode ?? null,
         appliedMessageVersions:
           (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
+        kind: schedule.kind,
+        script: schedule.script ?? null,
       },
       actorUserId,
       ...(resolvedTarget ? { resolvedTarget } : {}),

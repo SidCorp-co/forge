@@ -83,7 +83,12 @@ async function token() {
 describe('POST /api/schedules', () => {
   it('400 invalid cron', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     const res = await buildApp().request('/api/schedules', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -99,7 +104,12 @@ describe('POST /api/schedules', () => {
 
   it('400 cron under 1 hour', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     const res = await buildApp().request('/api/schedules', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -117,7 +127,12 @@ describe('POST /api/schedules', () => {
 
   it('400 runner:antigravity rejected (ISS-244 — desktop-only on interactive path)', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     const res = await buildApp().request('/api/schedules', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -135,7 +150,12 @@ describe('POST /api/schedules', () => {
 
   it('403 non-owner', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     const res = await buildApp().request('/api/schedules', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -151,7 +171,12 @@ describe('POST /api/schedules', () => {
 
   it('201 inserts schedule with desktop runner default + nextRunAt', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     insertReturning.mockResolvedValueOnce([
       {
         id: SCHEDULE_ID,
@@ -179,9 +204,128 @@ describe('POST /api/schedules', () => {
     const body = (await res.json()) as { id: string; nextRunAt: string; runner: string };
     expect(body.id).toBe(SCHEDULE_ID);
     expect(body.nextRunAt).toBeDefined();
-    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as { nextRunAt?: Date | null; runner?: string };
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      nextRunAt?: Date | null;
+      runner?: string;
+    };
     expect(insertCall?.nextRunAt).toBeInstanceOf(Date);
     expect(insertCall?.runner).toBe('desktop');
+  });
+
+  // ISS-618 — kind='script' schedules.
+  it('400 kind=script with no script', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    const res = await buildApp().request('/api/schedules', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        name: 'daily report',
+        cron: '0 9 * * *',
+        kind: 'script',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it('400 kind=script with prompt set (must be omitted)', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    const res = await buildApp().request('/api/schedules', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        name: 'daily report',
+        cron: '0 9 * * *',
+        kind: 'script',
+        script: 'ctx.log("hi")',
+        prompt: 'should not be here',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it('400 kind=prompt (default) with no prompt', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    const res = await buildApp().request('/api/schedules', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        name: 'daily',
+        cron: '0 9 * * *',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it('201 kind=script inserts with script set, prompt/kind persisted, no runner/device requirement', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: SCHEDULE_ID,
+        projectId: PROJECT_ID,
+        name: 'daily report',
+        cron: '0 9 * * *',
+        kind: 'script',
+        script: 'ctx.notify({title:"hi"})',
+        prompt: null,
+        runner: 'desktop',
+        enabled: true,
+        nextRunAt: new Date('2026-04-26T09:00:00Z'),
+      },
+    ]);
+
+    const res = await buildApp().request('/api/schedules', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        name: 'daily report',
+        cron: '0 9 * * *',
+        kind: 'script',
+        script: 'ctx.notify({title:"hi"})',
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string; kind: string; script: string };
+    expect(body.id).toBe(SCHEDULE_ID);
+    expect(body.kind).toBe('script');
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      kind?: string;
+      script?: string | null;
+      prompt?: string | null;
+    };
+    expect(insertCall?.kind).toBe('script');
+    expect(insertCall?.script).toBe('ctx.notify({title:"hi"})');
+    expect(insertCall?.prompt).toBeNull();
   });
 });
 
@@ -191,11 +335,72 @@ describe('PUT /api/schedules/:id', () => {
     selectLimit.mockResolvedValueOnce([
       { id: SCHEDULE_ID, projectId: PROJECT_ID, cron: '0 9 * * *', enabled: true },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
       body: JSON.stringify({ runner: 'antigravity' }),
+    });
+    expect(res.status).toBe(400);
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+
+  // ISS-618 — the route-level superRefine only catches an in-patch conflict
+  // (kind + the opposing field both present); full consistency against the
+  // persisted row is service.ts's job (see service.test.ts-equivalent below).
+  it('400 kind=script with prompt set in the same patch', async () => {
+    authVerified();
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ kind: 'script', prompt: 'nope' }),
+    });
+    expect(res.status).toBe(400);
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+
+  it('400 kind=prompt with script set in the same patch', async () => {
+    authVerified();
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ kind: 'prompt', script: 'nope' }),
+    });
+    expect(res.status).toBe(400);
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+
+  // Cross-check against the PERSISTED row (not just this patch) — flipping a
+  // script-kind row (prompt=null) to kind='prompt' without also supplying a
+  // prompt would leave it in a state where every future dispatch fails.
+  it('400 flipping a persisted script row to kind=prompt without supplying a prompt', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SCHEDULE_ID,
+        projectId: PROJECT_ID,
+        cron: '0 9 * * *',
+        enabled: true,
+        kind: 'script',
+        script: 'ctx.log(1)',
+        prompt: null,
+      },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ kind: 'prompt' }),
     });
     expect(res.status).toBe(400);
     expect(updateReturning).not.toHaveBeenCalled();
@@ -205,7 +410,12 @@ describe('PUT /api/schedules/:id', () => {
 describe('GET /api/schedules', () => {
   it('lists schedules for project', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     selectOrderBy.mockResolvedValueOnce([
       { id: SCHEDULE_ID, projectId: PROJECT_ID, name: 'daily' },
     ]);
@@ -243,7 +453,12 @@ describe('POST /api/schedules/:id/run', () => {
         targetProjectSlug: null,
       },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     dispatchMock.mockResolvedValueOnce({
       ok: true,
       sessionId: SESSION_ID,
@@ -260,7 +475,9 @@ describe('POST /api/schedules/:id/run', () => {
     expect(body.sessionId).toBe(SESSION_ID);
     expect(body.jobId).toBeUndefined();
     // lastStatus + lastRunAt written from dispatch result (ISS-557: lastRunAt must not be null)
-    const statusWrites = updateSet.mock.calls.map((c) => c[0] as { lastStatus?: string; lastRunAt?: unknown });
+    const statusWrites = updateSet.mock.calls.map(
+      (c) => c[0] as { lastStatus?: string; lastRunAt?: unknown },
+    );
     expect(statusWrites.some((p) => p?.lastStatus === 'success')).toBe(true);
     expect(statusWrites.some((p) => p?.lastRunAt instanceof Date)).toBe(true);
   });
@@ -276,7 +493,12 @@ describe('POST /api/schedules/:id/run', () => {
         targetProjectSlug: null,
       },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     dispatchMock.mockResolvedValueOnce({
       ok: false,
       reason: 'no-device',
@@ -303,7 +525,12 @@ describe('POST /api/schedules/:id/run', () => {
         targetProjectSlug: 'marketing',
       },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: TARGET_PROJECT_ID,
@@ -340,7 +567,12 @@ describe('POST /api/schedules/:id/run', () => {
         targetProjectSlug: 'nope',
       },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     selectLimit.mockResolvedValueOnce([]);
 
     const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
@@ -362,7 +594,12 @@ describe('POST /api/schedules/:id/run', () => {
         targetProjectSlug: 'marketing',
       },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: TARGET_PROJECT_ID,
@@ -385,7 +622,12 @@ describe('POST /api/schedules — targetProjectSlug auth gate', () => {
 
   it('403 when actor is not a member of the target project', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: TARGET_PROJECT_ID,
@@ -411,7 +653,12 @@ describe('POST /api/schedules — targetProjectSlug auth gate', () => {
 
   it('400 when targetProjectSlug points to a non-existent project', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     selectLimit.mockResolvedValueOnce([]);
 
     const res = await buildApp().request('/api/schedules', {

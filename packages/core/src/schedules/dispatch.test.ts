@@ -97,27 +97,28 @@ vi.mock('../pipeline/runs.js', () => ({
 }));
 
 // ISS-548 — mock the prompt builder so dispatch tests remain registry-independent.
-const buildSkillImprovePromptMock = vi.fn<
-  (input: { templateKey: string; mode: string; appliedMessageVersions: unknown }) => string | null
->();
+const buildSkillImprovePromptMock =
+  vi.fn<
+    (input: { templateKey: string; mode: string; appliedMessageVersions: unknown }) => string | null
+  >();
 vi.mock('./messages/skill-improve-prompt.js', () => ({
   buildSkillImprovePrompt: (input: unknown) => buildSkillImprovePromptMock(input as never),
   extractReportFromMessages: vi.fn(() => null),
 }));
 
 // ISS-556 — mock the steward prompt builder.
-const buildSkillStewardPromptMock = vi.fn<
-  (input: { mode: string; projectId: string }) => string
->(() => 'BUILT_STEWARD_PROMPT');
+const buildSkillStewardPromptMock = vi.fn<(input: { mode: string; projectId: string }) => string>(
+  () => 'BUILT_STEWARD_PROMPT',
+);
 vi.mock('./messages/skill-steward-prompt.js', () => ({
   buildSkillStewardPrompt: (input: unknown) => buildSkillStewardPromptMock(input as never),
   extractStewardReportFromMessages: vi.fn(() => null),
 }));
 
 // ISS-568 — mock the drift-check prompt builder.
-const buildDriftCheckPromptMock = vi.fn<
-  (input: { mode: string; projectId: string }) => string
->(() => 'BUILT_DRIFT_CHECK_PROMPT');
+const buildDriftCheckPromptMock = vi.fn<(input: { mode: string; projectId: string }) => string>(
+  () => 'BUILT_DRIFT_CHECK_PROMPT',
+);
 vi.mock('./messages/drift-check-prompt.js', () => ({
   buildDriftCheckPrompt: (input: unknown) => buildDriftCheckPromptMock(input as never),
 }));
@@ -129,6 +130,28 @@ const buildProductMapRefreshPromptMock = vi.fn<
 vi.mock('./messages/product-map-refresh-prompt.js', () => ({
   buildProductMapRefreshPrompt: (input: unknown) =>
     buildProductMapRefreshPromptMock(input as never),
+}));
+
+// ISS-618 — mock the sandbox executor so script-kind dispatch tests are
+// deterministic and never spawn a real worker thread.
+const runScheduleScriptMock =
+  vi.fn<
+    (input: { script: string; params?: unknown; timeoutMs?: number }) => Promise<{
+      status: 'success' | 'failed';
+      output: string;
+      error?: string;
+      notifications: Array<{ title: string; body?: string; severity?: string }>;
+    }>
+  >();
+vi.mock('./script/executor.js', () => ({
+  runScheduleScript: (input: unknown) => runScheduleScriptMock(input as never),
+}));
+
+// ISS-618 — mock notification delivery; script-kind dispatch tests assert on
+// the call args, not on the real notifications-table insert.
+const emitNotificationMock = vi.fn(async (_input: unknown) => ({ id: 'notif-1' }));
+vi.mock('../notifications/emit.js', () => ({
+  emitNotification: (input: unknown) => emitNotificationMock(input as never),
 }));
 
 const { dispatchScheduleRun, redispatchScheduleSessionOnFailover } = await import('./dispatch.js');
@@ -189,6 +212,9 @@ beforeEach(() => {
   syncTurnsMock.mockReset();
   syncTurnsMock.mockResolvedValue({ appended: [], truncatedFromTurnIndex: null });
   buildSkillImprovePromptMock.mockReset();
+  runScheduleScriptMock.mockReset();
+  emitNotificationMock.mockReset();
+  emitNotificationMock.mockResolvedValue({ id: 'notif-1' });
   hooksModule.hooks.reset();
 });
 
@@ -553,11 +579,15 @@ describe('redispatchScheduleSessionOnFailover', () => {
       deviceId: NEW_DEVICE,
     });
     // The dead device is excluded from the re-pick.
-    const exclude = (findDeviceMock.mock.calls[0] as unknown as [string, { excludeDeviceIds: string[] }])[1];
+    const exclude = (
+      findDeviceMock.mock.calls[0] as unknown as [string, { excludeDeviceIds: string[] }]
+    )[1];
     expect(exclude?.excludeDeviceIds).toContain(DEAD_DEVICE);
     // Re-dispatch carries the bumped failover chain in the new session metadata.
     const insertCall = insertReturning.mock.calls.length
-      ? (insertValues.mock.calls[0]?.[0] as { metadata?: { failover?: { attempt: number; triedDeviceIds: string[] } } })
+      ? (insertValues.mock.calls[0]?.[0] as {
+          metadata?: { failover?: { attempt: number; triedDeviceIds: string[] } };
+        })
       : undefined;
     expect(insertCall?.metadata?.failover?.attempt).toBe(1);
     expect(insertCall?.metadata?.failover?.triedDeviceIds).toContain(DEAD_DEVICE);
@@ -569,9 +599,7 @@ describe('redispatchScheduleSessionOnFailover', () => {
   });
 
   it('non-schedule session → not-schedule, no re-dispatch', async () => {
-    selectLimit.mockResolvedValueOnce([
-      failedScheduleSession({ metadata: { source: 'chat' } }),
-    ]);
+    selectLimit.mockResolvedValueOnce([failedScheduleSession({ metadata: { source: 'chat' } })]);
     const result = await redispatchScheduleSessionOnFailover('failed-sess');
     expect(result).toEqual({ ok: false, status: 'not-schedule' });
     expect(insertValues).not.toHaveBeenCalled();
@@ -1054,5 +1082,174 @@ describe('dispatchScheduleRun — product-map-refresh (ISS-587)', () => {
     expect(buildProductMapRefreshPromptMock).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'auto', projectId: SOURCE_PROJECT_ID }),
     );
+  });
+});
+
+describe('dispatchScheduleRun — script kind (ISS-618)', () => {
+  const RUN_ID = 'run-1';
+
+  it('runs the sandboxed script, records a schedule_runs row, delivers notifications — no agent_sessions row at all', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: RUN_ID }]);
+    runScheduleScriptMock.mockResolvedValueOnce({
+      status: 'success',
+      output: 'did the thing',
+      notifications: [{ title: 'Daily report', body: 'all good' }],
+    });
+
+    let emitted: unknown = null;
+    hooksModule.hooks.on('scheduleRun', (p) => {
+      emitted = p;
+    });
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: null,
+        runner: 'antigravity', // deliberately not 'desktop' — script kind must not care
+        targetProjectSlug: null,
+        kind: 'script',
+        script: 'ctx.notify({title:"Daily report", body:"all good"})',
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      sessionId: RUN_ID,
+      status: 'success',
+      resolvedProjectId: SOURCE_PROJECT_ID,
+    });
+
+    // No device resolution, no agent-session insert, no WS publish — the
+    // script path never touches any of the prompt-path's collaborators.
+    expect(findDeviceMock).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+
+    // The ONE insert is the schedule_runs row (never agent_sessions).
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      scheduleId?: string;
+      projectId?: string;
+      trigger?: string;
+      status?: string;
+    };
+    expect(insertCall?.scheduleId).toBe(SCHEDULE_ID);
+    expect(insertCall?.projectId).toBe(SOURCE_PROJECT_ID);
+    expect(insertCall?.trigger).toBe('manual');
+    expect(insertCall?.status).toBe('running');
+
+    // Final status update on the same run row.
+    const updateCall = updateSet.mock.calls[0]?.[0] as unknown as {
+      status?: string;
+      output?: string;
+      error?: string | null;
+    };
+    expect(updateCall?.status).toBe('success');
+    expect(updateCall?.output).toBe('did the thing');
+    expect(updateCall?.error).toBeNull();
+
+    expect(emitNotificationMock).toHaveBeenCalledTimes(1);
+    expect(emitNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: USER_ID,
+        projectId: SOURCE_PROJECT_ID,
+        type: 'schedule_report',
+        title: 'Daily report',
+        body: 'all good',
+      }),
+    );
+
+    expect(emitted).toMatchObject({
+      scheduleId: SCHEDULE_ID,
+      projectId: SOURCE_PROJECT_ID,
+      sessionId: RUN_ID,
+      actorUserId: USER_ID,
+    });
+  });
+
+  it('tick-driven run is trigger="scheduled"', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: RUN_ID }]);
+    runScheduleScriptMock.mockResolvedValueOnce({
+      status: 'success',
+      output: '',
+      notifications: [],
+    });
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: null,
+        runner: 'desktop',
+        targetProjectSlug: null,
+        kind: 'script',
+        script: 'ctx.log("hi")',
+      },
+      actorUserId: USER_ID,
+      tick: true,
+    });
+
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as { trigger?: string };
+    expect(insertCall?.trigger).toBe('scheduled');
+  });
+
+  it('script throws → schedule_runs row recorded failed, result ok:false session-failed', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: RUN_ID }]);
+    runScheduleScriptMock.mockResolvedValueOnce({
+      status: 'failed',
+      output: '',
+      error: 'Error: boom',
+      notifications: [],
+    });
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: null,
+        runner: 'desktop',
+        targetProjectSlug: null,
+        kind: 'script',
+        script: 'throw new Error("boom")',
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'session-failed',
+      status: 'failed',
+      sessionId: RUN_ID,
+    });
+
+    const updateCall = updateSet.mock.calls[0]?.[0] as unknown as {
+      status?: string;
+      error?: string | null;
+    };
+    expect(updateCall?.status).toBe('failed');
+    expect(updateCall?.error).toBe('Error: boom');
+
+    // A failed script run must not be treated as a notification-worthy report.
+    expect(emitNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it('no script on a kind="script" row → failed without ever calling the executor or inserting a run', async () => {
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: null,
+        runner: 'desktop',
+        targetProjectSlug: null,
+        kind: 'script',
+        script: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'session-failed', status: 'failed' });
+    expect(runScheduleScriptMock).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
   });
 });

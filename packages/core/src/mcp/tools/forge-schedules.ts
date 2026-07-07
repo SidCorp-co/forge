@@ -25,6 +25,8 @@ import {
 // MCP persona so member is an acceptable tightening for the MCP surface.
 const apiScheduleRunner = z.enum(['desktop']);
 const scheduleMode = z.enum(['propose', 'auto']);
+// ISS-618 — 'script' runs a standalone sandboxed Node.js script, no agent/LLM.
+const apiScheduleKind = z.enum(['prompt', 'script']);
 
 const inputSchema = z
   .object({
@@ -39,6 +41,8 @@ const inputSchema = z
     name: z.string().trim().min(1).max(200).optional(),
     cron: z.string().trim().min(1).max(200).optional(),
     prompt: z.string().trim().min(1).max(20_000).optional(),
+    kind: apiScheduleKind.optional(),
+    script: z.string().trim().min(1).max(50_000).optional(),
     runner: apiScheduleRunner.optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -65,8 +69,10 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'Manage improvement schedules for a project. action=list/get/runs/create/update/delete/run/catalog. ' +
     'Requires device or PAT principal. Gate: list/get/runs/catalog → member; create/update/delete → admin; run → writer. ' +
-    'list returns a body-free projection (no prompt field) to stay under the MCP output cap. ' +
+    'list returns a body-free projection (no prompt/script field) to stay under the MCP output cap. ' +
     'catalog returns the full improvement-message registry (static list, no prompt 20k). ' +
+    "kind='script' runs a standalone sandboxed Node.js script (ctx.log/ctx.http.fetch/ctx.notify/ctx.params) " +
+    'on the cron cadence with no agent session and no Claude runner — pass `script` instead of `prompt`/`templateKey`. ' +
     'Mirrors REST /api/schedules but accepts device/PAT principals without a user JWT.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
@@ -95,6 +101,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
             lastStatus: schedules.lastStatus,
             templateKey: schedules.templateKey,
             mode: schedules.mode,
+            kind: schedules.kind,
             createdAt: schedules.createdAt,
             updatedAt: schedules.updatedAt,
           })
@@ -105,7 +112,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'get': {
-        if (!input.scheduleId) throw new Error('BAD_REQUEST: scheduleId is required for action=get');
+        if (!input.scheduleId)
+          throw new Error('BAD_REQUEST: scheduleId is required for action=get');
         const projectId = await fetchScheduleProjectId(input.scheduleId);
         await assertPrincipalIsMember(principal, projectId);
         const row = await getSchedule(input.scheduleId, userId);
@@ -113,17 +121,25 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'runs': {
-        if (!input.scheduleId) throw new Error('BAD_REQUEST: scheduleId is required for action=runs');
+        if (!input.scheduleId)
+          throw new Error('BAD_REQUEST: scheduleId is required for action=runs');
         const projectId = await fetchScheduleProjectId(input.scheduleId);
         await assertPrincipalIsMember(principal, projectId);
         return listScheduleRuns(input.scheduleId, userId, input.limit);
       }
 
       case 'create': {
-        if (!input.projectId) throw new Error('BAD_REQUEST: projectId is required for action=create');
+        if (!input.projectId)
+          throw new Error('BAD_REQUEST: projectId is required for action=create');
         if (!input.name) throw new Error('BAD_REQUEST: name is required for action=create');
         if (!input.cron) throw new Error('BAD_REQUEST: cron is required for action=create');
-        if (!input.prompt) throw new Error('BAD_REQUEST: prompt is required for action=create');
+        const kind = input.kind ?? 'prompt';
+        if (kind === 'script' && !input.script) {
+          throw new Error('BAD_REQUEST: script is required for action=create when kind="script"');
+        }
+        if (kind === 'prompt' && !input.prompt) {
+          throw new Error('BAD_REQUEST: prompt is required for action=create when kind="prompt"');
+        }
         await assertPrincipalIsAdmin(principal, input.projectId);
         const inserted = await createSchedule(
           {
@@ -131,6 +147,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
             name: input.name,
             cron: input.cron,
             prompt: input.prompt,
+            kind: input.kind,
+            script: input.script,
             runner: input.runner,
             enabled: input.enabled,
             targetProjectSlug: input.targetProjectSlug,
@@ -145,7 +163,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'update': {
-        if (!input.scheduleId) throw new Error('BAD_REQUEST: scheduleId is required for action=update');
+        if (!input.scheduleId)
+          throw new Error('BAD_REQUEST: scheduleId is required for action=update');
         const projectId = await fetchScheduleProjectId(input.scheduleId);
         await assertPrincipalIsAdmin(principal, projectId);
         const updated = await updateSchedule(
@@ -154,6 +173,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
             name: input.name,
             cron: input.cron,
             prompt: input.prompt,
+            kind: input.kind,
+            script: input.script,
             runner: input.runner,
             enabled: input.enabled,
             targetProjectSlug: input.targetProjectSlug,
@@ -168,7 +189,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'delete': {
-        if (!input.scheduleId) throw new Error('BAD_REQUEST: scheduleId is required for action=delete');
+        if (!input.scheduleId)
+          throw new Error('BAD_REQUEST: scheduleId is required for action=delete');
         const projectId = await fetchScheduleProjectId(input.scheduleId);
         await assertPrincipalIsAdmin(principal, projectId);
         await deleteSchedule(input.scheduleId, userId);
@@ -176,14 +198,16 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'run': {
-        if (!input.scheduleId) throw new Error('BAD_REQUEST: scheduleId is required for action=run');
+        if (!input.scheduleId)
+          throw new Error('BAD_REQUEST: scheduleId is required for action=run');
         const projectId = await fetchScheduleProjectId(input.scheduleId);
         await assertPrincipalIsWriter(principal, projectId);
         return runScheduleNow(input.scheduleId, userId);
       }
 
       case 'catalog': {
-        if (!input.projectId) throw new Error('BAD_REQUEST: projectId is required for action=catalog');
+        if (!input.projectId)
+          throw new Error('BAD_REQUEST: projectId is required for action=catalog');
         await assertPrincipalIsMember(principal, input.projectId);
         return { messages: listImprovementMessages() };
       }

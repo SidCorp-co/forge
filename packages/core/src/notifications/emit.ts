@@ -15,6 +15,7 @@ const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   pipeline_wedge: 'error',
   invitation_received: 'warning',
   intake_pending: 'info',
+  schedule_report: 'info',
 };
 
 function defaultSeverityForType(type: NotificationType): string {

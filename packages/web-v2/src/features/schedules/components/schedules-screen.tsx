@@ -33,10 +33,21 @@ import { useRunSchedule, useScheduleRuns, useSchedules, useSetScheduleEnabled } 
 import {
   lastStatusToChip,
   sessionStatusToChip,
+  type ScheduleKind,
+  type ScheduleLastStatus,
   type ScheduleRow,
   type ScheduleRun,
   type StewardRunReportAction,
 } from "../types";
+
+/** Distinguishes a script-kind row from a prompt-kind one — @/design tokens only. */
+function ScheduleKindBadge({ kind }: { kind: ScheduleKind }) {
+  return (
+    <Badge tone={kind === "script" ? "cobalt" : "neutral"}>
+      {kind === "script" ? "Script" : "Prompt"}
+    </Badge>
+  );
+}
 
 interface SchedulesScreenProps {
   scope: { projectId: string; canManage: boolean };
@@ -111,20 +122,36 @@ const ACTION_TONE: Record<StewardRunReportAction["kind"], "green" | "cobalt" | "
     skipped: "neutral",
   };
 
-/** One past run inside the expanded history panel. Links to its session. */
-function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) {
+/** One past run inside the expanded history panel. Prompt-kind links to its
+ *  session; script-kind has no session — it shows captured output/error inline. */
+function ScheduleRunItem({
+  run,
+  slug,
+  kind,
+}: {
+  run: ScheduleRun;
+  slug: string | undefined;
+  kind: ScheduleKind;
+}) {
+  const chip =
+    kind === "script"
+      ? lastStatusToChip(run.status as ScheduleLastStatus)
+      : sessionStatusToChip(run.status);
+
   const header = (
     <div className="flex flex-wrap items-center gap-2 py-1.5">
       <Badge tone={run.trigger === "manual" ? "accent" : "neutral"}>{run.trigger}</Badge>
-      <StatusChip status={sessionStatusToChip(run.status)} size="sm" domain="session" />
+      {chip && <StatusChip status={chip} size="sm" domain="session" />}
       <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
-      {run.failureReason && (
+      {kind === "prompt" && run.failureReason && (
         <Tooltip label={run.failureReason}>
           <span className="fg-caption text-danger underline decoration-dotted">why?</span>
         </Tooltip>
       )}
-      {slug && <span className="fg-caption text-accent">View session →</span>}
+      {kind === "prompt" && slug && (
+        <span className="fg-caption text-accent">View session →</span>
+      )}
     </div>
   );
 
@@ -148,7 +175,18 @@ function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undef
     </div>
   );
 
-  if (slug) {
+  const scriptOutputSection = kind === "script" && (
+    <div className="pb-1.5 pl-1 space-y-1">
+      {run.output && (
+        <pre className="fg-caption max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-subtle p-2 text-muted">
+          {run.output}
+        </pre>
+      )}
+      {run.error && <p className="fg-caption break-words text-danger">{run.error}</p>}
+    </div>
+  );
+
+  if (kind === "prompt" && slug) {
     return (
       <div className="rounded-md px-1 hover:bg-hover">
         <Link
@@ -165,6 +203,7 @@ function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undef
     <div>
       {header}
       {stewardSection}
+      {scriptOutputSection}
     </div>
   );
 }
@@ -176,14 +215,23 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {row.runner && <Badge tone="neutral">{row.runner}</Badge>}
+        <ScheduleKindBadge kind={row.kind} />
+        {row.runner && row.kind === "prompt" && <Badge tone="neutral">{row.runner}</Badge>}
         {row.targetProjectSlug && (
           <span className="fg-caption font-mono text-subtle">→ {row.targetProjectSlug}</span>
         )}
       </div>
-      <p className="fg-caption whitespace-pre-wrap break-words text-muted line-clamp-3">
-        {row.prompt}
-      </p>
+      {row.kind === "prompt" ? (
+        <p className="fg-caption whitespace-pre-wrap break-words text-muted line-clamp-3">
+          {row.prompt}
+        </p>
+      ) : (
+        row.script && (
+          <pre className="fg-caption max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-subtle p-2 text-muted">
+            {row.script}
+          </pre>
+        )
+      )}
 
       <div>
         <p className="fg-label mb-1 text-subtle">Recent runs</p>
@@ -203,7 +251,7 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
         {runs.length > 0 && (
           <div className="divide-y divide-line-subtle">
             {runs.map((r) => (
-              <ScheduleRunItem key={r.sessionId} run={r} slug={slug} />
+              <ScheduleRunItem key={r.sessionId} run={r} slug={slug} kind={row.kind} />
             ))}
           </div>
         )}
@@ -340,7 +388,10 @@ function ScheduleTableRow({ row, actions }: { row: ScheduleRow; actions: RowActi
           />
         </TD>
         <TD className="max-w-[280px]">
-          <p className="fg-body-sm truncate text-fg">{row.name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="fg-body-sm truncate text-fg">{row.name}</p>
+            <ScheduleKindBadge kind={row.kind} />
+          </div>
           {row.targetProjectSlug && (
             <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
           )}
@@ -404,7 +455,10 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
       <CardContent>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="fg-body-sm truncate text-fg">{row.name}</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="fg-body-sm truncate text-fg">{row.name}</p>
+              <ScheduleKindBadge kind={row.kind} />
+            </div>
             {row.targetProjectSlug && (
               <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
             )}

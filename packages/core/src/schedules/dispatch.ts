@@ -5,19 +5,25 @@ import {
   resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
-import { type ScheduleMode, agentSessions, projects, schedules } from '../db/schema.js';
+import {
+  type ScheduleKind,
+  type ScheduleMode,
+  agentSessions,
+  projects,
+  scheduleRuns,
+  schedules,
+} from '../db/schema.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { emitNotification } from '../notifications/emit.js';
 import { hooks } from '../pipeline/hooks.js';
-import {
-  type AppliedVersions,
-  buildSkillImprovePrompt,
-} from './messages/skill-improve-prompt.js';
-import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
 import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
 import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-prompt.js';
 import { getImprovementMessage } from './messages/registry.js';
+import { type AppliedVersions, buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
+import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
+import { runScheduleScript } from './script/executor.js';
 
 // Keys for standing templates that build their own prompt instead of the steward.
 // Add new standing-template keys here when they have a dedicated builder.
@@ -34,7 +40,8 @@ export interface ScheduleRowForDispatch {
   id: string;
   name?: string | null;
   projectId: string;
-  prompt: string;
+  // Nullable: a kind='script' schedule carries no prompt at all (ISS-618).
+  prompt: string | null;
   runner: 'desktop' | 'antigravity';
   targetProjectSlug: string | null;
   /** When set, the skill-improve engine builds the prompt instead of using `prompt`. */
@@ -42,6 +49,9 @@ export interface ScheduleRowForDispatch {
   params?: Record<string, unknown> | null;
   mode?: ScheduleMode | null;
   appliedMessageVersions?: AppliedVersions | null;
+  // ISS-618 — 'script' schedules run a sandboxed script, no agent session at all.
+  kind?: ScheduleKind | null;
+  script?: string | null;
 }
 
 export interface DispatchScheduleInput {
@@ -101,11 +111,26 @@ export async function dispatchScheduleRun(
 ): Promise<DispatchScheduleResult> {
   const { schedule } = input;
 
+  // ISS-618 — script-kind schedules run a sandboxed script directly in core;
+  // they need no device, no agent session, and no Claude runner at all, so
+  // this branches BEFORE the desktop-runner guard below (which doesn't apply).
+  if (schedule.kind === 'script') {
+    return dispatchScheduleScriptRun(input);
+  }
+
   // Antigravity adapter is HTTP-push and lives behind the (now-bypassed)
   // jobs/dispatcher path. Until antigravity gains an interactive WS entry
   // point, only desktop schedules can ride this code path.
   if (schedule.runner !== 'desktop') {
     return { ok: false, reason: 'unsupported-runner', status: 'skipped' };
+  }
+
+  if (schedule.prompt == null && !schedule.templateKey) {
+    logger.error(
+      { scheduleId: schedule.id },
+      'schedule.dispatch: prompt-kind schedule has neither prompt nor templateKey',
+    );
+    return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
   // ISS-548/ISS-556 — when a schedule has a templateKey, build the prompt
@@ -114,7 +139,9 @@ export async function dispatchScheduleRun(
   //   cadence run fires unconditionally; the steward always has fresh signals.
   // - One-shot templates still return null when already applied at current version
   //   → return skipped early to avoid a wasted round-trip.
-  let effectivePrompt = schedule.prompt;
+  // Guarded above: reaching here means either templateKey is set (about to
+  // overwrite effectivePrompt unconditionally) or schedule.prompt is non-null.
+  let effectivePrompt: string = schedule.prompt ?? '';
   let isStandingTemplate = false;
   if (schedule.templateKey) {
     const registryEntry = getImprovementMessage(schedule.templateKey);
@@ -335,6 +362,124 @@ export async function dispatchScheduleRun(
   return { ok: true, sessionId: inserted.id, status: 'success', resolvedProjectId };
 }
 
+/**
+ * ISS-618 — script-kind schedule dispatch. Runs a sandboxed Node.js script
+ * (see ./script/executor.ts) on the cron cadence with NO agent_sessions row
+ * and NO Claude runner involved. History goes to `schedule_runs` instead of
+ * `agent_sessions`; `sessionId` in the returned result is actually the
+ * `schedule_runs.id`, kept under the same field name so callers (routes.ts /
+ * service.ts) that only look at `result.status` / `result.sessionId` need no
+ * branching of their own.
+ */
+async function dispatchScheduleScriptRun(
+  input: DispatchScheduleInput,
+): Promise<DispatchScheduleResult> {
+  const { schedule } = input;
+
+  if (!schedule.script) {
+    logger.error(
+      { scheduleId: schedule.id },
+      'schedule.dispatch: script-kind schedule has no script',
+    );
+    return { ok: false, reason: 'session-failed', status: 'failed' };
+  }
+
+  let resolvedProjectId = schedule.projectId;
+  if (schedule.targetProjectSlug) {
+    const target =
+      input.resolvedTarget ??
+      (
+        await db
+          .select({ id: projects.id, createdBy: projects.createdBy })
+          .from(projects)
+          .where(eq(projects.slug, schedule.targetProjectSlug))
+          .limit(1)
+      )[0];
+    if (!target) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+    resolvedProjectId = target.id;
+  }
+
+  const userId =
+    input.actorUserId ?? (await loadCreatedBy(resolvedProjectId, input.resolvedTarget?.createdBy));
+  if (!userId) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+
+  const startedAt = new Date();
+  const [run] = await db
+    .insert(scheduleRuns)
+    .values({
+      scheduleId: schedule.id,
+      projectId: resolvedProjectId,
+      trigger: input.tick ? 'scheduled' : 'manual',
+      status: 'running',
+      startedAt,
+    })
+    .returning({ id: scheduleRuns.id });
+  if (!run) {
+    logger.error({ scheduleId: schedule.id }, 'schedule.dispatch: schedule_runs insert failed');
+    return { ok: false, reason: 'session-failed', status: 'failed' };
+  }
+
+  const outcome = await runScheduleScript({
+    script: schedule.script,
+    params: schedule.params ?? null,
+  });
+
+  try {
+    await db
+      .update(scheduleRuns)
+      .set({
+        status: outcome.status,
+        output: outcome.output,
+        error: outcome.status === 'failed' ? outcome.error : null,
+        finishedAt: new Date(),
+      })
+      .where(eq(scheduleRuns.id, run.id));
+  } catch (err) {
+    logger.error(
+      { err, scheduleId: schedule.id, runId: run.id },
+      'schedule.dispatch: schedule_runs update failed',
+    );
+  }
+
+  // Deliver ctx.notify() payloads best-effort — a failed delivery must not
+  // flip an otherwise-successful script run to failed.
+  for (const n of outcome.notifications) {
+    try {
+      await emitNotification({
+        userId,
+        projectId: resolvedProjectId,
+        type: 'schedule_report',
+        title: n.title,
+        body: n.body ?? null,
+      });
+    } catch (err) {
+      logger.error(
+        { err, scheduleId: schedule.id, runId: run.id },
+        'schedule.dispatch: schedule_report notification delivery failed',
+      );
+    }
+  }
+
+  try {
+    await hooks.emit('scheduleRun', {
+      scheduleId: schedule.id,
+      projectId: resolvedProjectId,
+      sessionId: run.id,
+      actorUserId: userId,
+    });
+  } catch (err) {
+    logger.error(
+      { err, scheduleId: schedule.id, runId: run.id },
+      'schedule.dispatch: scheduleRun hook threw',
+    );
+  }
+
+  if (outcome.status === 'failed') {
+    return { ok: false, reason: 'session-failed', status: 'failed', sessionId: run.id };
+  }
+  return { ok: true, sessionId: run.id, status: 'success', resolvedProjectId };
+}
+
 // ── ISS-584 (B): schedule cross-runner failover ────────────────────────────
 // Async, sweeper-driven (mirrors the pipeline job reaper→retry model). When the
 // loop-monitor fails a schedule session with `no_client_ack` (the runner it was
@@ -405,7 +550,8 @@ export async function redispatchScheduleSessionOnFailover(
   const messages = Array.isArray(failed.messages) ? failed.messages : [];
   const firstUser = messages.find(
     (m): m is { role: string; content: string } =>
-      !!m && (m as { role?: string }).role === 'user' &&
+      !!m &&
+      (m as { role?: string }).role === 'user' &&
       typeof (m as { content?: unknown }).content === 'string',
   );
   if (!firstUser) return { ok: false, status: 'no-prompt' };

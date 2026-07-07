@@ -1694,6 +1694,11 @@ export type ScheduleStatus = (typeof scheduleStatuses)[number];
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
+// ISS-618 — a schedule can fire a standalone sandboxed script instead of
+// dispatching a Claude agent session. 'prompt' is the pre-existing behavior.
+export const scheduleKinds = ['prompt', 'script'] as const;
+export type ScheduleKind = (typeof scheduleKinds)[number];
+
 export const schedules = pgTable(
   'schedules',
   {
@@ -1703,7 +1708,9 @@ export const schedules = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     cron: text('cron').notNull(),
-    prompt: text('prompt').notNull(),
+    // ISS-618 — nullable: a script-kind schedule has no prompt at all.
+    // App-layer validation enforces prompt-required for kind='prompt'.
+    prompt: text('prompt'),
     runner: text('runner', { enum: scheduleRunners }).notNull().default('antigravity'),
     enabled: boolean('enabled').notNull().default(true),
     targetProjectSlug: text('target_project_slug'),
@@ -1716,6 +1723,8 @@ export const schedules = pgTable(
     params: jsonb('params'),
     mode: text('mode', { enum: scheduleModes }),
     appliedMessageVersions: jsonb('applied_message_versions'),
+    kind: text('kind', { enum: scheduleKinds }).notNull().default('prompt'),
+    script: text('script'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1730,6 +1739,36 @@ export const schedules = pgTable(
 
 export const schedulesRelations = relations(schedules, ({ one }) => ({
   project: one(projects, { fields: [schedules.projectId], references: [projects.id] }),
+}));
+
+// ISS-618 — run history for script-kind schedules (no agent_sessions row is
+// created for these; prompt-kind run history still derives from agentSessions).
+export const scheduleRuns = pgTable(
+  'schedule_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    scheduleId: uuid('schedule_id')
+      .notNull()
+      .references(() => schedules.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    trigger: text('trigger', { enum: ['manual', 'scheduled'] as const }).notNull(),
+    status: text('status', { enum: scheduleStatuses }).notNull(),
+    output: text('output'),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    scheduleCreatedIdx: index('schedule_runs_schedule_created_idx').on(t.scheduleId, t.createdAt),
+  }),
+);
+
+export const scheduleRunsRelations = relations(scheduleRuns, ({ one }) => ({
+  schedule: one(schedules, { fields: [scheduleRuns.scheduleId], references: [schedules.id] }),
+  project: one(projects, { fields: [scheduleRuns.projectId], references: [projects.id] }),
 }));
 
 export const knowledgeEdges = pgTable(
@@ -1848,6 +1887,9 @@ export const notificationTypes = [
   'invitation_received',
   // ISS-606 — intake gate parked a new issue at draft; owner must approve.
   'intake_pending',
+  // ISS-618 — a script-kind schedule's ctx.notify() payload delivered to the
+  // owner (report/API-check results with no LLM involved).
+  'schedule_report',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 
