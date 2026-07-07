@@ -211,6 +211,13 @@ export const refreshTokens = pgTable(
 export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
 export type OrgMemberRole = (typeof orgMemberRoles)[number];
 
+// Soft "working lens(es)" an org owner/admin assigns to a member — orthogonal to
+// the permission `role`. Multi-valued; shapes ONLY how the interactive agent
+// answers (altitude/voice), never permissions. Empty = default (product /
+// non-technical voice). See prompt/system.ts buildChatPreamble.
+export const memberLenses = ['technical', 'product'] as const;
+export type MemberLens = (typeof memberLenses)[number];
+
 export const organizations = pgTable(
   'organizations',
   {
@@ -242,6 +249,9 @@ export const organizationMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role', { enum: orgMemberRoles }).notNull().default('member'),
+    // Soft working lens(es) — see `memberLenses`. Owner/admin-assigned; values
+    // validated at the app layer (route zod), mirroring `apiKeys.scopes`.
+    lenses: text('lenses').array().notNull().default(sql`ARRAY[]::text[]`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

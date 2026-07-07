@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orgsApi } from "./api";
-import type { AddOrgMemberInput, CreateOrgInput, OrgRole } from "./types";
+import type { AddOrgMemberInput, CreateOrgInput, MemberLens, OrgRole } from "./types";
 
 const keys = {
   list: ["orgs"] as const,
@@ -90,6 +90,15 @@ export function useUpdateOrgMemberRole(orgId: string) {
   return useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: OrgRole }) =>
       orgsApi.updateMemberRole(orgId, userId, role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.members(orgId) }),
+  });
+}
+
+export function useUpdateOrgMemberLenses(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, lenses }: { userId: string; lenses: MemberLens[] }) =>
+      orgsApi.updateMemberLenses(orgId, userId, lenses),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.members(orgId) }),
   });
 }

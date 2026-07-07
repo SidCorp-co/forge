@@ -31,8 +31,11 @@ vi.mock('../db/client.js', () => {
 });
 
 const findAvailableDeviceForProject = vi.fn();
+const findChatCapableDeviceForProject = vi.fn();
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
+  findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
+    findChatCapableDeviceForProject(projectId, deviceId),
   resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
     (override ?? repo ?? '').trim() || null,
   resolveRunnerRepoPath: () => Promise.resolve(null),
@@ -100,6 +103,7 @@ beforeEach(() => {
   selectLimit.mockReset();
   updateReturning.mockReset();
   findAvailableDeviceForProject.mockReset();
+  findChatCapableDeviceForProject.mockReset();
 });
 
 describe('resolveChatDevice', () => {
@@ -142,6 +146,51 @@ describe('resolveChatDevice', () => {
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
     expect(r).toEqual({ deviceId: null, isLocal: false, migrated: false });
+  });
+
+  // --- explicit runner pick (RunnerPicker override) ---
+
+  it('override on a pinless session → honours the pick, cold start (not a migration)', async () => {
+    findChatCapableDeviceForProject.mockResolvedValueOnce('dev-2');
+    const r = await resolveChatDevice(baseSession(), undefined, 'dev-2');
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: false });
+    // The pick short-circuits both the pin check and the auto-pick.
+    expect(selectLimit).not.toHaveBeenCalled();
+    expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
+  });
+
+  it('override to a DIFFERENT device than the pin → migration', async () => {
+    findChatCapableDeviceForProject.mockResolvedValueOnce('dev-2');
+    const r = await resolveChatDevice(
+      baseSession({ metadata: { deviceId: DEVICE } }),
+      undefined,
+      'dev-2',
+    );
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true });
+  });
+
+  it('override equal to the current pin → honoured, not a migration', async () => {
+    findChatCapableDeviceForProject.mockResolvedValueOnce(DEVICE);
+    const r = await resolveChatDevice(
+      baseSession({ metadata: { deviceId: DEVICE } }),
+      undefined,
+      DEVICE,
+    );
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+  });
+
+  it('override that is offline / not chat-capable → null (caller 409s "picked"), no silent fallback', async () => {
+    findChatCapableDeviceForProject.mockResolvedValueOnce(null);
+    const r = await resolveChatDevice(baseSession(), undefined, 'dev-offline');
+    expect(r).toEqual({ deviceId: null, isLocal: false, migrated: false });
+    // Must NOT fall back to the auto-pick — the point of picking is honoured or refused.
+    expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
+  });
+
+  it('desktop origin ignores an override (stays local)', async () => {
+    const r = await resolveChatDevice(baseSession(), 'desktop', 'dev-2');
+    expect(r).toEqual({ deviceId: null, isLocal: true, migrated: false });
+    expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
   });
 });
 

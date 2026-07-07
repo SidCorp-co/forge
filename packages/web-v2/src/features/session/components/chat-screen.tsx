@@ -15,11 +15,15 @@ import {
   Button,
   EmptyState,
   ErrorState,
+  IconButton,
   ProjectLoader,
   StatusChip,
   useElapsed,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { useOrgMembers } from "@/features/orgs/hooks";
+import { MEMBER_LENS_OPTIONS } from "@/features/orgs/types";
+import { useAuth } from "@/providers/auth-provider";
 import {
   classifySessionOutcome,
   deriveSessionDisplayStatus,
@@ -43,16 +47,35 @@ import { parseTurns } from "../types";
 import { Composer, ReadOnlyComposerNote } from "./composer";
 import { Conversation } from "./conversation";
 import { ConversationList, EditableTitle } from "./conversation-list";
+import { RunnerPicker } from "./runner-picker";
 
 const AGENT_TYPE = "agent";
 
-export function ChatScreen({ projectId }: { projectId: string }) {
+export function ChatScreen({
+  projectId,
+  onClose,
+}: {
+  projectId: string;
+  /** When set (docked panel), render a close control in the header to collapse
+   *  the panel. Omitted when the screen owns the full viewport. */
+  onClose?: () => void;
+}) {
   useRoom(projectRoom(projectId));
 
   // Viewer = read-only: hide the composer (the server 403s sends regardless).
   const projectsQ = useProjects();
-  const canWrite =
-    projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
+  const project = projectsQ.data?.find((p) => p.id === projectId);
+  const canWrite = project?.role !== "viewer";
+
+  // Reader's assigned working lens(es) for this project's org (role-aware chat).
+  // Read-only here — owner/admin assigns them in Member management; we only
+  // surface WHICH lens is shaping the answers, so the shaping isn't invisible.
+  const { user } = useAuth();
+  const membersQ = useOrgMembers(project?.orgId);
+  const myLenses = useMemo(
+    () => membersQ.data?.find((m) => m.userId === user?.id)?.lenses ?? [],
+    [membersQ.data, user?.id],
+  );
 
   // Resume the latest interactive agent session for this project, and list a
   // page of recent ones to drive the history switcher (ISS-421). Archived
@@ -69,6 +92,9 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   // creates the row on first message (handleSend).
   const [draft, setDraft] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Explicit runner pick (RunnerPicker). undefined = Auto / follow the session's
+  // binding; a set value re-pins the conversation on the next message.
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>();
 
   const recentSessions = latestQ.data?.items ?? [];
   const resolvedId = draft ? undefined : activeId ?? recentSessions[0]?.id;
@@ -108,12 +134,16 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   const handleNewChat = () => {
     setDraft(true);
     setActiveId(undefined);
+    setSelectedDeviceId(undefined);
     setHistoryOpen(false);
   };
 
   const handlePick = (id: string) => {
     setDraft(false);
     setActiveId(id);
+    // Follow the newly-opened conversation's own runner binding rather than
+    // carrying the previous chat's pick across.
+    setSelectedDeviceId(undefined);
     setHistoryOpen(false);
   };
 
@@ -135,12 +165,17 @@ export function ChatScreen({ projectId }: { projectId: string }) {
       const created = await create.mutateAsync({
         projectId,
         metadata: { type: AGENT_TYPE },
+        // Pre-pin the picked runner so the fresh row shows it immediately; the
+        // send below re-asserts it as the dispatch override.
+        ...(selectedDeviceId ? { deviceId: selectedDeviceId } : {}),
       });
       id = created.id;
       setDraft(false);
       setActiveId(id);
     }
-    await send.mutateAsync({ sessionId: id, message, files });
+    // Pass the explicit runner pick (if any) so the server re-pins + dispatches
+    // this turn to it; omitted = reuse binding / auto-pick.
+    await send.mutateAsync({ sessionId: id, message, files, deviceId: selectedDeviceId });
   };
 
   const busy = live || send.isPending || create.isPending;
@@ -204,22 +239,43 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-none flex-col gap-2 border-b border-line bg-app/95 px-4 py-4 sm:flex-row sm:items-center sm:gap-3 sm:px-8">
-        <div className="min-w-0">
-          {/* Title row: editable per-conversation title once a real row exists.
-              In draft / no-conversation state, fall back to the section label. */}
-          {session ? (
-            <h1 className="fg-h2 truncate">
-              <EditableTitle session={session} />
-            </h1>
-          ) : (
-            <h1 className="fg-h2 truncate">My conversations</h1>
+      {/* `@container` so the header reflows on the PANEL width, not the viewport
+          — the docked split panel (ChatDock) is narrow even on a wide desktop,
+          so viewport `sm:` breakpoints would wrongly force the wide single-row
+          layout and crush the title. Stack by default; go single-row only once
+          the panel itself is wide enough (@[560px]). */}
+      <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
+        <div className="flex flex-col gap-2 @[560px]:flex-row @[560px]:items-center @[560px]:gap-3">
+          <div className="min-w-0">
+            {/* Title row: editable per-conversation title once a real row exists.
+                In draft / no-conversation state, fall back to the section label. */}
+            {session ? (
+              <h1 className="fg-h2 truncate">
+                <EditableTitle session={session} />
+              </h1>
+            ) : (
+              <h1 className="fg-h2 truncate">My conversations</h1>
+            )}
+            <p className="fg-body-sm mt-0.5 truncate text-muted">
+              Ask the agent anything about this project.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 @[560px]:ml-auto @[560px]:flex-nowrap">
+          {myLenses.length > 0 && (
+            <span
+              className="hidden items-center gap-1 @[520px]:flex"
+              title="Your working lens (set by your org admin) — it shapes how the agent answers you"
+            >
+              {MEMBER_LENS_OPTIONS.filter((o) => myLenses.includes(o.value)).map((o) => (
+                <span
+                  key={o.value}
+                  className="rounded-pill bg-accent-tint px-2 py-0.5 text-[11px] font-medium text-accent-text"
+                >
+                  {o.label}
+                </span>
+              ))}
+            </span>
           )}
-          <p className="fg-body-sm mt-1 text-muted">
-            Ask the agent anything about this project.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
           {session && display && (
             <StatusChip
               status={statusToChip(display)}
@@ -228,6 +284,16 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               domain="session"
             />
           )}
+          {/* Which runner handles this conversation + pick another (ISS runner
+              picker). Bound id is live via session.deviceId; a fresh draft shows
+              "Auto" until the first message pins one. */}
+          <RunnerPicker
+            projectId={projectId}
+            boundDeviceId={session?.deviceId ?? null}
+            selectedDeviceId={selectedDeviceId}
+            onSelect={setSelectedDeviceId}
+            readOnly={!canWrite}
+          />
           <div className="relative">
             <Button
               variant="secondary"
@@ -252,6 +318,15 @@ export function ChatScreen({ projectId }: { projectId: string }) {
           <Button variant="secondary" size="sm" icon="plus" onClick={handleNewChat}>
             New chat
           </Button>
+          {onClose && (
+            <IconButton
+              icon="x"
+              size="sm"
+              aria-label="Close chat panel"
+              onClick={onClose}
+            />
+          )}
+          </div>
         </div>
       </header>
 

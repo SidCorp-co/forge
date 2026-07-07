@@ -18,6 +18,7 @@ import {
   type Crumb,
 } from "@/design";
 import { ChatScreen } from "@/features/session/components/chat-screen";
+import { ChatDock } from "@/features/session/components/chat-dock";
 import { cn } from "@/lib/utils/cn";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -307,6 +308,11 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // tab that had it open keeps it; opening it in one tab must not pop it open in
   // every other tab.
   const [chatOpen, setChatOpen] = usePersistedState("web-v2:agents-chat-open", false, {
+    syncTabs: false,
+  });
+  // Docked-panel width (desktop split view). Per-tab so resizing one tab's panel
+  // doesn't reflow another's.
+  const [chatWidth, setChatWidth] = usePersistedState<number>("web-v2:agents-chat-width", 420, {
     syncTabs: false,
   });
   const mainRef = useRef<HTMLElement>(null);
@@ -1082,20 +1088,23 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        {/* Global Agent Chat dock (ISS-500) — opened from the header "Ask agent"
-            action, scoped to the active (or last-visited) project so it works
-            from any screen. Mounted once here; the Agents screen no longer hosts
-            its own desktop dock. */}
+        {/* Global Agent Chat — opened from the header "Ask agent" action, scoped
+            to the active (or last-visited) project so it works from any screen.
+            Below md it's a SlideOver overlay; on desktop it's the docked split
+            panel rendered as a sibling of this content column (see ChatDock
+            below), so the content reflows beside it rather than being covered. */}
         {railProject && (
-          <SlideOver
-            open={chatOpen}
-            onClose={() => setChatOpen(false)}
-            title="My conversations"
-            width="clamp(560px, 60vw, 1024px)"
-            fitBody
-          >
-            <ChatScreen projectId={railProject.id} />
-          </SlideOver>
+          <div className="md:hidden">
+            <SlideOver
+              open={chatOpen}
+              onClose={() => setChatOpen(false)}
+              title="My conversations"
+              width="clamp(560px, 60vw, 1024px)"
+              fitBody
+            >
+              <ChatScreen projectId={railProject.id} />
+            </SlideOver>
+          </div>
         )}
 
         <PinnedTabBar
@@ -1116,6 +1125,19 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Desktop split-view dock — a resizable right column beside the content,
+          Chrome-side-panel style (the content column above shrinks via flex).
+          Self-hides below md (ChatDock is `hidden md:flex`); the mobile overlay
+          SlideOver inside the content column covers small screens instead. */}
+      {railProject && chatOpen && (
+        <ChatDock
+          projectId={railProject.id}
+          width={chatWidth}
+          onWidthChange={setChatWidth}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
 
       <BottomTabBar items={bottomItems} activeKey={bottomActiveKey} onSelect={onBottomSelect} />
 

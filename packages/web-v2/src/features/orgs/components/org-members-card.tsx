@@ -21,6 +21,7 @@ import {
   SlideOver,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -32,10 +33,73 @@ import {
   useRemoveOrgMember,
   useRenameOrg,
   useRevokeOrgInvitation,
+  useUpdateOrgMemberLenses,
   useUpdateOrgMemberRole,
 } from "../hooks";
-import type { OrgInvitationRow, OrgListItem, OrgMemberRow, OrgRole } from "../types";
+import {
+  MEMBER_LENS_OPTIONS,
+  type MemberLens,
+  type OrgInvitationRow,
+  type OrgListItem,
+  type OrgMemberRow,
+  type OrgRole,
+} from "../types";
 import { ConfirmDialog } from "./confirm-dialog";
+
+/**
+ * Per-member working-lens control (role-aware chat). Two toggle-chips — a
+ * member can hold both, one, or none (none = default product/non-technical
+ * voice). Read-only badges when the viewer can't manage. Soft: shapes only how
+ * the interactive agent answers, never permissions.
+ */
+function LensControl({
+  lenses,
+  canManage,
+  busy,
+  onToggle,
+}: {
+  lenses: MemberLens[];
+  canManage: boolean;
+  busy: boolean;
+  onToggle: (lens: MemberLens) => void;
+}) {
+  if (!canManage) {
+    if (lenses.length === 0) return null;
+    return (
+      <span className="flex items-center gap-1">
+        {MEMBER_LENS_OPTIONS.filter((o) => lenses.includes(o.value)).map((o) => (
+          <Badge key={o.value} tone="neutral">
+            {o.label}
+          </Badge>
+        ))}
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1" title="Working lens — shapes how chat answers this member">
+      {MEMBER_LENS_OPTIONS.map((o) => {
+        const on = lenses.includes(o.value);
+        return (
+          <button
+            key={o.value}
+            type="button"
+            disabled={busy}
+            aria-pressed={on}
+            onClick={() => onToggle(o.value)}
+            className={cn(
+              "rounded-pill border px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-50",
+              on
+                ? "border-transparent bg-accent-tint text-accent-text"
+                : "border-line text-subtle hover:bg-hover hover:text-fg",
+            )}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
 
 const ORG_ROLE_OPTIONS: SelectOption[] = [
   { value: "member", label: "Member" },
@@ -53,6 +117,7 @@ export function OrgMembersCard({
   const membersQ = useOrgMembers(org.id);
   const addMember = useAddOrgMember(org.id);
   const updateRole = useUpdateOrgMemberRole(org.id);
+  const updateLenses = useUpdateOrgMemberLenses(org.id);
   const removeMember = useRemoveOrgMember(org.id);
   const renameOrg = useRenameOrg(org.id);
   const deleteOrg = useDeleteOrg();
@@ -204,6 +269,31 @@ export function OrgMembersCard({
                   {user?.id === m.userId && <Badge tone="accent">You</Badge>}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
+                  <LensControl
+                    lenses={m.lenses ?? []}
+                    canManage={canManage}
+                    busy={
+                      updateLenses.isPending &&
+                      updateLenses.variables?.userId === m.userId
+                    }
+                    onToggle={(lens) => {
+                      const cur = m.lenses ?? [];
+                      const next = cur.includes(lens)
+                        ? cur.filter((l) => l !== lens)
+                        : [...cur, lens];
+                      updateLenses.mutate(
+                        { userId: m.userId, lenses: next },
+                        {
+                          onError: (err) =>
+                            toast({
+                              title: "Couldn't update lens",
+                              description: formatApiError(err),
+                              tone: "error",
+                            }),
+                        },
+                      );
+                    }}
+                  />
                   {canManage ? (
                     <Select
                       options={roleOptions}

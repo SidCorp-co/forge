@@ -2,6 +2,19 @@
 
 export type OrgRole = "owner" | "admin" | "member";
 
+/**
+ * Soft "working lens(es)" an owner/admin assigns to a member (role-aware chat) —
+ * orthogonal to the permission role. Shapes only how the interactive agent
+ * answers (altitude/voice), never permissions. Mirrors core `memberLenses`.
+ */
+export type MemberLens = "technical" | "product";
+
+/** UI labels + order for the lens assignment control. */
+export const MEMBER_LENS_OPTIONS: { value: MemberLens; label: string }[] = [
+  { value: "technical", label: "Technical" },
+  { value: "product", label: "Product" },
+];
+
 /** One row of `GET /api/orgs` — an org the caller belongs to + their role. */
 export interface OrgListItem {
   id: string;
@@ -17,6 +30,8 @@ export interface OrgMemberRow {
   userId: string;
   email: string;
   role: OrgRole;
+  /** Assigned working lens(es) — empty = default (product/non-technical voice). */
+  lenses: MemberLens[];
   createdAt: string;
 }
 

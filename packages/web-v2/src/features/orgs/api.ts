@@ -3,6 +3,7 @@ import type {
   AddOrgMemberInput,
   AddOrgMemberResult,
   CreateOrgInput,
+  MemberLens,
   OrgInvitationRow,
   OrgListItem,
   OrgMemberRow,
@@ -60,6 +61,14 @@ export const orgsApi = {
     apiClient<Omit<OrgMemberRow, "email">>(`/orgs/${orgId}/members/${userId}`, {
       method: "PATCH",
       body: JSON.stringify({ role }),
+    }),
+
+  /** Assign the member's soft working lens(es) — same PATCH endpoint, `lenses`
+   *  body (role-aware chat). Sends the full desired set (server dedupes). */
+  updateMemberLenses: (orgId: string, userId: string, lenses: MemberLens[]) =>
+    apiClient<Omit<OrgMemberRow, "email">>(`/orgs/${orgId}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ lenses }),
     }),
 
   removeMember: (orgId: string, userId: string) =>

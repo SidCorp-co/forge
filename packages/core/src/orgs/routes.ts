@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
+  memberLenses,
   orgInvitations,
   orgMemberRoles,
   organizationMembers,
@@ -51,7 +52,17 @@ const addMemberSchema = z.object({
   role: z.enum(orgMemberRoles),
 });
 
-const patchMemberSchema = z.object({ role: z.enum(orgMemberRoles) });
+// Both fields optional; at least one required. `role` = permission change (with
+// owner-tier guards below); `lenses` = soft working-lens assignment (ISS
+// role-aware chat) — orthogonal, deduped, no permission effect.
+const patchMemberSchema = z
+  .object({
+    role: z.enum(orgMemberRoles).optional(),
+    lenses: z.array(z.enum(memberLenses)).max(memberLenses.length).optional(),
+  })
+  .refine((o) => o.role !== undefined || o.lenses !== undefined, {
+    message: 'role or lenses required',
+  });
 
 const orgParamSchema = z.object({ orgId: z.uuid() });
 const memberParamSchema = z.object({ orgId: z.uuid(), userId: z.uuid() });
@@ -220,6 +231,7 @@ orgRoutes.get(
         userId: organizationMembers.userId,
         email: users.email,
         role: organizationMembers.role,
+        lenses: organizationMembers.lenses,
         createdAt: organizationMembers.createdAt,
       })
       .from(organizationMembers)
@@ -381,7 +393,7 @@ orgRoutes.patch(
   }),
   async (c) => {
     const { orgId, userId: targetUserId } = c.req.valid('param');
-    const { role } = c.req.valid('json');
+    const { role, lenses } = c.req.valid('json');
     const callerId = c.get('userId');
 
     const caller = await assertOrgAccess(orgId, callerId, 'admin');
@@ -395,29 +407,39 @@ orgRoutes.patch(
       .limit(1);
     if (!target) throw notFound('membership not found');
 
-    // Touching the owner tier (granting or revoking) is owner-only.
-    if ((role === 'owner' || target.role === 'owner') && caller.role !== 'owner') {
-      throw forbidden('only an org owner can change owner-tier roles');
-    }
-    if (target.role === 'owner' && role !== 'owner') {
-      const [ownerCount] = await db
-        .select({ n: count() })
-        .from(organizationMembers)
-        .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
-      if (Number(ownerCount?.n ?? 0) <= 1) {
-        throw conflict('org must keep at least one owner', 'LAST_OWNER');
+    // Owner-tier + last-owner guards apply ONLY to a permission `role` change.
+    // A lenses-only patch is a soft attribute (no permission effect), so it must
+    // NOT be blocked on an owner-tier target.
+    if (role !== undefined) {
+      // Touching the owner tier (granting or revoking) is owner-only.
+      if ((role === 'owner' || target.role === 'owner') && caller.role !== 'owner') {
+        throw forbidden('only an org owner can change owner-tier roles');
+      }
+      if (target.role === 'owner' && role !== 'owner') {
+        const [ownerCount] = await db
+          .select({ n: count() })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
+        if (Number(ownerCount?.n ?? 0) <= 1) {
+          throw conflict('org must keep at least one owner', 'LAST_OWNER');
+        }
       }
     }
 
     const [updated] = await db
       .update(organizationMembers)
-      .set({ role })
+      .set({
+        ...(role !== undefined ? { role } : {}),
+        // Dedupe so a member never carries a lens twice.
+        ...(lenses !== undefined ? { lenses: Array.from(new Set(lenses)) } : {}),
+      })
       .where(
         and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, targetUserId)),
       )
       .returning({
         userId: organizationMembers.userId,
         role: organizationMembers.role,
+        lenses: organizationMembers.lenses,
         createdAt: organizationMembers.createdAt,
       });
     if (!updated) throw notFound('membership not found');

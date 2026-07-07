@@ -16,6 +16,12 @@ export interface SendOpts {
   sessionId: string;
   message: string;
   claudeSessionId?: string | null;
+  /**
+   * Explicit runner pick (chat runner picker). Re-pins the session + dispatches
+   * this turn to this device; omit / null = reuse the session's runner or let
+   * the server auto-pick the freshest online one.
+   */
+  deviceId?: string | null;
   /** ISS-499 — ids of already-uploaded session attachments to attach to this turn. */
   attachmentIds?: string[];
 }
@@ -51,13 +57,14 @@ export const sessionApi = {
   },
 
   /** `POST /api/agent-sessions/send` — queue a new user message to the device. */
-  send: ({ sessionId, message, claudeSessionId, attachmentIds }: SendOpts) =>
+  send: ({ sessionId, message, claudeSessionId, deviceId, attachmentIds }: SendOpts) =>
     apiClient<SessionRow>("/agent-sessions/send", {
       method: "POST",
       body: JSON.stringify({
         sessionId,
         message,
         ...(claudeSessionId ? { claudeSessionId } : {}),
+        ...(deviceId ? { deviceId } : {}),
         ...(attachmentIds?.length ? { attachmentIds } : {}),
       }),
     }),

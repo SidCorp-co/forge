@@ -1030,6 +1030,13 @@
       "when": 1786752000000,
       "tag": "0148_notification_secondary_issue",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1786838400000,
+      "tag": "0149_member_lenses",
+      "breakpoints": true
     }
   ]
 }
