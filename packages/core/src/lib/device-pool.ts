@@ -80,39 +80,6 @@ export async function findAvailableDeviceForProject(
 }
 
 /**
- * Verify that `deviceId` is a chat-capable runner for `projectId` and return it
- * when eligible, else `null`. "Chat-capable" mirrors the primary
- * `findAvailableDeviceForProject` filters (type='claude-code', host='device',
- * status='online', within the dispatch-liveness window, device not disabled) —
- * so an explicit runner pick from the UI is validated against the exact same
- * gate the auto-pick uses, and a stale/offline/foreign choice is rejected rather
- * than silently dispatched to a dead cwd (ISS-420). Used by the chat runner
- * picker (`resolveChatDevice` override path).
- */
-export async function findChatCapableDeviceForProject(
-  projectId: string,
-  deviceId: string,
-): Promise<string | null> {
-  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
-  const rows = await db.execute<{ device_id: string }>(sql`
-    SELECT r.device_id
-    FROM runners r
-    WHERE r.project_id = ${projectId}
-      AND r.device_id  = ${deviceId}
-      AND r.type       = 'claude-code'
-      AND r.host       = 'device'
-      AND r.status     = 'online'
-      AND r.last_seen_at IS NOT NULL
-      AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-      AND NOT EXISTS (
-        SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
-      )
-    LIMIT 1
-  `);
-  return rows[0]?.device_id ?? null;
-}
-
-/**
  * Resolve the working repo path for a session.
  *
  * The web client may pass an explicit `repoPath` override; otherwise we fall

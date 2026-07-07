@@ -218,10 +218,6 @@ const sendBodySchema = z
     // a turn carries either text or at least one attachment.
     message: z.string().max(40_000),
     claudeSessionId: z.string().max(500).nullable().optional(),
-    // Explicit runner pick from the chat runner picker: dispatch THIS turn (and
-    // re-pin the session) to this device instead of reusing the pin / auto-
-    // picking. Validated in `resolveChatDevice` against the chat-capable gate.
-    deviceId: z.uuid().nullable().optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
     // ISS-499 — session attachments to attach to this turn.
@@ -446,16 +442,12 @@ agentSessionRoutes.post(
       throw forbidden('not the session owner');
     }
 
-    // Resolve the client through the SHARED path: honour an explicit runner pick
-    // (input.deviceId) when present, else reuse the session's pinned device,
-    // else pick a fresh online runner (this is what fixes the web cold start — a
-    // session created empty via `POST /` has no pin, so the old pin-only guard
-    // 409'd forever). No online remote client → 409; a rejected explicit pick
-    // gets the 'picked' wording so the user knows their choice was unavailable.
-    const client = await resolveChatDevice(session, input.origin, input.deviceId);
-    if (!client.isLocal && !client.deviceId) {
-      throw noClaudeClient(input.deviceId ? 'picked' : 'session');
-    }
+    // Resolve the client through the SHARED path: reuse the session's pinned
+    // device, else pick a fresh online runner (this is what fixes the web cold
+    // start — a session created empty via `POST /` has no pin, so the old
+    // pin-only guard 409'd forever). No online remote client → 409.
+    const client = await resolveChatDevice(session, input.origin);
+    if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
 
     const [project] = await db
       .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
