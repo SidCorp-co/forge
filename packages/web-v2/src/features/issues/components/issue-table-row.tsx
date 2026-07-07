@@ -16,7 +16,12 @@ import {
 } from "@/design";
 import { useRouter } from "next/navigation";
 import type { PatchIssueInput } from "../api";
-import { COMPLEXITY_LABELS, PRIORITY_LABELS } from "../derive";
+import {
+  type BlockingRef,
+  COMPLEXITY_LABELS,
+  PRIORITY_LABELS,
+  openBlockingRefs,
+} from "../derive";
 import { useIssueDeps } from "../hooks";
 import type { IssueDependencyEdge, IssueStatus, ProjectMember } from "../types";
 
@@ -94,13 +99,22 @@ function edgeToMenuItem(
 /** A single readable relation chip that reveals its related issues on click.
  *  The trigger reads as a labelled pill (icon + "Blocked by 2") instead of a
  *  cryptic emoji+count; the dropdown lists the actual `ISS-X · title` issues,
- *  each navigating to that issue (ISS-366 D3). Renders nothing when empty. */
+ *  each navigating to that issue (ISS-366 D3). Renders nothing when empty.
+ *  `tone="danger"` paints it as a red filled pill — used when the issue is
+ *  actively blocked by a still-open blocker so it pops while scanning the list. */
 function RelationChip({
   icon,
   label,
   items,
-}: { icon: IconName; label: string; items: MenuItem[] }) {
+  tone = "muted",
+}: {
+  icon: IconName;
+  label: string;
+  items: MenuItem[];
+  tone?: "muted" | "danger";
+}) {
   if (items.length === 0) return null;
+  const danger = tone === "danger";
   return (
     <Menu
       align="left"
@@ -108,7 +122,11 @@ function RelationChip({
       trigger={
         <button
           type="button"
-          className="fg-caption inline-flex items-center gap-1 rounded-pill border border-line px-1.5 py-0.5 text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className={
+            danger
+              ? "fg-caption inline-flex items-center gap-1 rounded-pill border border-[color:var(--red-500)] bg-[color:var(--red-50)] px-1.5 py-0.5 font-medium text-[color:var(--red-600)] transition-[filter] hover:brightness-95 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              : "fg-caption inline-flex items-center gap-1 rounded-pill border border-line px-1.5 py-0.5 text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          }
           title={label}
         >
           <Icon name={icon} size={12} />
@@ -141,6 +159,18 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
   const subtasks = outgoing.filter((e) => isParentEdge(e.kind));
   const parents = incoming.filter((e) => isParentEdge(e.kind));
 
+  // Only blockers that are NOT terminal (released/closed) are actually holding
+  // this issue back — a plain "Blocked by N" count hides this, so a stuck issue
+  // is invisible while scanning the list. Surface the still-open ones as a loud
+  // red chip (naming the blocker when there's one, e.g. "Blocked by ISS-21");
+  // fully-resolved blockers stay a muted count.
+  const openBlockers = openBlockingRefs(data);
+  const refToMenuItem = (r: BlockingRef): MenuItem => ({
+    label: r.title ? `${r.displayId} · ${r.title}` : r.displayId,
+    icon: "arrowRight",
+    onSelect: () => navigate(r.id),
+  });
+
   if (
     !blockedBy.length &&
     !blocks.length &&
@@ -151,11 +181,24 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <RelationChip
-        icon="lock"
-        label={`Blocked by ${blockedBy.length}`}
-        items={blockedBy.map((e) => edgeToMenuItem(e, "in", slug, navigate))}
-      />
+      {openBlockers.length > 0 ? (
+        <RelationChip
+          icon="lock"
+          tone="danger"
+          label={
+            openBlockers.length === 1
+              ? `Blocked by ${openBlockers[0].displayId}`
+              : `Blocked by ${openBlockers.length}`
+          }
+          items={openBlockers.map(refToMenuItem)}
+        />
+      ) : (
+        <RelationChip
+          icon="lock"
+          label={`Blocked by ${blockedBy.length}`}
+          items={blockedBy.map((e) => edgeToMenuItem(e, "in", slug, navigate))}
+        />
+      )}
       <RelationChip
         icon="arrowRight"
         label={`Blocks ${blocks.length}`}

@@ -450,8 +450,9 @@ export interface BlockerState {
 const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set(["released", "closed"]);
 
 /** Incoming `blocks` edges whose blocker isn't terminal — i.e. this issue is
- *  genuinely blocked-by an open issue. */
-function openBlockingRefs(deps: IssueDependencies | undefined): BlockingRef[] {
+ *  genuinely blocked-by an open issue. Exported so list/board rows can flag a
+ *  genuinely-stuck issue (danger chip) without re-deriving the terminal rule. */
+export function openBlockingRefs(deps: IssueDependencies | undefined): BlockingRef[] {
   if (!deps) return [];
   return deps.incoming
     .filter((e) => e.kind === "blocks" && !(e.fromStatus && TERMINAL_STATUSES.has(e.fromStatus)))
