@@ -113,7 +113,7 @@ export function NotificationsMenu({
                     <span className="fg-caption ml-auto">{n.time}</span>
                   </div>
                   <p className="fg-body-sm mt-1 text-fg">{n.text}</p>
-                  {n.sub && <p className="fg-caption mt-0.5">{n.sub}</p>}
+                  {n.sub && <p className="fg-caption mt-0.5 whitespace-pre-line">{n.sub}</p>}
                   {n.actions && n.actions.length > 0 && (
                     <div
                       className="mt-2 flex items-center gap-2"

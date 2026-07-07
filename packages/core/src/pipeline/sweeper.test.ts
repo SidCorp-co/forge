@@ -488,8 +488,12 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
     project_id: '22222222-2222-4222-8222-222222222222',
     job_type: 'code',
     issue_id: '33333333-3333-4333-8333-333333333333',
+    wedged_seq: 27,
+    wedged_title: 'Widget i18n',
     blocker_id: '44444444-4444-4444-8444-444444444444',
-    blocker_status: 'tested',
+    blocker_status: 'needs_info',
+    blocker_seq: 31,
+    blocker_title: 'Translate onboarding copy',
     kind: 'blocks',
     queued_secs: 7200,
   };
@@ -508,6 +512,23 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
         projectId: stalledRow.project_id,
       }),
     );
+  });
+
+  it('ISS-619 — passes business-language title/summary/nextStep + secondaryIssueId, never a raw UUID in the title', async () => {
+    dbExecute.mockResolvedValueOnce([stalledRow]);
+    await detectStalledDependencies(new Date());
+    const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call.title).toBe(
+      'Blocked: ISS-27 "Widget i18n" is waiting on a blocking issue that can\'t continue',
+    );
+    expect(call.title).not.toContain(stalledRow.blocker_id);
+    expect(call.summary).toBe(
+      'Waiting ~2h. ISS-31 "Translate onboarding copy" is parked at "Needs info" and won\'t proceed on its own.',
+    );
+    expect(call.nextStep).toBe(
+      "Add the missing info to ISS-31, or mark it done if it's already complete.",
+    );
+    expect(call.secondaryIssueId).toBe(stalledRow.blocker_id);
   });
 
   it('dedupes multiple rows for the same job (two blockers → one wedge)', async () => {

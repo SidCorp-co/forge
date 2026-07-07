@@ -71,7 +71,7 @@ export { TopBar, type TopBarProps, type TopBarDensity } from "./patterns/top-bar
 export { CommandPalette, type CommandPaletteProps, type Command, type CommandGroup } from "./patterns/command-palette";
 export { PinnedTabBar, type PinnedTabBarProps, type PinnedTab } from "./patterns/pinned-tab-bar";
 export {
-  NotificationsMenu, type NotificationsMenuProps, type NotificationItem,
+  NotificationsMenu, type NotificationsMenuProps, type NotificationItem, type NotificationAction,
 } from "./patterns/notifications-menu";
 export { StreamingText, type StreamingTextProps } from "./patterns/streaming-text";
 export { Highlight, type HighlightProps } from "./patterns/highlight";

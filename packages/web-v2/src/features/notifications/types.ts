@@ -19,6 +19,10 @@ export interface NotificationRow {
   resolutionKey: string | null;
   resolvedAt: string | null;
   issueId: string | null;
+  // ISS-619 — the actionable issue when it differs from `issueId` (e.g. a
+  // dependency-stall wedge's blocker/child). `issueId` stays the row's primary
+  // subject for metric attribution; this drives a secondary deep-link action.
+  secondaryIssueId: string | null;
   agentSessionId: string | null;
   createdAt: string;
 }

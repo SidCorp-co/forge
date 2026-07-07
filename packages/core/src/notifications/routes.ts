@@ -181,6 +181,10 @@ export async function createNotification(input: {
   title: string;
   body?: string | null;
   issueId?: string | null;
+  // ISS-619 — actionable-target issue when it differs from `issueId` (e.g. the
+  // blocker/child of a dependency-stall wedge). `issueId` stays the primary
+  // subject so metrics keyed on it are unaffected.
+  secondaryIssueId?: string | null;
   agentSessionId?: string | null;
   // ISS-510 — severity + auto-resolve linkage, persisted and forwarded to the
   // `notificationCreated` hook so the WS bridge can carry tone to clients.
@@ -215,6 +219,7 @@ export async function createNotification(input: {
       severity: input.severity ?? null,
       resolutionKey: input.resolutionKey ?? null,
       issueId: input.issueId ?? null,
+      secondaryIssueId: input.secondaryIssueId ?? null,
       agentSessionId: input.agentSessionId ?? null,
     })
     .returning({ id: notifications.id });
@@ -231,6 +236,7 @@ export async function createNotification(input: {
     severity: input.severity ?? null,
     resolutionKey: input.resolutionKey ?? null,
     issueId: input.issueId ?? null,
+    secondaryIssueId: input.secondaryIssueId ?? null,
     agentSessionId: input.agentSessionId ?? null,
     decisionId: input.decisionId ?? null,
   });
