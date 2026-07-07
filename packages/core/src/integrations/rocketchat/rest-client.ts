@@ -172,6 +172,14 @@ export async function fetchBotRooms(auth: RocketChatRestAuth): Promise<RocketCha
   return rooms.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** The bot account's own username (api/v1/me) — lets the bot speak about
+ *  itself by name instead of as "the system". Null on failure. */
+export async function fetchOwnUsername(auth: RocketChatRestAuth): Promise<string | null> {
+  const body = await rcGet(auth, 'me', {});
+  const username = (body as { username?: string } | null)?.username;
+  return typeof username === 'string' && username.length > 0 ? username : null;
+}
+
 /**
  * Fetch one message by id — used for a thread's ROOT message: RC's
  * `chat.getThreadMessages` returns the REPLIES only, so the message the

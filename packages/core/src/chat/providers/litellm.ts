@@ -60,6 +60,11 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
     defaultModel: cfg.defaultModel,
     async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
       const retryDelays = cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
+      // `tool_choice: 'required'` makes Vertex/Gemini compile ALL tool schemas
+      // into a constrained-decoding grammar; a large toolset then 400s with
+      // "too many states for serving". Degrade to auto and retry rather than
+      // failing the turn — the post-turn reply guard still polices laziness.
+      let toolChoice = req.toolChoice;
       const init = (): RequestInit => {
         const i: RequestInit = {
           method: 'POST',
@@ -74,8 +79,8 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
             stream: true,
             stream_options: { include_usage: true },
             ...(req.tools && req.tools.length > 0 ? { tools: req.tools } : {}),
-            ...(req.tools && req.tools.length > 0 && req.toolChoice
-              ? { tool_choice: req.toolChoice }
+            ...(req.tools && req.tools.length > 0 && toolChoice
+              ? { tool_choice: toolChoice }
               : {}),
             ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
           }),
@@ -100,6 +105,13 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
         if (res) {
           const body = await safeReadText(res);
           lastError = `litellm http ${res.status}${body ? `: ${body.slice(0, 500)}` : ''}`;
+          // Vertex constrained-decoding overflow on forced tool use — drop the
+          // force and retry immediately (does not consume a backoff attempt).
+          if (res.status === 400 && toolChoice && /too many states/i.test(body)) {
+            toolChoice = undefined;
+            attempt--;
+            continue;
+          }
           if (!RETRYABLE_STATUS.has(res.status)) {
             yield { type: 'error', message: lastError };
             return;

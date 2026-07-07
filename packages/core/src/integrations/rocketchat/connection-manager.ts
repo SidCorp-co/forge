@@ -26,6 +26,7 @@ import { buildConversationContext, buildRocketChatHistoryToolset } from './conte
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { createSeenTracker, decideHandling } from './inbound-gate.js';
 import { extractIssueClaims, judgeIssueClaims } from './reply-guard.js';
+import { fetchOwnUsername } from './rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
 /** ISS-609 (piece B) — the Forge-assistant persona for in-channel chat.
@@ -33,10 +34,19 @@ import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 export function rocketChatPersona(
   projectName: string,
   authorUsername?: string,
-  opts?: { projectSlug?: string | undefined; webBaseUrl?: string | undefined },
+  opts?: {
+    projectSlug?: string | undefined;
+    webBaseUrl?: string | undefined;
+    botName?: string | undefined;
+  },
 ): string {
   return [
     `You are the working assistant for project "${projectName}", answering inside the team's Rocket.Chat channel. You OWN the requests addressed to you — investigate and act with your tools; never hand the task back to the humans.`,
+    ...(opts?.botName
+      ? [
+          `- Your name in this channel is ${opts.botName}. Refer to yourself as "${opts.botName}" (e.g. "${opts.botName} đã kiểm tra…"), never as "hệ thống" or "the system".`, // i18n-allow: shows the Vietnamese self-reference style being mandated
+        ]
+      : []),
     ...(authorUsername
       ? [
           `- The message you are answering was sent by user @${authorUsername}. When they say "tôi/mình/my/me", they mean @${authorUsername} — use that username when filtering tasks/items by person.`, // i18n-allow: quotes the Vietnamese first-person pronouns the prompt must resolve
@@ -79,13 +89,20 @@ const LISTEN_RETRY_MS = 5000;
  *  outright — the user would get silence. Truncate below that. */
 const MAX_REPLY_CHARS = 4500;
 
-const FALLBACK_ERROR_REPLY =
-  'Xin lỗi, hệ thống model đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.'; // i18n-allow: user-facing channel reply
+/** Fallbacks speak AS the bot, by name — never as an anonymous "the
+ *  system"/"the model". `name` is the bot's RC username, capitalized. */
+const errorFallbackReply = (name: string): string =>
+  `Xin lỗi, ${name} đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
 /** Sent when even the corrective retry produced unverifiable claims — an
  *  honest non-answer beats a hallucinated one reaching the channel. */
-const UNVERIFIED_FALLBACK_REPLY =
-  'Xin lỗi, mình chưa thực hiện được yêu cầu này một cách chắc chắn (kết quả không xác minh được). Bạn nhắn lại giúp mình nhé.'; // i18n-allow: user-facing channel reply
+const unverifiedFallbackReply = (name: string): string =>
+  `Xin lỗi, ${name} chưa thực hiện được yêu cầu này một cách chắc chắn (kết quả không xác minh được). Bạn nhắn lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply
+
+const emptyFallbackReply = (name: string): string =>
+  `Xin lỗi, ${name} chưa đưa ra được câu trả lời cho yêu cầu này — bạn diễn đạt lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply
+
+const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 const correctiveMessage = (problems: string[]): string =>
   `[SYSTEM CHECK — not from the user] Your previous reply failed verification: ${problems.join('; ')}. You did NOT perform those actions. Redo the user's request now: CALL the tools to actually do the work, then reply only with verified results — cite issue ids/links exactly as returned by the tools. Reply in the user's language.`;
@@ -107,6 +124,9 @@ interface ActiveConnection {
   client?: RocketChatDdpClient;
   lockClient: pg.Client;
   botUserId: string;
+  /** Bot's RC display handle, capitalized ("Babo") — used for self-reference
+   *  in fallback replies and the persona. */
+  botName: string;
   serverUrl: string;
   authToken: string;
   routes: Map<string, Route>;
@@ -197,10 +217,19 @@ class RocketChatConnectionManager {
       return;
     }
 
-    const routes = await this.buildRoutes(connectionId);
+    const restAuth = {
+      serverUrl: config.serverUrl,
+      authToken: secrets.authToken,
+      userId: secrets.userId,
+    };
+    const [routes, ownUsername] = await Promise.all([
+      this.buildRoutes(connectionId),
+      fetchOwnUsername(restAuth),
+    ]);
     const active: ActiveConnection = {
       lockClient,
       botUserId: secrets.userId,
+      botName: capitalize(ownUsername ?? 'bot'),
       serverUrl: config.serverUrl,
       authToken: secrets.authToken,
       routes,
@@ -361,6 +390,7 @@ class RocketChatConnectionManager {
       const persona = rocketChatPersona(route.projectName, m.username, {
         projectSlug: route.projectSlug,
         webBaseUrl,
+        botName: ac.botName,
       });
       let result = await runExternalChatTurn({
         projectId: route.projectId,
@@ -407,16 +437,18 @@ class RocketChatConnectionManager {
         }
       }
       reply = !verdict.ok
-        ? UNVERIFIED_FALLBACK_REPLY
+        ? unverifiedFallbackReply(ac.botName)
         : result.reply.trim() ||
-          (result.terminal === 'error' ? FALLBACK_ERROR_REPLY : "Sorry, I couldn't produce a reply.");
+          (result.terminal === 'error'
+            ? errorFallbackReply(ac.botName)
+            : emptyFallbackReply(ac.botName));
     } catch (err) {
       // The mention was seen — never leave the user in silence. Drop the room's
       // session pointer so a poisoned session (e.g. deleted row) can't wedge
       // every future turn; the next mention starts a fresh conversation.
       logger.error({ err, rid: m.rid, projectId: route.projectId }, 'rocketchat: chat turn threw');
       this.sessionByRid.delete(m.rid);
-      reply = FALLBACK_ERROR_REPLY;
+      reply = errorFallbackReply(ac.botName);
     } finally {
       await external.dispose();
     }
