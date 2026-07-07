@@ -5,6 +5,7 @@ import { agentSessions, devices } from '../db/schema.js';
 import { TOOL_REFERENCE, buildChatPreamble } from '../lib/chat-preamble.js';
 import {
   findAvailableDeviceForProject,
+  findChatCapableDeviceForProject,
   resolveRepoPath,
   resolveRunnerRepoPath,
 } from '../lib/device-pool.js';
@@ -70,12 +71,14 @@ function isPlaceholderTitle(title: string | null | undefined): boolean {
  * `scope` only changes the user-facing wording (a brand-new turn references the
  * project; a follow-up references the session) — same code `NO_CLAUDE_CLIENT`.
  */
-export const noClaudeClient = (scope: 'project' | 'session') =>
+export const noClaudeClient = (scope: 'project' | 'session' | 'picked') =>
   new HTTPException(409, {
     message:
       scope === 'project'
         ? 'No online Claude client for this project. Open the desktop app or bring a chat-capable runner online, then try again.'
-        : 'No online Claude client for this session. Open the desktop app or bring its runner online, then try again.',
+        : scope === 'picked'
+          ? 'The selected runner is offline or not chat-capable for this project. Pick another runner, choose Auto, or bring it online, then try again.'
+          : 'No online Claude client for this session. Open the desktop app or bring its runner online, then try again.',
     cause: { code: 'NO_CLAUDE_CLIENT' },
   });
 
@@ -99,6 +102,12 @@ export interface ChatClient {
  * Resolve which Claude client handles a chat turn for `session`.
  *
  * - origin='desktop' → local (the desktop runs Claude itself); deviceId=null.
+ * - `overrideDeviceId` set (the chat runner picker) → honour that explicit
+ *   choice when it is a chat-capable online runner for the project; else return
+ *   a null device so the caller 409s (we do NOT silently fall back elsewhere —
+ *   that would defeat the point of picking a specific runner). A pick that
+ *   differs from the current pin is a `migrated` switch (rehydrate from DB, drop
+ *   the old `--resume` id — same machinery as an auto self-heal).
  * - otherwise (web / schedule) → reuse the session's already-pinned device IF it
  *   is still online; else (no pin, or the pin went offline) pick the freshest
  *   online runner via `findAvailableDeviceForProject`. Verifying the pin is what
@@ -115,10 +124,18 @@ export interface ChatClient {
 export async function resolveChatDevice(
   session: Pick<AgentSessionRow, 'projectId' | 'deviceId' | 'metadata'>,
   origin?: string | null,
+  overrideDeviceId?: string | null,
 ): Promise<ChatClient> {
   if (origin === 'desktop') return { deviceId: null, isLocal: true, migrated: false };
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
+  if (overrideDeviceId) {
+    const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId);
+    // Not eligible (offline / disabled / not a chat runner for this project) →
+    // report no client so the caller can name the picked runner in the 409.
+    if (!picked) return { deviceId: null, isLocal: false, migrated: false };
+    return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
+  }
   if (pinned) {
     const [dev] = await db
       .select({ status: devices.status, disabledAt: devices.disabledAt })

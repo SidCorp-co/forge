@@ -35,9 +35,9 @@ export function guardIssueWrites(args: Record<string, unknown>): string | null {
     const description = typeof data.description === 'string' ? data.description.trim() : '';
     if (title.length < MIN_TITLE_CHARS || description.length < MIN_DESCRIPTION_CHARS) {
       return (
-        'issue rejected: too thin to be actionable. A developer must be able to act on it WITHOUT reading the chat. Rewrite and call create again with: ' +
+        'issue rejected: too thin to be actionable. A developer must be able to identify the problem WITHOUT reading the chat. Rewrite and call create again with: ' +
         '(1) a title naming the kind + affected feature (e.g. "[Bug] …"), ' +
-        '(2) a description containing the source links from the context (the external task/feedback URL and the chat permalink), the problem or request in concrete detail (quote the reporter where useful), and acceptance criteria as a checklist.'
+        '(2) a description with the problem or request in concrete detail — what happens, where, expected vs actual, quoting the reporter where useful — plus the source links from the context (the external task/feedback URL if one exists, and the chat permalink).'
       );
     }
     return null;
