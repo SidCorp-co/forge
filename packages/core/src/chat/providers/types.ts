@@ -68,6 +68,10 @@ export interface ChatStreamRequest {
   /** Sampling temperature; omit for the provider default. Agentic callers
    *  (RC bot) pass a low value for deterministic tool use. */
   temperature?: number | undefined;
+  /** OpenAI-compat `tool_choice`. `'required'` forces ≥1 tool call this
+   *  round — agentic callers set it on the FIRST round so a lazy model
+   *  cannot answer without investigating (later rounds stay auto). */
+  toolChoice?: 'required' | 'auto' | undefined;
   signal?: AbortSignal | undefined;
 }
 

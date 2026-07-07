@@ -32,6 +32,10 @@ export interface TurnCoreArgs {
   tools?: ChatToolset | undefined;
   /** Sampling temperature forwarded to the provider (agentic callers pass low). */
   temperature?: number | undefined;
+  /** Force ≥1 tool call on the FIRST round (`tool_choice: 'required'`) — a
+   *  lazy model then cannot answer without investigating. Later rounds stay
+   *  auto so the loop can terminate. No-op without tools. */
+  requireInitialToolUse?: boolean | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -89,6 +93,8 @@ export async function* runTurnEvents(
         messages,
         tools: tools?.tools,
         temperature,
+        toolChoice:
+          args.requireInitialToolUse && iterations === 1 && tools ? 'required' : undefined,
         signal,
       })) {
         if (event.type === 'chunk') {

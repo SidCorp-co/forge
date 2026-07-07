@@ -61,6 +61,9 @@ export interface ExternalChatTurnResult {
   terminal: 'done' | 'error';
   error: string | null;
   iterations: number;
+  /** Tool calls the model made this turn — callers verify reply claims
+   *  (e.g. cited issue ids) against what was actually done. */
+  toolCalls: Array<{ name: string; arguments: string }>;
 }
 
 export async function runExternalChatTurn(
@@ -121,8 +124,11 @@ export async function runExternalChatTurn(
     tools: args.tools,
     // External-channel turns are agentic workers, not creative chat — a low
     // temperature keeps small models on the call-the-tool path instead of
-    // narrating what they are "about to" do.
+    // narrating what they are "about to" do, and the first round REQUIRES a
+    // tool call so a lazy model cannot answer (or invent an action) without
+    // having investigated anything.
     temperature: 0.2,
+    requireInitialToolUse: args.tools !== undefined,
   });
   let step = await gen.next();
   while (!step.done) step = await gen.next();
@@ -164,5 +170,6 @@ export async function runExternalChatTurn(
     terminal: result.terminal,
     error: result.errorMessage,
     iterations: result.iterations,
+    toolCalls: result.toolCalls,
   };
 }

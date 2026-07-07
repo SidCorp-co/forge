@@ -74,6 +74,9 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
             stream: true,
             stream_options: { include_usage: true },
             ...(req.tools && req.tools.length > 0 ? { tools: req.tools } : {}),
+            ...(req.tools && req.tools.length > 0 && req.toolChoice
+              ? { tool_choice: req.toolChoice }
+              : {}),
             ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
           }),
         };

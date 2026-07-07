@@ -10,7 +10,7 @@
  * bot's own messages / system / edits are ignored (no reply loops).
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
 import { buildExternalMcpToolsets } from '../../chat/tools/external-mcp.js';
@@ -19,12 +19,13 @@ import { buildChatToolContext } from '../../chat/tools/principal.js';
 import { buildProjectToolset } from '../../chat/tools/registry.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { integrationConnections, organizations, projects } from '../../db/schema.js';
+import { integrationConnections, issues, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
 import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { createSeenTracker, decideHandling } from './inbound-gate.js';
+import { extractIssueClaims, judgeIssueClaims } from './reply-guard.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
 /** ISS-609 (piece B) — the Forge-assistant persona for in-channel chat.
@@ -80,6 +81,14 @@ const MAX_REPLY_CHARS = 4500;
 
 const FALLBACK_ERROR_REPLY =
   'Xin lỗi, hệ thống model đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.'; // i18n-allow: user-facing channel reply
+
+/** Sent when even the corrective retry produced unverifiable claims — an
+ *  honest non-answer beats a hallucinated one reaching the channel. */
+const UNVERIFIED_FALLBACK_REPLY =
+  'Xin lỗi, mình chưa thực hiện được yêu cầu này một cách chắc chắn (kết quả không xác minh được). Bạn nhắn lại giúp mình nhé.'; // i18n-allow: user-facing channel reply
+
+const correctiveMessage = (problems: string[]): string =>
+  `[SYSTEM CHECK — not from the user] Your previous reply failed verification: ${problems.join('; ')}. You did NOT perform those actions. Redo the user's request now: CALL the tools to actually do the work, then reply only with verified results — cite issue ids/links exactly as returned by the tools. Reply in the user's language.`;
 
 function clipReply(reply: string): string {
   return reply.length > MAX_REPLY_CHARS ? `${reply.slice(0, MAX_REPLY_CHARS)}… [truncated]` : reply;
@@ -349,23 +358,58 @@ class RocketChatConnectionManager {
         buildRocketChatHistoryToolset(restAuth, m.rid),
         ...external.toolsets,
       );
-      const result = await runExternalChatTurn({
+      const persona = rocketChatPersona(route.projectName, m.username, {
+        projectSlug: route.projectSlug,
+        webBaseUrl,
+      });
+      let result = await runExternalChatTurn({
         projectId: route.projectId,
         source: 'rocketchat',
         sessionId: this.sessionByRid.get(m.rid),
         message: m.text,
         tools,
         userKey: m.userId,
-        persona: rocketChatPersona(route.projectName, m.username, {
-          projectSlug: route.projectSlug,
-          webBaseUrl,
-        }),
+        persona,
         conversationContext,
       });
       this.sessionByRid.set(m.rid, result.sessionId);
-      reply =
-        result.reply.trim() ||
-        (result.terminal === 'error' ? FALLBACK_ERROR_REPLY : "Sorry, I couldn't produce a reply.");
+      // Kernel guard: a reply citing issues that don't exist (or claiming a
+      // creation that never ran) never reaches the channel — one corrective
+      // retry, then an honest fallback. See reply-guard.ts (live incident
+      // 2026-07-07: zero tool calls + fabricated issue link).
+      let verdict = result.reply.trim()
+        ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
+        : { ok: true, problems: [] as string[] };
+      if (!verdict.ok) {
+        logger.warn(
+          { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
+          'rocketchat: reply failed claim verification; corrective retry',
+        );
+        result = await runExternalChatTurn({
+          projectId: route.projectId,
+          source: 'rocketchat',
+          sessionId: result.sessionId,
+          message: correctiveMessage(verdict.problems),
+          tools,
+          userKey: m.userId,
+          persona,
+          conversationContext,
+        });
+        this.sessionByRid.set(m.rid, result.sessionId);
+        verdict = result.reply.trim()
+          ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
+          : { ok: false, problems: ['empty retry reply'] };
+        if (!verdict.ok) {
+          logger.error(
+            { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
+            'rocketchat: retry still unverified; sending honest fallback',
+          );
+        }
+      }
+      reply = !verdict.ok
+        ? UNVERIFIED_FALLBACK_REPLY
+        : result.reply.trim() ||
+          (result.terminal === 'error' ? FALLBACK_ERROR_REPLY : "Sorry, I couldn't produce a reply.");
     } catch (err) {
       // The mention was seen — never leave the user in silence. Drop the room's
       // session pointer so a poisoned session (e.g. deleted row) can't wedge
@@ -378,6 +422,37 @@ class RocketChatConnectionManager {
     }
     // A threaded mention gets its reply in the same thread.
     await ac.client?.sendMessage(m.rid, clipReply(reply), m.tmid);
+  }
+
+  /** Check a reply's issue references against the DB (project-scoped) and the
+   *  turn's actual tool calls. Fails OPEN on DB errors — the guard must never
+   *  brick replies on an infra blip. */
+  private async verifyReplyClaims(
+    projectId: string,
+    reply: string,
+    toolCalls: Array<{ name: string; arguments: string }>,
+  ): Promise<{ ok: boolean; problems: string[] }> {
+    const claims = extractIssueClaims(reply);
+    let ids = new Set<string>();
+    let seqs = new Set<number>();
+    if (claims.urlIds.length > 0 || claims.issSeqs.length > 0) {
+      try {
+        const conds = [
+          ...(claims.urlIds.length > 0 ? [inArray(issues.id, claims.urlIds)] : []),
+          ...(claims.issSeqs.length > 0 ? [inArray(issues.issSeq, claims.issSeqs)] : []),
+        ];
+        const rows = await db
+          .select({ id: issues.id, issSeq: issues.issSeq })
+          .from(issues)
+          .where(and(eq(issues.projectId, projectId), or(...conds)));
+        ids = new Set(rows.map((r) => r.id));
+        seqs = new Set(rows.map((r) => r.issSeq));
+      } catch (err) {
+        logger.warn({ err, projectId }, 'rocketchat: claim verification query failed; skipping');
+        return { ok: true, problems: [] };
+      }
+    }
+    return judgeIssueClaims(claims, { ids, seqs }, toolCalls);
   }
 
   private async teardown(connectionId: string): Promise<void> {
