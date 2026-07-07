@@ -31,6 +31,29 @@ function clip(s: string, cap: number): string {
   return s.length > cap ? `${s.slice(0, cap)}… [truncated]` : s;
 }
 
+/** A quote-reply (`[ ](…?msg=<id>)`) embeds only the parent's `msg` snippet —
+ *  the parent's own attachments (a webhook card's body and its task link) are
+ *  LOST in the quote. These ids let the seed fetch the referenced messages in
+ *  full so the model sees what was actually quoted. */
+const QUOTED_MSG_ID_RE = /\?msg=([A-Za-z0-9]+)/g;
+const MAX_QUOTED_FETCHES = 3;
+
+export function extractQuotedMessageIds(
+  texts: Array<string | undefined>,
+  exclude: ReadonlySet<string>,
+): string[] {
+  const ids: string[] = [];
+  for (const text of texts) {
+    if (!text) continue;
+    for (const match of text.matchAll(QUOTED_MSG_ID_RE)) {
+      const id = match[1] as string;
+      if (!exclude.has(id) && !ids.includes(id)) ids.push(id);
+      if (ids.length >= MAX_QUOTED_FETCHES) return ids;
+    }
+  }
+  return ids;
+}
+
 /**
  * Render REST messages as `[user]: text` lines (oldest first), dropping system
  * messages, the bot's own replies (unless `includeBot` — a thread's earlier
@@ -65,7 +88,14 @@ export function formatConversationLines(
  */
 export async function buildConversationContext(
   auth: RocketChatRestAuth,
-  opts: { rid: string; tmid?: string | undefined; excludeMessageId: string },
+  opts: {
+    rid: string;
+    tmid?: string | undefined;
+    excludeMessageId: string;
+    /** The triggering mention's text — scanned for quote-links so the quoted
+     *  messages can be fetched in full. */
+    triggerText?: string | undefined;
+  },
 ): Promise<string | null> {
   try {
     const [room, thread, threadRoot, permalink] = await Promise.all([
@@ -79,6 +109,17 @@ export async function buildConversationContext(
       // only cite the chat if the permalink is handed to it.
       buildMessagePermalink(auth, opts.rid, opts.tmid ?? opts.excludeMessageId).catch(() => null),
     ]);
+    // Expand quote-replies: fetch the messages referenced by `?msg=<id>` links
+    // in the trigger and the thread, so a quoted webhook card's full body (and
+    // its task link) reach the model instead of just the quote's snippet.
+    const quotedIds = extractQuotedMessageIds(
+      [opts.triggerText, threadRoot?.text, ...thread.map((t) => t.text)],
+      new Set([opts.excludeMessageId, ...(opts.tmid ? [opts.tmid] : [])]),
+    );
+    const quoted = (await Promise.all(quotedIds.map((id) => fetchMessage(auth, id)))).filter(
+      (q): q is RocketChatRestMessage => q !== null,
+    );
+
     const roomBlock = formatConversationLines(room, {
       botUserId: auth.userId,
       excludeMessageId: opts.excludeMessageId,
@@ -104,6 +145,15 @@ export async function buildConversationContext(
     if (threadBlock) {
       parts.push(
         `The mention was posted INSIDE A THREAD — the thread below (root message first) is what the user is referring to:\n${threadBlock}`,
+      );
+    }
+    const quotedBlock =
+      quoted.length > 0
+        ? formatConversationLines(quoted, { botUserId: auth.userId, includeBot: true })
+        : null;
+    if (quotedBlock) {
+      parts.push(
+        `Full content of the message(s) QUOTED in the conversation (the quote itself only carries a snippet):\n${quotedBlock}`,
       );
     }
     if (roomBlock) {

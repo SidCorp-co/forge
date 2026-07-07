@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildRocketChatHistoryToolset, formatConversationLines } from './context.js';
+import {
+  buildRocketChatHistoryToolset,
+  extractQuotedMessageIds,
+  formatConversationLines,
+} from './context.js';
 import { parseStreamMessage } from './ddp-client.js';
 import { type RocketChatRestMessage, extractMessageText } from './rest-client.js';
 
@@ -62,6 +66,25 @@ describe('formatConversationLines', () => {
     expect(out).not.toBeNull();
     expect(out?.startsWith('… [older messages truncated]')).toBe(true);
     expect(out).toContain('39-');
+  });
+});
+
+describe('extractQuotedMessageIds', () => {
+  it('pulls quoted ids from quote-links, deduped, excluding the trigger/thread ids', () => {
+    const ids = extractQuotedMessageIds(
+      [
+        '[ ](https://chat.example.co/group/dodgeprint-issues?msg=FrfkFvtdWNa6MGnMr)\n@babo check this',
+        'see also https://chat.example.co/group/x?msg=FrfkFvtdWNa6MGnMr and https://chat.example.co/channel/y?msg=AAA111',
+        undefined,
+      ],
+      new Set(['AAA111']),
+    );
+    expect(ids).toEqual(['FrfkFvtdWNa6MGnMr']);
+  });
+
+  it('caps the number of quoted fetches', () => {
+    const texts = Array.from({ length: 10 }, (_, i) => `x ?msg=ID${i} y`);
+    expect(extractQuotedMessageIds(texts, new Set()).length).toBe(3);
   });
 });
 

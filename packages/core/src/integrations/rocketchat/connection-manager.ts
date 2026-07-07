@@ -367,6 +367,7 @@ class RocketChatConnectionManager {
         rid: m.rid,
         tmid: m.tmid,
         excludeMessageId: m.id,
+        triggerText: m.text,
       }),
       db
         .select({ agentConfig: projects.agentConfig })
