@@ -256,26 +256,28 @@ export function ChatScreen({
             ) : (
               <h1 className="fg-h2 truncate">My conversations</h1>
             )}
-            <p className="fg-body-sm mt-0.5 truncate text-muted">
-              Ask the agent anything about this project.
-            </p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="fg-body-sm text-muted">
+                Ask the agent anything about this project.
+              </p>
+              {myLenses.length > 0 && (
+                <span
+                  className="flex items-center gap-1"
+                  title="Your working lens (set by your org admin) — it shapes how the agent answers you"
+                >
+                  {MEMBER_LENS_OPTIONS.filter((o) => myLenses.includes(o.value)).map((o) => (
+                    <span
+                      key={o.value}
+                      className="rounded-pill bg-accent-tint px-1.5 py-0.5 text-[10.5px] font-medium text-accent-text"
+                    >
+                      {o.label}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 @[560px]:ml-auto @[560px]:flex-nowrap">
-          {myLenses.length > 0 && (
-            <span
-              className="hidden items-center gap-1 @[520px]:flex"
-              title="Your working lens (set by your org admin) — it shapes how the agent answers you"
-            >
-              {MEMBER_LENS_OPTIONS.filter((o) => myLenses.includes(o.value)).map((o) => (
-                <span
-                  key={o.value}
-                  className="rounded-pill bg-accent-tint px-2 py-0.5 text-[11px] font-medium text-accent-text"
-                >
-                  {o.label}
-                </span>
-              ))}
-            </span>
-          )}
           {session && display && (
             <StatusChip
               status={statusToChip(display)}
