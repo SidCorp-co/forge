@@ -20,12 +20,26 @@ const CHAT_SETTABLE_STATUSES = new Set(['draft', 'waiting', 'needs_info', 'on_ho
  * hatch) is a human's call. The bot answers whoever @-mentions it in the room,
  * so this is the hard fence against a prompt-injected dispatch.
  */
+/** Kernel floor for chat-created issues — a hollow one-liner is rejected so
+ *  the model rewrites it within the same turn (tool-error feedback loop). */
+const MIN_TITLE_CHARS = 10;
+const MIN_DESCRIPTION_CHARS = 200;
+
 export function guardIssueWrites(args: Record<string, unknown>): string | null {
   const action = args.action;
   const data = (args.data ?? {}) as Record<string, unknown>;
   if (action === 'create') {
     data.status = 'draft';
     args.data = data;
+    const title = typeof data.title === 'string' ? data.title.trim() : '';
+    const description = typeof data.description === 'string' ? data.description.trim() : '';
+    if (title.length < MIN_TITLE_CHARS || description.length < MIN_DESCRIPTION_CHARS) {
+      return (
+        'issue rejected: too thin to be actionable. A developer must be able to act on it WITHOUT reading the chat. Rewrite and call create again with: ' +
+        '(1) a title naming the kind + affected feature (e.g. "[Bug] …"), ' +
+        '(2) a description containing the source links from the context (the external task/feedback URL and the chat permalink), the problem or request in concrete detail (quote the reporter where useful), and acceptance criteria as a checklist.'
+      );
+    }
     return null;
   }
   if (action === 'update') {

@@ -157,8 +157,34 @@ describe('chat mcp-adapter', () => {
         guard: guardIssueWrites,
       },
     ]);
-    await execute('forge_issues', '{"action":"create","data":{"title":"t","status":"open"}}');
+    const data = {
+      title: '[Bug] Category path renders too long on listings',
+      status: 'open',
+      description: `Source: https://hub.example.co/tasks?projectId=53&task=12608 and https://chat.example.co/group/x?msg=1. ${'The category breadcrumb concatenates every ancestor level so listing titles overflow. '.repeat(3)}Acceptance: only the leaf category is used.`,
+    };
+    await execute('forge_issues', JSON.stringify({ action: 'create', data }));
     expect((received as unknown as { data: { status: string } }).data.status).toBe('draft');
+  });
+
+  it('guard rejects a hollow issue create (kernel quality floor)', async () => {
+    let called = false;
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', () => {
+            called = true;
+            return { ok: true };
+          }),
+        allowedActions: ['create'],
+        guard: guardIssueWrites,
+      },
+    ]);
+    const out = await execute(
+      'forge_issues',
+      '{"action":"create","data":{"title":"Fix category","description":"Category too long, use the last one."}}',
+    );
+    expect(called).toBe(false);
+    expect(JSON.parse(out).error).toMatch(/too thin to be actionable/);
   });
 
   it('guard rejects any pipeline-dispatching status on update', async () => {

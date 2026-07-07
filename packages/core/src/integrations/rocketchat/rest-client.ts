@@ -172,6 +172,33 @@ export async function fetchBotRooms(auth: RocketChatRestAuth): Promise<RocketCha
   return rooms.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** rid → {name, type}; a room's name/type never change in practice, and the
+ *  permalink builder runs on every mention. Bounded by the rooms the bot is in. */
+const roomInfoByRid = new Map<string, { name: string; type: string }>();
+
+/**
+ * Build a web permalink to a message in a room (`…/channel/<name>?msg=<id>`
+ * for public, `…/group/<name>?msg=<id>` for private). Room name comes from
+ * `rooms.info` (cached per rid). Null when the room can't be resolved — the
+ * caller just omits the permalink line.
+ */
+export async function buildMessagePermalink(
+  auth: RocketChatRestAuth,
+  rid: string,
+  messageId: string,
+): Promise<string | null> {
+  let info = roomInfoByRid.get(rid);
+  if (!info) {
+    const body = await rcGet(auth, 'rooms.info', { roomId: rid });
+    const room = (body as { room?: { name?: string; t?: string } } | null)?.room;
+    if (!room?.name || typeof room.t !== 'string') return null;
+    info = { name: room.name, type: room.t };
+    roomInfoByRid.set(rid, info);
+  }
+  const segment = info.type === 'p' ? 'group' : info.type === 'd' ? 'direct' : 'channel';
+  return `${auth.serverUrl.replace(/\/+$/, '')}/${segment}/${info.name}?msg=${messageId}`;
+}
+
 /** The bot account's own username (api/v1/me) — lets the bot speak about
  *  itself by name instead of as "the system". Null on failure. */
 export async function fetchOwnUsername(auth: RocketChatRestAuth): Promise<string | null> {

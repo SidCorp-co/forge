@@ -14,6 +14,7 @@ import type { ChatToolset } from '../../chat/tools/mcp-adapter.js';
 import {
   type RocketChatRestAuth,
   type RocketChatRestMessage,
+  buildMessagePermalink,
   fetchMessage,
   fetchRoomHistory,
   fetchThreadMessages,
@@ -67,13 +68,16 @@ export async function buildConversationContext(
   opts: { rid: string; tmid?: string | undefined; excludeMessageId: string },
 ): Promise<string | null> {
   try {
-    const [room, thread, threadRoot] = await Promise.all([
+    const [room, thread, threadRoot, permalink] = await Promise.all([
       fetchRoomHistory(auth, opts.rid, { count: SEED_MESSAGE_COUNT }),
       opts.tmid ? fetchThreadMessages(auth, opts.tmid, HISTORY_MAX_PER_CALL) : Promise.resolve([]),
       // getThreadMessages returns REPLIES only — without the root message the
       // thing the thread is about is missing, and "the task above" in a
       // threaded mention resolves against unrelated room noise.
       opts.tmid ? fetchMessage(auth, opts.tmid) : Promise.resolve(null),
+      // Deterministic source link for issues the bot files — the model can
+      // only cite the chat if the permalink is handed to it.
+      buildMessagePermalink(auth, opts.rid, opts.tmid ?? opts.excludeMessageId).catch(() => null),
     ]);
     const roomBlock = formatConversationLines(room, {
       botUserId: auth.userId,
@@ -90,6 +94,11 @@ export async function buildConversationContext(
           })
         : null;
     const parts: string[] = [];
+    if (permalink) {
+      parts.push(
+        `Permalink to this conversation (cite it as the source when you file an issue): ${permalink}`,
+      );
+    }
     // Thread first — it is what the user is talking about; the room stream is
     // background and often webhook noise.
     if (threadBlock) {
