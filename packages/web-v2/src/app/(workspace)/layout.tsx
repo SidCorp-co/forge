@@ -227,14 +227,33 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [pendingQuery.data, acceptInvitation.isPending, acceptInvitation.variables, declineInvitation.isPending, declineInvitation.variables, onAccept],
   );
 
+  // ISS-619 — a dependency-stall wedge's actionable target (the blocker/child
+  // issue) can differ from `issueId` (the wedged issue, kept for interventions
+  // metric attribution). Give those rows a distinct "Open sub-task" action
+  // alongside the default row-click (which still deep-links `issueId`).
   const notificationItems = useMemo(
     () => [
       ...pendingItems,
       ...notificationRows
         .filter((r) => r.type !== "invitation_received")
-        .map(toNotificationItem),
+        .map((row) => {
+          if (row.type !== "pipeline_wedge" || !row.secondaryIssueId) return toNotificationItem(row);
+          return toNotificationItem(row, [
+            {
+              id: "open-sub-task",
+              label: "Open sub-task",
+              variant: "primary",
+              onClick: () => {
+                markRead.mutate(row.id);
+                setNotificationsOpen(false);
+                const target = projects?.find((p) => p.id === row.projectId);
+                if (target) router.push(`/projects/${target.slug}/issues/${row.secondaryIssueId}`);
+              },
+            },
+          ]);
+        }),
     ],
-    [pendingItems, notificationRows],
+    [pendingItems, notificationRows, markRead, projects, router],
   );
   const onSelectNotification = useCallback(
     (id: string) => {

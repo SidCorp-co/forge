@@ -209,11 +209,37 @@ type StalledRow = {
   project_id: string;
   job_type: string;
   issue_id: string;
+  wedged_seq: number;
+  wedged_title: string;
   blocker_id: string;
   blocker_status: string;
+  blocker_seq: number;
+  blocker_title: string;
   kind: string;
   queued_secs: number;
 };
+
+// ISS-619 — EN label for the blocker's internal status, used in the
+// business-language wedge summary. Falls back to a title-cased status for
+// any value not explicitly mapped (new statuses shouldn't need a code change
+// here to render legibly).
+const BLOCKER_STATUS_LABELS: Record<string, string> = {
+  needs_info: 'Needs info',
+  waiting: 'Waiting for review',
+  on_hold: 'On hold',
+  draft: 'Draft',
+  reopen: 'Reopened',
+};
+
+function blockerStatusLabel(status: string): string {
+  return (
+    BLOCKER_STATUS_LABELS[status] ?? status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
+  );
+}
+
+function humanizeDuration(mins: number): string {
+  return mins < 60 ? `~${mins}m` : `~${Math.round(mins / 60)}h`;
+}
 
 /**
  * ISS-442 — detect dependency deadlocks the dispatcher will never resolve and
@@ -236,10 +262,13 @@ export async function detectStalledDependencies(
 
     const rows = await db.execute<StalledRow>(sql`
       SELECT j.id AS job_id, j.project_id, j.type AS job_type, j.issue_id::text AS issue_id,
-             p.id::text AS blocker_id, p.status AS blocker_status, d.kind,
+             wi.iss_seq AS wedged_seq, wi.title AS wedged_title,
+             p.id::text AS blocker_id, p.status AS blocker_status,
+             p.iss_seq AS blocker_seq, p.title AS blocker_title, d.kind,
              extract(epoch FROM (now() - j.queued_at))::int AS queued_secs
       FROM jobs j
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+      JOIN issues wi ON wi.id = j.issue_id
       JOIN issue_dependencies d ON (
             (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
          OR (d.kind = 'decomposes' AND d.from_issue_id = j.issue_id
@@ -270,6 +299,12 @@ export async function detectStalledDependencies(
       seen.add(row.job_id);
       const mins = Math.round(row.queued_secs / 60);
       const rel = row.kind === 'blocks' ? 'blocked by' : 'decomposes — waiting on child';
+      const relBusiness = row.kind === 'blocks' ? 'a blocking issue' : 'a sub-task';
+      const statusLabel = blockerStatusLabel(row.blocker_status);
+      const nextStep =
+        row.blocker_status === 'needs_info'
+          ? `Add the missing info to ISS-${row.blocker_seq}, or mark it done if it's already complete.`
+          : `Resolve ISS-${row.blocker_seq} (or mark it done) so this work can continue.`;
       await emitPipelineWedge({
         projectId: row.project_id,
         issueId: row.issue_id,
@@ -278,6 +313,10 @@ export async function detectStalledDependencies(
         entityId: row.job_id,
         reason: `'${row.job_type}' job queued ${mins}m, ${rel} ${row.blocker_id} which is parked at status='${row.blocker_status}' (merged_at NULL, no active job). The dependency gate keys on merged_at, which only stamps when the blocker leaves its mergeStates.baseBranch — so this gate will never clear on its own.`,
         action: `Fix the blocker's merge point: Settings → Pipeline → "Merge points" (set baseBranch to the stage where it actually merges), or mark the blocker merged (forge_issues mark_merged) if it is genuinely done.`,
+        title: `Blocked: ISS-${row.wedged_seq} "${row.wedged_title}" is waiting on ${relBusiness} that can't continue`,
+        summary: `Waiting ${humanizeDuration(mins)}. ISS-${row.blocker_seq} "${row.blocker_title}" is parked at "${statusLabel}" and won't proceed on its own.`,
+        nextStep,
+        secondaryIssueId: row.blocker_id,
       });
       detected++;
     }

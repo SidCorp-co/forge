@@ -1,7 +1,7 @@
 // Maps a core NotificationRow onto the design `NotificationItem` shape the
 // header bell renders. Keeps the presentation concerns (hue, short label,
 // relative time) out of both the API layer and the layout.
-import type { NotificationItem } from "@/design";
+import type { NotificationAction, NotificationItem } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { NotificationRow, PendingInvitation } from "./types";
 
@@ -48,7 +48,10 @@ function hueFor(row: NotificationRow): NotificationItem["hue"] {
   return "cobalt";
 }
 
-export function toNotificationItem(row: NotificationRow): NotificationItem {
+export function toNotificationItem(
+  row: NotificationRow,
+  actions?: NotificationAction[],
+): NotificationItem {
   return {
     id: row.id,
     label: typeLabel(row.type),
@@ -57,6 +60,7 @@ export function toNotificationItem(row: NotificationRow): NotificationItem {
     time: formatRelativeTime(row.createdAt),
     unread: !row.read,
     hue: hueFor(row),
+    actions,
   };
 }
 

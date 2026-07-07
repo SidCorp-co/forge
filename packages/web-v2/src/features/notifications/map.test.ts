@@ -15,6 +15,7 @@ function row(over: Partial<NotificationRow>): NotificationRow {
     resolutionKey: null,
     resolvedAt: null,
     issueId: "i1",
+    secondaryIssueId: null,
     agentSessionId: null,
     createdAt: new Date().toISOString(),
     ...over,

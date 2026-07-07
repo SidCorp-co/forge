@@ -1915,6 +1915,13 @@ export const notifications = pgTable(
     resolutionKey: text('resolution_key'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
+    // ISS-619 — a second, distinct issue reference for notifications whose
+    // actionable target differs from `issueId` (e.g. a dependency-stall wedge:
+    // `issueId` stays the wedged issue for interventions-metric attribution,
+    // `secondaryIssueId` is the blocker/child the user actually needs to act on).
+    secondaryIssueId: uuid('secondary_issue_id').references(() => issues.id, {
+      onDelete: 'set null',
+    }),
     // agent_session_id is intentionally a bare uuid (no FK) until the agent_sessions
     // table lands in a later B2 migration — adding the FK then is additive.
     agentSessionId: uuid('agent_session_id'),
