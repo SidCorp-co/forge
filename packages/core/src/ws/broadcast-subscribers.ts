@@ -101,6 +101,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         body: p.body ?? null,
         severity: p.severity ?? null,
         issueId: p.issueId,
+        secondaryIssueId: p.secondaryIssueId ?? null,
         agentSessionId: p.agentSessionId,
       },
     });
@@ -121,6 +122,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
           notificationId: p.notificationId,
           projectId: p.projectId,
           issueId: p.issueId,
+          secondaryIssueId: p.secondaryIssueId ?? null,
           title: p.title,
           userId: p.userId,
         },

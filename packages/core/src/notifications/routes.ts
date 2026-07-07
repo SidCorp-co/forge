@@ -236,6 +236,7 @@ export async function createNotification(input: {
     severity: input.severity ?? null,
     resolutionKey: input.resolutionKey ?? null,
     issueId: input.issueId ?? null,
+    secondaryIssueId: input.secondaryIssueId ?? null,
     agentSessionId: input.agentSessionId ?? null,
     decisionId: input.decisionId ?? null,
   });

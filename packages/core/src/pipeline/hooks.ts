@@ -214,6 +214,10 @@ export interface HookPayloads {
     severity?: string | null;
     resolutionKey?: string | null;
     issueId: string | null;
+    // ISS-619 — the actionable blocker/child issue for a dependency-stall
+    // wedge, distinct from `issueId` (the wedged issue). Carried here so the
+    // realtime toast/bridge has parity with the persisted row.
+    secondaryIssueId?: string | null;
     agentSessionId: string | null;
     // Epic 5 (ISS-21): set when `type === 'pm_escalation'` so the WS bridge
     // can include it in the project-room broadcast without re-reading the
