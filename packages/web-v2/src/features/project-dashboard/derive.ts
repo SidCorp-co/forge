@@ -64,7 +64,7 @@ const STATUS_BUCKETS: ReadonlyArray<{
   { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["waiting", "needs_info"] },
   { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved"] },
   { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },
-  { key: "ready", label: "Ready", tone: "success", statuses: ["tested"] },
+  { key: "ready", label: "Awaiting release", tone: "success", statuses: ["tested"] },
 ];
 
 export interface DonutSegment {
@@ -174,15 +174,42 @@ export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageD
 
 const LIVE_RUN_STATUSES = new Set(["running", "paused"]);
 
+/** currentStep value for a run parked at the manual pre-release gate (issue
+ *  status `tested`, awaiting a human to advance tested→released). The pipeline
+ *  run stays `running` in the DB while parked here — see ISS-461: that reaper
+ *  only closes runs whose issue is already `closed`/`released`, so a run
+ *  legitimately parked at `tested` is untouched and looks "live" forever. */
+const AWAITING_RELEASE_STEP = "tested";
+
 /** Currently-live runs (running or paused), most recent first (the list arrives
- *  ordered by `startedAt` desc). */
+ *  ordered by `startedAt` desc). Includes runs parked at the manual release
+ *  gate — prefer `activeRuns`/`awaitingReleaseRuns` for anything user-facing. */
 export function liveRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
 }
 
-/** Sum of estimated cost across the live runs — the `+$X in flight` annotation. */
+/** Live runs that are genuinely executing a step (dispatched job or queued for
+ *  one) — excludes runs parked at the `tested` manual release gate. */
+export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return liveRuns(runs).filter((r) => r.currentStep !== AWAITING_RELEASE_STEP);
+}
+
+/** Live runs parked at the manual release gate — tested and done, just waiting
+ *  on a human to advance tested→released. Not "live" in any executing sense. */
+export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return liveRuns(runs).filter((r) => r.currentStep === AWAITING_RELEASE_STEP);
+}
+
+/** Sum of estimated cost across the live runs — the `+$X in flight` annotation.
+ *  Prefer `activeSpend` for anything user-facing (this includes sunk cost of
+ *  runs parked awaiting release, which is no longer "in flight"). */
 export function inFlightSpend(runs: PipelineRunListItem[] | undefined): number {
   return liveRuns(runs).reduce((sum, r) => sum + (r.cost?.estimatedCost ?? 0), 0);
+}
+
+/** Sum of estimated cost across genuinely-active runs only. */
+export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
+  return activeRuns(runs).reduce((sum, r) => sum + (r.cost?.estimatedCost ?? 0), 0);
 }
 
 /* ------------------------------------------------------------------ *

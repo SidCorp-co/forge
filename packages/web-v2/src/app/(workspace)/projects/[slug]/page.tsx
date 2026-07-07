@@ -14,6 +14,7 @@ import {
   useNow,
 } from "@/design";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
+import { AwaitingReleaseCard } from "@/features/project-dashboard/components/awaiting-release-card";
 import { KpiBand } from "@/features/project-dashboard/components/kpi-band";
 import { LiveRunsCard } from "@/features/project-dashboard/components/live-runs-card";
 import { RunnersCard } from "@/features/project-dashboard/components/runners-card";
@@ -21,8 +22,9 @@ import { SchedulesCard } from "@/features/project-dashboard/components/schedules
 import { SpendCard } from "@/features/project-dashboard/components/spend-card";
 import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
 import {
-  inFlightSpend,
-  liveRuns,
+  activeRuns,
+  activeSpend,
+  awaitingReleaseRuns,
   projectAttention,
   runnersSummary,
   spendByStage,
@@ -59,7 +61,11 @@ export default function ProjectOverviewPage() {
   const attentionQ = useAttention();
   const runsQ = useProjectRuns(projectId);
   const durationsQ = useStepDurations({ days: 7, projectId });
-  const devicesQ = useDevices();
+  // ISS-477: pass the project's orgId so the Runners card shows this org's
+  // shared runner pool, not the caller's ENTIRE device fleet across every org
+  // they belong to (omitting orgId — as this call used to — returns the full
+  // owner-scoped list, which leaked other projects' devices onto this page).
+  const devicesQ = useDevices(project?.orgId ?? null);
   const queueQ = useQueueStats(projectId);
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
@@ -115,8 +121,9 @@ export default function ProjectOverviewPage() {
 
   const attention = projectAttention(attentionQ.view, project.slug, health?.blockers);
   const runItems = runsQ.data?.items;
-  const runsLive = liveRuns(runItems);
-  const inFlight = inFlightSpend(runItems);
+  const runsActive = activeRuns(runItems);
+  const runsAwaitingRelease = awaitingReleaseRuns(runItems);
+  const inFlight = activeSpend(runItems);
   const runners = runnersSummary(
     devicesQ.data,
     queueQ.data,
@@ -137,13 +144,19 @@ export default function ProjectOverviewPage() {
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
             <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{project.role ?? "org"}</Badge>
-            {runsLive.length > 0 && (
+            {runsActive.length > 0 && (
               <span
                 className="fg-caption inline-flex items-center gap-1.5 font-semibold"
                 style={{ color: "var(--cobalt-700)" }}
               >
                 <span className="size-1.5 rounded-full bg-[var(--cobalt-500)] forge-pulse" />
-                {runsLive.length} {runsLive.length === 1 ? "run" : "runs"} live
+                {runsActive.length} {runsActive.length === 1 ? "run" : "runs"} live
+              </span>
+            )}
+            {runsAwaitingRelease.length > 0 && (
+              <span className="fg-caption inline-flex items-center gap-1.5 font-semibold text-subtle">
+                <span className="size-1.5 rounded-full bg-[var(--green-500)]" />
+                {runsAwaitingRelease.length} awaiting release
               </span>
             )}
             {attention.length > 0 && (
@@ -167,7 +180,7 @@ export default function ProjectOverviewPage() {
 
       <div className="space-y-4">
         <KpiBand
-          liveRuns={runsLive.length}
+          liveRuns={runsActive.length}
           busyRunners={runners.busyCount}
           onlineRunners={runners.onlineCount}
           needsYou={attention.length}
@@ -180,7 +193,8 @@ export default function ProjectOverviewPage() {
         <AttentionQueue items={attention} now={now} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          <LiveRunsCard runs={runsLive} slug={project.slug} />
+          <LiveRunsCard runs={runsActive} slug={project.slug} />
+          <AwaitingReleaseCard runs={runsAwaitingRelease} slug={project.slug} />
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
           <RunnersCard summary={runners} slug={project.slug} />

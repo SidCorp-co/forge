@@ -1,8 +1,12 @@
 "use client";
 
-// Live runs card (ISS-379, AC#3) — currently-running/paused pipeline runs with
-// their current stage + cost-so-far. Each row links to the run's issue (or the
-// pipeline board when the run has no issue, e.g. pm/system runs).
+// Live runs card (ISS-379, AC#3) — pipeline runs genuinely executing a step
+// right now, with their current stage + cost-so-far. Each row links to the
+// run's issue (or the pipeline board when the run has no issue, e.g. pm/system
+// runs). Runs parked at the manual release gate are NOT live work — see
+// `AwaitingReleaseCard` — so callers must pass `activeRuns(...)`, not
+// `liveRuns(...)`, or this card silently re-absorbs the noise it was split out
+// to remove.
 import { useRouter } from "next/navigation";
 import { Card, CardContent, Icon, LiveDot, StatusChip } from "@/design";
 import { stageColor } from "@/design/stages";
