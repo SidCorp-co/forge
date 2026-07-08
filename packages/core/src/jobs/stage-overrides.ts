@@ -20,7 +20,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { expandMcpServers } from '../pipeline/mcp-catalog.js';
+import { collectDeclaredMcpNames, expandMcpServers } from '../pipeline/mcp-catalog.js';
 import type {
   BudgetConfig,
   StageConfig,
@@ -38,6 +38,14 @@ export interface StageOverrides {
   mcpServers: Record<string, unknown> | null;
   budget: BudgetConfig | null;
   sessionGroup: string | null;
+  /**
+   * ISS-623 W2 — truthy `mcpServers` keys declared on THIS stage (pre-merge,
+   * pre-expansion), so the dispatcher can diff them against the final
+   * resolved server set and surface any name that silently failed to
+   * resolve. Does not include the project-default declared names — the
+   * dispatcher combines both (see `resolveProjectDefaultMcpServers`).
+   */
+  declaredNames: string[] | null;
 }
 
 const EMPTY: StageOverrides = {
@@ -50,6 +58,7 @@ const EMPTY: StageOverrides = {
   mcpServers: null,
   budget: null,
   sessionGroup: null,
+  declaredNames: null,
 };
 
 /**
@@ -149,6 +158,18 @@ async function loadStageMap(projectId: string): Promise<Record<string, StageConf
   }
 }
 
+/** Return shape of {@link resolveProjectDefaultMcpServers}. */
+export interface ProjectDefaultMcpServers {
+  /** Expanded servers (catalog shorthand → full spec) — the merge BASE. */
+  servers: Record<string, unknown>;
+  /**
+   * ISS-623 W2 — truthy raw keys from `pipelineConfig.mcpServers`
+   * pre-expansion, so the dispatcher can tell a declared-but-dropped name
+   * (e.g. an unknown catalog shorthand) from one that was never declared.
+   */
+  declaredNames: string[];
+}
+
 /**
  * Load the project-default MCP servers from
  * `pipelineConfig.mcpServers` and expand the catalog shorthand into full
@@ -161,7 +182,7 @@ async function loadStageMap(projectId: string): Promise<Record<string, StageConf
  */
 export async function resolveProjectDefaultMcpServers(
   projectId: string,
-): Promise<Record<string, unknown>> {
+): Promise<ProjectDefaultMcpServers> {
   try {
     const [row] = await db
       .select({ agentConfig: projects.agentConfig })
@@ -171,14 +192,17 @@ export async function resolveProjectDefaultMcpServers(
     const ac = (row?.agentConfig ?? null) as Record<string, unknown> | null;
     const pc = ac?.pipelineConfig as Record<string, unknown> | undefined;
     const raw = (pc as { mcpServers?: unknown } | undefined)?.mcpServers;
-    if (!raw || typeof raw !== 'object') return {};
-    return expandMcpServers(raw as Record<string, unknown>);
+    if (!raw || typeof raw !== 'object') return { servers: {}, declaredNames: [] };
+    return {
+      servers: expandMcpServers(raw as Record<string, unknown>),
+      declaredNames: [...collectDeclaredMcpNames({ mcpServers: raw as Record<string, unknown> })],
+    };
   } catch (err) {
     logger.warn(
       { err, projectId },
       'stage-overrides: failed to load pipelineConfig.mcpServers, dispatching without project defaults',
     );
-    return {};
+    return { servers: {}, declaredNames: [] };
   }
 }
 
@@ -222,5 +246,8 @@ export async function resolveStageOverrides(
     mcpServers: stage.mcpServers ? { ...(stage.mcpServers as Record<string, unknown>) } : null,
     budget: stage.budget ? { ...stage.budget } : null,
     sessionGroup: stage.sessionGroup ?? null,
+    declaredNames: stage.mcpServers
+      ? [...collectDeclaredMcpNames({ mcpServers: stage.mcpServers as Record<string, unknown> })]
+      : null,
   };
 }

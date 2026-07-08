@@ -150,15 +150,9 @@ describe('pipelineConfigPatchSchema', () => {
   });
 
   it('rejects `maxConcurrentIssues` outside [1,20]', () => {
-    expect(() =>
-      pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 0 }),
-    ).toThrow();
-    expect(() =>
-      pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 21 }),
-    ).toThrow();
-    expect(() =>
-      pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 2.5 }),
-    ).toThrow();
+    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 0 })).toThrow();
+    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 21 })).toThrow();
+    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 2.5 })).toThrow();
   });
 });
 
@@ -423,10 +417,64 @@ describe('sessionGroups + onResumeFail', () => {
   });
 });
 
+describe('mcpServers validation (ISS-623 W1)', () => {
+  it('accepts known catalog + integration true-sentinels at the project default', () => {
+    const parsed = pipelineConfigSchema.parse({
+      mcpServers: { epodsystem: true, playwright: true },
+    });
+    expect(parsed.mcpServers).toEqual({ epodsystem: true, playwright: true });
+  });
+
+  it('accepts a labeled epodsystem sentinel (epodsystem_<label>)', () => {
+    const parsed = pipelineConfigSchema.parse({
+      mcpServers: { epodsystem_store_a: true },
+    });
+    expect(parsed.mcpServers).toEqual({ epodsystem_store_a: true });
+  });
+
+  it('accepts object-valued custom specs and false/null opt-outs unchanged', () => {
+    const doc = {
+      mcpServers: {
+        custom: { type: 'stdio', command: 'foo', args: [], env: {} },
+        disabled: false,
+        cleared: null,
+      },
+    };
+    const parsed = pipelineConfigSchema.parse(doc);
+    expect(parsed.mcpServers).toEqual(doc.mcpServers);
+  });
+
+  it('rejects an unknown true-sentinel name at the project default', () => {
+    expect(() => pipelineConfigSchema.parse({ mcpServers: { shop: true } })).toThrow(
+      /mcpServers entry.*shop.*not a known catalog server/,
+    );
+  });
+
+  it('rejects an unknown true-sentinel name per-state', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({ states: { approved: { mcpServers: { shp: true } } } }),
+    ).toThrow(/mcpServers entry.*shp.*not a known catalog server/);
+  });
+
+  it('accepts a known true-sentinel name per-state', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: { approved: { mcpServers: { playwright: true, epodsystem: true } } },
+    });
+    expect(parsed.states?.approved?.mcpServers).toEqual({ playwright: true, epodsystem: true });
+  });
+});
+
 describe('defaultStatesConfig (ISS-581)', () => {
   it('ships disallowedTools for developed/testing/released', () => {
     const config = defaultStatesConfig();
-    const EXPECTED = ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'];
+    const EXPECTED = [
+      'CronCreate',
+      'CronDelete',
+      'CronList',
+      'Workflow',
+      'RemoteTrigger',
+      'ScheduleWakeup',
+    ];
     expect(config.developed?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
     expect(config.testing?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
     expect(config.released?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
@@ -434,7 +482,14 @@ describe('defaultStatesConfig (ISS-581)', () => {
 
   it('does NOT set disallowedTools on open/confirmed/clarified/approved/tested/reopen', () => {
     const config = defaultStatesConfig();
-    for (const stage of ['open', 'confirmed', 'clarified', 'approved', 'tested', 'reopen'] as const) {
+    for (const stage of [
+      'open',
+      'confirmed',
+      'clarified',
+      'approved',
+      'tested',
+      'reopen',
+    ] as const) {
       expect(config[stage]?.disallowedTools).toBeUndefined();
     }
   });

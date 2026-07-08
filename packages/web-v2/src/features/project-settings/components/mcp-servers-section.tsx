@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Banner, Button, Icon, Input, Textarea, Toggle } from "@/design";
+import { formatApiError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import {
   MCP_CATALOG,
@@ -222,7 +223,7 @@ export function McpServersSection({
 
           {update.isError && (
             <Banner tone="danger" onDismiss={() => update.reset()}>
-              Couldn&apos;t save MCP servers.
+              {formatApiError(update.error)}
             </Banner>
           )}
 

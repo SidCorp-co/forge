@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { issueComplexities } from '../db/schema.js';
+import {
+  INTEGRATION_SERVER_NAMES,
+  MCP_CATALOG_NAMES,
+  isKnownMcpServerName,
+} from './mcp-catalog.js';
 import { PIPELINE_STEPS, type StepToggleKey } from './registry.js';
 
 export type { StepToggleKey };
@@ -431,17 +436,53 @@ export const pipelineConfigSchema = z
   // orchestrator stamps a group name that `findPriorSessionInGroup` will
   // never match — operator sees fresh sessions instead of resume.
   .superRefine((cfg, ctx) => {
-    if (!cfg.states || !cfg.sessionGroups) return;
-    const declaredGroups = new Set(Object.keys(cfg.sessionGroups));
-    for (const [stageName, stageCfg] of Object.entries(cfg.states)) {
-      if (!stageCfg || typeof stageCfg !== 'object') continue;
-      const sg = (stageCfg as { sessionGroup?: unknown }).sessionGroup;
-      if (typeof sg === 'string' && sg.length > 0 && !declaredGroups.has(sg)) {
+    if (cfg.states && cfg.sessionGroups) {
+      const declaredGroups = new Set(Object.keys(cfg.sessionGroups));
+      for (const [stageName, stageCfg] of Object.entries(cfg.states)) {
+        if (!stageCfg || typeof stageCfg !== 'object') continue;
+        const sg = (stageCfg as { sessionGroup?: unknown }).sessionGroup;
+        if (typeof sg === 'string' && sg.length > 0 && !declaredGroups.has(sg)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['states', stageName, 'sessionGroup'],
+            message: `sessionGroup "${sg}" is not declared in pipelineConfig.sessionGroups`,
+          });
+        }
+      }
+    }
+
+    // ISS-623 W1 — reject a `name: true` mcpServers shorthand entry whose
+    // name is neither a catalog server nor a known integration sentinel.
+    // Without this, a typo (`shop` vs `epodsystem`) is silently dropped by
+    // `expandMcpServers` at dispatch time with only a `logger.warn` — the
+    // agent never sees the server and the operator has to read core source
+    // to find out why. Object-valued raw specs and `false`/`null` opt-outs
+    // are untouched (they are not shorthand, so there is no "known name" to
+    // check).
+    const checkMcpServers = (
+      map: Record<string, unknown> | undefined,
+      path: (string | number)[],
+    ) => {
+      if (!map) return;
+      for (const [name, value] of Object.entries(map)) {
+        if (value !== true) continue;
+        if (isKnownMcpServerName(name)) continue;
         ctx.addIssue({
           code: 'custom',
-          path: ['states', stageName, 'sessionGroup'],
-          message: `sessionGroup "${sg}" is not declared in pipelineConfig.sessionGroups`,
+          path: [...path, name],
+          message: `mcpServers entry "${name}" is not a known catalog server (${MCP_CATALOG_NAMES.join(', ')}) or integration (${INTEGRATION_SERVER_NAMES.join(', ')}, epodsystem_<label>) — fix the name or use an object spec for a custom server`,
         });
+      }
+    };
+    checkMcpServers(cfg.mcpServers, ['mcpServers']);
+    if (cfg.states) {
+      for (const [stageName, stageCfg] of Object.entries(cfg.states)) {
+        if (!stageCfg || typeof stageCfg !== 'object') continue;
+        checkMcpServers((stageCfg as { mcpServers?: Record<string, unknown> }).mcpServers, [
+          'states',
+          stageName,
+          'mcpServers',
+        ]);
       }
     }
   });

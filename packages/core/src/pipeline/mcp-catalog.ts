@@ -86,6 +86,48 @@ export function isIntegrationSentinelName(name: string): boolean {
 }
 
 /**
+ * True when `name` resolves to something at dispatch time — a catalog
+ * shorthand or an integration sentinel (bare or `epodsystem_<label>`). Used
+ * to validate `mcpServers` entries at config-save time (ISS-623 W1): a
+ * `name: true` sentinel for a name that fails this check is a typo, not a
+ * project choice, and is silently dropped by `expandMcpServers` with only a
+ * `logger.warn` — this lets the schema reject it up front instead.
+ */
+export function isKnownMcpServerName(name: string): boolean {
+  return (MCP_CATALOG_NAMES as readonly string[]).includes(name) || isIntegrationSentinelName(name);
+}
+
+/**
+ * Collect every server name declared with a truthy (non-`false`/`null`)
+ * value across the project-default `mcpServers` map AND every per-state
+ * `states[x].mcpServers` map. Pure/shape-agnostic — accepts the raw
+ * `pipelineConfig`-shaped object so both the schema (pre-parse) and the
+ * dispatcher (post-parse) can reuse it without a circular import.
+ */
+export function collectDeclaredMcpNames(pipelineConfig: {
+  mcpServers?: Record<string, unknown> | null;
+  states?: Record<
+    string,
+    { mcpServers?: Record<string, unknown> | null } | null | undefined
+  > | null;
+}): Set<string> {
+  const names = new Set<string>();
+  const collectFrom = (map: Record<string, unknown> | null | undefined) => {
+    if (!map || typeof map !== 'object') return;
+    for (const [name, value] of Object.entries(map)) {
+      if (value !== false && value !== null && value !== undefined) names.add(name);
+    }
+  };
+  collectFrom(pipelineConfig.mcpServers);
+  if (pipelineConfig.states) {
+    for (const stageCfg of Object.values(pipelineConfig.states)) {
+      if (stageCfg && typeof stageCfg === 'object') collectFrom(stageCfg.mcpServers);
+    }
+  }
+  return names;
+}
+
+/**
  * Expand a project's shorthand `mcpServers` map into full specs.
  *
  * Per-entry rules:
