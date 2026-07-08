@@ -110,6 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed job retries that would permanently fail when a device hits session usage limits
 - In-app notification inbox for project and organization invitations now appears in the Notifications bell.
 - Schedules can now run custom scripts directly without spawning an agent session, enabling lightweight automations.
+- MCP-server config typos are now rejected with a clear error when saving pipeline settings, and the integration status badge no longer shows a misleading "needs reauth" when a server simply isn't declared for injection.
 
 ## [0.3.0] - 2026-06-11
 
