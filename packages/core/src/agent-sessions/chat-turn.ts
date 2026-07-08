@@ -381,7 +381,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // Each turn re-spawns `claude` with a fresh `--mcp-config`, so the follow-up
   // (`agent:send`) needs it as much as the cold start. Best-effort: returns `{}`
   // (harmless) when the project has no `pipelineConfig.mcpServers` configured.
-  const mcpServersOverride = await resolveProjectDefaultMcpServers(project.id);
+  const { servers: mcpServersOverride } = await resolveProjectDefaultMcpServers(project.id);
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   // Resume only when we have a Claude session id AND we are still on the device
   // that owns it. A migration breaks resume affinity → cold-start + rehydrate.

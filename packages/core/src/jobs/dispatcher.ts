@@ -606,12 +606,19 @@ async function dispatchViaRunner(
   // singleton. Integration servers (postman/epodsystem) then layer on top
   // below, unchanged. Net order: project-default < per-state < integrations.
   const projectDefaultMcpServers = await resolveProjectDefaultMcpServers(job.projectId);
+  // ISS-623 W2 — the truthy sentinel names declared BEFORE the merge/expand/
+  // integration-resolve chain runs, so we can diff them against what actually
+  // made it into the final map and surface anything that silently dropped.
+  const declaredMcpNames = new Set<string>([
+    ...projectDefaultMcpServers.declaredNames,
+    ...(runnerStageOverrides.declaredNames ?? []),
+  ]);
   if (
-    Object.keys(projectDefaultMcpServers).length > 0 ||
+    Object.keys(projectDefaultMcpServers.servers).length > 0 ||
     runnerStageOverrides.mcpServers !== null
   ) {
     runnerStageOverrides.mcpServers = {
-      ...projectDefaultMcpServers,
+      ...projectDefaultMcpServers.servers,
       ...(runnerStageOverrides.mcpServers ?? {}),
     };
   }
@@ -643,11 +650,25 @@ async function dispatchViaRunner(
   // names (declared but no active integration); (2) browser dedup: prefer
   // chrome-devtools-mcp over playwright when both are present.
   runnerStageOverrides.mcpServers = sweepIntegrationSentinels(runnerStageOverrides.mcpServers);
+  const beforeBrowserDedupe = new Set(Object.keys(runnerStageOverrides.mcpServers ?? {}));
   runnerStageOverrides.mcpServers = dedupeBrowserServers(runnerStageOverrides.mcpServers);
+  // ISS-623 W2 — diff the declared sentinel names against what actually
+  // resolved. `playwright` dropped ONLY via the browser dedup (both it and
+  // chrome-devtools-mcp resolved, and chrome-devtools-mcp won) is an
+  // intentional preference, not a failure to resolve — exclude it so the
+  // agent isn't warned about a server it never needed.
+  const resolvedMcpNames = new Set(Object.keys(runnerStageOverrides.mcpServers ?? {}));
+  const playwrightDedupedNotDropped =
+    beforeBrowserDedupe.has('playwright') && !resolvedMcpNames.has('playwright');
+  const droppedMcpNames = [...declaredMcpNames].filter(
+    (name) =>
+      !resolvedMcpNames.has(name) && !(name === 'playwright' && playwrightDedupedNotDropped),
+  );
   const { content: runnerSystemPrompt, blocks: runnerBlocks } =
     await buildPipelinePreambleStructured(job.projectId, {
       step: job.type,
       override: runnerStageOverrides.systemPrompt,
+      mcpDiagnostics: { resolved: [...resolvedMcpNames], dropped: droppedMcpNames },
     });
 
   // PR-5 fallback — when resuming a prior CLI session via --resume, the CLI

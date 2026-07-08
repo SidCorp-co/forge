@@ -453,6 +453,14 @@ export interface ConnectionBindingsResponse {
  * - `no_credential`  — active but the connection stores no secret.
  * - `shadowed`       — active with credential, but another binding of the same
  *                      provider wins the single `mcpServers.<provider>` slot.
+ * - `not_declared`   — ISS-623 W3: active with credential and would otherwise
+ *                      win the slot, but no stage (project-default or
+ *                      per-state `pipelineConfig.mcpServers`) declares this
+ *                      provider's sentinel (e.g. `epodsystem: true`). A
+ *                      connected, healthy integration does NOT inject unless
+ *                      a stage opts in — `lastHealthStatus` does not gate
+ *                      injection, so this is distinct from a credential
+ *                      problem (`no_credential`) or a health/reauth issue.
  */
 export interface McpServerPreviewEntry {
   provider: IntegrationProvider;
@@ -463,7 +471,7 @@ export interface McpServerPreviewEntry {
   configured: boolean;
   active: boolean;
   willInject: boolean;
-  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed';
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_declared';
   url: string | null;
   headers: Record<string, string> | null;
   lastHealthStatus: string | null;

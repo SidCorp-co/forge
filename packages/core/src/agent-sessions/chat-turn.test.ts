@@ -47,7 +47,8 @@ vi.mock('../lib/chat-preamble.js', () => ({
 }));
 
 const resolveProjectDefaultMcpServers = vi.fn(async (_id: string) => ({
-  playwright: { type: 'stdio' },
+  servers: { playwright: { type: 'stdio' } },
+  declaredNames: ['playwright'],
 }));
 vi.mock('../jobs/stage-overrides.js', () => ({
   resolveProjectDefaultMcpServers: (id: string) => resolveProjectDefaultMcpServers(id),

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const limitResults: unknown[][] = [];
 const limit = vi.fn(() => Promise.resolve(limitResults.shift() ?? []));
@@ -82,6 +82,23 @@ describe('resolveStageOverrides', () => {
     expect(r.timeoutSeconds).toBe(1800);
     expect(r.systemPrompt).toEqual({ mode: 'append', extras: 'X' });
     expect(r.sessionGroup).toBe('verification');
+  });
+
+  it('collects declaredNames from truthy per-state mcpServers keys, excluding false/null (ISS-623 W2)', async () => {
+    limitResults.push([
+      {
+        agentConfig: {
+          pipelineConfig: {
+            states: {
+              developed: { mcpServers: { epodsystem: true, playwright: false, shop: true } },
+            },
+          },
+        },
+      },
+    ]);
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
+    expect(r.declaredNames).toEqual(expect.arrayContaining(['epodsystem', 'shop']));
+    expect(r.declaredNames).not.toContain('playwright');
   });
 
   it('applies the default policy model when the stage status is missing from the config (ISS-535)', async () => {
@@ -176,36 +193,52 @@ describe('escalateModel (ISS-535)', () => {
 describe('resolveProjectDefaultMcpServers', () => {
   it('returns empty when project has no agentConfig', async () => {
     limitResults.push([{ agentConfig: null }]);
-    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({});
+    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({
+      servers: {},
+      declaredNames: [],
+    });
   });
 
   it('returns empty when pipelineConfig has no mcpServers', async () => {
     limitResults.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
-    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({});
+    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({
+      servers: {},
+      declaredNames: [],
+    });
   });
 
   it('expands the catalog shorthand from pipelineConfig.mcpServers', async () => {
-    limitResults.push([
-      { agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } },
-    ]);
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } }]);
     const out = await resolveProjectDefaultMcpServers('p-1');
-    expect(out.playwright).toEqual({
+    expect(out.servers.playwright).toEqual({
       type: 'stdio',
       command: 'npx',
       args: ['@playwright/mcp@latest', '--headless', '--isolated', '--no-sandbox'],
       env: {},
     });
+    expect(out.declaredNames).toEqual(['playwright']);
   });
 
   it('passes a raw custom spec object through verbatim', async () => {
     const custom = { type: 'http', url: 'https://x' };
     limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { mine: custom } } } }]);
     const out = await resolveProjectDefaultMcpServers('p-1');
-    expect(out.mine).toEqual(custom);
+    expect(out.servers.mine).toEqual(custom);
+    expect(out.declaredNames).toEqual(['mine']);
+  });
+
+  it('does not include a declared name for an unknown catalog shorthand (dropped by expandMcpServers)', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { shop: true } } } }]);
+    const out = await resolveProjectDefaultMcpServers('p-1');
+    expect(out.servers).toEqual({});
+    expect(out.declaredNames).toEqual(['shop']);
   });
 
   it('swallows DB errors and returns empty', async () => {
     limit.mockRejectedValueOnce(new Error('db down'));
-    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({});
+    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({
+      servers: {},
+      declaredNames: [],
+    });
   });
 });

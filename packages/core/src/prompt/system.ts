@@ -41,6 +41,7 @@ export type PreambleBlockId =
   | 'project-context'
   | 'forge-facts'
   | 'state-block'
+  | 'mcp-servers'
   | 'state-extras';
 
 export interface PreambleBlock {
@@ -233,6 +234,35 @@ export interface BuildPreambleOptions {
   step?: JobType | null;
   /** Project per-state override (`states[state].systemPrompt`). */
   override?: SystemPromptOverride | null;
+  /**
+   * ISS-623 W2 — the dispatcher's post-merge MCP server diagnostics for THIS
+   * dispatch: which sentinel/shorthand names resolved into the runner's
+   * final `mcpServers` map, and which declared names silently dropped (an
+   * unknown catalog/integration name, or a declared-but-not-active
+   * integration). Omit for non-pipeline callers (chat / preview) — no
+   * dispatch has happened, so there is nothing to diagnose.
+   */
+  mcpDiagnostics?: { resolved: string[]; dropped: string[] } | null;
+}
+
+/**
+ * ISS-623 W2 — render the `mcp-servers` preamble block. Only called when
+ * `dropped.length > 0` (a clean dispatch adds nothing, so the shared prefix
+ * stays cache-friendly for the common case). Tells the agent what actually
+ * resolved and what it declared-but-didn't-get, plus WHY a name commonly
+ * fails to resolve, so it can self-diagnose instead of guessing (the
+ * motivating incident: 4 pipeline runs blamed `needs_reauth` for a config
+ * typo that a human had to read core source to find).
+ */
+function formatMcpServersBlock(resolved: string[], dropped: string[]): string {
+  const resolvedList =
+    resolved.length > 0 ? resolved.map((n) => `\`mcp__${n}__*\``).join(', ') : '(none)';
+  return `## MCP servers — this dispatch
+Resolved and available this session: ${resolvedList}
+
+WARNING — declared in \`pipelineConfig.mcpServers\` but did NOT resolve: ${dropped.map((n) => `\`${n}\``).join(', ')}
+
+A declared name fails to resolve when it is neither a known catalog server nor a known integration name (a typo), OR it names a real integration (e.g. \`epodsystem\`) that has no active binding for this project. If your task depends on tools from one of the dropped names, STOP and report the unresolved name in your response instead of retrying or assuming a credential/auth problem — the integration status badge does not gate injection, so "connected" does not mean "declared for this dispatch".`;
 }
 
 /**
@@ -310,6 +340,13 @@ export async function buildPipelinePreambleStructured(
   const stateBlock = getStatePrompt(opts?.step);
   if (stateBlock) {
     sections.push({ id: 'state-block', body: stateBlock });
+  }
+  const mcpDiagnostics = opts?.mcpDiagnostics ?? null;
+  if (mcpDiagnostics && mcpDiagnostics.dropped.length > 0) {
+    sections.push({
+      id: 'mcp-servers',
+      body: formatMcpServersBlock(mcpDiagnostics.resolved, mcpDiagnostics.dropped),
+    });
   }
   if (extras.length > 0) {
     sections.push({ id: 'state-extras', body: extras });

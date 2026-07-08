@@ -17,7 +17,7 @@ import { ENV_LABEL, Pill } from "./status-pill";
 
 const REASON_META: Record<
   McpServerPreviewEntry["reason"],
-  { label: string; fg: string; bg: string; icon: "check" | "dot" | "alert" }
+  { label: string; fg: string; bg: string; icon: "check" | "dot" | "alert"; hint?: string }
 > = {
   ok: { label: "Will inject", fg: "var(--green-600)", bg: "var(--green-50)", icon: "check" },
   not_configured: {
@@ -34,10 +34,21 @@ const REASON_META: Record<
     icon: "alert",
   },
   shadowed: { label: "Shadowed", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
+  // ISS-623 W3 — distinct from `no_credential`/health: this integration is
+  // connected and healthy, but no stage's `mcpServers` declares its sentinel,
+  // so it is not injected. Connection status does not gate injection.
+  not_declared: {
+    label: "Not enabled",
+    fg: "var(--amberw-600)",
+    bg: "var(--amberw-50)",
+    icon: "alert",
+    hint: "Add `<serverName>: true` to a stage's MCP servers to inject this — connection health does not gate injection.",
+  },
 };
 
 function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
-  return <Pill {...REASON_META[reason]} />;
+  const meta = REASON_META[reason];
+  return <Pill label={meta.label} fg={meta.fg} bg={meta.bg} icon={meta.icon} />;
 }
 
 function VerifyResult({ result }: { result: IntegrationTestResult | { errorMessage: string } }) {
@@ -98,6 +109,10 @@ function McpServerRow({
         <p className="fg-body-sm text-subtle">
           Configure the {entry.provider} integration below to inject its MCP server.
         </p>
+      )}
+
+      {REASON_META[entry.reason].hint && (
+        <p className="fg-body-sm text-[var(--amberw-600)]">{REASON_META[entry.reason].hint}</p>
       )}
 
       {entry.configured && (

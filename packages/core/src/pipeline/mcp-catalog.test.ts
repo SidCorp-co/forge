@@ -9,6 +9,8 @@ const {
   MCP_CATALOG_NAMES,
   INTEGRATION_SERVER_NAMES,
   isIntegrationSentinelName,
+  isKnownMcpServerName,
+  collectDeclaredMcpNames,
   expandMcpServers,
 } = await import('./mcp-catalog.js');
 
@@ -68,6 +70,42 @@ describe('INTEGRATION_SERVER_NAMES + isIntegrationSentinelName (ISS-581)', () =>
     expect(isIntegrationSentinelName('playwright')).toBe(false);
     expect(isIntegrationSentinelName('chrome-devtools-mcp')).toBe(false);
     expect(isIntegrationSentinelName('unknown')).toBe(false);
+  });
+});
+
+describe('isKnownMcpServerName + collectDeclaredMcpNames (ISS-623 W1)', () => {
+  it('isKnownMcpServerName returns true for catalog and integration names', () => {
+    expect(isKnownMcpServerName('playwright')).toBe(true);
+    expect(isKnownMcpServerName('chrome-devtools-mcp')).toBe(true);
+    expect(isKnownMcpServerName('epodsystem')).toBe(true);
+    expect(isKnownMcpServerName('epodsystem_store_a')).toBe(true);
+    expect(isKnownMcpServerName('postman')).toBe(true);
+    expect(isKnownMcpServerName('sentry')).toBe(true);
+  });
+
+  it('isKnownMcpServerName returns false for an unknown name', () => {
+    expect(isKnownMcpServerName('shop')).toBe(false);
+    expect(isKnownMcpServerName('shp')).toBe(false);
+  });
+
+  it('collectDeclaredMcpNames collects truthy keys from the project default only', () => {
+    const names = collectDeclaredMcpNames({ mcpServers: { playwright: true, disabled: false } });
+    expect(names).toEqual(new Set(['playwright']));
+  });
+
+  it('collectDeclaredMcpNames collects truthy keys across per-state maps too', () => {
+    const names = collectDeclaredMcpNames({
+      mcpServers: { playwright: true },
+      states: {
+        approved: { mcpServers: { epodsystem: true } },
+        developed: { mcpServers: { shop: true, off: null } },
+      },
+    });
+    expect(names).toEqual(new Set(['playwright', 'epodsystem', 'shop']));
+  });
+
+  it('collectDeclaredMcpNames returns an empty set when nothing is declared', () => {
+    expect(collectDeclaredMcpNames({})).toEqual(new Set());
   });
 });
 

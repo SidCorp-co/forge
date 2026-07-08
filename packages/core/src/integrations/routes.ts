@@ -20,6 +20,7 @@ import { classifyGitRemote } from '../git/provision-credential.js';
 import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { collectDeclaredMcpNames } from '../pipeline/mcp-catalog.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { findDeliveryById } from './deliveries.js';
@@ -1251,7 +1252,7 @@ interface McpServerPreviewEntry {
   configured: boolean;
   active: boolean;
   willInject: boolean;
-  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed';
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_declared';
   url: string | null;
   headers: Record<string, string> | null;
   lastHealthStatus: string | null;
@@ -1295,6 +1296,28 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
   const pairs = await listBindingsForProject(projectId);
   const servers: McpServerPreviewEntry[] = [];
 
+  // ISS-623 W3 — a healthy, active, credentialed integration still does NOT
+  // inject unless some stage (project-default or per-state) declares its
+  // sentinel in `pipelineConfig.mcpServers`. Load the declared-name set once
+  // (project-wide — this preview isn't scoped to one stage) so `willInject`
+  // reflects the real ISS-581 opt-in gate instead of only active+credential.
+  const [projectRow] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const pipelineConfig = (projectRow?.agentConfig as { pipelineConfig?: unknown } | null)
+    ?.pipelineConfig as Parameters<typeof collectDeclaredMcpNames>[0] | undefined;
+  const declaredMcpNames = collectDeclaredMcpNames(pipelineConfig ?? {});
+
+  /** ISS-581 opt-in check for a preview row's serverName. */
+  const isSentinelDeclared = (provider: (typeof MCP_PROVIDERS)[number]): boolean => {
+    if (provider === 'epodsystem') {
+      return [...declaredMcpNames].some((n) => n === 'epodsystem' || n.startsWith('epodsystem_'));
+    }
+    return declaredMcpNames.has(provider);
+  };
+
   for (const provider of MCP_PROVIDERS) {
     const rows = pairs.filter((p) => p.binding.provider === provider);
     if (rows.length === 0) {
@@ -1332,8 +1355,12 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
         : provider;
       // Epodsystem: every active+credentialed binding gets its own injected key.
       // Others: only the resolver's winning pick is injected; rest are shadowed.
-      const willInject =
+      // ISS-623 W3 — none of that matters unless a stage actually declared the
+      // sentinel; a connected+healthy+winning integration still won't inject.
+      const wouldWinSlot =
         active && hasSecrets && (isEpodsystem || resolverPick?.binding.id === pair.binding.id);
+      const sentinelDeclared = isSentinelDeclared(provider);
+      const willInject = wouldWinSlot && sentinelDeclared;
       const entry = buildMcpEntryFor(provider, pair);
       servers.push({
         provider,
@@ -1349,7 +1376,9 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
             ? 'disabled'
             : !hasSecrets
               ? 'no_credential'
-              : 'shadowed',
+              : !wouldWinSlot
+                ? 'shadowed'
+                : 'not_declared',
         url: typeof entry.url === 'string' ? entry.url : null,
         headers: willInject ? { Authorization: 'Bearer [redacted]' } : null,
         lastHealthStatus: pair.connection.lastHealthStatus,

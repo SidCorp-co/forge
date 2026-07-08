@@ -2143,7 +2143,9 @@ agentSessionRoutes.post(
       // Seed the project-default MCP servers (e.g. playwright) into the rerun's
       // fresh interactive Claude turn, mirroring `dispatchChatTurn` — without
       // this the re-spawned `claude` only sees the `forge` MCP. Best-effort `{}`.
-      const mcpServersOverride = await resolveProjectDefaultMcpServers(inserted.projectId);
+      const { servers: mcpServersOverride } = await resolveProjectDefaultMcpServers(
+        inserted.projectId,
+      );
       roomManager.publish(deviceRoom(targetDeviceId), {
         event: 'agent:start',
         data: {

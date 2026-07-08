@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
 vi.mock('../config/env.js', () => ({
-  env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
+  env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test', CORS_ORIGINS: 'http://localhost:3000' },
 }));
 
 const selectLimit = vi.fn();
@@ -107,6 +107,16 @@ function mockOwnerMembership() {
     role: 'admin',
     orgRole: 'owner',
   });
+}
+
+/**
+ * ISS-623 W3 — the mcp-preview endpoint loads `pipelineConfig` once (to gate
+ * `willInject` on the ISS-581 sentinel opt-in). Stacks the `selectLimit`
+ * queue with the project row; call AFTER `mockOwnerMembership()` and before
+ * hitting the preview endpoint. Pass `{}` for "nothing declared".
+ */
+function mockPipelineConfigMcpServers(mcpServers: Record<string, unknown>) {
+  selectLimit.mockResolvedValueOnce([{ agentConfig: { pipelineConfig: { mcpServers } } }]);
 }
 
 function post(token: string, body: unknown) {
@@ -234,9 +244,12 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
       updatedAt: new Date(),
     });
     // Simulate Drizzle wrapping the driver's 23505 in a cause object.
-    const drizzleWrapped = Object.assign(new Error('Failed query: insert into integration_bindings'), {
-      cause: { code: '23505' },
-    });
+    const drizzleWrapped = Object.assign(
+      new Error('Failed query: insert into integration_bindings'),
+      {
+        cause: { code: '23505' },
+      },
+    );
     createBinding.mockRejectedValueOnce(drizzleWrapped);
     softDeleteConnection.mockResolvedValueOnce(undefined);
 
@@ -871,9 +884,12 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     mockOwnerMembership();
     findConnectionById.mockResolvedValueOnce(ownedConnection());
     findActiveBinding.mockResolvedValueOnce(null); // no active duplicate — inactive row not caught by pre-flight
-    const drizzleWrapped = Object.assign(new Error('Failed query: insert into integration_bindings'), {
-      cause: { code: '23505' },
-    });
+    const drizzleWrapped = Object.assign(
+      new Error('Failed query: insert into integration_bindings'),
+      {
+        cause: { code: '23505' },
+      },
+    );
     createBinding.mockRejectedValueOnce(drizzleWrapped);
 
     const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
@@ -1104,6 +1120,7 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
   it('200 — injectable postman binding renders the resolver URL with a redacted header', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
+    mockPipelineConfigMcpServers({ postman: true });
     const pair = postmanPair();
     listBindingsForProject.mockResolvedValueOnce([pair]);
     // The resolver pick query — called once per MCP provider.
@@ -1140,6 +1157,7 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
   it('200 — disabled binding reads disabled and never willInject', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
+    mockPipelineConfigMcpServers({ postman: true });
     listBindingsForProject.mockResolvedValueOnce([postmanPair({ bindingActive: false })]);
     listActiveBindingsForProjectProvider.mockResolvedValue([]);
 
@@ -1156,6 +1174,7 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
   it('200 — active binding without a stored credential reads no_credential', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
+    mockPipelineConfigMcpServers({ postman: true });
     const pair = postmanPair({ secretsEnc: null });
     listBindingsForProject.mockResolvedValueOnce([pair]);
     listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
@@ -1170,6 +1189,45 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
     expect(pm?.willInject).toBe(false);
     expect(pm?.reason).toBe('no_credential');
     expect(pm?.headers).toBeNull();
+  });
+
+  it('200 — active+credentialed binding with no declared sentinel reads not_declared, not ok (ISS-623 W3)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    mockPipelineConfigMcpServers({}); // nothing declared
+    const pair = postmanPair();
+    listBindingsForProject.mockResolvedValueOnce([pair]);
+    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
+      Promise.resolve(provider === 'postman' ? [pair] : []),
+    );
+
+    const res = await previewReq(token);
+    const body = (await res.json()) as {
+      servers: { provider: string; willInject: boolean; reason: string; headers: unknown }[];
+    };
+    const pm = body.servers.find((s) => s.provider === 'postman');
+    expect(pm?.willInject).toBe(false);
+    expect(pm?.reason).toBe('not_declared');
+    expect(pm?.headers).toBeNull();
+  });
+
+  it('200 — declaring the sentinel flips an otherwise-winning binding back to ok (ISS-623 W3)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    mockPipelineConfigMcpServers({ postman: true });
+    const pair = postmanPair();
+    listBindingsForProject.mockResolvedValueOnce([pair]);
+    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
+      Promise.resolve(provider === 'postman' ? [pair] : []),
+    );
+
+    const res = await previewReq(token);
+    const body = (await res.json()) as {
+      servers: { provider: string; willInject: boolean; reason: string }[];
+    };
+    const pm = body.servers.find((s) => s.provider === 'postman');
+    expect(pm?.willInject).toBe(true);
+    expect(pm?.reason).toBe('ok');
   });
 });
 
@@ -1228,9 +1286,7 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
 
     const res = await post(token, EPOD_BODY);
     expect(res.status).toBe(201);
-    expect(createBinding).toHaveBeenCalledWith(
-      expect.objectContaining({ label: '' }),
-    );
+    expect(createBinding).toHaveBeenCalledWith(expect.objectContaining({ label: '' }));
   });
 
   it('201 — creates labeled epodsystem binding when label is provided', async () => {
@@ -1243,9 +1299,7 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
 
     const res = await post(token, { ...EPOD_BODY, label: 'partner-a' });
     expect(res.status).toBe(201);
-    expect(createBinding).toHaveBeenCalledWith(
-      expect.objectContaining({ label: 'partner-a' }),
-    );
+    expect(createBinding).toHaveBeenCalledWith(expect.objectContaining({ label: 'partner-a' }));
   });
 
   it('409 — duplicate epodsystem label returns ALREADY_EXISTS', async () => {
@@ -1295,6 +1349,7 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview — epodsystem m
   async function previewEpod(pairs: unknown[]) {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
+    mockPipelineConfigMcpServers({ epodsystem: true });
     listBindingsForProject.mockResolvedValueOnce(pairs);
     return buildApp().request(`/api/projects/${PROJECT_ID}/integrations/mcp-preview`, {
       method: 'GET',
