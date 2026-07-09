@@ -67,16 +67,25 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     // Poll until approved / expired. 2s cadence, hard 11-min ceiling (code TTL
     // is 10 min server-side; the extra minute covers clock skew).
     let deadline = Instant::now() + Duration::from_secs(11 * 60);
+    let mut consecutive_transient: u32 = 0;
     let approved = loop {
         if Instant::now() >= deadline {
             anyhow::bail!("device login timed out before approval");
         }
         match pairing::login_poll(&core_url, &init.pairing_code).await? {
             LoginPoll::Pending => {
+                consecutive_transient = 0;
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
             LoginPoll::Gone(reason) => {
                 anyhow::bail!("device login code is no longer valid: {reason}");
+            }
+            LoginPoll::Retry(reason) => {
+                consecutive_transient += 1;
+                eprintln!("⚠ transient error while polling ({reason}) — retrying");
+                let secs =
+                    std::cmp::min(2u64.saturating_mul(1 << consecutive_transient.min(4)), 30);
+                tokio::time::sleep(Duration::from_secs(secs)).await;
             }
             LoginPoll::Approved(a) => break a,
         }

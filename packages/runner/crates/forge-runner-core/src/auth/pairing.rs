@@ -112,6 +112,32 @@ pub enum LoginPoll {
     Approved(Box<LoginApproved>),
     /// 410 — expired / already consumed / unknown.
     Gone(String),
+    /// 5xx / 429 / transport error — transient; caller should back off and keep polling.
+    Retry(String),
+}
+
+/// Classification of a poll HTTP status code, decoupled from `LoginPoll` so it
+/// can be unit-tested without a mock server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PollClass {
+    Pending,
+    Approved,
+    Gone,
+    Retry,
+    Fatal,
+}
+
+/// Pure classifier: 5xx/429 are transient (retry), 410 is a graceful stop,
+/// 204 is "not yet", 2xx is success, everything else (4xx) is fatal.
+fn classify_poll_status(code: u16) -> PollClass {
+    match code {
+        204 => PollClass::Pending,
+        410 => PollClass::Gone,
+        429 => PollClass::Retry,
+        500..=599 => PollClass::Retry,
+        200..=299 => PollClass::Approved,
+        _ => PollClass::Fatal,
+    }
 }
 
 /// Start a browser-approve device login. Returns the code + verify URL.
@@ -143,37 +169,44 @@ pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse>
         .map_err(|e| Error::Other(format!("login init decode: {e}")))
 }
 
-/// Poll once for approval. Maps HTTP 204/200/410 to [`LoginPoll`].
+/// Poll once for approval. Maps HTTP 204/200/410 to [`LoginPoll`]; 5xx/429/
+/// transport errors classify as [`LoginPoll::Retry`] instead of a fatal `Err`
+/// so a transient edge blip doesn't kill the whole pairing session.
 pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll> {
     let url = format!(
         "{}/api/devices/login/poll?pairing_code={}",
         core_url.trim_end_matches('/'),
         urlencoding(pairing_code),
     );
-    let resp = reqwest::Client::new()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("login poll request: {e}")))?;
+    let resp = match reqwest::Client::new().get(&url).send().await {
+        Ok(resp) => resp,
+        Err(e) => return Ok(LoginPoll::Retry(format!("transport error: {e}"))),
+    };
     let status = resp.status();
-    if status.as_u16() == 204 {
-        return Ok(LoginPoll::Pending);
+    match classify_poll_status(status.as_u16()) {
+        PollClass::Pending => Ok(LoginPoll::Pending),
+        PollClass::Gone => {
+            let text = resp.text().await.unwrap_or_default();
+            Ok(LoginPoll::Gone(text))
+        }
+        PollClass::Retry => {
+            let text = resp.text().await.unwrap_or_default();
+            Ok(LoginPoll::Retry(format!("{status}: {text}")))
+        }
+        PollClass::Fatal => {
+            let text = resp.text().await.unwrap_or_default();
+            Err(Error::Other(format!(
+                "login poll failed ({status}): {text}"
+            )))
+        }
+        PollClass::Approved => {
+            let approved = resp
+                .json::<LoginApproved>()
+                .await
+                .map_err(|e| Error::Other(format!("login poll decode: {e}")))?;
+            Ok(LoginPoll::Approved(Box::new(approved)))
+        }
     }
-    if status.as_u16() == 410 {
-        let text = resp.text().await.unwrap_or_default();
-        return Ok(LoginPoll::Gone(text));
-    }
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!(
-            "login poll failed ({status}): {text}"
-        )));
-    }
-    let approved = resp
-        .json::<LoginApproved>()
-        .await
-        .map_err(|e| Error::Other(format!("login poll decode: {e}")))?;
-    Ok(LoginPoll::Approved(Box::new(approved)))
 }
 
 /// Minimal percent-encoding for the pairing code query param (alnum + `-`).
@@ -214,4 +247,24 @@ pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse
     resp.json::<PairResponse>()
         .await
         .map_err(|e| Error::Other(format!("pair decode: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_poll_status_covers_all_branches() {
+        assert_eq!(classify_poll_status(204), PollClass::Pending);
+        assert_eq!(classify_poll_status(200), PollClass::Approved);
+        assert_eq!(classify_poll_status(410), PollClass::Gone);
+        assert_eq!(classify_poll_status(429), PollClass::Retry);
+        assert_eq!(classify_poll_status(500), PollClass::Retry);
+        assert_eq!(classify_poll_status(502), PollClass::Retry);
+        assert_eq!(classify_poll_status(520), PollClass::Retry);
+        assert_eq!(classify_poll_status(524), PollClass::Retry);
+        assert_eq!(classify_poll_status(400), PollClass::Fatal);
+        assert_eq!(classify_poll_status(401), PollClass::Fatal);
+        assert_eq!(classify_poll_status(404), PollClass::Fatal);
+    }
 }
