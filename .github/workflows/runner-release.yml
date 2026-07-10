@@ -12,7 +12,32 @@ permissions:
   contents: write
 
 jobs:
+  # Release gate — a tag is immutable, so artifacts must never ship from a
+  # commit that fails the same checks runner-ci runs. runner-v0.6.8 shipped
+  # while runner-ci was red (fmt drift); this job makes that impossible:
+  # build/release only start after fmt + clippy + tests pass on the tagged
+  # commit. Single-OS on purpose — the 3-OS matrix already ran in runner-ci
+  # on merge; this is a fast recheck of the exact tagged commit.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/runner
+      - name: Lockfile sync + fmt + clippy + test (same gates as runner-ci)
+        working-directory: packages/runner
+        run: |
+          cargo metadata --locked --format-version=1 >/dev/null
+          cargo fmt --check
+          cargo clippy --workspace --all-targets
+          cargo test --workspace
+
   build:
+    needs: check
     strategy:
       fail-fast: false
       matrix:

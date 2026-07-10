@@ -68,6 +68,7 @@ jobs:
       dev: ${{ steps.filter.outputs.dev }}
       dev-tauri: ${{ steps.filter.outputs.dev-tauri }}
       core: ${{ steps.filter.outputs.core }}
+      runner: ${{ steps.filter.outputs.runner }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +95,9 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
+              - '.github/workflows/ci.yml'
+            runner:
+              - 'packages/runner/**'
               - '.github/workflows/ci.yml'
             docs:
               - 'docs/**'
@@ -206,14 +210,14 @@ jobs:
       # Integration tests run in the separate, NON-BLOCKING `core-integration`
       # job below (not this gated one) — see its comment.
 
-  # Integration tests (Testcontainers) for core. Deliberately NON-BLOCKING:
-  #   - NOT in the `ci-passed` needs list, so a red run never blocks a merge.
-  #   - heavy/slow + occasional Testcontainers flake (the reason these were
-  #     kept out of CI originally) makes them a poor hard gate.
-  # The point is VISIBILITY: this suite asserts real-Postgres behavior +
-  # applies every migration on a fresh DB, so it silently rotted when the
-  # memory-v2 contract changed and nothing ran it. A visible red job catches
-  # that drift; the maintainer still runs it locally before release.
+  # Integration tests (Testcontainers) for core. BLOCKING (in the `ci-passed`
+  # needs list) since 2026-07-10: the "visibility-only" experiment failed — the
+  # job sat permanently red for a week (8 rotted tests) and everyone learned to
+  # ignore it, which is worse than no job at all. This suite asserts
+  # real-Postgres behavior + applies every migration on a fresh DB; it is the
+  # only thing standing between a schema change and a broken deploy. If a
+  # genuine Testcontainers flake blocks a merge, re-run the job — if flakes
+  # become chronic, quarantine the flaky TEST, don't soften the gate.
   core-integration:
     needs: changes
     if: needs.changes.outputs.core == 'true'
@@ -222,6 +226,31 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-workspace
       - run: pnpm --filter @forge/core test:integration:ci
+
+  # Merge gate for the Rust runner. Mirrors the runner-ci gates on ubuntu only
+  # (runner-ci keeps the 3-OS matrix for platform visibility, but as a separate
+  # path-triggered workflow it CANNOT be a required check — a PR not touching
+  # the runner would never run it and the required check would pend forever).
+  # This job lives inside CI so `ci-passed` can gate on it via paths-filter.
+  runner:
+    needs: changes
+    if: needs.changes.outputs.runner == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/runner
+      - name: Lockfile sync + fmt + clippy + test (same gates as runner-ci)
+        working-directory: packages/runner
+        run: |
+          cargo metadata --locked --format-version=1 >/dev/null
+          cargo fmt --check
+          cargo clippy --workspace --all-targets
+          cargo test --workspace
 
   docs:
     needs: changes
@@ -246,12 +275,25 @@ jobs:
   # makes CI — not the local pre-push hook, which contributors may not have
   # installed and can bypass — the authoritative merge gate. The blocking
   # signals it enforces today: install-check, lang-check, the affected
-  # package build(s)+test(s), and markdown-link integrity. (`core build` runs
+  # package build(s)+test(s) — including core's real-Postgres integration
+  # suite and the Rust runner gate — and markdown-link integrity. (`core build` runs
   # `tsc -p tsconfig.build.json`, so prod typecheck is gated here; the
   # test-inclusive `typecheck`/`lint` stay non-blocking debt for now.)
   ci-passed:
     if: always()
-    needs: [install-check, lang-check, changes, web, dev, dev-bundle-smoke, core, docs]
+    needs:
+      [
+        install-check,
+        lang-check,
+        changes,
+        web,
+        dev,
+        dev-bundle-smoke,
+        core,
+        core-integration,
+        runner,
+        docs,
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Require every CI job to have passed or been skipped
@@ -264,6 +306,8 @@ jobs:
             "dev:${{ needs.dev.result }}" \
             "dev-bundle-smoke:${{ needs.dev-bundle-smoke.result }}" \
             "core:${{ needs.core.result }}" \
+            "core-integration:${{ needs.core-integration.result }}" \
+            "runner:${{ needs.runner.result }}" \
             "docs:${{ needs.docs.result }}"; do
             echo "$r"
             result="${r##*:}"

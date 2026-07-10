@@ -9,7 +9,19 @@ permissions:
   contents: write
 
 jobs:
+  # Release gate — recheck the tagged commit before creating the release or
+  # spending 4 platform builds. Mirrors the blocking part of CI's `dev` job
+  # (renderer tests); the Tauri compile itself is validated by the build
+  # matrix below. A tag is immutable: never ship from a red commit.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-workspace
+      - run: pnpm --filter forge-beta exec vitest run --passWithNoTests
+
   release:
+    needs: check
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create_release.outputs.id }}
