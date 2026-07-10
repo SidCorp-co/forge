@@ -36,8 +36,9 @@ runtime plane — your machine(s)
 - **Room-scoped WS.** Sockets are subscribed to rooms at auth (`user:<id>`, `project:<id>`, `device:<id>`); clients can't pick rooms. See [websocket.md](websocket.md).
 - **MCP on the same data layer.** Tools wrap REST controllers (same validation/policy/audit). User MCP tokens are account-wide (call must include `projectId`); device tokens are device-scoped.
 - **Organizations.** `packages/core/src/orgs/`, mounted `/api/orgs` + `/api/org-invitations`; two-tier org+project RBAC layered over the per-project membership policy.
-- **Integrations framework.** `packages/core/src/integrations/{coolify,epodsystem,postman}/`, mounted `/api/integration-connections`; pluggable adapters for outbound third-party systems.
+- **Integrations framework.** `packages/core/src/integrations/{coolify,epodsystem,postman,rocketchat,sentry}/`, mounted `/api/integration-connections`; pluggable adapters spanning inbound + outbound third-party systems (deploy, chat, error-tracking, API testing). `rocketchat` is an inbound chat provider (`startRocketChatManager`); `sentry` ingests inbound events / injects MCP.
 - **Memory cognitive layer.** `packages/core/src/memory/` (consolidation/decay/extraction/indexer), mounted `/api/memory`; the pgvector embeddings store feeds this layer for recall, consolidation, and decay.
+- **Chat provider subsystem.** `packages/core/src/chat/` (`/api/chat`, `run-turn-core.ts` tool-calling loop) + the Rocket.Chat inbound provider; flag-gated conversational access to project agents.
 
 ## Data flow — a typical job
 

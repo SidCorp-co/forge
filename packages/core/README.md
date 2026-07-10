@@ -57,8 +57,12 @@ Health check:
 
 ```bash
 curl http://localhost:8080/health
-# → {"ok":true}
+# → { "ok": true, "db": { "ok": true }, "queue": { "ok": true }, "ws": { "ok": true } }
 ```
+
+Returns **200** only when DB + pg-boss queue + WS are all up; otherwise **503** with the
+same shape and the failing subsystem's `ok:false`. A bare local `pnpm dev` (no queue/WS)
+commonly returns `ok:false` / 503.
 
 Production-style run:
 

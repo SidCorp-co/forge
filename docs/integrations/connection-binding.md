@@ -59,17 +59,19 @@ connection is a later, user-driven action, never a migration concern).
 
 ## Adapter capabilities → adaptive UI
 
-The 3 providers are **two archetypes**, so the adapter declares capabilities and the UI
+The 5 providers span archetypes, so the adapter declares capabilities and the UI
 renders to them instead of one rigid layout:
 
-| capability        | coolify | postman | epodsystem | meaning                                  |
-|-------------------|:-------:|:-------:|:----------:|------------------------------------------|
-| `canDispatch`     | ✓       |         |            | core makes outbound calls                |
-| `canReceiveWebhook`| ✓      |         |            | inbound webhook handler                  |
-| `injectsMcp`      |         | ✓       | ✓          | injects an `mcpServers.*` entry into the runner |
-| `hasEnvironments` | ✓       |         |            | staging/prod split is meaningful         |
-| `prodConfirmGate` | ✓       |         |            | prod dispatch needs human confirm        |
-| `hasDeliveryLog`  | ✓       |         |            | delivery audit is meaningful (no empty box for MCP providers) |
+| capability        | coolify | postman | epodsystem | sentry | rocketchat | meaning                                  |
+|-------------------|:-------:|:-------:|:----------:|:------:|:----------:|------------------------------------------|
+| `canDispatch`     | ✓       |         |            |        |            | core makes outbound calls                |
+| `canReceiveWebhook`| ✓      |         |            |        |            | inbound webhook handler                  |
+| `injectsMcp`      |         | ✓       | ✓          | ✓      |            | injects an `mcpServers.*` entry into the runner |
+| `hasEnvironments` | ✓       |         |            |        |            | staging/prod split is meaningful         |
+| `prodConfirmGate` | ✓       |         |            |        |            | prod dispatch needs human confirm        |
+| `hasDeliveryLog`  | ✓       |         |            |        |            | delivery audit is meaningful (no empty box for MCP providers) |
+
+Archetypes: **coolify** = dispatch+webhook; **postman/epodsystem/sentry** = MCP-injection; **rocketchat** = connection-only (inbound chat provider, all caps false).
 
 ## Migration safety
 
@@ -86,7 +88,7 @@ renders to them instead of one rigid layout:
 **Core (this branch — additive, safe):**
 1. `integration_connections` + `integration_bindings` tables + `deliveries.binding_id`.
 2. Migration + 1:1 backfill.
-3. `IntegrationCapabilities` on the adapter interface; declared on all 3 adapters.
+3. `IntegrationCapabilities` on the adapter interface; declared on all 5 adapters.
 4. `store.ts` read/CRUD helpers for connection+binding (consumed by the feature issues).
 5. Contract test guarding archetype capabilities + healthcheck presence.
 
@@ -103,5 +105,5 @@ renders to them instead of one rigid layout:
 - F. **Future** — drop `project_integrations` after cutover verified; OAuth-first connect;
   *in-place user→org promotion of an existing connection*. (Org ownership itself + same-org
   binding already shipped: connections can be created with `ownerType:'org'`, and the bind
-  guard rejects cross-org binds with `ORG_MISMATCH` — `routes.ts:1223-1233`. What remains is
+  guard rejects cross-org binds with `ORG_MISMATCH` — `routes.ts:560` + `:1539`. What remains is
   only flipping an existing user-owned connection to org ownership without a re-create.)

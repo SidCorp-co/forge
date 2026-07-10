@@ -101,7 +101,7 @@ Reserved derived keys (not author-settable; `projects/project-facts.ts`):
 PIPELINE_RULES mandates one first action per step: `forge_step_start { projectId, issueId, stage }`.
 
 - Sets the step's **working status** when the registry defines one — `PIPELINE_STEPS.workingStatus`
-  (`pipeline/registry.ts`, registry v3; mirrored in contracts `pipelineStepSchema`). Sparse by
+  (`pipeline/registry.ts`, registry v5; mirrored in contracts `pipelineStepSchema`). Sparse by
   design: `code`/`fix` → `in_progress`; `test`'s trigger `testing` already IS in-flight; other
   steps stay on their trigger (short steps — `pipeline_runs.currentStep` gives visibility).
 - Guarded to the trigger→working edge (never stomps `needs_info`/`on_hold`); idempotent on resume.

@@ -51,6 +51,7 @@ Infra failure / unknown hang ──▶ on_hold (manual)
 Missing info (any stage)     ──▶ needs_info — human-gated bounce, no auto-dispatch
 ```
 
+- **Intake gate (ISS-606, per-project)**: when `pipelineConfig.intakeGate.enabled`, `issues/intake-gate.ts` `applyIntakeGate` rewrites every create that would land at `open` (all channels — REST/MCP/webhook/member) to `draft` + label `intake` — a creation-time park, not a dispatch-time block. Approve = the one-click `draft → open`; reject = `closed`. Creates explicitly targeting non-open statuses pass through untouched. Disabled → issues enter at `open` as normal.
 - **Clarify-on-happy-path**: `confirmed` dispatches forge-clarify (reproduce the bug
   in a live env / validate UX vs mockups, write a root-cause hypothesis) and exits to
   `clarified`, where forge-plan picks up. Cannot-reproduce/ambiguous → `needs_info`.

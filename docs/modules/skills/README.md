@@ -9,8 +9,8 @@ Units of agent work: each skill is a prompt + tool allow-list Claude Code runs w
 
 ```
   Built-in skills         User-authored skills
-  (./.claude/skills/       (.claude/skills/ in project repo)
-    oss-*, built-in)               │
+  (packages/core/skills/   (.claude/skills/ in project repo)
+    forge-*, seeded on boot)       │
            │                        │
            └────────┬───────────────┘
                     ▼
@@ -36,7 +36,7 @@ Units of agent work: each skill is a prompt + tool allow-list Claude Code runs w
 
 | Data | Source | Notes |
 |------|--------|-------|
-| Built-in skill definitions | `.claude/skills/oss-*/SKILL.md` files in repo | Compiled at build time |
+| Built-in skill definitions | `packages/core/skills/forge-*/SKILL.md` (prefix `BUILTIN_SKILL_PREFIXES=['forge-']`) | Seeded server-side on boot (`seedBuiltinSkills`), not compiled from `.claude/skills` |
 | User-authored skills | Project's `.claude/skills/` folder | Discovered on device during job execution |
 | Skill metadata | frontmatter in SKILL.md | `name`, `description`, `tools`, registered stage |
 | Skill invocation | `agents-jobs` dispatcher | Job payload includes `skillName` |

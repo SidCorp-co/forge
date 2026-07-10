@@ -7,8 +7,10 @@ The shared machinery (registry, vault, delivery log, queue, adapter contract) is
 ## Available integrations
 
 - **[Integration framework](framework.md)** — registry / vault / queue / adapter pattern, inbound webhook routing, and how to add a provider.
-- **Coolify** (deploy automation) — the one live adapter; covered in [framework.md](framework.md#coolify-adapter).
-- **Sentry** — Forge's own observability (breadcrumbs), not a per-project adapter; see [framework.md](framework.md#sentry).
+- **Coolify** (deploy automation) — outbound/webhook adapter; covered in [framework.md](framework.md#coolify-adapter).
+- **Postman / Epodsystem / Sentry** — per-project MCP-injection adapters (`injectsMcp:true`).
+- **Rocket.Chat** — inbound chat provider (connection-only adapter).
+- **Sentry** — dual role: Forge's own observability (breadcrumbs) AND a per-project MCP-injection adapter (ISS-524); see [framework.md](framework.md#sentry).
 
 _Other platform-specific shapes will be documented here as they stabilize._
 

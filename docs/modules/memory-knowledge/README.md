@@ -119,6 +119,14 @@ Write 30/min and search 60/min per user (`RATE_LIMIT_MEMORY_*` env overrides) �
 | Knowledge convention notes | Prompt facts instruct agents: search first (`sourceFilter:['knowledge']`, semantic score > 0.8), else write with a stable kebab `sourceRef` |
 | Knowledge edges (`knowledge-edges/`) | `knowledge_edges` table: subject/predicate/object triples with `confidence`, `sourceMemoryId`, temporal validity; written by extraction, CRUD via REST — not yet a retrieval strategy (phase 5) |
 
+## Memory candidates (continuous learning, ISS-534/554)
+
+A confidence-accrual staging area **upstream** of `memories`: repeated pipeline signals accrue into a candidate before a human promotes it to a real memory. Signals never write straight to `memories` — they build evidence first.
+
+- **Table** `memory_candidates` (`db/schema.ts`): `signal_type`, `signal_key`, `status` (`accruing` → `graduated` → reviewed/`archived`), `confidence` (default 0.30), `evidence_count`, `evidence` (jsonb), `summary`; unique `(project_id, signal_type, signal_key)`.
+- **Files** (`packages/core/src/memory/`): `candidates-observer.ts` (subscribes to pipeline signals), `candidates-accrual.ts` (read-modify-write confidence accrual / evidence merge), `candidates-decay.ts` (ages out stale candidates), `candidates-service.ts` (list graduated / accept / reject / promote), `candidates-routes.ts` (REST).
+- **Endpoints** (mounted `/api/memory`, auth = project `viewer`): `GET /api/memory/candidates` (graduated only, paginated) · `POST /api/memory/candidates/:id/accept` · `POST /api/memory/candidates/:id/reject` · `POST /api/memory/candidates/:id/promote` (graduated → new `draft` memory).
+
 ## Known gaps (phase 5, future)
 
 Graph retrieval strategy over `knowledge_edges` (+ pagerank), `auto` strategy via intent classification, org-scoped memories (needs an authz story), MEMORY.md export for runner devices, cross-encoder reranking, contextual chunk prefixes for knowledge ingest. The 0.85 dedup threshold is inherited from forge-agents and should be re-validated against the configured embedding model.

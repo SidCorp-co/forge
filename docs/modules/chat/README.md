@@ -28,10 +28,11 @@ Interactive conversational sessions with project agents — conversation, not pi
   │ - recent messages│
   └────────┬─────────┘
            ▼
-  Dispatched to active device (if pairing-backed)
-  OR run directly via LiteLLM (if LLM-only mode)
+  Resolved LLM provider runs the turn (runChatTurn → runTurnEvents)
+  — an OpenAI-style tool-calling loop (buildProjectToolset,
+    up to MAX_TOOL_ITERATIONS=8; ISS-604). Never dispatched to a device.
            ▼
-  Streaming response
+  Streaming SSE response
            ▼
   Conversation appended inline to chat_sessions.messages
            ▼
@@ -96,10 +97,9 @@ A per-turn audit/analytics row — **one row per query→reply turn**, not a per
 
 1. User types message → `POST /api/chat`
 2. System prompt built (project context + recent history)
-3. Pairing-backed: routed to device; device runs `claude` in chat mode
-4. LLM-only: direct LiteLLM call
-5. Response streams back via WebSocket
-6. Conversation appended inline to `chat_sessions.messages`; one `chat_logs` row written for the query→reply turn
+3. The resolved LLM provider runs the turn via `runChatTurn` → `runTurnEvents` — an OpenAI-style tool-calling loop over the project toolset (`buildProjectToolset`, `chat/tools/registry.ts`), up to `MAX_TOOL_ITERATIONS=8` (ISS-604). The turn is **never** dispatched to a device — device-backed agent runs are the separate `agent-sessions/` path.
+4. Response streams back to the browser via SSE
+5. Only the FINAL assistant text is appended inline to `chat_sessions.messages`; intra-turn tool round-trips are ephemeral. One `chat_logs` row written for the query→reply turn
 
 ### Delete a session
 
@@ -124,7 +124,7 @@ A per-turn audit/analytics row — **one row per query→reply turn**, not a per
 |-----------|--------|------|------|
 | Read from | [memory-knowledge](../memory-knowledge/README.md) | Context retrieval | Every turn |
 | Read from | [skills](../skills/README.md) | Available tool list (project-scoped) | At session start |
-| Receives from / emits to | [devices](../devices/README.md) | Runs `claude` in chat mode (if device-backed) | On user message |
+| Read from | [skills](../skills/README.md) / MCP | Project toolset for the tool-calling loop | Every turn |
 
 ## Commands / Jobs
 
@@ -136,7 +136,7 @@ _No chat-specific crons or background jobs are registered._
 |---|------|-----|
 | Trigger | User message | Pipeline transition / manual dispatch |
 | Interface | Conversational | Structured skill execution |
-| Runs on | Device (if paired) or LiteLLM direct | Always a paired device |
+| Runs on | Resolved LLM provider (in-core tool-calling loop) | Always a paired device |
 | Outcome | Answer / discussion | Status change / code change |
 | Captured | chat_logs (per query→reply turn, audit) | JobEvents (per stdout chunk) |
 | Related to issue | Optional | Always |

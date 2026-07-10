@@ -148,7 +148,7 @@ Device-runner pairing, the job pipeline, session replay, and webhook ingestion
 shipped across `v0.1.x`. `v0.3.0` added Organizations and the multi-runner
 framework, alongside custom skill authoring and the web dashboard. Current
 focus: hardening these — org/RBAC polish, runner reliability (the Rust runner is
-at `0.4.2`), and pipeline observability. See
+at `0.6.7`), and pipeline observability. See
 [CHANGELOG.md](CHANGELOG.md) for what's shipped.
 
 ## Documentation

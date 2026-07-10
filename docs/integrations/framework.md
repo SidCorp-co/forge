@@ -10,17 +10,18 @@ Origin: the former `integration-framework` proposal (retired). This doc = SHIPPE
 |-------|--------|
 | Framework foundation (registry, vault, store, delivery log, queue) | Shipped (ISS-234) |
 | **Coolify** adapter (deploy + logs + circuit breaker) | Shipped, live |
-| **Postman** + **Epodsystem** adapters (MCP-injecting) | Shipped, live |
+| **Postman** + **Epodsystem** + **Sentry** adapters (MCP-injecting) | Shipped, live |
+| **Rocket.Chat** adapter (inbound chat, connection-only, no MCP) | Shipped, live |
 | Inbound webhook routing via adapter registry | Shipped (Coolify header only) |
-| **Sentry** | Shipped as *Forge's own* observability (breadcrumbs), NOT a per-project adapter |
+| **Sentry** | Dual role: Forge's own observability (breadcrumbs) AND a per-project MCP-injection adapter (`injectsMcp:true`, ISS-524) |
 | GitHub inbound webhook | Shipped, but **legacy path** — not an `IntegrationAdapter` (see [README](README.md)) |
 
-`IntegrationProvider` = the 3-value union `'coolify' | 'postman' | 'epodsystem'` (`packages/core/src/integrations/types.ts`). All three adapters register at boot (`registerCoolifyAdapter()` / `registerPostmanAdapter()` / `registerEpodsystemAdapter()` in `src/index.ts`).
+`IntegrationProvider` = the 5-value union `'coolify' | 'postman' | 'epodsystem' | 'sentry' | 'rocketchat'` (`packages/core/src/integrations/types.ts`). All five adapters register at boot (`registerCoolifyAdapter()` / `registerPostmanAdapter()` / `registerEpodsystemAdapter()` / `registerSentryAdapter()` / `registerRocketChatAdapter()` in `src/index.ts`).
 
 ## Architecture (3 layers, as built)
 
 ```
-Layer 3 — Adapters    coolify/ · postman/ · epodsystem/   (all registered at boot)
+Layer 3 — Adapters    coolify/ · postman/ · epodsystem/ · sentry/ · rocketchat/   (all registered at boot)
 Layer 2 — Framework   registry · vault · store · deliveries · queue · circuit-breaker
 Layer 1 — Storage     integration_connections (credential) + integration_bindings
                       (per-project attach, 1 row per project+provider+env)
@@ -48,7 +49,7 @@ interface IntegrationAdapter<TConfig, TSecrets> {
 
 ### Registry
 
-`registry.ts` — in-memory `Map<provider, adapter>`. `registerAdapter` (dup = throw), `getAdapter`, `listAdapters`. All three adapters register at boot in `src/index.ts` (`registerCoolifyAdapter()` / `registerPostmanAdapter()` / `registerEpodsystemAdapter()`).
+`registry.ts` — in-memory `Map<provider, adapter>`. `registerAdapter` (dup = throw), `getAdapter`, `listAdapters`. All five adapters register at boot in `src/index.ts` (`registerCoolifyAdapter()` / `registerPostmanAdapter()` / `registerEpodsystemAdapter()` / `registerSentryAdapter()` / `registerRocketChatAdapter()`).
 
 ### Vault (secret encryption)
 
@@ -62,7 +63,7 @@ interface IntegrationAdapter<TConfig, TSecrets> {
 `store.ts` over the connection/binding model in `db/schema.ts` (~line 2160). `project_integrations` was **retired by ISS-410** (epic ISS-404) — see [connection-binding.md](connection-binding.md) for the split.
 
 - **`integration_connections`** — the CREDENTIAL (owner-scoped): `provider, secrets_enc (bytea), active`. Indexed on `(owner, provider)`.
-- **`integration_bindings`** — the per-project ATTACH: `connection_id (FK cascade), project_id, provider, environment ('staging'|'prod'), config (jsonb), integration_secret (HMAC key), active, breaker_opened_at, last_health_status, last_health_at`. Unique on `(project_id, provider, environment)` — preserves the old one-row-per-(project, provider, env) guard.
+- **`integration_bindings`** — the per-project ATTACH: `connection_id (FK cascade), project_id, provider, environment ('staging'|'prod'), config (jsonb), integration_secret (HMAC key), label (ISS-558; '' = default binding), active`. Unique on `(project_id, provider, environment, label)` — `label=''` for non-epodsystem preserves the one-row-per-(project, provider, env) guard while allowing multiple labeled epodsystem bindings. Breaker/health state (`breaker_opened_at`, `last_health_status`, `last_health_at`) lives on `integration_connections`, not the binding.
 - **`integration_deliveries`** — audit + idempotency: `direction ('outbound'|'inbound'), event_name, request_id, status ('pending'|'ok'|'failed'), payload, response, error_message, duration_ms`, keyed by `binding_id`. Partial unique index on `(binding_id, request_id)` where `request_id IS NOT NULL` (idempotency). Soft-delete = `active=false`.
 
 Shipped schema differs from proposal: `environment` is a real column (not in config); no `events[]` / `state` / `health` jsonb; breaker state is just `active` + `breaker_opened_at`.
@@ -108,7 +109,7 @@ Shipped schema differs from proposal: `environment` is a real column (not in con
 
 ## Sentry
 
-Sentry here = **Forge's own observability**, not a per-project integration. `packages/core/src/observability/sentry.ts` (`isSentryEnabled`, `Sentry`) is opt-in via `SENTRY_DSN` env var (see CLAUDE.md → Observability). Framework only *uses* it: dispatch/inbound add breadcrumbs (`integration.coolify.dispatch` / `.inbound`); a tripped breaker captures `integration.coolify.breaker_tripped`. The integrations status endpoint reports a Sentry card driven purely by `SENTRY_DSN` presence (no per-project Sentry API).
+Sentry plays **two** roles. (1) **Forge's own observability**: `packages/core/src/observability/sentry.ts` (`isSentryEnabled`, `Sentry`) is opt-in via `SENTRY_DSN` env var (see CLAUDE.md → Observability). Framework uses it for breadcrumbs (`integration.coolify.dispatch` / `.inbound`); a tripped breaker captures `integration.coolify.breaker_tripped`. (2) **A per-project MCP-injection adapter** (`integrations/sentry/adapter.ts`, `injectsMcp:true`, ISS-524) — like Postman/Epodsystem it injects an MCP server config into agents; it makes no direct outbound/inbound delivery calls. The integrations status endpoint also reports a Sentry card driven by `SENTRY_DSN` presence.
 
 ## REST surface
 
@@ -128,7 +129,7 @@ Project-scoped router, all under `/api/projects/:projectId/integrations` (`integ
 | GET | `/mcp-preview` | preview the injected MCP config |
 | GET | `/integrations/status` | composed read-only status hub (GitHub/Coolify/runners/postgres/MCP/Sentry/Claude cards) |
 
-Connection-level router, all under `/api/integration-connections` (`integrationConnectionsRoutes`, mounted in `src/index.ts:327`) — owner-scoped connections that can be shared into projects via bindings:
+Connection-level router, all under `/api/integration-connections` (`integrationConnectionsRoutes`, mounted in `src/index.ts:360`) — owner-scoped connections that can be shared into projects via bindings:
 
 | Method | Path | Use |
 |--------|------|-----|
@@ -152,6 +153,6 @@ Connection-level router, all under `/api/integration-connections` (`integrationC
 
 ## Not yet (unshipped)
 
-Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no per-project Sentry/Human-Task adapters; no `validateConfig`/`pollState` hooks, webhook-secret rotation window, or payload versioning. Future work lives in [../IDEAS.md](../IDEAS.md) / issues — not here.
+Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no Human-Task adapter; no `validateConfig`/`pollState` hooks, webhook-secret rotation window, or payload versioning. Future work lives in [../IDEAS.md](../IDEAS.md) / issues — not here.
 
 (Health-polling and delivery replay have *shipped*: an hourly health sweep — `integrations/health-sweep.ts`, queue `integrations-health-sweep`, cron `17 * * * *` — re-probes connections older than 30 min; delivery replay is the `POST /…/deliveries/:deliveryId/retry` route above.)

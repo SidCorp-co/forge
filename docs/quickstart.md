@@ -75,7 +75,7 @@ curl -fsSL http://localhost:8080/install.sh | sh
 forge-runner login
 ```
 
-The device appears **online** in **Runners** within seconds. The full walkthrough — assigning to a project, binding a checkout, running as a service — is in [guides/runners.md](guides/runners.md).
+The device appears **online** in **Runners** within seconds. The full walkthrough — assigning to a project, binding a checkout, running as a service — is in [architecture/runner-daemon.md](architecture/runner-daemon.md).
 
 ## 4. Bind the project to the device
 
@@ -83,7 +83,7 @@ The device appears **online** in **Runners** within seconds. The full walkthroug
 2. On the runner host, bind an **existing** checkout: `forge-runner bind <project-slug> --path /abs/path/to/repo`.
 3. Start the daemon: `forge-runner start` (or install it as a service).
 
-One device runs one issue at a time per project; add more devices for failover, or use separate projects for parallelism. See [guides/runners.md](guides/runners.md).
+One device runs one issue at a time per project; add more devices for failover, or use separate projects for parallelism. See [architecture/runner-daemon.md](architecture/runner-daemon.md).
 
 ## 5. Run your first job
 

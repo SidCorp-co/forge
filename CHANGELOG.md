@@ -111,6 +111,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - In-app notification inbox for project and organization invitations now appears in the Notifications bell.
 - Schedules can now run custom scripts directly without spawning an agent session, enabling lightweight automations.
 - MCP-server config typos are now rejected with a clear error when saving pipeline settings, and the integration status badge no longer shows a misleading "needs reauth" when a server simply isn't declared for injection.
+- Agents can now confirm or invalidate a remembered fact after checking it against the live code, so stale project memory is removed immediately instead of slowly decaying.
+- Skill template updates now reach existing projects: a project's copy is flagged when it falls behind the latest template, and each update drafts a per-project rebase issue for review — nothing is overwritten or auto-synced.
+- Projects can now require a human check before any new issue enters the pipeline — enable the intake gate and every new issue (including ones from public webhooks) parks as a draft with an intake label until someone approves it.
+- The Rocket.Chat bot now reads the channel discussion when mentioned and can capture it as a draft Forge issue, and Rocket.Chat can be connected and configured entirely from the web UI.
+- Pipeline issues no longer silently stall un-advanced when a usage limit is hit right after an agent finishes its work — the step is now correctly carried forward instead of exiting as done-but-stuck.
 
 ## [0.3.0] - 2026-06-11
 

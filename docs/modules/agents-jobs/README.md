@@ -73,7 +73,7 @@ queued → dispatched → running → done / failed / cancelled
 | `issue` | Optional — the issue this job serves |
 | `device` | Set on dispatch; null while queued |
 | `createdBy` | User who enqueued (or `system` for auto-triggered) |
-| `type` | `triage` \| `clarify` \| `plan` \| `code` \| `review` \| `test` \| `release` \| `fix` \| `custom` \| `pm` \| `smoke` — `smoke` is the issue-less smoke-verify canary (tier-2, one-shot on a `system` pipeline_run; PASS/FAIL = the job's terminal status) |
+| `type` | `triage` \| `clarify` \| `plan` \| `code` \| `review` \| `test` \| `staging` \| `release` \| `fix` \| `custom` \| `pm` \| `smoke` — `staging` is inert (kept for back-compat with historical `jobs.type='staging'` rows; the `staging` issue-status was removed); `smoke` is the issue-less smoke-verify canary (tier-2, one-shot on a `system` pipeline_run; PASS/FAIL = the job's terminal status) |
 | `payload` | `{ skillName, args, ... }` |
 | `status` | See flow above |
 | `queuedAt` / `dispatchedAt` / `startedAt` / `finishedAt` | Lifecycle timestamps |

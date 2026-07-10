@@ -1,6 +1,6 @@
 # Release process
 
-How Forge Beta (Tauri desktop app) gets built, signed, published, surfaced on `/download`.
+How Forge Beta (Tauri desktop app) gets built, signed, published to the GitHub Release page.
 
 **Audience:** maintainers cutting an official release. Source builders skip this — run `pnpm tauri build` directly.
 
@@ -97,7 +97,7 @@ desktop version, and a cloud deploy doesn't force a desktop release).
   bumped independently when you want to mark a notable cloud release (edit the 5
   files together; an optional `web-vX.Y.Z` tag may mark the commit — no CI). It
   is never bumped by the desktop release.
-- All three are independent: e.g. desktop `0.3.x`, runner `0.4.x`, cloud `0.3.x`
+- All three are independent: e.g. desktop `0.3.x`, runner `0.6.x`, cloud `0.3.x`
   can legitimately coexist.
 
 ### When to bump N1.N2.N3 (per domain — SemVer)
@@ -114,7 +114,7 @@ significant** kind of change in the release:
 > **Pre-1.0 rule (where we are now):** while MAJOR = `0`, SemVer treats the API as
 > unstable, so **both** breaking changes and new capabilities bump **N2**; only
 > pure fixes bump **N3**. (Example: provisioning was a new capability → runner
-> `0.3.0` → `0.4.0`.) Promote a domain to `1.0.0` only when committing to its
+> `0.5.0` → `0.6.0`.) Promote a domain to `1.0.0` only when committing to its
 > contract stability; after that, breaking → N1.
 
 **What "breaking" means per domain:**
@@ -204,7 +204,7 @@ Where the technical detail goes: the commit that lands the change. Its body carr
 
 ## Testing a release without publishing
 
-Push a pre-release tag — workflow runs, but `prerelease: true` keeps it from competing with latest stable for `/download`'s "latest" lookup:
+Push a pre-release tag — workflow runs, but `prerelease: true` keeps it from competing with latest stable for the GitHub Release "latest" lookup:
 
 ```bash
 git tag v0.1.16-rc.1
@@ -228,5 +228,5 @@ gh release delete vX.Y.Z --repo SidCorp-co/forge --cleanup-tag
 | All 4 build jobs die at "Setup pnpm" with *Multiple versions of pnpm specified* | `pnpm/action-setup` `version:` field set + `packageManager` in `package.json` | Drop the `version:` from the workflow; let `packageManager` win. |
 | Lockfile-related cache miss on every run | `cache-dependency-path` points at a non-existent path | Should be `pnpm-lock.yaml` (root); `packages/dev/pnpm-lock.yaml` doesn't exist (workspace) |
 | macOS build succeeds but `.dmg` rejected by Gatekeeper | Notarization not stapled | Confirm all six `APPLE_*` secrets set; check `notarytool` output in logs |
-| `/download` page falls back to "Build from source" after a successful release | Release still Draft because publish job didn't run | Inspect the `build` matrix — every job must succeed |
+| GitHub Release shows no downloadable bundles after a successful release | Release still Draft because publish job didn't run | Inspect the `build` matrix — every job must succeed |
 | Updater can't fetch `latest.json` | `tauri-action` ran without `includeUpdaterJson: true` or signing key missing | Verify the JSON exists in release assets and matches the pubkey in `tauri.conf.json` |
