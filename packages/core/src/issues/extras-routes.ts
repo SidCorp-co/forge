@@ -21,19 +21,13 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
-import { withActorContext } from '../pipeline/outbox-session.js';
 import { openIssueRun } from '../pipeline/runs.js';
 import {
-  REOPEN_CAP,
-  canTransitionFree,
-  isReopenEntry,
-} from '../pipeline/state-machine.js';
-import { markMergedIfLeavingBase } from './merged-at.js';
-import {
-  TERMINAL_FOR_DISPATCH,
-  publishIssueStatusChange,
-  triggerTerminalDispatch,
-} from './transition.js';
+  TransitionError,
+  type TransitionErrorCode,
+  transitionIssueStatus,
+} from './apply-transition.js';
+import { triggerTerminalDispatch } from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -97,6 +91,13 @@ type BatchSkipReason =
   | 'no_op'
   | 'reopen_cap_exceeded'
   | 'stale';
+
+const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
+  NO_OP: 'no_op',
+  ILLEGAL_TRANSITION: 'illegal_transition',
+  REOPEN_CAP_EXCEEDED: 'reopen_cap_exceeded',
+  STALE_TRANSITION: 'stale',
+};
 
 type BatchResult = {
   updated: Array<{
@@ -203,86 +204,40 @@ issueExtrasRoutes.patch(
         if (data.status !== undefined) {
           const fromStatus = row.status as IssueStatus;
           const toStatus = data.status;
-          if (toStatus === fromStatus) {
-            // Single-issue `/transition` 409s on NO_OP. The batch surfaces
-            // it via skipReason instead so callers can see that the status
-            // request was a no-op even when other fields succeeded.
-            skipReason = 'no_op';
-          } else if (!canTransitionFree(fromStatus, toStatus)) {
-            skipReason = 'illegal_transition';
-          } else if (
-            isReopenEntry(fromStatus, toStatus) &&
-            row.reopenCount >= REOPEN_CAP
-          ) {
-            // No `override` in batch — bulk bar has no UI for owner-bypass.
-            skipReason = 'reopen_cap_exceeded';
-          } else {
-            const reopening = isReopenEntry(fromStatus, toStatus);
-            // ISS-196 — UPDATE in its own tx so the trigger captures the
-            // user actor via SET LOCAL pipeline.actor_id. Outbox row is
-            // written + committed together with the status change.
-            const updated = await db.transaction((tx) =>
-              withActorContext(
-                tx,
-                { type: 'user', id: userId },
-                null,
-                async (t) => {
-                  const [u] = await t
-                    .update(issues)
-                    .set({
-                      status: toStatus,
-                      reopenCount: reopening
-                        ? sql`${issues.reopenCount} + 1`
-                        : issues.reopenCount,
-                      updatedAt: sql`now()`,
-                    })
-                    .where(and(eq(issues.id, row.id), eq(issues.status, fromStatus)))
-                    .returning({
-                      id: issues.id,
-                      status: issues.status,
-                      reopenCount: issues.reopenCount,
-                      updatedAt: issues.updatedAt,
-                    });
-                  if (u) {
-                    // ISS-232 — stamp `merged_at` inside the same tx so a
-                    // rollback drops the column write alongside the status
-                    // flip. Matches the single-issue `/transition` path.
-                    await markMergedIfLeavingBase(t, {
-                      issueId: row.id,
-                      projectId: row.projectId,
-                      fromStatus,
-                      toStatus,
-                    });
-                  }
-                  return u;
-                },
-              ),
+          try {
+            // Same core as single-issue `/transition` — guard semantics,
+            // conditional UPDATE, merged_at stamp, WS publish and run close
+            // are shared. No `override` in batch — bulk bar has no UI for
+            // owner-bypass. Terminal fan-out is collected below so the
+            // Layer-2 dispatch tick fires once per request, not per issue.
+            const transitioned = await transitionIssueStatus(
+              {
+                id: row.id,
+                projectId: row.projectId,
+                status: fromStatus,
+                reopenCount: row.reopenCount,
+              },
+              toStatus,
+              { type: 'user', id: userId },
             );
-
-            if (!updated) {
-              skipReason = 'stale';
-            } else {
-              touched = true;
-              row.status = toStatus;
-              row.reopenCount = updated.reopenCount;
-              publishIssueStatusChange(row.projectId, {
+            touched = true;
+            row.status = toStatus;
+            row.reopenCount = transitioned.reopenCount;
+            if (transitioned.terminal) {
+              terminalTransitions.push({
                 issueId: row.id,
-                from: fromStatus,
-                to: toStatus,
-                reopenCount: updated.reopenCount,
-                actorId: userId,
-                reason: null,
-                at: updated.updatedAt,
+                projectId: row.projectId,
+                issSeq: row.issSeq,
+                at: transitioned.updatedAt,
               });
-              if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
-                terminalTransitions.push({
-                  issueId: row.id,
-                  projectId: row.projectId,
-                  issSeq: row.issSeq,
-                  at: updated.updatedAt,
-                });
-              }
             }
+          } catch (err) {
+            if (!(err instanceof TransitionError)) throw err;
+            // Single-issue `/transition` 409s/422s on these. The batch
+            // surfaces them via skipReason instead so callers can see that
+            // the status request was rejected even when other fields
+            // succeeded.
+            skipReason = BATCH_SKIP_BY_CODE[err.code];
           }
         }
 

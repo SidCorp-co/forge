@@ -4,26 +4,18 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  type IssueStatus,
-  issueDependencies,
-  issueStatuses,
-  issues,
-} from '../db/schema.js';
+import { type IssueStatus, issueDependencies, issueStatuses, issues } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { withActorContext } from '../pipeline/outbox-session.js';
-import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import {
-  REOPEN_CAP,
-  canTransitionFree,
-  isReopenEntry,
-} from '../pipeline/state-machine.js';
+import { isReopenEntry } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { markMergedIfLeavingBase } from './merged-at.js';
-import { publishPipelineHealthChanged } from './pipeline-health.js';
+import {
+  type StatusTransitionResult,
+  TransitionError,
+  transitionIssueStatus,
+} from './apply-transition.js';
 
 const transitionBodySchema = z
   .object({
@@ -44,32 +36,21 @@ const notFound = () =>
 const forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
 
-/** Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2). */
-export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed']);
-
 /**
- * Inline `issue.statusChanged` WS publish. Shared by the single-issue
- * `/transition` route and the `/batch` route so both emit the same payload
- * shape. The bus subscriber for `transition` intentionally does NOT broadcast
- * `issue.statusChanged` (see `ws/broadcast-subscribers.ts:38`); writers must
- * publish inline to avoid double-emit on the single-issue path.
+ * Map a core `TransitionError` onto the REST error contract. Status codes and
+ * messages are part of the public API — keep them stable.
  */
-export function publishIssueStatusChange(
-  projectId: string,
-  payload: {
-    issueId: string;
-    from: IssueStatus;
-    to: IssueStatus;
-    reopenCount: number;
-    actorId: string;
-    reason: string | null;
-    at: Date;
-  },
-): void {
-  roomManager.publish(projectRoom(projectId), {
-    event: 'issue.statusChanged',
-    data: payload,
-  });
+function transitionErrorToHttp(err: TransitionError): HTTPException {
+  const cause = { code: err.code, details: err.details };
+  switch (err.code) {
+    case 'NO_OP':
+      return new HTTPException(409, { message: 'issue already in toStatus', cause });
+    case 'REOPEN_CAP_EXCEEDED':
+      return new HTTPException(422, { message: err.detail, cause });
+    default:
+      // ILLEGAL_TRANSITION | STALE_TRANSITION
+      return new HTTPException(409, { message: err.detail, cause });
+  }
 }
 
 /** Cap on the number of dependents named in a single `issue.unblockCascade`
@@ -193,132 +174,48 @@ transitionRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
 
-    if (fromStatus === toStatus) {
-      throw new HTTPException(409, {
-        message: 'issue already in toStatus',
-        cause: { code: 'NO_OP', details: { status: fromStatus } },
-      });
+    // `override` bypasses the reopen cap; requesting it on a reopen entry
+    // requires project admin, checked before any write.
+    if (
+      override &&
+      isReopenEntry(fromStatus, toStatus) &&
+      !projectRoleAtLeast(access.role, 'admin')
+    ) {
+      throw forbidden('override requires project admin', 'OVERRIDE_DENIED');
     }
 
-    if (!canTransitionFree(fromStatus, toStatus)) {
-      throw new HTTPException(409, {
-        message: `'${toStatus}' is not a valid runtime status target`,
-        cause: {
-          code: 'ILLEGAL_TRANSITION',
-          details: { from: fromStatus, to: toStatus },
-        },
-      });
-    }
-
-    const reopening = isReopenEntry(fromStatus, toStatus);
-
-    if (reopening) {
-      if (issue.reopenCount >= REOPEN_CAP && !override) {
-        throw new HTTPException(422, {
-          message: `reopen cap reached (${REOPEN_CAP})`,
-          cause: {
-            code: 'REOPEN_CAP_EXCEEDED',
-            details: { reopenCount: issue.reopenCount, max: REOPEN_CAP },
-          },
-        });
-      }
-      if (override) {
-        if (!projectRoleAtLeast(access.role, 'admin')) {
-          throw forbidden('override requires project admin', 'OVERRIDE_DENIED');
-        }
-      }
-    }
-
-    // Conditional UPDATE gates on current status so concurrent transitions
-    // can't both win. activity_log write is owned by F5; do not insert here.
-    //
-    // ISS-196 — the AFTER UPDATE trigger on issues.status writes a row into
-    // pipeline_outbox inside this transaction, so the outbox worker re-emits
-    // the `transition` hook out-of-band. We wrap the UPDATE in `withActorContext`
-    // so the trigger captures actor metadata via SET LOCAL session settings.
-    const updated = await db.transaction((tx) =>
-      withActorContext(
-        tx,
+    let result: StatusTransitionResult;
+    try {
+      result = await transitionIssueStatus(
+        { id: issue.id, projectId: issue.projectId, status: fromStatus, reopenCount: issue.reopenCount },
+        toStatus,
         { type: 'user', id: userId },
-        reason ?? null,
-        async (t) => {
-          const [row] = await t
-            .update(issues)
-            .set({
-              status: toStatus,
-              reopenCount: reopening
-                ? sql`${issues.reopenCount} + 1`
-                : issues.reopenCount,
-              updatedAt: sql`now()`,
-            })
-            .where(and(eq(issues.id, id), eq(issues.status, fromStatus)))
-            .returning({
-              id: issues.id,
-              status: issues.status,
-              reopenCount: issues.reopenCount,
-              updatedAt: issues.updatedAt,
-            });
-          if (row) {
-            // ISS-232 — stamp `merged_at` inside the same tx so a rollback
-            // drops the column write alongside the status flip.
-            await markMergedIfLeavingBase(t, {
-              issueId: id,
-              projectId: issue.projectId,
-              fromStatus,
-              toStatus,
-            });
-          }
-          return row;
-        },
-      ),
-    );
-
-    if (!updated) {
-      throw new HTTPException(409, {
-        message: 'issue status changed concurrently',
-        cause: { code: 'STALE_TRANSITION', details: { from: fromStatus, to: toStatus } },
-      });
+        { reason, overrideReopenCap: override },
+      );
+    } catch (err) {
+      if (err instanceof TransitionError) throw transitionErrorToHttp(err);
+      throw err;
     }
-
-    publishIssueStatusChange(issue.projectId, {
-      issueId: updated.id,
-      from: fromStatus,
-      to: toStatus,
-      reopenCount: updated.reopenCount,
-      actorId: userId,
-      reason: reason ?? null,
-      at: updated.updatedAt,
-    });
-
-    // ISS-164 — derived pipelineHealth needs a refresh whenever `stage` changes.
-    await publishPipelineHealthChanged(issue.projectId, [updated.id]);
-
-    // ISS-101 — stamp current_step on the issue's open run so the run timeline
-    // reflects status, then close the run on terminal transitions. The picker
-    // already filters `r.status = 'running'`, but closing here is defence in
-    // depth + needed for the analytics/UI views in follow-up issues.
-    await setCurrentStepForOpenIssueRun(issue.id, toStatus);
 
     // ISS-40 PR-E — when an issue reaches a terminal status it may unblock
     // children via Layer 2. Tick this project, plus every distinct child
     // project for cross-project blocking edges.
-    if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
-      await closeOpenRunForIssue(issue.id, 'completed');
+    if (result.terminal) {
       await triggerTerminalDispatch([
         {
           issueId: issue.id,
           projectId: issue.projectId,
           issSeq: issue.issSeq,
-          at: updated.updatedAt,
+          at: result.updatedAt,
         },
       ]);
     }
 
     return c.json({
-      id: updated.id,
-      status: updated.status,
-      reopenCount: updated.reopenCount,
-      transitionedAt: updated.updatedAt,
+      id: result.id,
+      status: result.status,
+      reopenCount: result.reopenCount,
+      transitionedAt: result.updatedAt,
     });
   },
 );

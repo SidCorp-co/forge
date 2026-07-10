@@ -138,6 +138,20 @@ vi.mock('../jobs/dispatch-tick.js', () => ({
   dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
 }));
 
+// The batch status path routes through the shared `transitionIssueStatus`
+// core, which syncs the issue's open run (setCurrentStepForOpenIssueRun +
+// closeOpenRunForIssue on terminal). Those helpers run kernel transitions
+// with their own `.returning()` chains that would consume the scripted
+// `updateReturning` mocks; stub them — run lifecycle has its own suites.
+const setCurrentStepForOpenIssueRun = vi.fn(async () => undefined);
+const closeOpenRunForIssue = vi.fn(async () => undefined);
+vi.mock('../pipeline/runs.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../pipeline/runs.js')>()),
+  setCurrentStepForOpenIssueRun: (...args: unknown[]) =>
+    setCurrentStepForOpenIssueRun(...(args as [])),
+  closeOpenRunForIssue: (...args: unknown[]) => closeOpenRunForIssue(...(args as [])),
+}));
+
 const { issueExtrasRoutes } = await import('./extras-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
