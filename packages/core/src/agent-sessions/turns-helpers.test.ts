@@ -13,12 +13,8 @@ vi.mock('../db/client.js', () => ({
   db: {},
 }));
 
-const {
-  messageRoleToTurnRole,
-  normalizeTurnContent,
-  replaceMessageAt,
-  sliceMessagesThrough,
-} = await import('./turns-helpers.js');
+const { messageRoleToTurnRole, normalizeTurnContent, replaceMessageAt, sliceMessagesThrough } =
+  await import('./turns-helpers.js');
 
 describe('messageRoleToTurnRole', () => {
   it('passes through user/assistant/tool roles', () => {

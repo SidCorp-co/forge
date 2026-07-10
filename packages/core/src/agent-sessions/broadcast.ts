@@ -1,6 +1,6 @@
+import type { AgentSessionTurnRole } from '../db/schema.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import type { AgentSessionTurnRole } from '../db/schema.js';
 
 interface SessionLite {
   id: string;
@@ -93,10 +93,7 @@ export function broadcastTurnEdited(session: SessionLite, turnId: string): void 
   broadcastSession(session, 'agent-session.turn.edited', { turnId });
 }
 
-export function broadcastTurnTruncated(
-  session: SessionLite,
-  fromTurnIndex: number,
-): void {
+export function broadcastTurnTruncated(session: SessionLite, fromTurnIndex: number): void {
   broadcastSession(session, 'agent-session.turn.truncated', { fromTurnIndex });
 }
 

@@ -19,7 +19,10 @@ import {
 function attachmentErrorToHttp(err: SessionAttachmentError): HTTPException {
   switch (err.code) {
     case 'FILE_TOO_LARGE':
-      return new HTTPException(400, { message: 'file too large', cause: { code: 'FILE_TOO_LARGE' } });
+      return new HTTPException(400, {
+        message: 'file too large',
+        cause: { code: 'FILE_TOO_LARGE' },
+      });
     case 'MIME_NOT_ALLOWED':
       return new HTTPException(400, { message: err.message, cause: { code: 'MIME_NOT_ALLOWED' } });
     case 'EMPTY_FILE':
@@ -31,8 +34,10 @@ function attachmentErrorToHttp(err: SessionAttachmentError): HTTPException {
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
-const notFound = (message: string) => new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-const forbidden = (message: string) => new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+const notFound = (message: string) =>
+  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
+const forbidden = (message: string) =>
+  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 const sessionIdParamSchema = z.object({ sessionId: z.uuid() });
 const downloadParamSchema = z.object({ sessionId: z.uuid(), id: z.uuid() });

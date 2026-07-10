@@ -233,7 +233,9 @@ describe('POST /api/agent-sessions/start — no-online-client guard (ISS-321)', 
     expect(body.code).toBe('NO_CLAUDE_CLIENT');
     // The session must NOT be created and no agent:start must be published.
     expect(insertReturning).not.toHaveBeenCalled();
-    const events = publishSpy.mock.calls.map((c) => (c[1] as { event?: string } | undefined)?.event);
+    const events = publishSpy.mock.calls.map(
+      (c) => (c[1] as { event?: string } | undefined)?.event,
+    );
     expect(events).not.toContain('agent:start');
   });
 });
@@ -263,20 +265,24 @@ describe('POST /api/agent-sessions/:id/pipeline-control', () => {
   it('merges + broadcasts control when caller is owner', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
-      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running', pipelineControl: { paused: false }, metadata: null },
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        pipelineControl: { paused: false },
+        metadata: null,
+      },
     ]);
     projectAccessAsOwner();
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
     ]);
-    const res = await buildApp().request(
-      `/api/agent-sessions/${SESSION_ID}/pipeline-control`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ paused: true, reason: 'manual' }),
-      },
-    );
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/pipeline-control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ paused: true, reason: 'manual' }),
+    });
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
       paused: boolean;
@@ -309,14 +315,11 @@ describe('POST /api/agent-sessions/:id/pipeline-control', () => {
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
     ]);
-    const res = await buildApp().request(
-      `/api/agent-sessions/${SESSION_ID}/pipeline-control`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ paused: true, reason: 'manual' }),
-      },
-    );
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/pipeline-control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ paused: true, reason: 'manual' }),
+    });
     expect(res.status).toBe(200);
     expect(safeRecordActivitySpy).toHaveBeenCalledTimes(1);
     const arg = safeRecordActivitySpy.mock.calls[0]?.[0] as {
@@ -346,14 +349,11 @@ describe('POST /api/agent-sessions/:id/pipeline-control', () => {
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
     ]);
-    const res = await buildApp().request(
-      `/api/agent-sessions/${SESSION_ID}/pipeline-control`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ paused: true }),
-      },
-    );
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/pipeline-control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ paused: true }),
+    });
     expect(res.status).toBe(200);
     expect(safeRecordActivitySpy).not.toHaveBeenCalled();
   });
@@ -361,17 +361,21 @@ describe('POST /api/agent-sessions/:id/pipeline-control', () => {
   it('rejects plain members with 403', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
-      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running', pipelineControl: null, metadata: null },
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        pipelineControl: null,
+        metadata: null,
+      },
     ]);
     projectAccessAsMember();
-    const res = await buildApp().request(
-      `/api/agent-sessions/${SESSION_ID}/pipeline-control`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ paused: true }),
-      },
-    );
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/pipeline-control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ paused: true }),
+    });
     expect(res.status).toBe(403);
   });
 });
@@ -450,10 +454,9 @@ describe('GET /api/agent-sessions/:id/pipeline-health', () => {
       { id: SESSION_ID, projectId: PROJECT_ID, pipelineHealth: stored },
     ]);
     projectAccessAsMember();
-    const res = await buildApp().request(
-      `/api/agent-sessions/${SESSION_ID}/pipeline-health`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/pipeline-health`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { retryCount: number };
     expect(json.retryCount).toBe(3);
@@ -465,10 +468,9 @@ describe('GET /api/agent-sessions/:id/pipeline-health', () => {
       { id: SESSION_ID, projectId: PROJECT_ID, pipelineHealth: null },
     ]);
     projectAccessAsMember();
-    const res = await buildApp().request(
-      `/api/agent-sessions/${SESSION_ID}/pipeline-health`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/pipeline-health`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { retryCount: number; lastError: unknown };
     expect(json.retryCount).toBe(0);
@@ -611,7 +613,7 @@ describe('agent chat isolation — owner-or-admin reads (ISS-522)', () => {
     expect(res.status).toBe(200);
   });
 
-  it('GET /:id 200 for a project admin on another member\'s agent session', async () => {
+  it("GET /:id 200 for a project admin on another member's agent session", async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       {
@@ -736,7 +738,12 @@ describe('POST /api/agent-sessions/:id/ack (ISS-584 C — runner ack)', () => {
   it('403 when a different device acks', async () => {
     verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
-      { id: SESSION_ID, deviceId: '99999999-9999-4999-8999-999999999999', status: 'running', metadata: null },
+      {
+        id: SESSION_ID,
+        deviceId: '99999999-9999-4999-8999-999999999999',
+        status: 'running',
+        metadata: null,
+      },
     ]);
     const res = await ackReq();
     expect(res.status).toBe(403);

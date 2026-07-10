@@ -1,9 +1,9 @@
 import { and, asc, eq, gt, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
+  type AgentSessionTurnRole,
   agentSessionTurnRoles,
   agentSessionTurns,
-  type AgentSessionTurnRole,
 } from '../db/schema.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -103,14 +103,11 @@ export async function syncTurnsWithMessages(
       return { appended: [], truncatedFromTurnIndex: null };
     }
 
-    const inserted = await dbClient
-      .insert(agentSessionTurns)
-      .values(values)
-      .returning({
-        id: agentSessionTurns.id,
-        turnIndex: agentSessionTurns.turnIndex,
-        role: agentSessionTurns.role,
-      });
+    const inserted = await dbClient.insert(agentSessionTurns).values(values).returning({
+      id: agentSessionTurns.id,
+      turnIndex: agentSessionTurns.turnIndex,
+      role: agentSessionTurns.role,
+    });
 
     // Guard against mocked clients that resolve `undefined` here (existing
     // route tests don't model the dual-write insert chain). Real production
@@ -147,10 +144,7 @@ export async function syncTurnsWithMessages(
       .update(agentSessionTurns)
       .set({ content: normalizeTurnContent(next[i]) as never })
       .where(
-        and(
-          eq(agentSessionTurns.agentSessionId, sessionId),
-          eq(agentSessionTurns.turnIndex, i),
-        ),
+        and(eq(agentSessionTurns.agentSessionId, sessionId), eq(agentSessionTurns.turnIndex, i)),
       );
   }
   return { appended: [], truncatedFromTurnIndex: null };
@@ -216,9 +210,7 @@ export async function findTurnInSession(sessionId: string, turnId: string) {
   const [row] = await db
     .select()
     .from(agentSessionTurns)
-    .where(
-      and(eq(agentSessionTurns.id, turnId), eq(agentSessionTurns.agentSessionId, sessionId)),
-    )
+    .where(and(eq(agentSessionTurns.id, turnId), eq(agentSessionTurns.agentSessionId, sessionId)))
     .limit(1);
   return row ?? null;
 }
@@ -247,4 +239,26 @@ export function sliceMessagesThrough(messages: unknown, keepThroughTurnIndex: nu
 /** SQL fragment to raise the agent_sessions row counter without re-reading. */
 export function bumpUpdatedAt() {
   return sql`now()`;
+}
+
+/**
+ * Extract a non-empty string prompt from a `messages[i].content` value. The
+ * legacy schema lets `content` be either a string or an array of structured
+ * blocks (Anthropic-style `[{ type: 'text', text: '…' }, …]`). Returns the
+ * trimmed string, or empty string if nothing dispatchable can be recovered.
+ */
+export function extractPromptString(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const block of content) {
+      if (typeof block === 'string') parts.push(block);
+      else if (block && typeof block === 'object') {
+        const text = (block as { text?: unknown }).text;
+        if (typeof text === 'string') parts.push(text);
+      }
+    }
+    return parts.join('\n').trim();
+  }
+  return '';
 }

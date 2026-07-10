@@ -34,7 +34,10 @@ describe('broadcastSession', () => {
     broadcastSession(SESSION, 'agent-session.updated', { foo: 'bar' });
     const rooms = publishSpy.mock.calls.map((c) => c[0]);
     expect(rooms).toEqual(['project:proj-1', 'device:dev-1']);
-    const payload = publishSpy.mock.calls[0]?.[1] as { event: string; data: Record<string, unknown> };
+    const payload = publishSpy.mock.calls[0]?.[1] as {
+      event: string;
+      data: Record<string, unknown>;
+    };
     expect(payload.event).toBe('agent-session.updated');
     expect(payload.data.foo).toBe('bar');
     expect(payload.data.sessionId).toBe('session-1');
@@ -56,11 +59,21 @@ describe('broadcastTurnAppended', () => {
 
   it('debounces streaming-tail appends to the trailing one', async () => {
     vi.useFakeTimers();
-    broadcastTurnAppended(SESSION, { turnId: 't2', turnIndex: 1, role: 'assistant' }, { isStreamingTail: true });
-    broadcastTurnAppended(SESSION, { turnId: 't3', turnIndex: 2, role: 'assistant' }, { isStreamingTail: true });
+    broadcastTurnAppended(
+      SESSION,
+      { turnId: 't2', turnIndex: 1, role: 'assistant' },
+      { isStreamingTail: true },
+    );
+    broadcastTurnAppended(
+      SESSION,
+      { turnId: 't3', turnIndex: 2, role: 'assistant' },
+      { isStreamingTail: true },
+    );
     expect(publishSpy).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(150);
-    const ids = publishSpy.mock.calls.map((c) => (c[1] as { data: { turnId: string } }).data.turnId);
+    const ids = publishSpy.mock.calls.map(
+      (c) => (c[1] as { data: { turnId: string } }).data.turnId,
+    );
     expect(ids).toContain('t3');
     expect(ids).not.toContain('t2');
     vi.useRealTimers();

@@ -85,6 +85,10 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadVisibleProjectIds: (...args: unknown[]) => loadVisibleProjectIdsMock(...(args as [])),
 }));
 
+// The handlers under test live in ./lifecycle-routes.ts, but we deliberately
+// go through the ./routes.ts aggregator: the shared auth middleware
+// (requireUserOrDevice + assertEmailVerified) is registered there, and mounting
+// through it also verifies the lifecycle sub-router's URLs stayed identical.
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -172,16 +176,15 @@ describe('POST /api/agent-sessions/start', () => {
   it('403 when caller not a project member', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'apiflow',
-          ownerId: 'someone-else',
-          repoPath: '/repo',
-          defaultDeviceId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: 'someone-else',
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess(null);
 
     const app = buildApp();
@@ -198,16 +201,15 @@ describe('POST /api/agent-sessions/start', () => {
   it('201 creates session, publishes agent:start with TOOL_REFERENCE + preamble', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'apiflow',
-          ownerId: USER_ID,
-          repoPath: '/repo',
-          defaultDeviceId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess('admin');
 
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
@@ -260,16 +262,15 @@ describe('POST /api/agent-sessions/start', () => {
   it('publishes agent:review for agent-type sessions, skips preamble', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'apiflow',
-          ownerId: USER_ID,
-          repoPath: '/repo',
-          defaultDeviceId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess('admin');
 
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
@@ -303,16 +304,15 @@ describe('POST /api/agent-sessions/start', () => {
   it('publishes agent:reindex for *-reindex sessions', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'apiflow',
-          ownerId: USER_ID,
-          repoPath: '/repo',
-          defaultDeviceId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
     insertReturning.mockResolvedValueOnce([
@@ -339,16 +339,15 @@ describe('POST /api/agent-sessions/start', () => {
     // listener). ISS-321 fails fast instead so the user gets clear feedback.
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'apiflow',
-          ownerId: USER_ID,
-          repoPath: '/repo',
-          defaultDeviceId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
 
@@ -366,9 +365,7 @@ describe('POST /api/agent-sessions/start', () => {
     // The session must NOT be created and no agent:start must be published.
     expect(insertReturning).not.toHaveBeenCalled();
     expect(
-      publishSpy.mock.calls.find(
-        ([_room, env]) => (env as any).event === 'agent:start',
-      ),
+      publishSpy.mock.calls.find(([_room, env]) => (env as any).event === 'agent:start'),
     ).toBeUndefined();
   });
 
@@ -378,10 +375,15 @@ describe('POST /api/agent-sessions/start', () => {
     // It must now fail fast like a chat does.
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, repoPath: '/repo', defaultDeviceId: null },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
 
@@ -419,20 +421,19 @@ describe('POST /api/agent-sessions/send', () => {
   it('200 appends message + publishes agent:send to original device', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: SESSION_ID,
-          projectId: PROJECT_ID,
-          userId: USER_ID,
-          deviceId: DEVICE_ID,
-          messages: [{ role: 'user', content: 'first' }],
-          metadata: { deviceId: DEVICE_ID },
-          repoPath: '/repo',
-          // A genuine follow-up already has a Claude session → agent:send.
-          claudeSessionId: 'claude-abc',
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        messages: [{ role: 'user', content: 'first' }],
+        metadata: { deviceId: DEVICE_ID },
+        repoPath: '/repo',
+        // A genuine follow-up already has a Claude session → agent:send.
+        claudeSessionId: 'claude-abc',
+      },
+    ]);
     grantAccess('admin');
     selectLimit
       .mockResolvedValueOnce([{ status: 'online' }]) // resolveChatDevice: pinned device online
@@ -473,22 +474,20 @@ describe('POST /api/agent-sessions/send', () => {
     // follow-up that hung forever. It must fail fast without mutating.
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: SESSION_ID,
-          projectId: PROJECT_ID,
-          userId: USER_ID,
-          deviceId: DEVICE_ID,
-          messages: [{ role: 'user', content: 'first' }],
-          metadata: { deviceId: DEVICE_ID },
-          repoPath: '/repo',
-          claudeSessionId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        messages: [{ role: 'user', content: 'first' }],
+        metadata: { deviceId: DEVICE_ID },
+        repoPath: '/repo',
+        claudeSessionId: null,
+      },
+    ]);
     grantAccess('admin');
-    selectLimit
-      .mockResolvedValueOnce([{ status: 'offline' }]); // pinned device offline
+    selectLimit.mockResolvedValueOnce([{ status: 'offline' }]); // pinned device offline
 
     const app = buildApp();
     const res = await app.fetch(
@@ -508,16 +507,15 @@ describe('POST /api/agent-sessions/abort', () => {
   it('200 sets status=idle + publishes agent:abort to device', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: SESSION_ID,
-          projectId: PROJECT_ID,
-          userId: USER_ID,
-          deviceId: DEVICE_ID,
-          metadata: { deviceId: DEVICE_ID },
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        metadata: { deviceId: DEVICE_ID },
+      },
+    ]);
     grantAccess('admin');
     updateReturning.mockResolvedValueOnce([
       {
@@ -538,9 +536,7 @@ describe('POST /api/agent-sessions/abort', () => {
       }),
     );
     expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'idle' }),
-    );
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'idle' }));
     const abortCall = publishSpy.mock.calls.find(
       ([room, env]) => room === `device:${DEVICE_ID}` && (env as any).event === 'agent:abort',
     );
@@ -550,16 +546,15 @@ describe('POST /api/agent-sessions/abort', () => {
   it('403 when caller is not session owner and not project owner/admin', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: SESSION_ID,
-          projectId: PROJECT_ID,
-          userId: 'someone-else',
-          deviceId: DEVICE_ID,
-          metadata: {},
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: 'someone-else',
+        deviceId: DEVICE_ID,
+        metadata: {},
+      },
+    ]);
     grantAccess('member');
 
     const app = buildApp();
@@ -579,16 +574,15 @@ describe('POST /api/agent-sessions/build-prompt', () => {
   it('503 when no device is available for the project', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'apiflow',
-          ownerId: USER_ID,
-          repoPath: '/repo',
-          defaultDeviceId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
 
@@ -609,16 +603,15 @@ describe('POST /api/agent-sessions/build-prompt', () => {
   it('200 returns requestId + publishes agent:build-prompt to device', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'apiflow',
-          ownerId: USER_ID,
-          repoPath: '/repo',
-          defaultDeviceId: null,
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
     grantAccess('admin');
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
 
@@ -754,7 +747,13 @@ describe('GET /api/agent-sessions/desktop/status', () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
     selectLimit.mockResolvedValueOnce([
-      { id: PROJECT_ID, slug: 'apiflow', ownerId: 'someone-else', repoPath: null, defaultDeviceId: null },
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: 'someone-else',
+        repoPath: null,
+        defaultDeviceId: null,
+      },
     ]);
     projectAccessMock.mockResolvedValueOnce({ role: null }); // not a member
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID); // would be online, but gated
