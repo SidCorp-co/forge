@@ -15,7 +15,7 @@
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
-    "turbo": "^2.9.16"
+    "turbo": "^2.10.4"
   },
   "pnpm": {
     "overrides": {
