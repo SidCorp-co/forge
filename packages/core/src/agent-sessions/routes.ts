@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { type SQL, and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -16,9 +16,28 @@ import {
   schedules,
   usageRecords,
 } from '../db/schema.js';
+import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
+import {
+  assertProjectRole,
+  loadProjectAccess,
+  loadVisibleProjectIds,
+  projectRoleAtLeast,
+} from '../lib/authz.js';
+import {
+  findAvailableDeviceForProject,
+  resolveRepoPath,
+  resolveRunnerRepoPath,
+} from '../lib/device-pool.js';
+import { setTotalCount } from '../lib/pagination.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
+import { safeRecordActivity } from '../pipeline/activity.js';
+import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
+import { deviceRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import {
   broadcastSession,
   broadcastTurnAppended,
@@ -33,6 +52,16 @@ import {
 } from './chat-turn.js';
 import { pageContextSchema } from './page-context.js';
 import {
+  DEFAULT_PIPELINE_HEALTH,
+  type PipelineControl,
+  type PipelineHealth,
+  buildPipelineControl,
+  buildPipelineHealth,
+  normalisePipelineControl,
+  pipelineControlInputSchema,
+  pipelineHealthInputSchema,
+} from './pipeline-control-types.js';
+import {
   findTurnInSession,
   loadTurns,
   replaceMessageAt,
@@ -40,31 +69,6 @@ import {
   syncTurnsWithMessages,
   truncateTurnsAfter,
 } from './turns-helpers.js';
-import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
-import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
-import { setTotalCount } from '../lib/pagination.js';
-import {
-  assertProjectRole,
-  loadProjectAccess,
-  loadVisibleProjectIds,
-  projectRoleAtLeast,
-} from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
-import { safeRecordActivity } from '../pipeline/activity.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
-import {
-  DEFAULT_PIPELINE_HEALTH,
-  buildPipelineControl,
-  buildPipelineHealth,
-  normalisePipelineControl,
-  type PipelineControl,
-  type PipelineHealth,
-  pipelineControlInputSchema,
-  pipelineHealthInputSchema,
-} from './pipeline-control-types.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -175,6 +179,30 @@ function extractIssueId(metadata: unknown): string | null {
   // even though safeRecordActivity would swallow them.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return null;
   return raw;
+}
+
+/**
+ * ISS-572 — build a failure-text blob from a session's transcript + the
+ * runner's terminal `note`, so a usage/session-limit RESULT_ERROR that the
+ * runner streamed into the messages (e.g. `[RESULT_ERROR] success: You've hit
+ * your weekly limit · resets 11am (Asia/Ho_Chi_Minh)`) can be classified.
+ * Scans only the tail (limits surface in the terminal system/assistant
+ * message) and caps length so a long transcript stays cheap.
+ */
+function extractSessionFailureText(messages: unknown, note: string | null | undefined): string {
+  const parts: string[] = [];
+  if (typeof note === 'string' && note.trim()) parts.push(note);
+  if (Array.isArray(messages)) {
+    for (const m of messages.slice(-6)) {
+      if (m && typeof m === 'object') {
+        const content = (m as { content?: unknown }).content;
+        const text = extractPromptString(content);
+        if (text) parts.push(text);
+      }
+    }
+  }
+  const blob = parts.join('\n');
+  return blob.length > 4000 ? blob.slice(-4000) : blob;
 }
 
 // `broadcastSession` is imported from `./broadcast.ts` so per-turn handlers can
@@ -318,7 +346,10 @@ agentSessionRoutes.post(
       if (issueRows.length === 1) {
         title = `ISS-${issueRows[0]?.issSeq} ${issueRows[0]?.title ?? ''}`.slice(0, 120);
       } else if (issueRows.length > 1) {
-        title = issueRows.map((i) => `ISS-${i.issSeq}`).join(', ').slice(0, 120);
+        title = issueRows
+          .map((i) => `ISS-${i.issSeq}`)
+          .join(', ')
+          .slice(0, 120);
       } else {
         title = rawPrompt.slice(0, 120);
       }
@@ -708,8 +739,9 @@ agentSessionRoutes.get(
         estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
         inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
         outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-        cacheReadTokens:
-          sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
+        cacheReadTokens: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(
+          Number,
+        ),
         cacheCreationTokens:
           sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
         requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
@@ -911,9 +943,38 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member');
 
+    // ISS-572 — classify a usage/session-limit failure on an agent:start
+    // (schedule/chat) session. The job path already routes usage limits to a
+    // cross-device failover (failure-classifier v5), but agent:start sessions
+    // bypass that and previously landed `failed` with `failureReason=null` —
+    // silently burning a scheduled slot. Detect it here (the runner's terminal
+    // report), persist a distinct reason + reset time, and (for schedule runs)
+    // fail over to a device whose account still has headroom.
+    let usageLimit = false;
+    let limitResetAt: string | null = null;
+    if (status === 'failed') {
+      const { isUsageLimitError, parseUsageLimitReset } = await import(
+        '../runners/limit-detect.js'
+      );
+      const failText = extractSessionFailureText(existing.messages, note);
+      if (isUsageLimitError(failText)) {
+        usageLimit = true;
+        const reset = parseUsageLimitReset(failText);
+        limitResetAt = reset ? reset.toISOString() : null;
+      }
+    }
+
+    const statusSet: Record<string, unknown> = { status, updatedAt: new Date() };
+    if (usageLimit) {
+      statusSet.failureReason = 'usage_limit';
+      statusSet.metadata = {
+        ...((existing.metadata as Record<string, unknown> | null) ?? {}),
+        ...(limitResetAt ? { limitResetAt } : {}),
+      };
+    }
     const [updated] = await db
       .update(agentSessions)
-      .set({ status, updatedAt: new Date() })
+      .set(statusSet)
       .where(eq(agentSessions.id, sessionId))
       .returning();
     if (!updated) throw notFound('agent session not found');
@@ -921,10 +982,30 @@ agentSessionRoutes.post(
     // ISS-101 — close one-shot runs on terminal status writes. No-op on
     // kind='issue' (closed by issue state-machine); fires for pm/interactive.
     if (status === 'completed' || status === 'failed') {
-      await closeRunIfOneShot(
-        updated.pipelineRunId,
-        status === 'failed' ? 'failed' : 'completed',
-      );
+      await closeRunIfOneShot(updated.pipelineRunId, status === 'failed' ? 'failed' : 'completed');
+    }
+
+    // ISS-572 — recover a rate-limited SCHEDULE run by failing over to an
+    // account with headroom (reuses the loop-monitor failover mechanism). If
+    // no headroom device is available the schedule's next cron tick recovers
+    // once the window resets. Best-effort — never breaks the status write.
+    if (usageLimit) {
+      const meta = (existing.metadata ?? {}) as Record<string, unknown>;
+      if (meta.source === 'schedule.run') {
+        try {
+          const { redispatchScheduleSessionOnFailover } = await import('../schedules/dispatch.js');
+          const result = await redispatchScheduleSessionOnFailover(sessionId);
+          logger.info(
+            { sessionId, scheduleId: meta.scheduleId, limitResetAt, result },
+            'agent-sessions/desktop-status: schedule usage-limit → cross-account failover',
+          );
+        } catch (err) {
+          logger.error(
+            { err, sessionId, scheduleId: meta.scheduleId },
+            'agent-sessions/desktop-status: schedule usage-limit failover threw (left failed for next cron)',
+          );
+        }
+      }
     }
 
     // ISS-548/ISS-556 — schedule session completion write-back.
@@ -1169,7 +1250,9 @@ agentSessionRoutes.get(
       const costRows = await db
         .select({
           sessionId: usageRecords.sessionId,
-          estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+          estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(
+            Number,
+          ),
         })
         .from(usageRecords)
         .where(
@@ -1374,11 +1457,7 @@ agentSessionRoutes.patch(
     if (isWorkerActivity && !isUserCancelled) {
       updates.lastHeartbeatAt = patchNow;
     }
-    if (
-      patch.status === undefined &&
-      isWorkerActivity &&
-      existing.status === 'queued'
-    ) {
+    if (patch.status === undefined && isWorkerActivity && existing.status === 'queued') {
       updates.status = 'running';
       updates.startedAt = patchNow;
     } else if (patch.status === 'running' && existing.startedAt == null) {
@@ -1477,7 +1556,11 @@ agentSessionRoutes.delete(
     // own chat; project owners/admins can delete any session.
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member');
-    if (existing.userId && existing.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+    if (
+      existing.userId &&
+      existing.userId !== userId &&
+      !projectRoleAtLeast(access.role, 'admin')
+    ) {
       throw forbidden('not the session owner');
     }
 
@@ -1501,7 +1584,12 @@ agentSessionRoutes.post(
     const userId = c.get('userId');
 
     const [existing] = await db
-      .select({ id: agentSessions.id, projectId: agentSessions.projectId, deviceId: agentSessions.deviceId, status: agentSessions.status })
+      .select({
+        id: agentSessions.id,
+        projectId: agentSessions.projectId,
+        deviceId: agentSessions.deviceId,
+        status: agentSessions.status,
+      })
       .from(agentSessions)
       .where(eq(agentSessions.id, id))
       .limit(1);
@@ -1768,8 +1856,7 @@ function assertAgentChatOwner(
   access: Awaited<ReturnType<typeof loadProjectAccess>>,
   userId: string,
 ) {
-  const isAgentChat =
-    (session.metadata as { type?: string } | null)?.type === 'agent';
+  const isAgentChat = (session.metadata as { type?: string } | null)?.type === 'agent';
   if (!isAgentChat) return;
   if (session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
     throw forbidden('not the conversation owner');
