@@ -205,6 +205,52 @@ function extractSessionFailureText(messages: unknown, note: string | null | unde
   return blob.length > 4000 ? blob.slice(-4000) : blob;
 }
 
+/**
+ * ISS-572 — detect a usage/session-limit failure from a session's transcript +
+ * the runner's terminal note. Returns `{ hit, resetAt }`. Pure detection reused
+ * by both terminal-report paths (the runner's chat/schedule failure PATCHes
+ * `/:id` via patch_session; some runs report `/desktop/status`).
+ */
+async function detectUsageLimitFromSession(
+  messages: unknown,
+  note: string | null | undefined,
+): Promise<{ hit: boolean; resetAt: string | null }> {
+  const { isUsageLimitError, parseUsageLimitReset } = await import('../runners/limit-detect.js');
+  const text = extractSessionFailureText(messages, note);
+  if (!isUsageLimitError(text)) return { hit: false, resetAt: null };
+  const reset = parseUsageLimitReset(text);
+  return { hit: true, resetAt: reset ? reset.toISOString() : null };
+}
+
+/**
+ * ISS-572 — recover a rate-limited SCHEDULE run by failing over to a device
+ * whose account has headroom (reuses the loop-monitor failover). No headroom
+ * device → the schedule's next cron tick recovers once the window resets.
+ * Best-effort — never throws (a recovery failure must not break the status
+ * write that already persisted the classified reason).
+ */
+async function recoverScheduleOnUsageLimit(
+  sessionId: string,
+  metadata: unknown,
+  resetAt: string | null,
+): Promise<void> {
+  const meta = (metadata ?? {}) as Record<string, unknown>;
+  if (meta.source !== 'schedule.run') return;
+  try {
+    const { redispatchScheduleSessionOnFailover } = await import('../schedules/dispatch.js');
+    const result = await redispatchScheduleSessionOnFailover(sessionId);
+    logger.info(
+      { sessionId, scheduleId: meta.scheduleId, resetAt, result },
+      'agent-sessions: schedule usage-limit → cross-account failover',
+    );
+  } catch (err) {
+    logger.error(
+      { err, sessionId, scheduleId: meta.scheduleId },
+      'agent-sessions: schedule usage-limit failover threw (left failed for next cron)',
+    );
+  }
+}
+
 // `broadcastSession` is imported from `./broadcast.ts` so per-turn handlers can
 // share the same fan-out shape (project room + owning device room).
 
@@ -953,15 +999,9 @@ agentSessionRoutes.post(
     let usageLimit = false;
     let limitResetAt: string | null = null;
     if (status === 'failed') {
-      const { isUsageLimitError, parseUsageLimitReset } = await import(
-        '../runners/limit-detect.js'
-      );
-      const failText = extractSessionFailureText(existing.messages, note);
-      if (isUsageLimitError(failText)) {
-        usageLimit = true;
-        const reset = parseUsageLimitReset(failText);
-        limitResetAt = reset ? reset.toISOString() : null;
-      }
+      const det = await detectUsageLimitFromSession(existing.messages, note);
+      usageLimit = det.hit;
+      limitResetAt = det.resetAt;
     }
 
     const statusSet: Record<string, unknown> = { status, updatedAt: new Date() };
@@ -986,26 +1026,9 @@ agentSessionRoutes.post(
     }
 
     // ISS-572 — recover a rate-limited SCHEDULE run by failing over to an
-    // account with headroom (reuses the loop-monitor failover mechanism). If
-    // no headroom device is available the schedule's next cron tick recovers
-    // once the window resets. Best-effort — never breaks the status write.
+    // account with headroom (see recoverScheduleOnUsageLimit).
     if (usageLimit) {
-      const meta = (existing.metadata ?? {}) as Record<string, unknown>;
-      if (meta.source === 'schedule.run') {
-        try {
-          const { redispatchScheduleSessionOnFailover } = await import('../schedules/dispatch.js');
-          const result = await redispatchScheduleSessionOnFailover(sessionId);
-          logger.info(
-            { sessionId, scheduleId: meta.scheduleId, limitResetAt, result },
-            'agent-sessions/desktop-status: schedule usage-limit → cross-account failover',
-          );
-        } catch (err) {
-          logger.error(
-            { err, sessionId, scheduleId: meta.scheduleId },
-            'agent-sessions/desktop-status: schedule usage-limit failover threw (left failed for next cron)',
-          );
-        }
-      }
+      await recoverScheduleOnUsageLimit(sessionId, existing.metadata, limitResetAt);
     }
 
     // ISS-548/ISS-556 — schedule session completion write-back.
@@ -1472,6 +1495,33 @@ agentSessionRoutes.patch(
       updates.failureReason = null;
     }
 
+    // ISS-572 — chat/schedule sessions finalize HERE (the runner's patch_failed
+    // → patch_session), not /desktop/status. Classify a usage/session-limit
+    // failure so the run-log stops recording a bare 'failed' + null reason, and
+    // (for schedule runs) fail over to an account with headroom after the write.
+    let usageLimitHit = false;
+    let usageLimitResetAt: string | null = null;
+    if (
+      patch.status === 'failed' &&
+      !isUserCancelled &&
+      existing.failureReason !== 'user_cancelled'
+    ) {
+      const det = await detectUsageLimitFromSession(patch.messages ?? existing.messages, null);
+      if (det.hit) {
+        usageLimitHit = true;
+        usageLimitResetAt = det.resetAt;
+        updates.failureReason = 'usage_limit';
+        const baseMeta =
+          (updates.metadata as Record<string, unknown> | undefined) ??
+          (existing.metadata as Record<string, unknown> | null) ??
+          {};
+        updates.metadata = {
+          ...baseMeta,
+          ...(det.resetAt ? { limitResetAt: det.resetAt } : {}),
+        };
+      }
+    }
+
     // Dual-write: when the worker PATCHes the messages array we mirror append /
     // truncate into agent_session_turns inside the same transaction so the
     // legacy blob and turn rows can never diverge. Streaming-tail debounce is
@@ -1526,6 +1576,17 @@ agentSessionRoutes.patch(
     } else {
       broadcastSession(updated, 'agent-session.updated');
     }
+
+    // ISS-572 — after persisting the classified usage_limit reason, recover a
+    // rate-limited schedule run via cross-account failover (best-effort).
+    if (usageLimitHit) {
+      await recoverScheduleOnUsageLimit(
+        id,
+        updated.metadata ?? existing.metadata,
+        usageLimitResetAt,
+      );
+    }
+
     return c.json(updated);
   },
 );
