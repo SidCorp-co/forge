@@ -11,6 +11,14 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
+    groups:
+      # Actions bumps are almost always runtime-only (nodeXX) — one PR per
+      # round beats 4-5 singletons; majors still require manual review via
+      # the dependabot-auto-merge policy.
+      actions-minor-and-patch:
+        update-types: ["minor", "patch"]
+      actions-majors:
+        update-types: ["major"]
 
   # npm ecosystem — explicitly list workspace package.json paths. Root
   # package.json owns turbo + pnpm config; the other entries are pnpm
