@@ -205,6 +205,120 @@ export async function reEnqueueForIssue(args: {
 }
 
 /**
+ * Shared tail of the manual + auto enqueue paths: build prompt inputs, open
+ * the issue run, then insert + enqueue the job under the per-issue advisory
+ * lock.
+ *
+ * ISS-196 — `pg_advisory_xact_lock` serialises check-active-job + INSERT
+ * across all workers and processes; it auto-releases at COMMIT/ROLLBACK.
+ * Multiple outbox rows for the same (issue, jobType) collapse to one INSERT
+ * because the loser re-enters with the row already present. Both paths take
+ * the same lock (the manual path historically relied on the unique index
+ * alone; it now serialises identically with the auto path).
+ *
+ * On an in-lock race: `onRacing: 'throw'` (manual) throws
+ * `ActiveJobConflictError` so the route can 409; `onRacing: 'skip'` (auto)
+ * debug-logs and returns null (dedupe skip).
+ */
+async function buildAndEnqueueStepJob(args: {
+  projectId: string;
+  issueId: string;
+  status: IssueStatus;
+  createdBy: string;
+  skill: { type: JobType; skillName: string };
+  stageCfg: StageConfig | undefined;
+  cfg: PipelineConfig | null;
+  reason: Record<string, unknown>;
+  onRacing: 'throw' | 'skip';
+  logLabel: string;
+}): Promise<{ jobId: string } | null> {
+  const { skill, stageCfg } = args;
+
+  const [preventiveContext, issueSnapshot] = await Promise.all([
+    buildPreventiveContext(skill.type, args.projectId, args.issueId),
+    loadIssueSnapshot(args.issueId),
+  ]);
+
+  const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
+
+  // Operator-supplied per-state skill name wins over the resolver default.
+  const effectiveSkillName = stageCfg?.skillName ?? skill.skillName;
+
+  let enqueued: { jobId: string } | null = null;
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('issue:' || ${args.issueId}))`);
+
+    // Re-check inside the lock — the caller's cheap pre-check may have raced.
+    const racing = await findActiveJob(args.issueId, skill.type);
+    if (racing) {
+      if (args.onRacing === 'throw') throw new ActiveJobConflictError(racing, skill.type);
+      logger.debug(
+        { issueId: args.issueId, type: skill.type, racing },
+        `${args.logLabel}: active job appeared while waiting on lock`,
+      );
+      return;
+    }
+
+    // ISS-232 — inject merge-required block when this stage is configured
+    // as the project's merge point. The state-machine writer keys on the
+    // same `mergeStates.baseBranch`; without the prompt block the skill has
+    // no signal it must merge + push before transitioning.
+    const mergeRequiredText = buildMergeRequiredBlock({
+      stageStatus: args.status,
+      mergeStates: resolveMergeStates(args.cfg),
+      issueId: args.issueId,
+    });
+    // Proposal Y — pre-fetch step handoffs scoped to this issue's current run
+    // so buildJobPromptString can render `## Prior step handoffs` + the
+    // `## Termination protocol` block with concrete scope literals.
+    const handoffInputs = await fetchHandoffPromptInputs({
+      projectId: args.projectId,
+      issueId: args.issueId,
+      pipelineRunId: run.id,
+      attempt: 1,
+      jobType: skill.type,
+      policy: stageCfg?.userPromptPolicy ?? null,
+    });
+    enqueued = await insertAndEnqueueJob({
+      projectId: args.projectId,
+      issueId: args.issueId,
+      pipelineRunId: run.id,
+      createdBy: args.createdBy,
+      type: skill.type,
+      skillName: effectiveSkillName,
+      promptString: buildJobPromptString({
+        skillName: effectiveSkillName,
+        jobType: skill.type,
+        issueId: args.issueId,
+        issueSnapshot,
+        policy: stageCfg?.userPromptPolicy ?? null,
+        mergeRequiredText,
+        priorHandoffs: handoffInputs.priorHandoffs,
+        handoffScope: handoffInputs.handoffScope,
+      }),
+      payloadExtras: {
+        ...args.reason,
+        preventiveContext,
+        // Stamp the stage so dispatcher can re-resolve overrides without a
+        // second pipelineConfig load.
+        stageStatus: args.status,
+        // PR-5 — stamp session group membership so the dispatcher's
+        // runner-framework path + agent-session-link can find the prior
+        // session of the same (issue, group) without a second config load.
+        ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
+      },
+      // On unique-violation the error names the racing job id.
+      resolveRacingJobId: () => findActiveJob(args.issueId, skill.type),
+    });
+    logger.info(
+      { jobId: enqueued.jobId, type: skill.type, issueId: args.issueId },
+      `${args.logLabel}: enqueued`,
+    );
+  });
+  return enqueued;
+}
+
+/**
  * Manual fire of a pipeline stage from the issue UI (ISS-5). Bypasses
  * `pipelineConfig.enabled` and the per-stage `auto*` toggles — the user
  * explicitly clicked "Run" so we honor it regardless of project automation
@@ -246,75 +360,24 @@ export async function triggerPipelineStepManual(args: {
 
   const { cfg, projectCreatedBy } = await loadPipelineConfig(args.projectId);
 
+  // Cheap pre-check — 409s before opening a run or building prompt inputs.
   const existing = await findActiveJob(args.issueId, skill.type);
   if (existing) throw new ActiveJobConflictError(existing, skill.type);
 
-  const createdBy = resolveCreatedBy(args.actor, projectCreatedBy);
-
-  const [preventiveContext, issueSnapshot] = await Promise.all([
-    buildPreventiveContext(skill.type, args.projectId, args.issueId),
-    loadIssueSnapshot(args.issueId),
-  ]);
-
-  const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
-
-  const skillRef = skill;
-  const stageCfg = stageConfigFor(cfg, args.status);
-  // Operator-supplied per-state skill name wins over the resolver default.
-  const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
-  // ISS-232 — inject merge-required block when this stage is configured
-  // as the project's merge point. The state-machine writer keys on the
-  // same `mergeStates.baseBranch`; without the prompt block the skill has
-  // no signal it must merge + push before transitioning.
-  const mergeRequiredText = buildMergeRequiredBlock({
-    stageStatus: args.status,
-    mergeStates: resolveMergeStates(cfg),
-    issueId: args.issueId,
-  });
-  // Proposal Y — pre-fetch step handoffs scoped to this issue's current run
-  // so buildJobPromptString can render `## Prior step handoffs` + the
-  // `## Termination protocol` block with concrete scope literals.
-  const handoffInputs = await fetchHandoffPromptInputs({
+  const enqueued = await buildAndEnqueueStepJob({
     projectId: args.projectId,
     issueId: args.issueId,
-    pipelineRunId: run.id,
-    attempt: 1,
-    jobType: skillRef.type,
-    policy: stageCfg?.userPromptPolicy ?? null,
+    status: args.status,
+    createdBy: resolveCreatedBy(args.actor, projectCreatedBy),
+    skill,
+    stageCfg: stageConfigFor(cfg, args.status),
+    cfg,
+    reason: args.reason,
+    onRacing: 'throw',
+    logLabel: 'manual trigger',
   });
-  const { jobId } = await insertAndEnqueueJob({
-    projectId: args.projectId,
-    issueId: args.issueId,
-    pipelineRunId: run.id,
-    createdBy,
-    type: skillRef.type,
-    skillName: effectiveSkillName,
-    promptString: buildJobPromptString({
-      skillName: effectiveSkillName,
-      jobType: skillRef.type,
-      issueId: args.issueId,
-      issueSnapshot,
-      policy: stageCfg?.userPromptPolicy ?? null,
-      mergeRequiredText,
-      priorHandoffs: handoffInputs.priorHandoffs,
-      handoffScope: handoffInputs.handoffScope,
-    }),
-    payloadExtras: {
-      ...args.reason,
-      preventiveContext,
-      // Stamp the stage so dispatcher can re-resolve overrides without a
-      // second pipelineConfig load.
-      stageStatus: args.status,
-      // PR-5 — stamp session group membership so the dispatcher's
-      // runner-framework path + agent-session-link can find the prior
-      // session of the same (issue, group) without a second config load.
-      ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
-    },
-    resolveRacingJobId: () => findActiveJob(args.issueId, skillRef.type),
-  });
-
-  logger.info({ jobId, type: skill.type, issueId: args.issueId }, 'manual trigger: enqueued');
-  return { jobId, type: skill.type };
+  if (!enqueued) throw new ActiveJobConflictError(null, skill.type);
+  return { jobId: enqueued.jobId, type: skill.type };
 }
 
 async function considerEnqueue(args: {
@@ -392,76 +455,17 @@ async function considerEnqueue(args: {
     return;
   }
 
-  const createdBy = resolveCreatedBy(args.actor, projectCreatedBy);
-
-  const [preventiveContext, issueSnapshot] = await Promise.all([
-    buildPreventiveContext(skill.type, args.projectId, args.issueId),
-    loadIssueSnapshot(args.issueId),
-  ]);
-
-  const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
-
-  const skillRef = skill;
-  const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
-
-  // ISS-196 — serialise check-active-job + INSERT job across all workers
-  // and processes. `pg_advisory_xact_lock` auto-releases at COMMIT/ROLLBACK.
-  // Multiple outbox rows for the same (issue, jobType) collapse to one
-  // INSERT because the loser re-enters with the row already present.
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('issue:' || ${args.issueId}))`);
-
-    // Re-check inside the lock — pre-check above may have raced.
-    const racing = await findActiveJob(args.issueId, skillRef.type);
-    if (racing) {
-      logger.debug(
-        { issueId: args.issueId, type: skillRef.type, racing },
-        'orchestrator: active job appeared while waiting on lock',
-      );
-      return;
-    }
-
-    // ISS-232 — same injection on the auto path; see manual-trigger comment.
-    const mergeRequiredText = buildMergeRequiredBlock({
-      stageStatus: args.status,
-      mergeStates: resolveMergeStates(cfg),
-      issueId: args.issueId,
-    });
-    // Proposal Y — see manual-trigger comment.
-    const handoffInputs = await fetchHandoffPromptInputs({
-      projectId: args.projectId,
-      issueId: args.issueId,
-      pipelineRunId: run.id,
-      attempt: 1,
-      jobType: skillRef.type,
-      policy: stageCfg?.userPromptPolicy ?? null,
-    });
-    const { jobId } = await insertAndEnqueueJob({
-      projectId: args.projectId,
-      issueId: args.issueId,
-      pipelineRunId: run.id,
-      createdBy,
-      type: skillRef.type,
-      skillName: effectiveSkillName,
-      promptString: buildJobPromptString({
-        skillName: effectiveSkillName,
-        jobType: skillRef.type,
-        issueId: args.issueId,
-        issueSnapshot,
-        policy: stageCfg?.userPromptPolicy ?? null,
-        mergeRequiredText,
-        priorHandoffs: handoffInputs.priorHandoffs,
-        handoffScope: handoffInputs.handoffScope,
-      }),
-      payloadExtras: {
-        ...args.reason,
-        preventiveContext,
-        stageStatus: args.status,
-        // PR-5 — stamp session group membership; see manual-trigger comment.
-        ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
-      },
-    });
-    logger.info({ jobId, type: skillRef.type, issueId: args.issueId }, 'orchestrator: enqueued');
+  await buildAndEnqueueStepJob({
+    projectId: args.projectId,
+    issueId: args.issueId,
+    status: args.status,
+    createdBy: resolveCreatedBy(args.actor, projectCreatedBy),
+    skill,
+    stageCfg,
+    cfg,
+    reason: args.reason,
+    onRacing: 'skip',
+    logLabel: 'orchestrator',
   });
 }
 

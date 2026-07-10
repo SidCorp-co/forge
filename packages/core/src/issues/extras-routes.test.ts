@@ -22,7 +22,10 @@ const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
 const txInsertValues = vi.fn(async () => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-const txProxy = { update: txUpdate, insert: txInsert };
+// `triggerPipelineStepManual` now serialises via
+// `tx.execute(pg_advisory_xact_lock)` like the auto path — noop stub.
+const txExecute = vi.fn(async () => undefined);
+const txProxy = { update: txUpdate, insert: txInsert, execute: txExecute };
 const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
 
 vi.mock('../db/client.js', () => ({
