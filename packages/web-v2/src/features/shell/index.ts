@@ -12,3 +12,14 @@ export {
 export {
   buildShareLink, decodeFilter, decodeNumber,
 } from './deep-link';
+export {
+  WORKSPACE_ITEMS, SECONDARY_DESTINATIONS, PROJECT_ITEMS,
+  PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub, buildCrumbs,
+  buildActiveKey, buildBottomActiveKey, workspaceNavItems,
+  compactWorkspaceRailItems, projectRailItems, bottomTabItems,
+  type ProjItem,
+} from './nav-model';
+export { buildWorkspaceCommands, type WorkspaceCommandDeps } from './commands';
+export { useProjectOrgScopeSync } from './use-project-org-scope-sync';
+export { useRailProjectData } from './use-rail-project-data';
+export { MobileNavDrawer, type MobileNavDrawerProps } from './components/mobile-nav-drawer';

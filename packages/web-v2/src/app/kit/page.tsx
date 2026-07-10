@@ -19,7 +19,10 @@ import {
 import {
   ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
 } from "@/design";
-import { NavRailCompact, type RailItem, type SwitcherProject } from "@/features/shell";
+import {
+  NavRailCompact, PROJECT_ITEMS, WORKSPACE_ITEMS,
+  type RailItem, type SwitcherProject,
+} from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
@@ -47,23 +50,18 @@ const SEMANTIC_TOKENS = [
 
 const STATUSES: StatusKey[] = ["running", "queued", "blocked", "waiting", "passed", "failed", "paused", "done", "review"];
 
-// Mirrors the shipped nav (src/app/(workspace)/layout.tsx): a 3-item workspace
-// tier + a flat 6-item project tier (Concept C). Kept in sync so the kit documents
-// what actually ships, not a hypothetical grouping.
-const WORKSPACE_NAV: RailItem[] = [
-  { key: "overview", label: "Overview", icon: "grid", badge: 3 },
-  { key: "activity", label: "Activity", icon: "activity" },
-  { key: "runners", label: "Runners", icon: "server" },
-];
+// The shipped nav, straight from the shared model (features/shell/nav-model —
+// the same lists src/app/(workspace)/layout.tsx renders), so the kit documents
+// what actually ships, not a hypothetical grouping. Demo badges are stubbed
+// onto the rows the real shell badges (Overview = attention count, Issues =
+// open-issue count).
+const WORKSPACE_NAV: RailItem[] = WORKSPACE_ITEMS.map(({ key, label, icon }) => ({
+  key, label, icon, ...(key === "overview" ? { badge: 3 } : {}),
+}));
 
-const PROJECT_NAV: RailItem[] = [
-  { key: "proj-overview", label: "Dashboard", icon: "grid" },
-  { key: "proj-issues", label: "Issues", icon: "list", badge: 12 },
-  { key: "proj-pipeline", label: "Pipeline", icon: "pipeline" },
-  { key: "proj-agents", label: "Agents", icon: "agent", badge: 3 },
-  { key: "proj-library", label: "Library", icon: "book" },
-  { key: "proj-automation", label: "Automation", icon: "calendar" },
-];
+const PROJECT_NAV: RailItem[] = PROJECT_ITEMS.map(({ key, label, icon }) => ({
+  key, label, icon, ...(key === "proj-issues" ? { badge: 12 } : {}),
+}));
 
 // Sample switcher rows for the compact rail's hover flyout (pinned-first).
 const RAIL_SWITCHER: SwitcherProject[] = [
@@ -616,7 +614,7 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="navrail" title="Nav rail" hint="Concept C, two modes. Default: the compact 76px icon Rail — Workspace tier (Overview · Activity · Runners), a hover project switcher, then the flat project tier (Dashboard · Issues · Pipeline · Agents · Library · Automation). Active row = flame tint + a 3px accent bar; Issues/Agents carry count badges. Brand expands it to the labeled 232px rail.">
+          <Section id="navrail" title="Nav rail" hint="Concept C, two modes. Default: the compact 76px icon Rail — the workspace tier, a hover project switcher, then the flat project tier (both tiers come from the shared nav model the shell renders). Active row = flame tint + a 3px accent bar; badged rows carry count pills. Brand expands it to the labeled 232px rail.">
             <div className="flex gap-6">
               {/* Default: compact 76px rail. Hover the project mark for the switcher. */}
               <div className="h-[560px] overflow-hidden rounded-md border border-line">
