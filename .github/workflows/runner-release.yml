@@ -64,7 +64,7 @@ jobs:
         run: |
           cp "packages/runner/target/${{ matrix.target }}/release/forge-runner" "forge-runner-${{ matrix.target }}"
           sha256sum "forge-runner-${{ matrix.target }}" || shasum -a 256 "forge-runner-${{ matrix.target }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: forge-runner-${{ matrix.target }}
           path: forge-runner-${{ matrix.target }}
