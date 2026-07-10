@@ -1037,6 +1037,13 @@
       "when": 1786838400000,
       "tag": "0149_member_lenses",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1786924800000,
+      "tag": "0150_workspace_ssh_keys",
+      "breakpoints": true
     }
   ]
 }

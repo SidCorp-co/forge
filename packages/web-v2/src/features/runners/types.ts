@@ -2,6 +2,7 @@
 // `packages/core/src/devices/routes.ts` (GET /me/devices) and
 // `packages/core/src/devices/login-routes.ts` (POST /devices/login/init).
 import type { HealthKey } from "@/design";
+export type { ProjectGitAccessView, SshConnTestResult } from "@forge/contracts";
 
 /** A row of `GET /api/me/devices` (owner-scoped). */
 export interface DeviceRow {
@@ -172,31 +173,6 @@ export function formatElapsed(startedAt: string | null, now: number = Date.now()
 	const hr = Math.floor(min / 60);
 	return `${hr}h ${min % 60}m`;
 }
-
-/** `GET /api/projects/:id/git-credential` — non-secret deploy-key status. */
-export type GitCredentialView =
-	| { configured: false }
-	| {
-			configured: true;
-			source: "forge_generated" | "user_provided";
-			publicKey: string;
-			fingerprint: string | null;
-			createdAt: string;
-	  };
-
-/** `POST /api/projects/:id/git-credential/test` — deploy-key reachability probe. */
-export type GitCredentialTestResult = {
-	ok: boolean;
-	code:
-		| "authenticated"
-		| "auth_denied"
-		| "host_unreachable"
-		| "not_found"
-		| "timeout"
-		| "error";
-	message: string;
-	headSha?: string;
-};
 
 /** Ordered provision steps for rendering a stepper. */
 export const PROVISION_STEPS: ProvisionStatus[] = [

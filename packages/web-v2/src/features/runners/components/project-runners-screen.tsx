@@ -30,6 +30,8 @@ import {
 } from "@/design";
 import { useUpdateProject } from "@/features/project-settings/hooks";
 import { useProject } from "@/features/projects/hooks";
+import { PrivateKeyCreateSlideOver } from "@/features/resources/components/private-key-create-slideover";
+import { useOrgSshKeys } from "@/features/resources/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -84,13 +86,20 @@ function CopyButton({
 	);
 }
 
-/** Repo URL + deploy-key card. Both optional — absent => manual folder setup. */
+/**
+ * Repo URL + Git-access card (ISS-628). The deploy key is picked from the
+ * project's org-scoped Private Keys pool (Resources → Private Keys) rather
+ * than generated/pasted inline — a key created here or there is the same
+ * pool entry, reusable across every project in the org.
+ */
 function GitConfigCard({
 	projectId,
+	orgId,
 	repoUrl,
 	canEdit,
 }: {
 	projectId: string;
+	orgId: string | null;
 	repoUrl: string | null;
 	canEdit: boolean;
 }) {
@@ -99,23 +108,29 @@ function GitConfigCard({
 	const setCred = useSetGitCredential(projectId);
 	const delCred = useDeleteGitCredential(projectId);
 	const testCred = useTestGitCredential(projectId);
+	const pool = useOrgSshKeys(orgId);
 	const [url, setUrl] = useState(repoUrl ?? "");
-	const [paste, setPaste] = useState("");
-	const [showPaste, setShowPaste] = useState(false);
+	const [createOpen, setCreateOpen] = useState(false);
 
 	const urlDirty = url.trim() !== (repoUrl ?? "");
 	const credData = cred.data;
+	const poolKeys = pool.data ?? [];
+
+	const options = [
+		{ value: "", label: "Select a key…" },
+		...poolKeys.map((k) => ({ value: k.id, label: k.name })),
+	];
 
 	return (
 		<Card>
 			<CardHeader>
 				<CardTitle>Git access</CardTitle>
 				<HelpButton
-					summary="Optional. Set the repo URL + a deploy key so any device assigned to this project auto-clones and pushes — add the key once, scale to every runner. Leave blank to set folders up by hand."
+					summary="Optional. Set the repo URL + pick a deploy key from this org's Private Keys pool so any device assigned to this project auto-clones and pushes — one key, reusable across every project. Leave blank to set folders up by hand."
 					actions={[
 						"Set the SSH clone URL (git@host:org/repo.git)",
-						"Generate a deploy key, then add the public key to your repo's deploy keys",
-						"Or paste an existing private key",
+						"Pick a key from the org pool, or create a new one",
+						"Manage the pool from Resources → Private Keys",
 					]}
 				/>
 			</CardHeader>
@@ -152,6 +167,8 @@ function GitConfigCard({
 						<span className="fg-label">Deploy key</span>
 						{cred.isLoading ? (
 							<Skeleton className="mt-2 h-20 w-full" />
+						) : cred.isError ? (
+							<ErrorState message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
 						) : credData?.configured ? (
 							<div className="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-sunken p-3">
 								<div className="flex items-center justify-between gap-2">
@@ -161,21 +178,18 @@ function GitConfigCard({
 											size={14}
 											className="text-[color:var(--green-600)]"
 										/>
-										{credData.source === "forge_generated"
-											? "Forge-generated"
-											: "User-provided"}{" "}
-										key
+										{credData.key.name}
 									</span>
-									{credData.fingerprint && (
-										<MonoTag>{credData.fingerprint}</MonoTag>
+									{credData.key.fingerprint && (
+										<MonoTag>{credData.key.fingerprint}</MonoTag>
 									)}
 								</div>
 								<div className="flex items-center justify-between gap-2">
 									<code className="min-w-0 flex-1 truncate font-mono text-[12px] text-subtle">
-										{credData.publicKey}
+										{credData.key.publicKey}
 									</code>
 									<CopyButton
-										value={credData.publicKey}
+										value={credData.key.publicKey}
 										label="Copy public key"
 									/>
 								</div>
@@ -209,69 +223,48 @@ function GitConfigCard({
 											loading={delCred.isPending}
 											onClick={() => delCred.mutate()}
 										>
-											Remove key
+											Detach key
 										</Button>
 									)}
 								</div>
 							</div>
 						) : (
 							<div className="mt-2 flex flex-col gap-3">
-								<p className="fg-body-sm text-subtle">
-									No deploy key. Generate one (recommended) or paste an existing
-									private key. Without a key, devices use whatever git auth they
-									already have.
-								</p>
+								{pool.isLoading ? (
+									<Skeleton className="h-9 w-full" />
+								) : pool.isError ? (
+									<ErrorState
+										message={formatApiError(pool.error)}
+										onRetry={() => pool.refetch()}
+									/>
+								) : poolKeys.length === 0 ? (
+									<p className="fg-body-sm text-subtle">
+										This organization has no private keys yet. Create one to
+										connect this project to Git.
+									</p>
+								) : (
+									<p className="fg-body-sm text-subtle">
+										Pick a key from this org&apos;s Private Keys pool. Without a
+										key, devices use whatever git auth they already have.
+									</p>
+								)}
 								{canEdit && (
 									<div className="flex flex-wrap items-center gap-2">
+										{poolKeys.length > 0 && (
+											<Select
+												options={options}
+												value=""
+												onChange={(id) => id && setCred.mutate(id)}
+											/>
+										)}
 										<Button
-											variant="primary"
+											variant={poolKeys.length === 0 ? "primary" : "ghost"}
 											size="sm"
 											icon="plus"
-											loading={setCred.isPending}
-											onClick={() => setCred.mutate({ mode: "generate" })}
+											onClick={() => setCreateOpen(true)}
 										>
-											Generate keypair
+											Create new key
 										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setShowPaste((s) => !s)}
-										>
-											Paste existing key
-										</Button>
-									</div>
-								)}
-								{showPaste && canEdit && (
-									<div className="flex flex-col gap-2 rounded-lg border border-dashed border-line-strong p-3">
-										<textarea
-											value={paste}
-											onChange={(e) => setPaste(e.target.value)}
-											placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n…"}
-											spellCheck={false}
-											rows={5}
-											className="w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-[12px] text-fg"
-										/>
-										<div className="flex justify-end">
-											<Button
-												variant="primary"
-												size="sm"
-												loading={setCred.isPending}
-												disabled={paste.trim().length === 0}
-												onClick={() =>
-													setCred.mutate(
-														{ mode: "provide", privateKey: paste },
-														{
-															onSuccess: () => {
-																setPaste("");
-																setShowPaste(false);
-															},
-														},
-													)
-												}
-											>
-												Save key
-											</Button>
-										</div>
 									</div>
 								)}
 							</div>
@@ -279,6 +272,14 @@ function GitConfigCard({
 					</div>
 				</div>
 			</CardContent>
+			{orgId && (
+				<PrivateKeyCreateSlideOver
+					open={createOpen}
+					onClose={() => setCreateOpen(false)}
+					orgId={orgId}
+					onCreated={(key) => setCred.mutate(key.id)}
+				/>
+			)}
 		</Card>
 	);
 }
@@ -854,6 +855,7 @@ export function ProjectRunnersScreen({
 
 			<GitConfigCard
 				projectId={projectId}
+				orgId={project.data?.orgId ?? null}
 				repoUrl={project.data?.repoUrl ?? null}
 				canEdit={!!canEdit}
 			/>
