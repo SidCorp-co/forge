@@ -47,6 +47,15 @@ struct Outcome {
     result_seen: bool,
     /// Error detail from a `{type:result}` with `is_error=true`.
     result_error: Option<String>,
+    /// `num_turns` from the `{type:result}` event. `Some(0)` on an
+    /// `is_error=false` result means the CLI produced ZERO turns — the model
+    /// was never invoked (e.g. `Unknown command: /forge-plan` when the skill
+    /// is not installed on this device). For a pipeline job that is a no-op,
+    /// not a success (ISS-626).
+    num_turns: Option<i64>,
+    /// The `result` text of the terminal event (used to surface WHY a no-op
+    /// result had zero turns — carries the "Unknown command …" line).
+    result_text: Option<String>,
     /// MCP servers that did NOT reach a connected status at `system/init`.
     mcp_failed: Vec<String>,
     /// Captured child exit status (carries exit code / terminating signal).
@@ -479,6 +488,11 @@ impl Runner for ClaudeCodeRunner {
                             let mut o = outcome.lock().await;
                             o.succeeded = Some(!is_error);
                             o.result_seen = true;
+                            o.num_turns = json.get("num_turns").and_then(Value::as_i64);
+                            o.result_text = json
+                                .get("result")
+                                .and_then(Value::as_str)
+                                .map(|s| s.chars().take(300).collect());
                             if is_error {
                                 o.result_error = Some(result_error_detail(&json));
                             }
@@ -565,7 +579,16 @@ impl Runner for ClaudeCodeRunner {
                 None
             };
 
-            let (succeeded_opt, usage_limit, result_seen, result_error, mcp_failed, polled_exit) = {
+            let (
+                succeeded_opt,
+                usage_limit,
+                result_seen,
+                result_error,
+                mcp_failed,
+                polled_exit,
+                num_turns,
+                result_text,
+            ) = {
                 let o = outcome.lock().await;
                 (
                     o.succeeded,
@@ -574,6 +597,8 @@ impl Runner for ClaudeCodeRunner {
                     o.result_error.clone(),
                     o.mcp_failed.clone(),
                     o.exit,
+                    o.num_turns,
+                    o.result_text.clone(),
                 )
             };
             let outcome_exit = polled_exit.or(killed_exit);
@@ -590,9 +615,21 @@ impl Runner for ClaudeCodeRunner {
                     .contains("out of extra usage")
                     .then(|| stderr.trim().chars().take(500).collect())
             });
+            // ISS-626 — a pipeline result with ZERO turns did no work: the CLI
+            // short-circuited before invoking the model (the classic case is
+            // `Unknown command: /forge-<skill>` when the skill is not installed
+            // on this device). The result is `is_error=false`, so without this
+            // guard the job records Done and the reconciler re-dispatches the
+            // no-op forever. Fail it → core routes the cc-startup signal to a
+            // different-device failover (a device that HAS the skill).
+            let no_work = is_issue_job
+                && succeeded_opt == Some(true)
+                && num_turns == Some(0);
+
             let succeeded = usage_limit.is_none()
                 && succeeded_opt.unwrap_or(false)
-                && !mcp_failure_is_fatal(is_issue_job, &mcp_failed);
+                && !mcp_failure_is_fatal(is_issue_job, &mcp_failed)
+                && !no_work;
 
             let resume_failed = invoked_with_resume && !succeeded && {
                 let b = stderr.to_lowercase();
@@ -628,6 +665,21 @@ impl Runner for ClaudeCodeRunner {
                     .send(RunnerEvent::Failed {
                         error: format!("[RESUME_FAILED] {body}"),
                         kind: FailureKind::ResumeFailed,
+                    })
+                    .await;
+            } else if no_work {
+                // ISS-626 — zero-turn pipeline result (CLI short-circuited, e.g.
+                // an unknown /forge-<skill> command). Carry the result text so
+                // core's classifier routes it (an "Unknown command" line matches
+                // the cc-startup patterns → transient-cc → different-device
+                // failover to a runner that HAS the skill).
+                let detail = result_text.unwrap_or_default();
+                let _ = tx
+                    .send(RunnerEvent::Failed {
+                        error: format!(
+                            "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
+                        ),
+                        kind: FailureKind::Transient,
                     })
                     .await;
             } else {
