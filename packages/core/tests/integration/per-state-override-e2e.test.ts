@@ -326,10 +326,11 @@ describe('ISS-194 per-state override end-to-end', () => {
     expect(await handleDispatch({ jobId: jobId2 })).toBe('dispatched');
 
     const data2 = jobAssignedCall();
-    // buildOverridesPayload only sets keys when the override is non-null —
-    // with the override cleared, `model` + `permissionMode` are absent from
-    // the WS envelope entirely.
-    expect(Object.keys(data2)).not.toContain('model');
+    // ISS-535 — with the per-project override cleared, `model` falls back to
+    // the DEFAULT stage-routing policy (approved → sonnet) instead of
+    // disappearing from the envelope. `permissionMode` has no default policy,
+    // so buildOverridesPayload still omits it entirely.
+    expect(data2.model).toBe('sonnet');
     expect(Object.keys(data2)).not.toContain('permissionMode');
     expect((data2.payload as { stageStatus?: unknown }).stageStatus).toBe('approved');
 
@@ -345,11 +346,12 @@ describe('ISS-194 per-state override end-to-end', () => {
         permissionMode: string | null;
       };
     };
-    // With no override + no `job.modelTier`, `persistPromptSnapshot` writes
-    // `model_used = 'default'`, which is what the Inspector surfaces.
+    // ISS-535 — the default stage-routing policy resolves approved → sonnet,
+    // so `persistPromptSnapshot` writes `model_used = 'sonnet'` and the
+    // Inspector surfaces it as the resolved model.
     expect(body.resolvedFlags.state).toBe('approved');
-    expect(body.resolvedFlags.model).toBe('default');
+    expect(body.resolvedFlags.model).toBe('sonnet');
     expect(body.resolvedFlags.permissionMode).toBeNull();
-    expect(body.model).toBe('default');
+    expect(body.model).toBe('sonnet');
   });
 });

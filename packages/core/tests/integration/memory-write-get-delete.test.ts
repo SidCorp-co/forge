@@ -255,10 +255,13 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       expect(rows[0]?.metadata).toMatchObject({ revised: true });
     });
 
-    it('stores FULL textContent but flags truncated:true when > 8192 chars', async () => {
+    it('rejects agent-authored (note) textContent > 8192 chars with 400', async () => {
       const { projectId, token } = await seedMember();
       const longText = 'x'.repeat(10_000);
 
+      // Kernel size guard (assertAgentMemoryQuality): note/knowledge/policy
+      // beyond MAX_EMBED_CHARS would be stored yet unsearchable, so the write
+      // is rejected outright instead of silently truncating the embed input.
       const res = await app.request('/api/memory', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -269,15 +272,39 @@ describe('memory write/get/delete integration (Phase 0)', () => {
           textContent: longText,
         }),
       });
+      expect(res.status).toBe(400);
+
+      const rows = await harness.db.execute(sql`
+        SELECT 1 FROM memories
+        WHERE project_id = ${projectId} AND source_ref = 'big'
+      `);
+      expect(rows.length).toBe(0);
+    });
+
+    it('stores FULL textContent + truncated:true for lifecycle mirrors > 8192 chars', async () => {
+      const { projectId, token } = await seedMember();
+      const longText = 'x'.repeat(10_000);
+
+      // Lifecycle mirrors (issue/comment/job/decision) are exempt from the
+      // agent-authored size guard — they must store their record verbatim.
+      // Only the embed input is cut at 8192; `truncated` flags the cut.
+      const res = await app.request('/api/memory', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          projectId,
+          source: 'issue',
+          sourceRef: 'big-mirror',
+          textContent: longText,
+        }),
+      });
       expect(res.status).toBe(201);
       const body = (await res.json()) as { truncated: boolean };
-      // memory-v2 phase 0: only the embed input is cut at 8192; the stored
-      // text_content is always the full string. `truncated` flags the cut.
       expect(body.truncated).toBe(true);
 
       const rows = await harness.db.execute(sql`
         SELECT length(text_content) AS n FROM memories
-        WHERE project_id = ${projectId} AND source_ref = 'big'
+        WHERE project_id = ${projectId} AND source_ref = 'big-mirror'
       `);
       expect(Number(rows[0]?.n)).toBe(10_000);
     });

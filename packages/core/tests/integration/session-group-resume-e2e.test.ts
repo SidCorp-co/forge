@@ -38,8 +38,17 @@ vi.mock('../../src/ws/server.js', () => ({
   },
 }));
 
+// ONE harness for the whole file. The `db` singleton (src/db/client.ts) binds
+// DATABASE_URL at first import; a second setupTestDatabase() in a later
+// describe would insert into a container the src code never reads (and whose
+// sibling was already torn down), silently breaking every direct-call test.
+let harness: TestDatabase;
+
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
 describe('ISS-195 session-group resume end-to-end', () => {
-  let harness: TestDatabase;
   let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
   let handleDispatch: typeof import('../../src/jobs/dispatcher.js').handleDispatch;
   let roomManager: { publish: ReturnType<typeof vi.fn> };
@@ -96,7 +105,6 @@ describe('ISS-195 session-group resume end-to-end', () => {
 
   afterAll(async () => {
     delete process.env.FEATURE_PIPELINE_CONTROL;
-    if (harness) await harness.cleanup();
   });
 
   beforeEach(async () => {
@@ -686,33 +694,33 @@ describe('ISS-195 session-group resume end-to-end', () => {
 // Unit tests mock db.execute so the text→uuid cast never ran against Postgres.
 // This suite hits real PG to confirm the fix doesn't regress.
 describe('ISS-580 estimateGroupContextTokens — real-PG SQL verification', () => {
-  let harness: TestDatabase;
   let estimateGroupContextTokens: (args: {
     issueId: string;
     sessionGroup: string;
   }) => Promise<number>;
 
   beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.NODE_ENV ??= 'test';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+    // Reuse the file-level harness so estimateGroupContextTokens (which reads
+    // through the src/db singleton) queries the SAME database these tests
+    // insert into. Only create one when this describe runs alone (-t filter).
+    if (!harness) {
+      harness = await setupTestDatabase();
+      process.env.DATABASE_URL = harness.url;
+      process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+      process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+      process.env.NODE_ENV ??= 'test';
+      process.env.SMTP_HOST ??= 'localhost';
+      process.env.SMTP_PORT ??= '1025';
+      process.env.SMTP_USER ??= 'test';
+      process.env.SMTP_PASS ??= 'test';
+      process.env.SMTP_FROM ??= 'test@example.com';
+      process.env.APP_BASE_URL ??= 'http://localhost:3000';
+      process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+    }
 
     const mod = await import('../../src/jobs/session-resume.js');
     estimateGroupContextTokens = mod.estimateGroupContextTokens;
   }, 60_000);
-
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
 
   beforeEach(async () => {
     await truncateAll(harness.db);
@@ -728,6 +736,15 @@ describe('ISS-580 estimateGroupContextTokens — real-PG SQL verification', () =
     const project = await createTestProject(harness.db, owner.id);
     const issueId = randomUUID();
 
+    // agent_sessions.pipeline_run_id is NOT NULL (ISS-101 / migration 0054) —
+    // park both sessions under a one-shot interactive run, mirroring what
+    // user-driven chat sessions get in production.
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status)
+      VALUES (${runId}::uuid, ${project.id}::uuid, 'interactive', 'completed')
+    `);
+
     // Insert two agent_sessions in the same (issueId, sessionGroup).
     const sessionA = randomUUID();
     const sessionB = randomUUID();
@@ -737,9 +754,9 @@ describe('ISS-580 estimateGroupContextTokens — real-PG SQL verification', () =
     ] as const) {
       await harness.db.execute(sql`
         INSERT INTO agent_sessions
-          (id, project_id, status, metadata, claude_session_id, created_at, updated_at)
+          (id, project_id, pipeline_run_id, status, metadata, claude_session_id, created_at, updated_at)
         VALUES (
-          ${sid}::uuid, ${project.id}::uuid, 'completed',
+          ${sid}::uuid, ${project.id}::uuid, ${runId}::uuid, 'completed',
           ${JSON.stringify({ issueId: issId, sessionGroup: group })}::jsonb,
           ${claudeId}, now(), now()
         )
@@ -766,13 +783,19 @@ describe('ISS-580 estimateGroupContextTokens — real-PG SQL verification', () =
     const project = await createTestProject(harness.db, owner.id);
     const issueId = randomUUID();
 
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status)
+      VALUES (${runId}::uuid, ${project.id}::uuid, 'interactive', 'completed')
+    `);
+
     // Session with no claude_session_id — should be excluded by the predicate.
     const sessionId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO agent_sessions
-        (id, project_id, status, metadata, claude_session_id, created_at, updated_at)
+        (id, project_id, pipeline_run_id, status, metadata, claude_session_id, created_at, updated_at)
       VALUES (
-        ${sessionId}::uuid, ${project.id}::uuid, 'completed',
+        ${sessionId}::uuid, ${project.id}::uuid, ${runId}::uuid, 'completed',
         ${JSON.stringify({ issueId, sessionGroup: 'impl' })}::jsonb,
         NULL, now(), now()
       )

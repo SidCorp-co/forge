@@ -4,9 +4,13 @@ import path from 'node:path';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { skills } from '../../src/db/schema.js';
-import { seedBuiltinSkills } from '../../src/skills/builtin-seed.js';
 import { hashSkillBody } from '../../src/skills/hash.js';
 import { type TestDatabase, setupTestDatabase, truncateAll } from '../helpers/index.js';
+
+// Imported dynamically in beforeAll: builtin-seed.js transitively reaches
+// src/db/client.ts, which validates env at import time — a static import
+// fails collection before any hook can set DATABASE_URL & friends.
+let seedBuiltinSkills: (typeof import('../../src/skills/builtin-seed.js'))['seedBuiltinSkills'];
 
 const SKILL_A = `---
 name: forge-sample-a
@@ -43,6 +47,10 @@ describe('seedBuiltinSkills', () => {
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
+    process.env.DATABASE_URL = harness.url;
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+    ({ seedBuiltinSkills } = await import('../../src/skills/builtin-seed.js'));
     skillsRoot = await mkdtemp(path.join(tmpdir(), 'forge-skills-'));
   }, 60_000);
 

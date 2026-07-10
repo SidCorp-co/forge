@@ -117,7 +117,9 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
         'coolify',
         ${opts.environment},
         ${JSON.stringify({
-          resourceUuid: 'res-1',
+          // ISS-558 multi-target shape: the adapter fans out one deploy per
+          // targets[] entry; a binding without targets refuses to dispatch.
+          targets: [{ id: 't-1', label: 'App', resourceUuid: 'res-1' }],
           branch: 'main',
           environment: opts.environment,
         })}::jsonb,

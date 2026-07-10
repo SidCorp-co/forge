@@ -190,10 +190,13 @@ describe('ISS-448 I1 orphan trigger + backfill', () => {
         sql`ALTER TABLE agent_sessions ENABLE TRIGGER trg_agent_sessions_no_active_under_terminal_run`,
       );
 
-      // Run the same backfill statements as migration 0114.
+      // Run the same backfill statements as migration 0114, under the v3
+      // failure taxonomy: 0115 remapped 'transient' → 'infra' (and swapped the
+      // CHECK to code|infra|transient-cc|timeout), and 0118 rewrote the
+      // trigger to assign 'infra' for orphans-under-terminal-run.
       await harness.db.execute(sql`
         UPDATE jobs j
-        SET status = 'cancelled', failure_kind = 'transient',
+        SET status = 'cancelled', failure_kind = 'infra',
             failure_reason = 'orphan_under_terminal_run',
             cancellation_requested = true, finished_at = COALESCE(j.finished_at, now())
         FROM pipeline_runs r
