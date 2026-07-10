@@ -1,19 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Spy on the core REST calls the job-completion branch fires. `handleAgentComplete`
-// is a pure function (deps injected via ctx), so this is the only module-level
-// dependency that must be mocked — importing use-web-socket pulls @/lib/api at
-// module-eval time (the module-level SessionTracker references patchAgentSession).
+// is a pure function (deps injected via ctx), so @/lib/api is the only
+// module-level dependency that must be mocked — @/lib/ws/agent-complete pulls
+// it at module-eval time.
 const completeJob = vi.fn(async () => undefined);
 const patchAgentSession = vi.fn(async () => undefined);
 const createUsageRecord = vi.fn(async () => undefined);
 const relayAgentEvent = vi.fn(async () => undefined);
-
-// use-web-socket imports Sentry at module-eval; the real module pulls the
-// @forge/observability workspace package, which isn't needed here.
-vi.mock("@/lib/sentry", () => ({
-  Sentry: { captureException: vi.fn() },
-}));
 
 vi.mock("@/lib/api", () => ({
   completeJob: (...args: unknown[]) => completeJob(...args),
@@ -27,7 +21,7 @@ vi.mock("@/lib/api", () => ({
   postJobEvents: vi.fn(),
 }));
 
-import { handleAgentComplete, type HandleAgentCompleteCtx } from "@/hooks/use-web-socket";
+import { handleAgentComplete, type HandleAgentCompleteCtx } from "@/lib/ws/agent-complete";
 
 const JOB_ID = "11111111-1111-4111-8111-111111111111";
 

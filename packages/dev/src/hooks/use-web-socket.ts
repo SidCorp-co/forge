@@ -1,58 +1,25 @@
-import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAppStore } from "@/stores/app-store";
-import { useAuth } from "@/hooks/useAuth";
-import { invoke } from "./use-tauri-ipc";
-import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncAgentFiles, postJobEvents, completeJob, createUsageRecord, type JobEventInput } from "@/lib/api";
-import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
-import { Sentry } from "@/lib/sentry";
+import { useEffect, useRef } from "react";
+import { patchAgentSession } from "@/lib/api";
+import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
 import { SessionTracker } from "@/lib/session-tracker";
+import { handleAgentComplete, handleNonJobAgentComplete } from "@/lib/ws/agent-complete";
+import { createDeviceHeartbeat } from "@/lib/ws/heartbeat";
+import { createJobEventBatcher, createRelayBatcher } from "@/lib/ws/job-event-batcher";
+import { registerAllRunners, subscribeToProjectRooms } from "@/lib/ws/runner-registration";
+import { routeWsMessage, type WsRouterContext } from "@/lib/ws/ws-message-router";
+import { startWsTransport } from "@/lib/ws/ws-transport";
+import { accumulateJobUsage } from "@/lib/ws/usage-accumulator";
+import { useAppStore } from "@/stores/app-store";
 import { useAgentCommandHandler } from "./use-agent-commands";
 import { useJobAssignedHandler } from "./use-job-handler";
-import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
-import { parseStreamMessages } from "@/lib/stream-parser";
+import { useAuth } from "./useAuth";
 
-/**
- * Pipeline usage accumulator. Keyed by local Tauri sessionId (jobId for
- * pipeline jobs). Cleared on agent:complete after the row is POSTed to
- * /usage-records. Dedup `seenIds` matches the Rust JSONL parser pattern
- * (claude_cli/usage.rs:158) — Claude CLI emits multiple stream entries per
- * API turn that share the same `message.id`.
- *
- * Module-level so the lifecycle survives hook remounts during an active
- * dispatch.
- */
-type UsageAcc = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheCreation: number;
-  model: string;
-  count: number;
-  seenIds: Set<string>;
-};
-const usageAccByJob = new Map<string, UsageAcc>();
-function getOrInitUsageAcc(sessionId: string): UsageAcc {
-  let acc = usageAccByJob.get(sessionId);
-  if (!acc) {
-    acc = {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheCreation: 0,
-      model: "unknown",
-      count: 0,
-      seenIds: new Set(),
-    };
-    usageAccByJob.set(sessionId, acc);
-  }
-  return acc;
-}
-
-// Single tracker instance shared across the hook lifecycle. The
-// `remotePersist` callback writes the in-flight session snapshot to the
-// canonical agent_sessions row every ~30s or every 5 messages so a desktop
-// crash mid-stream still leaves the running turn visible on web (ISS-84).
+// Single tracker instance shared across the hook lifecycle (module-level so it
+// survives hook remounts during an active dispatch). The `remotePersist`
+// callback writes the in-flight session snapshot to the canonical
+// agent_sessions row every ~30s or every 5 messages so a desktop crash
+// mid-stream still leaves the running turn visible on web (ISS-84).
 const tracker = new SessionTracker({
   remotePersist: (agentSessionId, snap) =>
     patchAgentSession(agentSessionId, {
@@ -62,139 +29,11 @@ const tracker = new SessionTracker({
     }),
 });
 
-export type AgentCompletePayload = {
-  sessionId: string;
-  claudeSessionId?: string | null;
-  error?: string;
-};
-
-export type HandleAgentCompleteCtx = {
-  jobSessionsRef: { current: Set<string> };
-  cancelledJobsRef: { current: Set<string> };
-  jobAgentSessionsRef: { current: Map<string, string> };
-  tracker: Pick<SessionTracker, "getSnapshot" | "complete">;
-  /** Drains the pending job_event batch; resolves once every queued POST lands. */
-  flushJobEvents: () => Promise<void>;
-  /** Drains the pending agent:message relay batch. */
-  flushRelay: () => Promise<void>;
-};
-
 /**
- * Handle the job-originated branch of `agent:complete`: drain the job_event
- * batch, POST /api/jobs/:id/complete (exitCode 0 = done, 1 = failed, -1 =
- * cancelled), persist the canonical agent_sessions row + accumulated usage, and
- * relay completion to web chat UIs. Returns `true` when the session was a
- * pipeline job (the caller should stop here); `false` for a user-facing session
- * (the caller continues to the diff / knowledge-sync branch).
- *
- * Extracted from the inline Tauri `agent:complete` listener so it can be unit
- * tested without a live Tauri event bus — the listener mock rejects, leaving
- * the /complete POST path otherwise unexercised (ISS-264).
+ * Wiring-only hook: builds the router context, registers WS event handlers,
+ * and starts the transport (Tauri bridge with browser-WebSocket fallback),
+ * heartbeat, and stream batchers. The subsystems live in `@/lib/ws/*`.
  */
-export async function handleAgentComplete(
-  payload: AgentCompletePayload,
-  ctx: HandleAgentCompleteCtx,
-): Promise<boolean> {
-  const { jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef, tracker, flushJobEvents, flushRelay } = ctx;
-  const { sessionId, ...rest } = payload;
-
-  // Job-originated session: drain job_event batch, finalize via
-  // /api/jobs/:id/complete, skip user-facing relay + knowledge sync.
-  //
-  // Keep the jobSessionsRef marker (don't delete) — the Rust spawn layer can
-  // emit late stream chunks after agent:complete, and we don't want those
-  // leaking through enqueueRelay to user chat UIs. jobId is a UUID, so the
-  // bounded growth is acceptable.
-  if (!jobSessionsRef.current.has(sessionId)) return false;
-
-  // Trigger any pending batch and await the in-flight chain so every queued
-  // event POST lands BEFORE /complete moves the job to a terminal status
-  // (which would 409 in-flight POSTs).
-  await flushJobEvents();
-  // Cancellation lands `cancelled` (exitCode -1), normal error lands `failed`
-  // (1), success lands `done` (0). See lifecycle routes mapping in
-  // packages/core/src/jobs/lifecycle-routes.ts.
-  const wasCancelled = cancelledJobsRef.current.delete(sessionId);
-  const exitCode = wasCancelled ? -1 : rest.error ? 1 : 0;
-  try {
-    await completeJob(sessionId, exitCode, { error: rest.error ?? null });
-  } catch (err) {
-    console.error(`[job-events] completeJob failed for ${sessionId}:`, err);
-  }
-
-  // Persist the canonical agent_sessions row so a browser opening the pipeline
-  // session AFTER completion sees the assistant reply, claudeSessionId, and
-  // (eventual) diff. completeJob above only flips the row's status via
-  // syncAgentSessionLifecycle — without this PATCH the row keeps messages=[]
-  // forever. The agentSessionId is surfaced by core in the job.assigned WS
-  // payload (PR-B); absent against older server builds, in which case we
-  // silently skip — the status sync still applied.
-  const agentSessionId = jobAgentSessionsRef.current.get(sessionId);
-  if (agentSessionId) {
-    try {
-      const snap = tracker.getSnapshot(sessionId);
-      if (!snap) {
-        console.warn(
-          `[agent:complete] tracker snapshot missing for job=${sessionId} — PATCH will omit messages, expect persisted history to be incomplete`,
-        );
-      }
-      await patchAgentSession(agentSessionId, {
-        status: wasCancelled ? "completed" : rest.error ? "failed" : "completed",
-        ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
-      });
-    } catch (err) {
-      console.warn(`[agent:complete] PATCH session row failed for job ${sessionId}:`, err);
-    }
-
-    // Emit accumulated token usage as a single /usage-records row, keyed by the
-    // forge agent_sessions.id so the pipeline_run_step_durations view JOIN
-    // (ur.session_id = j.agent_session_id::text) actually matches. Without
-    // this, every pipeline step shows totalCostUsd=0 in /metrics.
-    const acc = usageAccByJob.get(sessionId);
-    if (acc && acc.count > 0) {
-      try {
-        await createUsageRecord({
-          source: "desktop",
-          model: acc.model,
-          inputTokens: acc.input,
-          outputTokens: acc.output,
-          cacheReadTokens: acc.cacheRead,
-          cacheCreationTokens: acc.cacheCreation,
-          requestCount: acc.count,
-          sessionId: agentSessionId,
-          recordedAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        console.warn(`[agent:complete] usage POST failed for job ${sessionId}:`, err);
-      }
-    }
-
-    jobAgentSessionsRef.current.delete(sessionId);
-  }
-  // Always drop the accumulator entry — even if no agentSessionId was surfaced
-  // (older server builds), keeping it would leak memory across hot reloads and
-  // long-running dev sessions.
-  usageAccByJob.delete(sessionId);
-
-  // Mirror the relay that non-job sessions get below, so web chat UIs (which
-  // don't subscribe to job_events) see the session leave the running state.
-  // Diff is NOT computed for pipeline sessions — they run in the main repo,
-  // not a worktree, so there's nothing to diff against HEAD.
-  //
-  // Drain any buffered agent:message batch first so trailing chunks land BEFORE
-  // agent:complete — otherwise the web sees running=false then receives further
-  // messages.
-  await flushRelay();
-  try {
-    await relayAgentEvent(sessionId, "agent:complete", { ...rest });
-  } catch {
-    /* ignore — relay is best-effort, persistence already happened */
-  }
-
-  tracker.complete(sessionId);
-  return true;
-}
-
 export function useWebSocket() {
   const setWsConnected = useAppStore((s) => s.setWsConnected);
   const setDeviceSettings = useAppStore((s) => s.setDeviceSettings);
@@ -206,7 +45,8 @@ export function useWebSocket() {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Stable ref for agent command handling — avoids re-creating WS on config changes
+  // Stable refs for agent command / job handling — avoids re-creating WS on
+  // config changes.
   const handleAgentCommandRef = useAgentCommandHandler(tracker);
   const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef } = useJobAssignedHandler(tracker);
 
@@ -219,646 +59,110 @@ export function useWebSocket() {
     if (phase !== "authenticated") return;
     if (!coreUrl) return;
 
-    // ISS-286: token never goes in the URL — it leaks via nginx access logs,
-    // browser history, and Referer. Tauri Rust path attaches the device
-    // token via Authorization header (see websocket/mod.rs); browser fallback
-    // path uses the `forge.bearer.<jwt>` Sec-WebSocket-Protocol subprotocol.
     const wsUrl = coreUrl.replace(/^http/, "ws") + "/ws";
 
-    // Server-commanded skill sync. The ONLY path that makes this device pull
-    // skills: fired when a web Sync action (Skill Studio or device management)
-    // or the forge_skills.push MCP tool targets this device. No bodies are in
-    // the payload — we pull the project's effective manifest and install it.
-    async function handleSkillSync(data: any) {
-      const projectSlug: string | undefined = data?.projectSlug;
-      try {
-        if (projectSlug) {
-          await syncProjectSkills(projectSlug, "");
-        } else {
-          // Fallback: no slug carried — refresh every configured project.
-          const settings = useAppStore.getState().deviceSettings;
-          await syncAllProjectSkills(settings.projects);
-        }
-      } catch (err) {
-        console.error("[skill.sync] failed:", err);
-      }
-      queryClient.invalidateQueries({ queryKey: ["skill-sync-log"] });
-    }
+    const relayBatcher = createRelayBatcher();
+    const jobEventBatcher = createJobEventBatcher();
+    const heartbeat = createDeviceHeartbeat(coreUrl);
 
-    async function handleConfigSyncProject(data: any) {
-      const { projectSlug, repoPath } = data || {};
-      if (!projectSlug || !repoPath) return;
-      try {
-        const currentConfig = await invoke<any>("get_config");
-        const projects = { ...currentConfig.projects };
-        const existing = projects[projectSlug] || { slug: projectSlug };
-        if (existing.repoPath === repoPath) return; // already set
-        projects[projectSlug] = { ...existing, repoPath };
-        await invoke("save_config", { config: { ...currentConfig, projects } });
-      } catch { /* ignore */ }
-    }
-
-    function handleMessage(data: any) {
-      try {
-        const msg = typeof data === "string" ? JSON.parse(data) : data;
-        const event: string = msg.event ?? "";
-        // Trace via console.warn so fe_log forwarder relays to stdout for debugging
-        console.warn(`[ws-msg] ${event || "(no event)"}`, msg.data ? Object.keys(msg.data).join(",") : "");
-
-        if (event === "job.assigned") {
-          handleJobAssignedRef.current(msg.data);
-          return;
-        }
-        if (event === "job.cancel") {
-          const jobId = msg.data?.jobId;
-          if (jobId) {
-            // Tag the job as cancelled so the eventual agent:complete maps to
-            // exitCode -1 (cancelled), not 1 (failed → triggers retry).
-            cancelledJobsRef.current.add(jobId);
-            // If abort fails (e.g. cancel arrived before send_chat registered
-            // the session locally), agent:complete will never fire and the
-            // job would sit dispatched forever. Converge directly by posting
-            // /complete with exitCode -1 so the dispatcher records cancelled
-            // rather than failed (which would also trigger scheduleRetry).
-            invoke("abort_agent", { sessionId: jobId }).catch(async () => {
-              jobSessionsRef.current.delete(jobId);
-              cancelledJobsRef.current.delete(jobId);
-              try { await completeJob(jobId, -1, { error: "cancelled before runner accepted job" }); } catch { /* ignore */ }
-            });
-          }
-          return;
-        }
-
-        if (
-          event === "agent:start" ||
-          event === "agent:send" ||
-          event === "agent:abort" ||
-          event === "agent:build-prompt" ||
-          event === "agent:review" ||
-          event === "agent:reindex"
-        ) {
-          handleAgentCommandRef.current(event, msg.data);
-          return;
-        }
-
-        if (event === "skill.sync") {
-          handleSkillSync(msg.data);
-          return;
-        }
-
-        // ISS-173: server confirms the runner registration; record it so the
-        // PairDeviceCard + ProjectSettings badge can surface "Active runner here".
-        if (event === "runner.registered" || event === "runner:registered") {
-          const projectId = msg.data?.projectId;
-          const runnerId = msg.data?.runnerId ?? msg.data?.id;
-          if (projectId && runnerId) {
-            useAppStore.getState().setRunnerBinding(String(projectId), {
-              runnerId: String(runnerId),
-              status: "online",
-            });
-          }
-          return;
-        }
-
-        // ISS-175: core emits `runner.status` (not `runner.disconnected`) from
-        // both heartbeat-ws.ts (explicit unregister) and stale-detector.ts
-        // (heartbeat lapse), broadcast to projectRoom(projectId). The project
-        // room carries status for every runner in the project — only update
-        // when the runnerId matches the one this device recorded on
-        // runner.registered, otherwise a peer device's transition would
-        // clobber our local binding.
-        if (event === "runner.status") {
-          const projectId = msg.data?.projectId;
-          const runnerId = msg.data?.runnerId ?? msg.data?.id;
-          const status = msg.data?.status;
-          if (!projectId || !runnerId || !status) return;
-          const current = useAppStore.getState().runnerBindings[String(projectId)];
-          if (!current || current.runnerId !== String(runnerId)) return;
-          if (status === "offline" || status === "online") {
-            useAppStore.getState().setRunnerBinding(String(projectId), {
-              runnerId: String(runnerId),
-              status,
-            });
-          }
-          return;
-        }
-
-        // EPIC 6 (ISS-278/290/292) — a project skill changed on the server.
-        // This is cache-invalidation ONLY; it must NOT make the device pull.
-        // A device syncs only on an explicit `skill.sync` command. The web
-        // freshness view will show this device as "outdated" until then.
-        if (event === "skill.updated") {
-          queryClient.invalidateQueries({ queryKey: ["skill-sync-log"] });
-          return;
-        }
-
-        if (event === "config:sync-project") {
-          handleConfigSyncProject(msg.data);
-          return;
-        }
-
-        if (event === "notification:created" || event === "notification.created") {
-          ["notifications", "notifications-unread", "pm-escalations"].forEach((k) =>
-            queryClient.invalidateQueries({ queryKey: [k], refetchType: "all" }),
-          );
-        }
-
-        // ISS-22 — PM agent escalation. Broadcast by Epic 5; refresh the
-        // inbox + notifications cache so the bell badge and PmInbox pick it up.
-        if (event === "pm.escalation") {
-          ["pm-escalations", "notifications", "notifications-unread"].forEach((k) =>
-            queryClient.invalidateQueries({ queryKey: [k], refetchType: "all" }),
-          );
-          return;
-        }
-
-        if (
-          event.startsWith("issue:") ||
-          event.startsWith("task:") ||
-          event.startsWith("agent:")
-        ) {
-          const keys =
-            event.startsWith("task:") || event.startsWith("agent:")
-              ? ["tasks"]
-              : ["issues", "issue", "comments"];
-          keys.forEach((k) =>
-            queryClient.invalidateQueries({ queryKey: [k], refetchType: "all" }),
-          );
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    function registerAsDesktop(ws: WebSocket) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "desktop:register", deviceId: deviceId || "" }));
-      }
-    }
-
-    // ISS-271 / ISS-173: Register a `claude-code` runner with the server for
-    // EVERY project in deviceSettings.projects that carries a `documentId`.
-    // The Rust WS path goes through the `ws_send` Tauri command (ISS-173 §2);
-    // the browser fallback writes directly to its WebSocket.
-    async function buildRegisterFrame(projectId: string, skills: string[]) {
-      const name = (await invoke<string>("get_hostname").catch(() => "Desktop")) || "Desktop";
-      return JSON.stringify({
-        type: "runner:register",
-        data: {
-          type: "claude-code",
-          name,
-          projectId,
-          capabilities: { skills, maxConcurrent: 1 },
-          config: {},
-        },
-      });
-    }
-
-    async function registerAllRunners(sendFrame: (frame: string) => Promise<void> | void) {
-      const settings = useAppStore.getState().deviceSettings;
-      const projectIds = Object.values(settings.projects ?? {})
-        .map((p) => p.documentId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
-      if (projectIds.length === 0) return;
-
-      let skills: string[] = [];
-      try {
-        const hashes = (await invoke<Record<string, string>>("get_skill_hashes")) ?? {};
-        skills = Object.keys(hashes);
-      } catch {
-        // tauri unavailable; runner registers with empty skills
-      }
-
-      await Promise.all(
-        projectIds.map(async (pid) => {
-          try {
-            const frame = await buildRegisterFrame(pid, skills);
-            await sendFrame(frame);
-          } catch (err) {
-            console.warn(`[runner:register] failed for project ${pid}:`, err);
-          }
-        }),
-      );
-    }
-
-    // ISS-175: subscribe to each project room so the server's `runner.status`
-    // broadcasts (heartbeat-ws.ts + stale-detector.ts publish into
-    // projectRoom(projectId)) reach this client. Re-fires on every connect.
-    async function subscribeToProjectRooms(sendFrame: (frame: string) => Promise<void> | void) {
-      const settings = useAppStore.getState().deviceSettings;
-      const projectIds = Object.values(settings.projects ?? {})
-        .map((p) => p.documentId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
-      for (const pid of projectIds) {
-        const frame = JSON.stringify({ type: "subscribe", room: `project:${pid}` });
-        try {
-          await sendFrame(frame);
-        } catch (err) {
-          console.warn(`[subscribe project:${pid}] failed:`, err);
-        }
-      }
-    }
+    const routerCtx: WsRouterContext = {
+      queryClient,
+      handleJobAssigned: (data) => void handleJobAssignedRef.current(data),
+      handleAgentCommand: (event, data) => handleAgentCommandRef.current(event, data),
+      jobSessionsRef,
+      cancelledJobsRef,
+    };
 
     let cancelled = false;
+    let cleanup: (() => void) | undefined;
 
-    async function setupListeners() {
-      try {
-        const { listen } = await import("@tauri-apps/api/event");
-        if (cancelled) return undefined;
-
-        // Periodic heartbeat to keep device.status = 'online' on the core.
-        // /api/devices/heartbeat is the only path that flips status; without
-        // this loop the device stays 'offline' and dispatcher leaves jobs
-        // queued. 25s interval is well under the stale-detector grace window.
-        let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-        // Track repeated heartbeat failures so a one-off transient blip
-        // doesn't spam Sentry but a stuck loop (device revoked, server down,
-        // keychain wiped) lands as one event per minute instead of being
-        // silently swallowed forever.
-        let heartbeatFailStreak = 0;
-        async function pingHeartbeat() {
-          try {
-            const tok = await invoke<string | null>("load_device_token");
-            if (!tok || !coreUrl) return;
-            await invoke("heartbeat", { coreUrl: coreUrl, deviceToken: tok });
-            heartbeatFailStreak = 0;
-          } catch (err) {
-            heartbeatFailStreak += 1;
-            const msg = err instanceof Error ? err.message : String(err);
-            // First fail = breadcrumb only (likely transient); 3rd+ fail =
-            // Sentry event so on-call sees the runner stop heartbeating.
-            // 401 always escalates immediately — token is invalid, the
-            // device is invisible to the dispatcher.
-            const unauthorized = /UNAUTHORIZED|401/.test(msg);
-            if (unauthorized || heartbeatFailStreak >= 3) {
-              Sentry.captureException(err instanceof Error ? err : new Error(msg), {
-                level: unauthorized ? "error" : "warning",
-                tags: {
-                  area: "desktop-runner",
-                  phase: "heartbeat-loop",
-                  outcome: unauthorized ? "unauthorized" : "transient-streak",
-                },
-                extra: { failStreak: heartbeatFailStreak, coreUrl },
-              });
-            }
-          }
-        }
-        function startHeartbeat() {
-          if (heartbeatTimer) return;
-          void pingHeartbeat();
-          heartbeatTimer = setInterval(() => void pingHeartbeat(), 25_000);
-        }
-        function stopHeartbeat() {
-          if (heartbeatTimer) {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = null;
-          }
-        }
-
-        console.warn("[ws-debug] tauri listen() registered — Rust WS path active");
-        const unlisten1 = await listen("ws:connected", async () => {
-          console.warn("[ws-debug] ws:connected event fired");
-          setWsConnected(true);
-          queryClient.invalidateQueries();
-          startHeartbeat();
-          // No skill auto-sync on connect. The device pulls skills only when
-          // the server sends a `skill.sync` command (web Sync action or the
-          // forge_skills.push MCP tool) — see the `skill.sync` handler.
-          // ISS-173: emit runner:register for every project documentId in the
-          // local config. Routes through the Tauri `ws_send` command added in
-          // ISS-173 §2. Re-fires on every reconnect (this listener runs again).
-          // ISS-175: also subscribe to each project room so `runner.status`
-          // broadcasts (offline/online) reach this client.
-          try {
-            const sendFrame = async (frame: string) => {
-              await invoke("ws_send", { payload: frame });
-            };
-            await subscribeToProjectRooms(sendFrame);
-            await registerAllRunners(sendFrame);
-          } catch (err) {
-            console.warn("[runner:register] Rust path failed:", err);
-          }
-        });
-        const unlisten2 = await listen("ws:disconnected", async () => {
-          setWsConnected(false);
-          stopHeartbeat();
-          // ISS-175: drop stale bindings on disconnect — `runner.registered`
-          // re-echoes on reconnect, repopulating them cleanly. Without this
-          // a long disconnect leaves the UI claiming "Active runner here"
-          // for a runner the server has already marked offline.
-          useAppStore.getState().clearRunnerBindings();
-        });
-        const unlisten3 = await listen<unknown>("ws:message", (event) => {
-          handleMessage(event.payload);
-        });
-        // ws:error fires per failed reconnect attempt during a retry loop —
-        // it is noise, not an authoritative disconnect signal. Only
-        // ws:disconnected (inner read loop exited) should flip UI state.
-        const unlisten4 = await listen("ws:error", () => {
-          /* no-op */
-        });
-
-        // ISS-84 — drain pending incremental PATCHes before the renderer
-        // tears down on a cooperative window close. Best-effort: fire-and-
-        // forget since `beforeunload` does not await async work.
-        const onBeforeUnload = () => { void tracker.flushAll(); };
-        window.addEventListener("beforeunload", onBeforeUnload);
-
-        // Batch relay: accumulate agent:message events and flush periodically
-        const relayQueue: { sessionId: string; event: string; data: any }[] = [];
-        let flushTimer: ReturnType<typeof setTimeout> | null = null;
-        const FLUSH_INTERVAL = 100; // ms
-
-        async function flushRelay() {
-          flushTimer = null;
-          if (relayQueue.length === 0) return;
-          const batch = relayQueue.splice(0, relayQueue.length);
-          const bySession = new Map<string, { event: string; data: any }[]>();
-          for (const item of batch) {
-            let arr = bySession.get(item.sessionId);
-            if (!arr) {
-              arr = [];
-              bySession.set(item.sessionId, arr);
-            }
-            arr.push({ event: item.event, data: item.data });
-          }
-          for (const [sid, items] of bySession) {
-            try {
-              await relayAgentEvent(sid, "agent:batch", { items });
-            } catch {
-              /* ignore */
-            }
-          }
-        }
-
-        function enqueueRelay(sessionId: string, event: string, data: any) {
-          relayQueue.push({ sessionId, event, data });
-          if (!flushTimer) {
-            flushTimer = setTimeout(flushRelay, FLUSH_INTERVAL);
-          }
-        }
-
-        // Job event batch (parallel to relayQueue): chunks bound for packages/core's
-        // /api/jobs/:id/events. Same 100ms cadence; per-job batches are post.
-        const jobEventQueue = new Map<string, JobEventInput[]>();
-        let jobFlushTimer: ReturnType<typeof setTimeout> | null = null;
-        // Chain in-flight flushes so agent:complete can `await` the tail
-        // before calling /complete — otherwise the timer-driven flush (which
-        // clears the queue immediately and awaits the POST) can finish AFTER
-        // /complete lands and the still-in-flight events get 409 JOB_TERMINATED.
-        let jobFlushInFlight: Promise<void> = Promise.resolve();
-
-        function flushJobEvents(): Promise<void> {
-          jobFlushTimer = null;
-          if (jobEventQueue.size === 0) return jobFlushInFlight;
-          const drained: Array<[string, JobEventInput[]]> = Array.from(jobEventQueue.entries());
-          jobEventQueue.clear();
-          // Chain so back-to-back flushes serialize and `await jobFlushInFlight`
-          // from agent:complete waits for every queued POST to land.
-          jobFlushInFlight = jobFlushInFlight.then(async () => {
-            for (const [jobId, events] of drained) {
-              if (events.length === 0) continue;
+    async function connect() {
+      const transport = await startWsTransport(
+        { wsUrl, token, deviceId, isCancelled: () => cancelled, onBrowserSocket: (ws) => { wsRef.current = ws; } },
+        {
+          onConnected: async (sendFrame, kind) => {
+            setWsConnected(true);
+            queryClient.invalidateQueries();
+            if (kind === "tauri") {
+              // No skill auto-sync on connect — the device pulls skills only on
+              // a server `skill.sync` command (see ws-message-router).
+              // ISS-173/175: register runners + subscribe project rooms on
+              // every reconnect (this callback fires again).
+              heartbeat.start();
               try {
-                await postJobEvents(jobId, events);
+                await subscribeToProjectRooms(sendFrame);
+                await registerAllRunners(sendFrame);
               } catch (err) {
-                console.error(`[job-events] flush failed for ${jobId}:`, err);
+                console.warn("[runner:register] Rust path failed:", err);
               }
+            } else {
+              // Browser fallback: register as desktop + subscribe the device
+              // room so dispatcher events reach us, then project rooms/runners.
+              void sendFrame(JSON.stringify({ type: "desktop:register", deviceId: deviceId || "" }));
+              if (deviceId) {
+                void sendFrame(JSON.stringify({ type: "subscribe", room: `device:${deviceId}` }));
+              }
+              void subscribeToProjectRooms(sendFrame);
+              void registerAllRunners(sendFrame);
             }
-          });
-          return jobFlushInFlight;
-        }
-
-        function enqueueJobEvents(jobId: string, events: JobEventInput[]) {
-          if (events.length === 0) return;
-          let arr = jobEventQueue.get(jobId);
-          if (!arr) {
-            arr = [];
-            jobEventQueue.set(jobId, arr);
-          }
-          arr.push(...events);
-          if (!jobFlushTimer) {
-            jobFlushTimer = setTimeout(flushJobEvents, FLUSH_INTERVAL);
-          }
-        }
-
-        const unlisten5 = await listen<{ sessionId: string; data: any }>(
-          "agent:message",
-          (event) => {
-            const { sessionId, data: agentData } = event.payload;
+          },
+          onDisconnected: (kind) => {
+            setWsConnected(false);
+            if (kind === "tauri") heartbeat.stop();
+            // ISS-175: drop stale bindings on disconnect — `runner.registered`
+            // re-echoes on reconnect, repopulating them cleanly.
+            useAppStore.getState().clearRunnerBindings();
+          },
+          onMessage: (data) => routeWsMessage(data, routerCtx),
+          onAgentMessage: ({ sessionId, data: agentData }) => {
             // Update local session tracking (same merge logic as useAgentChat)
             tracker.handleStreamData(sessionId, agentData);
             // Job-originated sessions: fan out to BOTH job_events (pipeline
-            // monitoring board) AND the user-facing relay (chat UIs on web).
-            // Previously this path returned early after enqueueJobEvents,
-            // which left web's SessionPlaceholder stuck for the entire
-            // pipeline run — see ISS-88.
+            // monitoring board) AND the user-facing relay (chat UIs on web) —
+            // returning early here left web stuck for the whole run (ISS-88).
             if (jobSessionsRef.current.has(sessionId)) {
-              const jobEvents = mapStreamChunkToJobEvents(agentData);
-              enqueueJobEvents(sessionId, jobEvents);
-              // Accumulate per-job token usage so agent:complete can POST a
-              // single /usage-records row keyed by the forge agentSessionId.
-              // The pipeline_run_step_durations view JOINs
-              // `ur.session_id = j.agent_session_id::text` — without this
-              // path every pipeline step shows totalCostUsd=0.
-              try {
-                const apiMsgId = (agentData?.message as Record<string, unknown> | undefined)
-                  ?.id as string | undefined;
-                const { messages: msgs } = parseStreamMessages(agentData);
-                for (const msg of msgs) {
-                  if (msg.type === "assistant" && msg.usage) {
-                    const acc = getOrInitUsageAcc(sessionId);
-                    if (apiMsgId) {
-                      if (acc.seenIds.has(apiMsgId)) continue;
-                      acc.seenIds.add(apiMsgId);
-                    }
-                    acc.input += msg.usage.input_tokens || 0;
-                    acc.output += msg.usage.output_tokens || 0;
-                    acc.cacheRead += msg.usage.cache_read_input_tokens || 0;
-                    acc.cacheCreation += msg.usage.cache_creation_input_tokens || 0;
-                    acc.count += 1;
-                    if (msg.model) acc.model = msg.model;
-                  }
-                }
-              } catch {
-                /* parse failures are non-fatal — usage gets a 0-cost row */
-              }
+              jobEventBatcher.enqueue(sessionId, mapStreamChunkToJobEvents(agentData));
+              accumulateJobUsage(sessionId, agentData);
             }
-            enqueueRelay(sessionId, "agent:message", agentData);
+            relayBatcher.enqueue(sessionId, "agent:message", agentData);
           },
-        );
-
-        const unlisten6 = await listen<{ sessionId: string; claudeSessionId?: string | null; error?: string }>(
-          "agent:complete",
-          async (event) => {
-            // Job-originated branch (drain → /complete POST → persist → relay)
-            // lives in the exported `handleAgentComplete` so it's unit-testable
-            // without a live Tauri bus (ISS-264). Returns true when handled.
-            if (
-              await handleAgentComplete(event.payload, {
-                jobSessionsRef,
-                cancelledJobsRef,
-                jobAgentSessionsRef,
-                tracker,
-                flushJobEvents,
-                flushRelay,
-              })
-            ) {
-              return;
-            }
-
-            const { sessionId, ...rest } = event.payload;
-
-            await flushRelay();
-
-            // Try to compute branch diff and include it in the relay
-            let diffData: unknown = undefined;
-            const trackedSession = tracker.getSession(sessionId);
-            const worktreeBranch = trackedSession?.worktreeBranch;
-            if (worktreeBranch) {
-              const repoPath = trackedSession?.repoPath;
-              if (repoPath) {
-                try {
-                  diffData = await invoke("get_branch_diff", {
-                    repoPath,
-                    branch: worktreeBranch,
-                    base: "HEAD",
-                  });
-                } catch {
-                  /* ignore diff errors */
-                }
-              }
-            }
-
-            try {
-              await relayAgentEvent(sessionId, "agent:complete", {
-                ...rest,
-                diff: diffData,
-              });
-            } catch {
-              /* ignore */
-            }
-
-            // ISS-307 — persist the session row so a browser opening this
-            // session AFTER completion still sees the assistant reply +
-            // running flag clearing. The relay above is broadcast-only;
-            // without this PATCH the DB row stays stuck at
-            // status='running' / messages=[user-only]. Best-effort: sync
-            // failures must not block local cleanup or knowledge sync.
-            try {
-              const snap = tracker.getSnapshot(sessionId);
-              if (!snap) {
-                console.warn(
-                  `[agent:complete] tracker snapshot missing for session ${sessionId} — PATCH will omit messages, expect persisted history to be incomplete`,
-                );
-              }
-              await patchAgentSession(sessionId, {
-                status: rest.error ? "failed" : "completed",
-                ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
-                ...(diffData ? { diff: diffData } : {}),
-              });
-            } catch (err) {
-              console.warn("[agent:complete] PATCH session failed:", err);
-            }
-
-            // Sync local files to core after agent sessions complete
-            if (trackedSession?.repoPath && trackedSession?.slug && !rest.error) {
-              try {
-                const project = await getProject(trackedSession.slug);
-
-                // Sync agent-specific files (e.g. .forge/po-agent/) → agent record
-                if (project) {
-                  const agents = await getAgents(trackedSession.slug);
-                  for (const agent of agents) {
-                    const agentDir = agent.type?.replace(/-review$/, '').replace(/-reindex$/, '') + "-agent";
-                    if (!agentDir) continue;
-                    const files = await invoke<{ knowledge?: string | null; memory?: string | null } | null>("read_agent_files", {
-                      repoPath: trackedSession.repoPath,
-                      agentType: agentDir,
-                    });
-                    if (files && (files.knowledge || files.memory)) {
-                      await syncAgentFiles(agent.documentId, files);
-                    }
-                  }
-                }
-              } catch { /* ignore sync errors */ }
-            }
-
-            // Final save + cleanup
-            tracker.complete(sessionId);
+          onAgentComplete: async (payload) => {
+            // Job-originated branch (drain → /complete POST → persist → relay);
+            // returns true when handled (ISS-264).
+            const handledAsJob = await handleAgentComplete(payload, {
+              jobSessionsRef,
+              cancelledJobsRef,
+              jobAgentSessionsRef,
+              tracker,
+              flushJobEvents: () => jobEventBatcher.flush(),
+              flushRelay: () => relayBatcher.flush(),
+            });
+            if (handledAsJob) return;
+            await handleNonJobAgentComplete(payload, { tracker, flushRelay: () => relayBatcher.flush() });
           },
-        );
+          onBeforeUnload: () => {
+            void tracker.flushAll();
+          },
+        },
+      );
+      if (!transport) return undefined;
 
-        // Load the bearer for WS upgrade. Sent as `Authorization: Bearer <…>`.
-        // Server `resolveBearer` accepts a user JWT or a device token (in that
-        // order). Prefer device token if the runner has been paired against a
-        // project (ISS-214 §5); fall back to the user JWT issued at sign-in
-        // (ADR 0019) so a freshly-paired desktop without a per-project device
-        // still authenticates the socket. Anonymous upgrade is rejected 401
-        // — the stale comment about Phase 2.2 enforcement was wrong here.
-        let bearer: string | undefined;
-        try {
-          const tok = await invoke<string | null>("load_device_token");
-          if (tok) bearer = tok;
-        } catch { /* keychain unavailable */ }
-        if (!bearer && token) bearer = token;
-
-        await invoke("connect_ws", {
-          url: wsUrl,
-          deviceToken: bearer,
-          deviceId: deviceId || undefined,
-        });
-
-        return async () => {
-          if (flushTimer) clearTimeout(flushTimer);
-          if (jobFlushTimer) clearTimeout(jobFlushTimer);
-          // Stop the heartbeat interval — without this it survives unmount /
-          // coreUrl change and keeps pinging the previous core every 25 s.
-          stopHeartbeat();
-          window.removeEventListener("beforeunload", onBeforeUnload);
+      return async () => {
+        relayBatcher.dispose();
+        jobEventBatcher.dispose();
+        // Stop the heartbeat interval — without this it survives unmount /
+        // coreUrl change and keeps pinging the previous core every 25 s.
+        heartbeat.stop();
+        transport.detach();
+        if (transport.kind === "tauri") {
           await tracker.flushAll();
           tracker.dispose();
-          unlisten1();
-          unlisten2();
-          unlisten3();
-          unlisten4();
-          unlisten5();
-          unlisten6();
-        };
-      } catch (err) {
-        // Not in Tauri — use native WebSocket as fallback. Pass the user JWT
-        // via Sec-WebSocket-Protocol subprotocol (ISS-286) so the token
-        // never appears in the URL / access logs / Referer.
-        console.warn("[ws-debug] tauri listen() failed → browser fallback", err);
-        const protocols = token ? [`forge.bearer.${token}`] : undefined;
-        const ws = protocols ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl);
-        wsRef.current = ws;
-        ws.onopen = () => {
-          console.warn("[ws-debug] browser WS open — sending subscribe device:", deviceId);
-          setWsConnected(true);
-          queryClient.invalidateQueries();
-          registerAsDesktop(ws);
-          // Subscribe to device room so dispatcher events reach us in browser fallback path
-          if (deviceId) {
-            ws.send(JSON.stringify({ type: "subscribe", room: `device:${deviceId}` }));
-          }
-          const sendFrame = (frame: string) => {
-            if (ws.readyState === WebSocket.OPEN) ws.send(frame);
-          };
-          void subscribeToProjectRooms(sendFrame);
-          void registerAllRunners(sendFrame);
-        };
-        ws.onclose = () => {
-          setWsConnected(false);
-          // ISS-175: see ws:disconnected listener above — parity with Rust path.
-          useAppStore.getState().clearRunnerBindings();
-        };
-        ws.onmessage = (e) => handleMessage(e.data);
-        return () => ws.close();
-      }
+        }
+        transport.close();
+      };
     }
 
-    let cleanup: (() => void) | undefined;
-    setupListeners().then((fn) => {
+    connect().then((fn) => {
       if (cancelled && fn) {
         fn();
       } else {
