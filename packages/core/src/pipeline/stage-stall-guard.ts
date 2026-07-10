@@ -29,7 +29,7 @@ import { and, count, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, comments, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { hooks } from './hooks.js';
+import { pauseRun } from './run-pause.js';
 import { resolveJobTypeForStatus } from './skill-mapping.js';
 
 /**
@@ -156,19 +156,10 @@ async function checkStageStallAndPauseInner(
   const doneCount = row?.n ?? 0;
   if (doneCount < STAGE_STALL_CAP) return { stalled: false };
 
-  // Effective pause (idempotent via WHERE status='running').
+  // Effective pause via the shared pause writer (idempotent CAS on
+  // status='running'; pauseReason merge + hook/WS side effects inside).
   const reason = buildStageStalledReason(input.status);
-  const updated = await db
-    .update(pipelineRuns)
-    .set({
-      status: 'paused',
-      // COALESCE + merge so we never clobber sibling metadata keys (mirrors
-      // missing-skill-guard.pausePipelineRunMissingSkill).
-      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('pauseReason', ${reason}::text)`,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(pipelineRuns.id, run.id), eq(pipelineRuns.status, 'running')))
-    .returning({ id: pipelineRuns.id });
+  const paused = await pauseRun({ runId: run.id, pauseReason: reason });
 
   logger.warn(
     {
@@ -178,21 +169,12 @@ async function checkStageStallAndPauseInner(
       jobType: jobMap.type,
       doneCount,
       runId: run.id,
-      effectivePause: updated.length > 0,
+      effectivePause: paused !== null,
     },
     'stage-stall-guard: stage completed >= cap times without advancing — pausing run, refusing re-enqueue',
   );
 
-  if (updated.length > 0) {
-    await hooks.emit('pipelineRunStatusChanged', {
-      runId: run.id,
-      projectId: input.projectId,
-      issueId: input.issueId,
-      kind: 'issue',
-      fromStatus: 'running',
-      toStatus: 'paused',
-      currentStep: run.currentStep,
-    });
+  if (paused) {
     await postStageStalledComment({
       projectId: input.projectId,
       issueId: input.issueId,

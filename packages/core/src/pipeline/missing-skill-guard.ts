@@ -9,12 +9,12 @@
  * breadcrumb subscriber + WS broadcaster fire without new plumbing.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, comments, issues, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { hooks } from './hooks.js';
 import { PIPELINE_STEPS } from './registry.js';
+import { pauseRun } from './run-pause.js';
 
 export const PAUSE_REASON_PREFIX = 'missing_skill:';
 
@@ -74,28 +74,9 @@ export async function pausePipelineRunMissingSkill(
 ): Promise<PausePipelineRunMissingSkillResult> {
   const reason = buildMissingSkillReason(input.stage);
 
-  const updated = await db
-    .update(pipelineRuns)
-    .set({
-      status: 'paused',
-      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('pauseReason', ${reason}::text)`,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(pipelineRuns.id, input.runId), eq(pipelineRuns.status, 'running')))
-    .returning({ id: pipelineRuns.id });
-
-  if (updated.length > 0) {
-    await hooks.emit('pipelineRunStatusChanged', {
-      runId: input.runId,
-      projectId: input.projectId,
-      issueId: input.issueId,
-      kind: 'issue',
-      fromStatus: 'running',
-      toStatus: 'paused',
-      currentStep: input.currentStep,
-    });
-    return { paused: true, alreadyPaused: false };
-  }
+  // Shared pause writer — CAS + pauseReason merge + hook/WS side effects.
+  const paused = await pauseRun({ runId: input.runId, pauseReason: reason });
+  if (paused) return { paused: true, alreadyPaused: false };
 
   // Disambiguate: already paused with the same reason vs terminal vs not found.
   const [row] = await db

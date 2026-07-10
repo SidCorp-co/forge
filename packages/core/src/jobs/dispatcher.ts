@@ -2,10 +2,6 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
-import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
-import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
-import { applySentryMcpServers } from '../integrations/sentry/resolver.js';
-import { isIntegrationSentinelName } from '../pipeline/mcp-catalog.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -40,12 +36,8 @@ import {
   findPriorSessionInGroup,
   loadResumeBounds,
 } from './session-resume.js';
-import {
-  type StageOverrides,
-  escalateModel,
-  resolveProjectDefaultMcpServers,
-  resolveStageOverrides,
-} from './stage-overrides.js';
+import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
+import { type StageOverrides, escalateModel, resolveStageOverrides } from './stage-overrides.js';
 
 interface DispatchMessage {
   jobId: string;
@@ -53,49 +45,6 @@ interface DispatchMessage {
 
 let workerId: string | null = null;
 let pmWorkerId: string | null = null;
-
-/**
- * ISS-581 — belt-and-suspenders sweep: after integration resolvers run, delete
- * any remaining `true` sentinel for a known integration name. The resolvers
- * already strip their own sentinels; this catches a declared-but-no-active-
- * integration case so a bogus `true` never reaches the runner payload.
- */
-function sweepIntegrationSentinels(
-  map: Record<string, unknown> | null,
-): Record<string, unknown> | null {
-  if (!map) return map;
-  let dirty = false;
-  for (const [k, v] of Object.entries(map)) {
-    if (v === true && isIntegrationSentinelName(k)) {
-      dirty = true;
-      break;
-    }
-  }
-  if (!dirty) return map;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(map)) {
-    if (v === true && isIntegrationSentinelName(k)) continue;
-    out[k] = v;
-  }
-  return Object.keys(out).length > 0 ? out : null;
-}
-
-/**
- * ISS-581 — when both playwright and chrome-devtools-mcp are present in the
- * merged map, drop playwright in favour of chrome-devtools-mcp (the preferred
- * browser MCP for pipeline jobs). Operates on the map in place (shallow copy
- * is already owned by the caller); returns the (possibly mutated) map.
- */
-function dedupeBrowserServers(
-  map: Record<string, unknown> | null,
-): Record<string, unknown> | null {
-  if (!map) return map;
-  if (map.playwright && map['chrome-devtools-mcp']) {
-    const { playwright: _dropped, ...rest } = map;
-    return rest;
-  }
-  return map;
-}
 
 /**
  * Flatten stage overrides into the WS payload/job.payload shape consumed by
@@ -597,78 +546,20 @@ async function dispatchViaRunner(
       );
     }
   }
-  // Project-default MCP servers are the BASE of the merge: load + expand
-  // `pipelineConfig.mcpServers` (catalog shorthand → full specs) and lay the
-  // per-state `mcpServers` ON TOP (a per-state entry overrides the default by
-  // server name). Both maps are already fresh clones (expandMcpServers returns
-  // a new object; resolveStageOverrides shallow-clones the per-state map), so
-  // this assignment cannot pollute the cached drizzle row or the EMPTY
-  // singleton. Integration servers (postman/epodsystem) then layer on top
-  // below, unchanged. Net order: project-default < per-state < integrations.
-  const projectDefaultMcpServers = await resolveProjectDefaultMcpServers(job.projectId);
-  // ISS-623 W2 — the truthy sentinel names declared BEFORE the merge/expand/
-  // integration-resolve chain runs, so we can diff them against what actually
-  // made it into the final map and surface anything that silently dropped.
-  const declaredMcpNames = new Set<string>([
-    ...projectDefaultMcpServers.declaredNames,
-    ...(runnerStageOverrides.declaredNames ?? []),
-  ]);
-  if (
-    Object.keys(projectDefaultMcpServers.servers).length > 0 ||
-    runnerStageOverrides.mcpServers !== null
-  ) {
-    runnerStageOverrides.mcpServers = {
-      ...projectDefaultMcpServers.servers,
-      ...(runnerStageOverrides.mcpServers ?? {}),
-    };
-  }
-  // ISS-336 — inject the project's Postman MCP entry (when an active postman
-  // integration exists) into the per-project mcpServers override on EVERY
-  // dispatch: project-default, all stages, not pinned to one. The API key is
-  // rendered only into this dispatch payload (the runner writes it to a temp
-  // --mcp-config file); it is never persisted. active=false/deleted → the
-  // resolver returns null and the next dispatch drops the entry.
-  runnerStageOverrides.mcpServers = await applyPostmanMcpServers(
-    job.projectId,
-    runnerStageOverrides.mcpServers,
-  );
-  // ISS-387 — chain the Epodsystem MCP inject right after Postman. Same
-  // contract: active-only resolver, non-mutating merge, crmk_ key only in the
-  // dispatch payload. active=false/deleted → next dispatch drops the entry.
-  runnerStageOverrides.mcpServers = await applyEpodsystemMcpServers(
-    job.projectId,
-    runnerStageOverrides.mcpServers,
-  );
-  // ISS-524 — chain the Sentry MCP inject right after Epodsystem. Same contract:
-  // active-only resolver, non-mutating merge, sntryu_ token only in the dispatch
-  // payload. active=false/deleted → next dispatch drops the entry.
-  runnerStageOverrides.mcpServers = await applySentryMcpServers(
-    job.projectId,
-    runnerStageOverrides.mcpServers,
-  );
-  // ISS-581 — (1) sentinel sweep: drop any leftover `true` for integration
-  // names (declared but no active integration); (2) browser dedup: prefer
-  // chrome-devtools-mcp over playwright when both are present.
-  runnerStageOverrides.mcpServers = sweepIntegrationSentinels(runnerStageOverrides.mcpServers);
-  const beforeBrowserDedupe = new Set(Object.keys(runnerStageOverrides.mcpServers ?? {}));
-  runnerStageOverrides.mcpServers = dedupeBrowserServers(runnerStageOverrides.mcpServers);
-  // ISS-623 W2 — diff the declared sentinel names against what actually
-  // resolved. `playwright` dropped ONLY via the browser dedup (both it and
-  // chrome-devtools-mcp resolved, and chrome-devtools-mcp won) is an
-  // intentional preference, not a failure to resolve — exclude it so the
-  // agent isn't warned about a server it never needed.
-  const resolvedMcpNames = new Set(Object.keys(runnerStageOverrides.mcpServers ?? {}));
-  const playwrightDedupedNotDropped =
-    beforeBrowserDedupe.has('playwright') && !resolvedMcpNames.has('playwright');
-  const droppedMcpNames = [...declaredMcpNames].filter(
-    (name) =>
-      !resolvedMcpNames.has(name) && !(name === 'playwright' && playwrightDedupedNotDropped),
-  );
+  // Full merge + integration-resolve chain lives in resolve-job-mcp-servers.ts
+  // (project-default < per-state < integration resolvers, then sentinel sweep
+  // + browser dedupe). Adding an integration = one registry entry there.
+  const resolvedMcp = await resolveJobMcpServers({
+    projectId: job.projectId,
+    stageMcpServers: runnerStageOverrides.mcpServers,
+    stageDeclaredNames: runnerStageOverrides.declaredNames,
+  });
+  runnerStageOverrides.mcpServers = resolvedMcp.mcpServers;
   const { content: runnerSystemPrompt, blocks: runnerBlocks } =
     await buildPipelinePreambleStructured(job.projectId, {
       step: job.type,
       override: runnerStageOverrides.systemPrompt,
-      mcpDiagnostics: { resolved: [...resolvedMcpNames], dropped: droppedMcpNames },
+      mcpDiagnostics: { resolved: resolvedMcp.resolvedNames, dropped: resolvedMcp.droppedNames },
     });
 
   // PR-5 fallback — when resuming a prior CLI session via --resume, the CLI

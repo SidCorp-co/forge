@@ -30,6 +30,12 @@ vi.mock('./orchestrator.js', () => ({
   reEnqueueForIssue: (...a: unknown[]) => reEnqueueMock(...(a as [])),
 }));
 
+// The shared pause writer (run-pause.ts) broadcasts to the project room and
+// pulls in ws/server → auth/cookie → env validation; stub it.
+vi.mock('../ws/server.js', () => ({
+  roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
+}));
+
 const { HooksBus } = await import('./hooks.js');
 const { registerMissingSkillResume } = await import('./missing-skill-resume.js');
 

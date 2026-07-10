@@ -4,6 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 // module load. The pure helpers under test do not touch the DB, so stub the
 // client to avoid requiring DATABASE_URL in unit-test runs.
 vi.mock('../db/client.js', () => ({ db: {} }));
+// The shared pause writer (run-pause.ts) pulls in ws/server → auth/cookie →
+// env validation; stub it for the same reason.
+vi.mock('../ws/server.js', () => ({
+  roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
+}));
 
 const {
   PAUSE_REASON_PREFIX,

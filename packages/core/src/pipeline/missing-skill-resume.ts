@@ -14,6 +14,7 @@ import { logger } from '../logger.js';
 import type { HooksBus } from './hooks.js';
 import { PAUSE_REASON_PREFIX, buildMissingSkillReason } from './missing-skill-guard.js';
 import { reEnqueueForIssue } from './orchestrator.js';
+import { resumeRunsWhere } from './run-pause.js';
 
 export function registerMissingSkillResume(bus: HooksBus): void {
   bus.on('skillRegistered', async (payload) => {
@@ -21,21 +22,14 @@ export function registerMissingSkillResume(bus: HooksBus): void {
 
     const matchingReason = buildMissingSkillReason(payload.stage as IssueStatus);
 
-    const resumed = await db
-      .update(pipelineRuns)
-      .set({ status: 'running', updatedAt: new Date() })
-      .where(
-        and(
-          eq(pipelineRuns.projectId, payload.projectId),
-          eq(pipelineRuns.status, 'paused'),
-          sql`${pipelineRuns.metadata} ->> 'pauseReason' = ${matchingReason}`,
-        ),
-      )
-      .returning({
-        id: pipelineRuns.id,
-        issueId: pipelineRuns.issueId,
-        currentStep: pipelineRuns.currentStep,
-      });
+    // Shared pause writer — CAS + pauseReason clear + hook/WS side effects.
+    const resumed = await resumeRunsWhere(
+      and(
+        eq(pipelineRuns.projectId, payload.projectId),
+        sql`${pipelineRuns.metadata} ->> 'pauseReason' = ${matchingReason}`,
+      ),
+      { bus },
+    );
 
     if (resumed.length === 0) return;
 
@@ -45,16 +39,6 @@ export function registerMissingSkillResume(bus: HooksBus): void {
     );
 
     for (const run of resumed) {
-      await bus.emit('pipelineRunStatusChanged', {
-        runId: run.id,
-        projectId: payload.projectId,
-        issueId: run.issueId,
-        kind: 'issue',
-        fromStatus: 'paused',
-        toStatus: 'running',
-        currentStep: run.currentStep,
-      });
-
       if (!run.issueId) continue;
       try {
         const [iss] = await db

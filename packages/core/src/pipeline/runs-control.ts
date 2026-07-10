@@ -30,6 +30,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { pauseRun, resumeRun } from './run-pause.js';
 import { broadcastAbortEvents, cascadeCancelChildJobs } from './runs-cascade.js';
 
 /**
@@ -83,18 +84,12 @@ function broadcastRunStatus(run: PipelineRunRow): void {
 /**
  * Flip a running run to `paused`. Idempotent on already-`paused` runs.
  * Throws `CONFLICT` for any terminal status (`completed`, `failed`,
- * `cancelled`).
+ * `cancelled`). Write + side effects via the shared pause writer
+ * (`run-pause.ts`).
  */
 export async function pausePipelineRun(runId: string): Promise<PipelineRunRow> {
-  const [updated] = await db
-    .update(pipelineRuns)
-    .set({ status: 'paused', updatedAt: new Date() })
-    .where(and(eq(pipelineRuns.id, runId), eq(pipelineRuns.status, 'running')))
-    .returning();
-  if (updated) {
-    broadcastRunStatus(updated);
-    return updated;
-  }
+  const updated = await pauseRun({ runId });
+  if (updated) return updated;
   const current = await selectRun(runId);
   if (!current) throw notFound();
   if (current.status === 'paused') return current;
@@ -103,18 +98,12 @@ export async function pausePipelineRun(runId: string): Promise<PipelineRunRow> {
 
 /**
  * Flip a paused run back to `running`. Idempotent on already-`running`.
- * Throws `CONFLICT` for any terminal status.
+ * Throws `CONFLICT` for any terminal status. Write + side effects via the
+ * shared pause writer (`run-pause.ts`).
  */
 export async function resumePipelineRun(runId: string): Promise<PipelineRunRow> {
-  const [updated] = await db
-    .update(pipelineRuns)
-    .set({ status: 'running', updatedAt: new Date() })
-    .where(and(eq(pipelineRuns.id, runId), eq(pipelineRuns.status, 'paused')))
-    .returning();
-  if (updated) {
-    broadcastRunStatus(updated);
-    return updated;
-  }
+  const updated = await resumeRun({ runId });
+  if (updated) return updated;
   const current = await selectRun(runId);
   if (!current) throw notFound();
   if (current.status === 'running') return current;
