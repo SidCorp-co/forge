@@ -1,5 +1,6 @@
 "use client";
 
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -247,21 +248,20 @@ export function useSetGitCredential(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
-		mutationFn: (
-			body: { mode: "generate" } | { mode: "provide"; privateKey: string },
-		) => runnersApi.setGitCredential(projectId, body),
+		mutationFn: (sshKeyId: string) => runnersApi.setGitCredential(projectId, sshKeyId),
 		onSuccess: () => {
 			qc.invalidateQueries({
 				queryKey: ["projects", projectId, "git-credential"],
 			});
-			toast({ title: "Deploy key saved", tone: "success" });
+			toast({ title: "Git access key set", tone: "success" });
 		},
-		onError: (err) =>
-			toast({
-				title: "Could not save key",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		onError: (err) => {
+			const description =
+				err instanceof ApiError && err.code === "WRONG_ORG"
+					? "That key belongs to a different organization — pick one from this project's org."
+					: formatApiError(err);
+			toast({ title: "Could not set key", description, tone: "error" });
+		},
 	});
 }
 

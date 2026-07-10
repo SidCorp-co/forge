@@ -2500,39 +2500,95 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   },
 });
 
-// Per-project git SSH credential (optional). A deploy-key-style keypair shared
-// by every device bound to the project — generate once, add the public key to
-// the repo, and any number of runners can clone/push without per-device setup.
-// `forge_generated` => Forge minted the ed25519 pair (private encrypted here,
-// public surfaced for the user to add as a deploy key); `user_provided` => the
-// user pasted their own private key (encrypted the same way). The private key
-// is delivered to a runner once over the wire during provision (mirrors the
-// ISS-305 git-credential side-channel) and never re-read in plaintext server-side.
+// ISS-628 — org-scoped Private Keys pool (workspace resource). A key is
+// generated/pasted once per org and referenced by any number of projects in
+// that org, replacing the old 1:1-per-project model below. `forge_generated`
+// => Forge minted the ed25519 pair (private encrypted here, public surfaced
+// for the user to add as a deploy key); `user_provided` => the user pasted
+// their own private key (encrypted the same way). Listing/showing a key NEVER
+// decrypts the private half — it is decrypted only at device provisioning,
+// delivered once over the wire (mirrors the ISS-305 side-channel).
 export const projectGitCredentialSources = ['forge_generated', 'user_provided'] as const;
 export type ProjectGitCredentialSource = (typeof projectGitCredentialSources)[number];
 
-export const projectGitCredentials = pgTable('project_git_credentials', {
-  // 1:1 with the project — PK is the FK so a project has at most one credential.
-  projectId: uuid('project_id')
-    .primaryKey()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  source: text('source', { enum: projectGitCredentialSources }).notNull(),
-  // Non-secret OpenSSH public key line ("ssh-ed25519 AAAA… forge-<slug>").
-  publicKey: text('public_key').notNull(),
-  // Vault-encrypted (<iv:12><tag:16><ct>) OpenSSH private key — same format as
-  // integration_connections.secrets_enc; decrypt only at provision dispatch.
-  privateKeyEnc: bytea('private_key_enc').notNull(),
-  // Non-secret SHA256 fingerprint for display ("SHA256:…").
-  fingerprint: text('fingerprint'),
-  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const workspaceSshKeyTypes = ['ed25519'] as const;
+export type WorkspaceSshKeyType = (typeof workspaceSshKeyTypes)[number];
+
+export const workspaceSshKeys = pgTable(
+  'workspace_ssh_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    note: text('note'),
+    source: text('source', { enum: projectGitCredentialSources }).notNull(),
+    keyType: text('key_type', { enum: workspaceSshKeyTypes }).notNull().default('ed25519'),
+    // Non-secret OpenSSH public key line ("ssh-ed25519 AAAA… forge-<slug>").
+    publicKey: text('public_key').notNull(),
+    // Vault-encrypted (<iv:12><tag:16><ct>) OpenSSH private key — same format as
+    // integration_connections.secrets_enc; decrypt only at provision dispatch.
+    privateKeyEnc: bytea('private_key_enc').notNull(),
+    // Non-secret SHA256 fingerprint for display + dedup ("SHA256:…"). Nullable
+    // to tolerate legacy rows folded in by migration 0150 that predate
+    // fingerprint capture.
+    fingerprint: text('fingerprint'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdIdx: index('workspace_ssh_keys_org_id_idx').on(t.orgId),
+    // Dedup identical physical keys within an org (Coolify pattern). Partial so
+    // legacy rows without a captured fingerprint (NULL) never collide.
+    orgFingerprintUq: uniqueIndex('workspace_ssh_keys_org_fingerprint_uq')
+      .on(t.orgId, t.fingerprint)
+      .where(sql`fingerprint IS NOT NULL`),
+  }),
+);
+
+export const workspaceSshKeysRelations = relations(workspaceSshKeys, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [workspaceSshKeys.orgId],
+    references: [organizations.id],
+  }),
+  creator: one(users, { fields: [workspaceSshKeys.createdBy], references: [users.id] }),
+  projects: many(projectGitCredentials),
+}));
+
+// Per-project Git access — a thin (project_id, ssh_key_id) reference into the
+// org's `workspace_ssh_keys` pool. A project picks at most one pool key; many
+// projects may reference the same key. ON DELETE RESTRICT backs the
+// server-side safe-delete guard at the DB level (a pool key in use can't be
+// dropped out from under a project).
+export const projectGitCredentials = pgTable(
+  'project_git_credentials',
+  {
+    // 1:1 with the project — PK is the FK so a project has at most one reference.
+    projectId: uuid('project_id')
+      .primaryKey()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    sshKeyId: uuid('ssh_key_id')
+      .notNull()
+      .references(() => workspaceSshKeys.id, { onDelete: 'restrict' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sshKeyIdIdx: index('project_git_credentials_ssh_key_id_idx').on(t.sshKeyId),
+  }),
+);
 
 export const projectGitCredentialsRelations = relations(projectGitCredentials, ({ one }) => ({
   project: one(projects, {
     fields: [projectGitCredentials.projectId],
     references: [projects.id],
+  }),
+  sshKey: one(workspaceSshKeys, {
+    fields: [projectGitCredentials.sshKeyId],
+    references: [workspaceSshKeys.id],
   }),
 }));
 

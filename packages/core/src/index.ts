@@ -118,6 +118,7 @@ import { registerTransitionNotifications } from './notifications/notify-transiti
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
+import { sshKeyRoutes } from './orgs/ssh-keys-routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
   pipelineAnalyticsRoutes,
@@ -355,6 +356,10 @@ app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/orgs', orgRoutes);
+// Org-scoped Private Keys pool (ISS-628) — a distinct route module mounted at
+// the same '/api/orgs' prefix as orgRoutes (Hono composes sub-apps by path,
+// not one-Hono-per-prefix); the deep `/:orgId/ssh-keys` paths don't collide.
+app.route('/api/orgs', sshKeyRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);

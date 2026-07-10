@@ -11,7 +11,8 @@ describe('ssh-keys', () => {
     expect(k.publicKey.startsWith('ssh-ed25519 ')).toBe(true);
     expect(k.publicKey).toContain('forge-test');
     expect(k.privateKey).toContain('BEGIN OPENSSH PRIVATE KEY');
-    expect(k.fingerprint.startsWith('SHA256:')).toBe(true);
+    expect(k.fingerprint).not.toBeNull();
+    expect(k.fingerprint?.startsWith('SHA256:')).toBe(true);
   });
 
   it('produces a different key on each call', async () => {

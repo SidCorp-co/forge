@@ -1,20 +1,18 @@
 /**
- * Per-project git SSH deploy-key management (optional).
+ * Per-project Git access — a reference into the org's Private Keys pool
+ * (ISS-628; `workspace_ssh_keys`, managed via `orgs/ssh-keys-routes.ts`).
  *
- * GET    /api/projects/:projectId/git-credential  — non-secret status (source,
- *        public key, fingerprint). Any project member may read so they can copy
- *        the deploy key. NEVER returns the private key.
- * POST   /api/projects/:projectId/git-credential  — admin only. `generate` mints
- *        a fresh ed25519 pair; `provide` stores a user-pasted private key. The
- *        private key is vault-encrypted at rest; the response returns only the
- *        public half + fingerprint.
- * DELETE /api/projects/:projectId/git-credential  — admin only. Removes the key
- *        (devices fall back to whatever git auth they already have).
- *
- * Storing a private key server-side is a deliberate, opt-in exception to the
- * ISS-305 "never persist git secrets" rule — it's what lets one deploy key scale
- * to N runners. It is gated by the vault (INTEGRATION_MASTER_KEY); without the
- * key configured the write paths return 503 rather than storing plaintext.
+ * GET    /api/projects/:projectId/git-credential      — non-secret status:
+ *        repo URL + the referenced pool key's public view. Any project member
+ *        may read so they can copy the deploy key. NEVER returns the private
+ *        key.
+ * PUT    /api/projects/:projectId/git-credential       — admin only. Body
+ *        `{ sshKeyId }` picks a key from the project's OWN org pool (a
+ *        cross-org key is rejected 400 `WRONG_ORG`).
+ * POST   /api/projects/:projectId/git-credential/test  — probes the
+ *        referenced pool key against the project's SSH repo URL.
+ * DELETE /api/projects/:projectId/git-credential        — admin only. Detaches
+ *        the reference (does not delete the pool key itself).
  */
 
 import { zValidator } from '@hono/zod-validator';
@@ -23,42 +21,20 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { projectGitCredentials, projects } from '../db/schema.js';
+import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
-import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
-import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
+import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { testSshConnection } from '../git/ssh-keys.js';
 
 export const gitCredentialRoutes = new Hono<{ Variables: AuthVars }>();
 gitCredentialRoutes.use('*', requireAuth(), assertEmailVerified());
 
 const paramSchema = z.object({ projectId: z.uuid() });
-
-const upsertSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('generate') }),
-  z.object({
-    mode: z.literal('provide'),
-    privateKey: z.string().min(1).max(20000),
-  }),
-]);
-
-/** Shape every response on this route (and the device delivery) shares. */
-function publicView(row: {
-  source: string;
-  publicKey: string;
-  fingerprint: string | null;
-  createdAt: Date;
-}) {
-  return {
-    configured: true as const,
-    source: row.source,
-    publicKey: row.publicKey,
-    fingerprint: row.fingerprint,
-    createdAt: row.createdAt,
-  };
-}
+const pickSchema = z.object({ sshKeyId: z.uuid() });
 
 gitCredentialRoutes.get(
   '/:projectId/git-credential',
@@ -69,41 +45,8 @@ gitCredentialRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'project member required');
 
-    const [row] = await db
-      .select({
-        source: projectGitCredentials.source,
-        publicKey: projectGitCredentials.publicKey,
-        fingerprint: projectGitCredentials.fingerprint,
-        createdAt: projectGitCredentials.createdAt,
-      })
-      .from(projectGitCredentials)
-      .where(eq(projectGitCredentials.projectId, projectId))
-      .limit(1);
-
-    return c.json(row ? publicView(row) : { configured: false as const });
-  },
-);
-
-gitCredentialRoutes.post(
-  '/:projectId/git-credential',
-  zValidator('param', paramSchema),
-  zValidator('json', upsertSchema),
-  async (c) => {
-    const { projectId } = c.req.valid('param');
-    const body = c.req.valid('json');
-    const userId = c.get('userId');
-    const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    if (!isVaultConfigured()) {
-      throw new HTTPException(503, {
-        message: 'secret vault not configured (INTEGRATION_MASTER_KEY missing)',
-        cause: { code: 'VAULT_NOT_CONFIGURED' },
-      });
-    }
-
     const [project] = await db
-      .select({ slug: projects.slug })
+      .select({ repoUrl: projects.repoUrl })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -111,75 +54,64 @@ gitCredentialRoutes.post(
       throw new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
     }
 
-    const comment = `forge-${project.slug}`;
-    let keypair: { publicKey: string; privateKey: string; fingerprint: string };
-    let source: 'forge_generated' | 'user_provided';
-    try {
-      if (body.mode === 'generate') {
-        keypair = await generateSshKeypair(comment);
-        source = 'forge_generated';
-      } else {
-        keypair = await derivePublicFromPrivate(body.privateKey, comment);
-        source = 'user_provided';
-      }
-    } catch (err) {
-      const msg = (err as Error).message;
-      if (msg.startsWith('invalid_private_key')) {
-        throw new HTTPException(400, { message: msg, cause: { code: 'INVALID_PRIVATE_KEY' } });
-      }
-      logger.error({ err, projectId }, 'git-credential: keypair build failed');
-      throw new HTTPException(500, {
-        message: 'failed to build SSH keypair',
-        cause: { code: 'KEYPAIR_FAILED' },
+    const [ref] = await db
+      .select({ sshKeyId: projectGitCredentials.sshKeyId })
+      .from(projectGitCredentials)
+      .where(eq(projectGitCredentials.projectId, projectId))
+      .limit(1);
+    if (!ref) return c.json({ configured: false as const });
+
+    const key = await getOrgSshKey(access.orgId, ref.sshKeyId);
+    if (!key) return c.json({ configured: false as const });
+
+    return c.json({ configured: true as const, repoUrl: project.repoUrl, key });
+  },
+);
+
+gitCredentialRoutes.put(
+  '/:projectId/git-credential',
+  zValidator('param', paramSchema),
+  zValidator('json', pickSchema),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const { sshKeyId } = c.req.valid('json');
+    const userId = c.get('userId');
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
+
+    const key = await getOrgSshKey(access.orgId, sshKeyId);
+    if (!key) {
+      throw new HTTPException(400, {
+        message: 'that key does not belong to this project’s organization',
+        cause: { code: 'WRONG_ORG' },
       });
     }
 
-    const privateKeyEnc = encryptSecret(keypair.privateKey);
     const now = new Date();
-    const [row] = await db
+    await db
       .insert(projectGitCredentials)
-      .values({
-        projectId,
-        source,
-        publicKey: keypair.publicKey,
-        privateKeyEnc,
-        fingerprint: keypair.fingerprint,
-        createdBy: userId,
-      })
+      .values({ projectId, sshKeyId, createdBy: userId })
       .onConflictDoUpdate({
         target: projectGitCredentials.projectId,
-        set: {
-          source,
-          publicKey: keypair.publicKey,
-          privateKeyEnc,
-          fingerprint: keypair.fingerprint,
-          createdBy: userId,
-          updatedAt: now,
-        },
-      })
-      .returning({
-        source: projectGitCredentials.source,
-        publicKey: projectGitCredentials.publicKey,
-        fingerprint: projectGitCredentials.fingerprint,
-        createdAt: projectGitCredentials.createdAt,
+        set: { sshKeyId, createdBy: userId, updatedAt: now },
       });
 
-    if (!row) {
-      throw new HTTPException(500, {
-        message: 'git-credential upsert returned no row',
-        cause: { code: 'UPSERT_FAILED' },
-      });
-    }
-    logger.info({ projectId, source }, 'git-credential: upserted project SSH key');
-    return c.json(publicView(row), 201);
+    logger.info({ projectId, sshKeyId }, 'git-credential: picked pool key');
+
+    const [project] = await db
+      .select({ repoUrl: projects.repoUrl })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    return c.json({ configured: true as const, repoUrl: project?.repoUrl ?? null, key }, 201);
   },
 );
 
 /**
- * POST /:projectId/git-credential/test — probe the stored deploy key against
- * the project's SSH repo URL (git ls-remote). Non-mutating; any project member
- * may run it. Never returns the private key. Requires the repo URL to be in SSH
- * form (the deploy key isn't used for HTTPS remotes).
+ * POST /:projectId/git-credential/test — probe the project's referenced pool
+ * key against its SSH repo URL (git ls-remote). Non-mutating; any project
+ * member may run it. Never returns the private key. Requires the repo URL to
+ * be in SSH form (the deploy key isn't used for HTTPS remotes).
  */
 gitCredentialRoutes.post(
   '/:projectId/git-credential/test',
@@ -206,12 +138,13 @@ gitCredentialRoutes.post(
       throw new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
     }
 
-    const [cred] = await db
-      .select({ privateKeyEnc: projectGitCredentials.privateKeyEnc })
+    const [ref] = await db
+      .select({ privateKeyEnc: workspaceSshKeys.privateKeyEnc })
       .from(projectGitCredentials)
+      .innerJoin(workspaceSshKeys, eq(workspaceSshKeys.id, projectGitCredentials.sshKeyId))
       .where(eq(projectGitCredentials.projectId, projectId))
       .limit(1);
-    if (!cred) {
+    if (!ref) {
       throw new HTTPException(404, {
         message: 'no deploy key configured for this project',
         cause: { code: 'NOT_CONFIGURED' },
@@ -228,7 +161,7 @@ gitCredentialRoutes.post(
 
     let privateKey: string;
     try {
-      privateKey = decryptSecret(cred.privateKeyEnc);
+      privateKey = decryptSecret(ref.privateKeyEnc);
     } catch (err) {
       logger.error({ err, projectId }, 'git-credential: decrypt failed on connection test');
       throw new HTTPException(500, {

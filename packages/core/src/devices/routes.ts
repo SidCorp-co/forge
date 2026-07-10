@@ -14,6 +14,7 @@ import {
   projects,
   runnerProvisionStatuses,
   runners,
+  workspaceSshKeys,
 } from '../db/schema.js';
 import { cmpVersion } from '../install/fetch-release.js';
 import { getLatestRunnerVersion } from '../install/routes.js';
@@ -592,13 +593,14 @@ deviceAuthRoutes.get('/me/provisions', requireDevice(), async (c) => {
       repoUrl: projects.repoUrl,
       baseBranch: projects.baseBranch,
       provisionStatus: runners.provisionStatus,
-      sshSource: projectGitCredentials.source,
-      sshPublicKey: projectGitCredentials.publicKey,
-      sshPrivateKeyEnc: projectGitCredentials.privateKeyEnc,
+      sshSource: workspaceSshKeys.source,
+      sshPublicKey: workspaceSshKeys.publicKey,
+      sshPrivateKeyEnc: workspaceSshKeys.privateKeyEnc,
     })
     .from(runners)
     .innerJoin(projects, eq(projects.id, runners.projectId))
     .leftJoin(projectGitCredentials, eq(projectGitCredentials.projectId, runners.projectId))
+    .leftJoin(workspaceSshKeys, eq(workspaceSshKeys.id, projectGitCredentials.sshKeyId))
     .where(
       and(
         eq(runners.deviceId, device.id),

@@ -69,6 +69,8 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
   { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
+  // ISS-628 — workspace resource management, first type = Private Keys.
+  { key: "resources", label: "Resources", icon: "lock", href: "/resources" },
   // Promoted from SECONDARY_DESTINATIONS (ISS-433): since ISS-429/431 this is
   // the owner CONNECTION DIRECTORY (manage shared credentials, enable/disable,
   // projects-using-it) — a management surface, not a redundant status view, so

@@ -27,8 +27,8 @@ export interface GeneratedSshKey {
   publicKey: string;
   /** OpenSSH private key (PEM-ish OpenSSH format) — caller MUST encrypt before persisting. */
   privateKey: string;
-  /** Non-secret SHA256 fingerprint, e.g. "SHA256:abc…". */
-  fingerprint: string;
+  /** Non-secret SHA256 fingerprint, e.g. "SHA256:abc…", or null if unparseable. */
+  fingerprint: string | null;
 }
 
 /** Run a command in a throwaway 0700 temp dir, always cleaned up. */
@@ -41,11 +41,16 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
-/** Parse the SHA256 fingerprint out of `ssh-keygen -l -f <pub>` output. */
-function parseFingerprint(out: string): string {
+/**
+ * Parse the SHA256 fingerprint out of `ssh-keygen -l -f <pub>` output.
+ * Returns `null` (not `''`) on a regex miss — the partial-unique index on
+ * `(org_id, fingerprint)` only ignores `NULL`, so an empty string would
+ * spuriously collide two parse-failed keys as duplicates.
+ */
+function parseFingerprint(out: string): string | null {
   // Format: "256 SHA256:xxxxx comment (ED25519)"
   const m = out.match(/(SHA256:[A-Za-z0-9+/=]+)/);
-  return m?.[1] ?? '';
+  return m?.[1] ?? null;
 }
 
 /**
@@ -140,7 +145,17 @@ export async function testSshConnection(repoUrl: string, privateKey: string): Pr
     ].join(' ');
     try {
       const { stdout } = await execFileAsync('git', ['ls-remote', repoUrl, 'HEAD'], {
-        env: { ...process.env, GIT_SSH_COMMAND: sshCmd, GIT_TERMINAL_PROMPT: '0' },
+        // GIT_ALLOW_PROTOCOL pins the transport allow-list to ssh only, so a
+        // repoUrl this call didn't expect (e.g. `ext::…`) can't spawn an
+        // arbitrary subprocess via git's ext:: transport even if a caller
+        // upstream forgot the classifyGitRemote guard — defense in depth
+        // alongside the callers' own SSH-form validation (ISS-628 review).
+        env: {
+          ...process.env,
+          GIT_SSH_COMMAND: sshCmd,
+          GIT_TERMINAL_PROMPT: '0',
+          GIT_ALLOW_PROTOCOL: 'ssh',
+        },
         timeout: 20_000,
         maxBuffer: 1_000_000,
       });

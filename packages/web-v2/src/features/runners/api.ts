@@ -6,11 +6,11 @@ import type {
 	ActiveRunnersSnapshot,
 	DeviceRow,
 	DeviceRunnerAssignment,
-	GitCredentialTestResult,
-	GitCredentialView,
 	PairingCode,
+	ProjectGitAccessView,
 	ProjectRunner,
 	RunnerActivity,
+	SshConnTestResult,
 } from "./types";
 
 export const runnersApi = {
@@ -120,29 +120,26 @@ export const runnersApi = {
 	getRunnerActivity: (runnerId: string, limit = 15) =>
 		apiClient<RunnerActivity>(`/runners/${runnerId}/activity?limit=${limit}`),
 
-	/** `GET /api/projects/:id/git-credential` — non-secret deploy-key status. */
+	/** `GET /api/projects/:id/git-credential` — resolved org-pool key reference. */
 	getGitCredential: (projectId: string) =>
-		apiClient<GitCredentialView>(`/projects/${projectId}/git-credential`),
+		apiClient<ProjectGitAccessView>(`/projects/${projectId}/git-credential`),
 
 	/**
-	 * `POST /api/projects/:id/git-credential` — `generate` mints an ed25519 pair;
-	 * `provide` stores a user-pasted private key. Returns the public half only.
+	 * `PUT /api/projects/:id/git-credential` — pick a key from the project's org
+	 * pool. Server rejects a key from a different org (400 `WRONG_ORG`).
 	 */
-	setGitCredential: (
-		projectId: string,
-		body: { mode: "generate" } | { mode: "provide"; privateKey: string },
-	) =>
-		apiClient<GitCredentialView>(`/projects/${projectId}/git-credential`, {
-			method: "POST",
-			body: JSON.stringify(body),
+	setGitCredential: (projectId: string, sshKeyId: string) =>
+		apiClient<ProjectGitAccessView>(`/projects/${projectId}/git-credential`, {
+			method: "PUT",
+			body: JSON.stringify({ sshKeyId }),
 		}),
 
 	/**
-	 * `POST /api/projects/:id/git-credential/test` — probe the stored deploy key
-	 * against the project's SSH repo URL (git ls-remote). Non-mutating.
+	 * `POST /api/projects/:id/git-credential/test` — probe the referenced pool
+	 * key against the project's SSH repo URL (git ls-remote). Non-mutating.
 	 */
 	testGitCredential: (projectId: string) =>
-		apiClient<GitCredentialTestResult>(
+		apiClient<SshConnTestResult>(
 			`/projects/${projectId}/git-credential/test`,
 			{ method: "POST" },
 		),
