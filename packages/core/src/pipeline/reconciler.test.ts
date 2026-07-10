@@ -52,6 +52,13 @@ vi.mock('./orchestrator.js', () => ({
   reEnqueueForIssue: (...a: unknown[]) => reEnqueueMock(...(a as [])),
 }));
 
+// ISS-626 — stall guard is mocked to not-stalled by default; a dedicated test
+// flips it to assert the reconciler skips re-enqueue when a stage is capped.
+const stallGuardMock = vi.fn(async () => ({ stalled: false }));
+vi.mock('./stage-stall-guard.js', () => ({
+  checkStageStallAndPause: (...a: unknown[]) => stallGuardMock(...(a as [])),
+}));
+
 const applyStatusTransitionMock = vi.fn(async () => undefined);
 vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...a: unknown[]) => applyStatusTransitionMock(...(a as [])),
@@ -76,6 +83,8 @@ beforeEach(() => {
   dbExecute.mockClear();
   reEnqueueMock.mockReset();
   reEnqueueMock.mockResolvedValue(undefined);
+  stallGuardMock.mockReset();
+  stallGuardMock.mockResolvedValue({ stalled: false });
   applyStatusTransitionMock.mockReset();
   applyStatusTransitionMock.mockResolvedValue(undefined);
   sentryAddBreadcrumb.mockClear();
@@ -147,6 +156,23 @@ describe('reconciler', () => {
     // First call failed → not rescued. Second call succeeded → rescued: 1.
     expect(result.rescued).toBe(1);
     expect(reEnqueueMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('ISS-626 — skips re-enqueue and does not count a rescue when the stage stall guard trips', async () => {
+    stuckQueue.push([
+      { id: 'iss-stall', project_id: 'proj-s', status: 'clarified', created_by: 'owner-s' },
+      { id: 'iss-ok', project_id: 'proj-s', status: 'clarified', created_by: 'owner-s' },
+    ]);
+    staleCountQueue.push([{ count: 0 }]);
+    // First issue is stalled (capped) → skipped; second proceeds normally.
+    stallGuardMock.mockResolvedValueOnce({ stalled: true });
+
+    const result = await runReconcilerOnce();
+
+    expect(result.rescued).toBe(1);
+    expect(stallGuardMock).toHaveBeenCalledTimes(2);
+    expect(reEnqueueMock).toHaveBeenCalledTimes(1);
+    expect(reEnqueueMock).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'iss-ok' }));
   });
 
   it('returns zero rescues when no issues are stuck', async () => {

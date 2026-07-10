@@ -11,6 +11,7 @@ import {
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,
 } from './registry.js';
+import { checkStageStallAndPause } from './stage-stall-guard.js';
 
 /**
  * ISS-196 — minute-cadence safety net for the trigger → outbox → orchestrator
@@ -107,6 +108,17 @@ export async function runReconcilerOnce(): Promise<{
 
   for (const row of stuck) {
     try {
+      // ISS-626 — cap no-op re-dispatch. If this stage has already completed
+      // `done` >= STAGE_STALL_CAP times in the open run without advancing the
+      // issue (the skill-missing-on-device / never-advances loop), pause the
+      // run + comment instead of minting another no-op session.
+      const { stalled } = await checkStageStallAndPause({
+        projectId: row.project_id,
+        issueId: row.id,
+        status: row.status as IssueStatus,
+      });
+      if (stalled) continue;
+
       const actorId = row.created_by ?? '<reconciler>';
       await reEnqueueForIssue({
         projectId: row.project_id,
