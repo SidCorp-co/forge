@@ -268,7 +268,10 @@ mod tests {
 
     #[test]
     fn sanitizes_slug_to_fs_safe_token() {
-        assert_eq!(sanitize_slug("home-kieutrung-anhome"), "home-kieutrung-anhome");
+        assert_eq!(
+            sanitize_slug("home-kieutrung-anhome"),
+            "home-kieutrung-anhome"
+        );
         assert_eq!(sanitize_slug("a/b c.d"), "a-b-c-d");
         assert_eq!(sanitize_slug(""), "default");
         assert_eq!(sanitize_slug("///"), "default");
@@ -285,7 +288,10 @@ mod tests {
             "forge-mcp-forge-test-stable-slug-xyz.json"
         );
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&p1).unwrap()).unwrap();
-        assert_eq!(doc["mcpServers"]["forge"]["url"], "https://core.example/mcp");
+        assert_eq!(
+            doc["mcpServers"]["forge"]["url"],
+            "https://core.example/mcp"
+        );
         let _ = std::fs::remove_file(&p1);
     }
 

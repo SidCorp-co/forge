@@ -101,8 +101,12 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         // branch, which the job dispatcher assumes is already checked out. Doing
         // it pre-orientation also avoids the untracked-file collision you'd hit
         // switching branches after those files land.
-        if let Err(detail) = clone_repo(repo_url, &repo_path, ssh_cmd.as_deref(), p.branch.as_deref())
-        {
+        if let Err(detail) = clone_repo(
+            repo_url,
+            &repo_path,
+            ssh_cmd.as_deref(),
+            p.branch.as_deref(),
+        ) {
             // A clone we can't complete is a manual-setup situation, not a hard
             // failure: the user can clone it themselves and re-assign.
             report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;

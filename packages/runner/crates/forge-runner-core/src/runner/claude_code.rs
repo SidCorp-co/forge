@@ -622,9 +622,7 @@ impl Runner for ClaudeCodeRunner {
             // guard the job records Done and the reconciler re-dispatches the
             // no-op forever. Fail it → core routes the cc-startup signal to a
             // different-device failover (a device that HAS the skill).
-            let no_work = is_issue_job
-                && succeeded_opt == Some(true)
-                && num_turns == Some(0);
+            let no_work = is_issue_job && succeeded_opt == Some(true) && num_turns == Some(0);
 
             let succeeded = usage_limit.is_none()
                 && succeeded_opt.unwrap_or(false)
