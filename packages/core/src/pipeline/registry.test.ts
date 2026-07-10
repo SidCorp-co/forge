@@ -1,12 +1,24 @@
 import {
+  REGISTRY_ISSUE_COMPLEXITIES,
+  REGISTRY_ISSUE_PRIORITIES,
   REGISTRY_ISSUE_STATUSES,
   REGISTRY_JOB_TYPES,
+  REGISTRY_PIPELINE_RUN_KINDS,
+  REGISTRY_PIPELINE_RUN_STATUSES,
   REGISTRY_RUNNER_TYPES,
   REGISTRY_STEP_TOGGLE_KEYS,
   pipelineRegistryResponseSchema,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
-import { issueStatuses, jobTypes, runnerTypes } from '../db/schema.js';
+import {
+  issueComplexities,
+  issuePriorities,
+  issueStatuses,
+  jobTypes,
+  pipelineRunKinds,
+  pipelineRunStatuses,
+  runnerTypes,
+} from '../db/schema.js';
 import { STEP_TOGGLE_KEYS } from './pipeline-config-schema.js';
 import {
   MANUAL_ONLY_JOB_TYPES,
@@ -118,6 +130,22 @@ describe('contracts ↔ core enum parity', () => {
 
   it('REGISTRY_STEP_TOGGLE_KEYS mirrors PIPELINE_STEPS toggles', () => {
     expect([...REGISTRY_STEP_TOGGLE_KEYS]).toEqual(PIPELINE_STEPS.map((s) => s.toggle));
+  });
+
+  it('REGISTRY_ISSUE_PRIORITIES mirrors core issuePriorities', () => {
+    expect([...REGISTRY_ISSUE_PRIORITIES]).toEqual([...issuePriorities]);
+  });
+
+  it('REGISTRY_ISSUE_COMPLEXITIES mirrors core issueComplexities', () => {
+    expect([...REGISTRY_ISSUE_COMPLEXITIES]).toEqual([...issueComplexities]);
+  });
+
+  it('REGISTRY_PIPELINE_RUN_STATUSES mirrors core pipelineRunStatuses', () => {
+    expect([...REGISTRY_PIPELINE_RUN_STATUSES]).toEqual([...pipelineRunStatuses]);
+  });
+
+  it('REGISTRY_PIPELINE_RUN_KINDS mirrors core pipelineRunKinds', () => {
+    expect([...REGISTRY_PIPELINE_RUN_KINDS]).toEqual([...pipelineRunKinds]);
   });
 });
 

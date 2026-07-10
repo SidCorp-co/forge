@@ -47,6 +47,23 @@ export const REGISTRY_JOB_TYPES = [
 
 export const REGISTRY_RUNNER_TYPES = ['claude-code', 'antigravity'] as const;
 
+// Client-facing mirrors of the remaining issue/run enums so web-v2/dev derive
+// their unions from here instead of hand-copying `db/schema.ts`. Kept in sync
+// by the same parity suite (`core/src/pipeline/registry.test.ts`).
+export const REGISTRY_ISSUE_PRIORITIES = ['critical', 'high', 'medium', 'low', 'none'] as const;
+
+export const REGISTRY_ISSUE_COMPLEXITIES = ['xs', 's', 'm', 'l', 'xl'] as const;
+
+export const REGISTRY_PIPELINE_RUN_STATUSES = [
+  'running',
+  'paused',
+  'completed',
+  'failed',
+  'cancelled',
+] as const;
+
+export const REGISTRY_PIPELINE_RUN_KINDS = ['issue', 'pm', 'interactive', 'system'] as const;
+
 export const REGISTRY_STEP_TOGGLE_KEYS = [
   'autoTriage',
   'autoClarify',

@@ -9,39 +9,25 @@
 // locally with string dates + optional `pipelineHealth`, mirroring how
 // `features/sessions/types.ts` re-typed the flat `agent_sessions` row.
 
+import {
+  REGISTRY_ISSUE_COMPLEXITIES,
+  REGISTRY_ISSUE_PRIORITIES,
+  REGISTRY_ISSUE_STATUSES,
+} from "@forge/contracts/pipeline-registry";
 import type { StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 
-/** Lifecycle status enum (`issueStatuses` in core schema). */
-export type IssueStatus =
-  | "open"
-  | "confirmed"
-  | "clarified"
-  | "waiting"
-  | "approved"
-  | "in_progress"
-  | "developed"
-  | "testing"
-  | "tested"
-  | "released"
-  | "closed"
-  | "reopen"
-  | "on_hold"
-  | "needs_info"
-  | "draft";
+/** Lifecycle status enum — derived from `@forge/contracts`, which is
+ *  parity-tested against core `db/schema.ts` (`core/pipeline/registry.test.ts`). */
+export type IssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
 
-export type IssuePriority = "critical" | "high" | "medium" | "low" | "none";
-export type IssueComplexity = "xs" | "s" | "m" | "l" | "xl";
+export type IssuePriority = (typeof REGISTRY_ISSUE_PRIORITIES)[number];
+export type IssueComplexity = (typeof REGISTRY_ISSUE_COMPLEXITIES)[number];
 
-/** Runtime arrays for inline-edit option lists — kept in lockstep with the
- *  unions above (the source of truth is `db/schema.ts`). */
-export const ISSUE_STATUSES: IssueStatus[] = [
-  "open", "confirmed", "clarified", "waiting", "approved", "in_progress", "developed",
-  "testing", "tested", "released", "closed",
-  "reopen", "on_hold", "needs_info", "draft",
-];
-export const ISSUE_PRIORITIES: IssuePriority[] = ["critical", "high", "medium", "low", "none"];
-export const ISSUE_COMPLEXITIES: IssueComplexity[] = ["xs", "s", "m", "l", "xl"];
+/** Runtime arrays for inline-edit option lists (registry order). */
+export const ISSUE_STATUSES: IssueStatus[] = [...REGISTRY_ISSUE_STATUSES];
+export const ISSUE_PRIORITIES: IssuePriority[] = [...REGISTRY_ISSUE_PRIORITIES];
+export const ISSUE_COMPLEXITIES: IssueComplexity[] = [...REGISTRY_ISSUE_COMPLEXITIES];
 
 /** Agent run status hydrated by the search endpoint (`withAgentSessions=1`). */
 export type IssueAgentStatus = "running" | "queued" | "completed" | "failed" | null;

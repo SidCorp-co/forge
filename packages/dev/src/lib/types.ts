@@ -1,4 +1,5 @@
 import type { ReleaseNotes } from "@forge/contracts";
+import { REGISTRY_ISSUE_PRIORITIES, REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 
 export type AIProvider = "anthropic" | "openai" | "gemini";
 
@@ -36,24 +37,11 @@ export interface Project {
   sentryProject?: string;
 }
 
-export type IssueStatus =
-  | "draft"
-  | "open"
-  | "confirmed"
-  | "clarified"
-  | "waiting"
-  | "approved"
-  | "in_progress"
-  | "developed"
-  | "testing"
-  | "tested"
-  | "released"
-  | "closed"
-  | "reopen"
-  | "on_hold"
-  | "needs_info";
+/** Derived from `@forge/contracts`, parity-tested against core `db/schema.ts`
+ *  (`core/pipeline/registry.test.ts`). */
+export type IssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
 
-export type IssuePriority = "critical" | "high" | "medium" | "low" | "none";
+export type IssuePriority = (typeof REGISTRY_ISSUE_PRIORITIES)[number];
 
 export interface IssueHistoryEntry {
   field: string;

@@ -1,28 +1,25 @@
 // web-v2 feature module: pipeline (kanban + run detail + ops monitor). Types
 // are re-typed to match the EXACT JSON the core routes return (dates are ISO
-// strings over the wire, not `Date`). Pipeline-run shapes are NOT in
-// `@forge/contracts` — they live inline in
-// `packages/core/src/pipeline/runs-rollup.ts` + `db/schema.ts`; the field names
-// here mirror those verbatim (verified for ISS-295). The enum value arrays are
-// defined locally (mirroring `db/schema.ts`) so the UI never imports core's
-// runtime arrays.
+// strings over the wire, not `Date`). Pipeline-run SHAPES are still local
+// (they live inline in `packages/core/src/pipeline/runs-rollup.ts`); the enum
+// values derive from `@forge/contracts`, which is parity-tested against
+// `db/schema.ts` (`core/pipeline/registry.test.ts`).
 
-/** `pipelineRunStatuses` — mirrors `db/schema.ts`. */
-export const PIPELINE_RUN_STATUSES = [
-  "running",
-  "paused",
-  "completed",
-  "failed",
-  "cancelled",
-] as const;
+import {
+  REGISTRY_JOB_TYPES,
+  REGISTRY_PIPELINE_RUN_KINDS,
+  REGISTRY_PIPELINE_RUN_STATUSES,
+} from "@forge/contracts/pipeline-registry";
+
+export const PIPELINE_RUN_STATUSES = REGISTRY_PIPELINE_RUN_STATUSES;
 export type PipelineRunStatus = (typeof PIPELINE_RUN_STATUSES)[number];
 
-/** `pipelineRunKinds` — mirrors `db/schema.ts`. */
-export const PIPELINE_RUN_KINDS = ["issue", "pm", "interactive", "system"] as const;
+export const PIPELINE_RUN_KINDS = REGISTRY_PIPELINE_RUN_KINDS;
 export type PipelineRunKind = (typeof PIPELINE_RUN_KINDS)[number];
 
-/** `jobTypes` — mirrors `db/schema.ts`. A run's `currentStep` / a step's
- *  `jobType` is one of these. */
+/** UI-facing job types: the registry list minus the legacy `staging` type
+ *  (kept in core only so historical `jobs.type='staging'` rows deserialize).
+ *  `satisfies` pins every entry to a real registry value. */
 export const PIPELINE_JOB_TYPES = [
   "triage",
   "clarify",
@@ -36,7 +33,7 @@ export const PIPELINE_JOB_TYPES = [
   "pm",
   // ISS-455 — skill smoke-verify canary (issue-less, one-shot 'system' run).
   "smoke",
-] as const;
+] as const satisfies readonly (typeof REGISTRY_JOB_TYPES)[number][];
 export type PipelineJobType = (typeof PIPELINE_JOB_TYPES)[number];
 
 /** Per-step status precedence computed by the read-side rollup. */
