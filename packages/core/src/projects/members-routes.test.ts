@@ -26,10 +26,12 @@ const innerJoinWhere = vi.fn(() => whereResolver());
 const innerJoin = vi.fn(() => ({ where: innerJoinWhere }));
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
 // .where().limit() — route the join chain back into the same where/limit FIFO.
-const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
-  leftJoin: selectLeftJoin,
-  where: selectWhereLimit,
-}));
+const selectLeftJoin = vi.fn(
+  (): Record<string, unknown> => ({
+    leftJoin: selectLeftJoin,
+    where: selectWhereLimit,
+  }),
+);
 const selectFrom = vi.fn(() => ({
   where: selectWhereLimit,
   innerJoin,
@@ -93,7 +95,10 @@ const OWNER_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_ID = '33333333-3333-4333-8333-333333333333';
 
 /** Queue the single loadProjectAccess join row (projects ⨝ members ⨝ org members). */
-function queueAccess(memberRole: 'admin' | 'member' | 'viewer' | null, orgRole: string | null = null) {
+function queueAccess(
+  memberRole: 'admin' | 'member' | 'viewer' | null,
+  orgRole: string | null = null,
+) {
   selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole, orgRole }]);
 }
 
@@ -325,10 +330,10 @@ describe('memberRoutes — DELETE /:projectId/members/invitations', () => {
     const token = await signUserToken(OWNER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 
-    const res = await buildApp().request(
-      `/api/projects/${PROJECT_ID}/members/invitations`,
-      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
-    );
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/invitations`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect(res.status).toBe(400);
   });
 });

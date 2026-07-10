@@ -12,10 +12,12 @@ const selectOrderBy = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
 // .where().limit() — route the join chain back into the same where/limit FIFO.
-const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
-  leftJoin: selectLeftJoin,
-  where: selectWhere,
-}));
+const selectLeftJoin = vi.fn(
+  (): Record<string, unknown> => ({
+    leftJoin: selectLeftJoin,
+    where: selectWhere,
+  }),
+);
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 vi.mock('../db/client.js', () => ({
@@ -87,12 +89,33 @@ describe('GET /api/projects/:projectId/skills/effective', () => {
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     // globals select.orderBy
     selectOrderBy.mockResolvedValueOnce([
-      { id: GLOBAL_ID, name: 'forge-code', scope: 'global', skillMd: 'GLOBAL', prompt: null, files: [] },
-      { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'forge-plan', scope: 'global', skillMd: 'PLAN', prompt: null, files: [] },
+      {
+        id: GLOBAL_ID,
+        name: 'forge-code',
+        scope: 'global',
+        skillMd: 'GLOBAL',
+        prompt: null,
+        files: [],
+      },
+      {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        name: 'forge-plan',
+        scope: 'global',
+        skillMd: 'PLAN',
+        prompt: null,
+        files: [],
+      },
     ]);
     // project skills select.orderBy
     selectOrderBy.mockResolvedValueOnce([
-      { id: PROJECT_SKILL_ID, name: 'forge-code', scope: 'project', projectId: PROJECT_ID, skillMd: 'PROJECT', files: [] },
+      {
+        id: PROJECT_SKILL_ID,
+        name: 'forge-code',
+        scope: 'project',
+        projectId: PROJECT_ID,
+        skillMd: 'PROJECT',
+        files: [],
+      },
     ]);
 
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/skills/effective`, {
@@ -129,7 +152,14 @@ describe('POST /api/projects/:projectId/skills/apply-default', () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     selectLimit.mockResolvedValueOnce([
-      { id: GLOBAL_ID, name: 'forge-code', scope: 'global', skillMd: 'GLOBAL', prompt: null, files: [] },
+      {
+        id: GLOBAL_ID,
+        name: 'forge-code',
+        scope: 'global',
+        skillMd: 'GLOBAL',
+        prompt: null,
+        files: [],
+      },
     ]); // global lookup
     applyGlobalSkillDefault.mockResolvedValueOnce({
       id: PROJECT_SKILL_ID,
@@ -153,7 +183,14 @@ describe('POST /api/projects/:projectId/skills/apply-default', () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
     selectLimit.mockResolvedValueOnce([
-      { id: GLOBAL_ID, name: 'forge-code', scope: 'global', skillMd: 'GLOBAL', prompt: null, files: [] },
+      {
+        id: GLOBAL_ID,
+        name: 'forge-code',
+        scope: 'global',
+        skillMd: 'GLOBAL',
+        prompt: null,
+        files: [],
+      },
     ]); // global lookup
     applyGlobalSkillDefault.mockRejectedValueOnce(new SkillAlreadyShadowedError('forge-code'));
 

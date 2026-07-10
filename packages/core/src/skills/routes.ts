@@ -5,11 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueStatuses, skillRegistrations, skills } from '../db/schema.js';
-import {
-  assertProjectRole,
-  loadProjectAccess,
-  projectRoleAtLeast,
-} from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -226,11 +222,7 @@ skillRegisterRoutes.post(
 // ISS-109 — list current per-stage skill bindings for a project. Read access
 // is project membership (mirrors the GET /pipeline-config rule); the skill
 // registrations themselves contain no privileged data.
-skillRegisterRoutes.use(
-  '/:projectId/skill-registrations',
-  requireAuth(),
-  assertEmailVerified(),
-);
+skillRegisterRoutes.use('/:projectId/skill-registrations', requireAuth(), assertEmailVerified());
 skillRegisterRoutes.get(
   '/:projectId/skill-registrations',
   zValidator('param', projectParamSchema, (result) => {
@@ -283,9 +275,7 @@ skillRegisterRoutes.delete(
     const [row] = await db
       .select({ skillId: skillRegistrations.skillId })
       .from(skillRegistrations)
-      .where(
-        and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.stage, stage)),
-      )
+      .where(and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.stage, stage)))
       .limit(1);
     if (!row) return c.json({ deleted: false, stage });
 

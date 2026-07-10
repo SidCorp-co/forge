@@ -133,25 +133,19 @@ describe('registerSkillForProject(stage) — SKILL_NOT_PROJECT_SCOPED (single pa
 
   it('rejects registering a global template (must adopt into the project first)', async () => {
     pushSelect([{ scope: 'global', projectId: null }]); // the target skill is global
-    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(
-      SkillNotProjectScopedError,
-    );
+    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(SkillNotProjectScopedError);
     expect(dbDelete).not.toHaveBeenCalled();
     expect(hooksEmit).not.toHaveBeenCalled();
   });
 
   it('rejects registering a project skill owned by a DIFFERENT project', async () => {
     pushSelect([{ scope: 'project', projectId: 'some-other-project' }]);
-    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(
-      SkillNotProjectScopedError,
-    );
+    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(SkillNotProjectScopedError);
   });
 
   it('rejects when the skill does not exist', async () => {
     pushSelect([]); // no row
-    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(
-      SkillNotProjectScopedError,
-    );
+    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(SkillNotProjectScopedError);
   });
 
   it('exposes the SKILL_NOT_PROJECT_SCOPED code', () => {
@@ -169,7 +163,7 @@ describe('createProjectSkill — file encoding default (MCP path safety)', () =>
     skillMd: 'body',
   };
 
-  it('defaults a file\'s encoding to utf8 when the caller omits it', async () => {
+  it("defaults a file's encoding to utf8 when the caller omits it", async () => {
     // The MCP create path calls the service directly (no zod default), so an
     // omitted `encoding` must be backfilled here — otherwise the runner's
     // required `SkillFile.encoding` fails-decode and aborts the whole sync.
@@ -232,7 +226,10 @@ describe('createProjectSkill — SkillContentBlockedError (ISS-539 security gate
     expect(caught).toBeInstanceOf(SkillContentBlockedError);
     const err = caught as InstanceType<typeof SkillContentBlockedError>;
     expect(err.findings.length).toBeGreaterThan(0);
-    expect(err.findings[0]).toMatchObject({ severity: 'blocker', rule: expect.stringContaining('secret') });
+    expect(err.findings[0]).toMatchObject({
+      severity: 'blocker',
+      rule: expect.stringContaining('secret'),
+    });
   });
 
   it('succeeds and inserts a clean skill body', async () => {

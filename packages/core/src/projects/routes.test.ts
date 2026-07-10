@@ -23,10 +23,12 @@ const selectFrom = vi.fn(() => ({
 // GET / visibility query:
 // selectDistinctOn(...).from().innerJoin(orgs).leftJoin().leftJoin().where()
 const distinctWhere = vi.fn((): Promise<unknown[]> => Promise.resolve([]));
-const distinctLeftJoin = vi.fn((): Record<string, unknown> => ({
-  leftJoin: distinctLeftJoin,
-  where: distinctWhere,
-}));
+const distinctLeftJoin = vi.fn(
+  (): Record<string, unknown> => ({
+    leftJoin: distinctLeftJoin,
+    where: distinctWhere,
+  }),
+);
 const distinctInnerJoin = vi.fn(() => ({ leftJoin: distinctLeftJoin }));
 const distinctFrom = vi.fn(() => ({ innerJoin: distinctInnerJoin, leftJoin: distinctLeftJoin }));
 
@@ -344,25 +346,23 @@ describe('GET /api/projects/:id', () => {
   it('200 with project + members + labels + devicePool for member', async () => {
     const token = await signUserToken('uuid-user');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([
-        {
-          id: 'p1',
-          slug: 'p-one',
-          name: 'P One',
-          orgId: ORG_ID,
-          createdBy: 'uuid-user',
-          description: 'desc',
-          repoPath: '/repo',
-          baseBranch: 'main',
-          productionBranch: 'master',
-          defaultDeviceId: null,
-          agentConfig: null,
-          webhookSecret: null,
-          createdAt: new Date('2026-04-01T00:00:00Z'),
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-user',
+        description: 'desc',
+        repoPath: '/repo',
+        baseBranch: 'main',
+        productionBranch: 'master',
+        defaultDeviceId: null,
+        agentConfig: null,
+        webhookSecret: null,
+        createdAt: new Date('2026-04-01T00:00:00Z'),
+      },
+    ]);
     // First 2 selectWhere calls go through .limit() (auth + project detail);
     // members + labels resolve directly; devicePool flows through innerJoin -> where.
     selectWhere
@@ -408,26 +408,24 @@ describe('GET /api/projects/:id', () => {
     const token = await signUserToken('uuid-user');
     const fullKey = 'fk_aaaabbbbccccddddeeeeffff00001111222233334444555566667777';
     projectAccess.mockResolvedValueOnce(access('member'));
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([
-        {
-          id: 'p1',
-          slug: 'p-one',
-          name: 'P One',
-          orgId: ORG_ID,
-          createdBy: 'uuid-user',
-          description: null,
-          repoPath: null,
-          baseBranch: null,
-          productionBranch: null,
-          defaultDeviceId: null,
-          agentConfig: null,
-          webhookSecret: null,
-          apiKey: fullKey,
-          createdAt: new Date('2026-04-01T00:00:00Z'),
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-user',
+        description: null,
+        repoPath: null,
+        baseBranch: null,
+        productionBranch: null,
+        defaultDeviceId: null,
+        agentConfig: null,
+        webhookSecret: null,
+        apiKey: fullKey,
+        createdAt: new Date('2026-04-01T00:00:00Z'),
+      },
+    ]);
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
@@ -737,16 +735,14 @@ describe('PATCH /api/projects/:id', () => {
   it('200 stateContext: writes the patch merged under agentConfig (preserves siblings)', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([
-        {
-          agentConfig: {
-            pipelineConfig: { enabled: true },
-            stateContext: { plan: { blocks: { tip: 'keep' } } },
-          },
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
+      {
+        agentConfig: {
+          pipelineConfig: { enabled: true },
+          stateContext: { plan: { blocks: { tip: 'keep' } } },
         },
-      ]);
+      },
+    ]);
     updateReturning.mockResolvedValueOnce([
       {
         id: 'p1',
@@ -841,9 +837,7 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
   it('404 DEVICE_NOT_FOUND when deviceId does not exist', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([]); // device lookup -> empty
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([]); // device lookup -> empty
 
     const res = await req(`/${PID}/runners`, {
       method: 'POST',
@@ -1188,7 +1182,23 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       // `tested` is the production approval GATE — manual by default so the
       // pipeline parks for a human before release; every other stage is auto.
       const expectedMode = key === 'tested' ? 'manual' : 'auto';
-      expect(states[key]).toEqual({ enabled: true, mode: expectedMode });
+      // ISS-581 — developed/testing/released ship a default denylist of
+      // scheduling/orchestration agency tools; other stages carry no
+      // disallowedTools key at all (see STAGE_DEFAULT_DISALLOWED in
+      // pipeline-config-schema.ts).
+      const expectedDisallowed = ['developed', 'testing', 'released'].includes(key)
+        ? {
+            disallowedTools: [
+              'CronCreate',
+              'CronDelete',
+              'CronList',
+              'Workflow',
+              'RemoteTrigger',
+              'ScheduleWakeup',
+            ],
+          }
+        : {};
+      expect(states[key]).toEqual({ enabled: true, mode: expectedMode, ...expectedDisallowed });
     }
   });
 

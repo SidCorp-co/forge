@@ -122,9 +122,7 @@ describe('GET /api/projects/health', () => {
       { projectId: PROJECT_B_ID, status: 'needs_info', n: 2 },
     ]); // statusRows
     queryQueue.push([]); // blockerRowsAll
-    queryQueue.push([
-      { projectId: PROJECT_A_ID, n: 2 },
-    ]); // throughputRows — counts issue.statusChanged → closed/released in last 7 days
+    queryQueue.push([{ projectId: PROJECT_A_ID, n: 2 }]); // throughputRows — counts issue.statusChanged → closed/released in last 7 days
 
     const res = await buildApp().request('/api/projects/health', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -153,9 +151,7 @@ describe('GET /api/projects/health', () => {
     // (clarified/on_hold/needs_info) so the KPI equals the web-v2 donut center.
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
-    queryQueue.push([
-      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
-    ]); // visibleProjects
+    queryQueue.push([{ id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null }]); // visibleProjects
     queryQueue.push([
       { projectId: PROJECT_A_ID, status: 'open', n: 2 },
       { projectId: PROJECT_A_ID, status: 'clarified', n: 1 },
@@ -183,9 +179,7 @@ describe('GET /api/projects/health', () => {
   it('200 with throughput=0 when no activity rows match (regression: empty result must not 500)', async () => {
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
-    queryQueue.push([
-      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
-    ]);
+    queryQueue.push([{ id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null }]);
     queryQueue.push([{ projectId: PROJECT_A_ID, status: 'open', n: 1 }]);
     queryQueue.push([]); // blockerRowsAll
     queryQueue.push([]); // throughputRows — empty (was the original 500 trigger)
@@ -285,9 +279,7 @@ describe('GET /api/projects/health', () => {
     // it must say `IN (` and must NOT carry `ANY(` or `::uuid[]`.
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
-    queryQueue.push([
-      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
-    ]); // visibleProjects
+    queryQueue.push([{ id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null }]); // visibleProjects
     queryQueue.push([]); // statusRows
     queryQueue.push([]); // blockerRowsAll
     queryQueue.push([]); // throughputRows

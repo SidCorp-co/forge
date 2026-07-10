@@ -161,8 +161,30 @@ describe('computeDeviceSkillStatus', () => {
 
 describe('pivotProjectSkillSyncStatus', () => {
   const eff: EffectiveSkill[] = [
-    { skillId: 's-1', name: 'a', version: 5, skillMd: '', files: [], effectiveHash: 'h1', scope: 'project', shadowsGlobal: false, shadowedGlobalSkillId: null, installOnly: false },
-    { skillId: 's-2', name: 'b', version: 2, skillMd: '', files: [], effectiveHash: 'h2', scope: 'project', shadowsGlobal: false, shadowedGlobalSkillId: null, installOnly: false },
+    {
+      skillId: 's-1',
+      name: 'a',
+      version: 5,
+      skillMd: '',
+      files: [],
+      effectiveHash: 'h1',
+      scope: 'project',
+      shadowsGlobal: false,
+      shadowedGlobalSkillId: null,
+      installOnly: false,
+    },
+    {
+      skillId: 's-2',
+      name: 'b',
+      version: 2,
+      skillMd: '',
+      files: [],
+      effectiveHash: 'h2',
+      scope: 'project',
+      shadowsGlobal: false,
+      shadowedGlobalSkillId: null,
+      installOnly: false,
+    },
   ];
   const devicesList = [
     { deviceId: 'd-1', name: 'laptop', status: 'online', lastSeenAt: null },

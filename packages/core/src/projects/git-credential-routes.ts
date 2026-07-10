@@ -23,12 +23,12 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
-import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
+import { testSshConnection } from '../git/ssh-keys.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { testSshConnection } from '../git/ssh-keys.js';
+import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
 
 export const gitCredentialRoutes = new Hono<{ Variables: AuthVars }>();
 gitCredentialRoutes.use('*', requireAuth(), assertEmailVerified());

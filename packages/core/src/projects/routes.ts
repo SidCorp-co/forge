@@ -5,7 +5,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type IssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
   devices,
@@ -17,9 +16,7 @@ import {
   projectMembers,
   projects,
   runners,
-  skillRegistrations,
 } from '../db/schema.js';
-import { deleteKnowledgeEntry, upsertKnowledgeEntry } from '../knowledge/service.js';
 import {
   assertOrgAccess,
   assertOrgRoleOnProject,
@@ -31,29 +28,18 @@ import {
 } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { hooks } from '../pipeline/hooks.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
-  defaultStatesConfig,
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
 import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
-import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
-import { insertRunnerEvent } from '../runners/runner-events.js';
-import { defaultRunnerCapabilities } from '../runners/select.js';
-import { resolveOrAdoptProjectSkill } from '../skills/service.js';
-import {
-  PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
-  RESERVED_PROJECT_FACT_KEYS,
-  mergeProjectFacts,
-  mergeProjectFactsConfig,
-  projectFactsConfigPatchSchema,
-  projectFactsPatchSchema,
-} from './project-facts.js';
+import { readAgentConfig } from './agent-config.js';
+import { projectFactsRoutes } from './project-facts-routes.js';
+import { projectRunnerRoutes } from './runners-routes.js';
+import { skillsBootstrapRoutes } from './skills-bootstrap-routes.js';
 import { mergeStateContext, stateContextSchema } from './state-context.js';
 
 function generateApiKey(): string {
@@ -460,13 +446,9 @@ projectRoutes.patch(
       // Read-modify-write rather than Postgres's `jsonb || jsonb` (shallow
       // merge) so a `stateContext`-only patch can't wipe sibling keys
       // (`pipelineConfig`, `repoPath`, `categories`, …). Per-state merge
-      // granularity is intentional — see `mergeStateContext` JSDoc.
-      const [row] = await db
-        .select({ agentConfig: projects.agentConfig })
-        .from(projects)
-        .where(eq(projects.id, id))
-        .limit(1);
-      const currentAc = (row?.agentConfig ?? {}) as Record<string, unknown>;
+      // granularity is intentional — see `mergeStateContext` JSDoc. The write
+      // is deferred to the single UPDATE below, so only the read is shared.
+      const currentAc = (await readAgentConfig(id)) ?? {};
       const baseAc =
         patch.agentConfig !== undefined
           ? ((patch.agentConfig ?? {}) as Record<string, unknown>)
@@ -487,12 +469,7 @@ projectRoutes.patch(
       // stateContext above) so a style-only patch can't wipe sibling keys.
       let baseAc = updates.agentConfig as Record<string, unknown> | undefined;
       if (baseAc === undefined) {
-        const [row] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, id))
-          .limit(1);
-        baseAc = { ...((row?.agentConfig ?? {}) as Record<string, unknown>) };
+        baseAc = { ...((await readAgentConfig(id)) ?? {}) };
       }
       if (patch.personaStyle === null || patch.personaStyle.length === 0) {
         baseAc.personaStyle = undefined;
@@ -527,255 +504,11 @@ projectRoutes.patch(
   },
 );
 
-// ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
-// upserts a (project, device, 'claude-code') runner row; `DELETE
-// /:id/runners/:runnerId` removes one binding (other projects' runners on
-// the same device are untouched).
-
-const createRunnerBodySchema = z
-  .object({
-    deviceId: z.uuid(),
-    capabilities: z.record(z.string(), z.unknown()).optional(),
-    // ISS-271 — per (device × project) repo checkout. Optional at bind time:
-    // a web bind may leave them null until the operator sets the path later.
-    repoPath: z.string().trim().max(500).nullable().optional(),
-    branch: z.string().trim().max(100).nullable().optional(),
-  })
-  .strict();
-
-// Project-centric runner list — the device pools serving THIS project, with
-// device identity + live provision status. Powers the project Runners screen
-// (the inverse of the device-centric GET /api/devices/:id/runners). Any member.
-projectRoutes.get(
-  '/:id/runners',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'viewer', 'project member required');
-
-    const rows = await db
-      .select({
-        runnerId: runners.id,
-        deviceId: runners.deviceId,
-        deviceName: devices.name,
-        platform: devices.platform,
-        deviceStatus: devices.status,
-        // Operator "turn off" timestamp. A disabled device's runner can still
-        // heartbeat (status stays 'online'), so the UI needs this to explain
-        // why an "online"-looking runner receives no jobs (mirrors the
-        // dispatch gate that excludes disabled devices).
-        deviceDisabledAt: devices.disabledAt,
-        runnerStatus: runners.status,
-        lastError: runners.lastError,
-        limitReason: runners.limitReason,
-        rateLimitedUntil: runners.rateLimitedUntil,
-        limitDetail: runners.limitDetail,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        lastSeenAt: runners.lastSeenAt,
-        provisionStatus: runners.provisionStatus,
-        provisionDetail: runners.provisionDetail,
-        provisionedAt: runners.provisionedAt,
-      })
-      .from(runners)
-      .leftJoin(devices, eq(devices.id, runners.deviceId))
-      .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')))
-      .orderBy(runners.createdAt);
-
-    return c.json(rows);
-  },
-);
-
-projectRoutes.post(
-  '/:id/runners',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  zValidator('json', createRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const { deviceId, capabilities, repoPath, branch } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    const [device] = await db
-      .select({
-        id: devices.id,
-        name: devices.name,
-        status: devices.status,
-        lastSeenAt: devices.lastSeenAt,
-      })
-      .from(devices)
-      .where(eq(devices.id, deviceId))
-      .limit(1);
-    if (!device) {
-      throw new HTTPException(404, {
-        message: 'device not found',
-        cause: { code: 'DEVICE_NOT_FOUND' },
-      });
-    }
-
-    const status: 'online' | 'offline' =
-      device.status === 'online' && device.lastSeenAt ? 'online' : 'offline';
-
-    const now = new Date();
-    const [runner] = await db
-      .insert(runners)
-      .values({
-        projectId: id,
-        type: 'claude-code',
-        host: 'device',
-        deviceId,
-        name: device.name,
-        capabilities: defaultRunnerCapabilities('claude-code', capabilities),
-        ...(repoPath !== undefined ? { repoPath } : {}),
-        ...(branch !== undefined ? { branch } : {}),
-        status,
-        // Queue workspace provisioning — the device picks this up on its next
-        // GET /api/devices/me/provisions (online or whenever it reconnects).
-        provisionStatus: 'queued',
-        provisionRequestedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [runners.projectId, runners.deviceId, runners.type],
-        targetWhere: sql`device_id IS NOT NULL`,
-        set: {
-          status,
-          updatedAt: now,
-          ...(capabilities ? { capabilities } : {}),
-          ...(repoPath !== undefined ? { repoPath } : {}),
-          ...(branch !== undefined ? { branch } : {}),
-          // Re-bind re-queues provisioning (path/url may have changed).
-          provisionStatus: 'queued',
-          provisionDetail: null,
-          provisionRequestedAt: now,
-        },
-      })
-      .returning({
-        id: runners.id,
-        projectId: runners.projectId,
-        deviceId: runners.deviceId,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        status: runners.status,
-      });
-
-    if (!runner) {
-      throw new HTTPException(500, {
-        message: 'runner upsert returned no row',
-        cause: { code: 'RUNNER_UPSERT_FAILED' },
-      });
-    }
-
-    // ISS-381 (2.3) — audit the bind as the runner's initial status event
-    // (old_status null). Bind is an infrequent operator action, so an event per
-    // bind is informative, not noisy (unlike the per-tick heartbeat site).
-    await insertRunnerEvent(db, {
-      runnerId: runner.id,
-      projectId: runner.projectId,
-      oldStatus: null,
-      newStatus: runner.status,
-      reason: 'bind',
-    });
-
-    // Wake the device room so an online device pulls its queued provision now;
-    // an offline device picks it up from the `queued` row on reconnect.
-    if (runner.deviceId) {
-      await hooks.emit('runnerProvisionRequested', {
-        projectId: runner.projectId,
-        deviceId: runner.deviceId,
-        runnerId: runner.id,
-      });
-    }
-
-    return c.json(runner, 201);
-  },
-);
-
-const runnerParamSchema = z.object({ id: z.uuid(), runnerId: z.uuid() });
-
-// ISS-271 — update the per-device repo checkout (and capabilities) on a
-// runner row. Web and the CLI `forge-runner bind` both write here, so the
-// server stays the single source of truth for the runner working dir.
-const patchRunnerBodySchema = z
-  .object({
-    repoPath: z.string().trim().max(500).nullable().optional(),
-    branch: z.string().trim().max(100).nullable().optional(),
-    capabilities: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict();
-
-projectRoutes.patch(
-  '/:id/runners/:runnerId',
-  zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  zValidator('json', patchRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const { id, runnerId } = c.req.valid('param');
-    const { repoPath, branch, capabilities } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    const [runner] = await db
-      .update(runners)
-      .set({
-        updatedAt: new Date(),
-        ...(repoPath !== undefined ? { repoPath } : {}),
-        ...(branch !== undefined ? { branch } : {}),
-        ...(capabilities ? { capabilities } : {}),
-      })
-      .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)))
-      .returning({
-        id: runners.id,
-        projectId: runners.projectId,
-        deviceId: runners.deviceId,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        status: runners.status,
-      });
-
-    if (!runner) {
-      throw new HTTPException(404, {
-        message: 'runner not found',
-        cause: { code: 'RUNNER_NOT_FOUND' },
-      });
-    }
-
-    return c.json(runner);
-  },
-);
-
-projectRoutes.delete(
-  '/:id/runners/:runnerId',
-  zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const { id, runnerId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    // Idempotent: 204 whether the runner existed or not, mirroring the old
-    // PUT/DELETE /:id/devices/:deviceId contract.
-    await db.delete(runners).where(and(eq(runners.id, runnerId), eq(runners.projectId, id)));
-    return c.body(null, 204);
-  },
-);
+// ISS-172 Slice A — runner-shaped binding endpoints (GET/POST /:id/runners,
+// PATCH/DELETE /:id/runners/:runnerId) live in ./runners-routes.ts. Mounted
+// here (not in index.ts) so they inherit this router's requireAuth +
+// assertEmailVerified middleware exactly as before the split.
+projectRoutes.route('/', projectRunnerRoutes);
 
 projectRoutes.delete(
   '/:id',
@@ -893,14 +626,9 @@ projectRoutes.get(
     const access = await loadProjectAccess(id, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    if (!row) throw notFound();
+    const ac = await readAgentConfig(id);
+    if (ac === null) throw notFound();
 
-    const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
     const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
     // Parse through schema — drops legacy keys (clarified, pipelineSteps,
     // etc.) so the response is the typed surface the FE expects. Defaults
@@ -967,147 +695,11 @@ projectRoutes.patch(
 
 // ─── Project facts (ISS-521) ─────────────────────────────────────────────────
 //
-// Dedicated read/patch routes for the per-project "rules" layer:
-//   - `agentConfig.projectFacts`        — kebab-key → text guide map
-//   - `agentConfig.projectFactsConfig`  — per-key `{ alwaysInject }` metadata
-//
-// Like the pipeline-config routes, these give the settings UI a typed,
-// atomic-merge surface so the Project Facts tab and other agentConfig tabs
-// never clobber each other's sibling keys (the wide-open `PATCH /:id`
-// agentConfig escape hatch overwrites the whole blob). Unflagged: a benign
-// settings surface with no runtime-gating concern.
-
-const projectFactsPatchBodySchema = z
-  .object({
-    projectFacts: projectFactsPatchSchema,
-    projectFactsConfig: projectFactsConfigPatchSchema,
-  })
-  .strict();
-
-projectRoutes.get(
-  '/:id/project-facts',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    if (!access.role) throw forbidden('not a project member');
-
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    if (!row) throw notFound();
-
-    const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
-    return c.json({
-      projectFacts: (ac.projectFacts as Record<string, string> | undefined) ?? {},
-      projectFactsConfig:
-        (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
-      maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
-    });
-  },
-);
-
-projectRoutes.patch(
-  '/:id/project-facts',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  zValidator('json', projectFactsPatchBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const patch = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
-
-    // Atomic read-modify-write of agentConfig — only the projectFacts /
-    // projectFactsConfig sub-keys are touched; sibling keys (pipelineConfig,
-    // stateContext, …) survive. Reserved (derived) keys are dropped by the
-    // mergers, so a caller can't shadow base-branch/test-creds/etc.
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    if (!row) throw notFound();
-    let ac = { ...((row.agentConfig ?? {}) as Record<string, unknown>) };
-
-    // A `null` merge result drops the key entirely (via filter rather than
-    // `delete` to match the stateContext branch + satisfy lint/noDelete).
-    const dropKey = (obj: Record<string, unknown>, key: string) =>
-      Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
-
-    if (patch.projectFacts !== undefined) {
-      const merged = mergeProjectFacts(ac.projectFacts, patch.projectFacts);
-      ac = merged === null ? dropKey(ac, 'projectFacts') : { ...ac, projectFacts: merged };
-    }
-    if (patch.projectFactsConfig !== undefined) {
-      const merged = mergeProjectFactsConfig(ac.projectFactsConfig, patch.projectFactsConfig);
-      ac =
-        merged === null ? dropKey(ac, 'projectFactsConfig') : { ...ac, projectFactsConfig: merged };
-    }
-
-    await db.update(projects).set({ agentConfig: ac }).where(eq(projects.id, id));
-
-    // AC6: write-through to knowledge_entries when the flag is ON.
-    if (
-      env.KNOWLEDGE_INJECTION_ENABLED &&
-      patch.projectFacts !== undefined &&
-      patch.projectFacts !== null
-    ) {
-      logger.warn(
-        { projectId: id },
-        'PATCH /project-facts is deprecated; writing through to knowledge_entries',
-      );
-      const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
-      const factsConfig =
-        (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {};
-      const factsMap = (ac.projectFacts as Record<string, string> | undefined) ?? {};
-      const patchEntries = Object.entries(patch.projectFacts as Record<string, string | null>);
-      for (let i = 0; i < patchEntries.length; i++) {
-        const [key, value] = patchEntries[i] as [string, string | null];
-        if (reserved.has(key)) continue;
-        if (value === null) {
-          await deleteKnowledgeEntry(id, key).catch(() => undefined);
-        } else {
-          const alwaysInject = factsConfig[key]?.alwaysInject === true;
-          await upsertKnowledgeEntry({
-            projectId: id,
-            slug: key,
-            title: key,
-            body: value,
-            kind: 'guide',
-            injection: alwaysInject ? 'always' : 'on_demand',
-            confidence: 'verified',
-            authoredBy: 'human',
-            orderIndex: Object.keys(factsMap).indexOf(key),
-          }).catch((err: Error) => {
-            logger.warn(
-              { err: err.message, key },
-              'project-facts REST: knowledge write-through failed',
-            );
-          });
-        }
-      }
-    }
-
-    return c.json({
-      projectFacts: (ac.projectFacts as Record<string, string> | undefined) ?? {},
-      projectFactsConfig:
-        (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
-      maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
-    });
-  },
-);
+// GET/PATCH /:id/project-facts (incl. the knowledge_entries write-through
+// deprecation shim) live in ./project-facts-routes.ts, next to
+// ./project-facts.ts. Mounted here so they inherit this router's auth
+// middleware exactly as before the split.
+projectRoutes.route('/', projectFactsRoutes);
 
 // ─── Branch config (ISS-135 PR-A) ───────────────────────────────────────────
 //
@@ -1189,179 +781,9 @@ projectRoutes.get(
   },
 );
 
-// ISS-2A: idempotent first-run bootstrap. Binds the 7 stage-mapped global
-// `forge-*` skills to the project, applies the Balanced pipelineConfig
-// preset (only when no preset is set yet), and returns the result. Re-running
-// the call after the project is already bootstrapped is a no-op.
-const bootstrapParamSchema = z.object({ id: z.uuid() });
-
-// ISS-453 — named skill template sets. Each entry is a stage→skill binding the
-// bootstrap materialises via clone-on-first-use. `forge-default` is derived
-// from STATUS_TO_JOB_TYPE so it reproduces the original inline loop exactly
-// (regression-safe); adding a set is a data entry here, not new code.
-const TEMPLATE_SETS: Record<string, ReadonlyArray<{ stage: string; skillName: string }>> = {
-  'forge-default': Object.entries(STATUS_TO_JOB_TYPE).flatMap(([status, mapping]) =>
-    mapping ? [{ stage: status, skillName: `forge-${mapping.type}` }] : [],
-  ),
-};
-
-const BALANCED_PRESET = {
-  enabled: true,
-  autoTriage: true,
-  // Clarify opt-in is explicit: the builtin seed ships no forge-clarify
-  // global skill, so the `confirmed` stage soft-skips (missing_skill) to
-  // `clarified` until a project registers one AND flips this toggle.
-  autoClarify: false,
-  autoPlan: true,
-  autoCode: false,
-  autoReview: true,
-  autoTest: true,
-  autoFix: true,
-  autoRelease: false,
-} as const;
-
-// ISS-453 — named pipelineConfig presets. Only `balanced` is wired today;
-// Stable/Aggressive plug in later as new entries (data only, no handler code).
-type PipelinePreset = Readonly<Record<keyof typeof BALANCED_PRESET, boolean>>;
-const PIPELINE_PRESETS: Record<string, PipelinePreset> = {
-  balanced: BALANCED_PRESET,
-};
-
-// Optional body — an absent/empty POST keeps today's defaults, so existing
-// callers (web bootstrap button, MCP) are unaffected.
-const bootstrapBodySchema = z.object({
-  templateSet: z.string().optional(),
-  preset: z.string().optional(),
-});
-
-projectRoutes.post(
-  '/:id/skills/bootstrap',
-  zValidator('param', bootstrapParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    // ISS-453 — the body is optional (an empty POST keeps the defaults), so
-    // it is parsed by hand instead of zValidator('json'), which rejects a
-    // bodyless request. Unknown names fail fast before any mutation.
-    const rawBody: unknown = await c.req.json().catch(() => ({}));
-    const parsedBody = bootstrapBodySchema.safeParse(rawBody ?? {});
-    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
-    const templateSetName = parsedBody.data.templateSet ?? 'forge-default';
-    const presetName = parsedBody.data.preset ?? 'balanced';
-    const templateSet = TEMPLATE_SETS[templateSetName];
-    if (!templateSet) {
-      throw badRequest({
-        templateSet: `unknown template set '${templateSetName}'`,
-      });
-    }
-    const preset = PIPELINE_PRESETS[presetName];
-    if (!preset) throw badRequest({ preset: `unknown preset '${presetName}'` });
-
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    // Already bootstrapped? Return current state, no mutation.
-    const existing = await db
-      .select({ id: skillRegistrations.id })
-      .from(skillRegistrations)
-      .where(eq(skillRegistrations.projectId, id))
-      .limit(1);
-
-    const [projectRow] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    const currentAc = (projectRow?.agentConfig ?? {}) as Record<string, unknown>;
-    const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
-
-    if (existing.length > 0) {
-      const countRows = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(skillRegistrations)
-        .where(eq(skillRegistrations.projectId, id));
-
-      // ISS-108 — backfill `states` for already-bootstrapped projects that
-      // pre-date this field. Skipped when operator already wrote a `states`
-      // entry (their value wins). Avoids a separate reseed flow.
-      if (currentPipeline.states === undefined) {
-        const patched = {
-          ...currentAc,
-          pipelineConfig: { ...currentPipeline, states: defaultStatesConfig() },
-        };
-        await db.update(projects).set({ agentConfig: patched }).where(eq(projects.id, id));
-      }
-
-      return c.json({
-        alreadyBootstrapped: true,
-        skillsBound: Number(countRows[0]?.count ?? 0),
-        pipelineEnabled: currentPipeline.enabled === true,
-      });
-    }
-
-    // Single path: each stage binds a PROJECT-owned skill. Materialise one by
-    // cloning the same-name global `forge-<type>` template into this project
-    // (clone-on-first-use); a global is never registered directly. Stages whose
-    // template is absent (partial builtin seed) are skipped. See
-    // docs/skills-scope-playbook.md.
-    const toInsert: Array<{
-      projectId: string;
-      skillId: string;
-      stage: string;
-      registeredBy: string;
-    }> = [];
-    for (const { stage, skillName } of templateSet) {
-      const skillId = await resolveOrAdoptProjectSkill(id, skillName);
-      if (!skillId) continue;
-      toInsert.push({ projectId: id, skillId, stage, registeredBy: userId });
-    }
-
-    if (toInsert.length === 0) {
-      throw new HTTPException(503, {
-        message: 'no skill templates available — server skill seed has not run',
-        cause: { code: 'NO_GLOBAL_SKILLS' },
-      });
-    }
-
-    await db.insert(skillRegistrations).values(toInsert);
-
-    // Apply the selected preset (Balanced by default) only when no
-    // pipelineConfig.enabled flag has been set yet — never clobber a user's
-    // deliberate config.
-    const shouldSetPreset = currentPipeline.enabled === undefined;
-    if (shouldSetPreset) {
-      const merged = {
-        ...currentAc,
-        pipelineConfig: {
-          ...currentPipeline,
-          ...preset,
-          states: defaultStatesConfig(),
-        },
-      };
-      await db.update(projects).set({ agentConfig: merged }).where(eq(projects.id, id));
-    } else if (currentPipeline.states === undefined) {
-      // Preset stays untouched but ensure `states` is populated so the
-      // orchestrator can rely on the field.
-      const patched = {
-        ...currentAc,
-        pipelineConfig: { ...currentPipeline, states: defaultStatesConfig() },
-      };
-      await db.update(projects).set({ agentConfig: patched }).where(eq(projects.id, id));
-    }
-
-    const skillsBound = toInsert.length;
-    const pipelineEnabled = shouldSetPreset ? preset.enabled : currentPipeline.enabled === true;
-
-    return c.json(
-      {
-        alreadyBootstrapped: false,
-        skillsBound,
-        pipelineEnabled,
-      },
-      201,
-    );
-  },
-);
+// ISS-2A / ISS-453 — POST /:id/skills/bootstrap. The template sets, presets,
+// and idempotent bootstrap workflow are skills-domain logic and live in
+// ../skills/bootstrap-service.ts; the thin HTTP delegate lives in
+// ./skills-bootstrap-routes.ts. Mounted here so it inherits this router's
+// auth middleware exactly as before the split.
+projectRoutes.route('/', skillsBootstrapRoutes);

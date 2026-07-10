@@ -1,39 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import {
-  budgetSchema,
-  mergeStateContext,
-  stateContextSchema,
-} from './state-context.js';
+import { budgetSchema, mergeStateContext, stateContextSchema } from './state-context.js';
 
 describe('budgetSchema', () => {
   it('accepts a typical budget', () => {
-    expect(
-      budgetSchema.parse({ perRunUsd: 1, perMonthUsd: 50, action: 'pause' }),
-    ).toEqual({ perRunUsd: 1, perMonthUsd: 50, action: 'pause' });
+    expect(budgetSchema.parse({ perRunUsd: 1, perMonthUsd: 50, action: 'pause' })).toEqual({
+      perRunUsd: 1,
+      perMonthUsd: 50,
+      action: 'pause',
+    });
   });
 
   it('accepts zero for both amounts', () => {
-    expect(
-      budgetSchema.parse({ perRunUsd: 0, perMonthUsd: 0, action: 'warn' }),
-    ).toEqual({ perRunUsd: 0, perMonthUsd: 0, action: 'warn' });
+    expect(budgetSchema.parse({ perRunUsd: 0, perMonthUsd: 0, action: 'warn' })).toEqual({
+      perRunUsd: 0,
+      perMonthUsd: 0,
+      action: 'warn',
+    });
   });
 
   it('rejects negative perRunUsd', () => {
-    expect(
-      budgetSchema.safeParse({ perRunUsd: -1, perMonthUsd: 10, action: 'warn' }).success,
-    ).toBe(false);
+    expect(budgetSchema.safeParse({ perRunUsd: -1, perMonthUsd: 10, action: 'warn' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects negative perMonthUsd', () => {
-    expect(
-      budgetSchema.safeParse({ perRunUsd: 1, perMonthUsd: -1, action: 'warn' }).success,
-    ).toBe(false);
+    expect(budgetSchema.safeParse({ perRunUsd: 1, perMonthUsd: -1, action: 'warn' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects an unknown action', () => {
-    expect(
-      budgetSchema.safeParse({ perRunUsd: 1, perMonthUsd: 10, action: 'kill' }).success,
-    ).toBe(false);
+    expect(budgetSchema.safeParse({ perRunUsd: 1, perMonthUsd: 10, action: 'kill' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects perRunUsd above 1000', () => {

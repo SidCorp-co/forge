@@ -2,7 +2,13 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { orgInvitations, organizations, projectInvitations, projects, users } from '../db/schema.js';
+import {
+  orgInvitations,
+  organizations,
+  projectInvitations,
+  projects,
+  users,
+} from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { consumeInvitationToken } from './invitation-token.js';
 
