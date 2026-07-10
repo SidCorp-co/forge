@@ -22,6 +22,7 @@ import {
   type ProjectGitCredentialSource,
 } from '../db/schema.js';
 import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
+import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
 import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
@@ -133,7 +134,7 @@ export async function createOrgSshKey(
   if (!isVaultConfigured()) throw vaultUnavailable();
 
   const comment = `forge-${input.name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 40) || 'key'}`;
-  let keypair: { publicKey: string; privateKey: string; fingerprint: string };
+  let keypair: { publicKey: string; privateKey: string; fingerprint: string | null };
   let source: ProjectGitCredentialSource;
   try {
     if (input.mode === 'generate') {
@@ -217,12 +218,20 @@ export async function deleteOrgSshKey(orgId: string, keyId: string): Promise<voi
   await db.delete(workspaceSshKeys).where(eq(workspaceSshKeys.id, keyId));
 }
 
-/** Decrypt + probe a pool key's reachability against `repoUrl` (git ls-remote). */
+/**
+ * Decrypt + probe a pool key's reachability against `repoUrl` (git ls-remote).
+ * `repoUrl` is caller-supplied (the member is testing a key against a repo
+ * they're about to attach it to), so it's validated to an SSH-form remote
+ * resolving to a public host before it ever reaches `testSshConnection` —
+ * see `git/ssh-host-guard.ts` for why (RCE via `ext::`, SSRF via a private
+ * host).
+ */
 export async function testOrgSshKey(
   orgId: string,
   keyId: string,
   repoUrl: string,
 ): Promise<SshConnTestResult> {
+  await assertSafeSshRepoUrl(repoUrl);
   if (!isVaultConfigured()) throw vaultUnavailable();
 
   const [row] = await db

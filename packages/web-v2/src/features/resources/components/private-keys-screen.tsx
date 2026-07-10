@@ -13,17 +13,87 @@ import {
 	CardTitle,
 	EmptyState,
 	ErrorState,
+	Input,
 	MonoTag,
 	PageContainer,
+	SlideOver,
 	Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useState } from "react";
-import { keyInUseDetails, useDeleteSshKey, useOrgSshKeys } from "../hooks";
-import type { WorkspaceSshKeyView } from "../types";
+import { keyInUseDetails, useDeleteSshKey, useOrgSshKeys, useTestSshKey } from "../hooks";
+import type { SshConnTestResult, WorkspaceSshKeyView } from "../types";
 import { ConfirmDialog } from "@/features/orgs/components/confirm-dialog";
 import { PrivateKeyCreateSlideOver } from "./private-key-create-slideover";
+
+/** Test a pool key's reachability against a caller-supplied SSH repo URL. */
+function TestSshKeyDialog({
+	sshKey,
+	orgId,
+	onClose,
+}: {
+	sshKey: WorkspaceSshKeyView | null;
+	orgId: string;
+	onClose: () => void;
+}) {
+	const [repoUrl, setRepoUrl] = useState("");
+	const [result, setResult] = useState<SshConnTestResult | null>(null);
+	const test = useTestSshKey(orgId);
+
+	function close() {
+		setRepoUrl("");
+		setResult(null);
+		test.reset();
+		onClose();
+	}
+
+	function runTest() {
+		if (!sshKey || !repoUrl.trim()) return;
+		setResult(null);
+		test.mutate(
+			{ keyId: sshKey.id, repoUrl: repoUrl.trim() },
+			{ onSuccess: setResult },
+		);
+	}
+
+	return (
+		<SlideOver open={sshKey !== null} onClose={close} title={`Test "${sshKey?.name ?? ""}"`} width={420}>
+			<div className="flex h-full flex-col gap-4">
+				<p className="fg-body-sm text-subtle">
+					Enter the SSH clone URL you plan to use with this key (e.g. git@github.com:org/repo.git)
+					to check it&apos;s reachable and authorised.
+				</p>
+				<Input
+					placeholder="git@github.com:org/repo.git"
+					value={repoUrl}
+					onChange={(e) => setRepoUrl(e.target.value)}
+				/>
+				{result && (
+					<p
+						className={`fg-body-sm ${result.ok ? "text-[var(--green-600)]" : "text-[var(--red-600)]"}`}
+					>
+						{result.message}
+					</p>
+				)}
+				<div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
+					<Button type="button" variant="ghost" onClick={close}>
+						Close
+					</Button>
+					<Button
+						type="button"
+						variant="primary"
+						loading={test.isPending}
+						disabled={!repoUrl.trim()}
+						onClick={runTest}
+					>
+						Run test
+					</Button>
+				</div>
+			</div>
+		</SlideOver>
+	);
+}
 
 function CopyButton({ value }: { value: string }) {
 	const [copied, setCopied] = useState(false);
@@ -47,9 +117,11 @@ function CopyButton({ value }: { value: string }) {
 function PrivateKeyCard({
 	sshKey,
 	onDelete,
+	onTest,
 }: {
 	sshKey: WorkspaceSshKeyView;
 	onDelete: (key: WorkspaceSshKeyView) => void;
+	onTest: (key: WorkspaceSshKeyView) => void;
 }) {
 	return (
 		<div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
@@ -58,9 +130,14 @@ function PrivateKeyCard({
 					<span className="truncate font-semibold text-fg">{sshKey.name}</span>
 					{sshKey.fingerprint && <MonoTag>{sshKey.fingerprint}</MonoTag>}
 				</div>
-				<Button variant="ghost" size="sm" icon="trash" onClick={() => onDelete(sshKey)}>
-					Delete
-				</Button>
+				<div className="flex items-center gap-1">
+					<Button variant="ghost" size="sm" icon="activity" onClick={() => onTest(sshKey)}>
+						Test
+					</Button>
+					<Button variant="ghost" size="sm" icon="trash" onClick={() => onDelete(sshKey)}>
+						Delete
+					</Button>
+				</div>
 			</div>
 			{sshKey.note && <p className="fg-body-sm text-subtle">{sshKey.note}</p>}
 			<div className="flex items-center justify-between gap-2">
@@ -91,6 +168,7 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 	const [createOpen, setCreateOpen] = useState(false);
 	const [deleteTarget, setDeleteTarget] = useState<WorkspaceSshKeyView | null>(null);
 	const [inUseError, setInUseError] = useState<ReturnType<typeof keyInUseDetails>>(null);
+	const [testTarget, setTestTarget] = useState<WorkspaceSshKeyView | null>(null);
 
 	function closeDelete() {
 		setDeleteTarget(null);
@@ -148,7 +226,7 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 					) : (
 						<div className="flex flex-col gap-3">
 							{rows.map((k) => (
-								<PrivateKeyCard key={k.id} sshKey={k} onDelete={setDeleteTarget} />
+								<PrivateKeyCard key={k.id} sshKey={k} onDelete={setDeleteTarget} onTest={setTestTarget} />
 							))}
 						</div>
 					)}
@@ -167,6 +245,10 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 					onClose={() => setCreateOpen(false)}
 					orgId={orgId}
 				/>
+			)}
+
+			{orgId && (
+				<TestSshKeyDialog sshKey={testTarget} orgId={orgId} onClose={() => setTestTarget(null)} />
 			)}
 
 			<ConfirmDialog

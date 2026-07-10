@@ -28,6 +28,7 @@ import {
 	Skeleton,
 	useNow,
 } from "@/design";
+import { ConfirmDialog } from "@/features/orgs/components/confirm-dialog";
 import { useUpdateProject } from "@/features/project-settings/hooks";
 import { useProject } from "@/features/projects/hooks";
 import { PrivateKeyCreateSlideOver } from "@/features/resources/components/private-key-create-slideover";
@@ -111,6 +112,7 @@ function GitConfigCard({
 	const pool = useOrgSshKeys(orgId);
 	const [url, setUrl] = useState(repoUrl ?? "");
 	const [createOpen, setCreateOpen] = useState(false);
+	const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
 
 	const urlDirty = url.trim() !== (repoUrl ?? "");
 	const credData = cred.data;
@@ -221,7 +223,7 @@ function GitConfigCard({
 											size="sm"
 											icon="trash"
 											loading={delCred.isPending}
-											onClick={() => delCred.mutate()}
+											onClick={() => setDetachConfirmOpen(true)}
 										>
 											Detach key
 										</Button>
@@ -280,6 +282,17 @@ function GitConfigCard({
 					onCreated={(key) => setCred.mutate(key.id)}
 				/>
 			)}
+
+			<ConfirmDialog
+				open={detachConfirmOpen}
+				title="Detach deploy key?"
+				message="This project stops using the key for cloning/pushing; the key itself stays in the org pool and can be re-attached anytime."
+				confirmLabel="Detach key"
+				tone="danger"
+				loading={delCred.isPending}
+				onConfirm={() => delCred.mutate(undefined, { onSuccess: () => setDetachConfirmOpen(false) })}
+				onClose={() => setDetachConfirmOpen(false)}
+			/>
 		</Card>
 	);
 }

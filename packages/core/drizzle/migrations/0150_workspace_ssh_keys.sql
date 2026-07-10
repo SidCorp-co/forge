@@ -3,7 +3,13 @@
 -- `project_git_credentials` reshapes into a thin (project_id, ssh_key_id)
 -- reference. Ciphertext moves verbatim — no vault access, no decrypt, at
 -- migration time.
-BEGIN;
+--
+-- No explicit BEGIN/COMMIT here — drizzle-orm's migrate() already wraps every
+-- pending migration file in one outer transaction. A mid-file COMMIT would
+-- land this schema change before the `__drizzle_migrations` tracking row is
+-- written, so a crash in that window leaves the schema migrated-but-unrecorded
+-- (the next run then fails on `CREATE TABLE … already exists`); the orphan-gate
+-- RAISE EXCEPTION below still rolls back correctly without it.
 
 CREATE TABLE "workspace_ssh_keys" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -91,5 +97,3 @@ ALTER TABLE "project_git_credentials" DROP COLUMN "fingerprint";
 --> statement-breakpoint
 
 CREATE UNIQUE INDEX "workspace_ssh_keys_org_fingerprint_uq" ON "workspace_ssh_keys" USING btree ("org_id","fingerprint") WHERE "fingerprint" IS NOT NULL;
-
-COMMIT;
