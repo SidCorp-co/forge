@@ -35,6 +35,7 @@ import {
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
 import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
+import { SHARED_ISSUE_PATCH_FIELDS, collectIssueFieldUpdates } from './patch-fields.js';
 import { type PipelineHealth, hydratePipelineHealthForIssues } from './pipeline-health.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
@@ -579,42 +580,14 @@ issueRoutes.patch(
         after[field] = next;
       }
     };
-    if (patch.title !== undefined) {
-      updates.title = patch.title;
-      track('title', patch.title);
-    }
-    if (patch.description !== undefined) {
-      updates.description = patch.description;
-      track('description', patch.description);
-    }
-    if (patch.priority !== undefined) {
-      updates.priority = patch.priority;
-      track('priority', patch.priority);
-    }
-    if (patch.category !== undefined) {
-      updates.category = patch.category;
-      track('category', patch.category);
-    }
-    if (patch.complexity !== undefined) {
-      updates.complexity = patch.complexity;
-      track('complexity', patch.complexity);
-    }
-    if (patch.plan !== undefined) {
-      updates.plan = patch.plan;
-      track('plan', patch.plan);
-    }
-    if (patch.acceptanceCriteria !== undefined) {
-      updates.acceptanceCriteria = patch.acceptanceCriteria;
-      track('acceptanceCriteria', patch.acceptanceCriteria);
-    }
-    if (patch.suggestedSolution !== undefined) {
-      updates.suggestedSolution = patch.suggestedSolution;
-      track('suggestedSolution', patch.suggestedSolution);
-    }
-    if (patch.assigneeId !== undefined) {
-      updates.assigneeId = patch.assigneeId;
-      track('assigneeId', patch.assigneeId);
-    }
+    // Plain fields via the shared whitelist (issues/patch-fields.ts) so the
+    // REST and MCP update surfaces cannot drift column lists.
+    Object.assign(
+      updates,
+      collectIssueFieldUpdates(patch, [...SHARED_ISSUE_PATCH_FIELDS, 'assigneeId'], (f, v) =>
+        track(f as keyof IssueRow, v),
+      ),
+    );
     if (patch.metadata !== undefined) {
       const baseRaw = patch.metadata?.branchConfig?.baseBranch;
       if (typeof baseRaw === 'string' && isSelfReferentialBranch(baseRaw, issue.issSeq)) {
@@ -625,10 +598,6 @@ issueRoutes.patch(
       }
       updates.metadata = patch.metadata;
       track('metadata', patch.metadata);
-    }
-    if (patch.releaseNotes !== undefined) {
-      updates.releaseNotes = patch.releaseNotes;
-      track('releaseNotes', patch.releaseNotes);
     }
 
     const actor = { type: 'user' as const, id: userId };

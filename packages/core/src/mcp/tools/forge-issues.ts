@@ -15,6 +15,11 @@ import {
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
 import {
+  MCP_ONLY_ISSUE_PATCH_FIELDS,
+  SHARED_ISSUE_PATCH_FIELDS,
+  collectIssueFieldUpdates,
+} from '../../issues/patch-fields.js';
+import {
   AttachmentError,
   type DecodedAttachment,
   decodeAndValidateAttachments,
@@ -885,35 +890,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           );
         }
 
-        const updates: Record<string, unknown> = {};
-        if (input.data.title !== undefined) updates.title = input.data.title;
-        if (input.data.description !== undefined) updates.description = input.data.description;
-        if (input.data.priority !== undefined) updates.priority = input.data.priority;
-        if (input.data.category !== undefined) updates.category = input.data.category;
-        if (input.data.complexity !== undefined) updates.complexity = input.data.complexity;
-        if (input.data.plan !== undefined) updates.plan = input.data.plan;
-        if (input.data.acceptanceCriteria !== undefined) {
-          updates.acceptanceCriteria = input.data.acceptanceCriteria;
-        }
-        if (input.data.suggestedSolution !== undefined) {
-          updates.suggestedSolution = input.data.suggestedSolution;
-        }
-        if (input.data.sessionContext !== undefined) {
-          updates.sessionContext = input.data.sessionContext;
-        }
-        if (input.data.aiSummary !== undefined) updates.aiSummary = input.data.aiSummary;
-        if (input.data.aiSuggestedSolution !== undefined) {
-          updates.aiSuggestedSolution = input.data.aiSuggestedSolution;
-        }
-        if (input.data.aiAcceptanceCriteria !== undefined) {
-          updates.aiAcceptanceCriteria = input.data.aiAcceptanceCriteria;
-        }
-        if (input.data.aiConfidence !== undefined) {
-          updates.aiConfidence = input.data.aiConfidence;
-        }
-        if (input.data.releaseNotes !== undefined) {
-          updates.releaseNotes = input.data.releaseNotes;
-        }
+        // Shared whitelist (issues/patch-fields.ts) — same plain columns as
+        // REST PATCH plus the MCP-only agent-facing fields.
+        const updates = collectIssueFieldUpdates(input.data as Record<string, unknown>, [
+          ...SHARED_ISSUE_PATCH_FIELDS,
+          ...MCP_ONLY_ISSUE_PATCH_FIELDS,
+        ]);
 
         if (Object.keys(updates).length > 0) {
           // Use sql`now()` (matching applyStatusTransition above) so a

@@ -8,6 +8,11 @@ import { agentSessionStatuses, agentSessions, issues, usageRecords } from '../db
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
+import {
+  EMPTY_USAGE_TOTALS,
+  usageSessionMatch,
+  usageTotalsSelection,
+} from '../usage-records/rollup.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
@@ -177,21 +182,10 @@ agentSessionRoutes.get(
 
     const { session } = await ensureSessionMember(id, userId);
 
-    const sessionMatch = sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid = ${id}`;
+    const sessionMatch = usageSessionMatch(sql`= ${id}`);
 
     const [totals] = await db
-      .select({
-        estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-        inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-        cacheReadTokens: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(
-          Number,
-        ),
-        cacheCreationTokens:
-          sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
-        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-        sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
-      })
+      .select(usageTotalsSelection())
       .from(usageRecords)
       .where(sessionMatch);
 
@@ -211,15 +205,7 @@ agentSessionRoutes.get(
     return c.json({
       sessionId: id,
       projectId: session.projectId,
-      ...(totals ?? {
-        estimatedCost: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        requests: 0,
-        sampleCount: 0,
-      }),
+      ...(totals ?? EMPTY_USAGE_TOTALS),
       models,
     });
   },
@@ -404,9 +390,7 @@ agentSessionRoutes.get(
           ),
         })
         .from(usageRecords)
-        .where(
-          sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid IN (${idList})`,
-        )
+        .where(usageSessionMatch(sql`IN (${idList})`))
         .groupBy(usageRecords.sessionId);
       for (const cr of costRows) {
         if (cr.sessionId) costById.set(cr.sessionId, cr.estimatedCost);

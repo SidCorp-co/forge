@@ -23,6 +23,11 @@ import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { openIssueRun } from '../pipeline/runs.js';
 import {
+  EMPTY_USAGE_TOTALS,
+  usageSessionMatch,
+  usageTotalsSelection,
+} from '../usage-records/rollup.js';
+import {
   TransitionError,
   type TransitionErrorCode,
   transitionIssueStatus,
@@ -552,36 +557,14 @@ issueExtrasRoutes.get(
         AND ${jobs.agentSessionId} IS NOT NULL
     )`;
     const [totals] = await db
-      .select({
-        estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-        inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-        cacheReadTokens:
-          sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
-        cacheCreationTokens:
-          sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
-        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-        sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
-      })
+      .select(usageTotalsSelection())
       .from(usageRecords)
-      // session_id is a uuid-shaped text column; guard the cast so a stray
-      // non-uuid value can't 500 the whole rollup.
-      .where(
-        sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid IN ${sessionIdSubquery}`,
-      );
+      .where(usageSessionMatch(sql`IN ${sessionIdSubquery}`));
 
     return c.json({
       issueId,
       projectId: issue.projectId,
-      ...(totals ?? {
-        estimatedCost: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        requests: 0,
-        sampleCount: 0,
-      }),
+      ...(totals ?? EMPTY_USAGE_TOTALS),
     });
   },
 );
