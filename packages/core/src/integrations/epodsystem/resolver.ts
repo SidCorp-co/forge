@@ -82,7 +82,7 @@ export async function resolveEpodsystemMcpEntries(
   const entries: Record<string, Record<string, unknown>> = {};
   for (const pair of pairs) {
     if (!pair.connection.secretsEnc) continue;
-    const label = (pair.binding as Record<string, unknown>).label as string ?? '';
+    const label = ((pair.binding as Record<string, unknown>).label as string) ?? '';
     const serverName = `epodsystem${labelToMcpSuffix(label)}`;
     try {
       const secrets = decryptConnectionSecrets<EpodsystemSecrets>(pair.connection);
@@ -93,7 +93,13 @@ export async function resolveEpodsystemMcpEntries(
       );
     } catch (err) {
       logger.warn(
-        { err, projectId, connectionId: pair.connection.id, bindingId: pair.binding.id, serverName },
+        {
+          err,
+          projectId,
+          connectionId: pair.connection.id,
+          bindingId: pair.binding.id,
+          serverName,
+        },
         'epodsystem-resolver: decrypt failed for binding, skipping',
       );
     }

@@ -194,7 +194,8 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
           // Enrichment is non-fatal; log without the key.
           logger.warn(
             {
-              connectionId: ctx.connectionId, bindingId: ctx.bindingId,
+              connectionId: ctx.connectionId,
+              bindingId: ctx.bindingId,
               err: err instanceof Error ? err.message : 'unknown',
             },
             'epodsystem: healthcheck enrichment failed (non-fatal)',

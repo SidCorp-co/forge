@@ -27,9 +27,7 @@ function decodeKey(raw: string): Buffer {
   }
   const buf = Buffer.from(raw, 'base64');
   if (buf.length !== KEY_LEN) {
-    throw new Error(
-      `INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes (got ${buf.length})`,
-    );
+    throw new Error(`INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes (got ${buf.length})`);
   }
   return buf;
 }

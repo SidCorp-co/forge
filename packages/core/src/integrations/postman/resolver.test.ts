@@ -152,7 +152,10 @@ describe('applyPostmanMcpServers (ISS-581 — opt-in gating)', () => {
 
   it('strips sentinel but preserves other entries when no active integration', async () => {
     listBindingsMock.mockResolvedValueOnce([]);
-    const merged = await applyPostmanMcpServers(PROJECT_ID, { postman: true, other: { type: 'stdio' } });
+    const merged = await applyPostmanMcpServers(PROJECT_ID, {
+      postman: true,
+      other: { type: 'stdio' },
+    });
     expect(merged).toEqual({ other: { type: 'stdio' } });
     expect(merged?.postman).toBeUndefined();
   });

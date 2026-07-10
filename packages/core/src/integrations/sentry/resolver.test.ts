@@ -128,7 +128,10 @@ describe('applySentryMcpServers (ISS-581 — opt-in gating)', () => {
 
   it('merges sentry spec alongside other entries when sentinel present', async () => {
     mockActiveRow({ host: 'logs.canawan.com' });
-    const merged = await applySentryMcpServers(PROJECT_ID, { other: { type: 'http' }, sentry: true });
+    const merged = await applySentryMcpServers(PROJECT_ID, {
+      other: { type: 'http' },
+      sentry: true,
+    });
     expect(merged).toMatchObject({ other: { type: 'http' }, sentry: { type: 'stdio' } });
   });
 
@@ -140,7 +143,10 @@ describe('applySentryMcpServers (ISS-581 — opt-in gating)', () => {
 
   it('strips sentinel but preserves other entries when no active integration', async () => {
     listBindingsMock.mockResolvedValueOnce([]);
-    const merged = await applySentryMcpServers(PROJECT_ID, { sentry: true, other: { type: 'stdio' } });
+    const merged = await applySentryMcpServers(PROJECT_ID, {
+      sentry: true,
+      other: { type: 'stdio' },
+    });
     expect(merged).toEqual({ other: { type: 'stdio' } });
     expect(merged?.sentry).toBeUndefined();
   });
@@ -162,7 +168,9 @@ describe('applySentryMcpServers (ISS-581 — opt-in gating)', () => {
   });
 
   it('leaves an existing sentry spec object untouched (no double-inject)', async () => {
-    const existing = { sentry: { type: 'stdio', command: 'npx', args: [], env: {}, enabled: true } };
+    const existing = {
+      sentry: { type: 'stdio', command: 'npx', args: [], env: {}, enabled: true },
+    };
     const merged = await applySentryMcpServers(PROJECT_ID, existing);
     expect(merged).toBe(existing);
     expect(listBindingsMock).not.toHaveBeenCalled();

@@ -82,7 +82,9 @@ describe('integration adapter capabilities', () => {
   it('capabilitiesFor falls back to the conservative default', () => {
     expect(capabilitiesFor(undefined)).toEqual(DEFAULT_CAPABILITIES);
     expect(
-      capabilitiesFor({ capabilities: undefined } as unknown as Parameters<typeof capabilitiesFor>[0]),
+      capabilitiesFor({ capabilities: undefined } as unknown as Parameters<
+        typeof capabilitiesFor
+      >[0]),
     ).toEqual(DEFAULT_CAPABILITIES);
     expect(
       capabilitiesFor({ capabilities: { canDispatch: true } as IntegrationCapabilities }),

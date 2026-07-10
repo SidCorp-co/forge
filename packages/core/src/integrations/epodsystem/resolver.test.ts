@@ -82,13 +82,19 @@ describe('resolveEpodsystemMcpEntries (ISS-558 — N bindings)', () => {
       .mockReturnValueOnce({ apiKey: 'crmk_key3' });
 
     const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
-    expect(Object.keys(entries).sort()).toEqual(['epodsystem', 'epodsystem_store_b', 'epodsystem_store_c']);
+    expect(Object.keys(entries).sort()).toEqual([
+      'epodsystem',
+      'epodsystem_store_b',
+      'epodsystem_store_c',
+    ]);
   });
 
   it('skips a binding whose key cannot be decrypted — others still inject', async () => {
     listBindingsMock.mockResolvedValueOnce([mockRow(''), mockRow('store-b')]);
     decryptConnectionSecretsMock
-      .mockImplementationOnce(() => { throw new Error('bad key'); })
+      .mockImplementationOnce(() => {
+        throw new Error('bad key');
+      })
       .mockReturnValueOnce({ apiKey: 'crmk_good' });
 
     const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);
@@ -100,8 +106,10 @@ describe('resolveEpodsystemMcpEntries (ISS-558 — N bindings)', () => {
 
   it('skips a binding with no secretsEnc', async () => {
     listBindingsMock.mockResolvedValueOnce([
-      { binding: { id: 'bind-1', projectId: PROJECT_ID, config: {}, label: '' },
-        connection: { id: 'conn-1', config: {}, secretsEnc: null } },
+      {
+        binding: { id: 'bind-1', projectId: PROJECT_ID, config: {}, label: '' },
+        connection: { id: 'conn-1', config: {}, secretsEnc: null },
+      },
     ]);
 
     const entries = await resolveEpodsystemMcpEntries(PROJECT_ID);

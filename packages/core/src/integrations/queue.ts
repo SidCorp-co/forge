@@ -2,8 +2,8 @@ import { INTEGRATIONS_QUEUE_NAME } from '../jobs/queue-name.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { coolifyAdapter } from './coolify/adapter.js';
-import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
+import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 
 export interface CoolifyDispatchJob {
   jobKind: 'coolify.dispatch';

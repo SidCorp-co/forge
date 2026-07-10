@@ -4,7 +4,10 @@
  * both the REST probe base and the MCP `SENTRY_HOST` env are well-formed.
  */
 export function sentryHost(host: string): string {
-  return host.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return host
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
 }
 
 /** REST API base used for the test-connection probe. Always https. */

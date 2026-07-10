@@ -39,9 +39,7 @@ describe('resolveSentryTargets', () => {
 
   it('synthesizes a default target from a partial legacy pair (org only)', () => {
     const cfg = base({ organizationSlug: 'anhome' });
-    expect(resolveSentryTargets(cfg)).toEqual([
-      { label: 'default', organizationSlug: 'anhome' },
-    ]);
+    expect(resolveSentryTargets(cfg)).toEqual([{ label: 'default', organizationSlug: 'anhome' }]);
   });
 
   it('returns [] for a host-only config with no targets or legacy slugs', () => {

@@ -18,9 +18,7 @@ import type { SentryConfig, SentryTarget } from './types.js';
  *     into one `'default'` target (ISS-524 back-compat — no migration);
  *  3. else `[]`.
  */
-export function resolveSentryTargets(
-  config: SentryConfig | null | undefined,
-): SentryTarget[] {
+export function resolveSentryTargets(config: SentryConfig | null | undefined): SentryTarget[] {
   if (!config) return [];
   if (Array.isArray(config.targets) && config.targets.length > 0) {
     return config.targets;
