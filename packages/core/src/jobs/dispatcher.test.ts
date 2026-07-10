@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The dispatch import graph reaches env-validating modules (embeddings via
+// the prompt/preamble chain); stub env so collection doesn't require real
+// DATABASE_URL/JWT_SECRET in unit-test runs.
+vi.mock('../config/env.js', () => ({
+  env: { NODE_ENV: 'test', JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef' },
+}));
+
 vi.mock('../db/client.js', () => {
   // Base impl returns an empty-row chain so an unmatched select (e.g. the
   // project-default mcpServers lookup `resolveProjectDefaultMcpServers`, which

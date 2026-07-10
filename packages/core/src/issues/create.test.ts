@@ -61,6 +61,11 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  // Base default AFTER reset: unscripted selects resolve to no rows. The
+  // create route now runs the intake gate (`resolveIntakeGate` selects the
+  // project's agentConfig); an empty row = gate disabled = legacy behavior.
+  // Per-test `mockResolvedValueOnce` scripts still take precedence in order.
+  selectLimit.mockResolvedValue([]);
   insertReturning.mockReset();
   projectAccess.mockReset();
 });

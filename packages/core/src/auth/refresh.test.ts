@@ -12,7 +12,6 @@ type CandidateRow = {
   id: string;
   userId: string;
   tokenPrefix: string;
-  disabledAt: null,
   tokenHash: string;
   expiresAt: Date;
   usedAt: Date | null;
@@ -146,7 +145,6 @@ function row(overrides: Partial<CandidateRow> = {}): CandidateRow {
     id: 'row-1',
     userId: 'user-1',
     tokenPrefix: 'PRESENTE',
-    disabledAt: null,
     tokenHash: 'stored-hash',
     expiresAt: new Date(Date.now() + 60_000),
     usedAt: null,
@@ -203,7 +201,6 @@ describe('POST /api/auth/refresh', () => {
     expect(txState.insertValues[0]).toMatchObject({
       userId: 'user-1',
       tokenPrefix: 'NEWRAW__',
-      disabledAt: null,
       tokenHash: 'new-hash',
     });
     expect(txState.insertValues[0]?.expiresAt).toBeInstanceOf(Date);

@@ -18,23 +18,23 @@ describe('buildSkillImprovePrompt', () => {
     expect(result).toBeNull();
   });
 
-  it('includes message text, rationale, and appliesWhen in the prompt', () => {
+  it('includes message text and rationale in the prompt', () => {
     const prompt = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
       appliedMessageVersions: null,
     });
     expect(prompt).not.toBeNull();
-    expect(prompt).toContain('merged-at-on-pass');
-    expect(prompt).toContain('forge_issues.mark_merged');
-    expect(prompt).toContain('blocks/decomposes');
-    // appliesWhen should be included
-    expect(prompt).toContain('base-merge state');
+    expect(prompt).toContain('optimize-skills');
+    // message body
+    expect(prompt).toContain('per-skill memory');
+    // rationale
+    expect(prompt).toContain('Skills improve continuously');
   });
 
   it('includes the 4-source context reading instructions', () => {
     const prompt = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
       appliedMessageVersions: null,
     });
@@ -51,7 +51,7 @@ describe('buildSkillImprovePrompt', () => {
 
   it('propose mode — instructs agent to create draft issue, not update skill directly', () => {
     const prompt = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
       appliedMessageVersions: null,
     });
@@ -63,7 +63,7 @@ describe('buildSkillImprovePrompt', () => {
 
   it('auto mode — instructs agent to call forge_skills.update directly', () => {
     const prompt = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'auto',
       appliedMessageVersions: null,
     });
@@ -73,7 +73,7 @@ describe('buildSkillImprovePrompt', () => {
 
   it('includes the sentinel instruction', () => {
     const prompt = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
       appliedMessageVersions: null,
     });
@@ -83,35 +83,35 @@ describe('buildSkillImprovePrompt', () => {
 
   it('idempotency: returns null when applied version === registry version', () => {
     const result = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
       // registry version is 1
-      appliedMessageVersions: { 'merged-at-on-pass': 1 },
+      appliedMessageVersions: { 'optimize-skills': 1 },
     });
     expect(result).toBeNull();
   });
 
   it('idempotency: returns null when applied version > registry version', () => {
     const result = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
-      appliedMessageVersions: { 'merged-at-on-pass': 99 },
+      appliedMessageVersions: { 'optimize-skills': 99 },
     });
     expect(result).toBeNull();
   });
 
   it('idempotency: builds prompt when applied version < registry version', () => {
     const result = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
-      appliedMessageVersions: { 'merged-at-on-pass': 0 },
+      appliedMessageVersions: { 'optimize-skills': 0 },
     });
     expect(result).not.toBeNull();
   });
 
   it('idempotency: builds prompt when key is absent from appliedVersions', () => {
     const result = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
       appliedMessageVersions: { 'some-other-key': 5 },
     });
@@ -120,49 +120,26 @@ describe('buildSkillImprovePrompt', () => {
 
   it('idempotency: builds prompt when appliedMessageVersions is null', () => {
     const result = buildSkillImprovePrompt({
-      templateKey: 'merged-at-on-pass',
+      templateKey: 'optimize-skills',
       mode: 'propose',
       appliedMessageVersions: null,
     });
     expect(result).not.toBeNull();
   });
 
-  // ── Synthetic project context divergence examples ─────────────────────────
-  // These show what the AGENT would receive for each seed message / project type.
+  // ── Retired one-shot templates (ISS-556) ───────────────────────────────────
+  // The 3 seed templates moved out of the dispatchable registry into
+  // RETIRED_STRATEGY_INPUTS (steward reference data). Building a prompt for
+  // them must return null so a stale schedule row can never dispatch one.
 
-  it('release-conflict-2tier — prompt mentions 2-branch condition', () => {
-    const prompt = buildSkillImprovePrompt({
-      templateKey: 'release-conflict-2tier',
-      mode: 'propose',
-      appliedMessageVersions: null,
-    });
-    expect(prompt).not.toBeNull();
-    expect(prompt).toContain('release-conflict-2tier');
-    expect(prompt).toContain('baseBranch');
-    // appliesWhen condition text should be embedded
-    expect(prompt).toContain('productionBranch');
-  });
-
-  it('qa-quality-bar — prompt mentions FE/UI condition', () => {
-    const prompt = buildSkillImprovePrompt({
-      templateKey: 'qa-quality-bar',
-      mode: 'propose',
-      appliedMessageVersions: null,
-    });
-    expect(prompt).not.toBeNull();
-    expect(prompt).toContain('qa-quality-bar');
-    // appliesWhen references FE/UI
-    expect(prompt).toContain('frontend');
-  });
-
-  it('all 3 seed messages produce non-null prompts with no applied versions', () => {
+  it('retired strategy-input keys are no longer dispatchable', () => {
     for (const key of ['merged-at-on-pass', 'release-conflict-2tier', 'qa-quality-bar']) {
       const result = buildSkillImprovePrompt({
         templateKey: key,
         mode: 'propose',
         appliedMessageVersions: null,
       });
-      expect(result, `prompt for ${key} should not be null`).not.toBeNull();
+      expect(result, `prompt for retired ${key} should be null`).toBeNull();
     }
   });
 });

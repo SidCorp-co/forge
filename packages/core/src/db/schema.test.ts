@@ -377,13 +377,15 @@ describe('db/schema — devices', () => {
     expect(deviceStatuses).toEqual(['online', 'offline', 'revoked']);
   });
 
-  it('has the fourteen documented columns', () => {
+  it('has the fifteen documented columns', () => {
     const names = getTableConfig(devices).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
         'agent_version',
         'capabilities',
         'created_at',
+        // Reversible "turn off" switch — ignore the device across all projects.
+        'disabled_at',
         // ISS-305 — non-secret label for an auto-provisioned git push credential.
         'git_credential_ref',
         'id',
@@ -1046,12 +1048,14 @@ describe('db/schema — issue_labels', () => {
 });
 
 describe('db/schema — project_invitations', () => {
-  it('has the eight documented columns', () => {
+  it('has the nine documented columns', () => {
     const names = getTableConfig(projectInvitations).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
         'accepted_at',
         'created_at',
+        // ISS-597 — inbox recipients can dismiss an invitation notification.
+        'dismissed_at',
         'email',
         'expires_at',
         'inviter_id',

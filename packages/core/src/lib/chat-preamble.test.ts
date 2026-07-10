@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The preamble import graph reaches env-validating modules (embeddings via
+// prompt facts); stub env so collection doesn't require real secrets.
+vi.mock('../config/env.js', () => ({
+  env: { NODE_ENV: 'test', JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef' },
+}));
+
 vi.mock('../db/client.js', () => {
   const select = vi.fn();
   return { db: { select } };
