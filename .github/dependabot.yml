@@ -25,6 +25,13 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+      # Majors grouped into ONE PR per round: the pnpm workspace has a single
+      # lockfile, so per-directory major PRs (typescript ×4, vitest ×4, …)
+      # all collide on pnpm-lock.yaml — merging one conflicted the rest. One
+      # grouped PR = one review + one lockfile resolution. Auto-merge still
+      # skips majors (dependabot-auto-merge.yml flags them deps:needs-review).
+      majors:
+        update-types: ["major"]
 
   # Cargo for the Tauri desktop app's Rust backend. packages/dev/src-tauri/
   # is the only Cargo project; packages/core/ and packages/web-v2/ are pure TS.
