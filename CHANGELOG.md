@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Fixed a prod-safety bug where a pipeline deploy could redeploy production mid-pipeline: forge_coolify_deploy now honors an explicit integrationId as a hard scope filter and only touches production integrations at the release stage (autoProdDeploy no longer bypasses the human-confirm gate for pre-release deploys).
 - Workspace resources now include a reusable Private Keys pool for centralized SSH key management across projects.
 - Pipeline notifications now display clear, user-friendly messages when a job gets stuck — showing the actual blocker and next steps instead of technical implementation details.
 - Auto-retry jobs no longer wedge permanently after a usage/session limit failure — they now fail over to a different device immediately, and stuck retries no longer require manual cancellation to recover.
