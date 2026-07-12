@@ -120,6 +120,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A pipeline stage no longer spins in a loop re-dispatching a no-op when the runner it lands on is missing the required skill — the run now pauses with a clear reason after a few no-progress attempts, and the runner fails such a job over to a device that has the skill instead of recording it as done.
 - Scheduled runs (Dream / Doc-Sync / Skill Audit) and agent chat that hit a Claude usage limit now recover by failing over to an account with headroom and record a clear "rate-limited" reason, instead of silently dying with no explanation and wasting the slot.
 - Fixed foreign key violations in forge_comments when using PAT or device-less principals, and restored ability to comment on system runs.
+- Forge's automated pipeline (triage, plan, review, and test stages) now reasons more carefully before asking for more info, flagging a UX problem, or missing a repeated pattern across the codebase — while keeping the same bar so it doesn't bounce or reopen issues unnecessarily.
 
 ## [0.3.0] - 2026-06-11
 
