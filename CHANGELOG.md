@@ -119,6 +119,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pipeline issues no longer silently stall un-advanced when a usage limit is hit right after an agent finishes its work — the step is now correctly carried forward instead of exiting as done-but-stuck.
 - A pipeline stage no longer spins in a loop re-dispatching a no-op when the runner it lands on is missing the required skill — the run now pauses with a clear reason after a few no-progress attempts, and the runner fails such a job over to a device that has the skill instead of recording it as done.
 - Scheduled runs (Dream / Doc-Sync / Skill Audit) and agent chat that hit a Claude usage limit now recover by failing over to an account with headroom and record a clear "rate-limited" reason, instead of silently dying with no explanation and wasting the slot.
+- Fixed foreign key violations in forge_comments when using PAT or device-less principals, and restored ability to comment on system runs.
 
 ## [0.3.0] - 2026-06-11
 
