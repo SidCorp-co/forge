@@ -26,13 +26,16 @@ Post the report as an issue comment via `forge_comments → create`.
 
 ## Failure Detail
 
-When any test fails, add a **Failures** section below the table:
+When any test fails, add a **Failures** section below the table, framed as `Expectation → Observation → user impact → fix`:
 
 ```markdown
 **Failures:**
 
 **#2 — Mobile horizontal scroll (AC #3):**
-On viewport 375px, board columns stack vertically instead of scrolling horizontally. Expected swipeable horizontal layout per acceptance criteria.
+Expectation: swipeable horizontal layout per acceptance criteria.
+Observation: on viewport 375px, board columns stack vertically instead of scrolling horizontally.
+Impact: primary board navigation is unreachable on mobile.
+Fix: restore the horizontal scroll container at the narrow breakpoint.
 
 **API response:** (include relevant snippet if backend test)
 ```

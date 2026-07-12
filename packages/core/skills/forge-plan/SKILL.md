@@ -110,6 +110,16 @@ Glob: <source-root>/**/*<keyword>*
 - Check for shared dependencies — Grep for imports of any types/utilities you plan to change.
 - Read existing tests to understand testing patterns.
 
+#### Consistency / systemic-pattern sweep (signal-gated)
+
+Some issues describe a PATTERN, not a single spot — naming one location is an EXAMPLE, not the scope boundary. Signals: "sync" / "consistent" / "standardize" / "unify", "across" / "everywhere", "match the system/shared component", "e.g." / "such as", or replacing an ad-hoc thing with the shared one. Trigger ONLY on these signals — a simple, single-spot issue does NOT get swept (keeps lightweight plans lightweight). When triggered:
+
+1. **Identify the pattern** — the shared component/util to converge on and the ad-hoc anti-pattern it replaces.
+2. **Inventory first, before any change step.** Grep/ast-grep the whole relevant surface for every occurrence of the anti-pattern (and of the target, to copy correct usage). This inventory is the canonical checklist: every site must end up in Affected Files OR in a tracked follow-up — never silently dropped. (Agents default to fixing only the instance they were shown; the explicit inventory overrides that.)
+3. **All-or-track.** If the full set fits one reviewable change, plan all of it. If genuinely too large, plan the highest-value slice now and create a `draft` follow-up issue (a real issue, not a prose mention) enumerating every deferred site, linked `related_to`. "Done" = re-running the inventory grep returns zero survivors, OR every survivor is in an open follow-up.
+4. **Don't chase adjacent yaks.** Sweep only the one pattern this issue is about. A different smell → its own `draft` issue, never bolted onto this plan. If the issue only incidentally touches the ad-hoc pattern (not a standardization ask), keep cleanup a separate follow-up rather than expanding scope.
+5. If swept scope is materially larger than triage's complexity guess, say so in the plan comment so the coder/human can re-gauge; don't quietly shrink back to the named example.
+
 ### Step 5: Write the Plan
 
 Write the implementation plan following the format in `references/plan-format.md`. The plan goes into the issue's `plan` field:

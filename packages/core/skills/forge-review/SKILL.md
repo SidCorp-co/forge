@@ -79,7 +79,17 @@ For a change that introduces branching logic, crosses a module/service/tenant bo
 
 Any disproof that survives a second read becomes a **Bug** finding. Skip this pass for trivial or localized diffs — it's for the changes where being wrong is expensive.
 
-### 3c. Risk gate — multi-vote for high-risk diffs
+### 3c. Intent & mental-model lens (feature / UI changes)
+
+The five axes catch "is the code correct"; this lens catches "is this right for the user" — the gap a correctness-only review rubber-stamps. For any change that adds or alters a user-facing feature or screen, before writing the verdict:
+
+1. **Intent** — state in one line what this feature is for, from the user's perspective (the job they're doing), not what the code mechanically does.
+2. **Mental model** — what would a user expect here, based on (a) prior experience with similar tools, (b) the rest of this app, (c) real-world analogy? (destructive actions confirm; edits are undoable; an empty list explains itself; a failed save says the data is safe.)
+3. **Gap** — where does the implementation diverge from that intent/mental model? Surprising labels, a missing undo/confirm, an unhandled empty/loading/error path, an interaction that fights convention, a happy-path-only flow.
+
+Raise each gap as a finding AND propose the alternative — say what it should do instead and why, not just "improve X". A divergence that genuinely misleads or strands the user is a **Bug**; a rougher-than-it-should-be experience is **Minor**. Depth on the change you're already reviewing — don't widen scope to the whole app.
+
+### 3d. Risk gate — multi-vote for high-risk diffs
 
 Classify the diff before settling the verdict, using the changed-file list you already
 computed (Step 1) + the issue `complexity`. The diff is **HIGH-RISK** if ANY holds:

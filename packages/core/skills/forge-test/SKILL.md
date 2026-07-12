@@ -145,7 +145,9 @@ Drive `testUrl` with the project's wired browser MCP. Test in two passes — a f
 - Watch the console: any error thrown during the flow is a FAIL even if the screen looks fine.
 
 **Pass B — UX & accessibility quality bar (every screen the change touches):**
-Run the **Pass-B quality checklist** (`references/ui-quality-checklist.md`) over each affected screen. The bar is "would you ship this to a user", not "does the element exist". Cover, and record a verdict for each:
+Judge each affected screen as the **user**, not as a checklist — adopt the AC's persona, predict what they expect at each step (entry / action / result / error / empty) BEFORE you look, then walk the flow and record each gap as `Expectation → Observation → user impact → severity → concrete fix`. The full expectation-first procedure lives in `references/ui-quality-checklist.md` — run it over each affected screen as the lens for where to look. The bar is "would you ship this to a user", not "does the element exist".
+
+Run the **Pass-B quality checklist** (`references/ui-quality-checklist.md`) over each affected screen. Cover, and record a verdict for each:
 - **Responsive** — re-check the flow at narrow / medium / wide viewports; layout must not break, overflow, or hide primary actions at the narrow width.
 - **States** — exercise the **empty, loading, and error** states of any list / form / async surface the change touches — not just the happy path. A missing empty/error state is a FAIL.
 - **Accessibility** — every new interactive element reachable and operable by keyboard alone; icon-only controls and inputs have accessible labels; text legible and not conveyed by colour alone.
@@ -153,6 +155,8 @@ Run the **Pass-B quality checklist** (`references/ui-quality-checklist.md`) over
 - **Design consistency** — matches the app's existing components, spacing, and typography; no ad-hoc one-off styling.
 
 If the project has a `ux-contract` projectFact (a per-project UX standard, injected into your context), hold each affected screen to **its** *Definition of UX-Done* — that is the project's own bar; a missing applicable item there is a FAIL.
+
+**Calibrate the verdict so the pipeline doesn't loop on polish:** only a gap that genuinely breaks or strands the user is a FAIL → reopen (missing empty/error state, a primary action unreachable at a supported width, a control a role must not use is operable, another tenant's data on screen). A "would-be-nicer" or out-of-scope want is recorded in the **Verification** note, NOT a FAIL row — don't bounce an issue for polish.
 
 Tag quality failures distinctly (`UX` / `A11y` / `Responsive`) so forge-fix can triage severity — they are real FAILs, kept separate from functional FAILs. **Scope to the change** — audit the screens this issue adds or modifies; don't re-audit the whole app. For backend-only changes with no UI surface, skip Pass B and note "no UI surface".
 

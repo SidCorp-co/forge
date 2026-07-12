@@ -2,6 +2,16 @@
 
 Run over **each screen the issue adds or modifies** — not the whole app. Every box is a potential FAIL row. The bar is "would a user accept this", not "does the element render". Match the app's existing patterns; when unsure, copy what comparable screens already do rather than inventing.
 
+## Expectation-first — run this BEFORE ticking the dimensions
+
+1. **Persona & goal** — from the acceptance criteria, who is using this screen and what job are they trying to finish?
+2. **Predict before observing** — for each step of the flow (entry / action / result / error / empty), write down what that persona expects to see or be able to do BEFORE you look at the actual screen.
+3. **Walk & compare** — drive the flow, then compare what you saw against the prediction. Every mismatch is a candidate finding.
+4. **Adversarial pass** — ask "what's one thing this persona would also want here that isn't covered by the acceptance criteria?" (undo, confirmation, a way back, feedback that the action worked).
+5. **Frame each finding** as `Expectation → Observation → user impact → severity → concrete fix` — not just "this looks off".
+
+Then run the dimensions below as the lens for where to look. Judge each against what the persona expects, not mere presence.
+
 **1. Functional integrity**
 - No console errors during the flow; no broken/overlapping/clipped layout; no missing styles or blank sections.
 
