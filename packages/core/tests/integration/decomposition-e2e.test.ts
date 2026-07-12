@@ -335,13 +335,17 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       expect((first as unknown as { id: string; issue_id: string })?.issue_id).toBe(sub1);
 
       // Simulate sub1 reaching terminal — sub2 unblocks, sub3 still waits.
-      // ISS-232 — the `blockedBy` gate is satisfied only when the blocker has
-      // `merged_at` stamped OR is `closed` (a bare `released` no longer
-      // unblocks). Drive sub1 to `closed` so the gate releases sub2.
+      // ISS-232 — the `blockedBy` gate is satisfied when the blocker has
+      // `merged_at` stamped (or, only under a structurally-unstampable base,
+      // is `closed` — ISS-639). This project's base IS stampable (default
+      // config), so `closed` alone no longer unblocks sub2 — stamp
+      // `merged_at` too (mirrors the real `mark_merged` path).
       await harness.db.execute(sql`
         UPDATE jobs SET status = 'completed', finished_at = now() WHERE id = ${j1}
       `);
-      await harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${sub1}`);
+      await harness.db.execute(
+        sql`UPDATE issues SET status = 'closed', merged_at = now() WHERE id = ${sub1}`,
+      );
 
       const second = await mods.pickNextDispatchableJobForProject(project.id);
       expect(second).not.toBeNull();

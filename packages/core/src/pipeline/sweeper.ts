@@ -28,8 +28,14 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, jobs } from '../db/schema.js';
+import { type IssueStatus, agentSessions, comments, jobs } from '../db/schema.js';
+import {
+  type DeviceLite,
+  type TransitionIssueRow,
+  applyStatusTransition,
+} from '../issues/apply-transition.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
+import { resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import {
   type LoopMonitorResult,
@@ -82,6 +88,11 @@ export interface StallDetectResult {
   detected: number;
 }
 
+export interface ParkClosedUnmergedResult {
+  // dependent issues parked at `waiting` because their blocker was closed without merging.
+  parked: number;
+}
+
 export interface SweepResult {
   durationMs: number;
   /** ISS-449 — the primary closed-loop pass (reaps). */
@@ -95,6 +106,8 @@ export interface SweepResult {
   orphanedIssueRuns: IssueRunReapResult;
   /** ISS-442 — dependency deadlocks surfaced (a gate that will never clear). */
   stalledDependencies: StallDetectResult;
+  /** ISS-639 — dependents parked because their blocker closed without merging. */
+  parkedClosedUnmerged: ParkClosedUnmergedResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -163,6 +176,14 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const stalledDependencies = await runPass('detectStalledDependencies', () =>
     detectStalledDependencies(now),
   );
+  // ISS-639 — active counterpart to the blocks-gate `closed` bypass fix: a
+  // dependent whose blocker closed WITHOUT merging (under a stampable base)
+  // now simply sits queued past the gate rather than dispatching onto a base
+  // branch missing the blocker's code. Park it at `waiting` so a human picks
+  // the base, instead of leaving it silently stuck forever.
+  const parkedClosedUnmerged = await runPass('parkClosedUnmergedBlockedDependents', () =>
+    parkClosedUnmergedBlockedDependents(now),
+  );
   const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
   // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
@@ -189,6 +210,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedOneShotRuns: orphanedOneShotRuns as OneShotRunReapResult,
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
     stalledDependencies: stalledDependencies as StallDetectResult,
+    parkedClosedUnmerged: parkedClosedUnmerged as ParkClosedUnmergedResult,
     backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,
   };
@@ -233,7 +255,8 @@ const BLOCKER_STATUS_LABELS: Record<string, string> = {
 
 function blockerStatusLabel(status: string): string {
   return (
-    BLOCKER_STATUS_LABELS[status] ?? status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
+    BLOCKER_STATUS_LABELS[status] ??
+    status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
   );
 }
 
@@ -327,6 +350,125 @@ export async function detectStalledDependencies(
   } catch (err) {
     logger.error({ err }, 'pipeline-sweeper: stall detection pass failed (skipped)');
     return { detected: 0 };
+  }
+}
+
+type ClosedUnmergedRow = {
+  job_id: string;
+  project_id: string;
+  issue_id: string;
+  issue_status: IssueStatus;
+  issue_reopen_count: number;
+  blocker_seq: number;
+  blocker_title: string;
+  created_by: string | null;
+};
+
+/**
+ * ISS-639 — active counterpart to the blocks-gate fix in
+ * `jobs/dispatch-gates.ts`: when a project's `mergeStates.baseBranch` IS
+ * stampable, the gate no longer treats a `closed`+`merged_at IS NULL`
+ * blocker as satisfying `blockedBy`/`decomposeChildrenPending`, so a
+ * dependent whose blocker closed without merging now just sits `queued`
+ * forever instead of silently dispatching onto a base branch missing the
+ * blocker's code (devbox ISS-2/ISS-4). This pass actively unwedges it: past
+ * {@link STALL_GRACE_MS} (same grace window as `detectStalledDependencies` —
+ * long enough for the ordinary close→`mark_merged` race to resolve on its
+ * own), park the dependent issue at `waiting`, comment naming the unmerged
+ * blocker, and reap its stuck run so the project's serial slot frees.
+ * Skips projects whose base is structurally unstampable (manual/toggle-off)
+ * — that is the legitimate `OR status='closed'` bypass the gate still
+ * honors, so those dependents are left alone. Best-effort: never throws
+ * (returns `{ parked: 0 }` on error); each row is isolated so one failure
+ * doesn't block the rest.
+ */
+export async function parkClosedUnmergedBlockedDependents(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<ParkClosedUnmergedResult> {
+  try {
+    const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();
+    const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
+
+    const rows = await db.execute<ClosedUnmergedRow>(sql`
+      SELECT DISTINCT ON (j.issue_id)
+             j.id AS job_id, j.project_id, j.issue_id::text AS issue_id,
+             wi.status AS issue_status, wi.reopen_count AS issue_reopen_count,
+             p.iss_seq AS blocker_seq, p.title AS blocker_title,
+             pr.created_by AS created_by
+      FROM jobs j
+      JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+      JOIN issues wi ON wi.id = j.issue_id
+      JOIN projects pr ON pr.id = j.project_id
+      JOIN issue_dependencies d ON (
+            (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
+         OR (d.kind = 'decomposes' AND d.from_issue_id = j.issue_id
+             AND j.type IN ('code','review','test','fix'))
+      )
+      JOIN issues p ON p.id = (CASE WHEN d.kind = 'blocks' THEN d.from_issue_id ELSE d.to_issue_id END)
+      WHERE j.status = 'queued'
+        AND j.issue_id IS NOT NULL
+        AND j.queued_at < ${cutoffIso}
+        AND r.status = 'running'
+        AND wi.status <> 'waiting'
+        AND (d.valid_until IS NULL OR d.valid_until > now())
+        AND p.status = 'closed'
+        AND p.merged_at IS NULL
+        ${projectClause}
+      ORDER BY j.issue_id, j.queued_at ASC
+      LIMIT 100
+    `);
+
+    let parked = 0;
+    const stampableCache = new Map<string, boolean>();
+    for (const row of rows) {
+      try {
+        let stampable = stampableCache.get(row.project_id);
+        if (stampable === undefined) {
+          stampable = (await resolveGateSettings(row.project_id)).baseStampable;
+          stampableCache.set(row.project_id, stampable);
+        }
+        // Legit closed-bypass case (manual/toggle-off base) — the gate itself
+        // still honors `closed` for these; leave the dependent alone.
+        if (!stampable) continue;
+        // comments.author_id is non-nullable; nothing to attribute the park to.
+        if (!row.created_by) continue;
+
+        const device: DeviceLite = { id: row.created_by, ownerId: row.created_by };
+        const issueRow: TransitionIssueRow = {
+          id: row.issue_id,
+          projectId: row.project_id,
+          status: row.issue_status,
+          reopenCount: row.issue_reopen_count,
+        };
+        await applyStatusTransition(issueRow, 'waiting', device, { skip: true });
+
+        await db.insert(comments).values({
+          issueId: row.issue_id,
+          authorId: row.created_by,
+          isAi: true,
+          body: `⛔ Blocked: ISS-${row.blocker_seq} "${row.blocker_title}" was closed without merging its code to the base branch (merged_at is empty). Pipeline can't build on it. Decide the base: reopen/merge the blocker, or \`mark_merged\` it if the code is genuinely in, then move this issue back to its stage.`,
+        } as never);
+
+        await closeOpenRunForIssue(row.issue_id, 'failed');
+        parked++;
+      } catch (err) {
+        logger.warn(
+          { err, issueId: row.issue_id },
+          'pipeline-sweeper: park-closed-unmerged row failed (skipped)',
+        );
+      }
+    }
+    if (parked > 0) {
+      logger.warn(
+        { parked },
+        'pipeline-sweeper: parked dependents blocked on closed-unmerged blocker',
+      );
+    }
+    return { parked };
+  } catch (err) {
+    logger.error({ err }, 'pipeline-sweeper: park-closed-unmerged pass failed (skipped)');
+    return { parked: 0 };
   }
 }
 

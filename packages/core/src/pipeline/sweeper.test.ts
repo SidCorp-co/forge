@@ -35,6 +35,10 @@ const sessionsWhere = vi.fn();
 // reapOrphanedOneShotRuns to read a run's session statuses for outcome.
 const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
 const queuedProjectsRows: Array<{ projectId: string }> = [];
+// ISS-639 — db.insert(comments).values(...) call sites (park-comment pass).
+// Also used by ISS-447's applyKernelTransition audit-row insert; tests for
+// this pass filter by the `body`/`isAi` shape to isolate their own calls.
+const dbInsertValues = vi.fn(async (..._args: unknown[]) => undefined);
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -46,7 +50,7 @@ vi.mock('../db/client.js', () => ({
     }),
     // ISS-447 — applyKernelTransition writes the kernel_transitions audit row
     // on the same db handle after each terminal flip (one-shot run pass).
-    insert: () => ({ values: async () => undefined }),
+    insert: () => ({ values: (...args: unknown[]) => dbInsertValues(...args) }),
     select: () => ({
       from: () => ({
         where: () => selectWhere(),
@@ -58,6 +62,23 @@ vi.mock('../db/client.js', () => ({
       }),
     }),
   },
+}));
+
+// ISS-639 — parkClosedUnmergedBlockedDependents resolves baseStampable via
+// resolveGateSettings (shared with the dispatch-gates picker/asserter).
+// Mocked here rather than exercising the real select chain (which the rest
+// of this file's `db.select` mock doesn't model with `.limit()`).
+const resolveGateSettingsMock = vi.fn(async (_projectId: string) => ({
+  cap: 1,
+  baseStampable: true,
+}));
+vi.mock('../jobs/dispatch-gates.js', () => ({
+  resolveGateSettings: (...args: unknown[]) => resolveGateSettingsMock(...(args as [string])),
+}));
+
+const applyStatusTransitionMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../issues/apply-transition.js', () => ({
+  applyStatusTransition: (...args: unknown[]) => applyStatusTransitionMock(...args),
 }));
 
 // ISS-445 — reapOrphanedOneShotRuns closes runs through the shared
@@ -108,6 +129,7 @@ const {
   reapOrphanedOneShotRuns,
   reapOrphanedIssueRuns,
   detectStalledDependencies,
+  parkClosedUnmergedBlockedDependents,
 } = await import('./sweeper.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
@@ -147,6 +169,12 @@ beforeEach(() => {
   closeOpenRunForIssueMock.mockResolvedValue(undefined);
   queuedProjectsRows.length = 0;
   dbExecute.mockResolvedValue([]);
+  dbInsertValues.mockClear();
+  dbInsertValues.mockResolvedValue(undefined);
+  resolveGateSettingsMock.mockClear();
+  resolveGateSettingsMock.mockResolvedValue({ cap: 1, baseStampable: true });
+  applyStatusTransitionMock.mockClear();
+  applyStatusTransitionMock.mockResolvedValue(undefined);
   emitWedgeMock.mockClear();
   runLoopMonitorMock.mockClear();
   runLoopMonitorMock.mockResolvedValue({
@@ -552,5 +580,117 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
     dbExecute.mockRejectedValueOnce(new Error('boom'));
     const res = await detectStalledDependencies(new Date());
     expect(res.detected).toBe(0);
+  });
+});
+
+describe('parkClosedUnmergedBlockedDependents — active unwedge (ISS-639)', () => {
+  const closedUnmergedRow = {
+    job_id: '61111111-1111-4111-8111-111111111111',
+    project_id: '62222222-2222-4222-8222-222222222222',
+    issue_id: '63333333-3333-4333-8333-333333333333',
+    issue_status: 'approved',
+    issue_reopen_count: 0,
+    blocker_seq: 41,
+    blocker_title: 'Host runtime executor',
+    created_by: '64444444-4444-4444-8444-444444444444',
+  };
+
+  it('parks the dependent at waiting, comments naming the blocker, and reaps its run', async () => {
+    resolveGateSettingsMock.mockResolvedValueOnce({ cap: 1, baseStampable: true });
+    dbExecute.mockResolvedValueOnce([closedUnmergedRow]);
+
+    const res = await parkClosedUnmergedBlockedDependents(new Date());
+
+    expect(res.parked).toBe(1);
+    expect(applyStatusTransitionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: closedUnmergedRow.issue_id, status: 'approved' }),
+      'waiting',
+      { id: closedUnmergedRow.created_by, ownerId: closedUnmergedRow.created_by },
+      { skip: true },
+    );
+    const commentCall = dbInsertValues.mock.calls.find((c) =>
+      (c[0] as { body?: string })?.body?.includes('ISS-41'),
+    );
+    expect(commentCall).toBeDefined();
+    expect(commentCall?.[0]).toMatchObject({
+      issueId: closedUnmergedRow.issue_id,
+      authorId: closedUnmergedRow.created_by,
+      isAi: true,
+    });
+    expect((commentCall?.[0] as { body: string }).body).toContain('Host runtime executor');
+    expect(closeOpenRunForIssueMock).toHaveBeenCalledWith(closedUnmergedRow.issue_id, 'failed');
+  });
+
+  it('skips a project whose base branch is structurally unstampable (2026-06-19 fix preserved)', async () => {
+    resolveGateSettingsMock.mockResolvedValueOnce({ cap: 1, baseStampable: false });
+    dbExecute.mockResolvedValueOnce([closedUnmergedRow]);
+
+    const res = await parkClosedUnmergedBlockedDependents(new Date());
+
+    expect(res.parked).toBe(0);
+    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('caches baseStampable per project across multiple rows (one resolveGateSettings call)', async () => {
+    resolveGateSettingsMock.mockResolvedValueOnce({ cap: 1, baseStampable: true });
+    dbExecute.mockResolvedValueOnce([
+      closedUnmergedRow,
+      { ...closedUnmergedRow, issue_id: '65555555-5555-4555-8555-555555555555' },
+    ]);
+
+    const res = await parkClosedUnmergedBlockedDependents(new Date());
+
+    expect(res.parked).toBe(2);
+    expect(resolveGateSettingsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('no rows → parked 0, nothing touched', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    const res = await parkClosedUnmergedBlockedDependents(new Date());
+    expect(res.parked).toBe(0);
+    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    expect(resolveGateSettingsMock).not.toHaveBeenCalled();
+  });
+
+  it('does not let one failing row abort the pass (best-effort per row)', async () => {
+    resolveGateSettingsMock.mockResolvedValue({ cap: 1, baseStampable: true });
+    dbExecute.mockResolvedValueOnce([
+      closedUnmergedRow,
+      { ...closedUnmergedRow, issue_id: '65555555-5555-4555-8555-555555555555' },
+    ]);
+    applyStatusTransitionMock
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(undefined);
+
+    const res = await parkClosedUnmergedBlockedDependents(new Date());
+
+    expect(res.parked).toBe(1);
+    expect(closeOpenRunForIssueMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows a query error (best-effort, returns 0)', async () => {
+    dbExecute.mockRejectedValueOnce(new Error('boom'));
+    const res = await parkClosedUnmergedBlockedDependents(new Date());
+    expect(res.parked).toBe(0);
+  });
+
+  it('SQL scopes to the closed-but-unmerged blocker condition, queued past the grace cutoff', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    await parkClosedUnmergedBlockedDependents(new Date());
+    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/p\.status\s*=\s*'closed'/);
+    expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
+    expect(text).toMatch(/j\.status\s*=\s*'queued'/);
+    expect(text).toMatch(/j\.queued_at\s*<\s*/);
+    expect(text).toMatch(/r\.status\s*=\s*'running'/);
+    // Never re-parks an issue already at waiting.
+    expect(text).toMatch(/wi\.status\s*<>\s*'waiting'/);
+  });
+
+  it('runs as part of runPipelineSweep and reports the count', async () => {
+    const result = await runPipelineSweep();
+    expect(result).toHaveProperty('parkedClosedUnmerged');
+    expect(result.parkedClosedUnmerged.parked).toBe(0); // default mock: no candidates
   });
 });
