@@ -5,6 +5,15 @@
  * These tests pin down the contract independent of `dispatch-gates.test.ts`
  * (which already covers picker structure end-to-end) — touching `p.status`
  * is the wrong shape and should never reappear.
+ *
+ * ISS-639 — the `OR status='closed'` bypass is now CONDITIONAL on the
+ * project's `mergeStates.baseBranch` being structurally unstampable (manual
+ * mode / auto-toggle off). A default/unconfigured project's base IS
+ * stampable, so `closed` alone must NOT satisfy the gate there — only a
+ * project whose base can never stamp `merged_at` keeps the bypass. See
+ * `dispatch-gates.test.ts` for the full stampable/unstampable matrix; these
+ * tests just keep pinned to the default (stampable) case plus one
+ * unstampable regression guard.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -62,20 +71,21 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('L2 dependency gate — merged_at (ISS-232)', () => {
-  it('picker keys blockedBy on parent.merged_at IS NULL, not parent.status', async () => {
+describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
+  it('picker keys blockedBy on parent.merged_at IS NULL, not parent.status (default project = stampable base)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/d\.kind\s*=\s*'blocks'/);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
-    // satisfied when merged OR closed (skill-driven-merge projects never stamp)
-    expect(text).toMatch(/p\.status\s*<>\s*'closed'/);
+    // ISS-639 — a default/unconfigured project's baseBranch IS stampable, so
+    // `closed` alone must NOT satisfy the gate; only merged_at does.
+    expect(text).not.toMatch(/p\.status\s*<>\s*'closed'/);
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
   });
 
-  it('picker keys decomposeChildrenPending on child.merged_at IS NULL (parent waits for children)', async () => {
+  it('picker keys decomposeChildrenPending on child.merged_at IS NULL (parent waits for children, stampable base)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -85,11 +95,11 @@ describe('L2 dependency gate — merged_at (ISS-232)', () => {
     // keys on the CHILD's merged_at (c2), not the parent's.
     expect(text).toMatch(/d2\.from_issue_id\s*=\s*j\.issue_id/);
     expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
-    expect(text).toMatch(/c2\.status\s*<>\s*'closed'/);
+    expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
     expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 
-  it('asserter mirrors picker — same merged_at clauses, no status compare', async () => {
+  it('asserter mirrors picker — same merged_at clauses, no status compare (stampable base)', async () => {
     // First select fetches the job; second fetches the project's agentConfig.
     dbSelect
       .mockImplementationOnce(() => ({
@@ -107,7 +117,26 @@ describe('L2 dependency gate — merged_at (ISS-232)', () => {
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
     expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
+    expect(text).not.toMatch(/p\.status\s*<>\s*'closed'/);
+    expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
     expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
+  });
+
+  // ISS-639 regression guard (commit d6e377c1) — a project whose baseBranch
+  // is structurally unstampable (manual mode) must keep the `closed` bypass
+  // so a sibling-`blocks` chain doesn't deadlock forever.
+  it('picker keeps the closed bypass when the base branch is structurally unstampable (manual mode)', async () => {
+    mockProjectAgentConfigOnce({
+      pipelineConfig: {
+        mergeStates: { baseBranch: 'released' },
+        states: { released: { mode: 'manual' } },
+      },
+    });
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/p\.merged_at\s+IS\s+NULL\s+AND\s+p\.status\s*<>\s*'closed'/);
+    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL\s+AND\s+c2\.status\s*<>\s*'closed'/);
   });
 });

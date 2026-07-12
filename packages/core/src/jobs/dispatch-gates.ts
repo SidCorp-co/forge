@@ -41,6 +41,11 @@ import { db } from '../db/client.js';
 import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import {
+  PIPELINE_CONFIG_DEFAULTS,
+  type PipelineConfig,
+} from '../pipeline/pipeline-config-schema.js';
+import { isBaseBranchStampable } from '../pipeline/pipeline-config-service.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 
 export type GateSkipReason =
@@ -103,6 +108,37 @@ export async function resolveProjectCap(projectId: string): Promise<number> {
   const n = typeof raw === 'number' ? Math.floor(raw) : Number.NaN;
   if (!Number.isFinite(n) || n < 1) return DEFAULT_MAX_CONCURRENT_ISSUES;
   return Math.min(n, 20);
+}
+
+/**
+ * ISS-639 — resolve the per-project concurrent-issue cap AND whether
+ * `mergeStates.baseBranch` can stamp `merged_at` from the SAME single
+ * `projects.agent_config` select (the picker/asserter's parity test assumes
+ * exactly one `projects` select per call — see {@link resolveProjectCap}).
+ * `baseStampable` gates whether the `closed`-without-merge bypass in
+ * {@link buildBarrierFragments} applies (see `isBaseBranchStampable`).
+ */
+export async function resolveGateSettings(
+  projectId: string,
+): Promise<{ cap: number; baseStampable: boolean }> {
+  const [row] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: Record<string, unknown> };
+  const pc = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
+  const rawCap = pc.maxConcurrentIssues as unknown;
+  const capN = typeof rawCap === 'number' ? Math.floor(rawCap) : Number.NaN;
+  const cap =
+    !Number.isFinite(capN) || capN < 1 ? DEFAULT_MAX_CONCURRENT_ISSUES : Math.min(capN, 20);
+  // Merge onto PIPELINE_CONFIG_DEFAULTS — mirrors getPipelineConfig's own
+  // merge (pipeline-config-service.ts) so a project relying on the
+  // `tested` stage's manual-by-default `states` entry (never persisted
+  // since it's the default) is still detected as unstampable.
+  const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...(pc as PipelineConfig) };
+  const baseStampable = isBaseBranchStampable(pipelineConfig);
+  return { cap, baseStampable };
 }
 
 /**
@@ -353,8 +389,9 @@ interface BarrierFragments {
 function buildBarrierFragments(args: {
   projectIdRef: SQL;
   livenessSeconds: number;
+  baseStampable: boolean;
 }): BarrierFragments {
-  const { projectIdRef, livenessSeconds } = args;
+  const { projectIdRef, livenessSeconds, baseStampable } = args;
 
   // ISS-232 Phase 2 — `running_ids` is sourced exclusively from `jobs`
   // (queued | dispatched | running). The previous UNION with
@@ -428,6 +465,18 @@ function buildBarrierFragments(args: {
         )
     )`;
 
+  // ISS-639 — the `OR status='closed'` bypass below is only safe when the
+  // project's `mergeStates.baseBranch` is structurally unstampable (manual
+  // mode / auto-toggle off — see `isBaseBranchStampable`). For a normal
+  // auto-advancing base, a `closed` blocker with `merged_at IS NULL` means
+  // it was closed WITHOUT its code ever landing on the base branch — the
+  // dependent must NOT dispatch (see `pipeline/sweeper.ts`'s
+  // `parkClosedUnmergedBlockedDependents`, which parks it at `waiting`
+  // instead). Omitting the arm entirely for a stampable base is what
+  // actually fixes the devbox ISS-2/ISS-4 bug.
+  const blockClosedArm = baseStampable ? sql`` : sql` AND p.status <> 'closed'`;
+  const decompClosedArm = baseStampable ? sql`` : sql` AND c2.status <> 'closed'`;
+
   const predicates = {
     issueBusySession: sql`EXISTS (
       SELECT 1 FROM agent_sessions s
@@ -443,28 +492,27 @@ function buildBarrierFragments(args: {
     )`,
     // ISS-232 — Layer 2 is git-aware: a `blocks` parent is satisfied when its
     // `merged_at` is stamped (transition out of `pipelineConfig.mergeStates
-    // .baseBranch`, see `issues/merged-at.ts:markMergedIfLeavingBase`), OR when
-    // it is `closed`. The `OR status='closed'` arm covers skill-driven-merge
-    // projects (e.g. dodgeprint: mergeStates UNSET + issues close via
-    // `in_progress→closed` without ever leaving `released`, so `merged_at`
-    // never stamps). Without it, a sibling-`blocks` chain wedges the moment the
-    // first blocker closes. A closed issue is terminally done regardless of
-    // how its merge was recorded. Operator manual override stays a direct
-    // `UPDATE issues SET merged_at = now()` (or the `mark_merged` MCP action).
+    // .baseBranch`, see `issues/merged-at.ts:markMergedIfLeavingBase`), OR —
+    // ONLY when the base branch is structurally unstampable — when it is
+    // `closed`. The `OR status='closed'` arm covers skill-driven-merge
+    // projects (e.g. dodgeprint: mergeStates points at a manual/toggle-off
+    // stage, so `merged_at` never stamps). Without it, a sibling-`blocks`
+    // chain wedges the moment the first blocker closes. Operator manual
+    // override stays a direct `UPDATE issues SET merged_at = now()` (or the
+    // `mark_merged` MCP action).
     blockedBy: sql`j.type <> 'pm' AND EXISTS (
       SELECT 1 FROM issue_dependencies d
       JOIN issues p ON p.id = d.from_issue_id
       WHERE d.to_issue_id = j.issue_id
         AND d.kind = 'blocks'
         AND (d.valid_until IS NULL OR d.valid_until > now())
-        AND p.merged_at IS NULL
-        AND p.status <> 'closed'
+        AND p.merged_at IS NULL${blockClosedArm}
     )`,
     // Decompose redesign — the PARENT runs its integration LAST. A decompose
     // parent's forward jobs (code/review/test/fix) stay queued until every
-    // `kind='decomposes'` child is satisfied — `merged_at` stamped OR `closed`
-    // (same satisfaction rule as `blockedBy` above; the `closed` arm covers
-    // skill-driven-merge projects that never stamp `merged_at`).
+    // `kind='decomposes'` child is satisfied — `merged_at` stamped OR (ONLY
+    // under a structurally-unstampable base) `closed` — same satisfaction
+    // rule as `blockedBy` above.
     // Children are NOT gated on the parent: the old `releaseDecomposePending`
     // gate (child release waited for `parent.merged_at`) deadlocked umbrella
     // epics that never code-merge themselves, so it was removed. The
@@ -475,8 +523,7 @@ function buildBarrierFragments(args: {
       WHERE d2.from_issue_id = j.issue_id
         AND d2.kind = 'decomposes'
         AND (d2.valid_until IS NULL OR d2.valid_until > now())
-        AND c2.merged_at IS NULL
-        AND c2.status <> 'closed'
+        AND c2.merged_at IS NULL${decompClosedArm}
     )`,
   };
 
@@ -509,11 +556,12 @@ export async function pickNextDispatchableJobForProject(
   projectId: string,
   opts?: { excludeJobIds?: string[] },
 ): Promise<JobRow | null> {
-  const cap = await resolveProjectCap(projectId);
+  const { cap, baseStampable } = await resolveGateSettings(projectId);
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${projectId}`,
     livenessSeconds,
+    baseStampable,
   });
   // Jobs the current dispatch tick already tried and could not PLACE (e.g. a
   // resume pinned to a busy host, or no capable free runner). Excluding them
@@ -596,11 +644,12 @@ export async function assertDispatchable(jobId: string): Promise<DispatchBarrier
     .limit(1);
   if (!job) return { ok: false, reason: 'not_found', hint: jobId };
 
-  const cap = await resolveProjectCap(job.projectId);
+  const { cap, baseStampable } = await resolveGateSettings(job.projectId);
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${job.projectId}`,
     livenessSeconds,
+    baseStampable,
   });
 
   const rows = await db.execute<{ reason: string | null }>(sql`

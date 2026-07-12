@@ -227,9 +227,13 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
     expect(jobRow?.status).toBe('queued');
   });
 
-  it('L2 — passes once the blocking parent reaches `closed`', async () => {
+  // ISS-639 — under a stampable base (this project's default config), `closed`
+  // alone no longer satisfies the gate; the blocker must have `merged_at`
+  // stamped too (mirrors the real `mark_merged` path).
+  it('L2 — passes once the blocking parent reaches `closed` AND merged_at is stamped', async () => {
     const { project } = await seedProject();
     const parent = await insertIssue(project.id, { status: 'closed' });
+    await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${parent}`);
     const child = await insertIssue(project.id);
     await insertBlocksEdge(project.id, parent, child);
 

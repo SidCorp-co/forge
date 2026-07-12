@@ -34,9 +34,12 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { PipelineConfigError, updatePipelineConfig, computeMergeStateParkWarning } = await import(
-  './pipeline-config-service.js'
-);
+const {
+  PipelineConfigError,
+  updatePipelineConfig,
+  computeMergeStateParkWarning,
+  isBaseBranchStampable,
+} = await import('./pipeline-config-service.js');
 
 beforeEach(() => {
   selectQueue.length = 0;
@@ -69,9 +72,7 @@ describe('updatePipelineConfig — MISSING_SKILL_FOR_ENABLED_STAGE (ISS-238)', (
     // toggle-enabled stages query — return a row for `developed`.
     pushSelect([{ stage: 'developed' }]);
     // post-update re-read of agentConfig (return value path).
-    pushSelect([
-      { agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } },
-    ]);
+    pushSelect([{ agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } }]);
 
     const result = await updatePipelineConfig({
       projectId: '00000000-0000-0000-0000-000000000001',
@@ -85,9 +86,7 @@ describe('updatePipelineConfig — MISSING_SKILL_FOR_ENABLED_STAGE (ISS-238)', (
   it('still flags MISSING_SKILL when the patch only changes unrelated keys but leaves an enabled toggle without a skill', async () => {
     // The rule reads the *merged* config, so it catches projects already in a
     // broken state when the operator tries to make any pipelineConfig change.
-    pushSelect([
-      { agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } },
-    ]);
+    pushSelect([{ agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } }]);
     pushSelect([]); // still no registrations
 
     await expect(
@@ -153,11 +152,7 @@ describe('PipelineConfigError', () => {
   it('exposes a stable code union including the ISS-238 code', () => {
     // Compile-time assertion via runtime construction (the union widens on
     // typo); failing this test means the public error shape regressed.
-    const err = new PipelineConfigError(
-      'MISSING_SKILL_FOR_ENABLED_STAGE',
-      'msg',
-      {},
-    );
+    const err = new PipelineConfigError('MISSING_SKILL_FOR_ENABLED_STAGE', 'msg', {});
     expect(err.code).toBe('MISSING_SKILL_FOR_ENABLED_STAGE');
   });
 });
@@ -202,5 +197,62 @@ describe('computeMergeStateParkWarning — silent-wedge advisory', () => {
         states: {},
       } as never),
     ).toBeNull();
+  });
+});
+
+// ISS-639 — blocks-gate `closed` bypass in dispatch-gates.ts must be
+// conditional on this exact predicate: single source of truth shared by the
+// gate (dispatch-time) and the sweeper (park-time).
+describe('isBaseBranchStampable', () => {
+  it('false when baseBranch is a manual stage (mirrors computeMergeStateParkWarning)', () => {
+    expect(
+      isBaseBranchStampable({
+        enabled: true,
+        mergeStates: { baseBranch: 'tested', productionBranch: 'released' },
+        states: { tested: { mode: 'manual', enabled: true } },
+      } as never),
+    ).toBe(false);
+  });
+
+  it("false when baseBranch's step auto-toggle is off", () => {
+    expect(
+      isBaseBranchStampable({
+        enabled: true,
+        autoRelease: false,
+        mergeStates: { baseBranch: 'released', productionBranch: 'released' },
+        states: {},
+      } as never),
+    ).toBe(false);
+  });
+
+  it('false when baseBranch stage is explicitly disabled', () => {
+    expect(
+      isBaseBranchStampable({
+        enabled: true,
+        mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
+        states: { testing: { enabled: false, mode: 'auto' } },
+      } as never),
+    ).toBe(false);
+  });
+
+  it('true for a normal auto-advancing base (testing + autoTest on)', () => {
+    expect(
+      isBaseBranchStampable({
+        enabled: true,
+        autoTest: true,
+        mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
+        states: {},
+      } as never),
+    ).toBe(true);
+  });
+
+  it('true for default released base when unconfigured', () => {
+    expect(
+      isBaseBranchStampable({
+        enabled: true,
+        mergeStates: { baseBranch: 'released', productionBranch: 'released' },
+        states: {},
+      } as never),
+    ).toBe(true);
   });
 });

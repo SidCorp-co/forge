@@ -1,14 +1,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type IssueStatus,
-  issues,
-  projects,
-  skillRegistrations,
-} from '../db/schema.js';
-import type { StagesConfig } from './state-machine.js';
-import { validateStatesConfig } from './state-machine.js';
+import { type IssueStatus, issues, projects, skillRegistrations } from '../db/schema.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
+import { logger } from '../logger.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -16,8 +10,9 @@ import {
   STAGE_NAMES,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
-import { logger } from '../logger.js';
 import { PIPELINE_STEPS } from './registry.js';
+import type { StagesConfig } from './state-machine.js';
+import { validateStatesConfig } from './state-machine.js';
 import { STAGE_FORWARD } from './state-machine.js';
 
 /**
@@ -37,7 +32,11 @@ export type PipelineConfigErrorCode =
 export class PipelineConfigError extends Error {
   readonly code: PipelineConfigErrorCode;
   readonly details: Record<string, unknown>;
-  constructor(code: PipelineConfigErrorCode, message: string, details: Record<string, unknown> = {}) {
+  constructor(
+    code: PipelineConfigErrorCode,
+    message: string,
+    details: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = 'PipelineConfigError';
     this.code = code;
@@ -154,8 +153,7 @@ export async function updatePipelineConfig(
           >
         )
           .filter(
-            ([stage, v]) =>
-              isAutoEnabled(v) && !isAutoEnabled(currentStates[stage as IssueStatus]),
+            ([stage, v]) => isAutoEnabled(v) && !isAutoEnabled(currentStates[stage as IssueStatus]),
           )
           .map(([stage]) => stage as IssueStatus);
         if (needRegistration.length > 0) {
@@ -191,9 +189,7 @@ export async function updatePipelineConfig(
         const v = (nextPipeline as Record<string, unknown>)[step.toggle];
         const on =
           v === true ||
-          (typeof v === 'object' &&
-            v !== null &&
-            (v as { enabled?: boolean }).enabled !== false);
+          (typeof v === 'object' && v !== null && (v as { enabled?: boolean }).enabled !== false);
         if (on) toggleEnabledStages.push(step.status);
       }
       if (toggleEnabledStages.length > 0) {
@@ -268,7 +264,10 @@ export async function updatePipelineConfig(
   const parkWarning = computeMergeStateParkWarning(pipelineConfig);
   if (parkWarning) {
     warnings.push(parkWarning);
-    logger.warn({ projectId, warning: parkWarning }, 'mergeStates baseBranch may never stamp merged_at');
+    logger.warn(
+      { projectId, warning: parkWarning },
+      'mergeStates baseBranch may never stamp merged_at',
+    );
   }
 
   return { pipelineConfig, warnings };
@@ -301,6 +300,21 @@ export function computeMergeStateParkWarning(cfg: PipelineConfig): string | null
     return `mergeStates.baseBranch '${base}' maps to the '${step.jobType}' step whose auto-toggle '${step.toggle}' is off — that stage never dispatches/advances, so merged_at never stamps and blocks/decomposes dependents will wedge.`;
   }
   return null;
+}
+
+/**
+ * ISS-639 — True when `mergeStates.baseBranch` is a normal auto-advancing
+ * stage that CAN stamp `merged_at` (see `issues/merged-at.ts`). False when
+ * structurally unstampable (manual mode / auto-toggle off / stage disabled)
+ * — the case the blocks-gate `closed` bypass in `dispatch-gates.ts` exists
+ * for. Single source of truth shared by the gate (dispatch-time) and the
+ * sweeper (park-time) so they never disagree on which projects are exempt.
+ */
+export function isBaseBranchStampable(cfg: PipelineConfig): boolean {
+  if (computeMergeStateParkWarning(cfg) !== null) return false;
+  const base = resolveMergeStates(cfg).baseBranch as string;
+  const sc = (cfg.states as Record<string, { enabled?: boolean } | undefined>)?.[base];
+  return sc?.enabled !== false;
 }
 
 const PIPELINE_STEPS_STAGES = new Set<string>(PIPELINE_STEPS.map((s) => s.status));

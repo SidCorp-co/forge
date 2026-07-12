@@ -59,7 +59,14 @@ describe('ISS-162 stateless-gates picker E2E', () => {
 
   // ---------- helpers ---------------------------------------------------
 
-  async function seedProject(opts?: { maxConcurrentIssues?: number }) {
+  async function seedProject(opts?: {
+    maxConcurrentIssues?: number;
+    /** ISS-639 — patch `pipelineConfig.mergeStates` (e.g. `{ baseBranch: 'released' }`). */
+    mergeStates?: Record<string, unknown>;
+    /** ISS-639 — patch `pipelineConfig.states` (e.g. `{ released: { mode: 'manual' } }`) so
+     *  a test can make the base branch structurally unstampable. */
+    states?: Record<string, unknown>;
+  }) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     if (opts?.maxConcurrentIssues !== undefined) {
@@ -71,6 +78,30 @@ describe('ISS-162 stateless-gates picker E2E', () => {
                               'pipelineConfig',
                               COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb)
                                 || jsonb_build_object('maxConcurrentIssues', ${cap}::int))
+        WHERE id = ${project.id}
+      `);
+    }
+    if (opts?.mergeStates !== undefined) {
+      const mergeStatesJson = JSON.stringify(opts.mergeStates);
+      await harness.db.execute(sql`
+        UPDATE projects
+        SET agent_config = COALESCE(agent_config, '{}'::jsonb)
+                         || jsonb_build_object(
+                              'pipelineConfig',
+                              COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb)
+                                || jsonb_build_object('mergeStates', ${mergeStatesJson}::jsonb))
+        WHERE id = ${project.id}
+      `);
+    }
+    if (opts?.states !== undefined) {
+      const statesJson = JSON.stringify(opts.states);
+      await harness.db.execute(sql`
+        UPDATE projects
+        SET agent_config = COALESCE(agent_config, '{}'::jsonb)
+                         || jsonb_build_object(
+                              'pipelineConfig',
+                              COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb)
+                                || jsonb_build_object('states', ${statesJson}::jsonb))
         WHERE id = ${project.id}
       `);
     }
@@ -351,10 +382,16 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     it("blocks a decompose PARENT's forward job until its children terminate (L2 decompose inline)", async () => {
       // Decompose redesign — the PARENT runs its integration LAST. The
       // dependency is one-directional now: a parent's code/review/test/fix
-      // job waits for every `kind='decomposes'` child to land (merged_at set
-      // OR closed). Children are NOT gated on the parent (the old
-      // releaseDecomposePending gate was removed — it deadlocked umbrella
-      // epics that never code-merge themselves).
+      // job waits for every `kind='decomposes'` child to land. Children are
+      // NOT gated on the parent (the old releaseDecomposePending gate was
+      // removed — it deadlocked umbrella epics that never code-merge
+      // themselves).
+      //
+      // ISS-639 — a default-seeded project's baseBranch ('released') IS
+      // stampable, so `closed` alone no longer satisfies the gate (that
+      // bypass is now conditional — see `isBaseBranchStampable`). Only
+      // stamping `merged_at` (mirroring the real `mark_merged` path) clears
+      // it; a `closed`-but-unmerged child must keep the parent queued.
       const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
       await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, { status: 'approved', issSeq: 91 });
@@ -364,10 +401,60 @@ describe('ISS-162 stateless-gates picker E2E', () => {
       // While the child is non-terminal, the parent's code job is filtered.
       let result = await mods.pickNextDispatchableJobForProject(project.id);
       expect(result).toBeNull();
-      // Close the child — parent's code job becomes pickable.
+      // Close the child WITHOUT merging — under a stampable base this must
+      // NOT unblock the parent (ISS-639 fix).
       await harness.db.execute(sql`UPDATE issues SET status='closed' WHERE id=${child}`);
       result = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(result).toBeNull();
+      // Stamp merged_at (mirrors the `mark_merged` MCP action) — NOW the
+      // parent's code job becomes pickable.
+      await harness.db.execute(sql`UPDATE issues SET merged_at=now() WHERE id=${child}`);
+      result = await mods.pickNextDispatchableJobForProject(project.id);
       expect(result?.id).toBe(parentCode);
+    });
+
+    // ISS-639 — primary bug fix: a `blocks` blocker that is `closed` but
+    // never merged must NOT satisfy the gate when the project's baseBranch
+    // is stampable (devbox ISS-2/ISS-4 failure mode).
+    it('does NOT unblock a dependent when its `blocks` blocker is closed-but-unmerged under a stampable base', async () => {
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
+      await seedFreshRunner(project.id, owner.id);
+      const blocker = await insertIssue(project.id, { status: 'closed', issSeq: 101 });
+      const dependent = await insertIssue(project.id, { issSeq: 102 });
+      await insertBlocksEdge(project.id, blocker, dependent);
+      const dependentJob = await insertJob(project.id, { issueId: dependent });
+
+      // Closed but merged_at IS NULL — must stay blocked.
+      let result = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(result).toBeNull();
+
+      // Stamp merged_at — now dispatchable.
+      await harness.db.execute(sql`UPDATE issues SET merged_at=now() WHERE id=${blocker}`);
+      result = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(result?.id).toBe(dependentJob);
+    });
+
+    // ISS-639 regression guard — preserves the 2026-06-19 fix (commit
+    // d6e377c1): a project whose baseBranch is structurally unstampable
+    // (manual mode) must keep the `closed` bypass, or a sibling-`blocks`
+    // chain on a skill-driven-merge project (e.g. dodgeprint) deadlocks
+    // forever.
+    it('keeps unblocking on `closed` alone when the base branch is structurally unstampable (manual mode)', async () => {
+      const { owner, project } = await seedProject({
+        maxConcurrentIssues: 10,
+        mergeStates: { baseBranch: 'released' },
+        states: { released: { mode: 'manual' } },
+      });
+      await seedFreshRunner(project.id, owner.id);
+      const blocker = await insertIssue(project.id, { status: 'closed', issSeq: 111 });
+      const dependent = await insertIssue(project.id, { issSeq: 112 });
+      await insertBlocksEdge(project.id, blocker, dependent);
+      const dependentJob = await insertJob(project.id, { issueId: dependent });
+
+      // merged_at is NULL but the base is unstampable — `closed` alone
+      // still satisfies the gate (no regression).
+      const result = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(result?.id).toBe(dependentJob);
     });
 
     it('skips PM jobs (`type=pm`)', async () => {
