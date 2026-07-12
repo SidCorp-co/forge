@@ -31,6 +31,7 @@ import { findLastOutbound, findLastOutboundForTarget } from '../../integrations/
 import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
 import {
   dispatchCoolifyDeployDirect,
+  isIssueAtReleaseStage,
   resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
@@ -96,14 +97,21 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'deploy: issueId is OPTIONAL; dispatches ALL targets of the resolved integration. With issueId — ' +
     "run-tracked deploy: resolves the issue's latest pipeline run and enqueues via the SAME path as " +
     'the release auto-subscriber (each target webhook then advances that run; run completes when all ' +
-    'targets succeed). Without issueId — run-less resource redeploy: resolves the target integration ' +
-    'like the logs action (explicit integrationId, else the single active Coolify integration, else ' +
-    'BAD_REQUEST when multiple exist) and dispatches with no run attached (webhooks record deliveries ' +
-    'but advance no pipeline). Each call is its own dispatch (per-attempt requestId, suffixed per ' +
-    'target) and Coolify force-rebuilds, so re-deploying after a branch fix fires fresh builds. ' +
-    'prod integrations honor the human-confirm gate (unless the project sets ' +
-    'pipelineConfig.autoProdDeploy): returns pendingHumanConfirm:true and does NOT dispatch until ' +
-    'confirmed via the confirm-prod-deploy endpoint. ' +
+    'targets succeed). When issueId is combined with integrationId, integrationId is a HARD scope ' +
+    'filter — ONLY that binding dispatches, even if other bindings (e.g. prod) exist on the run. ' +
+    'When issueId is given WITHOUT integrationId, prod-environment bindings are dispatched ONLY when ' +
+    'the issue has reached the release stage (status released/closed) — every pre-release call ' +
+    '(code/fix/testing) is staging-only and NEVER touches a prod binding, regardless of ' +
+    'pipelineConfig.autoProdDeploy (that flag only bypasses the gate for the release-triggered ' +
+    'auto-subscriber, not for this tool pre-release). Without issueId — run-less resource redeploy: ' +
+    'resolves the target integration like the logs action (explicit integrationId, else the single ' +
+    'active Coolify integration, else BAD_REQUEST when multiple exist) and dispatches with no run ' +
+    'attached (webhooks record deliveries but advance no pipeline). Each call is its own dispatch ' +
+    '(per-attempt requestId, suffixed per target) and Coolify force-rebuilds, so re-deploying after a ' +
+    'branch fix fires fresh builds. At the release stage, prod integrations still honor the ' +
+    'human-confirm gate (unless the project sets pipelineConfig.autoProdDeploy): returns ' +
+    'pendingHumanConfirm:true and does NOT dispatch until confirmed via the confirm-prod-deploy ' +
+    'endpoint. ' +
     'status: latest outbound delivery PER TARGET for the integration(s) (or a specific integrationId): ' +
     'deploymentUuid, status, breakerOpen, createdAt — expect one row per target. ' +
     'logs: fetch the Coolify build/deploy log for a deployment and return it scrubbed + tailed. ' +
@@ -159,10 +167,13 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
             };
           }
 
+          const allowProd = await isIssueAtReleaseStage(input.issueId);
           const outcome = await tryDispatchCoolifyRelease({
             projectId,
             issueId: input.issueId,
             runId,
+            integrationId: input.integrationId ?? null,
+            allowProd,
           });
           return {
             dispatched: outcome.dispatched,
