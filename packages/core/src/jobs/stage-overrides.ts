@@ -62,6 +62,51 @@ const EMPTY: StageOverrides = {
 };
 
 /**
+ * ISS-637 — the human-applied label that arms the skill-maintenance carve-out
+ * in {@link applySkillMaintenanceCarveout}. Deliberately NOT the LLM-set
+ * `issues.category` (owner rejected that gate as too easy to mis-classify) —
+ * a human must attach this label for the carve-out to fire.
+ */
+export const SKILL_MAINTENANCE_LABEL = 'skill-maintenance';
+
+/**
+ * ISS-637 — non-destructive skill-write tools eligible for the carve-out.
+ * `create`/`delete`/`adopt`/`register` stay denied everywhere (larger,
+ * higher-blast-radius operations route through the owner lane / Skill Studio
+ * instead).
+ */
+export const SKILL_MAINTENANCE_TOOLS = [
+  'mcp__forge__forge_skills_update',
+  'mcp__forge__forge_skills_push',
+  'mcp__forge__forge_skills_sync_status',
+] as const;
+
+/**
+ * ISS-637 — for an issue carrying the human-applied `skill-maintenance` label,
+ * at the `code`/`fix` persist stages only, remove the non-destructive
+ * skill-write tools from the resolved denylist so the agent can actually
+ * persist a DB-canonical skill body (the git ladder can't carry it —
+ * `.claude/skills/*` is a git-ignored sync mirror that reverts on the next
+ * sync). Mutates `overrides.disallowedTools` in place — the caller must pass
+ * a shallow copy (e.g. `runnerStageOverrides`), never the shared `EMPTY`
+ * singleton or a stage's live `disallowedTools` array. Returns the count of
+ * tools actually removed, for dispatch telemetry.
+ */
+export function applySkillMaintenanceCarveout(
+  overrides: StageOverrides,
+  opts: { hasSkillMaintenanceLabel: boolean; jobType: string },
+): number {
+  if (!opts.hasSkillMaintenanceLabel) return 0;
+  if (opts.jobType !== 'code' && opts.jobType !== 'fix') return 0;
+  if (!overrides.disallowedTools) return 0;
+  const before = overrides.disallowedTools.length;
+  overrides.disallowedTools = overrides.disallowedTools.filter(
+    (t) => !SKILL_MAINTENANCE_TOOLS.includes(t as (typeof SKILL_MAINTENANCE_TOOLS)[number]),
+  );
+  return before - overrides.disallowedTools.length;
+}
+
+/**
  * ISS-535 — explicit per-stage model-routing policy (single source of truth).
  *
  * Keyed by issue STATUS (the `stageStatus` stamped on the job payload — the

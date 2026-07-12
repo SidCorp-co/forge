@@ -19,6 +19,8 @@ const {
   resolveProjectDefaultMcpServers,
   resolveDefaultModel,
   escalateModel,
+  applySkillMaintenanceCarveout,
+  SKILL_MAINTENANCE_TOOLS,
   DEFAULT_STAGE_MODELS,
 } = await import('./stage-overrides.js');
 
@@ -187,6 +189,105 @@ describe('escalateModel (ISS-535)', () => {
   it('passes non-alias models and null through unchanged', () => {
     expect(escalateModel('claude-opus-4-8', 3)).toBe('claude-opus-4-8');
     expect(escalateModel(null, 2)).toBeNull();
+  });
+});
+
+describe('applySkillMaintenanceCarveout (ISS-637)', () => {
+  function overridesWith(disallowedTools: string[] | null): {
+    disallowedTools: string[] | null;
+  } & Record<string, unknown> {
+    return {
+      systemPrompt: null,
+      model: null,
+      allowedTools: null,
+      disallowedTools,
+      permissionMode: null,
+      timeoutSeconds: null,
+      mcpServers: null,
+      budget: null,
+      sessionGroup: null,
+      declaredNames: null,
+    };
+  }
+
+  it('removes only the non-destructive skill-write tools for a code job with the label', () => {
+    const overrides = overridesWith([
+      'mcp__forge__forge_skills_create',
+      'mcp__forge__forge_skills_delete',
+      'mcp__forge__forge_skills_adopt',
+      'mcp__forge__forge_skills_register',
+      ...SKILL_MAINTENANCE_TOOLS,
+      'mcp__forge__forge_memory_write',
+      'mcp__forge__forge_coolify_deploy',
+      'Bash',
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture cast
+    ]) as any;
+    const removed = applySkillMaintenanceCarveout(overrides, {
+      hasSkillMaintenanceLabel: true,
+      jobType: 'code',
+    });
+    expect(removed).toBe(SKILL_MAINTENANCE_TOOLS.length);
+    for (const tool of SKILL_MAINTENANCE_TOOLS) {
+      expect(overrides.disallowedTools).not.toContain(tool);
+    }
+    // destructive ops + unrelated tools stay denied
+    expect(overrides.disallowedTools).toEqual(
+      expect.arrayContaining([
+        'mcp__forge__forge_skills_create',
+        'mcp__forge__forge_skills_delete',
+        'mcp__forge__forge_skills_adopt',
+        'mcp__forge__forge_skills_register',
+        'mcp__forge__forge_memory_write',
+        'mcp__forge__forge_coolify_deploy',
+        'Bash',
+      ]),
+    );
+  });
+
+  it('removes the tools for a fix job with the label too', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test fixture cast
+    const overrides = overridesWith([...SKILL_MAINTENANCE_TOOLS]) as any;
+    const removed = applySkillMaintenanceCarveout(overrides, {
+      hasSkillMaintenanceLabel: true,
+      jobType: 'fix',
+    });
+    expect(removed).toBe(SKILL_MAINTENANCE_TOOLS.length);
+    expect(overrides.disallowedTools).toEqual([]);
+  });
+
+  it('does not fire without the label, even for code/fix jobs', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test fixture cast
+    const overrides = overridesWith([...SKILL_MAINTENANCE_TOOLS]) as any;
+    const removed = applySkillMaintenanceCarveout(overrides, {
+      hasSkillMaintenanceLabel: false,
+      jobType: 'code',
+    });
+    expect(removed).toBe(0);
+    expect(overrides.disallowedTools).toEqual([...SKILL_MAINTENANCE_TOOLS]);
+  });
+
+  it('does not fire for review/test/triage jobs even with the label', () => {
+    for (const jobType of ['review', 'test', 'triage']) {
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture cast
+      const overrides = overridesWith([...SKILL_MAINTENANCE_TOOLS]) as any;
+      const removed = applySkillMaintenanceCarveout(overrides, {
+        hasSkillMaintenanceLabel: true,
+        jobType,
+      });
+      expect(removed).toBe(0);
+      expect(overrides.disallowedTools).toEqual([...SKILL_MAINTENANCE_TOOLS]);
+    }
+  });
+
+  it('does not crash when disallowedTools is null, returns 0', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test fixture cast
+    const overrides = overridesWith(null) as any;
+    const removed = applySkillMaintenanceCarveout(overrides, {
+      hasSkillMaintenanceLabel: true,
+      jobType: 'code',
+    });
+    expect(removed).toBe(0);
+    expect(overrides.disallowedTools).toBeNull();
   });
 });
 

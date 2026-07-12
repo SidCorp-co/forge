@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, jobs, projects, runners } from '../db/schema.js';
+import { issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
@@ -37,7 +37,13 @@ import {
   loadResumeBounds,
 } from './session-resume.js';
 import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
-import { type StageOverrides, escalateModel, resolveStageOverrides } from './stage-overrides.js';
+import {
+  SKILL_MAINTENANCE_LABEL,
+  type StageOverrides,
+  applySkillMaintenanceCarveout,
+  escalateModel,
+  resolveStageOverrides,
+} from './stage-overrides.js';
 
 interface DispatchMessage {
   jobId: string;
@@ -543,6 +549,56 @@ async function dispatchViaRunner(
       logger.warn(
         { err, jobId: job.id, issueId: job.issueId, type: job.type },
         'dispatcher: reopenCount escalation lookup failed, dispatching without model bump',
+      );
+    }
+  }
+  // ISS-637 — skill-maintenance carve-out. Skill bodies are DB-canonical but
+  // `.claude/skills/*` is a git-ignored sync mirror, so the standard git-based
+  // ladder gives a skill-maintenance issue no way to persist its edit — every
+  // stage's `disallowedTools` blocks the skill-write tools. When the issue
+  // carries the human-applied `skill-maintenance` label (NOT `issue.category`,
+  // which is LLM-set and too easy to mis-classify — see plan discussion), the
+  // `code`/`fix` jobs get the non-destructive skill-write tools back. Mutate
+  // ONLY the shallow copy, best-effort (mirror the reopenCount lookup above).
+  if (job.issueId && (job.type === 'code' || job.type === 'fix')) {
+    try {
+      // Two flat select().where().limit() lookups (never .innerJoin) so an
+      // unmocked/absent label falls through cleanly: labels is unique per
+      // (projectId, name), issueLabels is the join row for THIS issue.
+      const [labelRow] = await db
+        .select({ id: labels.id })
+        .from(labels)
+        .where(and(eq(labels.projectId, job.projectId), eq(labels.name, SKILL_MAINTENANCE_LABEL)))
+        .limit(1);
+      let hasSkillMaintenanceLabel = false;
+      if (labelRow) {
+        const [issueLabelRow] = await db
+          .select({ issueId: issueLabels.issueId })
+          .from(issueLabels)
+          .where(and(eq(issueLabels.issueId, job.issueId), eq(issueLabels.labelId, labelRow.id)))
+          .limit(1);
+        hasSkillMaintenanceLabel = Boolean(issueLabelRow);
+      }
+      const removed = applySkillMaintenanceCarveout(runnerStageOverrides, {
+        hasSkillMaintenanceLabel,
+        jobType: job.type,
+      });
+      if (removed > 0) {
+        logger.info(
+          { jobId: job.id, issueId: job.issueId, jobType: job.type, removed },
+          'dispatcher: skill-maintenance carve-out unblocked skill-write tools',
+        );
+        if (isSentryEnabled()) {
+          Sentry.addBreadcrumb({
+            category: 'dispatch.skill_carveout',
+            data: { jobId: job.id, issueId: job.issueId, jobType: job.type, removed },
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        { err, jobId: job.id, issueId: job.issueId, type: job.type },
+        'dispatcher: skill-maintenance label lookup failed, dispatching without carve-out',
       );
     }
   }
