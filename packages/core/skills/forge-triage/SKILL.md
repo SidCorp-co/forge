@@ -9,7 +9,7 @@ arguments: "documentId1 documentId2 ..."
 
 Triage gates the pipeline — it catches incomplete issues before they waste expensive planning and coding cycles. An issue that bounces back with questions burns an entire plan-code-review round trip.
 
-Operate purely on issue data via MCP tools. Do not read the codebase — triage should be fast and cheap. Codebase exploration happens in `forge-plan`.
+Do not read the codebase — triage should be fast and cheap; codebase exploration happens in `forge-plan`. But you CAN and SHOULD read project memory + issue history: interpreting what an issue is asking for is triage's job, and that context is cheap to pull via MCP tools.
 
 ## Usage
 
@@ -22,6 +22,7 @@ Operate purely on issue data via MCP tools. Do not read the codebase — triage 
 
 - **forge_issues** — get/update issues
 - **forge_comments** — list/create comments
+- **forge_memory_search** — recall prior issue outcomes, conventions, decisions before bouncing. You cannot read the codebase, but you CAN read project memory + issue history to interpret an ask.
 
 ## Workflow
 
@@ -42,9 +43,19 @@ For multiple issues, triage each independently — separate assessments, separat
 
 Read `references/triage-criteria.md` for the full criteria. The core question: **can a developer understand what to change and what the result should be?**
 
+**DEFAULT = CONFIRM. `needs_info` is the rare exception, never a safety reflex.** For enhancement / improvement / refactor / UI-polish / "make X consistent" issues, the reporter is NOT expected to pre-specify what/where/to-what-pixel — that discovery is the pipeline's job (triage interprets intent → clarify reproduces/captures → plan designs with codebase access). Bouncing such an issue for "missing detail" is itself a triage failure.
+
+**Never ask, at triage, for clarify/plan DELIVERABLES:** screenshots/visual examples, a per-element diff list, pixel-exact/numeric ACs, which design is the source of truth, an impact/business justification, or specific file/component/endpoint names. If a draft bounce asks for any of these → delete it and CONFIRM with a one-line interpretation note.
+
+**Only TWO things justify `needs_info`:** (1) a BUG missing ALL of steps-to-reproduce + observable symptom + conditions (genuinely reporter-held, no investigation starting point); (2) a TRUE product fork — two readings build materially different things and guessing wrong burns a real cycle; you MUST name option A vs option B. "Vague / could be done several ways" is NOT a fork when the variants converge on the same surface.
+
+**Specific-question test** (run before any bounce): complete "I need [X] from the reporter because the answer decides [outcome A] vs [outcome B]." Can't name a concrete X and two diverging outcomes → you're pattern-matching on vagueness → CONFIRM.
+
+**Look before you bounce — you are codebase-blind, not context-blind.** Before considering `needs_info`, spend one cheap pass on `forge_issues → list` (recent/related issues by the feature/area keywords) + `forge_memory_search`. A running chain on the same area or a memory entry usually already establishes intent, the canonical component/pattern, and scope — so the question answers itself.
+
 If the issue is actionable → proceed to Step 3.
 
-If the issue is incomplete → set `needs_info` and stop:
+If, after the look-before-you-bounce pass, the issue is still incomplete under the two-only test above → set `needs_info` and stop:
 
 ```
 forge_issues → update → { documentId: "<id>", data: { status: "needs_info" } }
@@ -186,4 +197,5 @@ Keep it concise — this comment is read by both humans and downstream pipeline 
 
 ## Pitfalls
 
+- **Over-bouncing is the #1 triage failure.** Re-read Step 2's ban list before any `needs_info`.
 - **To deliberately park an issue, use `status: on_hold`** (an explicit pause) rather than pairing a pause with the `confirmed`-status transition. The legacy `manualHold` flag was removed (ISS-393): mechanically-failed jobs now revert to the stage entry-status and auto-retry, or park at `waiting` when the retry budget is exhausted — the system handles failure parking, so triage never needs a hold flag.

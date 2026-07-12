@@ -2,7 +2,7 @@
 
 The single-pass review is one reviewer's opinion — fine for ordinary diffs, but on a
 high-risk diff (schema/migration/auth/payment, ≥10 files, or complexity `l`/`xl` — see the
-`### 3c. Risk gate` predicate in [`../SKILL.md`](../SKILL.md)) a lone reviewer is the
+`### 3d. Risk gate` predicate in [`../SKILL.md`](../SKILL.md)) a lone reviewer is the
 rubber-stamp risk this gate exists to remove. For those diffs, run **three independent
 reviewers across distinct lenses and APPROVE only when ≥2/3 are clean** (pass^k: a majority
 must independently agree the change is safe, not just one pass@1 reviewer).
