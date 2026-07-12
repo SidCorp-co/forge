@@ -6,6 +6,7 @@ import {
   listCommentAttachmentsForIssue,
   persistCommentAttachment,
 } from '../../comments/attachment-service.js';
+import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
@@ -233,25 +234,42 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         // The device principal posts comments on behalf of its owner: authorId
         // stays the human owner (NOT-NULL FK to users), but we also stamp
         // authorDeviceId so the comment is identifiable as an AGENT action and
-        // not mistaken for one the owner wrote by hand (ISS-519).
-        const [inserted] = await db
-          .insert(comments)
-          .values({
-            issueId,
-            authorId: device.ownerId,
-            authorDeviceId: device.id,
-            body,
-            parentId: input.data?.parentId ?? null,
-          })
-          .returning({
-            id: comments.id,
-            issueId: comments.issueId,
-            authorId: comments.authorId,
-            body: comments.body,
-            parentId: comments.parentId,
-            createdAt: comments.createdAt,
-            updatedAt: comments.updatedAt,
-          });
+        // not mistaken for one the owner wrote by hand (ISS-519). A PAT
+        // principal has no `devices` row — `device` here is a transient stub
+        // (see `stubDeviceForPat`) whose `id` is the PAT token id, not a real
+        // device, so it must not be written to the author_device_id FK (ISS-638).
+        let inserted: CommentRow | undefined;
+        try {
+          [inserted] = await db
+            .insert(comments)
+            .values({
+              issueId,
+              authorId: device.ownerId,
+              authorDeviceId: principal.kind === 'device' ? device.id : null,
+              body,
+              parentId: input.data?.parentId ?? null,
+            })
+            .returning({
+              id: comments.id,
+              issueId: comments.issueId,
+              authorId: comments.authorId,
+              body: comments.body,
+              parentId: comments.parentId,
+              createdAt: comments.createdAt,
+              updatedAt: comments.updatedAt,
+            });
+        } catch (err) {
+          // 23503: FK violated. The branch above should make an author_device_id
+          // violation unreachable, but guard defensively (e.g. a stale device
+          // row) rather than surfacing a raw DB error to the caller.
+          if (
+            pgErrorCode(err) === '23503' &&
+            pgConstraintName(err) === 'comments_author_device_id_devices_id_fk'
+          ) {
+            throw new Error('BAD_REQUEST: no device bound to this principal');
+          }
+          throw err;
+        }
         if (!inserted) throw new Error('comments: insert returned no row');
 
         await hooks.emit('commentCreated', {
@@ -279,7 +297,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
               mime: d.mime,
               bytes: d.bytes,
               uploaderId: device.ownerId,
-              uploaderDeviceId: device.id,
+              uploaderDeviceId: principal.kind === 'device' ? device.id : null,
             });
             persistedAttachments.push(row);
           } catch (err) {
