@@ -109,6 +109,15 @@ vi.mock('./ci-fix-pattern-query.js', () => ({
   queryPreventivePatterns: (...a: unknown[]) => queryPreventiveMock(...(a as [])),
 }));
 
+// ISS-635 Change B — empty-reopen guard posts a comment via its own DB
+// insert. Stub it so orchestrator unit tests assert orchestration intent
+// (guard fired / device + status used) without modeling the comment insert.
+const postEmptyReopenCommentMock = vi.fn(async () => undefined);
+vi.mock('./empty-reopen-guard.js', () => ({
+  buildEmptyReopenCommentBody: () => 'body',
+  postEmptyReopenComment: (...a: unknown[]) => postEmptyReopenCommentMock(...(a as [])),
+}));
+
 // ISS-108 — orchestrator resolves skillName from the DB via
 // createProjectSkillResolver. Stubbing the module keeps the orchestrator unit
 // test pure (no skill_registrations rows needed) and lets each case control
@@ -245,6 +254,19 @@ function noSkillRegistered() {
   resolverResolve.mockResolvedValueOnce(null);
 }
 
+// ISS-635 Change A — considerEnqueue re-reads the live issue row
+// (loadIssueForSkip) before dispatching. Queue the row a passing test
+// expects to find (status matching the dispatch target keeps the guard a
+// no-op); mismatched/missing rows are what the race-guard tests assert on.
+function liveIssue(
+  status: string,
+  overrides: Partial<{ id: string; projectId: string; reopenCount: number }> = {},
+) {
+  nextSelect.mockResolvedValueOnce([
+    { id: 'iss-1', projectId: 'proj-1', status, reopenCount: 0, ...overrides },
+  ]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   nextSelect.mockReset();
@@ -275,6 +297,7 @@ beforeEach(() => {
   pauseMissingSkillMock.mockReset();
   pauseMissingSkillMock.mockResolvedValue({ paused: true, alreadyPaused: false });
   postMissingSkillCommentMock.mockReset();
+  postEmptyReopenCommentMock.mockReset();
   appendSkipChainEntryMock.mockReset();
   appendSkipChainEntryMock.mockResolvedValue(undefined);
   postSkipChainCappedCommentMock.mockReset();
@@ -285,6 +308,7 @@ describe('pipeline/orchestrator', () => {
   it('enqueues a plan job on confirmed→clarified when autoPlan is true', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');
+    liveIssue('clarified');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'new-job' }]);
 
@@ -298,6 +322,7 @@ describe('pipeline/orchestrator', () => {
   it('uses the registered skill name in the inserted job payload', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('custom-planner', 'plan', 'autoPlan');
+    liveIssue('clarified');
     nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
 
@@ -361,6 +386,7 @@ describe('pipeline/orchestrator', () => {
 
   it('refuses + pauses the run when no skill is registered for the auto stage (ISS-238)', async () => {
     cfgResolved({ enabled: true, autoClarify: true });
+    liveIssue('confirmed');
     noSkillRegistered();
 
     const bus = makeBus();
@@ -382,6 +408,7 @@ describe('pipeline/orchestrator', () => {
 
   it('does not post a duplicate comment when the run is already paused with the same reason (ISS-238)', async () => {
     cfgResolved({ enabled: true, autoClarify: true });
+    liveIssue('confirmed');
     noSkillRegistered();
     pauseMissingSkillMock.mockResolvedValueOnce({ paused: false, alreadyPaused: true });
 
@@ -433,6 +460,7 @@ describe('pipeline/orchestrator', () => {
   it('DOES enqueue on a human Resume out of on_hold (user actor)', async () => {
     cfgResolved({ enabled: true, autoReview: true });
     skillRegistered('forge-review', 'review', 'autoReview');
+    liveIssue('developed');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'resume-job' }]);
 
@@ -451,6 +479,7 @@ describe('pipeline/orchestrator', () => {
   it('ISS-596: DOES enqueue on non-user on_hold advance with reason:operator_unblock', async () => {
     cfgResolved({ enabled: true, autoTriage: true });
     skillRegistered('forge-triage', 'triage', 'autoTriage');
+    liveIssue('open');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'unblock-job' }]);
 
@@ -488,6 +517,7 @@ describe('pipeline/orchestrator', () => {
   it('dedupes when an active job of the same type already exists', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');
+    liveIssue('clarified');
     nextSelect.mockResolvedValueOnce([{ id: 'existing-job' }]); // findActiveJob
 
     const bus = makeBus();
@@ -500,6 +530,7 @@ describe('pipeline/orchestrator', () => {
   it('treats a unique-index violation on insert as a dedupe skip', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');
+    liveIssue('clarified');
     nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
 
@@ -512,6 +543,7 @@ describe('pipeline/orchestrator', () => {
   it('falls back to project owner for createdBy on device-triggered transitions', async () => {
     cfgResolved({ enabled: true, autoReview: true });
     skillRegistered('forge-review', 'review', 'autoReview');
+    liveIssue('developed');
     nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
 
@@ -532,6 +564,7 @@ describe('pipeline/orchestrator', () => {
   it('enqueues a clarify job on open→confirmed when autoClarify is true (clarify-on-happy-path)', async () => {
     cfgResolved({ enabled: true, autoClarify: true });
     skillRegistered('forge-clarify', 'clarify', 'autoClarify');
+    liveIssue('confirmed');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
 
@@ -592,6 +625,7 @@ describe('pipeline/orchestrator', () => {
     nextSelect.mockResolvedValueOnce([
       { id: 'iss-1', projectId: 'proj-1', status: 'confirmed', reopenCount: 0, complexity: 'm' },
     ]); // autoSkipByComplexity issue fetch — m not in skip list
+    liveIssue('confirmed');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
 
@@ -613,6 +647,7 @@ describe('pipeline/orchestrator', () => {
     nextSelect.mockResolvedValueOnce([
       { id: 'iss-1', projectId: 'proj-1', status: 'confirmed', reopenCount: 0, complexity: null },
     ]);
+    liveIssue('confirmed');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
 
@@ -635,6 +670,7 @@ describe('pipeline/orchestrator', () => {
   it('enqueues a triage job on issueCreated when autoTriage is true', async () => {
     cfgResolved({ enabled: true, autoTriage: true });
     skillRegistered('forge-triage', 'triage', 'autoTriage');
+    liveIssue('open');
     nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: 'triage-job' }]);
 
@@ -679,6 +715,65 @@ describe('pipeline/orchestrator', () => {
     expect(nextSelect).not.toHaveBeenCalled();
     expect(resolverResolve).not.toHaveBeenCalled();
     expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  // ISS-635 Change A — the transition hook fires from the outbox's DB
+  // snapshot (payload.to), which can be stale by the time considerEnqueue
+  // runs (e.g. a review self-correction reopen→testing racing the
+  // reopen→fix dispatch). Mirrors the autoSkipDisabledStages race guard.
+  it('ISS-635: stale reopen dispatch race — live status no longer reopen, no fix enqueued', async () => {
+    cfgResolved({ enabled: true, autoFix: true });
+    liveIssue('testing'); // race: another writer already advanced past reopen
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'testing', to: 'reopen' }) as never);
+
+    expect(resolverResolve).not.toHaveBeenCalled();
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(postEmptyReopenCommentMock).not.toHaveBeenCalled();
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  // ISS-635 Change B — a reopen with zero prior code/fix job has nothing for
+  // forge-fix to patch. Route to needs_info instead of dispatching an empty
+  // fix job.
+  it('ISS-635: reopen with no prior code/fix job routes to needs_info instead of dispatching fix', async () => {
+    cfgResolved({ enabled: true, autoFix: true });
+    liveIssue('reopen');
+    nextSelect.mockResolvedValueOnce([]); // hasPriorImplementationJob → none
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'testing', to: 'reopen' }) as never);
+
+    // Guard intercepts before the skill resolver / job insert.
+    expect(resolverResolve).not.toHaveBeenCalled();
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+    expect(applyTransitionMock.mock.calls[0]?.[0]).toMatchObject({ id: 'iss-1', status: 'reopen' });
+    expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
+    expect(postEmptyReopenCommentMock).toHaveBeenCalledTimes(1);
+    expect(postEmptyReopenCommentMock).toHaveBeenCalledWith(
+      expect.objectContaining({ issueId: 'iss-1' }),
+    );
+  });
+
+  it('ISS-635: reopen WITH a prior code job still dispatches fix (regression)', async () => {
+    cfgResolved({ enabled: true, autoFix: true });
+    liveIssue('reopen');
+    nextSelect.mockResolvedValueOnce([{ id: 'prior-code-job' }]); // hasPriorImplementationJob → found
+    skillRegistered('forge-fix', 'fix', 'autoFix');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'fix-job' }]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'testing', to: 'reopen' }) as never);
+
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(postEmptyReopenCommentMock).not.toHaveBeenCalled();
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'fix-job' }));
   });
 });
 
@@ -776,8 +871,10 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     // before inserting. Without a registration, it logs+skips, so we have to
     // queue a skill here for the assertion to count an insert.
     skillRegistered('forge-review', 'review', 'autoReview');
-    // No issue lookup because autoSkip bails before that. considerEnqueue then
-    // proceeds normally — needs a no-active-job select and the insert.
+    // No issue lookup in autoSkip (bails before that) — but considerEnqueue's
+    // own live-status re-check (ISS-635 Change A) still fires before the
+    // no-active-job select and the insert.
+    liveIssue('developed');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'review-job' }]);
 
@@ -892,6 +989,7 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     // dispatch normally.
     resolverStagesMock.mockResolvedValueOnce(new Set<string>(['testing']));
     skillRegistered('forge-test', 'test', 'autoTest');
+    liveIssue('testing');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'test-job' }]);
 

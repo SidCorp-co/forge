@@ -17,6 +17,7 @@ import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
+import { postEmptyReopenComment } from './empty-reopen-guard.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
 import { fetchHandoffPromptInputs } from './handoff-prefetch.js';
 import type { HookPayloads, HooksBus } from './hooks.js';
@@ -116,6 +117,20 @@ async function findActiveJob(issueId: string, type: JobType): Promise<string | n
     )
     .limit(1);
   return row?.id ?? null;
+}
+
+/**
+ * ISS-635 Change B — does this issue have any prior `code` or `fix` job
+ * (any status)? A `reopen` with no prior implementation job has no
+ * branch/commit for forge-fix to patch.
+ */
+async function hasPriorImplementationJob(issueId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, ['code', 'fix'])))
+    .limit(1);
+  return row != null;
 }
 
 function resolveCreatedBy(actor: Actor, projectCreatedBy: string | null): string {
@@ -395,8 +410,7 @@ async function considerEnqueue(args: {
   const jobMap = resolveJobTypeForStatus(args.status);
   if (!jobMap) return; // human-gated status
 
-  const { cfg, projectCreatedBy } =
-    args.preloaded ?? (await loadPipelineConfig(args.projectId));
+  const { cfg, projectCreatedBy } = args.preloaded ?? (await loadPipelineConfig(args.projectId));
   if (!cfg?.enabled) return;
   // Belt-and-suspenders: if the landing stage is disabled in `states`, never
   // enqueue a job. autoSkipDisabledStages should have moved the issue past
@@ -406,6 +420,49 @@ async function considerEnqueue(args: {
   if (stageCfg && stageCfg.enabled === false) return;
   if (stageCfg && stageCfg.mode === 'manual') return;
   if (!isToggleEnabled(cfg, jobMap.toggle)) return;
+
+  // ISS-635 Change A — re-verify the LIVE issue status before dispatching.
+  // The transition hook can fire from a stale outbox snapshot (`payload.to`)
+  // after another writer has already advanced the issue past this stage
+  // (e.g. a review self-correction reopen→testing racing the reopen→fix
+  // dispatch). Mirrors the race guard `autoSkipDisabledStages` already has
+  // (`issue.status !== payload.to`) — reuses the same row shape/query.
+  const liveIssue = await loadIssueForSkip(args.issueId);
+  if (!liveIssue || liveIssue.status !== args.status) {
+    logger.debug(
+      { issueId: args.issueId, expected: args.status, live: liveIssue?.status ?? null },
+      'orchestrator: skip enqueue — live status no longer matches dispatch target',
+    );
+    return;
+  }
+
+  // ISS-635 Change B — a `reopen` (the only status mapping to `fix`) with no
+  // prior `code`/`fix` job has no branch/commit for forge-fix to patch.
+  // Route to `needs_info` instead of dispatching an empty fix.
+  if (jobMap.type === 'fix' && !(await hasPriorImplementationJob(args.issueId))) {
+    const device = resolveSkipDevice(args.actor, projectCreatedBy);
+    if (device) {
+      try {
+        await applyStatusTransition(liveIssue, 'needs_info', device);
+      } catch (err) {
+        logger.warn(
+          { err, issueId: args.issueId },
+          'orchestrator: empty-reopen guard failed to route to needs_info',
+        );
+      }
+    } else {
+      logger.warn(
+        { issueId: args.issueId },
+        'orchestrator: empty-reopen guard has no device principal for needs_info transition',
+      );
+    }
+    await postEmptyReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
+    logger.info(
+      { issueId: args.issueId },
+      'orchestrator: empty-reopen guard — no prior code/fix job, routed to needs_info',
+    );
+    return;
+  }
 
   // ISS-239 — reuse the resolver from autoSkipDisabledStages when available
   // so we don't refetch skill_registrations a second time per hook fire.
@@ -777,7 +834,12 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
         payload.reason !== 'operator_unblock'
       ) {
         logger.info(
-          { issueId: payload.issueId, to: payload.to, actor: payload.actor.type, reason: payload.reason },
+          {
+            issueId: payload.issueId,
+            to: payload.to,
+            actor: payload.actor.type,
+            reason: payload.reason,
+          },
           'orchestrator: skip enqueue — non-user advance out of operator on_hold',
         );
         return;
