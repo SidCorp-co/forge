@@ -571,6 +571,79 @@ describe('jobs/dispatcher', () => {
     expect(arg.job.payload.model).toBe('sonnet'); // approved → code → balanced, no escalation
   });
 
+  // ISS-637 — skill-maintenance carve-out. Select order for a code/fix job
+  // whose issue carries the `skill-maintenance` label (stageStatus set):
+  // (1) job lookup, (2) budget-check loadStageMap, (3) fallback chain,
+  // (4) preDispatch loadStageMap, (5) loadRepoPath, (6) labels lookup by
+  // (projectId, name), (7) issueLabels membership lookup.
+  it('ISS-637: unblocks the non-destructive skill-write tools for a code job carrying the skill-maintenance label', async () => {
+    const disallowedTools = [
+      'mcp__forge__forge_skills_create',
+      'mcp__forge__forge_skills_update',
+      'mcp__forge__forge_skills_push',
+      'mcp__forge__forge_skills_sync_status',
+      'Bash',
+    ];
+    mockSelectOnce([
+      {
+        id: 'j-skill',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-skill',
+        type: 'code',
+        payload: { stageStatus: 'approved' },
+      },
+    ]);
+    mockSelectOnce([{ agentConfig: null }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([
+      { agentConfig: { pipelineConfig: { states: { approved: { disallowedTools } } } } },
+    ]); // preDispatch loadStageMap
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-skill' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+    mockSelectOnce([{ id: 'label-1' }]); // labels lookup → found
+    mockSelectOnce([{ issueId: 'iss-skill' }]); // issueLabels lookup → attached
+
+    const result = await handleDispatch({ jobId: 'j-skill' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    const sent = String(arg.job.payload.disallowedTools).split(',');
+    expect(sent).not.toContain('mcp__forge__forge_skills_update');
+    expect(sent).not.toContain('mcp__forge__forge_skills_push');
+    expect(sent).not.toContain('mcp__forge__forge_skills_sync_status');
+    expect(sent).toContain('mcp__forge__forge_skills_create'); // destructive op stays denied
+    expect(sent).toContain('Bash');
+  });
+
+  it('ISS-637: leaves the denylist untouched when the issue has no skill-maintenance label', async () => {
+    const disallowedTools = ['mcp__forge__forge_skills_update', 'Bash'];
+    mockSelectOnce([
+      {
+        id: 'j-nolabel',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-nolabel',
+        type: 'code',
+        payload: { stageStatus: 'approved' },
+      },
+    ]);
+    mockSelectOnce([{ agentConfig: null }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([
+      { agentConfig: { pipelineConfig: { states: { approved: { disallowedTools } } } } },
+    ]); // preDispatch loadStageMap
+    const dispatchSpy = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-nolabel' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+    mockSelectOnce([]); // labels lookup → not found, carve-out never queries issueLabels
+
+    const result = await handleDispatch({ jobId: 'j-nolabel' });
+    expect(result).toBe('dispatched');
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
+    expect(String(arg.job.payload.disallowedTools).split(',')).toEqual(disallowedTools);
+  });
+
   // ISS-336 review blocker regression — the dispatcher must shallow-copy the
   // resolved overrides before layering the project's Postman MCP entry. The old
   // code mutated `preDispatchOverrides` in place; on the no-override path
