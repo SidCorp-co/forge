@@ -45,10 +45,12 @@ vi.mock('../../db/client.js', () => ({
 const tryDispatchSpy = vi.fn();
 const resolveRunSpy = vi.fn();
 const dispatchDirectSpy = vi.fn();
+const isIssueAtReleaseStageSpy = vi.fn();
 vi.mock('../../pipeline/release-coolify.js', () => ({
   tryDispatchCoolifyRelease: (a: unknown) => tryDispatchSpy(a),
   resolveLatestIssueRunId: (a: unknown) => resolveRunSpy(a),
   dispatchCoolifyDeployDirect: (a: unknown) => dispatchDirectSpy(a),
+  isIssueAtReleaseStage: (a: unknown) => isIssueAtReleaseStageSpy(a),
 }));
 
 const findLastOutboundSpy = vi.fn();
@@ -134,6 +136,7 @@ beforeEach(() => {
   tryDispatchSpy.mockReset();
   resolveRunSpy.mockReset();
   dispatchDirectSpy.mockReset();
+  isIssueAtReleaseStageSpy.mockReset();
   findLastOutboundSpy.mockReset();
   findLastOutboundForTargetSpy.mockReset();
 });
@@ -257,6 +260,7 @@ describe('forge_coolify_deploy → deploy', () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resolveRunSpy.mockResolvedValueOnce('run-1');
+    isIssueAtReleaseStageSpy.mockResolvedValueOnce(false);
     tryDispatchSpy.mockResolvedValueOnce({
       dispatched: true,
       pendingHumanConfirm: false,
@@ -274,6 +278,8 @@ describe('forge_coolify_deploy → deploy', () => {
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
       runId: 'run-1',
+      integrationId: null,
+      allowProd: false,
     });
     expect(result.dispatched).toBe(true);
     expect(result.integrationIds).toEqual([STAGING_INT]);
@@ -293,12 +299,14 @@ describe('forge_coolify_deploy → deploy', () => {
     expect(result.dispatched).toBe(false);
     expect(result.reason).toBe('no-run');
     expect(tryDispatchSpy).not.toHaveBeenCalled();
+    expect(isIssueAtReleaseStageSpy).not.toHaveBeenCalled();
   });
 
   it('passes the prod human-confirm gate through (pendingHumanConfirm, no dispatch)', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resolveRunSpy.mockResolvedValueOnce('run-1');
+    isIssueAtReleaseStageSpy.mockResolvedValueOnce(true);
     tryDispatchSpy.mockResolvedValueOnce({
       dispatched: false,
       pendingHumanConfirm: true,
@@ -315,6 +323,77 @@ describe('forge_coolify_deploy → deploy', () => {
     expect(result.dispatched).toBe(false);
     expect(result.pendingHumanConfirm).toBe(true);
     expect(result.reason).toBe('awaiting-prod-confirm');
+  });
+
+  it('issueId + explicit staging integrationId at a pre-release status → hard filter, prod excluded', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    resolveRunSpy.mockResolvedValueOnce('run-1');
+    isIssueAtReleaseStageSpy.mockResolvedValueOnce(false);
+    tryDispatchSpy.mockResolvedValueOnce({
+      dispatched: true,
+      pendingHumanConfirm: false,
+      integrationIds: [STAGING_INT],
+    });
+
+    await tool.handler({
+      action: 'deploy',
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      integrationId: STAGING_INT,
+    });
+
+    expect(tryDispatchSpy).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: 'run-1',
+      integrationId: STAGING_INT,
+      allowProd: false,
+    });
+  });
+
+  it('issueId-only at a pre-release status → allowProd:false, integrationId:null', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    resolveRunSpy.mockResolvedValueOnce('run-1');
+    isIssueAtReleaseStageSpy.mockResolvedValueOnce(false);
+    tryDispatchSpy.mockResolvedValueOnce({
+      dispatched: true,
+      pendingHumanConfirm: false,
+      integrationIds: [STAGING_INT],
+    });
+
+    await tool.handler({ action: 'deploy', projectId: PROJECT_ID, issueId: ISSUE_ID });
+
+    expect(tryDispatchSpy).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: 'run-1',
+      integrationId: null,
+      allowProd: false,
+    });
+  });
+
+  it('issueId-only at released status → allowProd:true', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    resolveRunSpy.mockResolvedValueOnce('run-1');
+    isIssueAtReleaseStageSpy.mockResolvedValueOnce(true);
+    tryDispatchSpy.mockResolvedValueOnce({
+      dispatched: true,
+      pendingHumanConfirm: false,
+      integrationIds: [STAGING_INT, PROD_INT],
+    });
+
+    await tool.handler({ action: 'deploy', projectId: PROJECT_ID, issueId: ISSUE_ID });
+
+    expect(tryDispatchSpy).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: 'run-1',
+      integrationId: null,
+      allowProd: true,
+    });
   });
 });
 

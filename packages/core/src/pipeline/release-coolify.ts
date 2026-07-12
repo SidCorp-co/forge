@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { pipelineRuns, projects } from '../db/schema.js';
+import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
 import { listActiveBindingsForProjectProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { setCurrentStepForce } from './runs.js';
 
 /**
@@ -58,12 +58,29 @@ export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;
   runId: string;
+  /** Hard filter — when set, dispatch ONLY this binding. */
+  integrationId?: string | null;
+  /**
+   * Whether prod-environment bindings are eligible at all. Defaults to `true`
+   * so the release auto-subscriber (which passes neither new arg) keeps its
+   * existing behavior byte-for-byte. Callers outside the release path (the
+   * `forge_coolify_deploy` MCP tool) pass `false` pre-release to exclude prod
+   * entirely rather than relying on the human-confirm gate.
+   */
+  allowProd?: boolean;
 }): Promise<DispatchOutcome> {
-  const { projectId, issueId, runId } = args;
-  const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  const { projectId, issueId, runId, integrationId, allowProd = true } = args;
+  let pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
+  if (!allowProd) pairs = pairs.filter((p) => p.binding.environment !== 'prod');
   if (pairs.length === 0) {
     await setCurrentStepForce(runId, RELEASE_DEPLOY_SKIPPED);
-    return { dispatched: false, pendingHumanConfirm: false, integrationIds: [], reason: 'no-integration' };
+    return {
+      dispatched: false,
+      pendingHumanConfirm: false,
+      integrationIds: [],
+      reason: 'no-integration',
+    };
   }
 
   const dispatched: string[] = [];
@@ -152,7 +169,12 @@ export async function dispatchCoolifyDeployDirect(args: {
   const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
   const pair = pairs.find((p) => p.binding.id === integrationId);
   if (!pair) {
-    return { dispatched: false, pendingHumanConfirm: false, integrationIds: [], reason: 'no-integration' };
+    return {
+      dispatched: false,
+      pendingHumanConfirm: false,
+      integrationIds: [],
+      reason: 'no-integration',
+    };
   }
   const { binding } = pair;
 
@@ -343,17 +365,35 @@ export async function resolveLatestIssueRunId(issueId: string): Promise<string |
 }
 
 /**
+ * Whether an issue has reached the post-release stage (`released`/`closed`) —
+ * the only statuses where an agent-driven `forge_coolify_deploy` call is
+ * allowed to touch a prod integration. Every pre-release status returns
+ * `false`, so a mid-pipeline deploy (code/fix/testing) is staging-only.
+ */
+export async function isIssueAtReleaseStage(issueId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ status: issues.status })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return row?.status === 'released' || row?.status === 'closed';
+}
+
+/**
  * Subscribes to `jobCompleted` and forwards `release`-type completions into
  * the Coolify dispatch path. Must be called once at boot.
  */
-export function registerReleaseCompletedSubscriber(
-  hooks: { on: (event: 'jobCompleted', listener: (payload: {
-    jobId: string;
-    projectId: string;
-    issueId: string | null;
-    type: string;
-  }) => void | Promise<void>) => void },
-): void {
+export function registerReleaseCompletedSubscriber(hooks: {
+  on: (
+    event: 'jobCompleted',
+    listener: (payload: {
+      jobId: string;
+      projectId: string;
+      issueId: string | null;
+      type: string;
+    }) => void | Promise<void>,
+  ) => void;
+}): void {
   hooks.on('jobCompleted', async (payload) => {
     if (payload.type !== 'release') return;
 

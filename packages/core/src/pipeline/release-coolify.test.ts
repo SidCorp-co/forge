@@ -76,9 +76,8 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const { tryDispatchCoolifyRelease, dispatchCoolifyDeployDirect } = await import(
-  './release-coolify.js'
-);
+const { tryDispatchCoolifyRelease, dispatchCoolifyDeployDirect, isIssueAtReleaseStage } =
+  await import('./release-coolify.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
@@ -87,11 +86,25 @@ const STAGING_INT = 'a1111111-1111-4111-8111-111111111111';
 const PROD_INT = 'b2222222-2222-4222-8222-222222222222';
 
 const stagingPair = {
-  binding: { id: STAGING_INT, projectId: PROJECT_ID, provider: 'coolify', environment: 'staging', config: {}, active: true },
+  binding: {
+    id: STAGING_INT,
+    projectId: PROJECT_ID,
+    provider: 'coolify',
+    environment: 'staging',
+    config: {},
+    active: true,
+  },
   connection: { id: STAGING_INT, provider: 'coolify', config: {}, active: true },
 };
 const prodPair = {
-  binding: { id: PROD_INT, projectId: PROJECT_ID, provider: 'coolify', environment: 'prod', config: {}, active: true },
+  binding: {
+    id: PROD_INT,
+    projectId: PROJECT_ID,
+    provider: 'coolify',
+    environment: 'prod',
+    config: {},
+    active: true,
+  },
   connection: { id: PROD_INT, provider: 'coolify', config: {}, active: true },
 };
 
@@ -227,6 +240,78 @@ describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
     expect(job.requestId).toMatch(new RegExp(`^direct:${PROD_INT}:\\d+-[0-9a-f]{8}$`));
     expect(outcome.dispatched).toBe(true);
     expect(outcome.pendingHumanConfirm).toBe(false);
+  });
+});
+
+describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', () => {
+  it('integrationId filters to only that binding — prod is never touched', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+      integrationId: STAGING_INT,
+      allowProd: true,
+    });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    expect(job.bindingId).toBe(STAGING_INT);
+    expect(outcome.dispatched).toBe(true);
+    expect(outcome.integrationIds).toEqual([STAGING_INT]);
+  });
+
+  it('allowProd:false excludes prod bindings entirely — no enqueue, no gate', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+      allowProd: false,
+    });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    expect(job.bindingId).toBe(STAGING_INT);
+    expect(outcome.dispatched).toBe(true);
+    expect(outcome.pendingHumanConfirm).toBe(false);
+    expect(outcome.integrationIds).toEqual([STAGING_INT]);
+  });
+
+  it('no new args (auto-subscriber shape): prod still auto-dispatches under autoProdDeploy — unchanged', async () => {
+    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    expect(job.bindingId).toBe(PROD_INT);
+    expect(outcome.dispatched).toBe(true);
+    expect(outcome.integrationIds).toEqual([PROD_INT]);
+  });
+});
+
+describe('isIssueAtReleaseStage', () => {
+  it('returns true for released', async () => {
+    selectQueue.push([{ status: 'released' }]);
+    await expect(isIssueAtReleaseStage(ISSUE_ID)).resolves.toBe(true);
+  });
+
+  it('returns true for closed', async () => {
+    selectQueue.push([{ status: 'closed' }]);
+    await expect(isIssueAtReleaseStage(ISSUE_ID)).resolves.toBe(true);
+  });
+
+  it('returns false for a pre-release status', async () => {
+    selectQueue.push([{ status: 'testing' }]);
+    await expect(isIssueAtReleaseStage(ISSUE_ID)).resolves.toBe(false);
   });
 });
 
