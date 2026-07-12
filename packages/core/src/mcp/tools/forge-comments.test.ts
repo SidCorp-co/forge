@@ -250,7 +250,7 @@ describe('forge_comments tool', () => {
     );
   });
 
-  it('create attributes authorId to device.ownerId and emits commentCreated hook', async () => {
+  it('create attributes authorId to device.ownerId, stamps authorDeviceId, and emits commentCreated hook', async () => {
     const tool = forgeCommentsTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
@@ -268,8 +268,76 @@ describe('forge_comments tool', () => {
     expect(result.documentId).toBe(COMMENT_ID);
     expect(result.authorId).toBe(OWNER_ID);
     expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ issueId: ISSUE_ID, authorId: OWNER_ID, body: 'Hello' }),
+      expect.objectContaining({
+        issueId: ISSUE_ID,
+        authorId: OWNER_ID,
+        authorDeviceId: DEVICE_ID,
+        body: 'Hello',
+      }),
     );
+  });
+
+  // ISS-638 — a PAT/API-key principal has no `devices` row; `ctx.device` is a
+  // transient stub (`stubDeviceForPat`) whose `id` is the PAT *token* id, not
+  // a real device. Stamping it into author_device_id trips the FK (comment
+  // creation fails for EVERY PAT caller). Fix: null out authorDeviceId for
+  // non-device principals; authorId still resolves to the PAT's owning user.
+  it('create with a PAT principal inserts authorDeviceId: null and succeeds', async () => {
+    const tool = forgeCommentsTool({
+      principal: {
+        kind: 'pat',
+        userId: OWNER_ID,
+        tokenId: '55555555-5555-4555-8555-555555555555',
+        scopes: ['read', 'write'],
+        projectIds: null,
+        boundProjectId: null,
+      },
+      // ctx.device is the transient stub the MCP handler builds for a PAT
+      // principal — its id is the PAT token id, never a real devices row.
+      device: { ...fakeDevice, id: '55555555-5555-4555-8555-555555555555' },
+      projectSlug: null,
+    });
+    selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
+    selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership (assertPrincipalIsWriter)
+    insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
+
+    const result = (await tool.handler({
+      action: 'create',
+      data: { issue: ISSUE_ID, body: 'Hello from PAT' },
+    })) as { documentId: string; authorId: string };
+
+    expect(result.documentId).toBe(COMMENT_ID);
+    expect(result.authorId).toBe(OWNER_ID);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: ISSUE_ID,
+        authorId: OWNER_ID,
+        authorDeviceId: null,
+        body: 'Hello from PAT',
+      }),
+    );
+  });
+
+  // Defense-in-depth: even with the branch above, a genuine FK violation on
+  // author_device_id (e.g. a stale/deleted device row) must surface as a
+  // clean 4xx, not a raw Postgres error.
+  it('create maps a genuine author_device_id FK violation to a clean BAD_REQUEST', async () => {
+    const tool = forgeCommentsTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
+    selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+    const fkError = Object.assign(new Error('insert or update on table "comments" violates fk'), {
+      code: '23503',
+      constraint_name: 'comments_author_device_id_devices_id_fk',
+    });
+    insertReturning.mockRejectedValueOnce(fkError);
+
+    await expect(
+      tool.handler({ action: 'create', data: { issue: ISSUE_ID, body: 'Hello' } }),
+    ).rejects.toThrow(/BAD_REQUEST: no device bound to this principal/);
   });
 
   it('delete by author succeeds', async () => {
