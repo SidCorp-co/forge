@@ -197,7 +197,7 @@ export interface IssueDetail extends IssueRow {
 export type WaitingReason =
   | "issue_busy"
   | "waiting_on_dep"
-  | "waiting_on_decomp_parent"
+  | "waiting_on_decomp_children"
   | "project_full"
   | "runner_full";
 

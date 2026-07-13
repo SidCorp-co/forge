@@ -31,7 +31,7 @@ import {
   jobs,
   runners,
 } from '../db/schema.js';
-import { resolveProjectCap, runnerSupportsJobType } from '../jobs/dispatch-gates.js';
+import { resolveGateSettings, runnerSupportsJobType } from '../jobs/dispatch-gates.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 
@@ -58,7 +58,7 @@ export function resetLastTickAtForTest(): void {
 export type PipelineWaitingReason =
   | 'issue_busy'
   | 'waiting_on_dep'
-  | 'waiting_on_decomp_parent'
+  | 'waiting_on_decomp_children'
   | 'project_full'
   | 'runner_full';
 
@@ -93,6 +93,17 @@ export interface PipelineHealthDep {
   fromIssueId: string;
   kind: string;
   fromStatus: string;
+  /** Blocker's `issues.merged_at` — the L2 gate keys on this, not status. */
+  fromMergedAt: Date | null;
+}
+
+/** Outgoing `kind='decomposes'` edge: this issue is the decompose PARENT and
+ *  its forward jobs wait for every child to land (gate
+ *  `decomposeChildrenPending`). */
+export interface PipelineHealthDecompChild {
+  childIssueId: string;
+  status: string;
+  mergedAt: Date | null;
 }
 
 export interface PipelineHealthRunnerSat {
@@ -106,9 +117,13 @@ export interface ClassifyInput {
   sessions: PipelineHealthSession[];
   jobs: PipelineHealthJob[];
   deps: PipelineHealthDep[];
+  decompChildren: PipelineHealthDecompChild[];
   runningIssueIds: ReadonlySet<string>;
   runningIssueCount: number;
   cap: number;
+  /** From `resolveGateSettings` — when the base merge state can never stamp
+   *  `merged_at`, the gate honors `status='closed'` as satisfaction. */
+  baseStampable: boolean;
   runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
   lastTickAt: Date | null;
 }
@@ -120,7 +135,7 @@ export interface ClassifyInput {
  * this for every requested issue id.
  */
 export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHealth {
-  const { issue, sessions, jobs: issueJobs, deps, runningIssueIds, runningIssueCount, cap, runnerInFlight, lastTickAt } = input;
+  const { issue, sessions, jobs: issueJobs, deps, decompChildren, runningIssueIds, runningIssueCount, cap, baseStampable, runnerInFlight, lastTickAt } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
   const activeJobs = issueJobs.filter((j) => j.status !== 'queued');
@@ -165,27 +180,48 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
+  // Mirror the gate's satisfaction rule exactly (dispatch-gates.ts
+  // `blockedBy`): a blocker satisfies the edge when `merged_at` is stamped,
+  // or — ONLY under a structurally-unstampable base — when it is `closed`.
+  // The previous status-based check (`released|closed` = satisfied) drifted
+  // from the ISS-639 gate fix, so a dependent wedged on a closed-unmerged
+  // blocker showed NO waitingOn reason at all (getcontent 2026-07-13: 40min
+  // of silent starvation with the blocker banner blank).
+  const depSatisfied = (status: string, mergedAt: Date | null): boolean =>
+    mergedAt !== null || (!baseStampable && status === 'closed');
+
   const blockers = deps.filter(
-    (d) => d.kind === 'blocks' && !TERMINAL_STATUSES.has(d.fromStatus),
+    (d) => d.kind === 'blocks' && !depSatisfied(d.fromStatus, d.fromMergedAt),
   );
   if (blockers.length > 0) {
+    const closedUnmerged = blockers.filter((b) => b.fromStatus === 'closed');
     out.waitingOn = {
       reason: 'waiting_on_dep',
       since: sinceIso,
-      details: { blockerIssueIds: blockers.map((b) => b.fromIssueId) },
+      details: {
+        blockerIssueIds: blockers.map((b) => b.fromIssueId),
+        // Called out separately: these need an operator decision
+        // (mark_merged or reopen), waiting will not resolve them.
+        ...(closedUnmerged.length > 0
+          ? { closedUnmergedBlockerIssueIds: closedUnmerged.map((b) => b.fromIssueId) }
+          : {}),
+      },
     };
     return out;
   }
 
-  if (candidate.type === 'release') {
-    const decompParent = deps.find(
-      (d) => d.kind === 'decomposes' && !TERMINAL_STATUSES.has(d.fromStatus),
+  // Gate `decomposeChildrenPending`: a decompose PARENT's forward jobs wait
+  // for every child to land. (The old inverse rule — child release waiting on
+  // its parent — was removed from the gate; it deadlocked umbrella epics.)
+  if (['code', 'review', 'test', 'fix'].includes(candidate.type)) {
+    const pendingChildren = decompChildren.filter(
+      (c) => !depSatisfied(c.status, c.mergedAt),
     );
-    if (decompParent) {
+    if (pendingChildren.length > 0) {
       out.waitingOn = {
-        reason: 'waiting_on_decomp_parent',
+        reason: 'waiting_on_decomp_children',
         since: sinceIso,
-        details: { parentIssueId: decompParent.fromIssueId },
+        details: { childIssueIds: pendingChildren.map((c) => c.childIssueId) },
       };
       return out;
     }
@@ -221,8 +257,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
 
   return out;
 }
-
-const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['released', 'closed']);
 
 function skillFromSessionMetadata(metadata: Record<string, unknown> | null): string {
   if (!metadata) return '';
@@ -322,35 +356,71 @@ export async function hydratePipelineHealthForIssues(
     jobsByIssue.set(r.issueId, bucket);
   }
 
-  // Q4 — dep edges pointing AT these issues (blocks / decomposes).
+  // Q4 — incoming `blocks` edges pointing AT these issues, with the
+  // blocker's merged_at (the gate's actual satisfaction key).
   const depRows = await db
     .select({
       toIssueId: issueDependencies.toIssueId,
       fromIssueId: issueDependencies.fromIssueId,
       kind: issueDependencies.kind,
       fromStatus: issues.status,
+      fromMergedAt: issues.mergedAt,
     })
     .from(issueDependencies)
     .innerJoin(issues, eq(issues.id, issueDependencies.fromIssueId))
     .where(
       and(
         inArray(issueDependencies.toIssueId, ids),
-        inArray(issueDependencies.kind, ['blocks', 'decomposes']),
+        eq(issueDependencies.kind, 'blocks'),
         sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
       ),
     );
   const depsByIssue = new Map<string, PipelineHealthDep[]>();
   for (const r of depRows) {
     const bucket = depsByIssue.get(r.toIssueId) ?? [];
-    bucket.push({ fromIssueId: r.fromIssueId, kind: r.kind, fromStatus: r.fromStatus });
+    bucket.push({
+      fromIssueId: r.fromIssueId,
+      kind: r.kind,
+      fromStatus: r.fromStatus,
+      fromMergedAt: r.fromMergedAt,
+    });
     depsByIssue.set(r.toIssueId, bucket);
+  }
+
+  // Q4b — outgoing `decomposes` edges FROM these issues (issue = decompose
+  // parent, gate `decomposeChildrenPending` waits on the children).
+  const decompRows = await db
+    .select({
+      parentIssueId: issueDependencies.fromIssueId,
+      childIssueId: issueDependencies.toIssueId,
+      childStatus: issues.status,
+      childMergedAt: issues.mergedAt,
+    })
+    .from(issueDependencies)
+    .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
+    .where(
+      and(
+        inArray(issueDependencies.fromIssueId, ids),
+        eq(issueDependencies.kind, 'decomposes'),
+        sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
+      ),
+    );
+  const decompChildrenByIssue = new Map<string, PipelineHealthDecompChild[]>();
+  for (const r of decompRows) {
+    const bucket = decompChildrenByIssue.get(r.parentIssueId) ?? [];
+    bucket.push({
+      childIssueId: r.childIssueId,
+      status: r.childStatus,
+      mergedAt: r.childMergedAt,
+    });
+    decompChildrenByIssue.set(r.parentIssueId, bucket);
   }
 
   // Q5 — project_full inputs. The per-project cap defaults to 1 but is
   // operator-tunable via `pipelineConfig.maxConcurrentIssues`; resolve the
-  // same value the dispatch picker enforces so this health card never drifts
-  // from actual dispatch behaviour.
-  const cap = await resolveProjectCap(projectId);
+  // same values the dispatch picker enforces (cap + baseStampable) so this
+  // health card never drifts from actual dispatch behaviour.
+  const { cap, baseStampable } = await resolveGateSettings(projectId);
   const runningRows = await db.execute<{ issue_id: string }>(sql`
     SELECT DISTINCT (metadata->>'issueId') AS issue_id
     FROM agent_sessions
@@ -421,9 +491,11 @@ export async function hydratePipelineHealthForIssues(
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
       deps: depsByIssue.get(issueId) ?? [],
+      decompChildren: decompChildrenByIssue.get(issueId) ?? [],
       runningIssueIds,
       runningIssueCount,
       cap,
+      baseStampable,
       runnerInFlight,
       lastTickAt,
     });

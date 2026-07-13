@@ -29,10 +29,11 @@ export const DECOMP_CHILD_READY_STATUSES: ReadonlySet<IssueStatus> = new Set([
 ]);
 
 /**
- * Parent statuses that satisfy the L2 decomposition release gate. While the
- * parent is in any other status, child `release` jobs stay queued with
- * `waiting_on_decomp_parent`. `closed` counts as released — a closed parent
- * (e.g. wont-fix on the epic) should not strand finished children.
+ * @deprecated The child-waits-for-parent release gate was removed from
+ * dispatch-gates.ts (it deadlocked umbrella epics that never code-merge);
+ * the live gate is the inverse — `decomposeChildrenPending`, parent waits
+ * for children's `merged_at`. Kept only for its legacy tests; no runtime
+ * consumer remains.
  */
 export const DECOMP_PARENT_RELEASED_STATUSES: ReadonlySet<IssueStatus> = new Set([
   'released',

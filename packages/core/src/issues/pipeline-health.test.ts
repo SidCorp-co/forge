@@ -39,9 +39,11 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     sessions: [],
     jobs: [],
     deps: [],
+    decompChildren: [],
     runningIssueIds: new Set(),
     runningIssueCount: 0,
     cap: 5,
+    baseStampable: true,
     runnerInFlight: new Map(),
     lastTickAt: null,
     ...over,
@@ -115,44 +117,90 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.blockingJobId).toBe('job-dispatched');
   });
 
-  it('classifies waiting_on_dep for a non-terminal blocks parent', () => {
+  it('classifies waiting_on_dep for an unmerged blocks parent', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
         jobs: [job()],
-        deps: [{ fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open' }],
+        deps: [
+          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open', fromMergedAt: null },
+        ],
       }),
     );
     expect(out.waitingOn?.reason).toBe('waiting_on_dep');
     expect(out.waitingOn?.details.blockerIssueIds).toEqual(['iss-blocker']);
+    expect(out.waitingOn?.details.closedUnmergedBlockerIssueIds).toBeUndefined();
   });
 
-  it('ignores `blocks` parents that are released/closed', () => {
+  it('ignores `blocks` parents whose merged_at is stamped', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
         jobs: [job()],
-        deps: [{ fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'released' }],
+        deps: [
+          {
+            fromIssueId: 'iss-blocker',
+            kind: 'blocks',
+            fromStatus: 'released',
+            fromMergedAt: QUEUED_AT,
+          },
+        ],
       }),
     );
     expect(out.waitingOn).toBeUndefined();
   });
 
-  it('classifies waiting_on_decomp_parent ONLY for release jobs', () => {
-    const plan = classifyPipelineHealthForIssue(
+  it('flags a closed-but-unmerged blocker under a stampable base (gate parity, ISS-639)', () => {
+    const out = classifyPipelineHealthForIssue(
       baseInput({
-        jobs: [job({ type: 'plan' })],
-        deps: [{ fromIssueId: 'iss-parent', kind: 'decomposes', fromStatus: 'approved' }],
+        jobs: [job()],
+        deps: [
+          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'closed', fromMergedAt: null },
+        ],
       }),
     );
-    expect(plan.waitingOn).toBeUndefined();
+    expect(out.waitingOn?.reason).toBe('waiting_on_dep');
+    expect(out.waitingOn?.details.closedUnmergedBlockerIssueIds).toEqual(['iss-blocker']);
+  });
 
-    const release = classifyPipelineHealthForIssue(
+  it('honors the closed bypass for an unstampable base (manual merge projects)', () => {
+    const out = classifyPipelineHealthForIssue(
       baseInput({
-        jobs: [job({ type: 'release' })],
-        deps: [{ fromIssueId: 'iss-parent', kind: 'decomposes', fromStatus: 'approved' }],
+        baseStampable: false,
+        jobs: [job()],
+        deps: [
+          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'closed', fromMergedAt: null },
+        ],
       }),
     );
-    expect(release.waitingOn?.reason).toBe('waiting_on_decomp_parent');
-    expect(release.waitingOn?.details.parentIssueId).toBe('iss-parent');
+    expect(out.waitingOn).toBeUndefined();
+  });
+
+  it('classifies waiting_on_decomp_children for a parent forward job with unmerged children', () => {
+    // Non-forward job types are not gated on decompose children.
+    const triage = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ type: 'triage' })],
+        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
+      }),
+    );
+    expect(triage.waitingOn).toBeUndefined();
+
+    const code = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ type: 'code' })],
+        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
+      }),
+    );
+    expect(code.waitingOn?.reason).toBe('waiting_on_decomp_children');
+    expect(code.waitingOn?.details.childIssueIds).toEqual(['iss-child']);
+
+    // A merged child satisfies the gate.
+    const satisfied = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ type: 'code' })],
+        decompChildren: [{ childIssueId: 'iss-child', status: 'released', mergedAt: QUEUED_AT }],
+      }),
+    );
+    expect(satisfied.waitingOn).toBeUndefined();
   });
 
   it('classifies project_full when running count >= cap', () => {
@@ -207,7 +255,9 @@ describe('classifyPipelineHealthForIssue', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
         jobs: [newer, older],
-        deps: [{ fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open' }],
+        deps: [
+          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open', fromMergedAt: null },
+        ],
       }),
     );
     expect(out.waitingOn?.since).toBe(QUEUED_AT.toISOString());

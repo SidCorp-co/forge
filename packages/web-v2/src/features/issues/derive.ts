@@ -466,8 +466,8 @@ export function openBlockingRefs(deps: IssueDependencies | undefined): BlockingR
 
 const WAITING_REASON_COPY: Record<WaitingReason, { reason: string; who: string }> = {
   issue_busy: { reason: "Another job is already active on this issue.", who: "Wait for the active run to finish." },
-  waiting_on_dep: { reason: "Blocked by an unfinished dependency.", who: "Finish the blocking issue first." },
-  waiting_on_decomp_parent: { reason: "Waiting on its parent epic to finish releasing.", who: "The parent epic must complete." },
+  waiting_on_dep: { reason: "Blocked by a dependency that hasn't merged to the base branch yet.", who: "Finish (and merge) the blocking issue first." },
+  waiting_on_decomp_children: { reason: "Waiting for its decomposed child issues to merge.", who: "The child issues must land on the base branch first." },
   project_full: { reason: "The project's concurrency cap is reached.", who: "No action — dispatches when a slot frees." },
   runner_full: { reason: "The pinned runner is at capacity.", who: "No action — dispatches when the runner frees." },
 };
@@ -529,7 +529,38 @@ export function deriveBlockerState(
   const waitingOn = pipelineHealth?.waitingOn;
   if (waitingOn && WAITING_REASON_COPY[waitingOn.reason]) {
     const copy = WAITING_REASON_COPY[waitingOn.reason];
-    const isDep = waitingOn.reason === "waiting_on_dep" || waitingOn.reason === "waiting_on_decomp_parent";
+    const isDep = waitingOn.reason === "waiting_on_dep" || waitingOn.reason === "waiting_on_decomp_children";
+
+    // Closed-but-unmerged blocker: waiting will NEVER resolve this — an
+    // operator must decide (mark_merged if the code is actually in, or
+    // reopen the blocker). The blocker is `closed`, so openBlockingRefs
+    // filtered it out; rebuild refs from the server-named culprit ids.
+    const closedUnmergedIds = new Set(
+      Array.isArray(waitingOn.details?.closedUnmergedBlockerIssueIds)
+        ? (waitingOn.details.closedUnmergedBlockerIssueIds as string[])
+        : [],
+    );
+    if (waitingOn.reason === "waiting_on_dep" && closedUnmergedIds.size > 0) {
+      const closedUnmergedRefs: BlockingRef[] = (deps?.incoming ?? [])
+        .filter((e) => e.kind === "blocks" && closedUnmergedIds.has(e.fromIssueId))
+        .map((e) => ({
+          id: e.fromIssueId,
+          displayId: e.fromDisplayId ?? `ISS-${e.fromIssueId.slice(0, 6)}`,
+          title: e.fromTitle ?? null,
+          status: e.fromStatus ?? null,
+        }));
+      const refs = [...blockingRefs, ...closedUnmergedRefs];
+      return {
+        tone: "attention",
+        reason: "Blocked by a dependency that was closed without its code merging to the base branch.",
+        whoMustAct: "An operator must decide: mark the blocker merged if its code is actually in, or reopen it.",
+        cta: refs.length
+          ? { label: "Open blocking issue", kind: "open-blocker" }
+          : { label: "", kind: "none" },
+        ...(refs.length ? { blockingRefs: refs } : {}),
+      };
+    }
+
     return {
       tone: "info",
       reason: copy.reason,

@@ -252,15 +252,33 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(health?.waitingOn?.details.blockerIssueIds).toEqual([blocker]);
   });
 
-  it('classifies waiting_on_decomp_parent for release jobs only', async () => {
+  it('classifies waiting_on_decomp_children for a parent forward job with unmerged children', async () => {
     const { project } = await seedProject();
     const parent = await insertIssue(project.id, { status: 'approved' });
-    const child = await insertIssue(project.id);
+    const child = await insertIssue(project.id, { status: 'in_progress' });
     await insertEdge(project.id, parent, child, 'decomposes');
+    // Parent's own forward job waits for the unmerged child (gate
+    // decomposeChildrenPending); the child itself is NOT gated on the parent.
+    await insertJob(project.id, { issueId: parent, status: 'queued', type: 'code' });
     await insertJob(project.id, { issueId: child, status: 'queued', type: 'release' });
 
+    const map = await mods.hydratePipelineHealthForIssues(project.id, [parent, child]);
+    expect(map.get(parent)?.waitingOn?.reason).toBe('waiting_on_decomp_children');
+    expect(map.get(parent)?.waitingOn?.details.childIssueIds).toEqual([child]);
+    expect(map.get(child)?.waitingOn?.reason).not.toBe('waiting_on_decomp_children');
+  });
+
+  it('classifies waiting_on_dep for a closed-but-unmerged blocker (gate parity, ISS-639)', async () => {
+    const { project } = await seedProject();
+    const blocker = await insertIssue(project.id, { status: 'closed' });
+    const child = await insertIssue(project.id);
+    await insertEdge(project.id, blocker, child, 'blocks');
+    await insertJob(project.id, { issueId: child, status: 'queued', type: 'plan' });
+
     const map = await mods.hydratePipelineHealthForIssues(project.id, [child]);
-    expect(map.get(child)?.waitingOn?.reason).toBe('waiting_on_decomp_parent');
+    const health = map.get(child);
+    expect(health?.waitingOn?.reason).toBe('waiting_on_dep');
+    expect(health?.waitingOn?.details.closedUnmergedBlockerIssueIds).toEqual([blocker]);
   });
 
   it('classifies waiting_on_dep when an open blocks parent gates the child', async () => {

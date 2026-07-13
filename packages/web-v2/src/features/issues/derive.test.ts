@@ -421,7 +421,7 @@ describe("deriveBlockerState", () => {
     for (const reason of [
       "issue_busy",
       "waiting_on_dep",
-      "waiting_on_decomp_parent",
+      "waiting_on_decomp_children",
       "project_full",
       "runner_full",
     ] as const) {
@@ -433,6 +433,25 @@ describe("deriveBlockerState", () => {
       expect(b).not.toBeNull();
       expect(b?.reason.length).toBeGreaterThan(0);
     }
+  });
+
+  it("escalates closed-unmerged blockers to an operator decision with refs", () => {
+    const b = deriveBlockerState(
+      blockerIssue({ status: "in_progress" }),
+      {
+        stage: "code",
+        waitingOn: {
+          reason: "waiting_on_dep",
+          since: "x",
+          details: { blockerIssueIds: ["blk-1"], closedUnmergedBlockerIssueIds: ["blk-1"] },
+        },
+      },
+      incomingBlocks({ fromStatus: "closed" }),
+    );
+    expect(b?.tone).toBe("attention");
+    expect(b?.reason).toContain("closed without");
+    expect(b?.cta.kind).toBe("open-blocker");
+    expect(b?.blockingRefs?.length).toBe(1);
   });
 
   it("falls back to open blocks edges with a link action", () => {
