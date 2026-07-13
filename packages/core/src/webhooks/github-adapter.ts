@@ -73,7 +73,15 @@ async function closeExternalIssue(
 ): Promise<boolean> {
   const updated = await db
     .update(issues)
-    .set({ status: 'closed', updatedAt: new Date() })
+    // Mirror-close bypasses the state-machine writer, so mirror its
+    // close-time merged_at stamp too (closed = done for the L2 blocks gate —
+    // see issues/merged-at.ts markMergedOnClose). COALESCE keeps an earlier
+    // pipeline stamp.
+    .set({
+      status: 'closed',
+      mergedAt: sql`COALESCE(${issues.mergedAt}, now())`,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(issues.projectId, projectId),

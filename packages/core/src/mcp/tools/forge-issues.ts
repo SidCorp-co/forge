@@ -580,6 +580,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'audit label only — all values stamp the same merged_at column. unmark ' +
     '(data.issueId + optional data.note) clears merged_at back to NULL to ' +
     're-block children when an epic merge is rolled back. ' +
+    'Transitioning an issue to closed auto-stamps merged_at when still NULL ' +
+    '(closed = done for the blocks-gate); if a close meant "abandoned, code ' +
+    'never landed", follow up with unmark to re-block dependents. ' +
     'Project scope is derived from the X-Forge-Project-Slug header (or an ' +
     'explicit projectId). Status changes route through the issue state machine. ' +
     'Use status:on_hold for a deliberate pause, or status:waiting to park an ' +

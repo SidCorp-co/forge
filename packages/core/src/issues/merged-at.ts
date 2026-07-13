@@ -115,3 +115,42 @@ export async function markMergedIfLeavingBase(
       .returning({ id: issues.id })) ?? [];
   return { stamped: updated.length > 0 };
 }
+
+/**
+ * Stamp `merged_at = now()` when an issue transitions to `closed` and the
+ * column is still NULL. `closed` is the ONLY terminal-done status (there is
+ * no `cancelled`/`wontfix`), so a close — from any surface: UI, MCP, REST —
+ * means "done" and must satisfy the L2 `blocks` gate for dependents.
+ *
+ * Rationale (getcontent 2026-07-13 incident): the ISS-639 gate fix stopped
+ * treating `closed`+`merged_at IS NULL` blockers as satisfied under a
+ * stampable base, which was correct for abandoned code but silently wedged
+ * every hand-closed issue — the dependents' queued jobs just vanished from
+ * the picker with no event. Requiring callers to disambiguate at close time
+ * (a `resolution` param) would drift across surfaces, so the kernel infers
+ * instead: close ⇒ done ⇒ stamp. The trade-off is deliberate:
+ *   - pipeline closes already stamped on leaving the base merge state, so
+ *     this is a no-op there (`WHERE merged_at IS NULL`);
+ *   - no system path auto-closes issues (decompose → waiting/approved,
+ *     cancel → on_hold, failures → waiting/reopen), so a buggy agent can't
+ *     stamp through here;
+ *   - a close-as-abandon wrongly unblocks dependents, but visibly (audit
+ *     comment in `apply-transition.ts`) and reversibly (`unmark`) — better
+ *     than the old failure mode of an invisible, indefinite wedge.
+ *
+ * Idempotent via `WHERE merged_at IS NULL`; call inside the same tx as the
+ * status UPDATE so a rollback drops both writes together.
+ */
+export async function markMergedOnClose(
+  tx: DrizzleTx,
+  args: { issueId: string; toStatus: IssueStatus },
+): Promise<{ stamped: boolean }> {
+  if (args.toStatus !== 'closed') return { stamped: false };
+  const updated =
+    (await tx
+      .update(issues)
+      .set({ mergedAt: sql`now()` })
+      .where(and(eq(issues.id, args.issueId), isNull(issues.mergedAt)))
+      .returning({ id: issues.id })) ?? [];
+  return { stamped: updated.length > 0 };
+}

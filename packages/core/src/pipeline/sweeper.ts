@@ -381,6 +381,12 @@ type ClosedUnmergedRow = {
  * honors, so those dependents are left alone. Best-effort: never throws
  * (returns `{ parked: 0 }` on error); each row is isolated so one failure
  * doesn't block the rest.
+ *
+ * Since the close-time auto-stamp (issues/merged-at.ts markMergedOnClose,
+ * getcontent 2026-07-13), every close through the state-machine writer (and
+ * the GitHub mirror-close) stamps merged_at, so new closed-unmerged blockers
+ * can no longer arise from normal operation. This pass stays as the backstop
+ * for pre-existing rows and direct DB writes that bypass both paths.
  */
 export async function parkClosedUnmergedBlockedDependents(
   now: Date = new Date(),

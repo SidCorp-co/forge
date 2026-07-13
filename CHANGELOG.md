@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Closing an issue now counts as done for dependency gating: issues that block others no longer silently freeze their dependents when closed by hand instead of through the pipeline merge flow.
 - Skill maintenance work can now persist edits to skill bodies through the pipeline when labeled with `skill-maintenance`, unblocking continuous skill refinement in automated workflows.
 - Fixed a prod-safety bug where a pipeline deploy could redeploy production mid-pipeline: forge_coolify_deploy now honors an explicit integrationId as a hard scope filter and only touches production integrations at the release stage (autoProdDeploy no longer bypasses the human-confirm gate for pre-release deploys).
 - Workspace resources now include a reusable Private Keys pool for centralized SSH key management across projects.

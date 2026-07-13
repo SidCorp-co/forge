@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_BASE_MERGE_STATE,
   markMergedIfLeavingBase,
+  markMergedOnClose,
   resolveMergeStates,
 } from './merged-at.js';
 
@@ -175,5 +176,33 @@ describe('markMergedIfLeavingBase', () => {
     });
     expect(fired.stamped).toBe(true);
     expect(updateCall2).toHaveBeenCalledOnce();
+  });
+});
+
+describe('markMergedOnClose', () => {
+  it('no-ops for every non-closed target status', async () => {
+    for (const toStatus of ['released', 'waiting', 'reopen', 'on_hold'] as const) {
+      const { tx, updateCall } = buildMockTx({ agentConfig: null });
+      const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus });
+      expect(result.stamped).toBe(false);
+      expect(updateCall).not.toHaveBeenCalled();
+    }
+  });
+
+  it('stamps merged_at on close when the column is still NULL', async () => {
+    const { tx, updateCall } = buildMockTx({
+      agentConfig: null,
+      returningRows: [{ id: 'iss-1' }],
+    });
+    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(result.stamped).toBe(true);
+    expect(updateCall).toHaveBeenCalledOnce();
+  });
+
+  it('reports stamped=false when merged_at is already set (pipeline stamped earlier)', async () => {
+    const { tx, updateCall } = buildMockTx({ agentConfig: null, returningRows: [] });
+    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(result.stamped).toBe(false);
+    expect(updateCall).toHaveBeenCalledOnce();
   });
 });

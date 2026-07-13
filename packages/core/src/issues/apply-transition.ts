@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues } from '../db/schema.js';
+import { type IssueStatus, comments, issues } from '../db/schema.js';
+import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import {
@@ -10,7 +11,7 @@ import {
 } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { markMergedIfLeavingBase } from './merged-at.js';
+import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 /**
@@ -173,7 +174,7 @@ export async function transitionIssueStatus(
   // the `transition` hook out-of-band. We wrap the UPDATE in
   // `withActorContext` so the trigger captures actor metadata via SET LOCAL
   // session settings.
-  const updated = await db.transaction((tx) =>
+  const txResult = await db.transaction((tx) =>
     withActorContext(
       tx,
       { type: actor.type, id: actor.id },
@@ -195,6 +196,7 @@ export async function transitionIssueStatus(
             reopenCount: issues.reopenCount,
             updatedAt: issues.updatedAt,
           });
+        let stampedOnClose = false;
         if (row) {
           // ISS-232 — stamp `merged_at` inside the same tx so a rollback
           // drops the column write alongside the status flip.
@@ -204,11 +206,19 @@ export async function transitionIssueStatus(
             fromStatus,
             toStatus,
           });
+          // closed = done: a close from ANY surface satisfies the L2 blocks
+          // gate. No-op when merged_at is already stamped (pipeline path).
+          const closeStamp = await markMergedOnClose(t, {
+            issueId: issue.id,
+            toStatus,
+          });
+          stampedOnClose = closeStamp.stamped;
         }
-        return row;
+        return row ? { row, stampedOnClose } : undefined;
       },
     ),
   );
+  const updated = txResult?.row;
   if (!updated) {
     throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
       from: fromStatus,
@@ -225,6 +235,29 @@ export async function transitionIssueStatus(
     reason: options.reason ?? null,
     at: updated.updatedAt,
   });
+
+  // Audit trail for the close-time stamp: only fires when the close is what
+  // stamped merged_at (hand/MCP closes of never-merged issues — the pipeline
+  // path stamped earlier on leaving the base merge state, so it stays quiet).
+  // Best-effort: the transition already committed; losing the comment must
+  // not fail the caller.
+  if (txResult?.stampedOnClose) {
+    try {
+      await db.insert(comments).values({
+        issueId: issue.id,
+        authorId: actor.type === 'user' ? actor.id : actor.ownerId,
+        body:
+          'merged_at auto-stamped on close — `closed` counts as done, so `blocks`-dependents can now dispatch. ' +
+          'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.',
+        parentId: null,
+      });
+    } catch (err) {
+      logger.warn(
+        { err, issueId: issue.id },
+        'transition: close-stamp audit comment failed (transition already committed)',
+      );
+    }
+  }
 
   // ISS-164 — refresh derived pipelineHealth (stage mirrors issues.status).
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
