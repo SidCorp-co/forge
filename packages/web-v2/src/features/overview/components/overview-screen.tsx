@@ -1,42 +1,39 @@
 'use client';
 
-// The workspace landing = workspace dashboard (ISS-355). Replaces the old flat
-// project list with a dense, actionable overview built ENTIRELY from existing
-// hooks (no new API/core changes), so the WS event-router invalidations that
-// already drive `['projects']`, `['projects','health']`, `['attention']`, and
-// `['chat-logs']` keep every widget live with no bespoke wiring:
+// The workspace landing = workspace dashboard (ISS-355, reshaped in ISS-665).
+// Replaces the old flat project list with a dense, actionable overview built
+// ENTIRELY from existing + new hooks, so the WS event-router invalidations
+// that already drive `['projects']`, `['projects','health']`, `['attention']`,
+// and `['recent-changes']` keep every widget live with no bespoke wiring:
 //   • KPI row            — workspace totals + health rollups
-//   • Needs-attention    — cross-project inbox digest
-//   • Work distribution  — aggregated issue statusDistribution
-//   • Spotlight projects — ranked/capped subset (the full list lives at /projects)
-//   • Recent activity    — last few cross-project agent turns
+//   • Needs-attention    — cross-project inbox digest (false positives fixed
+//                          server-side; see attention-routes.ts)
+//   • Work distribution  — per-project top-N workload (which project is
+//                          overloaded), absorbing the removed Spotlight panel's
+//                          project-level signal
+//   • Recent changes     — recently-updated issues (status transitions),
+//                          replacing the raw cross-project chat-log feed
 //
 // Zero projects → an onboarding empty state with a New-project CTA (the create
 // dialog itself lives on /projects, reached via ?new=1).
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EmptyState, ErrorState, PageContainer, ProjectCardSkeleton } from '@/design';
-import { useActivity } from '@/features/activity/hooks';
 import { useAttention } from '@/features/attention/hooks';
 import type { AttentionItem } from '@/features/attention/types';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { workspaceTotals } from '@/features/projects/derive';
 import { useProjectHealth, useProjectsConsole } from '@/features/projects/hooks';
+import { useRecentChanges } from '@/features/recent-changes/hooks';
 import { formatApiError } from '@/lib/api/error';
-import {
-  aggregateStatusDistribution,
-  groupWorkBuckets,
-  pickSpotlightProjects,
-  workspaceKpis,
-} from '../derive';
-import { ActivityFeed } from './activity-feed';
+import { perProjectWorkload, workspaceKpis } from '../derive';
 import { AttentionPanel } from './attention-panel';
 import { KpiRow } from './kpi-row';
-import { SpotlightProjects } from './spotlight-projects';
+import { RecentChanges } from './recent-changes';
 import { WorkDistribution } from './work-distribution';
 
-const SPOTLIGHT_LIMIT = 6;
-const ACTIVITY_LIMIT = 8;
+const WORKLOAD_LIMIT = 5;
+const RECENT_CHANGES_LIMIT = 12;
 
 export function OverviewScreen() {
   const router = useRouter();
@@ -61,15 +58,15 @@ export function OverviewScreen() {
   }, [health.data, items]);
   const orgLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
   // Slugs of the in-scope projects — drives client-side org-scoping of the
-  // Attention + Activity panels below (ISS-476). Both payloads carry a
+  // Attention + Recent-changes panels below (ISS-476). Both payloads carry a
   // `projectSlug`, so we filter by this set instead of refetching; the set
   // changes whenever `activeOrgId` flips, so the switch re-scopes live.
   const scopedSlugs = useMemo(() => new Set(items.map((p) => p.slug)), [items]);
-  // Over-fetch then client-filter+slice: the feed is server-paginated and not
-  // org-scoped, so a single ACTIVITY_LIMIT page could be entirely other orgs.
-  // The key stays under the `['chat-logs']` prefix the event-router
-  // invalidates, so live refresh is preserved.
-  const activity = useActivity({ pageSize: ACTIVITY_LIMIT * 5 });
+  // Over-fetch then client-filter+slice: the endpoint is cross-project and not
+  // org-scoped, so a single-page fetch at RECENT_CHANGES_LIMIT could be
+  // entirely other orgs. The key stays under `['recent-changes']`, which the
+  // event-router invalidates on issue events, so live refresh is preserved.
+  const recentChanges = useRecentChanges(RECENT_CHANGES_LIMIT * 5);
 
   // Relative timestamps: 0 on server + first paint ("just now"), real clock
   // after mount — hydration-safe (mirrors ProjectsConsole).
@@ -80,11 +77,10 @@ export function OverviewScreen() {
     () => workspaceKpis(totals, items, scopedHealth),
     [totals, items, scopedHealth],
   );
-  const distribution = useMemo(
-    () => groupWorkBuckets(aggregateStatusDistribution(scopedHealth)),
-    [scopedHealth],
+  const workloads = useMemo(
+    () => perProjectWorkload(items, scopedHealth, WORKLOAD_LIMIT),
+    [items, scopedHealth],
   );
-  const spotlight = useMemo(() => pickSpotlightProjects(items, SPOTLIGHT_LIMIT), [items]);
   // Scope "Needs attention" to the active org: keep only items whose project is
   // in scope. Slug-less items (offline runners) are workspace-level infra with
   // no project association on the client, so they stay. Recompute `total` from
@@ -111,12 +107,9 @@ export function OverviewScreen() {
         offlineRunners.length,
     };
   }, [attention.view, scopedSlugs]);
-  const activityRows = useMemo(
-    () =>
-      (activity.data?.items ?? [])
-        .filter((r) => scopedSlugs.has(r.projectSlug))
-        .slice(0, ACTIVITY_LIMIT),
-    [activity.data, scopedSlugs],
+  const recentChangeRows = useMemo(
+    () => recentChanges.items.filter((r) => scopedSlugs.has(r.projectSlug)).slice(0, RECENT_CHANGES_LIMIT),
+    [recentChanges.items, scopedSlugs],
   );
 
   const openProject = (slug: string) => router.push(`/projects/${slug}`);
@@ -188,25 +181,20 @@ export function OverviewScreen() {
           />
         </div>
         <div className="lg:col-span-5">
-          <WorkDistribution buckets={distribution.buckets} total={distribution.total} />
+          <WorkDistribution workloads={workloads} onOpen={openProject} onViewAll={() => router.push('/projects')} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-7">
-          <SpotlightProjects
-            projects={spotlight}
+        <div className="lg:col-span-12">
+          <RecentChanges
+            items={recentChangeRows}
             now={now}
-            onOpen={openProject}
-            onViewAll={() => router.push('/projects')}
-          />
-        </div>
-        <div className="lg:col-span-5">
-          <ActivityFeed
-            rows={activityRows}
-            now={now}
-            isLoading={activity.isLoading}
-            onOpen={openProject}
+            isLoading={recentChanges.isLoading}
+            isError={recentChanges.isError}
+            error={recentChanges.error}
+            onOpen={(slug, id) => router.push(`/projects/${slug}/issues/${id}`)}
+            onRetry={() => recentChanges.refetch()}
           />
         </div>
       </div>

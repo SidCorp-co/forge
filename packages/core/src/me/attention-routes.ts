@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, notExists, notInArray, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import {
@@ -32,9 +33,39 @@ interface AttentionResponse {
   total: number;
 }
 
+/**
+ * Bucket criteria for `GET /me/attention` (ISS-665 — keep this comment in sync
+ * with the WHERE clauses below; it is the single place documenting why an item
+ * is/isn't "needs attention"):
+ *
+ * - `needsReview`    — issues assigned to the caller sitting in a status that
+ *   needs the caller's action (`developed` awaiting review, `reopen` awaiting
+ *   a fix). Self-clearing: driven by live `issues.status`.
+ * - `awaitingInput`  — issues assigned to the caller blocked on a human
+ *   (`waiting`, `needs_info`, `on_hold`). Self-clearing: live `issues.status`.
+ * - `mentions`       — unread `@mention` notifications for the caller.
+ *   Self-clearing: driven by `notifications.read`.
+ * - `failedJobs`     — jobs the caller triggered that failed in the trailing
+ *   7 days, EXCLUDING:
+ *     1. superseded attempts — any job with a later retry (`jobs.retryOf`
+ *        points back at it). `jobs/retry.ts` inserts every retry as a NEW row
+ *        and leaves the original `status='failed'` forever, so without this
+ *        exclusion a resolved-by-retry failure keeps reporting itself for up
+ *        to 7 days. The LATEST attempt in a chain has no retry pointing at
+ *        it, so it still surfaces if it is itself still failed.
+ *     2. jobs whose linked issue has already reached a terminal state
+ *        (`closed`, `released`) — the problem was resolved by hand even
+ *        though the job row itself stays `failed`. Jobs with no linked issue
+ *        (PM/system/deploy jobs) are NOT excluded by this rule.
+ */
 const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
 const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info', 'on_hold'] as const;
+const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'released'] as const;
 const PER_BUCKET = 5;
+
+// Self-join alias for the retry-chain exclusion (a job and its retry are both
+// rows in `jobs`; drizzle requires an alias to reference the table twice).
+const retryJobs = alias(jobs, 'retry_jobs');
 
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
@@ -139,6 +170,17 @@ meAttentionRoutes.get('/attention', async (c) => {
           eq(jobs.createdBy, userId),
           eq(jobs.status, 'failed'),
           sql`${jobs.createdAt} >= now() - interval '7 days'`,
+          // Exclusion 1: drop every superseded attempt in a retry chain — see
+          // the criteria doc above.
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(retryJobs)
+              .where(eq(retryJobs.retryOf, jobs.id)),
+          ),
+          // Exclusion 2: drop failures whose linked issue already moved on;
+          // null-issue jobs (no `jobs.issueId`) are kept.
+          or(isNull(issues.id), notInArray(issues.status, [...FAILED_JOB_RESOLVED_ISSUE_STATUSES])),
         ),
       )
       .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
