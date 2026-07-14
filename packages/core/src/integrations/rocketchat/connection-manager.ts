@@ -21,6 +21,7 @@ import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { integrationConnections, issues, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { Sentry } from '../../observability/sentry.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
 import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
@@ -89,12 +90,43 @@ const LISTEN_RETRY_MS = 5000;
 /** Rocket.Chat rejects messages over `Message_MaxAllowedSize` (default 5000)
  *  outright — the user would get silence. Truncate below that. */
 const MAX_REPLY_CHARS = 4500;
-/** Hard ceiling on one inbound turn (incl. an optional corrective retry). The
- *  chat provider has no HTTP/stream timeout of its own, so a stalled upstream
- *  would otherwise hang the handler forever — the mention was seen but the user
- *  gets nothing (live incident 2026-07-14, getcontent room). On timeout the
- *  turn aborts and terminates as an error → fallback reply, never silence. */
+/** Hard ceiling on the model turn(s) via the abort signal — cancels the
+ *  provider fetch/SSE read so a stalled upstream terminates as an error. */
 const TURN_TIMEOUT_MS = 90_000;
+/** Backstop ceiling on the WHOLE handler (seed → mcp → turn → verify). The
+ *  abort signal only reaches the provider; an unbounded await BEFORE the turn
+ *  (a hung DB query, a stuck session load) would still wedge the handler in
+ *  silence. This watchdog guarantees a fallback reply + a Sentry event (tagged
+ *  with the phase it hung in) no matter where it stalls. Set above
+ *  TURN_TIMEOUT_MS so a normal provider-abort resolves cleanly first. */
+const HANDLE_TIMEOUT_MS = 120_000;
+
+class HandleTimeoutError extends Error {
+  constructor(readonly ms: number) {
+    super(`rocketchat handle timed out after ${ms}ms`);
+    this.name = 'HandleTimeoutError';
+  }
+}
+
+/** Reject with {@link HandleTimeoutError} if `p` has not settled within `ms`.
+ *  Does NOT cancel `p` (the caller aborts the provider separately) — it only
+ *  frees the handler to send a fallback and report. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new HandleTimeoutError(ms)), ms);
+    t.unref?.();
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
 
 /** Fallbacks speak AS the bot, by name — never as an anonymous "the
  *  system"/"the model". `name` is the bot's RC username, capitalized. */
@@ -351,9 +383,26 @@ class RocketChatConnectionManager {
       logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
       return;
     }
-    void this.handle(ac, route, m).catch((err) =>
-      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message handling failed'),
+    // Delivery marker: proves the mention reached the handler. If a drop ever
+    // recurs, the presence/absence of this breadcrumb on the Sentry event (or
+    // in stdout) distinguishes "RC never delivered it" from "handler hung".
+    logger.info(
+      { connectionId, rid: m.rid, msgId: m.id, user: m.username, projectId: route.projectId },
+      'rocketchat: handling mention',
     );
+    Sentry.addBreadcrumb({
+      category: 'rocketchat',
+      level: 'info',
+      message: 'handling mention',
+      data: { rid: m.rid, msgId: m.id, projectId: route.projectId, user: m.username },
+    });
+    void this.handle(ac, route, m).catch((err) => {
+      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message handling failed');
+      Sentry.captureException(err, {
+        tags: { area: 'rocketchat', phase: 'dispatch' },
+        extra: { connectionId, rid: m.rid, projectId: route.projectId },
+      });
+    });
   }
 
   private async handle(
@@ -362,110 +411,135 @@ class RocketChatConnectionManager {
     m: RocketChatIncomingMessage,
   ): Promise<void> {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
-    // Cap the whole turn: the provider has no timeout of its own, so a stalled
-    // upstream must not wedge the handler in silence. The signal aborts the
-    // provider fetch + SSE read; the turn then terminates as an error → fallback.
+    // Two nested guards so a stall NEVER leaves the mention in silence:
+    //  - `abort` (TURN_TIMEOUT_MS) cancels the provider fetch/SSE read.
+    //  - `withTimeout` (HANDLE_TIMEOUT_MS) is the whole-handler backstop for a
+    //    hang the abort can't reach (a pre-turn DB/session await). On either
+    //    fire we send a fallback AND capture to Sentry tagged with `phase`, so
+    //    the elusive drop becomes self-diagnosing next time.
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
     timer.unref?.();
     let external: ExternalMcpToolsets | undefined;
+    let phase = 'start';
     let reply: string;
     try {
-      // ISS-609 (piece A) — seed the turn with the recent room discussion (+ full
-      // thread when the mention is threaded); deeper recall stays agentic via the
-      // bounded rocketchat_history tool merged into the forge_* toolset. The
-      // project's configured external MCP servers (task hub, …) are bridged in
-      // fresh each turn so the bot investigates the same systems the pipeline
-      // agents get injected. All of this MUST stay inside the try: a throw in
-      // setup (seed fetch, config read, MCP bridge) has to yield a fallback
-      // reply, never silence (pre-fix bug: setup ran outside the guard).
-      const [conversationContext, agentConfigRow] = await Promise.all([
-        buildConversationContext(restAuth, {
-          rid: m.rid,
-          tmid: m.tmid,
-          excludeMessageId: m.id,
-          triggerText: m.text,
-        }),
-        db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, route.projectId))
-          .limit(1),
-      ]);
-      external = await buildExternalMcpToolsets(agentConfigRow[0]?.agentConfig);
-      const tools = mergeToolsets(
-        buildProjectToolset(
-          buildChatToolContext({
-            userId: route.principalUserId,
-            projectId: route.projectId,
-            projectSlug: route.projectSlug,
-          }),
-        ),
-        buildRocketChatHistoryToolset(restAuth, m.rid),
-        ...external.toolsets,
-      );
-      const persona = rocketChatPersona(route.projectName, m.username, {
-        projectSlug: route.projectSlug,
-        webBaseUrl,
-        botName: ac.botName,
-      });
-      let result = await runExternalChatTurn({
-        projectId: route.projectId,
-        source: 'rocketchat',
-        sessionId: this.sessionByRid.get(m.rid),
-        message: m.text,
-        tools,
-        userKey: m.userId,
-        persona,
-        conversationContext,
-        signal: abort.signal,
-      });
-      this.sessionByRid.set(m.rid, result.sessionId);
-      // Kernel guard: a reply citing issues that don't exist (or claiming a
-      // creation that never ran) never reaches the channel — one corrective
-      // retry, then an honest fallback. See reply-guard.ts (live incident
-      // 2026-07-07: zero tool calls + fabricated issue link).
-      let verdict = result.reply.trim()
-        ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
-        : { ok: true, problems: [] as string[] };
-      if (!verdict.ok) {
-        logger.warn(
-          { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-          'rocketchat: reply failed claim verification; corrective retry',
-        );
-        result = await runExternalChatTurn({
-          projectId: route.projectId,
-          source: 'rocketchat',
-          sessionId: result.sessionId,
-          message: correctiveMessage(verdict.problems),
-          tools,
-          userKey: m.userId,
-          persona,
-          conversationContext,
-          signal: abort.signal,
-        });
-        this.sessionByRid.set(m.rid, result.sessionId);
-        verdict = result.reply.trim()
-          ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
-          : { ok: false, problems: ['empty retry reply'] };
-        if (!verdict.ok) {
-          logger.error(
-            { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-            'rocketchat: retry still unverified; sending honest fallback',
+      reply = await withTimeout(
+        (async (): Promise<string> => {
+          // ISS-609 (piece A) — seed the turn with the recent room discussion
+          // (+ full thread when threaded); deeper recall stays agentic via the
+          // bounded rocketchat_history tool. The project's configured external
+          // MCP servers (task hub, …) are bridged in fresh each turn.
+          phase = 'context';
+          const [conversationContext, agentConfigRow] = await Promise.all([
+            buildConversationContext(restAuth, {
+              rid: m.rid,
+              tmid: m.tmid,
+              excludeMessageId: m.id,
+              triggerText: m.text,
+            }),
+            db
+              .select({ agentConfig: projects.agentConfig })
+              .from(projects)
+              .where(eq(projects.id, route.projectId))
+              .limit(1),
+          ]);
+          phase = 'mcp';
+          external = await buildExternalMcpToolsets(agentConfigRow[0]?.agentConfig);
+          const tools = mergeToolsets(
+            buildProjectToolset(
+              buildChatToolContext({
+                userId: route.principalUserId,
+                projectId: route.projectId,
+                projectSlug: route.projectSlug,
+              }),
+            ),
+            buildRocketChatHistoryToolset(restAuth, m.rid),
+            ...external.toolsets,
           );
-        }
-      }
-      reply = !verdict.ok
-        ? unverifiedFallbackReply(ac.botName)
-        : result.reply.trim() ||
-          (result.terminal === 'error'
-            ? errorFallbackReply(ac.botName)
-            : emptyFallbackReply(ac.botName));
+          const persona = rocketChatPersona(route.projectName, m.username, {
+            projectSlug: route.projectSlug,
+            webBaseUrl,
+            botName: ac.botName,
+          });
+          phase = 'turn';
+          let result = await runExternalChatTurn({
+            projectId: route.projectId,
+            source: 'rocketchat',
+            sessionId: this.sessionByRid.get(m.rid),
+            message: m.text,
+            tools,
+            userKey: m.userId,
+            persona,
+            conversationContext,
+            signal: abort.signal,
+          });
+          this.sessionByRid.set(m.rid, result.sessionId);
+          // Kernel guard: a reply citing issues that don't exist (or claiming a
+          // creation that never ran) never reaches the channel — one corrective
+          // retry, then an honest fallback. See reply-guard.ts (live incident
+          // 2026-07-07: zero tool calls + fabricated issue link).
+          phase = 'verify';
+          let verdict = result.reply.trim()
+            ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
+            : { ok: true, problems: [] as string[] };
+          if (!verdict.ok) {
+            logger.warn(
+              { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
+              'rocketchat: reply failed claim verification; corrective retry',
+            );
+            phase = 'retry';
+            result = await runExternalChatTurn({
+              projectId: route.projectId,
+              source: 'rocketchat',
+              sessionId: result.sessionId,
+              message: correctiveMessage(verdict.problems),
+              tools,
+              userKey: m.userId,
+              persona,
+              conversationContext,
+              signal: abort.signal,
+            });
+            this.sessionByRid.set(m.rid, result.sessionId);
+            verdict = result.reply.trim()
+              ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
+              : { ok: false, problems: ['empty retry reply'] };
+            if (!verdict.ok) {
+              logger.error(
+                { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
+                'rocketchat: retry still unverified; sending honest fallback',
+              );
+            }
+          }
+          return !verdict.ok
+            ? unverifiedFallbackReply(ac.botName)
+            : result.reply.trim() ||
+                (result.terminal === 'error'
+                  ? errorFallbackReply(ac.botName)
+                  : emptyFallbackReply(ac.botName));
+        })(),
+        HANDLE_TIMEOUT_MS,
+      );
     } catch (err) {
-      // The mention was seen — never leave the user in silence. Drop the room's
-      // session pointer so a poisoned session (e.g. deleted row) can't wedge
-      // every future turn; the next mention starts a fresh conversation.
-      logger.error({ err, rid: m.rid, projectId: route.projectId }, 'rocketchat: chat turn threw');
+      // The mention was seen — never leave the user in silence. Cancel a still
+      // running provider call, drop the room's session pointer (a poisoned
+      // session can't wedge every future turn), capture with the phase we hung
+      // in, and reply with an honest fallback.
+      abort.abort();
+      const timedOut = err instanceof HandleTimeoutError;
+      logger.error(
+        { err, rid: m.rid, projectId: route.projectId, phase, timedOut },
+        'rocketchat: chat turn failed',
+      );
+      Sentry.captureException(err, {
+        tags: { area: 'rocketchat', phase, timed_out: String(timedOut) },
+        extra: {
+          rid: m.rid,
+          projectId: route.projectId,
+          projectSlug: route.projectSlug,
+          user: m.username,
+        },
+      });
       this.sessionByRid.delete(m.rid);
       reply = errorFallbackReply(ac.botName);
     } finally {
