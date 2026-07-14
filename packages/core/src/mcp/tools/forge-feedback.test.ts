@@ -34,13 +34,19 @@ const selectFrom = vi.fn(() => ({
 
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
+// update chain: update().set().where().returning()
+const updateReturning = vi.fn();
+const updateWhere = vi.fn(() => ({ returning: updateReturning }));
+const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
+const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
     select: dbSelect,
     insert: dbInsert,
+    update: dbUpdate,
   },
 }));
 
@@ -93,8 +99,11 @@ beforeEach(() => {
   selectLeftJoin2.mockImplementation(() => ({ where: selectWhere }));
   selectInnerJoin.mockImplementation(() => ({ where: selectWhere }));
   insertValues.mockImplementation(() => ({ returning: insertReturning }));
+  updateSet.mockImplementation(() => ({ where: updateWhere }));
+  updateWhere.mockImplementation(() => ({ returning: updateReturning }));
   dbSelect.mockImplementation(() => ({ from: selectFrom }));
   dbInsert.mockImplementation(() => ({ values: insertValues }));
+  dbUpdate.mockImplementation(() => ({ set: updateSet }));
 });
 
 describe('forge_feedback submit', () => {
@@ -336,5 +345,65 @@ describe('forge_feedback list', () => {
 
     expect(result.truncated).toBe(true);
     expect(JSON.stringify(result).length).toBeLessThanOrEqual(38_500);
+  });
+});
+
+describe('forge_feedback review', () => {
+  const REPORT_ID = '88888888-8888-4888-8888-888888888888';
+
+  it('happy path: stamps reviewedAt and returns it', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    const reviewedAt = new Date('2026-07-14T00:00:00Z');
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([{ id: REPORT_ID, reviewedAt }]);
+
+    const result = (await tool.handler({
+      action: 'review',
+      reportId: REPORT_ID,
+    })) as { ok: boolean; id: string; reviewedAt: string | null };
+
+    expect(result).toEqual({ ok: true, id: REPORT_ID, reviewedAt: reviewedAt.toISOString() });
+    expect(updateSet).toHaveBeenCalledWith({ reviewedAt: expect.any(Date) });
+  });
+
+  it('reviewed:false clears the stamp', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([{ id: REPORT_ID, reviewedAt: null }]);
+
+    const result = (await tool.handler({
+      action: 'review',
+      reportId: REPORT_ID,
+      reviewed: false,
+    })) as { ok: boolean; reviewedAt: string | null };
+
+    expect(result.ok).toBe(true);
+    expect(result.reviewedAt).toBeNull();
+    expect(updateSet).toHaveBeenCalledWith({ reviewedAt: null });
+  });
+
+  it('throws NOT_FOUND when the report is not in the resolved project', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([]);
+
+    await expect(
+      tool.handler({ action: 'review', reportId: REPORT_ID }),
+    ).rejects.toThrow(/NOT_FOUND/);
+  });
+
+  it('throws BAD_REQUEST when reportId is missing', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    await expect(tool.handler({ action: 'review' })).rejects.toThrow(/BAD_REQUEST/);
   });
 });

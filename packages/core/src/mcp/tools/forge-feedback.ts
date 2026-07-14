@@ -22,8 +22,11 @@ const MAX_RESPONSE_CHARS = 38_000;
 
 const inputSchema = z
   .object({
-    action: z.enum(['submit', 'list']),
+    action: z.enum(['submit', 'list', 'review']),
     projectId: z.uuid().optional(),
+    // review fields
+    reportId: z.uuid().optional(),
+    reviewed: z.boolean().optional(),
     // submit fields
     kind: z.enum(feedbackKinds).optional(),
     severity: z.enum(feedbackSeverities).optional(),
@@ -100,7 +103,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Required fields: kind, target, summary. Optional: severity (default low), targetRef, detail, suggestion. ' +
     'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
     'action=list: read the friction feed for a project. Supports filters.kind/target/severity, limit (default 25). ' +
-    'Large histories are tail-trimmed with truncated:true. Requires project membership.',
+    'Large histories are tail-trimmed with truncated:true. Requires project membership. ' +
+    'action=review: stamp reviewedAt on a report once it has been triaged/addressed (reportId required; reviewed:false clears the stamp). Requires project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -235,6 +239,28 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           result.notice = `Response truncated to the ${kept.length} most recent of ${totalCount} reports to stay under the MCP output cap. Narrow with kind/target/severity filters or a smaller limit.`;
         }
         return result;
+      }
+
+      case 'review': {
+        if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
+        const reviewed = input.reviewed ?? true;
+
+        // Scope the update to the resolved project so a member of project A
+        // can never stamp a report belonging to project B by guessing its id.
+        const [updated] = await db
+          .update(feedbackReports)
+          .set({ reviewedAt: reviewed ? new Date() : null })
+          .where(
+            and(eq(feedbackReports.id, input.reportId), eq(feedbackReports.projectId, projectId)),
+          )
+          .returning({ id: feedbackReports.id, reviewedAt: feedbackReports.reviewedAt });
+
+        if (!updated) throw new Error('NOT_FOUND: feedback report not found in this project');
+        return {
+          ok: true,
+          id: updated.id,
+          reviewedAt: updated.reviewedAt?.toISOString() ?? null,
+        };
       }
     }
   },
