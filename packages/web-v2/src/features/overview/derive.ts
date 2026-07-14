@@ -76,21 +76,40 @@ export function groupWorkBuckets(dist: Record<string, number>): {
   return { buckets, total };
 }
 
+/** One project's row on the per-project Workload panel. */
+export interface ProjectWorkload {
+  project: ProjectConsoleItem;
+  buckets: WorkBucket[];
+  total: number;
+}
+
 /**
- * Rank projects for the dashboard spotlight: needs-attention first, then most
- * recent activity (nulls last), capped at `limit`. Non-mutating.
+ * ISS-665 — replaces the workspace-wide aggregate bar (which could not answer
+ * "which project is overloaded") AND the Spotlight panel (its project-level
+ * signal — attention + recency — is folded in here via the sort). Buckets
+ * each in-scope project's OWN `statusDistribution` (falling back to empty when
+ * its health row hasn't loaded/doesn't exist), ranks needs-attention first
+ * then most in-flight work, capped at `limit`. Non-mutating.
  */
-export function pickSpotlightProjects(
+export function perProjectWorkload(
   items: ProjectConsoleItem[],
+  healthRows: ProjectHealthRow[] | undefined,
   limit: number,
-): ProjectConsoleItem[] {
-  const recency = (p: ProjectConsoleItem) => (p.lastActivityAt ? Date.parse(p.lastActivityAt) : 0);
-  return [...items]
+): ProjectWorkload[] {
+  const distByProjectId = new Map<string, Record<string, number>>();
+  for (const r of healthRows ?? []) {
+    distByProjectId.set(r.id, r.statusDistribution ?? {});
+  }
+  return items
+    .map((project) => {
+      const { buckets, total } = groupWorkBuckets(distByProjectId.get(project.id) ?? {});
+      return { project, buckets, total };
+    })
     .sort((a, b) => {
-      const aAtt = isAttention(a) ? 0 : 1;
-      const bAtt = isAttention(b) ? 0 : 1;
+      const aAtt = isAttention(a.project) ? 0 : 1;
+      const bAtt = isAttention(b.project) ? 0 : 1;
       if (aAtt !== bAtt) return aAtt - bAtt;
-      return recency(b) - recency(a);
+      return b.total - a.total;
     })
     .slice(0, Math.max(0, limit));
 }

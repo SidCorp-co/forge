@@ -31,6 +31,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// ISS-307 — assignment / status edits move issues in/out of the Attention
 			// needs-review + awaiting-input buckets.
 			qc.invalidateQueries({ queryKey: ["attention"] });
+			// ISS-665 — the Overview "Recent changes" panel is driven by
+			// `issues.updatedAt`, which every one of these events bumps.
+			qc.invalidateQueries({ queryKey: ["recent-changes"] });
 			if (data?.issueId) {
 				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
 				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });
@@ -46,6 +49,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// ISS-307 — Attention buckets are status-driven (developed/reopen,
 			// waiting/needs_info/on_hold); refresh the cross-project inbox + rail count.
 			qc.invalidateQueries({ queryKey: ["attention"] });
+			// ISS-665 — status transitions are the primary "Recent changes" signal.
+			qc.invalidateQueries({ queryKey: ["recent-changes"] });
 			if (data?.issueId) {
 				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
 				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });

@@ -209,4 +209,73 @@ describe('GET /api/me/attention', () => {
     expect(body.failedJobs[0]?.issueRef).toBeUndefined();
     expect(body.failedJobs[0]?.title).toBe('review job failed');
   });
+
+  // ISS-665 — the mock query chain resolves whatever is queued regardless of
+  // the WHERE clause built (see `makeChain` above), so these cases exercise
+  // the row→response mapping for what the SQL exclusions are expected to
+  // return, not the exclusions themselves. The exclusion SQL (retry-chain +
+  // resolved-issue) is reviewed in code and re-verified live at forge-test by
+  // failing a job, letting a retry succeed, and confirming the item clears.
+  it('failed_job resolved-issue exclusion: only the still-relevant row is queued', async () => {
+    authVerified();
+    queryQueue.push([]);
+    queryQueue.push([]);
+    queryQueue.push([]);
+    // Simulates the SQL already excluding a failed job whose issue is
+    // closed/released — only the failed job on a NON-terminal issue (or a
+    // null-issue job) is ever queued for this bucket.
+    queryQueue.push([
+      {
+        id: JOB_ID,
+        type: 'code',
+        finishedAt: new Date('2026-04-26T12:00:00Z'),
+        createdAt: new Date('2026-04-26T12:00:00Z'),
+        error: 'timeout',
+        issueDocId: ISSUE_ID_2,
+        issSeq: 7,
+        projectSlug: 'alpha',
+        projectName: 'Alpha',
+      },
+    ]);
+
+    const res = await buildApp().request('/api/me/attention', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { failedJobs: Array<{ issueRef?: string }>; total: number };
+    expect(body.total).toBe(1);
+    expect(body.failedJobs[0]?.issueRef).toBe('ISS-7');
+  });
+
+  it('failed_job retry-chain exclusion: latest attempt with no child still surfaces', async () => {
+    authVerified();
+    queryQueue.push([]);
+    queryQueue.push([]);
+    queryQueue.push([]);
+    // Simulates the SQL already excluding every superseded attempt — only the
+    // latest (childless) attempt in the retry chain is ever queued.
+    queryQueue.push([
+      {
+        id: JOB_ID,
+        type: 'code',
+        finishedAt: new Date('2026-04-26T12:00:00Z'),
+        createdAt: new Date('2026-04-26T12:00:00Z'),
+        error: 'still failing',
+        issueDocId: null,
+        issSeq: null,
+        projectSlug: 'alpha',
+        projectName: 'Alpha',
+      },
+    ]);
+
+    const res = await buildApp().request('/api/me/attention', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { failedJobs: Array<{ title: string }>; total: number };
+    expect(body.total).toBe(1);
+    expect(body.failedJobs[0]?.title).toContain('still failing');
+  });
 });

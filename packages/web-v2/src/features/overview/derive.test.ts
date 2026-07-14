@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aggregateStatusDistribution,
   groupWorkBuckets,
-  pickSpotlightProjects,
+  perProjectWorkload,
   workspaceKpis,
 } from './derive';
 import { workspaceTotals } from '@/features/projects/derive';
@@ -113,23 +113,48 @@ describe('groupWorkBuckets', () => {
   });
 });
 
-describe('pickSpotlightProjects', () => {
+describe('perProjectWorkload', () => {
   const items = [
-    consoleItem({ id: 'a', health: 'healthy', lastActivityAt: '2026-05-01T00:00:00.000Z' }),
-    consoleItem({ id: 'b', health: 'attention', lastActivityAt: '2026-04-01T00:00:00.000Z' }),
-    consoleItem({ id: 'c', health: 'idle', lastActivityAt: '2026-05-10T00:00:00.000Z' }),
-    consoleItem({ id: 'd', health: 'down', lastActivityAt: null }),
+    consoleItem({ id: 'a', health: 'healthy' }),
+    consoleItem({ id: 'b', health: 'attention' }),
+    consoleItem({ id: 'c', health: 'idle' }),
+    consoleItem({ id: 'd', health: 'down' }),
+  ];
+  const rows = [
+    healthRow({ id: 'a', statusDistribution: { in_progress: 1 } }), // 1 in flight
+    healthRow({ id: 'b', statusDistribution: { open: 2, waiting: 1 } }), // 3 in flight, attention
+    healthRow({ id: 'c', statusDistribution: { open: 5 } }), // 5 in flight, not attention
+    healthRow({ id: 'd', statusDistribution: {} }), // 0 in flight, attention (down)
   ];
 
-  it('puts attention/down projects first, then recency', () => {
-    // b (attention) + d (down) lead; among them recency desc puts b before d
-    // (d has null activity). Then healthy/idle by recency: c before a.
-    expect(pickSpotlightProjects(items, 4).map((p) => p.id)).toEqual(['b', 'd', 'c', 'a']);
+  it('puts attention/down projects first, then most in-flight work', () => {
+    // b + d (attention) lead; among them total desc puts b (3) before d (0).
+    // Then healthy/idle by total desc: c (5) before a (1).
+    expect(perProjectWorkload(items, rows, 4).map((w) => w.project.id)).toEqual([
+      'b',
+      'd',
+      'c',
+      'a',
+    ]);
+  });
+
+  it('buckets each project from its OWN statusDistribution, not the workspace aggregate', () => {
+    const workload = perProjectWorkload(items, rows, 4);
+    const b = workload.find((w) => w.project.id === 'b');
+    expect(b?.total).toBe(3);
+    const byKey = Object.fromEntries(b?.buckets.map((bk) => [bk.key, bk.count]) ?? []);
+    expect(byKey.queued).toBe(2);
+    expect(byKey.attention).toBe(1);
+  });
+
+  it('falls back to empty distribution when a project has no health row yet', () => {
+    const workload = perProjectWorkload(items, undefined, 4);
+    expect(workload.every((w) => w.total === 0)).toBe(true);
   });
 
   it('caps at the limit and does not mutate input', () => {
     const copy = [...items];
-    expect(pickSpotlightProjects(items, 2)).toHaveLength(2);
+    expect(perProjectWorkload(items, rows, 2)).toHaveLength(2);
     expect(items).toEqual(copy);
   });
 });

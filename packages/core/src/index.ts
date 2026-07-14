@@ -93,6 +93,7 @@ import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
+import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { registerCandidatesDecay } from './memory/candidates-decay.js';
 import {
   registerCandidatesObserver,
@@ -415,6 +416,7 @@ app.route('/api/prompts', promptRoutes);
 app.route('/api/skill-facts', skillFactsRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/me', meAttentionRoutes);
+app.route('/api/me', meRecentChangesRoutes);
 app.route('/api/agents', agentRoutes);
 app.route('/api/chat/sessions', chatSessionRoutes);
 app.route('/api/agent-sessions', agentSessionAttachmentRoutes);
