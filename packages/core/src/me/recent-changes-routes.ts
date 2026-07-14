@@ -23,7 +23,11 @@ interface RecentChangesResponse {
 }
 
 const DEFAULT_LIMIT = 12;
-const MAX_LIMIT = 50;
+// web-v2's overview screen over-fetches at `RECENT_CHANGES_LIMIT * 5` (=60) to
+// client-filter by active org (this route isn't org-scoped) — keep this at or
+// above that product. Bump both sides together if either changes:
+// packages/web-v2/src/features/overview/components/overview-screen.tsx.
+export const MAX_LIMIT = 60;
 
 const listQuerySchema = z
   .object({

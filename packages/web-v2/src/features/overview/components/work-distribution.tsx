@@ -3,7 +3,7 @@
 // "how much work, workspace-wide" — never which project). Absorbs Spotlight's
 // project-level signal (health dot + live-runs) into the same row, ranked
 // needs-attention first then most in-flight work (`perProjectWorkload`).
-import { Card, CardContent, HealthDot, Icon, ProjectMark } from '@/design';
+import { Card, CardContent, EmptyState, HealthDot, Icon, ProjectMark } from '@/design';
 import { projectGlyph, projectInitials } from '@/features/projects/glyph';
 import type { ProjectWorkload } from '../derive';
 
@@ -38,7 +38,7 @@ function WorkloadRow({
         {total === 0 ? (
           <span className="fg-caption text-subtle">No in-flight work</span>
         ) : (
-          <span className="mt-1 flex h-1.5 w-full max-w-[220px] overflow-hidden rounded-pill bg-[var(--paper-200)]">
+          <span className="mt-1 flex h-1.5 w-full max-w-56 overflow-hidden rounded-pill bg-[var(--paper-200)]">
             {active.map((b) => (
               <span
                 key={b.key}
@@ -85,7 +85,7 @@ export function WorkDistribution({
 
       <CardContent className="flex-1">
         {workloads.length === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-subtle">No projects to show yet.</p>
+          <EmptyState mascot={false} message="No projects to show yet." />
         ) : (
           <div className="flex flex-col gap-1.5">
             {workloads.map((w) => (

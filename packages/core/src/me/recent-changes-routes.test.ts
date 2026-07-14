@@ -32,7 +32,7 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadVisibleProjectIds: (...args: unknown[]) => visibleIdsMock(...(args as [string])),
 }));
 
-const { meRecentChangesRoutes } = await import('./recent-changes-routes.js');
+const { meRecentChangesRoutes, MAX_LIMIT } = await import('./recent-changes-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -120,6 +120,29 @@ describe('GET /api/me/recent-changes', () => {
     authVerified();
 
     const res = await buildApp().request('/api/me/recent-changes?limit=0', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts the overview screen client\'s over-fetch limit (RECENT_CHANGES_LIMIT * 5 = 60)', async () => {
+    authVerified();
+    visibleIdsMock.mockResolvedValue([PROJECT_ID]);
+    queryQueue.push([]);
+
+    const res = await buildApp().request(`/api/me/recent-changes?limit=${12 * 5}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(MAX_LIMIT).toBeGreaterThanOrEqual(12 * 5);
+    expect(res.status).toBe(200);
+  });
+
+  it('400 just above MAX_LIMIT', async () => {
+    authVerified();
+
+    const res = await buildApp().request(`/api/me/recent-changes?limit=${MAX_LIMIT + 1}`, {
       headers: { authorization: `Bearer ${await token()}` },
     });
 

@@ -2,7 +2,7 @@
 // across every in-scope project (ISS-665, replaces the raw chat-log activity
 // feed). Project tag · status dot · ISS ref · title · relative time, each row
 // clickable to the issue detail.
-import { Card, CardContent, ErrorState, Icon, MonoTag } from '@/design';
+import { Card, CardContent, EmptyState, ErrorState, Icon, MonoTag, Skeleton } from '@/design';
 import { STATUS_META } from '@/design/status';
 import { statusToChip } from '@/features/issues/derive';
 import { formatApiError } from '@/lib/api/error';
@@ -42,11 +42,25 @@ export function RecentChanges({
             onRetry={onRetry}
           />
         ) : isLoading ? (
-          <p className="fg-body-sm py-6 text-center text-subtle">Loading…</p>
+          <ul className="flex flex-col">
+            {Array.from({ length: 4 }, (_, i) => (
+              <li
+                key={i}
+                className="flex items-center gap-2.5 border-b border-line-subtle py-2 last:border-0"
+              >
+                <Skeleton variant="circle" className="size-1.5" />
+                <Skeleton className="h-5 w-16 rounded-pill" />
+                <Skeleton className="h-5 w-12 rounded-pill" />
+                <Skeleton variant="text" className="min-w-0 flex-1" />
+                <Skeleton className="h-3 w-10" />
+              </li>
+            ))}
+          </ul>
         ) : items.length === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-subtle">
-            No recent changes — updated issues will show up here.
-          </p>
+          <EmptyState
+            mascot={false}
+            message="No recent changes — updated issues will show up here."
+          />
         ) : (
           <ul className="flex flex-col">
             {items.map((row) => {

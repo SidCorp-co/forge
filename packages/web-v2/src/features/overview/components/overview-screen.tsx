@@ -34,6 +34,10 @@ import { WorkDistribution } from './work-distribution';
 
 const WORKLOAD_LIMIT = 5;
 const RECENT_CHANGES_LIMIT = 12;
+// The core route (`packages/core/src/me/recent-changes-routes.ts`) caps
+// `limit` at 60 — keep this over-fetch multiplier's product at or under that,
+// bump both sides together if either changes.
+const RECENT_CHANGES_FETCH_LIMIT = RECENT_CHANGES_LIMIT * 5;
 
 export function OverviewScreen() {
   const router = useRouter();
@@ -66,7 +70,7 @@ export function OverviewScreen() {
   // org-scoped, so a single-page fetch at RECENT_CHANGES_LIMIT could be
   // entirely other orgs. The key stays under `['recent-changes']`, which the
   // event-router invalidates on issue events, so live refresh is preserved.
-  const recentChanges = useRecentChanges(RECENT_CHANGES_LIMIT * 5);
+  const recentChanges = useRecentChanges(RECENT_CHANGES_FETCH_LIMIT);
 
   // Relative timestamps: 0 on server + first paint ("just now"), real clock
   // after mount — hydration-safe (mirrors ProjectsConsole).
