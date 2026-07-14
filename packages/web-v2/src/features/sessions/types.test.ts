@@ -4,8 +4,10 @@ import {
   STALLED_THRESHOLD_MS,
   deriveLiveness,
   deriveSessionDisplayStatus,
+  isAwaitingReply,
   isInteractiveSession,
   sessionKind,
+  sessionSortRank,
   statusToChip,
   classifySessionOutcome,
   isRealFailure,
@@ -203,5 +205,55 @@ describe("sessionKind / isInteractiveSession", () => {
     expect(sessionKind({ metadata: null })).toBe("chat");
     expect(isInteractiveSession({ metadata: { type: "agent" } })).toBe(true);
     expect(isInteractiveSession({ metadata: { type: "pipeline" } })).toBe(false);
+  });
+});
+
+describe("isAwaitingReply (ISS-664 — 'waiting for me' signal)", () => {
+  it("is true for an idle interactive chat", () => {
+    expect(isAwaitingReply({ status: "idle", metadata: { type: "agent" } })).toBe(true);
+    expect(isAwaitingReply({ status: "idle", metadata: { type: "interactive" } })).toBe(true);
+  });
+
+  it("is false for an idle PIPELINE session — that's waiting on capacity, not the owner", () => {
+    expect(isAwaitingReply({ status: "idle", metadata: { type: "pipeline" } })).toBe(false);
+    expect(isAwaitingReply({ status: "idle", metadata: { type: "pm" } })).toBe(false);
+  });
+
+  it("is false for a running chat (agent still working, not awaiting reply yet)", () => {
+    expect(isAwaitingReply({ status: "running", metadata: { type: "agent" } })).toBe(false);
+  });
+
+  it("is false for a terminal chat", () => {
+    expect(isAwaitingReply({ status: "completed", metadata: { type: "agent" } })).toBe(false);
+  });
+});
+
+describe("sessionSortRank (ISS-664 — floats 'waiting for me' to the top)", () => {
+  it("ranks an awaiting-reply chat above everything else", () => {
+    const chatIdle = { status: "idle" as const, metadata: { type: "agent" }, failureReason: null };
+    expect(sessionSortRank(chatIdle, "idle")).toBe(0);
+  });
+
+  it("ranks live (running/stalled) below waiting-for-me but above queued", () => {
+    const runningRow = { status: "running" as const, metadata: { type: "pipeline" }, failureReason: null };
+    expect(sessionSortRank(runningRow, "running")).toBe(1);
+    expect(sessionSortRank(runningRow, "stalled")).toBe(1);
+  });
+
+  it("ranks a queued/idle pipeline session below live, above attention", () => {
+    const queuedRow = { status: "queued" as const, metadata: { type: "pipeline" }, failureReason: null };
+    expect(sessionSortRank(queuedRow, "queued")).toBe(2);
+    const idlePipeline = { status: "idle" as const, metadata: { type: "pipeline" }, failureReason: null };
+    expect(sessionSortRank(idlePipeline, "idle")).toBe(2);
+  });
+
+  it("ranks a genuine failure below queued, above terminal success", () => {
+    const failedRow = { status: "failed" as const, metadata: { type: "pipeline" }, failureReason: "job_failed" };
+    expect(sessionSortRank(failedRow, "failed")).toBe(3);
+  });
+
+  it("ranks terminal success/swept last", () => {
+    const doneRow = { status: "completed" as const, metadata: { type: "pipeline" }, failureReason: null };
+    expect(sessionSortRank(doneRow, "completed")).toBe(4);
   });
 });

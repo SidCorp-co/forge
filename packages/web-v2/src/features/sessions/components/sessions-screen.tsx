@@ -41,6 +41,7 @@ import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { FleetStrip } from "./fleet-strip";
+import { SessionReplyPanel } from "./session-reply-panel";
 import {
   useAbortSession,
   useCancelSession,
@@ -53,8 +54,10 @@ import {
   deriveLiveness,
   deriveSessionDisplayStatus,
   deriveStage,
+  isAwaitingReply,
   isRetryable,
   sessionKind,
+  sessionSortRank,
   statusToChip,
   classifySessionOutcome,
   isRealFailure,
@@ -111,9 +114,12 @@ function fmtCost(usd: number | undefined): string {
   return `$${usd.toFixed(2)}`;
 }
 
-const FILTERS: SessionFilter[] = ["all", "running", "queued", "attention"];
+// ISS-664 — "waiting" leads the tab order: it's the one the owner scans for
+// first ("who needs me"), distinct from `attention` (genuine job failures).
+const FILTERS: SessionFilter[] = ["all", "waiting", "running", "queued", "attention"];
 const FILTER_LABEL: Record<SessionFilter, string> = {
   all: "All",
+  waiting: "Waiting for me",
   running: "Running",
   queued: "Queued",
   attention: "Attention",
@@ -139,6 +145,12 @@ function matchesKind(kind: KindFilter, row: SessionRow): boolean {
 
 function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSessionDisplayStatus): boolean {
   switch (filter) {
+    case "waiting":
+      // ISS-664 — a finished interactive chat awaiting the owner's reply.
+      // Deliberately distinct from `queued` (a pipeline session awaiting a
+      // runner also carries `status:'idle'` in some capacity-blocked states,
+      // but `isAwaitingReply` only matches interactive chats).
+      return isAwaitingReply(row);
     case "running":
       return display === "running" || display === "stalled";
     case "queued":
@@ -170,6 +182,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const [filter, setFilter] = useState<SessionFilter>("all");
   // ISS-465 — kind dimension (Runs vs Chats); presentation-only.
   const [kind, setKind] = useState<KindFilter>("all");
+  // ISS-664 — workspace-tier inline reply panel. Project tier keeps the
+  // existing full route navigation (no pain point there), so this only ever
+  // gets set when `projectId` is unset.
+  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
 
   // Resolve each row's project slug (id → slug) so session rows can link to the
   // project-scoped detail + issue routes at both tiers.
@@ -213,6 +229,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     return scoped.filter((r) => matchesKind(kind, r));
   }, [sessionsQ.data, issueFilter, kind, projectId, orgProjectIds]);
 
+  // ISS-664 — resolve the open panel's row (and its slug) from the currently
+  // loaded rows so the panel can render without a second fetch.
+  const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r] as const)), [rows]);
+  const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
+
   // Derive once per render so display status, stats, and filters all agree.
   const now = Date.now();
   const displays = useMemo(
@@ -251,7 +272,13 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   }, [rows, displays, now]);
 
   const counts = useMemo(() => {
-    const c: Record<SessionFilter, number> = { all: rows.length, running: 0, queued: 0, attention: 0 };
+    const c: Record<SessionFilter, number> = {
+      all: rows.length,
+      waiting: 0,
+      running: 0,
+      queued: 0,
+      attention: 0,
+    };
     rows.forEach((r, i) => {
       for (const f of FILTERS) {
         if (f !== "all" && matchesFilter(f, r, displays[i])) c[f] += 1;
@@ -260,10 +287,16 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     return c;
   }, [rows, displays]);
 
-  const visibleRows = useMemo(
-    () => rows.filter((r, i) => matchesFilter(filter, r, displays[i])),
-    [rows, displays, filter],
-  );
+  // ISS-664 — float "waiting for me" rows to the top of EVERY tab (not just the
+  // dedicated `waiting` tab), stable within a rank so ties keep the API's
+  // `updatedAt desc` order.
+  const visibleRows = useMemo(() => {
+    const matched = rows
+      .map((r, i) => ({ row: r, display: displays[i] }))
+      .filter(({ row, display }) => matchesFilter(filter, row, display));
+    matched.sort((a, b) => sessionSortRank(a.row, a.display) - sessionSortRank(b.row, b.display));
+    return matched.map(({ row }) => row);
+  }, [rows, displays, filter]);
 
   const filterOptions: SegmentOption<SessionFilter>[] = FILTERS.map((f) => ({
     value: f,
@@ -380,7 +413,18 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       )}
 
       {!sessionsQ.isLoading && !sessionsQ.isError && rows.length > 0 && visibleRows.length === 0 && (
-        <EmptyState title="Nothing here" message="No sessions match this filter." mascot={false} />
+        // ISS-664 — the "waiting for me" tab reads distinctly from a plain
+        // filtered-empty ("nothing matches"): being empty here is a good
+        // outcome (caught up), not a dead end.
+        <EmptyState
+          title={filter === "waiting" ? "You're all caught up" : "Nothing here"}
+          message={
+            filter === "waiting"
+              ? "No conversations are waiting on your reply right now."
+              : "No sessions match this filter."
+          }
+          mascot={false}
+        />
       )}
 
       {!sessionsQ.isLoading && !sessionsQ.isError && visibleRows.length > 0 && (
@@ -410,6 +454,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                     deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                     now={now}
                     actions={actions}
+                    projectId={projectId}
+                    onInlineOpen={setOpenSessionId}
                   />
                 ))}
               </TBody>
@@ -426,10 +472,23 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                 deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                 now={now}
                 actions={actions}
+                projectId={projectId}
+                onInlineOpen={setOpenSessionId}
               />
             ))}
           </div>
         </>
+      )}
+
+      {/* ISS-664 — workspace tier only: inline reply panel. Keeps the list
+          mounted+visible behind the drawer (AC4). Project tier never sets
+          `openSessionId` (its rows navigate instead), so this stays inert there. */}
+      {!projectId && (
+        <SessionReplyPanel
+          sessionId={openSessionId}
+          slug={openRow ? slugFor(openRow) : undefined}
+          onClose={() => setOpenSessionId(null)}
+        />
       )}
     </PageContainer>
   );
@@ -634,11 +693,20 @@ function StatusCell({
   now: number;
 }) {
   const liveness = deriveLiveness(row, now);
+  // ISS-664 — a finished interactive chat awaiting the owner's reply gets its
+  // own distinct chip (the `waiting` StatusKey — amber "a human must act"),
+  // taking priority over the generic idle→paused mapping used everywhere else
+  // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
+  const awaitingReply = isAwaitingReply(row);
   // ISS-322 — classify terminal sessions so benign cleanup / lifecycle cancels
   // render with the neutral `swept` token (NOT red), with an explanatory
   // tooltip. Genuine failures keep the red `failed` token + amber reason.
   const outcome = classifySessionOutcome(display, row.failureReason);
-  const chipStatus = outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
+  const chipStatus = awaitingReply
+    ? "waiting"
+    : outcome.bucket === "active"
+      ? statusToChip(display)
+      : outcome.statusKey;
   const reason = row.failureReason ? FAILURE_REASON_LABEL[row.failureReason] ?? row.failureReason : null;
   const showReason =
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
@@ -646,7 +714,7 @@ function StatusCell({
   const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
   return (
     <div className="flex flex-col items-start gap-1">
-      {outcome.tooltip ? (
+      {!awaitingReply && outcome.tooltip ? (
         <Tooltip label={outcome.tooltip}>
           <StatusChip status={chipStatus} stage={stage} domain="session" />
         </Tooltip>
@@ -685,18 +753,32 @@ function SessionTableRow({
   deviceName,
   now,
   actions,
+  projectId,
+  onInlineOpen,
 }: {
   row: SessionRow;
   slug?: string;
   deviceName?: string;
   now: number;
   actions: RowActions;
+  /** Set at the project tier only — when present, rows navigate as before. */
+  projectId?: string;
+  /** Workspace tier only (ISS-664): opens the inline reply panel instead of
+   *  navigating away from the cross-project list. */
+  onInlineOpen: (id: string) => void;
 }) {
   const router = useRouter();
   const display = deriveSessionDisplayStatus(row, now);
   const duration = useRowDuration(row, display);
   const stage = deriveStage(row.metadata);
-  const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
+  // ISS-664 — tier-aware open: project tier keeps the existing route
+  // navigation; workspace tier opens the inline reply panel instead (no
+  // navigation, list stays visible).
+  const open = projectId
+    ? slug
+      ? () => router.push(`/projects/${slug}/agents/${row.id}`)
+      : undefined
+    : () => onInlineOpen(row.id);
   return (
     <TR>
       <TD>
@@ -734,18 +816,29 @@ function SessionMobileCard({
   deviceName,
   now,
   actions,
+  projectId,
+  onInlineOpen,
 }: {
   row: SessionRow;
   slug?: string;
   deviceName?: string;
   now: number;
   actions: RowActions;
+  /** Set at the project tier only — when present, rows navigate as before. */
+  projectId?: string;
+  /** Workspace tier only (ISS-664): opens the inline reply panel instead of
+   *  navigating away from the cross-project list. */
+  onInlineOpen: (id: string) => void;
 }) {
   const router = useRouter();
   const display = deriveSessionDisplayStatus(row, now);
   const duration = useRowDuration(row, display);
   const stage = deriveStage(row.metadata);
-  const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
+  const open = projectId
+    ? slug
+      ? () => router.push(`/projects/${slug}/agents/${row.id}`)
+      : undefined
+    : () => onInlineOpen(row.id);
   return (
     <Card>
       <CardContent>

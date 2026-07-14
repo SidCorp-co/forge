@@ -143,8 +143,10 @@ export interface SessionCost {
   models: { model: string; cost: number; requests: number }[];
 }
 
-/** Client-side filter tabs. `attention` = failed + stalled + cancelled_stale. */
-export type SessionFilter = "all" | "running" | "queued" | "attention";
+/** Client-side filter tabs. `waiting` = an interactive chat idle after its last
+ *  turn (genuinely awaiting the owner's reply — ISS-664). `attention` = failed +
+ *  stalled + cancelled_stale (unchanged; job failures, not reply-waiting). */
+export type SessionFilter = "all" | "waiting" | "running" | "queued" | "attention";
 
 /** Session kind: `pipeline` (job-driven, picked up by a headless runner) vs
  *  `chat` (interactive desktop session that spawns no job). A `chat` session
@@ -158,6 +160,17 @@ export function sessionKind(session: Pick<SessionRow, "metadata">): "pipeline" |
 /** Whether a session is an interactive chat (not driven by a pipeline job). */
 export function isInteractiveSession(session: Pick<SessionRow, "metadata">): boolean {
   return sessionKind(session) === "chat";
+}
+
+/**
+ * "Waiting for me" (ISS-664): an interactive chat whose agent turn finished
+ * (`status:'idle'`, set on interactive turn completion) — the owner has not
+ * replied yet. Deliberately EXCLUDES pipeline sessions: a pipeline `queued` (or
+ * `idle` while blocked on capacity/deps) is waiting for a RUNNER, not the owner,
+ * and must stay in its existing Queued/Attention bucket, not this one.
+ */
+export function isAwaitingReply(session: Pick<SessionRow, "status" | "metadata">): boolean {
+  return isInteractiveSession(session) && session.status === "idle";
 }
 
 /** Operator-facing label for each terminal failure reason — surfaced on the
@@ -449,4 +462,21 @@ export function deriveStage(metadata: SessionMetadata | null): StageKey {
 export function isRetryable(row: SessionRow): boolean {
   const type = row.metadata?.type;
   return (type === "pipeline" || type === "pm") && !!row.metadata?.issueId;
+}
+
+/**
+ * Float "waiting for me" sessions to the top of every filter tab (ISS-664),
+ * ahead of live work, queued/idle-pipeline, attention, and terminal rows. Rank
+ * is stable within a bucket — callers sort a list already in `updatedAt desc`
+ * order, so ties keep that order.
+ */
+export function sessionSortRank(
+  row: Pick<SessionRow, "status" | "metadata" | "failureReason">,
+  display: AgentSessionDisplayStatus,
+): number {
+  if (isAwaitingReply(row)) return 0;
+  if (display === "running" || display === "stalled") return 1;
+  if (row.status === "queued" || row.status === "idle") return 2;
+  if (isRealFailure(display, row.failureReason)) return 3;
+  return 4;
 }

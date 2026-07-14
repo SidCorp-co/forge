@@ -51,9 +51,18 @@ interface SessionScreenProps {
   sessionId: string;
   /** Back-link target (project sessions index). */
   projectSlug?: string;
+  /** Rendered inside a workspace-tier SlideOver panel (ISS-664) rather than as
+   *  a full route page: fills the drawer height instead of the viewport, and
+   *  defaults the desktop context rail to collapsed (the drawer is narrower
+   *  than a full page). Pass `onClose` alongside this to give the header back
+   *  button somewhere to go. */
+  embedded?: boolean;
+  /** Closes the panel. When set, the header back button calls this instead of
+   *  navigating — used by the embedded workspace-tier reply panel. */
+  onClose?: () => void;
 }
 
-export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
+export function SessionScreen({ sessionId, projectSlug, embedded = false, onClose }: SessionScreenProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
@@ -61,10 +70,17 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const turnsQ = useSessionTurns(sessionId);
   const [railOpen, setRailOpen] = useState(false);
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
-  const [railCollapsed, setRailCollapsed] = usePersistedState(
+  const [persistedRailCollapsed, setPersistedRailCollapsed] = usePersistedState(
     "web-v2:context-rail",
     false,
   );
+  // Embedded (workspace-tier panel): default the rail to collapsed — the
+  // drawer is narrower than a full page — but keep it toggleable per-open
+  // without touching the full-page project preference (ISS-664 plan Q2).
+  const [embeddedRailCollapsed, setEmbeddedRailCollapsed] = useState(true);
+  const railCollapsed = embedded ? embeddedRailCollapsed : persistedRailCollapsed;
+  const setRailCollapsed = embedded ? setEmbeddedRailCollapsed : setPersistedRailCollapsed;
+  const goBack = onClose ?? (projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined);
 
   const session = sessionQ.data;
   const issueId = session?.metadata?.issueId;
@@ -78,7 +94,11 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     projectsQ.data?.find((p) => p.id === session.projectId)?.role !== "viewer";
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
+  // Skip in embedded mode (ISS-664 plan Q3): a session glanced at inline from
+  // the workspace reply panel should not rewrite the owner's last-visited /
+  // ⌘K recents state.
   useEffect(() => {
+    if (embedded) return;
     if (!session || !projectSlug) return;
     pushRecent({
       kind: "session",
@@ -87,7 +107,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
       href: `/projects/${projectSlug}/agents/${session.id}`,
       icon: "agent",
     });
-  }, [session?.id, session?.title, projectSlug, pushRecent]);
+  }, [embedded, session?.id, session?.title, projectSlug, pushRecent]);
 
   function copyLink() {
     if (!projectSlug) return;
@@ -143,7 +163,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   if (sessionQ.isLoading) {
     return (
-      <div className="grid min-h-dvh place-items-center">
+      <div className={`grid place-items-center ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
         <ProjectLoader label="loading session…" />
       </div>
     );
@@ -151,7 +171,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   if (sessionQ.isError || !session) {
     return (
-      <div className="grid min-h-dvh place-items-center">
+      <div className={`grid place-items-center ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
         <ErrorState
           title="Couldn't load session"
           message={formatApiError(sessionQ.error)}
@@ -162,18 +182,18 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {projectSlug && (
+          {goBack && (
             <Button
               variant="ghost"
               size="sm"
               icon="arrowRight"
               className="min-h-11 rotate-180"
               aria-label="Back to sessions"
-              onClick={() => router.push(`/projects/${projectSlug}/agents`)}
+              onClick={goBack}
             />
           )}
           <div className="min-w-0 flex-1">
