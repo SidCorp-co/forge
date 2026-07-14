@@ -57,8 +57,9 @@ const inputSchema = z
     /** runtime-logs: the Coolify application (target) resourceUuid to tail;
      *  defaults to the integration's sole target when it has exactly one. */
     resourceUuid: z.string().optional(),
-    /** runtime-logs: number of recent lines to request (clamped 1..1000). */
-    lines: z.number().int().positive().optional(),
+    /** runtime-logs: number of recent lines to request (clamped 1..1000).
+     *  Coerced — MCP transports routinely deliver numeric args as strings. */
+    lines: z.coerce.number().int().positive().optional(),
   })
   .strict();
 
