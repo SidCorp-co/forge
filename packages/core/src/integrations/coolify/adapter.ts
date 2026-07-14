@@ -452,6 +452,41 @@ export async function fetchCoolifyDeploymentLogs(
   return { deploymentUuid, status: dep.status ?? null, logs: text, truncated };
 }
 
+export interface CoolifyRuntimeLogsResult {
+  resourceUuid: string;
+  logs: string;
+  /** True when the log was tailed (older lines or leading bytes dropped). */
+  truncated: boolean;
+}
+
+/**
+ * Fetch an application's recent RUNTIME container logs (the live container, not
+ * the build log), scrub secrets line-by-line, and tail. Mirrors
+ * {@link fetchCoolifyDeploymentLogs} but hits the runtime-logs endpoint.
+ * CAVEAT: a docker-compose target returns only ONE container's logs — Coolify's
+ * public API has no working per-service selector (see
+ * `CoolifyApplicationLogsResponse`). Reliable only for single-container apps.
+ */
+export async function fetchCoolifyRuntimeLogs(
+  pair: BindingWithConnection,
+  resourceUuid: string,
+  lines?: number,
+): Promise<CoolifyRuntimeLogsResult> {
+  const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair);
+  const client = buildClient(ctx);
+  const res = await client.getApplicationLogs(
+    resourceUuid,
+    lines !== undefined ? { lines } : undefined,
+  );
+  const raw = typeof res.logs === 'string' ? res.logs : '';
+  const extraSecrets = [ctx.secrets.apiToken, ctx.secrets.previousApiToken].filter(
+    (s): s is string => typeof s === 'string' && s.length > 0,
+  );
+  const scrubbed = scrubLogText(redactCoolifyEnvDump(raw), extraSecrets);
+  const { text, truncated } = tailLog(scrubbed);
+  return { resourceUuid, logs: text, truncated };
+}
+
 export function registerCoolifyAdapter(): void {
   if (getAdapter('coolify')) return;
   // biome-ignore lint/suspicious/noExplicitAny: registry accepts the adapter shape regardless of generic params

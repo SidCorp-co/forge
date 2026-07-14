@@ -24,7 +24,10 @@
  */
 
 import { z } from 'zod';
-import { fetchCoolifyDeploymentLogs } from '../../integrations/coolify/adapter.js';
+import {
+  fetchCoolifyDeploymentLogs,
+  fetchCoolifyRuntimeLogs,
+} from '../../integrations/coolify/adapter.js';
 import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../../integrations/deliveries.js';
@@ -46,11 +49,16 @@ import {
 
 const inputSchema = z
   .object({
-    action: z.enum(['list', 'deploy', 'status', 'logs']),
+    action: z.enum(['list', 'deploy', 'status', 'logs', 'runtime-logs']),
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
     deploymentUuid: z.string().optional(),
+    /** runtime-logs: the Coolify application (target) resourceUuid to tail;
+     *  defaults to the integration's sole target when it has exactly one. */
+    resourceUuid: z.string().optional(),
+    /** runtime-logs: number of recent lines to request (clamped 1..1000). */
+    lines: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -82,7 +90,7 @@ async function activeCoolifyIntegrations(projectId: string) {
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
   description:
-    'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs. ' +
+    'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | runtime-logs. ' +
     'MODEL: one integration = one project+ENVIRONMENT binding (staging vs prod are SEPARATE ' +
     'integrations). Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
     'application (e.g. a split backend + frontend, or a worker), deployed TOGETHER. A single deploy ' +
@@ -123,6 +131,13 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'preserved. Returns { integrationId, deploymentUuid, status, logs, truncated }; on a Coolify API ' +
     'error returns { error, httpStatus } with no raw body. Tailed to last ~100 lines / ~16KB ' +
     '(truncated:true when cut). ' +
+    'runtime-logs: tail the LIVE application container log (NOT the build log) via Coolify ' +
+    'applications/{uuid}/logs. Resolves the target from resourceUuid (else the integration sole ' +
+    'target; multiple targets => pass resourceUuid, see list); optional `lines` (1..1000, default 100). ' +
+    'Same scrubbing/tailing as logs. CAVEAT: for a docker-compose application Coolify returns only ONE ' +
+    "container's logs and its public API has NO working per-service selector — reliable for " +
+    'single-container apps; a compose deploy cannot be narrowed to a specific service here. Returns ' +
+    '{ integrationId, resourceUuid, logs, truncated } or { error, httpStatus }. ' +
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
@@ -322,6 +337,60 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
             return {
               integrationId: row.id,
               deploymentUuid,
+              logs: null,
+              error: 'coolify API error',
+              httpStatus: err.status,
+            };
+          }
+          throw err;
+        }
+      }
+
+      case 'runtime-logs': {
+        const projectId = await resolveProjectId(input, ctx);
+        await assertPrincipalIsMember(principal, projectId);
+
+        // Resolve the integration row exactly like `logs`.
+        const rows = await activeCoolifyIntegrations(projectId);
+        const row = input.integrationId
+          ? rows.find((r) => r.id === input.integrationId)
+          : rows.length === 1
+            ? rows[0]
+            : undefined;
+        if (!row) {
+          if (input.integrationId) {
+            throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
+          }
+          if (rows.length === 0) {
+            return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
+          }
+          throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
+        }
+
+        // Resolve the target application to tail: explicit resourceUuid wins;
+        // else the integration's sole target. Multiple targets is ambiguous —
+        // require the caller to name one (and the compose caveat means even the
+        // named target may only expose a single container's logs).
+        const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
+        const resourceUuid =
+          input.resourceUuid ?? (targets.length === 1 ? targets[0]?.resourceUuid : undefined);
+        if (!resourceUuid) {
+          if (targets.length === 0) {
+            return { integrationId: row.id, resourceUuid: null, logs: null, reason: 'no-target' };
+          }
+          throw new Error(
+            'BAD_REQUEST: integration has multiple targets — pass resourceUuid (see list action)',
+          );
+        }
+
+        try {
+          const result = await fetchCoolifyRuntimeLogs(row.pair, resourceUuid, input.lines);
+          return { integrationId: row.id, ...result };
+        } catch (err) {
+          if (err instanceof CoolifyApiError) {
+            return {
+              integrationId: row.id,
+              resourceUuid,
               logs: null,
               error: 'coolify API error',
               httpStatus: err.status,

@@ -61,6 +61,19 @@ export interface CoolifyResourceResponse {
   status?: string;
 }
 
+/**
+ * Coolify v4 `GET /api/v1/applications/{uuid}/logs` — recent RUNTIME container
+ * logs as one string. CAVEAT (verified 2026-07-14 against getforge-beta): for a
+ * docker-compose application this returns only ONE container's logs and the
+ * public API exposes NO working per-service selector — `container=`/`service=`
+ * query params are ignored (it returned the web-v2 container regardless). So a
+ * compose target cannot be narrowed to a specific service through this endpoint;
+ * it is reliable only for single-container applications.
+ */
+export interface CoolifyApplicationLogsResponse {
+  logs?: string;
+}
+
 /** One line of a Coolify deployment log (when `logs` is decoded to an array). */
 export interface CoolifyDeploymentLogLine {
   output?: string;

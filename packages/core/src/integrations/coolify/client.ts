@@ -1,4 +1,5 @@
 import type {
+  CoolifyApplicationLogsResponse,
   CoolifyDeployResponse,
   CoolifyDeploymentResponse,
   CoolifyResourceResponse,
@@ -141,6 +142,27 @@ export class CoolifyClient {
     return this.request<CoolifyDeploymentResponse>(
       'GET',
       `/api/v1/deployments/${encodeURIComponent(deploymentUuid)}`,
+    );
+  }
+
+  /**
+   * Fetch recent RUNTIME container logs for an application (the live container,
+   * not the build log — that's `getDeployment`). Coolify v4
+   * `GET /api/v1/applications/{uuid}/logs?lines=N` → `{ logs }`. `lines` is
+   * clamped 1..1000. CAVEAT: for a docker-compose application this returns only
+   * ONE container's logs with no working per-service selector — see
+   * {@link CoolifyApplicationLogsResponse}.
+   * Docs: https://coolify.io/docs/api-reference/api/operations/get-application-logs-by-uuid
+   */
+  async getApplicationLogs(
+    resourceUuid: string,
+    opts?: { lines?: number },
+  ): Promise<CoolifyApplicationLogsResponse> {
+    const lines = Math.min(Math.max(1, Math.floor(opts?.lines ?? 100)), 1000);
+    const qs = new URLSearchParams({ lines: String(lines) });
+    return this.request<CoolifyApplicationLogsResponse>(
+      'GET',
+      `/api/v1/applications/${encodeURIComponent(resourceUuid)}/logs?${qs.toString()}`,
     );
   }
 }
