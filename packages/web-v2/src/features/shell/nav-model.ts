@@ -13,6 +13,9 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
   // (its live count rides on this row's badge).
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
+  // Promoted from SECONDARY_DESTINATIONS (ISS-667): the session cockpit
+  // (ISS-664) had no rail entry point — URL/⌘K only — so users couldn't find it.
+  { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
   { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
   // ISS-628 — workspace resource management, first type = Private Keys.
@@ -30,7 +33,6 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
 export const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
   { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
   { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
-  { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
 ];
 
