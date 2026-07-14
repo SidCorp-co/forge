@@ -13,7 +13,7 @@
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
-import { buildExternalMcpToolsets } from '../../chat/tools/external-mcp.js';
+import { type ExternalMcpToolsets, buildExternalMcpToolsets } from '../../chat/tools/external-mcp.js';
 import { mergeToolsets } from '../../chat/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../chat/tools/principal.js';
 import { buildProjectToolset } from '../../chat/tools/registry.js';
@@ -89,6 +89,12 @@ const LISTEN_RETRY_MS = 5000;
 /** Rocket.Chat rejects messages over `Message_MaxAllowedSize` (default 5000)
  *  outright — the user would get silence. Truncate below that. */
 const MAX_REPLY_CHARS = 4500;
+/** Hard ceiling on one inbound turn (incl. an optional corrective retry). The
+ *  chat provider has no HTTP/stream timeout of its own, so a stalled upstream
+ *  would otherwise hang the handler forever — the mention was seen but the user
+ *  gets nothing (live incident 2026-07-14, getcontent room). On timeout the
+ *  turn aborts and terminates as an error → fallback reply, never silence. */
+const TURN_TIMEOUT_MS = 90_000;
 
 /** Fallbacks speak AS the bot, by name — never as an anonymous "the
  *  system"/"the model". `name` is the bot's RC username, capitalized. */
@@ -356,28 +362,37 @@ class RocketChatConnectionManager {
     m: RocketChatIncomingMessage,
   ): Promise<void> {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
-    // ISS-609 (piece A) — seed the turn with the recent room discussion (+ full
-    // thread when the mention is threaded); deeper recall stays agentic via the
-    // bounded rocketchat_history tool merged into the forge_* toolset. The
-    // project's configured external MCP servers (task hub, …) are bridged in
-    // fresh each turn so the bot investigates the same systems the pipeline
-    // agents get injected.
-    const [conversationContext, agentConfigRow] = await Promise.all([
-      buildConversationContext(restAuth, {
-        rid: m.rid,
-        tmid: m.tmid,
-        excludeMessageId: m.id,
-        triggerText: m.text,
-      }),
-      db
-        .select({ agentConfig: projects.agentConfig })
-        .from(projects)
-        .where(eq(projects.id, route.projectId))
-        .limit(1),
-    ]);
-    const external = await buildExternalMcpToolsets(agentConfigRow[0]?.agentConfig);
+    // Cap the whole turn: the provider has no timeout of its own, so a stalled
+    // upstream must not wedge the handler in silence. The signal aborts the
+    // provider fetch + SSE read; the turn then terminates as an error → fallback.
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
+    timer.unref?.();
+    let external: ExternalMcpToolsets | undefined;
     let reply: string;
     try {
+      // ISS-609 (piece A) — seed the turn with the recent room discussion (+ full
+      // thread when the mention is threaded); deeper recall stays agentic via the
+      // bounded rocketchat_history tool merged into the forge_* toolset. The
+      // project's configured external MCP servers (task hub, …) are bridged in
+      // fresh each turn so the bot investigates the same systems the pipeline
+      // agents get injected. All of this MUST stay inside the try: a throw in
+      // setup (seed fetch, config read, MCP bridge) has to yield a fallback
+      // reply, never silence (pre-fix bug: setup ran outside the guard).
+      const [conversationContext, agentConfigRow] = await Promise.all([
+        buildConversationContext(restAuth, {
+          rid: m.rid,
+          tmid: m.tmid,
+          excludeMessageId: m.id,
+          triggerText: m.text,
+        }),
+        db
+          .select({ agentConfig: projects.agentConfig })
+          .from(projects)
+          .where(eq(projects.id, route.projectId))
+          .limit(1),
+      ]);
+      external = await buildExternalMcpToolsets(agentConfigRow[0]?.agentConfig);
       const tools = mergeToolsets(
         buildProjectToolset(
           buildChatToolContext({
@@ -403,6 +418,7 @@ class RocketChatConnectionManager {
         userKey: m.userId,
         persona,
         conversationContext,
+        signal: abort.signal,
       });
       this.sessionByRid.set(m.rid, result.sessionId);
       // Kernel guard: a reply citing issues that don't exist (or claiming a
@@ -426,6 +442,7 @@ class RocketChatConnectionManager {
           userKey: m.userId,
           persona,
           conversationContext,
+          signal: abort.signal,
         });
         this.sessionByRid.set(m.rid, result.sessionId);
         verdict = result.reply.trim()
@@ -452,7 +469,8 @@ class RocketChatConnectionManager {
       this.sessionByRid.delete(m.rid);
       reply = errorFallbackReply(ac.botName);
     } finally {
-      await external.dispose();
+      clearTimeout(timer);
+      await external?.dispose();
     }
     // A threaded mention gets its reply in the same thread.
     await ac.client?.sendMessage(m.rid, clipReply(reply), m.tmid);

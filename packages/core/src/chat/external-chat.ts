@@ -44,6 +44,9 @@ export interface ExternalChatTurnArgs {
   persona?: string | null;
   /** Seeded recent-conversation block for the system prompt (ISS-609). */
   conversationContext?: string | null;
+  /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates
+   *  as an error instead of wedging the caller forever. */
+  signal?: AbortSignal | undefined;
   db?: typeof defaultDb;
 }
 
@@ -129,6 +132,7 @@ export async function runExternalChatTurn(
     // having investigated anything.
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
+    signal: args.signal,
   });
   let step = await gen.next();
   while (!step.done) step = await gen.next();
