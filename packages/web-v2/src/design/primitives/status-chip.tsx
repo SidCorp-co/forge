@@ -31,6 +31,9 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   zombie: "Stalled",
   paused: "Idle",
   passed: "Verified",
+  // ISS-664 — a finished interactive chat awaiting the owner's reply, distinct
+  // from the generic issue-lifecycle "Waiting" label.
+  waiting: "Waiting for me",
 };
 
 export function StatusChip({ status, stage, size = "md", domain = "issue", label }: StatusChipProps) {
