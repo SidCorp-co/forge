@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Workspace Overview now correctly identifies issues awaiting your reply and displays per-project workload and recent changes.
 - Workspace conversation view now shows which team members are waiting for your reply and includes an inline reply panel for quick responses.
 - Closing an issue now counts as done for dependency gating: issues that block others no longer silently freeze their dependents when closed by hand instead of through the pipeline merge flow.
 - Skill maintenance work can now persist edits to skill bodies through the pipeline when labeled with `skill-maintenance`, unblocking continuous skill refinement in automated workflows.
