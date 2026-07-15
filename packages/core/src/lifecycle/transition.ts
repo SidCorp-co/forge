@@ -38,6 +38,7 @@ import {
   kernelTransitions,
   pipelineRuns,
 } from '../db/schema.js';
+import { logger } from '../logger.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 /** Either a live transaction handle or the root `db`. The UPDATE + audit INSERT
@@ -174,7 +175,38 @@ export async function applyKernelTransition(
         source: args.source,
       })),
     );
+    // ISS-675 — this chokepoint is the ONLY reliable place to catch every
+    // terminal write to a session EXCEPT the runner's own happy-path PATCH
+    // /:id (a direct db.update, wired separately in agent-sessions/routes.ts).
+    // Callers of applyKernelTransition are too numerous and scattered (sweeper,
+    // cascade, cancel, dispatch-failure, …) to wire individually without one
+    // eventually drifting and hanging an escalation silent — see the ISS-675
+    // plan's top risk. Narrowly gated on a metadata marker so it is a no-op for
+    // the overwhelming majority of (non-escalation) session transitions.
+    if (args.entity === 'session') {
+      for (const row of updated as SessionRow[]) {
+        fireEscalationBridge(row);
+      }
+    }
   }
 
   return updated as JobRow[] | SessionRow[] | RunRow[];
+}
+
+/**
+ * Fire-and-forget, dynamically imported so this low-level kernel module never
+ * statically drags in the RocketChat/knowledge dependency graph — mirrors the
+ * existing lazy-import convention used to keep this kind of chokepoint
+ * hermetic (e.g. `jobs/loop-monitor.ts`'s lazy `schedules/dispatch.js` load).
+ * Errors are swallowed here (logged only): a bridge failure must never break
+ * the kernel transition it rides on.
+ */
+function fireEscalationBridge(row: SessionRow): void {
+  const metadata = row.metadata as { escalation?: unknown } | null;
+  if (!metadata?.escalation) return;
+  void import('../integrations/rocketchat/escalation-bridge.js')
+    .then((mod) => mod.deliverEscalationReplyOnce(row))
+    .catch((err) => {
+      logger.error({ err, sessionId: row.id }, 'lifecycle.transition: escalation bridge failed');
+    });
 }

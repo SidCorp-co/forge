@@ -11,28 +11,30 @@
  */
 
 import { scrubLogText } from '@forge/observability';
-import { and, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
+import { ESCALATE_TOOL_NAME, buildEscalationToolset } from '../../chat/tools/escalate.js';
 import { type ExternalMcpToolsets, buildExternalMcpToolsets } from '../../chat/tools/external-mcp.js';
 import { mergeToolsets } from '../../chat/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../chat/tools/principal.js';
 import { buildProjectToolset } from '../../chat/tools/registry.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { integrationConnections, issues, organizations, projects } from '../../db/schema.js';
+import { integrationConnections, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { Sentry } from '../../observability/sentry.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
 import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
-import { createSeenTracker, decideHandling } from './inbound-gate.js';
 import {
-  detectEmptyPromise,
-  extractIssueClaims,
-  judgeIssueClaims,
-  lintStakeholderReply,
-} from './reply-guard.js';
+  ESCALATION_ACK,
+  ESCALATION_DEDUP_REPLY,
+  ESCALATION_NO_DEVICE_REPLY,
+  startEscalation,
+} from './escalation.js';
+import { createSeenTracker, decideHandling } from './inbound-gate.js';
+import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
@@ -488,7 +490,7 @@ class RocketChatConnectionManager {
         extra: { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId },
       });
     }
-    void this.handle(ac, route, m).catch((err) => {
+    void this.handle(ac, route, m, connectionId).catch((err) => {
       logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message handling failed');
       Sentry.captureException(err, {
         tags: { area: 'rocketchat', phase: 'dispatch' },
@@ -501,6 +503,7 @@ class RocketChatConnectionManager {
     ac: ActiveConnection,
     route: Route,
     m: RocketChatIncomingMessage,
+    connectionId: string,
   ): Promise<void> {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
     // Two nested guards so a stall NEVER leaves the mention in silence:
@@ -523,7 +526,7 @@ class RocketChatConnectionManager {
           // bounded rocketchat_history tool. The project's configured external
           // MCP servers (task hub, …) are bridged in fresh each turn.
           phase = 'context';
-          const [conversationContext, agentConfigRow] = await Promise.all([
+          const [conversationContext, projectRow] = await Promise.all([
             buildConversationContext(restAuth, {
               rid: m.rid,
               tmid: m.tmid,
@@ -531,13 +534,13 @@ class RocketChatConnectionManager {
               triggerText: m.text,
             }),
             db
-              .select({ agentConfig: projects.agentConfig })
+              .select({ agentConfig: projects.agentConfig, repoPath: projects.repoPath })
               .from(projects)
               .where(eq(projects.id, route.projectId))
               .limit(1),
           ]);
           phase = 'mcp';
-          external = await buildExternalMcpToolsets(agentConfigRow[0]?.agentConfig);
+          external = await buildExternalMcpToolsets(projectRow[0]?.agentConfig);
           const tools = mergeToolsets(
             buildProjectToolset(
               buildChatToolContext({
@@ -547,6 +550,7 @@ class RocketChatConnectionManager {
               }),
             ),
             buildRocketChatHistoryToolset(restAuth, m.rid),
+            buildEscalationToolset(),
             ...external.toolsets,
           );
           const persona = rocketChatPersona(route.projectName, m.username, {
@@ -567,6 +571,50 @@ class RocketChatConnectionManager {
             signal: abort.signal,
           });
           this.sessionByRid.set(m.rid, result.sessionId);
+
+          // ISS-675 — escalation short-circuits the normal verify/reply path:
+          // the model chose to hand this question to a deeper research agent
+          // instead of answering now. Post a fixed, guard-exempt ACK (a
+          // legitimate promise — a real async follow-up lands via the
+          // completion bridge) and skip the rest of this turn entirely.
+          const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
+          if (escalateCall) {
+            phase = 'escalate';
+            let question = m.text;
+            try {
+              const parsed = JSON.parse(escalateCall.arguments) as { question?: unknown };
+              if (typeof parsed.question === 'string' && parsed.question.trim()) {
+                question = parsed.question.trim();
+              }
+            } catch {
+              // keep the raw message text
+            }
+            const outcome = await startEscalation({
+              projectId: route.projectId,
+              project: {
+                id: route.projectId,
+                slug: route.projectSlug,
+                repoPath: projectRow[0]?.repoPath ?? null,
+              },
+              connectionId,
+              rid: m.rid,
+              tmid: m.tmid,
+              botName: ac.botName,
+              question,
+              askedByUsername: m.username,
+            });
+            if (outcome.started) return ESCALATION_ACK(ac.botName);
+            if (outcome.reason === 'deduped') return ESCALATION_DEDUP_REPLY(ac.botName);
+            if (outcome.reason === 'no-device') return ESCALATION_NO_DEVICE_REPLY(ac.botName);
+            // 'dispatch-failed': the session was created then immediately
+            // marked failed — the completion bridge (wired at every
+            // session-terminal writer) already delivers the one honest
+            // fallback asynchronously via REST. An empty reply here skips
+            // this turn's own DDP send so the room never gets two replies
+            // for the same failure.
+            return '';
+          }
+
           // Kernel guards: a reply citing issues that don't exist (or claiming
           // a creation that never ran), leaking developer detail to a
           // non-technical stakeholder, or promising work with no follow-up
@@ -576,7 +624,7 @@ class RocketChatConnectionManager {
           // product-lint + empty-promise guards).
           phase = 'verify';
           let verdict = result.reply.trim()
-            ? await this.checkReply(route.projectId, result.reply, result.toolCalls)
+            ? await screenStakeholderReply(route.projectId, result.reply, result.toolCalls)
             : { ok: true, problems: [] as string[] };
           if (!verdict.ok) {
             logger.warn(
@@ -597,7 +645,7 @@ class RocketChatConnectionManager {
             });
             this.sessionByRid.set(m.rid, result.sessionId);
             verdict = result.reply.trim()
-              ? await this.checkReply(route.projectId, result.reply, result.toolCalls)
+              ? await screenStakeholderReply(route.projectId, result.reply, result.toolCalls)
               : { ok: false, problems: ['empty retry reply'] };
             if (!verdict.ok) {
               logger.error(
@@ -641,80 +689,18 @@ class RocketChatConnectionManager {
       clearTimeout(timer);
       await external?.dispose();
     }
-    // A threaded mention gets its reply in the same thread. Secret-scrub runs
-    // unconditionally on the final chosen reply (incl. any fallback) — redact
-    // only, never retry, per ISS-672's spec; `ac.authToken` is passed as an
-    // extra secret so the bot's own credential is redacted wholesale if it
-    // ever echoes.
-    const safe = scrubLogText(clipReply(reply), [ac.authToken]);
-    await ac.client?.sendMessage(m.rid, safe, m.tmid);
-  }
-
-  /** Compose the issue-claim guard with the product-only lint and the
-   *  empty-promise guard into one verdict, driving the single
-   *  corrective-retry-then-fallback loop in `handle()`. */
-  private async checkReply(
-    projectId: string,
-    reply: string,
-    toolCalls: Array<{ name: string; arguments: string }>,
-  ): Promise<{ ok: boolean; problems: string[] }> {
-    const claim = await this.verifyReplyClaims(projectId, reply, toolCalls);
-    const lint = lintStakeholderReply(reply, {
-      verifiedSeqs: claim.verifiedSeqs,
-      skipIssueIdRule: claim.dbError,
-    });
-    const promise = detectEmptyPromise(reply);
-    return {
-      ok: claim.ok && lint.ok && promise.ok,
-      problems: [...claim.problems, ...lint.problems, ...promise.problems],
-    };
-  }
-
-  /** Check a reply's issue references against the DB (project-scoped) and the
-   *  turn's actual tool calls. Fails OPEN on DB errors — the guard must never
-   *  brick replies on an infra blip. Also surfaces the verified id/seq sets
-   *  and a `dbError` flag so `lintStakeholderReply`'s bare-ISS-id rule can
-   *  carve out citations already checked here (and skip entirely on a DB
-   *  blip, matching this guard's own fail-open behavior). */
-  private async verifyReplyClaims(
-    projectId: string,
-    reply: string,
-    toolCalls: Array<{ name: string; arguments: string }>,
-  ): Promise<{
-    ok: boolean;
-    problems: string[];
-    verifiedSeqs: Set<number>;
-    verifiedUrlIds: Set<string>;
-    dbError: boolean;
-  }> {
-    const claims = extractIssueClaims(reply);
-    let ids = new Set<string>();
-    let seqs = new Set<number>();
-    if (claims.urlIds.length > 0 || claims.issSeqs.length > 0) {
-      try {
-        const conds = [
-          ...(claims.urlIds.length > 0 ? [inArray(issues.id, claims.urlIds)] : []),
-          ...(claims.issSeqs.length > 0 ? [inArray(issues.issSeq, claims.issSeqs)] : []),
-        ];
-        const rows = await db
-          .select({ id: issues.id, issSeq: issues.issSeq })
-          .from(issues)
-          .where(and(eq(issues.projectId, projectId), or(...conds)));
-        ids = new Set(rows.map((r) => r.id));
-        seqs = new Set(rows.map((r) => r.issSeq));
-      } catch (err) {
-        logger.warn({ err, projectId }, 'rocketchat: claim verification query failed; skipping');
-        return {
-          ok: true,
-          problems: [],
-          verifiedSeqs: new Set(),
-          verifiedUrlIds: new Set(),
-          dbError: true,
-        };
-      }
+    // A threaded mention gets its reply in the same thread. `reply === ''` is
+    // the ISS-675 escalation sentinel (dispatch-failed: the completion bridge
+    // already delivers the one honest fallback asynchronously via REST) — skip
+    // the DDP send entirely so the room never gets a second reply. Otherwise
+    // secret-scrub runs unconditionally on the final chosen reply (incl. any
+    // fallback) — redact only, never retry, per ISS-672's spec; `ac.authToken`
+    // is passed as an extra secret so the bot's own credential is redacted
+    // wholesale if it ever echoes.
+    if (reply) {
+      const safe = scrubLogText(clipReply(reply), [ac.authToken]);
+      await ac.client?.sendMessage(m.rid, safe, m.tmid);
     }
-    const verdict = judgeIssueClaims(claims, { ids, seqs }, toolCalls);
-    return { ...verdict, verifiedSeqs: seqs, verifiedUrlIds: ids, dbError: false };
   }
 
   private async teardown(connectionId: string): Promise<void> {

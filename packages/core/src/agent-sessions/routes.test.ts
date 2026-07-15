@@ -103,6 +103,15 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadVisibleProjectIds: (...args: unknown[]) => visibleIdsMock(...(args as [string])),
 }));
 
+// ISS-675 — the PATCH /:id terminal branch dynamically imports the
+// escalation completion bridge (kept lazy so this hot write path never
+// statically drags in the RocketChat dependency graph). Stub it so the hook
+// can be asserted without pulling that graph into this suite.
+const deliverEscalationReplyOnceMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../integrations/rocketchat/escalation-bridge.js', () => ({
+  deliverEscalationReplyOnce: (...args: unknown[]) => deliverEscalationReplyOnceMock(...args),
+}));
+
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -137,6 +146,7 @@ beforeEach(() => {
   verifyDeviceTokenMock.mockReset();
   verifyDeviceTokenMock.mockResolvedValue(null);
   whereResults.length = 0;
+  deliverEscalationReplyOnceMock.mockClear();
 });
 
 function authVerified() {
@@ -258,6 +268,85 @@ describe('PATCH /api/agent-sessions/:id status change', () => {
     expect(res.status).toBe(200);
     const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
     expect(events).toContain('agent-session.status');
+  });
+});
+
+describe('PATCH /api/agent-sessions/:id — ISS-675 escalation completion bridge', () => {
+  it('fires the bridge when the runner PATCHes an escalation session to a terminal status', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: null, status: 'running' },
+    ]);
+    projectAccessAsMember();
+    const updatedRow = {
+      id: SESSION_ID,
+      projectId: PROJECT_ID,
+      deviceId: null,
+      status: 'completed',
+      metadata: { escalation: { connectionId: 'conn-1', rid: 'room-1', botName: 'Babo' } },
+    };
+    updateReturning.mockResolvedValueOnce([updatedRow]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(deliverEscalationReplyOnceMock).toHaveBeenCalledWith(updatedRow);
+  });
+
+  it('does not fire the bridge for a non-terminal PATCH', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: null, status: 'queued' },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        status: 'running',
+        metadata: { escalation: { connectionId: 'conn-1', rid: 'room-1', botName: 'Babo' } },
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'running' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(deliverEscalationReplyOnceMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fire the bridge for a terminal PATCH on a non-escalation session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: null, status: 'running' },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        status: 'completed',
+        metadata: null,
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(deliverEscalationReplyOnceMock).not.toHaveBeenCalled();
   });
 });
 

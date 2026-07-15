@@ -4,9 +4,10 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessionStatuses, agentSessions, issues, usageRecords } from '../db/schema.js';
+import { type AgentSessionStatus, agentSessionStatuses, agentSessions, issues, usageRecords } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
+import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import {
   EMPTY_USAGE_TOTALS,
@@ -90,6 +91,16 @@ const relayBodySchema = z
     data: z.unknown(),
   })
   .strict();
+
+// ISS-675 — mirrors lifecycle/transition.ts's SessionTransitionArgs['to'] enum;
+// gates the escalation completion-bridge hook below to genuinely terminal
+// PATCHes only.
+const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set([
+  'completed',
+  'failed',
+  'completed_via_recovery',
+  'cancelled_stale',
+]);
 
 // `broadcastSession` is imported from `./broadcast.ts` so per-turn handlers can
 // share the same fan-out shape (project room + owning device room).
@@ -644,6 +655,27 @@ agentSessionRoutes.patch(
     // rate-limited schedule run via cross-account failover (best-effort).
     if (usageLimit) {
       await usageLimit.recoverAfterWrite(updated.metadata ?? existing.metadata);
+    }
+
+    // ISS-675 — this PATCH is the runner's happy-path completion write (a
+    // direct db.update, NOT applyKernelTransition — see lifecycle/transition.ts
+    // for the other terminal writers). An escalation session's completion
+    // bridge must fire from here too, or a class of escalations (the runner
+    // finishing normally) would hang silent. Best-effort: never fail the
+    // runner's PATCH over a room-reply problem.
+    if (
+      patch.status !== undefined &&
+      TERMINAL_SESSION_STATUSES.has(patch.status) &&
+      (updated.metadata as { escalation?: unknown } | null)?.escalation
+    ) {
+      try {
+        const { deliverEscalationReplyOnce } = await import(
+          '../integrations/rocketchat/escalation-bridge.js'
+        );
+        await deliverEscalationReplyOnce(updated);
+      } catch (err) {
+        logger.error({ err, sessionId: updated.id }, 'agent-sessions: escalation bridge failed');
+      }
     }
 
     return c.json(updated);
