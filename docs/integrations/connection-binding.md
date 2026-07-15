@@ -37,7 +37,7 @@ integration_bindings              "share this connection into a project + env"
   project_id     → projects (cascade)
   provider       denormalized (cheap lookup + the project/provider/env unique)
   environment    'staging' | 'prod'
-  config         jsonb              per-binding overrides (e.g. coolify resourceUuid/branch)
+  config         jsonb              per-binding overrides (e.g. coolify targets[]: [{id,label,resourceUuid}])
   integration_secret                per-binding HMAC for inbound webhook verification
   active
         │ 1
@@ -105,5 +105,5 @@ Archetypes: **coolify** = dispatch+webhook; **postman/epodsystem/sentry** = MCP-
 - F. **Future** — drop `project_integrations` after cutover verified; OAuth-first connect;
   *in-place user→org promotion of an existing connection*. (Org ownership itself + same-org
   binding already shipped: connections can be created with `ownerType:'org'`, and the bind
-  guard rejects cross-org binds with `ORG_MISMATCH` — `routes.ts:560` + `:1539`. What remains is
+  guard rejects cross-org binds with `ORG_MISMATCH` — `routes.ts:133` + `connection-routes.ts:154`. What remains is
   only flipping an existing user-owned connection to org ownership without a re-create.)

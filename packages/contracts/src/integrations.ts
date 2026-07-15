@@ -19,7 +19,7 @@ import type { IntegrationProvider, schema } from '@forge/core/public';
 
 // === Enums — mirrored from the DB schema source of truth (no hand-copied unions) ===
 
-/** `'coolify' | 'postman' | 'epodsystem' | 'sentry'`. */
+/** `'coolify' | 'postman' | 'epodsystem' | 'sentry' | 'rocketchat'`. */
 export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
 
 /** `'user' | 'org'` — the connection owner namespace. */

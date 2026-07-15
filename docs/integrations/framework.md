@@ -22,7 +22,8 @@ Origin: the former `integration-framework` proposal (retired). This doc = SHIPPE
 
 ```
 Layer 3 — Adapters    coolify/ · postman/ · epodsystem/ · sentry/ · rocketchat/   (all registered at boot)
-Layer 2 — Framework   registry · vault · store · deliveries · queue · circuit-breaker
+                      (coolify/circuit-breaker.ts lives here — Coolify-specific, not shared framework machinery)
+Layer 2 — Framework   registry · vault · store · deliveries · queue
 Layer 1 — Storage     integration_connections (credential) + integration_bindings
                       (per-project attach, 1 row per project+provider+env)
                       integration_deliveries (audit / idempotency, keyed by binding_id)
@@ -60,7 +61,7 @@ interface IntegrationAdapter<TConfig, TSecrets> {
 
 ### Storage
 
-`store.ts` over the connection/binding model in `db/schema.ts` (~line 2160). `project_integrations` was **retired by ISS-410** (epic ISS-404) — see [connection-binding.md](connection-binding.md) for the split.
+`store.ts` over the connection/binding model in `db/schema.ts` (~line 2605; `integrationDeliveries:2604`, `integrationConnections:2655`, `integrationBindings:2693`). `project_integrations` was **retired by ISS-410** (epic ISS-404) — see [connection-binding.md](connection-binding.md) for the split.
 
 - **`integration_connections`** — the CREDENTIAL (owner-scoped): `provider, secrets_enc (bytea), active`. Indexed on `(owner, provider)`.
 - **`integration_bindings`** — the per-project ATTACH: `connection_id (FK cascade), project_id, provider, environment ('staging'|'prod'), config (jsonb), integration_secret (HMAC key), label (ISS-558; '' = default binding), active`. Unique on `(project_id, provider, environment, label)` — `label=''` for non-epodsystem preserves the one-row-per-(project, provider, env) guard while allowing multiple labeled epodsystem bindings. Breaker/health state (`breaker_opened_at`, `last_health_status`, `last_health_at`) lives on `integration_connections`, not the binding.
@@ -97,7 +98,9 @@ Shipped schema differs from proposal: `environment` is a real column (not in con
 
 ### MCP tool — `forge_coolify_deploy`
 
-`packages/core/src/mcp/tools/forge-coolify-deploy.ts`. Actions: `list` (active integrations; empty ⇒ local-only) · `deploy` (needs `issueId`; reuses `tryDispatchCoolifyRelease`, honors the prod gate) · `status` (latest outbound per integration) · `logs` (scrubbed + tailed deploy log). Auth = project membership.
+`packages/core/src/mcp/tools/forge-coolify-deploy.ts`. Actions: `list` (active integrations; empty ⇒ local-only) · `deploy` (`issueId` is OPTIONAL, ISS-312/ISS-634: with it, a run-tracked deploy via `tryDispatchCoolifyRelease` honoring the prod gate; without it, a run-less resource redeploy via `dispatchCoolifyDeployDirect`, `runId=null`) · `status` (latest outbound per integration) · `logs` (scrubbed + tailed deploy log). Auth = project membership.
+
+Each integration deploys `targets[]` together (a Coolify binding can list many resources, each `{id, label, resourceUuid}`): a deploy fans out one build per target, the dispatch completes only when every target's webhook succeeds and fails on the first target failure. `integrationId` is a HARD scope filter — when combined with `issueId` it restricts the deploy to that one integration; without it, all active integrations are dispatched, and prod-environment bindings are only included once the issue has reached the release stage (staging bindings deploy regardless of stage).
 
 ## Inbound webhook routing
 
@@ -129,7 +132,7 @@ Project-scoped router, all under `/api/projects/:projectId/integrations` (`integ
 | GET | `/mcp-preview` | preview the injected MCP config |
 | GET | `/integrations/status` | composed read-only status hub (GitHub/Coolify/runners/postgres/MCP/Sentry/Claude cards) |
 
-Connection-level router, all under `/api/integration-connections` (`integrationConnectionsRoutes`, mounted in `src/index.ts:360`) — owner-scoped connections that can be shared into projects via bindings:
+Connection-level router, all under `/api/integration-connections` (`integrationConnectionsRoutes`, defined in `integrations/connection-routes.ts` and re-exported via `routes.ts`, mounted at `src/index.ts:366`) — owner-scoped connections that can be shared into projects via bindings:
 
 | Method | Path | Use |
 |--------|------|-----|
@@ -148,7 +151,7 @@ Connection-level router, all under `/api/integration-connections` (`integrationC
 3. Register at boot in `src/index.ts` (next to `registerCoolifyAdapter()`).
 4. Inbound: add a `{ header, provider }` entry to `PROVIDER_HEADER_MAP` in `webhooks/inbound-routes.ts`; verify HMAC with `ctx.integrationSecret`.
 5. Outbound on the queue: extend the worker in `queue.ts` (consumer is Coolify-specific today — generalize the job-kind switch).
-6. Add a provider Zod schema in `integrations/routes.ts` (config + secrets) — config validation lives here, since the adapter has no `validateConfig`.
+6. Add a provider Zod schema in `integrations/provider-schemas.ts` (config + secrets) — config validation lives here, since the adapter has no `validateConfig`. (The project-scoped `integrationsRoutes` REST router at line 116 above is still in `integrations/routes.ts` — only the Zod schemas moved out.)
 7. Record every call via `recordDelivery`/`updateDelivery` for audit + idempotency.
 
 ## Not yet (unshipped)
