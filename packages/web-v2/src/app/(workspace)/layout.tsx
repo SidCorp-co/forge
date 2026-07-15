@@ -10,6 +10,7 @@ import {
   CommandPalette,
   PinnedTabBar,
   SlideOver,
+  ProjectMark,
   type NavItem,
   type Command,
   type Crumb,
@@ -217,15 +218,50 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
-  // Bottom tab bar (<md, ISS-514) — tier swap + active key live in nav-model.
-  const bottomItems: BottomTabItem[] = useMemo(
-    () => bottomTabItems(slug, attentionCount, railConsole?.openIssues),
-    [slug, attentionCount, railConsole],
+  // Bottom tab bar (<md, ISS-514/ISS-681) — tier swap + active key live in
+  // nav-model. Inside a project, the "Project" switcher item renders the
+  // project's ProjectMark glyph for parity with the desktop rail/flyout
+  // (folder icon fallback when no rail project is resolved yet).
+  const bottomItems: BottomTabItem[] = useMemo(() => {
+    const items = bottomTabItems(slug, attentionCount, railConsole?.openIssues);
+    if (!slug || !projectMark) return items;
+    return items.map((it) =>
+      it.key === "switcher"
+        ? {
+            ...it,
+            leading: (
+              <ProjectMark
+                tint={projectMark.tint}
+                ink={projectMark.ink}
+                initials={projectMark.initials}
+                size={22}
+                radius="var(--r-sm)"
+              />
+            ),
+          }
+        : it,
+    );
+  }, [slug, attentionCount, railConsole, projectMark]);
+
+  // Chat lights the "Chat" tab while the mobile chat overlay is open, taking
+  // priority over the route-derived key (ISS-681).
+  const bottomActiveKey = useMemo(
+    () => (chatOpen && slug ? "chat" : buildBottomActiveKey(pathname, slug)),
+    [pathname, slug, chatOpen],
   );
 
-  const bottomActiveKey = useMemo(() => buildBottomActiveKey(pathname, slug), [pathname, slug]);
-
   function onBottomSelect(key: string) {
+    // Chat/switcher are project-tier actions, not routes — handle them before
+    // the proj- route check so they never fall through to navigate() (ISS-681).
+    if (key === "chat") {
+      if (railProject) setChatOpen((v) => !v);
+      else toast({ title: "Ask agent", description: "Open a project to ask the agent.", tone: "info" });
+      return;
+    }
+    if (key === "switcher") {
+      setMobileNavOpen(true);
+      return;
+    }
     // Project-tier keys route through the shared navigate() (it already pushes
     // /projects/<railSlug><sub>); workspace keys keep their dedicated handlers.
     if (key.startsWith("proj-")) {
@@ -353,7 +389,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <TopBar
             breadcrumb={crumbs}
             onBreadcrumbNavigate={(href) => router.push(href)}
-            onMenu={() => setMobileNavOpen(true)}
+            onMenu={slug ? undefined : () => setMobileNavOpen(true)}
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
             notificationCount={unread?.count ?? 0}

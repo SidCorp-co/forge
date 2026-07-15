@@ -144,17 +144,26 @@ export function projectRailItems(openIssues: number | undefined): RailItem[] {
   }));
 }
 
-/** Bottom tab bar (<md): ≤5 destinations. Inside a project it swaps to the
- *  project tier (PROJECT_ITEMS, incl. Issues) so the desktop rail's project
- *  nav has a mobile surface (ISS-514); otherwise it shows the workspace tabs
- *  (Search opens ⌘K; You → account). Derived from PROJECT_ITEMS so it can
- *  never drift from the rail (ISS-433 gotcha). */
+/** Bottom tab bar (<md): ≤5 destinations. Inside a project it shows the fixed
+ *  5-item set (ISS-681): Dashboard, Issues, Chat, Agents, Project switcher —
+ *  Chat toggles the chat dock and Project switcher opens the MobileNavDrawer
+ *  (both wired by the layout, not routes), so Library/Automation drop off the
+ *  bar and stay reachable via the drawer's PROJECT_ITEMS list. Outside a
+ *  project it shows the workspace tabs (Search opens ⌘K; You → account). */
 export function bottomTabItems(
   slug: string | null,
   attentionCount: number,
   openIssues: number | undefined,
 ): BottomTabItem[] {
-  if (slug) return projectRailItems(openIssues);
+  if (slug) {
+    return [
+      { key: "proj-overview", label: "Dashboard", icon: "grid" },
+      { key: "proj-issues", label: "Issues", icon: "list", badge: openIssues },
+      { key: "chat", label: "Chat", icon: "chat" },
+      { key: "proj-agents", label: "Agents", icon: "agent" },
+      { key: "switcher", label: "Project", icon: "folder" },
+    ];
+  }
   return [
     { key: "projects", label: "Projects", icon: "folder" },
     { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },

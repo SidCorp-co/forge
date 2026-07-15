@@ -9,6 +9,8 @@ export interface BottomTabItem {
   icon: IconName;
   /** Optional count pill (e.g. Attention). Falsy / 0 hides it. */
   badge?: number;
+  /** Custom leading element replacing the icon — e.g. a ProjectMark glyph for the project switcher. */
+  leading?: React.ReactNode;
 }
 
 export interface BottomTabBarProps {
@@ -45,7 +47,9 @@ export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) 
             )}
           >
             <span className="relative inline-flex">
-              <Icon name={it.icon} size={20} style={active ? { color: "var(--accent)" } : undefined} />
+              {it.leading ?? (
+                <Icon name={it.icon} size={20} style={active ? { color: "var(--accent)" } : undefined} />
+              )}
               {count > 0 && (
                 <span
                   className="absolute -right-2.5 -top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 font-semibold"
