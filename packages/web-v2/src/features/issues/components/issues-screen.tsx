@@ -69,9 +69,11 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
             variant="primary"
             size="sm"
             icon="plus"
+            aria-label="New issue"
+            className="min-h-11 sm:min-h-0"
             onClick={() => setNewOpen(true)}
           >
-            New issue
+            <span className="hidden sm:inline">New issue</span>
           </Button>
         )}
         <div className="overflow-x-auto">

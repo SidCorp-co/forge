@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Badge,
   BoardRowSkeleton,
   Button,
   Checkbox,
@@ -12,6 +13,7 @@ import {
   SegmentedControl,
   Select,
   type SelectOption,
+  SlideOver,
   TBody,
   TH,
   THead,
@@ -292,6 +294,18 @@ export function IssuesListView({
 
   const isFiltered = q !== "" || filter !== "all" || !!priority || !!assignee || !!label;
 
+  // ── Mobile "Filters" SlideOver (<sm): the 5 advanced Selects collapse behind
+  // a single trigger with an active-count badge so the header fits ~2 rows on
+  // phones. Same setParams handlers as the desktop Selects — no duplicated
+  // state, so applying a filter here updates the list + badge live.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilterCount =
+    (priority ? 1 : 0) +
+    (assignee ? 1 : 0) +
+    (label ? 1 : 0) +
+    (groupBy !== "none" ? 1 : 0) +
+    (sort !== "createdAt:desc" ? 1 : 0);
+
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -311,43 +325,55 @@ export function IssuesListView({
             }
           />
         </div>
-        <Select
-          aria-label="Priority filter"
-          value={priority ?? ""}
-          options={PRIORITY_FILTER_OPTIONS}
-          onChange={(v) => setParams({ priority: v, page: "" })}
-          className="w-36"
-        />
-        <Select
-          aria-label="Assignee filter"
-          value={assignee}
-          options={assigneeFilterOptions}
-          onChange={(v) => setParams({ assignee: v, page: "" })}
-          className="w-44"
-        />
-        <Select
-          aria-label="Label filter"
-          value={label}
-          options={labelFilterOptions}
-          onChange={(v) => setParams({ label: v, page: "" })}
-          className="w-44"
-        />
-        <Select
-          aria-label="Group by"
-          value={groupBy}
-          options={GROUP_OPTIONS}
-          onChange={(v) => setParams({ groupBy: v !== "none" ? v : "" })}
-          className="w-40"
-        />
-        <Select
-          aria-label="Sort"
-          value={sort}
-          options={SORT_OPTIONS}
-          onChange={(v) =>
-            setParams({ sort: v !== "createdAt:desc" ? v : "", page: "" })
-          }
-          className="w-44"
-        />
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="filter"
+          className="min-h-11 sm:hidden"
+          onClick={() => setFiltersOpen(true)}
+        >
+          Filters
+          {activeFilterCount > 0 && <Badge tone="accent">{activeFilterCount}</Badge>}
+        </Button>
+        <div className="hidden sm:contents">
+          <Select
+            aria-label="Priority filter"
+            value={priority ?? ""}
+            options={PRIORITY_FILTER_OPTIONS}
+            onChange={(v) => setParams({ priority: v, page: "" })}
+            className="w-36"
+          />
+          <Select
+            aria-label="Assignee filter"
+            value={assignee}
+            options={assigneeFilterOptions}
+            onChange={(v) => setParams({ assignee: v, page: "" })}
+            className="w-44"
+          />
+          <Select
+            aria-label="Label filter"
+            value={label}
+            options={labelFilterOptions}
+            onChange={(v) => setParams({ label: v, page: "" })}
+            className="w-44"
+          />
+          <Select
+            aria-label="Group by"
+            value={groupBy}
+            options={GROUP_OPTIONS}
+            onChange={(v) => setParams({ groupBy: v !== "none" ? v : "" })}
+            className="w-40"
+          />
+          <Select
+            aria-label="Sort"
+            value={sort}
+            options={SORT_OPTIONS}
+            onChange={(v) =>
+              setParams({ sort: v !== "createdAt:desc" ? v : "", page: "" })
+            }
+            className="w-44"
+          />
+        </div>
         <div className="relative ml-auto">
           <Button
             variant={isPinned ? "secondary" : "ghost"}
@@ -400,6 +426,52 @@ export function IssuesListView({
           )}
         </div>
       </div>
+
+      <SlideOver
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Filters"
+      >
+        <div className="flex flex-col gap-4">
+          <Select
+            aria-label="Priority filter"
+            value={priority ?? ""}
+            options={PRIORITY_FILTER_OPTIONS}
+            onChange={(v) => setParams({ priority: v, page: "" })}
+            className="w-full"
+          />
+          <Select
+            aria-label="Assignee filter"
+            value={assignee}
+            options={assigneeFilterOptions}
+            onChange={(v) => setParams({ assignee: v, page: "" })}
+            className="w-full"
+          />
+          <Select
+            aria-label="Label filter"
+            value={label}
+            options={labelFilterOptions}
+            onChange={(v) => setParams({ label: v, page: "" })}
+            className="w-full"
+          />
+          <Select
+            aria-label="Group by"
+            value={groupBy}
+            options={GROUP_OPTIONS}
+            onChange={(v) => setParams({ groupBy: v !== "none" ? v : "" })}
+            className="w-full"
+          />
+          <Select
+            aria-label="Sort"
+            value={sort}
+            options={SORT_OPTIONS}
+            onChange={(v) =>
+              setParams({ sort: v !== "createdAt:desc" ? v : "", page: "" })
+            }
+            className="w-full"
+          />
+        </div>
+      </SlideOver>
 
       {bulkEnabled && (
         <BulkActionBar selectedRows={selectedRows} onCleared={clearSelection} />

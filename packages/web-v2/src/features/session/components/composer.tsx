@@ -266,7 +266,7 @@ export function Composer({
             placeholder={
               disabled ? "No device online — start a runner to chat." : placeholder
             }
-            className="max-h-40 min-h-11 flex-1"
+            className="max-h-40 min-h-11 min-w-0 flex-1"
             aria-label="Message"
           />
           <Button
