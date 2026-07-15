@@ -159,11 +159,14 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedOneShotRuns = await runPass('reapOrphanedOneShotRuns', () =>
     reapOrphanedOneShotRuns(now),
   );
-  // ISS-461 — close `issue`-kind runs whose backing issue already reached a
-  // terminal status (closed/released) but whose run never closed. closeOpenRunForIssue
-  // fires only via applyTransition; a terminal write that bypasses it (or closes
-  // predating that wiring) leaks the run `running`/`paused` forever and inflates
-  // the dashboard live-run count. Run-axis backstop; still an ACTIVE reaper.
+  // ISS-461 — close `issue`-kind runs whose backing issue already reached the
+  // run-closing status (`closed`) but whose run never closed. closeOpenRunForIssue
+  // fires only via applyTransition; a close that bypasses it (or predates that
+  // wiring) leaks the run `running`/`paused` forever and inflates the dashboard
+  // live-run count. Run-axis backstop; still an ACTIVE reaper. `released` is
+  // deliberately NOT a candidate status (ISS-669) — the release step runs
+  // inside that still-open run, so an open run at `released` is expected, not
+  // a leak.
   const orphanedIssueRuns = await runPass('reapOrphanedIssueRuns', () =>
     reapOrphanedIssueRuns(now),
   );
@@ -833,22 +836,23 @@ export async function reapOrphanedOneShotRuns(
 
 /**
  * ISS-461 — close `issue`-kind runs left `running`/`paused` after their backing
- * issue already reached a TERMINAL status (closed/released).
+ * issue already reached `closed` (the run-closing status; ISS-669 removed
+ * `released` from this set — the release step runs inside the still-open run).
  *
  * `closeOpenRunForIssue` is wired in exactly one place — `apply-transition.ts`'s
- * terminal block — so a terminal-status write that bypasses `applyTransition`
- * (or a close predating that wiring) orphans the issue run: it stays
- * `running`/`paused` forever, and none of the other reapers cover `kind='issue'`
- * (`reapOrphanedOneShotRuns` is scoped to `system`/`interactive`). The dashboard
- * live-run count (`derive.ts liveRuns()`) renders every `running`/`paused` run,
- * so each leak inflates it.
+ * `RUN_CLOSING_STATUSES` block — so a close-status write that bypasses
+ * `applyTransition` (or a close predating that wiring) orphans the issue run: it
+ * stays `running`/`paused` forever, and none of the other reapers cover
+ * `kind='issue'` (`reapOrphanedOneShotRuns` is scoped to `system`/`interactive`).
+ * The dashboard live-run count (`derive.ts liveRuns()`) renders every
+ * `running`/`paused` run, so each leak inflates it.
  *
  * Run-axis backstop (sibling of `reapOrphanedOneShotRuns`): it closes each
  * candidate through the shared SSOT `closeOpenRunForIssue` (CAS-guarded on
  * `status IN (running,paused)`, sets `finishedAt`, cascades child-job cancel,
  * emits the close hook). Outcome `'completed'` mirrors `apply-transition.ts`,
- * which passes `'completed'` for both `released` and `closed` — never a false
- * `failed`. The age guard (`started_at` older than the heartbeat threshold)
+ * which passes `'completed'` on `closed` — never a false `failed`. The age
+ * guard (`started_at` older than the heartbeat threshold)
  * avoids racing a just-fired `applyTransition` close, and also drains the
  * existing leaked backlog on the first ticks after deploy (their `started_at`
  * is days old) — no one-shot migration needed.
@@ -871,7 +875,7 @@ export async function reapOrphanedIssueRuns(
     JOIN issues i ON i.id = r.issue_id
     WHERE r.kind = 'issue'
       AND r.status IN ('running', 'paused')
-      AND i.status IN ('closed', 'released')
+      AND i.status = 'closed'
       AND r.started_at < ${cutoffIso}
       ${projectClause}
     ORDER BY r.started_at ASC

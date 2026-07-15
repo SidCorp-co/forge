@@ -15,10 +15,21 @@ import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 /**
- * Issue statuses that close out the pipeline_run and satisfy a
- * `kind='blocks'` dependency edge (Layer 2).
+ * Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2) and
+ * fire the terminal dispatch fan-out. Does NOT imply the run closes here —
+ * see `RUN_CLOSING_STATUSES`.
  */
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed']);
+
+/**
+ * Statuses that close the issue's open `pipeline_run`. Only `closed`:
+ * `released` is ALSO the `release` job's dispatch-trigger status
+ * (registry.ts), so closing the run on `released` orphaned it and forced the
+ * release step into a brand-new run every time (ISS-669's re-run cascade).
+ * Leaving the run open on `released` lets the release step run inside it;
+ * the run closes when release finishes and sets `closed`.
+ */
+export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed']);
 
 export type DeviceLite = { id: string; ownerId: string };
 
@@ -90,10 +101,11 @@ export interface StatusTransitionResult {
   reopenCount: number;
   updatedAt: Date;
   /**
-   * `toStatus` entered `TERMINAL_FOR_DISPATCH`. The open run is already
-   * closed by then; the Layer-2 dispatch fan-out (`triggerTerminalDispatch`)
-   * is left to the caller so the batch route can fan out once per request
-   * and programmatic callers can rely on the 60s pg-boss backstop.
+   * `toStatus` entered `TERMINAL_FOR_DISPATCH`. The Layer-2 dispatch fan-out
+   * (`triggerTerminalDispatch`) is left to the caller so the batch route can
+   * fan out once per request and programmatic callers can rely on the 60s
+   * pg-boss backstop. The open run is closed separately, only when `toStatus`
+   * is in `RUN_CLOSING_STATUSES` (ISS-669 — `released` no longer closes it).
    */
   terminal: boolean;
 }
@@ -263,11 +275,11 @@ export async function transitionIssueStatus(
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
   // ISS-101 — keep run timeline in sync with issue status, then close it on
-  // terminal entries. No-ops when no open run exists (e.g. an issue that
-  // transitions before any job is queued).
+  // RUN_CLOSING_STATUSES entries. No-ops when no open run exists (e.g. an
+  // issue that transitions before any job is queued).
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
-  if (terminal) {
+  if (RUN_CLOSING_STATUSES.has(toStatus)) {
     await closeOpenRunForIssue(issue.id, 'completed');
   }
 
