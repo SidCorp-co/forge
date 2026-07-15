@@ -54,11 +54,16 @@ const AGENT_TYPE = "agent";
 export function ChatScreen({
   projectId,
   onClose,
+  initialDraft,
 }: {
   projectId: string;
   /** When set (docked panel), render a close control in the header to collapse
    *  the panel. Omitted when the screen owns the full viewport. */
   onClose?: () => void;
+  /** Start in draft mode instead of resuming the project's latest chat (ISS-668
+   *  "New conversation" flow — the project may already have chats, so the
+   *  default resume-latest behavior would silently reopen an old one). */
+  initialDraft?: boolean;
 }) {
   useRoom(projectRoom(projectId));
 
@@ -90,7 +95,7 @@ export function ChatScreen({
   // ISS-465 — explicit "draft" state so "New chat" doesn't fall through to
   // recentSessions[0]. A draft never touches the server; the send-path lazy-
   // creates the row on first message (handleSend).
-  const [draft, setDraft] = useState(false);
+  const [draft, setDraft] = useState(initialDraft ?? false);
   const [historyOpen, setHistoryOpen] = useState(false);
   // Explicit runner pick (RunnerPicker). undefined = Auto / follow the session's
   // binding; a set value re-pins the conversation on the next message.

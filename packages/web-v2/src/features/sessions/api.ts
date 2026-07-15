@@ -9,6 +9,11 @@ export const SESSIONS_PAGE_SIZE = 50;
 export interface ListSessionsOpts {
   projectId?: string;
   status?: string;
+  /** `metadataType=agent` scopes the server response to the caller's OWN
+   *  interactive chats (ISS-522 owner-privacy filter) — required for any
+   *  cross-project "my conversations" listing; omit only for project-shared
+   *  views (Agents overview, pipeline). */
+  metadataType?: string;
   page?: number;
   pageSize?: number;
 }
@@ -19,10 +24,17 @@ export const sessionsApi = {
    * for the cross-project (workspace-tier) view scoped to caller-visible
    * projects.
    */
-  list: ({ projectId, status, page = 1, pageSize = SESSIONS_PAGE_SIZE }: ListSessionsOpts) => {
+  list: ({
+    projectId,
+    status,
+    metadataType,
+    page = 1,
+    pageSize = SESSIONS_PAGE_SIZE,
+  }: ListSessionsOpts) => {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (projectId) params.set("projectId", projectId);
     if (status) params.set("status", status);
+    if (metadataType) params.set("metadataType", metadataType);
     return apiClientList<SessionRow>(`/agent-sessions?${params}`);
   },
 

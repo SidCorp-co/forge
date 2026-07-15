@@ -76,7 +76,7 @@ const COMMANDS: Command[] = [
   { label: "Issues · active", icon: "list", group: "pinned", keywords: "view" },
   { label: "Go to Board", icon: "board", kbd: "G B", group: "navigate" },
   { label: "Go to Pipeline", icon: "pipeline", kbd: "G P", group: "navigate" },
-  { label: "Go to Sessions", icon: "inbox", kbd: "G E", group: "navigate" },
+  { label: "Go to Conversations", icon: "inbox", kbd: "G E", group: "navigate" },
   { label: "All projects", icon: "folder", kbd: "G O", group: "navigate" },
   { label: "Create issue", icon: "plus", kbd: "C", group: "actions" },
   { label: "Pair a device", icon: "server", group: "actions" },
