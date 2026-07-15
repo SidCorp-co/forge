@@ -168,6 +168,12 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     expect(pass3).toMatch(/IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
     expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    // ISS-675 review fix: the heartbeat pass ALSO matches an escalation
+    // session (metadata.escalation set, no metadata.type) so an
+    // attached-then-hung runner (claudeSessionId already set, so the
+    // no-client pass below can never claim it) still gets reaped instead of
+    // running forever.
+    expect(pass2).toMatch(/->\s*'escalation'\s+IS\s+NOT\s+NULL/);
     // ISS-584 (C): the no-client pass carries the fast-ack branch — acked=true
     // session whose claudeSessionId never landed within the short grace.
     expect(pass3).toMatch(/->>\s*'acked'\s*=\s*'true'/);
@@ -205,6 +211,30 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
         entityId: 'sess-q',
         issueId: 'i-9',
       }),
+    );
+  });
+
+  it('ISS-675: reaps an attached-then-hung escalation session via the heartbeat pass (no metadata.type, claudeSessionId already set)', async () => {
+    updateReturning
+      .mockResolvedValueOnce([]) // queue pass
+      .mockResolvedValueOnce([
+        { id: 'sess-esc', projectId: 'p1', deviceId: 'd1', pipelineRunId: 'run-esc' },
+      ]) // heartbeat pass reaps the escalation session
+      .mockResolvedValueOnce([]); // no-client pass never sees it (claudeSessionId set)
+    selectLimit.mockResolvedValueOnce([{ issueId: null }]);
+
+    const result = await reapZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
+
+    expect(result).toEqual({ queueTimedOut: 0, heartbeatTimedOut: 1, noClientAcked: 0 });
+    expect(broadcastSessionEventMock).toHaveBeenCalledWith(
+      'sess-esc',
+      'p1',
+      'd1',
+      'agent-session.status',
+      expect.objectContaining({ status: 'failed', failureReason: 'heartbeat_timeout' }),
+    );
+    expect(emitWedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ hop: 'heartbeat', entity: 'session', entityId: 'sess-esc' }),
     );
   });
 });

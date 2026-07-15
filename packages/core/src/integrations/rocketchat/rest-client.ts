@@ -236,3 +236,43 @@ export async function fetchThreadMessages(
     .filter((m): m is RocketChatRestMessage => m !== null)
     .sort((a, b) => a.ts.localeCompare(b.ts));
 }
+
+/**
+ * ISS-675 — post a message to a room via REST (as opposed to the DDP
+ * `sendMessage` the live bot socket uses). The async escalation completion
+ * bridge is NOT tied to any live DDP connection's request/response cycle —
+ * it fires from a session-terminal transition, which may happen on a
+ * different core instance than the one holding the DDP socket — so it
+ * rebuilds auth from the stored connection secrets and posts over REST
+ * instead. Throws on a non-ok response or an RC-level `success: false` so the
+ * caller can log/report the failure; it does not retry.
+ */
+export async function postRoomMessage(
+  auth: RocketChatRestAuth,
+  roomId: string,
+  text: string,
+  tmid?: string,
+): Promise<void> {
+  const base = auth.serverUrl.replace(/\/+$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base}/api/v1/chat.postMessage`, {
+      method: 'POST',
+      headers: {
+        'X-Auth-Token': auth.authToken,
+        'X-User-Id': auth.userId,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ roomId, text, ...(tmid ? { tmid } : {}) }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`chat.postMessage failed with status ${res.status}`);
+    const body = (await res.json()) as { success?: boolean; error?: string };
+    if (body?.success === false) {
+      throw new Error(`chat.postMessage rejected: ${body.error ?? 'unknown error'}`);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
