@@ -59,7 +59,11 @@ function RoomSub({ projectId }: { projectId: string }) {
 }
 
 export function ConversationsScreen() {
-  const sessionsQ = useSessions({});
+  // metadataType:"agent" is REQUIRED here — it's what triggers the server's
+  // ISS-522 owner-privacy scoping (eq userId) on the cross-project branch.
+  // Without it, other org members' interactive chats (title, id, status,
+  // cost) leak into this caller-visible-projects listing.
+  const sessionsQ = useSessions({ metadataType: "agent" });
   const projectsQ = useProjects();
   const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
   const [filter, setFilter] = useState<ConversationFilter>("all");
@@ -83,7 +87,12 @@ export function ConversationsScreen() {
   const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
 
   const now = Date.now();
-  const displays = useMemo(() => rows.map((r) => deriveSessionDisplayStatus(r, now)), [rows, now]);
+  // `now` is intentionally excluded from deps — including it defeats the
+  // memo every render (it always differs); this only needs to recompute
+  // when `rows` changes, and the row/card components below independently
+  // recompute their own display status with a fresh `now` on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const displays = useMemo(() => rows.map((r) => deriveSessionDisplayStatus(r, now)), [rows]);
 
   const waitingCount = useMemo(() => rows.filter((r) => isAwaitingReply(r)).length, [rows]);
   const filterOptions: SegmentOption<ConversationFilter>[] = FILTERS.map((f) => ({
@@ -205,7 +214,11 @@ export function ConversationsScreen() {
 
 function ConversationIdentity({ row, onOpen }: { row: SessionRow; onOpen: () => void }) {
   return (
-    <button type="button" onClick={onOpen} className="block w-full text-left focus-visible:outline-none">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex min-h-[44px] w-full items-center text-left focus-visible:outline-none"
+    >
       <span className="fg-body-sm block truncate text-fg hover:text-accent-text">
         {conversationTitle(row)}
       </span>
