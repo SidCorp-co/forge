@@ -261,7 +261,7 @@ export function ChatScreen({
             ) : (
               <h1 className="fg-h2 truncate">My conversations</h1>
             )}
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <div className="mt-0.5 hidden flex-wrap items-center gap-x-2 gap-y-1 @[560px]:flex">
               <p className="fg-body-sm text-muted">
                 Ask the agent anything about this project.
               </p>
@@ -306,11 +306,13 @@ export function ChatScreen({
               variant="secondary"
               size="sm"
               icon="clock"
+              className="min-h-11 @[560px]:min-h-0"
+              aria-label="History"
               onClick={() => setHistoryOpen((v) => !v)}
               aria-expanded={historyOpen}
               aria-haspopup="dialog"
             >
-              History
+              <span className="hidden @[560px]:inline">History</span>
             </Button>
             <ConversationList
               open={historyOpen}
@@ -322,8 +324,15 @@ export function ChatScreen({
               onActiveRemoved={handleActiveRemoved}
             />
           </div>
-          <Button variant="secondary" size="sm" icon="plus" onClick={handleNewChat}>
-            New chat
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="plus"
+            className="min-h-11 @[560px]:min-h-0"
+            aria-label="New chat"
+            onClick={handleNewChat}
+          >
+            <span className="hidden @[560px]:inline">New chat</span>
           </Button>
           {onClose && (
             <IconButton

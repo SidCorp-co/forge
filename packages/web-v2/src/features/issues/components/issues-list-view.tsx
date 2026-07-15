@@ -374,15 +374,16 @@ export function IssuesListView({
             className="w-44"
           />
         </div>
-        <div className="relative ml-auto">
+        <div className="relative sm:ml-auto">
           <Button
             variant={isPinned ? "secondary" : "ghost"}
             size="sm"
             icon="pin"
             aria-pressed={isPinned}
+            aria-label={isPinned ? "Pinned view" : "Pin view"}
             onClick={onPinClick}
           >
-            {isPinned ? "Pinned" : "Pin view"}
+            <span className="hidden sm:inline">{isPinned ? "Pinned" : "Pin view"}</span>
           </Button>
           {pinOpen && (
             <>

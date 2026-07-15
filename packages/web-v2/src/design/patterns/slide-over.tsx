@@ -17,6 +17,11 @@ export interface SlideOverProps {
       (e.g. ChatScreen — avoids a nested double-scroll, ISS-506). Default `false`
       preserves every existing consumer (RunDetail, project flyout, …). */
   fitBody?: boolean;
+  /** Skip the drawer's own title bar (opt-in, default `false` — every existing
+      caller keeps its header). Use when the child renders its own single title
+      + close control, to avoid a duplicate title bar (e.g. the mobile chat
+      overlay stacking on ChatScreen's header, ISS-685). */
+  hideHeader?: boolean;
 }
 
 const FOCUSABLE =
@@ -25,7 +30,15 @@ const FOCUSABLE =
 /** Right-hand drawer — context/detail (e.g. RunDetail) opens here rather than
     navigating away. Esc to close, focus trapped inside, focus returns to the
     trigger on close. Backdrop blur signals background dismissal. */
-export function SlideOver({ open, onClose, title, children, width = 480, fitBody = false }: SlideOverProps) {
+export function SlideOver({
+  open,
+  onClose,
+  title,
+  children,
+  width = 480,
+  fitBody = false,
+  hideHeader = false,
+}: SlideOverProps) {
   const slideOverWidth = typeof width === "number" ? `${width}px` : width;
   const panelRef = useRef<HTMLElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -89,17 +102,19 @@ export function SlideOver({ open, onClose, title, children, width = 480, fitBody
         style={{ "--slide-over-w": slideOverWidth } as CSSProperties}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">
-          <div className="fg-h3">{title}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            <Icon name="x" size={18} />
-          </button>
-        </header>
+        {!hideHeader && (
+          <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">
+            <div className="fg-h3">{title}</div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            >
+              <Icon name="x" size={18} />
+            </button>
+          </header>
+        )}
         {fitBody ? (
           <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         ) : (

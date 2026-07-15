@@ -56,10 +56,15 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   }, []);
 
   const header = (
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <header className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6">
       <div>
-        <h1 className="fg-h2">Issues</h1>
-        <p className="fg-body-sm mt-1 text-muted">
+        {/* Two headings, only one ever visible per breakpoint (`hidden` is
+            display:none, so assistive tech only sees the active one) — avoids
+            depending on a responsive variant of the custom `fg-h*` classes,
+            which aren't registered as Tailwind utilities. */}
+        <h1 className="fg-h3 sm:hidden">Issues</h1>
+        <h1 className="fg-h2 hidden sm:block">Issues</h1>
+        <p className="fg-body-sm mt-1 hidden text-muted sm:block">
           One strict pipeline, left to right.
         </p>
       </div>
