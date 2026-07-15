@@ -10,6 +10,7 @@
  * bot's own messages / system / edits are ignored (no reply loops).
  */
 
+import { scrubLogText } from '@forge/observability';
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
@@ -26,7 +27,12 @@ import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js
 import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { createSeenTracker, decideHandling } from './inbound-gate.js';
-import { extractIssueClaims, judgeIssueClaims } from './reply-guard.js';
+import {
+  detectEmptyPromise,
+  extractIssueClaims,
+  judgeIssueClaims,
+  lintStakeholderReply,
+} from './reply-guard.js';
 import { fetchOwnUsername } from './rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
@@ -151,7 +157,7 @@ const emptyFallbackReply = (name: string): string =>
 const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 const correctiveMessage = (problems: string[]): string =>
-  `[SYSTEM CHECK — not from the user] Your previous reply failed verification: ${problems.join('; ')}. You did NOT perform those actions. Redo the user's request now: CALL the tools to actually do the work, then reply only with verified results — cite issue ids/links exactly as returned by the tools. Reply in the user's language.`;
+  `[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
 
 function clipReply(reply: string): string {
   return reply.length > MAX_REPLY_CHARS ? `${reply.slice(0, MAX_REPLY_CHARS)}… [truncated]` : reply;
@@ -561,18 +567,21 @@ class RocketChatConnectionManager {
             signal: abort.signal,
           });
           this.sessionByRid.set(m.rid, result.sessionId);
-          // Kernel guard: a reply citing issues that don't exist (or claiming a
-          // creation that never ran) never reaches the channel — one corrective
-          // retry, then an honest fallback. See reply-guard.ts (live incident
-          // 2026-07-07: zero tool calls + fabricated issue link).
+          // Kernel guards: a reply citing issues that don't exist (or claiming
+          // a creation that never ran), leaking developer detail to a
+          // non-technical stakeholder, or promising work with no follow-up
+          // turn never reaches the channel — one corrective retry, then an
+          // honest fallback. See reply-guard.ts (live incident 2026-07-07:
+          // zero tool calls + fabricated issue link; ISS-672: kernel-hard
+          // product-lint + empty-promise guards).
           phase = 'verify';
           let verdict = result.reply.trim()
-            ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
+            ? await this.checkReply(route.projectId, result.reply, result.toolCalls)
             : { ok: true, problems: [] as string[] };
           if (!verdict.ok) {
             logger.warn(
               { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-              'rocketchat: reply failed claim verification; corrective retry',
+              'rocketchat: reply failed output guards; corrective retry',
             );
             phase = 'retry';
             result = await runExternalChatTurn({
@@ -588,12 +597,12 @@ class RocketChatConnectionManager {
             });
             this.sessionByRid.set(m.rid, result.sessionId);
             verdict = result.reply.trim()
-              ? await this.verifyReplyClaims(route.projectId, result.reply, result.toolCalls)
+              ? await this.checkReply(route.projectId, result.reply, result.toolCalls)
               : { ok: false, problems: ['empty retry reply'] };
             if (!verdict.ok) {
               logger.error(
                 { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-                'rocketchat: retry still unverified; sending honest fallback',
+                'rocketchat: retry still failing output guards; sending honest fallback',
               );
             }
           }
@@ -632,18 +641,52 @@ class RocketChatConnectionManager {
       clearTimeout(timer);
       await external?.dispose();
     }
-    // A threaded mention gets its reply in the same thread.
-    await ac.client?.sendMessage(m.rid, clipReply(reply), m.tmid);
+    // A threaded mention gets its reply in the same thread. Secret-scrub runs
+    // unconditionally on the final chosen reply (incl. any fallback) — redact
+    // only, never retry, per ISS-672's spec; `ac.authToken` is passed as an
+    // extra secret so the bot's own credential is redacted wholesale if it
+    // ever echoes.
+    const safe = scrubLogText(clipReply(reply), [ac.authToken]);
+    await ac.client?.sendMessage(m.rid, safe, m.tmid);
   }
 
-  /** Check a reply's issue references against the DB (project-scoped) and the
-   *  turn's actual tool calls. Fails OPEN on DB errors — the guard must never
-   *  brick replies on an infra blip. */
-  private async verifyReplyClaims(
+  /** Compose the issue-claim guard with the product-only lint and the
+   *  empty-promise guard into one verdict, driving the single
+   *  corrective-retry-then-fallback loop in `handle()`. */
+  private async checkReply(
     projectId: string,
     reply: string,
     toolCalls: Array<{ name: string; arguments: string }>,
   ): Promise<{ ok: boolean; problems: string[] }> {
+    const claim = await this.verifyReplyClaims(projectId, reply, toolCalls);
+    const lint = lintStakeholderReply(reply, {
+      verifiedSeqs: claim.verifiedSeqs,
+      skipIssueIdRule: claim.dbError,
+    });
+    const promise = detectEmptyPromise(reply);
+    return {
+      ok: claim.ok && lint.ok && promise.ok,
+      problems: [...claim.problems, ...lint.problems, ...promise.problems],
+    };
+  }
+
+  /** Check a reply's issue references against the DB (project-scoped) and the
+   *  turn's actual tool calls. Fails OPEN on DB errors — the guard must never
+   *  brick replies on an infra blip. Also surfaces the verified id/seq sets
+   *  and a `dbError` flag so `lintStakeholderReply`'s bare-ISS-id rule can
+   *  carve out citations already checked here (and skip entirely on a DB
+   *  blip, matching this guard's own fail-open behavior). */
+  private async verifyReplyClaims(
+    projectId: string,
+    reply: string,
+    toolCalls: Array<{ name: string; arguments: string }>,
+  ): Promise<{
+    ok: boolean;
+    problems: string[];
+    verifiedSeqs: Set<number>;
+    verifiedUrlIds: Set<string>;
+    dbError: boolean;
+  }> {
     const claims = extractIssueClaims(reply);
     let ids = new Set<string>();
     let seqs = new Set<number>();
@@ -661,10 +704,17 @@ class RocketChatConnectionManager {
         seqs = new Set(rows.map((r) => r.issSeq));
       } catch (err) {
         logger.warn({ err, projectId }, 'rocketchat: claim verification query failed; skipping');
-        return { ok: true, problems: [] };
+        return {
+          ok: true,
+          problems: [],
+          verifiedSeqs: new Set(),
+          verifiedUrlIds: new Set(),
+          dbError: true,
+        };
       }
     }
-    return judgeIssueClaims(claims, { ids, seqs }, toolCalls);
+    const verdict = judgeIssueClaims(claims, { ids, seqs }, toolCalls);
+    return { ...verdict, verifiedSeqs: seqs, verifiedUrlIds: ids, dbError: false };
   }
 
   private async teardown(connectionId: string): Promise<void> {
