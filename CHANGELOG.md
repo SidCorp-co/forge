@@ -131,6 +131,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Forge's automated pipeline (triage, plan, review, and test stages) now reasons more carefully before asking for more info, flagging a UX problem, or missing a repeated pattern across the codebase — while keeping the same bar so it doesn't bounce or reopen issues unnecessarily.
 - Sessions are now accessible from the workspace navigation rail.
 - Chat module documentation now covers Ask Agent device chat flows, role-aware lenses, and RocketChat inbound integration setup.
+- Web-v2 issue list, issue detail, and chat composer are now fully responsive and work correctly on mobile viewports.
 
 ## [0.3.0] - 2026-06-11
 
