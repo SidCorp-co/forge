@@ -27,6 +27,14 @@ function buildSelectChain() {
 
 const dbDelete = vi.fn(() => ({ where: () => Promise.resolve(undefined) }));
 
+const updatedSets: Record<string, unknown>[] = [];
+const dbUpdate = vi.fn(() => ({
+  set: (v: Record<string, unknown>) => {
+    updatedSets.push(v);
+    return { where: () => ({ returning: async () => [{ id: 'skill-1', ...v }] }) };
+  },
+}));
+
 const insertedValues: Record<string, unknown>[] = [];
 const dbInsert = vi.fn(() => ({
   values: (v: Record<string, unknown>) => {
@@ -40,6 +48,7 @@ vi.mock('../db/client.js', () => ({
     select: () => buildSelectChain(),
     delete: dbDelete,
     insert: dbInsert,
+    update: dbUpdate,
   },
 }));
 
@@ -53,15 +62,55 @@ const {
   SkillNotProjectScopedError,
   registerSkillForProject,
   createProjectSkill,
+  updateProjectSkill,
 } = await import('./service.js');
 const { SkillContentBlockedError } = await import('../security/findings.js');
 
 beforeEach(() => {
   selectQueue.length = 0;
   insertedValues.length = 0;
+  updatedSets.length = 0;
   dbDelete.mockClear();
   dbInsert.mockClear();
+  dbUpdate.mockClear();
   hooksEmit.mockClear();
+});
+
+describe('updateProjectSkill — markRebased restamp (ISS-679)', () => {
+  const existing = {
+    id: 'skill-1',
+    skillMd: '# body',
+    prompt: '# body',
+    files: [],
+    version: 6,
+    name: 'forge-test',
+    description: 'project copy',
+    basedOnGlobalSkillId: 'global-1',
+  };
+
+  it('stamps basedOnGlobalVersion from the linked global template without a version bump', async () => {
+    pushSelect([{ version: 14 }]);
+    await updateProjectSkill(existing as never, { markRebased: true });
+    expect(updatedSets).toHaveLength(1);
+    expect(updatedSets[0]!.basedOnGlobalVersion).toBe(14);
+    expect(updatedSets[0]!.version).toBeUndefined();
+    expect(updatedSets[0]!.contentHash).toBeUndefined();
+  });
+
+  it('rejects markRebased on a skill with no linked global template', async () => {
+    await expect(
+      updateProjectSkill({ ...existing, basedOnGlobalSkillId: null } as never, {
+        markRebased: true,
+      }),
+    ).rejects.toThrow(/markRebased requires/);
+    expect(updatedSets).toHaveLength(0);
+  });
+
+  it('does not touch basedOnGlobalVersion on an ordinary update', async () => {
+    await updateProjectSkill(existing as never, { description: 'new description' });
+    expect(updatedSets).toHaveLength(1);
+    expect('basedOnGlobalVersion' in updatedSets[0]!).toBe(false);
+  });
 });
 
 describe('registerSkillForProject({ stage: null }) — SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE (ISS-238)', () => {

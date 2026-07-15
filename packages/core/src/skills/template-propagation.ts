@@ -49,7 +49,7 @@ function rebaseIssueDescription(bump: TemplateBump): string {
     `2. Compute what the template CHANGED (v${bump.oldVersion} → v${bump.newVersion}) and apply that delta onto the project copy, preserving every project-specific customization. When a template change conflicts with a project customization, keep the project behavior and note the conflict in a comment.`,
     '3. Altitude check: if a changed sentence is true for EVERY project (platform mechanics, memory/handoff discipline), do NOT port it into this skill body — it belongs in the server-rendered prompt facts; flag it in a comment instead.',
     '4. Post the resulting diff as an issue comment for review.',
-    '5. On approval: update the project skill (`forge_skills.update`) — its `basedOnGlobalVersion` restamps automatically — then push to devices via the explicit sync (`forge_skills.push`).',
+    '5. On approval: update the project skill (`forge_skills.update`) passing `markRebased: true` — this restamps `basedOnGlobalVersion` to the template version so `behindTemplate` clears — then push to devices via the explicit sync (`forge_skills.push`).',
     '',
     '*Drafted automatically by the template-propagation sweep (ISS-605). Draft = human gate: move to `open` only when this rebase should actually run.*',
   ].join('\n');

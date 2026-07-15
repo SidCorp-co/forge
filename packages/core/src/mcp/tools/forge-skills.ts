@@ -69,6 +69,7 @@ const updateInputSchema = z
     files: z.array(skillFileMcpSchema).optional(),
     localGuide: z.string().max(20_000).nullable().optional(),
     installOnly: z.boolean().optional(),
+    markRebased: z.boolean().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 2, { message: 'no fields to update' });
@@ -253,7 +254,7 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
 export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.update',
   description:
-    'Update a project-scoped skill (name/description/skillMd/target/files/localGuide/installOnly). Bumps version + recomputes contentHash when the body or files change. Set installOnly:true to force-sync a manual / user-invocable utility skill to runners WITHOUT binding it to a pipeline stage — it enters the device manifest (forge_skills.push delivers it) but the dispatcher never auto-runs it. Requires owner/admin. Global skills are immutable templates and cannot be updated; create a same-name project skill to shadow one for this project.',
+    'Update a project-scoped skill (name/description/skillMd/target/files/localGuide/installOnly). Bumps version + recomputes contentHash when the body or files change. Set installOnly:true to force-sync a manual / user-invocable utility skill to runners WITHOUT binding it to a pipeline stage — it enters the device manifest (forge_skills.push delivers it) but the dispatcher never auto-runs it. Set markRebased:true AFTER reconciling the copy with its global template (a skill-rebase): restamps basedOnGlobalVersion to the template’s current version so behindTemplate clears and the template-propagation sweep stops re-drafting; a markRebased-only call does NOT bump version. Requires owner/admin. Global skills are immutable templates and cannot be updated; create a same-name project skill to shadow one for this project.',
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const { projectId, skillId, ...patch } = updateInputSchema.parse(args);

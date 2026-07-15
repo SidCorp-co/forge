@@ -47,6 +47,7 @@ const skillUpdateSchema = z
     target: z.enum(skillTargets).optional(),
     files: z.array(fileSchema).optional(),
     localGuide: z.string().max(20_000).nullable().optional(),
+    markRebased: z.boolean().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });

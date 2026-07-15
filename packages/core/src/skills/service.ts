@@ -382,19 +382,30 @@ export interface UpdateProjectSkillPatch {
   files?: SkillFileInput[] | undefined;
   localGuide?: string | null | undefined;
   installOnly?: boolean | undefined;
+  /**
+   * ISS-679 — set true after reconciling the copy with its global template:
+   * restamps `basedOnGlobalVersion` to the template's CURRENT version so
+   * `behindTemplate` clears and the template-propagation sweep stops
+   * re-drafting rebase issues. Deliberately opt-in — an ordinary local edit
+   * must NOT claim template reconciliation it never did.
+   */
+  markRebased?: boolean | undefined;
 }
 
 /**
  * Apply a partial update to a project skill. `existing` is the current row
  * (fetched + authorized by the caller). Bumps `version` + recomputes
  * `contentHash` whenever the body (skillMd) or files change; backfills the
- * canonical `skillMd` for legacy prompt-only rows on first edit.
+ * canonical `skillMd` for legacy prompt-only rows on first edit. A
+ * `markRebased`-only call stamps `basedOnGlobalVersion` without a version
+ * bump (metadata, not content).
  */
 export async function updateProjectSkill(
   existing: Pick<
     SkillRow,
     'id' | 'skillMd' | 'prompt' | 'files' | 'version' | 'name' | 'description'
-  >,
+  > &
+    Partial<Pick<SkillRow, 'basedOnGlobalSkillId'>>,
   patch: UpdateProjectSkillPatch,
 ): Promise<SkillRow> {
   const hasTextPatch =
@@ -436,6 +447,20 @@ export async function updateProjectSkill(
     }
     updates.contentHash = hashSkillBody(canonicalSkillMd, normalizedFiles ?? existing.files);
     updates.version = (existing.version ?? 1) + 1;
+  }
+  if (patch.markRebased) {
+    if (!existing.basedOnGlobalSkillId) {
+      throw new Error(
+        'BAD_REQUEST: markRebased requires a skill linked to a global template (basedOnGlobalSkillId is null)',
+      );
+    }
+    const [globalRow] = await db
+      .select({ version: skills.version })
+      .from(skills)
+      .where(eq(skills.id, existing.basedOnGlobalSkillId))
+      .limit(1);
+    if (!globalRow) throw new Error('NOT_FOUND: linked global template not found');
+    updates.basedOnGlobalVersion = globalRow.version ?? 1;
   }
   const [updated] = (await db
     .update(skills)
