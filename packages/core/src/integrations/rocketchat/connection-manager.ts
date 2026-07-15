@@ -180,6 +180,14 @@ interface ActiveConnection {
   reconnectTimer?: NodeJS.Timeout | undefined;
   /** Periodic socket-refresh timer (see DDP_REFRESH_INTERVAL_MS). */
   refreshTimer?: NodeJS.Timeout | undefined;
+  /** Duplicate-delivery guard — RC re-emits a message after URL-preview
+   *  enrichment (one mention → two frames). MUST be PER-CONNECTION: the same
+   *  bot user is subscribed on every org connection's socket via
+   *  `__my_messages__`, so EVERY connection receives EVERY room's messages. A
+   *  manager-global tracker let a connection with no route for a room mark the
+   *  id "seen" first, so the connection that DID own the route then dropped it
+   *  as a false duplicate — the intermittent "bot ignores the message" bug. */
+  seenMessage: (id: string) => boolean;
   closing: boolean;
 }
 
@@ -187,9 +195,6 @@ class RocketChatConnectionManager {
   private readonly conns = new Map<string, ActiveConnection>();
   /** rid → chat session id, so a room keeps one multi-turn conversation. */
   private readonly sessionByRid = new Map<string, string>();
-  /** Duplicate-delivery guard — RC re-emits messages after URL-preview
-   *  enrichment; without this one mention yields two racing replies. */
-  private readonly seenMessage = createSeenTracker();
   private started = false;
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
@@ -282,6 +287,7 @@ class RocketChatConnectionManager {
       authToken: secrets.authToken,
       routes,
       reconnectAttempt: 0,
+      seenMessage: createSeenTracker(),
       closing: false,
     };
     this.conns.set(connectionId, active);
@@ -446,7 +452,15 @@ class RocketChatConnectionManager {
       });
     }
     if (!decision.handle) return;
-    if (this.seenMessage(m.id)) {
+    // Route BEFORE dedup: the same bot user is subscribed on every connection's
+    // socket, so a connection with NO route for this room must drop the message
+    // WITHOUT touching its dedup tracker — otherwise (with the old global
+    // tracker) it poisoned the id and the routing connection saw a false dup.
+    if (!route) {
+      logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
+      return;
+    }
+    if (ac.seenMessage(m.id)) {
       if (mentionsBot) {
         Sentry.captureMessage('rocketchat: bot mention dropped as duplicate', {
           level: 'warning',
@@ -454,11 +468,7 @@ class RocketChatConnectionManager {
           extra: { connectionId, rid: m.rid, msgId: m.id, textSnippet: m.text.slice(0, 160) },
         });
       }
-      return; // enrichment re-emit / reconnect replay
-    }
-    if (!route) {
-      logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
-      return;
+      return; // enrichment re-emit / reconnect replay (per-connection)
     }
     // Delivery marker: proves the mention reached the handler.
     logger.info(
