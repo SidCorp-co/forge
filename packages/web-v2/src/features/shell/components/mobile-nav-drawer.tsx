@@ -59,6 +59,11 @@ function DrawerNavButton({
 export interface MobileNavDrawerProps {
   open: boolean;
   onClose: () => void;
+  /** True when opened from the bottom-nav "Project switcher" tab — renders the
+   *  Projects section first so it's reachable without scrolling past This
+   *  project/Workspace (ISS-685). Default `false` (TopBar menu button) keeps
+   *  the original This project -> Workspace -> Projects order. */
+  projectFirst?: boolean;
   /** Active project slug from the pathname (null on workspace screens). */
   slug: string | null;
   /** The project the rail renders (active, else last-visited, else first). */
@@ -80,6 +85,7 @@ export interface MobileNavDrawerProps {
 export function MobileNavDrawer({
   open,
   onClose,
+  projectFirst = false,
   slug,
   railSlug,
   railProjectName,
@@ -104,6 +110,94 @@ export function MobileNavDrawer({
 
   if (!open) return null;
 
+  // This project — the project tier from the desktop rail. Shown for the rail
+  // project (the one you're in, else last-visited) so Issues & co. are always
+  // reachable on mobile.
+  const thisProjectSection = railSlug && (
+    <>
+      <span className="fg-label px-1.5 pb-1 pt-0.5 text-fg">
+        {railProjectName ?? "This project"}
+      </span>
+      {PROJECT_ITEMS.map((it) => (
+        <DrawerNavButton
+          key={it.key}
+          active={it.key === activeKey}
+          onClick={() => {
+            onNavigate(it.key);
+            onClose();
+          }}
+          leading={<Icon name={it.icon} size={18} />}
+          label={it.label}
+          badge={it.key === "proj-issues" ? openIssuesBadge : undefined}
+        />
+      ))}
+    </>
+  );
+
+  // Workspace — destinations consolidated into the menu so the tier stays
+  // reachable once the bottom bar shows the project tier.
+  const workspaceSection = (
+    <>
+      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Workspace</span>
+      {DRAWER_WORKSPACE_ITEMS.map((it) => (
+        <DrawerNavButton
+          key={it.key}
+          active={!slug && it.key === activeKey}
+          onClick={() => {
+            onNavigate(it.key);
+            onClose();
+          }}
+          leading={<Icon name={it.icon} size={18} />}
+          label={it.label}
+          badge={it.key === "attention" ? attentionCount : undefined}
+        />
+      ))}
+    </>
+  );
+
+  // Projects switcher (unchanged behaviour — do not regress).
+  const projectsSection = (
+    <>
+      <div className="flex items-center justify-between px-1.5 pb-1 pt-2">
+        <span className="fg-label text-fg">Projects</span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onCreateProject}
+            className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <Icon name="plus" size={13} />
+            Create
+          </button>
+          <button
+            type="button"
+            onClick={onViewAllProjects}
+            className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            View all
+          </button>
+        </div>
+      </div>
+      {scopedProjects.map((p) => {
+        const g = projectGlyph(p.id);
+        return (
+          <DrawerNavButton
+            key={p.id}
+            active={p.slug === slug}
+            onClick={() => onOpenProject(p.slug)}
+            leading={
+              <ProjectMark tint={g.tint} ink={g.ink} initials={projectInitials(p.name)} size={24} radius="var(--r-sm)" />
+            }
+            label={p.name}
+          />
+        );
+      })}
+      {scopedProjects.length === 0 && (
+        <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
+      )}
+    </>
+  );
+
   return (
     <div className="md:hidden">
       <button
@@ -126,84 +220,18 @@ export function MobileNavDrawer({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-          {/* This project — the project tier from the desktop rail. Shown
-              for the rail project (the one you're in, else last-visited) so
-              Issues & co. are always reachable on mobile. */}
-          {railSlug && (
+          {projectFirst ? (
             <>
-              <span className="fg-label px-1.5 pb-1 pt-0.5 text-fg">
-                {railProjectName ?? "This project"}
-              </span>
-              {PROJECT_ITEMS.map((it) => (
-                <DrawerNavButton
-                  key={it.key}
-                  active={it.key === activeKey}
-                  onClick={() => {
-                    onNavigate(it.key);
-                    onClose();
-                  }}
-                  leading={<Icon name={it.icon} size={18} />}
-                  label={it.label}
-                  badge={it.key === "proj-issues" ? openIssuesBadge : undefined}
-                />
-              ))}
+              {projectsSection}
+              {thisProjectSection}
+              {workspaceSection}
             </>
-          )}
-
-          {/* Workspace — destinations consolidated into the menu so the tier
-              stays reachable once the bottom bar shows the project tier. */}
-          <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Workspace</span>
-          {DRAWER_WORKSPACE_ITEMS.map((it) => (
-            <DrawerNavButton
-              key={it.key}
-              active={!slug && it.key === activeKey}
-              onClick={() => {
-                onNavigate(it.key);
-                onClose();
-              }}
-              leading={<Icon name={it.icon} size={18} />}
-              label={it.label}
-              badge={it.key === "attention" ? attentionCount : undefined}
-            />
-          ))}
-
-          {/* Projects switcher (unchanged behaviour — do not regress). */}
-          <div className="flex items-center justify-between px-1.5 pb-1 pt-2">
-            <span className="fg-label text-fg">Projects</span>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onCreateProject}
-                className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-              >
-                <Icon name="plus" size={13} />
-                Create
-              </button>
-              <button
-                type="button"
-                onClick={onViewAllProjects}
-                className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-              >
-                View all
-              </button>
-            </div>
-          </div>
-          {scopedProjects.map((p) => {
-            const g = projectGlyph(p.id);
-            return (
-              <DrawerNavButton
-                key={p.id}
-                active={p.slug === slug}
-                onClick={() => onOpenProject(p.slug)}
-                leading={
-                  <ProjectMark tint={g.tint} ink={g.ink} initials={projectInitials(p.name)} size={24} radius="var(--r-sm)" />
-                }
-                label={p.name}
-              />
-            );
-          })}
-          {scopedProjects.length === 0 && (
-            <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
+          ) : (
+            <>
+              {thisProjectSection}
+              {workspaceSection}
+              {projectsSection}
+            </>
           )}
         </div>
       </div>

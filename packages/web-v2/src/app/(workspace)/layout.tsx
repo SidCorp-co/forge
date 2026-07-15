@@ -95,6 +95,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // True when the drawer was opened from the bottom-nav "Project switcher" tab
+  // — surfaces the project list first instead of scrolled below This
+  // project/Workspace (ISS-685). False from the TopBar menu button.
+  const [mobileNavProjectFirst, setMobileNavProjectFirst] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   // Global Agent Chat dock (ISS-500) — open state + docked width, persisted
   // per tab (see useChatDock).
@@ -259,6 +263,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       return;
     }
     if (key === "switcher") {
+      setMobileNavProjectFirst(true);
       setMobileNavOpen(true);
       return;
     }
@@ -371,6 +376,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       <MobileNavDrawer
         open={mobileNavOpen}
         onClose={closeMobileNav}
+        projectFirst={mobileNavProjectFirst}
         slug={slug}
         railSlug={railSlug}
         railProjectName={railProject?.name}
@@ -389,7 +395,14 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <TopBar
             breadcrumb={crumbs}
             onBreadcrumbNavigate={(href) => router.push(href)}
-            onMenu={slug ? undefined : () => setMobileNavOpen(true)}
+            onMenu={
+              slug
+                ? undefined
+                : () => {
+                    setMobileNavProjectFirst(false);
+                    setMobileNavOpen(true);
+                  }
+            }
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
             notificationCount={unread?.count ?? 0}
@@ -424,8 +437,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               title="My conversations"
               width="clamp(560px, 60vw, 1024px)"
               fitBody
+              hideHeader
             >
-              <ChatScreen projectId={railProject.id} />
+              <ChatScreen projectId={railProject.id} onClose={() => setChatOpen(false)} />
             </SlideOver>
           </div>
         )}
