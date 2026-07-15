@@ -68,5 +68,7 @@ __pycache__
 # Internal-only docs (maintainer artifacts: release tests, migration audits, ops runbooks)
 .internal-docs/
 
-# Claude Code working files (per-repo / per-package agent guidance, not OSS-public)
-CLAUDE.md
+# Claude Code files — root CLAUDE.md is committed (contributor guidance);
+# per-package agent notes and personal/maintainer instructions stay local.
+packages/*/CLAUDE.md
+CLAUDE.local.md
