@@ -412,26 +412,66 @@ class RocketChatConnectionManager {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
     const decision = decideHandling(m, ac.botUserId);
-    if (!decision.handle) return;
-    if (this.seenMessage(m.id)) return; // enrichment re-emit / reconnect replay
     const route = ac.routes.get(m.rid);
+    // TEMP DIAGNOSTIC (RC-drop hunt): EVERY message that @-mentions the bot emits
+    // a queryable Sentry event carrying the full gate verdict — so a mention that
+    // is received but never answered is visible WITHOUT core stdout (the current
+    // blind spot). Correlate in Sentry by `msg_id`:
+    //   • no "mention received" event for a msg_id  → RC never delivered it (DDP)
+    //   • received (gate=ok, route=true) but no "dispatched" → dropped as duplicate
+    //   • "dispatched" but no handler outcome         → hung/threw inside handle()
+    // Remove once the root cause is pinned.
+    const mentionsBot = m.mentions.includes(ac.botUserId);
+    if (mentionsBot) {
+      Sentry.captureMessage('rocketchat: bot mention received', {
+        level: 'info',
+        tags: {
+          area: 'rocketchat',
+          gate: decision.reason,
+          has_route: String(!!route),
+          msg_id: m.id,
+        },
+        extra: {
+          connectionId,
+          rid: m.rid,
+          msgId: m.id,
+          projectId: route?.projectId ?? null,
+          user: m.username,
+          textSnippet: m.text.slice(0, 160),
+          gateHandle: decision.handle,
+          isEdited: m.isEdited,
+          isSystem: m.isSystem,
+          tmid: m.tmid ?? null,
+        },
+      });
+    }
+    if (!decision.handle) return;
+    if (this.seenMessage(m.id)) {
+      if (mentionsBot) {
+        Sentry.captureMessage('rocketchat: bot mention dropped as duplicate', {
+          level: 'warning',
+          tags: { area: 'rocketchat', msg_id: m.id },
+          extra: { connectionId, rid: m.rid, msgId: m.id, textSnippet: m.text.slice(0, 160) },
+        });
+      }
+      return; // enrichment re-emit / reconnect replay
+    }
     if (!route) {
       logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
       return;
     }
-    // Delivery marker: proves the mention reached the handler. If a drop ever
-    // recurs, the presence/absence of this breadcrumb on the Sentry event (or
-    // in stdout) distinguishes "RC never delivered it" from "handler hung".
+    // Delivery marker: proves the mention reached the handler.
     logger.info(
       { connectionId, rid: m.rid, msgId: m.id, user: m.username, projectId: route.projectId },
       'rocketchat: handling mention',
     );
-    Sentry.addBreadcrumb({
-      category: 'rocketchat',
-      level: 'info',
-      message: 'handling mention',
-      data: { rid: m.rid, msgId: m.id, projectId: route.projectId, user: m.username },
-    });
+    if (mentionsBot) {
+      Sentry.captureMessage('rocketchat: bot mention dispatched to handler', {
+        level: 'info',
+        tags: { area: 'rocketchat', msg_id: m.id },
+        extra: { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId },
+      });
+    }
     void this.handle(ac, route, m).catch((err) => {
       logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message handling failed');
       Sentry.captureException(err, {
