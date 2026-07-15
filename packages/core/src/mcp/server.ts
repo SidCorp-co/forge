@@ -54,6 +54,7 @@ import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
+import { forgeProjectStatusSummaryTool } from './tools/forge-project-status-summary.js';
 import {
   forgeProjectsArchiveTool,
   forgeProjectsCreateTool,
@@ -217,6 +218,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeMetricsStepDurationsTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
     forgeMetricsProjectTimeseriesTool(ctx),
+    forgeProjectStatusSummaryTool(ctx),
     forgeRunnersTool(ctx),
     forgeSchedulesTool(ctx),
     forgeCollaboratorsTool(ctx),
