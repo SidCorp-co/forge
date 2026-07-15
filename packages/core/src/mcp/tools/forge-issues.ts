@@ -15,11 +15,6 @@ import {
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
 import {
-  MCP_ONLY_ISSUE_PATCH_FIELDS,
-  SHARED_ISSUE_PATCH_FIELDS,
-  collectIssueFieldUpdates,
-} from '../../issues/patch-fields.js';
-import {
   AttachmentError,
   type DecodedAttachment,
   decodeAndValidateAttachments,
@@ -27,8 +22,15 @@ import {
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
 import { applyIntakeGate, finalizeIntake } from '../../issues/intake-gate.js';
+import { listIssueLabels } from '../../issues/label-service.js';
+import {
+  MCP_ONLY_ISSUE_PATCH_FIELDS,
+  SHARED_ISSUE_PATCH_FIELDS,
+  collectIssueFieldUpdates,
+} from '../../issues/patch-fields.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
+import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
@@ -173,6 +175,13 @@ const dataSchema = z
     // through the outbox so the orchestrator's ISS-411 hard-stop allows the
     // transition. A stray aborted-agent advance will never carry this flag.
     unblock: z.boolean().optional(),
+    // ISS-633 — plain label attach/detach. Accepts label NAMES or UUIDs,
+    // resolved server-side (strict: unknown -> BAD_REQUEST, no auto-create).
+    // REPLACE-SET semantics mirroring REST: this is the full desired label
+    // set for the issue — [] clears all, undefined means "no change". Read
+    // an issue's current `labels[]` (get/step_start) before sending a delta
+    // to avoid clobbering the existing set.
+    labels: z.array(z.string().trim().min(1)).max(50).optional(),
   })
   .strict()
   .optional();
@@ -388,6 +397,66 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
   return row as IssueRow;
 }
 
+const LABEL_UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * ISS-633 — tolerant name/uuid -> id resolver for the `list` filters.label
+ * READ path. An unknown name is silently dropped (caller treats a fully-empty
+ * result as "no issues match" rather than an error). NOT used for writes.
+ */
+async function resolveLabelIdsTolerant(projectId: string, rawValues: string[]): Promise<string[]> {
+  const uuidValues = rawValues.filter((v) => LABEL_UUID_PATTERN.test(v));
+  const nameValues = rawValues.filter((v) => !LABEL_UUID_PATTERN.test(v));
+
+  let resolvedIds = [...uuidValues];
+  if (nameValues.length > 0) {
+    const nameRows = await db
+      .select({ id: labels.id })
+      .from(labels)
+      .where(and(eq(labels.projectId, projectId), inArray(labels.name, nameValues)))
+      .limit(nameValues.length + 1);
+    resolvedIds = [...new Set([...resolvedIds, ...nameRows.map((r) => r.id)])];
+  }
+  return resolvedIds;
+}
+
+/**
+ * ISS-633 — strict name/uuid -> id resolver for `forge_issues.update`/`create`
+ * `data.labels` writes. Mirrors REST's `assertLabelsInProject` (issues/routes.ts)
+ * but also resolves names. Every supplied value MUST resolve to a label that
+ * belongs to `projectId` — an unknown name, an unknown uuid, or a uuid
+ * belonging to another project all throw BAD_REQUEST. No auto-create.
+ */
+async function resolveLabelIdsForWrite(projectId: string, rawValues: string[]): Promise<string[]> {
+  const uuidValues = [...new Set(rawValues.filter((v) => LABEL_UUID_PATTERN.test(v)))];
+  const nameValues = [...new Set(rawValues.filter((v) => !LABEL_UUID_PATTERN.test(v)))];
+  if (uuidValues.length === 0 && nameValues.length === 0) return [];
+
+  const matchConds = [];
+  if (uuidValues.length > 0) matchConds.push(inArray(labels.id, uuidValues));
+  if (nameValues.length > 0) matchConds.push(inArray(labels.name, nameValues));
+
+  const rows = await db
+    .select({ id: labels.id, name: labels.name })
+    .from(labels)
+    .where(and(eq(labels.projectId, projectId), or(...matchConds)))
+    .limit(uuidValues.length + nameValues.length + 1);
+
+  const foundIds = new Set(rows.map((r) => r.id));
+  const foundNames = new Set(rows.map((r) => r.name));
+  const missing = [
+    ...uuidValues.filter((v) => !foundIds.has(v)),
+    ...nameValues.filter((v) => !foundNames.has(v)),
+  ];
+  if (missing.length > 0) {
+    throw new Error(
+      `BAD_REQUEST: one or more labels do not exist in this project (no auto-create): ${missing.join(', ')}`,
+    );
+  }
+  return [...foundIds];
+}
+
 /**
  * `serialize` + the issue's attachment metadata (`attachments[]`). Used by the
  * focused single-issue surfaces an agent acts on — `get`, the write-returns,
@@ -396,8 +465,11 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
  * NOT used by `list` (summary/browse) to avoid an attachment query per row.
  */
 export async function serializeWithAttachments(row: IssueRow): Promise<Record<string, unknown>> {
-  const attachments = await listIssueAttachments(row.id);
-  return { ...serialize(row), attachments };
+  const [attachments, issueLabelsList] = await Promise.all([
+    listIssueAttachments(row.id),
+    listIssueLabels(row.id),
+  ]);
+  return { ...serialize(row), attachments, labels: issueLabelsList };
 }
 
 // ── Lean manifest serializer for forge_step_start over-threshold path ──────
@@ -468,8 +540,11 @@ export function serializeManifest(row: IssueRow): Record<string, unknown> {
 export async function serializeManifestWithAttachments(
   row: IssueRow,
 ): Promise<Record<string, unknown>> {
-  const attachments = await listIssueAttachments(row.id);
-  return { ...serializeManifest(row), attachments };
+  const [attachments, issueLabelsList] = await Promise.all([
+    listIssueAttachments(row.id),
+    listIssueLabels(row.id),
+  ]);
+  return { ...serializeManifest(row), attachments, labels: issueLabelsList };
 }
 
 type TaskRow = {
@@ -609,7 +684,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'forge_project_pm set_dependency kind=decomposes directly. Draft-first fallback: ' +
     'create with status:draft, set deps, then transition to open — draft issues are ' +
     'never dispatched, so the edge is always present before the issue enters the ' +
-    'pipeline.',
+    'pipeline. ' +
+    'Labels (ISS-633): data.labels (create/update) accepts an array of label NAMES or ' +
+    'UUIDs, resolved server-side against the current project — an unknown name/uuid ' +
+    '(or one from another project) throws BAD_REQUEST; labels are never auto-created. ' +
+    'On update this is a REPLACE-SET, NOT additive: it is the full desired label set for ' +
+    'the issue — [] clears every label, and omitting data.labels leaves labels unchanged. ' +
+    "Read the issue's current labels[] (present on get/create/update responses and the " +
+    'forge_step_start bundle) before sending a delta, or you will clobber the existing set.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -645,20 +727,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         if (f?.label !== undefined && f.label !== null) {
           const rawValues = Array.isArray(f.label) ? f.label : [f.label];
-          const uuidPattern =
-            /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-          const uuidValues = rawValues.filter((v) => uuidPattern.test(v));
-          const nameValues = rawValues.filter((v) => !uuidPattern.test(v));
-
-          let resolvedIds = [...uuidValues];
-          if (nameValues.length > 0) {
-            const nameRows = await db
-              .select({ id: labels.id })
-              .from(labels)
-              .where(and(eq(labels.projectId, projectId), inArray(labels.name, nameValues)))
-              .limit(nameValues.length + 1);
-            resolvedIds = [...new Set([...resolvedIds, ...nameRows.map((r) => r.id)])];
-          }
+          const resolvedIds = await resolveLabelIdsTolerant(projectId, rawValues);
 
           if (resolvedIds.length === 0) {
             // Caller supplied a label filter but no ids resolved (unknown name or empty input).
@@ -791,6 +860,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
         }
 
+        // ISS-633 — resolve + strictly validate label names/uuids BEFORE
+        // insert (same "fail before half-created" discipline as attachments).
+        let labelIds: string[] = [];
+        if (input.data.labels && input.data.labels.length > 0) {
+          labelIds = await resolveLabelIdsForWrite(projectId, input.data.labels);
+        }
+
         const [inserted] = await db
           .insert(issues)
           .values({
@@ -816,6 +892,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!inserted) throw new Error('issues: insert returned no row');
 
         const created = inserted as IssueRow;
+
+        // ISS-633 — attach labels (REST parity: issues/routes.ts ~284-288).
+        if (labelIds.length > 0) {
+          await db
+            .insert(issueLabels)
+            .values(labelIds.map((labelId) => ({ issueId: created.id, labelId })));
+        }
 
         // ISS-606: label + owner notification for a gated (parked) create.
         if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
@@ -851,11 +934,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             category: created.category,
             reportedBy: created.reportedBy,
             assigneeId: created.assigneeId,
-            labels: [],
+            labels: labelIds,
           },
         });
 
         const result: Record<string, unknown> = serialize(created);
+        result.labels = labelIds.length > 0 ? await listIssueLabels(created.id) : [];
         if (decodedAttachments.length > 0) {
           const { persisted, errors } = await persistDecodedIssueAttachments(
             created.id,
@@ -873,6 +957,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
+
+        // ISS-633 — resolve + strictly validate label names/uuids BEFORE the
+        // tx (mirrors REST PATCH's assertLabelsInProject running before its
+        // own tx). `undefined` means "no change"; `[]` clears every label.
+        const labelIds =
+          input.data.labels !== undefined
+            ? await resolveLabelIdsForWrite(issue.projectId, input.data.labels)
+            : undefined;
 
         // Status changes always route through the state machine so the
         // transitions stay aligned with REST `/transition` (reopen-cap +
@@ -900,13 +992,53 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...MCP_ONLY_ISSUE_PATCH_FIELDS,
         ]);
 
-        if (Object.keys(updates).length > 0) {
+        if (Object.keys(updates).length > 0 || labelIds !== undefined) {
           // Use sql`now()` (matching applyStatusTransition above) so a
           // combined status+fields update has a single canonical timestamp
           // source rather than mixing JS Date and DB now().
           updates.updatedAt = sql`now()`;
+          const actor = { type: 'device' as const, id: device.id };
           await db.transaction(async (tx) => {
             await tx.update(issues).set(updates).where(eq(issues.id, issue.id));
+
+            // ISS-633 — replace-set label delta, in-tx (rolls back together
+            // with the field update on failure) with issue.labeled/unlabeled
+            // activity, matching REST PATCH (issues/routes.ts ~609-645).
+            if (labelIds !== undefined) {
+              const existing = await tx
+                .select({ labelId: issueLabels.labelId })
+                .from(issueLabels)
+                .where(eq(issueLabels.issueId, issue.id))
+                .limit(500);
+              const oldSet = new Set(existing.map((r) => r.labelId));
+              const newSet = new Set(labelIds);
+              const labelsAdded = [...newSet].filter((l) => !oldSet.has(l));
+              const labelsRemoved = [...oldSet].filter((l) => !newSet.has(l));
+
+              await tx.delete(issueLabels).where(eq(issueLabels.issueId, issue.id));
+              if (labelIds.length > 0) {
+                await tx
+                  .insert(issueLabels)
+                  .values(labelIds.map((labelId) => ({ issueId: issue.id, labelId })));
+              }
+
+              for (const labelId of labelsAdded) {
+                await recordActivityTx(tx, {
+                  issueId: issue.id,
+                  actor,
+                  action: 'issue.labeled',
+                  payload: { labelId },
+                });
+              }
+              for (const labelId of labelsRemoved) {
+                await recordActivityTx(tx, {
+                  issueId: issue.id,
+                  actor,
+                  action: 'issue.unlabeled',
+                  payload: { labelId },
+                });
+              }
+            }
           });
         }
 
