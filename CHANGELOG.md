@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Skill rebases can now mark the project copy as reconciled with its global template, so the template-drift sweep stops re-drafting rebase reminders for skills that were already brought up to date.
 - forge-runner login now retries through transient gateway errors (502/520/timeouts) during pairing instead of aborting the whole session on the first blip.
 - Workspace Overview now correctly identifies issues awaiting your reply and displays per-project workload and recent changes.
 - Workspace conversation view now shows which team members are waiting for your reply and includes an inline reply panel for quick responses.
