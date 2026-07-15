@@ -13,6 +13,7 @@ Feature documentation organized by business domain. Each module answers "where d
 | [memory-knowledge](memory-knowledge/) | v2 cognitive layer over Postgres `pgvector` — extraction, consolidation, decay, and indexing for semantic recall. |
 | [chat](chat/) | Interactive chat sessions with agents. Separate from pipeline jobs — this is conversation. |
 | [resources](resources/) | Org-scoped Workspace Resources — the Private Keys (SSH) pool shared across an org's projects. |
+| [schedules](schedules/) | Cron-driven automation per project — fire a Claude agent session (`kind: 'prompt'`) or a sandboxed Node.js script (`kind: 'script'`, no agent/LLM) on a recurring cadence. |
 
 ## Shared concerns (cross-module)
 
