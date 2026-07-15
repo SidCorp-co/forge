@@ -140,6 +140,13 @@ const EnvSchema = z.object({
   // project facts from agentConfig to knowledge_entries. Default OFF for the
   // deprecation window; flip ON after running the migrate-project-facts script.
   KNOWLEDGE_INJECTION_ENABLED: z.coerce.boolean().default(false),
+  // ISS-663 — guardrails on the main postgres.js pool so a hung db.transaction()
+  // callback can't pin a stale MVCC snapshot on a pooled connection indefinitely.
+  // Defaults are generous: well above any legitimate query/transaction duration,
+  // well below the pipeline's RESULT_QUIET_MINUTES=60 job-quiet threshold (loop-monitor.ts)
+  // so they never race a legitimate long-running pipeline operation.
+  DATABASE_IDLE_IN_TX_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
 });
 
 // ISS-234 — INTEGRATION_MASTER_KEY is intentionally NOT validated through
