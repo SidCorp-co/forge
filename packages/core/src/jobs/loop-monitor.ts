@@ -287,9 +287,15 @@ export async function reapZombieSessions(
     });
   }
 
-  // Heartbeat hop (pipeline/pm): running with stale heartbeat. Falls back
-  // through startedAt → updatedAt → createdAt so a rolling deploy with workers
-  // still running older code doesn't over-sweep.
+  // Heartbeat hop (pipeline/pm, + ISS-675 escalation): running with stale
+  // heartbeat. Falls back through startedAt → updatedAt → createdAt so a
+  // rolling deploy with workers still running older code doesn't over-sweep.
+  // A RocketChat escalation session (metadata.escalation set, no
+  // metadata.type) rides the SAME runner heartbeat mechanism as a pipeline/pm
+  // session, so it must match here too — otherwise an attached-then-hung
+  // runner (claudeSessionId already set, so the no_client_ack hop below can
+  // never claim it) leaves the session `running` forever: no completion
+  // bridge fires (silence in the room) and the per-rid dedup never clears.
   const heartbeatFailed = await applyKernelTransition(db, {
     entity: 'session',
     to: 'failed',
@@ -314,7 +320,10 @@ export async function reapZombieSessions(
           lt(agentSessions.createdAt, heartbeatCutoff),
         ),
       ),
-      sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+      or(
+        sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+        sql`${agentSessions.metadata} -> 'escalation' IS NOT NULL`,
+      ),
       ...(projectFilter ? [projectFilter] : []),
     ),
     fromStatus: 'running',
