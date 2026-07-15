@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { issueLabels } from '../../db/schema.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -52,12 +53,17 @@ const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
 const txInsertValues = vi.fn(async () => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
+// ISS-633 — label replace-set delete (issueLabels) inside the update tx.
+const txDeleteWhere = vi.fn(async () => undefined);
+const txDelete = vi.fn(() => ({ where: txDeleteWhere }));
 // ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
 // before the UPDATE; stub it so the in-memory db mock doesn't blow up.
 const txExecute = vi.fn(async () => undefined);
 // ISS-232 — `markMergedIfLeavingBase` issues a 2nd `tx.select(...).from
-// (projects)...` to resolve `mergeStates`. Stub it as an empty resolve so
-// the helper short-circuits with defaults under the in-memory db mock.
+// (projects)...` to resolve `mergeStates`. ISS-633's label replace-set also
+// reads existing `issueLabels` via `tx.select(...).from(...).where(...).limit(...)`.
+// Stub as an empty resolve so both helpers short-circuit with defaults under
+// the in-memory db mock unless a test stages a specific value.
 const txSelectLimit = vi.fn(async () => [] as unknown[]);
 const txSelectWhere = vi.fn(() => ({ limit: txSelectLimit }));
 const txSelectFrom = vi.fn(() => ({ where: txSelectWhere }));
@@ -65,6 +71,7 @@ const txSelect = vi.fn(() => ({ from: txSelectFrom }));
 const txProxy = {
   update: txUpdate,
   insert: txInsert,
+  delete: txDelete,
   execute: txExecute,
   select: txSelect,
 };
@@ -114,6 +121,15 @@ vi.mock('../../issues/attachment-service.js', async (importActual) => {
     listIssueAttachments: (...args: unknown[]) => listIssueAttachmentsMock(...args),
   };
 });
+
+// ISS-633 — mocked independently of the generic `db.select` chain (it uses an
+// innerJoin the top-level mock doesn't model) so the dozens of pre-existing
+// get/update/transition/mark_merged/unmark tests don't need to stage an extra
+// query. Defaults to no labels; individual label tests override per-call.
+const listIssueLabelsMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
+vi.mock('../../issues/label-service.js', () => ({
+  listIssueLabels: (...args: unknown[]) => listIssueLabelsMock(...args),
+}));
 
 // ISS-571 — stub pmSetDependencyHandler so create-with-relations tests don't
 // need to program the full DB query chain that the real handler executes.
@@ -1708,6 +1724,235 @@ describe('forge_issues tool', () => {
       await expect(tool.handler({ action: 'unmark', data: { issueId: ISSUE_ID } })).rejects.toThrow(
         /NOT_FOUND/,
       );
+    });
+  });
+
+  // ISS-633 — plain label attach/detach via MCP (Phase 1: names or uuids,
+  // REPLACE-SET semantics mirroring REST PATCH's labels behavior).
+  describe('data.labels attach/detach (ISS-633)', () => {
+    const OTHER_LABEL_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
+
+    it('update attaches labels by NAME and by UUID (replace-set) and records issue.labeled/unlabeled activity in-tx', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      // 1. loadIssue
+      selectLimit.mockResolvedValueOnce([baseIssueRow]);
+      // 2. membership
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      // 3. resolveLabelIdsForWrite — one query resolves both the uuid and the name
+      selectLimit.mockResolvedValueOnce([
+        { id: LABEL_ID, name: 'bug' },
+        { id: LABEL_ID_2, name: 'area:mobile' },
+      ]);
+      // 4. re-load fresh after the tx
+      selectLimit.mockResolvedValueOnce([baseIssueRow]);
+      // tx: existing issueLabels has ONE prior label not in the new set
+      txSelectLimit.mockResolvedValueOnce([{ labelId: OTHER_LABEL_ID }]);
+      listIssueLabelsMock.mockResolvedValueOnce([
+        { id: LABEL_ID, name: 'bug', color: '#fff' },
+        { id: LABEL_ID_2, name: 'area:mobile', color: '#000' },
+      ]);
+
+      const result = (await tool.handler({
+        action: 'update',
+        documentId: ISSUE_ID,
+        data: { labels: [LABEL_ID, 'area:mobile'] },
+      })) as { labels: Array<{ id: string }> };
+
+      expect(result.labels).toHaveLength(2);
+
+      // replace-set: old label deleted, new set inserted
+      expect(txDelete).toHaveBeenCalledWith(issueLabels);
+      const insertCalls = txInsertValues.mock.calls.map((c) => c[0]);
+      const labelInsertCall = insertCalls.find(
+        (c) => Array.isArray(c) && c.some((row: { labelId?: string }) => row.labelId === LABEL_ID),
+      ) as Array<{ issueId: string; labelId: string }> | undefined;
+      expect(labelInsertCall).toEqual(
+        expect.arrayContaining([
+          { issueId: ISSUE_ID, labelId: LABEL_ID },
+          { issueId: ISSUE_ID, labelId: LABEL_ID_2 },
+        ]),
+      );
+
+      // activity: two added (issue.labeled), one removed (issue.unlabeled)
+      const activityCalls = insertCalls.filter(
+        (c) => c && typeof c === 'object' && !Array.isArray(c) && 'action' in c,
+      ) as Array<{ action: string; payload: { labelId: string } }>;
+      const labeled = activityCalls.filter((c) => c.action === 'issue.labeled');
+      const unlabeled = activityCalls.filter((c) => c.action === 'issue.unlabeled');
+      expect(labeled.map((c) => c.payload.labelId).sort()).toEqual([LABEL_ID, LABEL_ID_2].sort());
+      expect(unlabeled).toHaveLength(1);
+      expect(unlabeled[0]?.payload.labelId).toBe(OTHER_LABEL_ID);
+    });
+
+    it('update with labels:[] clears every existing label (replace-set)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      // labels:[] short-circuits resolveLabelIdsForWrite — no label-name query
+      selectLimit.mockResolvedValueOnce([baseIssueRow]); // re-load fresh
+      txSelectLimit.mockResolvedValueOnce([{ labelId: LABEL_ID }, { labelId: LABEL_ID_2 }]);
+      listIssueLabelsMock.mockResolvedValueOnce([]);
+
+      const result = (await tool.handler({
+        action: 'update',
+        documentId: ISSUE_ID,
+        data: { labels: [] },
+      })) as { labels: unknown[] };
+
+      expect(result.labels).toEqual([]);
+      expect(txDelete).toHaveBeenCalled();
+      // no label-set insert (empty set) — only the two unlabeled activity rows
+      const insertCalls = txInsertValues.mock.calls.map((c) => c[0]);
+      expect(insertCalls.some((c) => Array.isArray(c))).toBe(false);
+      const unlabeledCount = insertCalls.filter(
+        (c) =>
+          c &&
+          typeof c === 'object' &&
+          !Array.isArray(c) &&
+          (c as { action?: string }).action === 'issue.unlabeled',
+      ).length;
+      expect(unlabeledCount).toBe(2);
+    });
+
+    it('update rejects an unknown label name with BAD_REQUEST and performs no writes', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      selectLimit.mockResolvedValueOnce([]); // resolveLabelIdsForWrite — nothing matches
+
+      await expect(
+        tool.handler({
+          action: 'update',
+          documentId: ISSUE_ID,
+          data: { labels: ['does-not-exist'] },
+        }),
+      ).rejects.toThrow(/BAD_REQUEST/);
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it('update rejects a label uuid that belongs to another project', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      // the uuid is scoped to issue.projectId in the query — a foreign-project
+      // label id never matches, so the query returns no rows.
+      selectLimit.mockResolvedValueOnce([]);
+
+      await expect(
+        tool.handler({
+          action: 'update',
+          documentId: ISSUE_ID,
+          data: { labels: [OTHER_LABEL_ID] },
+        }),
+      ).rejects.toThrow(/BAD_REQUEST/);
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it('create accepts data.labels, attaches them, and passes resolved ids to issueCreated snapshot.labels', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      selectLimit.mockResolvedValueOnce([{ id: LABEL_ID, name: 'area:mobile' }]); // resolveLabelIdsForWrite
+      insertReturning.mockResolvedValueOnce([baseIssueRow]); // issue insert
+      listIssueLabelsMock.mockResolvedValueOnce([
+        { id: LABEL_ID, name: 'area:mobile', color: '#000' },
+      ]);
+
+      const { hooks } = await import('../../pipeline/hooks.js');
+
+      const result = (await tool.handler({
+        action: 'create',
+        data: { title: 'tagged issue', labels: ['area:mobile'] },
+      })) as { labels: Array<{ id: string }> };
+
+      expect(result.labels).toEqual([{ id: LABEL_ID, name: 'area:mobile', color: '#000' }]);
+      expect(insertValues).toHaveBeenCalledWith(
+        expect.arrayContaining([{ issueId: ISSUE_ID, labelId: LABEL_ID }]),
+      );
+      expect(hooks.emit).toHaveBeenCalledWith(
+        'issueCreated',
+        expect.objectContaining({ snapshot: expect.objectContaining({ labels: [LABEL_ID] }) }),
+      );
+    });
+
+    it('create without data.labels attaches none and keeps snapshot.labels empty (backward compat)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      insertReturning.mockResolvedValueOnce([baseIssueRow]);
+
+      const { hooks } = await import('../../pipeline/hooks.js');
+
+      const result = (await tool.handler({
+        action: 'create',
+        data: { title: 'plain issue' },
+      })) as { labels: unknown[] };
+
+      expect(result.labels).toEqual([]);
+      expect(hooks.emit).toHaveBeenCalledWith(
+        'issueCreated',
+        expect.objectContaining({ snapshot: expect.objectContaining({ labels: [] }) }),
+      );
+    });
+
+    it('get returns the issue current labels[]', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([baseIssueRow]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      listIssueLabelsMock.mockResolvedValueOnce([{ id: LABEL_ID, name: 'bug', color: '#f00' }]);
+
+      const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as {
+        labels: Array<{ id: string; name: string }>;
+      };
+
+      expect(result.labels).toEqual([{ id: LABEL_ID, name: 'bug', color: '#f00' }]);
+    });
+
+    it('list row omits labels (stays lean; use action=get for the label set)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      selectLimit.mockResolvedValueOnce([baseIssueRow]);
+
+      const result = (await tool.handler({ action: 'list' })) as {
+        issues: Array<Record<string, unknown>>;
+      };
+
+      expect(result.issues[0]).not.toHaveProperty('labels');
+      // listIssueLabels must never be queried on the list (browse) surface.
+      expect(listIssueLabelsMock).not.toHaveBeenCalled();
     });
   });
 
