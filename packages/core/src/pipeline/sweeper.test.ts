@@ -437,9 +437,23 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
     const text = sqlText(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/r\.kind\s*=\s*'issue'/);
     expect(text).toMatch(/r\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
-    expect(text).toMatch(/i\.status\s+IN\s*\(\s*'closed'\s*,\s*'released'\s*\)/);
+    expect(text).toMatch(/i\.status\s*=\s*'closed'/);
+    expect(text).not.toMatch(/released/);
     expect(text).toMatch(/JOIN\s+issues\s+i/);
     expect(text).toMatch(/started_at\s*</);
+    expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('does not reap a run whose issue is `released` (ISS-669 — release runs inside the open run)', async () => {
+    // The candidate SELECT itself filters on i.status = 'closed', so a
+    // `released` issue's run is never returned as a candidate in the first
+    // place — assert the mocked query result reflects that (an integration
+    // test against real SQL would additionally confirm the WHERE clause
+    // excludes it, covered by the SQL-shape assertion above).
+    dbExecute.mockResolvedValueOnce([]);
+    const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
+
+    expect(result.reaped).toBe(0);
     expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
   });
 
