@@ -128,6 +128,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed foreign key violations in forge_comments when using PAT or device-less principals, and restored ability to comment on system runs.
 - Forge's automated pipeline (triage, plan, review, and test stages) now reasons more carefully before asking for more info, flagging a UX problem, or missing a repeated pattern across the codebase — while keeping the same bar so it doesn't bounce or reopen issues unnecessarily.
 - Sessions are now accessible from the workspace navigation rail.
+- Chat module documentation now covers Ask Agent device chat flows, role-aware lenses, and RocketChat inbound integration setup.
 
 ## [0.3.0] - 2026-06-11
 
