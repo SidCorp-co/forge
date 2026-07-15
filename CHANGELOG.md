@@ -133,6 +133,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Sessions are now accessible from the workspace navigation rail.
 - Chat module documentation now covers Ask Agent device chat flows, role-aware lenses, and RocketChat inbound integration setup.
 - Web-v2 issue list, issue detail, and chat composer are now fully responsive and work correctly on mobile viewports.
+- Fixed forge_issues list queries returning stale rows by adding database connection timeout safeguards.
 
 ## [0.3.0] - 2026-06-11
 
