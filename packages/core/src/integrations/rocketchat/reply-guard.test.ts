@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { extractIssueClaims, judgeIssueClaims, turnCreatedIssue } from './reply-guard.js';
+import {
+  detectEmptyPromise,
+  extractIssueClaims,
+  judgeIssueClaims,
+  lintStakeholderReply,
+  turnCreatedIssue,
+} from './reply-guard.js';
 
 const UUID = '87153ba0-1d92-427d-bc28-f508a163f6a4';
 const noCalls: Array<{ name: string; arguments: string }> = [];
@@ -72,5 +78,81 @@ describe('judgeIssueClaims', () => {
   it('accepts a plain informational reply', () => {
     const claims = extractIssueClaims('Task 12608 đang In Progress, chưa có update mới.'); // i18n-allow: representative Vietnamese status reply
     expect(judgeIssueClaims(claims, known, noCalls).ok).toBe(true);
+  });
+});
+
+describe('lintStakeholderReply', () => {
+  const noSeqs = new Set<number>();
+
+  const codeFenceReply = 'Đây là fix:\n```ts\nconst x = 1;\n```'; // i18n-allow: representative Vietnamese stakeholder-reply prefix under test
+  const pathLineReply = 'Bug nằm ở src/foo.ts:12 nhé.'; // i18n-allow: representative Vietnamese stakeholder-reply prefix under test
+  const issIdReply = 'Xem ISS-99 để biết chi tiết.'; // i18n-allow: representative Vietnamese stakeholder-reply prefix under test
+  const verifiedIssIdReply = 'Xem ISS-56 để biết chi tiết.'; // i18n-allow: representative Vietnamese stakeholder-reply prefix under test
+
+  it('flags a code fence', () => {
+    const verdict = lintStakeholderReply(codeFenceReply, { verifiedSeqs: noSeqs });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/code block/);
+  });
+
+  it('flags a path:line reference', () => {
+    const verdict = lintStakeholderReply(pathLineReply, { verifiedSeqs: noSeqs });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/src\/foo\.ts:12/);
+  });
+
+  it('flags a bare pipeline status enum', () => {
+    for (const token of ['needs_info', 'in_progress', 'on_hold']) {
+      const reply = `Issue đang ở trạng thái ${token}.`; // i18n-allow: representative Vietnamese stakeholder-reply prefix under test
+      const verdict = lintStakeholderReply(reply, { verifiedSeqs: noSeqs });
+      expect(verdict.ok).toBe(false);
+      expect(verdict.problems.join(' ')).toMatch(new RegExp(token));
+    }
+  });
+
+  it('flags a bare unverified ISS-id', () => {
+    const verdict = lintStakeholderReply(issIdReply, { verifiedSeqs: noSeqs });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/ISS-99/);
+  });
+
+  it('does not flag an ISS-id already verified this turn (carve-out)', () => {
+    const verdict = lintStakeholderReply(verifiedIssIdReply, { verifiedSeqs: new Set([56]) });
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('skips the ISS-id rule entirely when the DB lookup failed (fail-open)', () => {
+    const verdict = lintStakeholderReply(issIdReply, {
+      verifiedSeqs: noSeqs,
+      skipIssueIdRule: true,
+    });
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('does not false-positive on a clean Vietnamese status sentence', () => {
+    const verdict = lintStakeholderReply(
+      'Đội ngũ đang xử lý yêu cầu của bạn, dự kiến hoàn thành trong tuần này.', // i18n-allow: representative clean stakeholder-facing sentence
+      { verifiedSeqs: noSeqs },
+    );
+    expect(verdict.ok).toBe(true);
+    expect(verdict.problems).toEqual([]);
+  });
+});
+
+describe('detectEmptyPromise', () => {
+  it('flags a Vietnamese future-promise-with-no-result reply', () => {
+    const verdict = detectEmptyPromise('Để mình kiểm tra rồi báo lại nhé.'); // i18n-allow: representative empty-promise phrasing under test
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/follow-up turn/);
+  });
+
+  it('flags an English future-promise-with-no-result reply', () => {
+    const verdict = detectEmptyPromise("I'll check and get back to you.");
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('accepts a reply that states a concrete result', () => {
+    const verdict = detectEmptyPromise('Task hiện có 3 issue đang mở, không có issue nào quá hạn.'); // i18n-allow: representative concrete-result reply
+    expect(verdict.ok).toBe(true);
   });
 });
