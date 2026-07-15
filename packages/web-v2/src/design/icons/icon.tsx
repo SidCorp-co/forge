@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, ChevronsUpDown, Circle, CircleHelp, Clock, Command,
   Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Github, Inbox, Keyboard,
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
-  Menu as MenuIcon, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
+  Menu as MenuIcon, MessageSquare, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
   Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
   Star, Trash2, TriangleAlert, Users, Workflow, X,
 } from "lucide-react";
@@ -40,6 +40,7 @@ const ICONS = {
   trash: Trash2,
   arrowRight: ArrowRight,
   agent: Sparkles,
+  chat: MessageSquare,
   folder: Folder,
   users: Users,
   calendar: Calendar,

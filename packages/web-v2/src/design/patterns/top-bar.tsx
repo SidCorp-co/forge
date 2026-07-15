@@ -125,8 +125,9 @@ export function TopBar({
             icon="agent"
             onClick={onAskAgent}
             aria-label="Ask agent"
+            className="hidden md:inline-flex"
           >
-            {/* Icon-only below sm so the header doesn't wrap at 375px (ISS-308 C2). */}
+            {/* Below md, Chat lives on the bottom nav (ISS-681) — this action is desktop-only there. */}
             <span className="hidden sm:inline">Ask agent</span>
           </Button>
         )}
