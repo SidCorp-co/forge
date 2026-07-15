@@ -84,7 +84,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
         {editing ? (
           <div className="flex w-full flex-col gap-2" style={{ minWidth: 240 }}>
             <textarea
-              className="w-full resize-y rounded-md bg-surface px-2.5 py-2 text-sm text-fg focus-visible:outline-none"
+              className="w-full resize-y rounded-md bg-surface px-2.5 py-2 text-base text-fg focus-visible:outline-none md:text-sm"
               rows={3}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}

@@ -265,7 +265,7 @@ export function ConversationList({
                             }
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-full rounded border border-line-strong bg-app px-1.5 py-0.5 text-sm text-fg focus-visible:border-[color:var(--link)] focus-visible:outline-none"
+                          className="w-full rounded border border-line-strong bg-app px-1.5 py-0.5 text-base text-fg focus-visible:border-[color:var(--link)] focus-visible:outline-none md:text-sm"
                         />
                       ) : (
                         <div className="truncate text-sm text-fg">
@@ -415,7 +415,7 @@ export function EditableTitle({
             setValue(conversationTitle(session));
           }
         }}
-        className={`rounded border border-line-strong bg-app px-2 py-1 text-sm text-fg focus-visible:border-[color:var(--link)] focus-visible:outline-none ${
+        className={`rounded border border-line-strong bg-app px-2 py-1 text-base text-fg focus-visible:border-[color:var(--link)] focus-visible:outline-none md:text-sm ${
           className ?? ""
         }`}
       />

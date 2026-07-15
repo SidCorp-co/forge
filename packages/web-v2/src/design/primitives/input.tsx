@@ -16,7 +16,7 @@ export function Input({ icon, variant = "default", className, ...props }: InputP
         {icon && <Icon name={icon} size={16} className="pointer-events-none absolute left-0 text-subtle" />}
         <input
           className={cn(
-            "w-full border-0 bg-transparent p-0 text-[15px] text-fg",
+            "w-full border-0 bg-transparent p-0 text-base text-fg md:text-[15px]",
             "placeholder:text-disabled focus-visible:shadow-none focus-visible:outline-none",
             icon && "pl-7",
           )}
@@ -33,7 +33,7 @@ export function Input({ icon, variant = "default", className, ...props }: InputP
       )}
       <input
         className={cn(
-          "w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-fg",
+          "w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-base text-fg md:text-sm",
           "placeholder:text-disabled disabled:cursor-not-allowed disabled:opacity-50",
           icon && "pl-9",
           // own ring: cobalt + border tint; overrides the global focus ring
