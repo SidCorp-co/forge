@@ -392,6 +392,153 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
+  // ---------- forge_issues: read-after-write consistency (ISS-663) ----------
+  //
+  // ISS-663 reported a `forge_issues action=list` response mixing hours-stale
+  // rows with fresh ones. The `list`/`get` handlers are plain uncached
+  // `db.select()` calls, so a real Postgres round-trip (not a mocked db, which
+  // would prove nothing about actual read-after-write behaviour) is the only
+  // meaningful way to guard against a regression here.
+
+  it('forge_issues: list reflects a fresh status/updatedAt/mergedAt immediately after transition + mark_merged', async () => {
+    const { user, project } = await seedProject('admin');
+    const { plaintext } = await issueDeviceToken({
+      ownerId: user.id,
+      name: 'd',
+      platform: 'linux',
+    });
+    const ctx = await connectClientAsDevice(plaintext);
+    try {
+      const createRes = await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'create',
+          projectId: project.id,
+          data: { title: 'read-after-write probe', status: 'open' },
+        },
+      });
+      const created = parseToolResult(createRes as never) as { documentId: string };
+
+      await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'transition',
+          documentId: created.documentId,
+          data: { status: 'confirmed' },
+        },
+      });
+      await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'mark_merged',
+          data: { issueId: created.documentId, target: 'feature' },
+        },
+      });
+
+      const listRes = await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: { action: 'list', projectId: project.id, filters: { statusNot: 'closed' } },
+      });
+      const listed = parseToolResult(listRes as never) as {
+        issues: Array<{
+          documentId: string;
+          status: string;
+          mergedAt: string | null;
+          updatedAt: string;
+        }>;
+      };
+      const row = listed.issues.find((i) => i.documentId === created.documentId);
+      expect(row).toBeTruthy();
+      expect(row?.status).toBe('confirmed');
+      expect(row?.mergedAt).toBeTruthy();
+      // Freshness, not just presence: the row's updatedAt must reflect the
+      // write we just made, not a stale pre-write snapshot.
+      expect(new Date(row?.updatedAt ?? 0).getTime()).toBeGreaterThan(Date.now() - 5_000);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('forge_issues: list filters={statusNot:"closed"} excludes an issue closed immediately beforehand', async () => {
+    const { user, project } = await seedProject('admin');
+    const { plaintext } = await issueDeviceToken({
+      ownerId: user.id,
+      name: 'd',
+      platform: 'linux',
+    });
+    const ctx = await connectClientAsDevice(plaintext);
+    try {
+      const createRes = await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'create',
+          projectId: project.id,
+          data: { title: 'closes immediately', status: 'draft' },
+        },
+      });
+      const created = parseToolResult(createRes as never) as { documentId: string };
+
+      await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'transition',
+          documentId: created.documentId,
+          data: { status: 'closed' },
+        },
+      });
+
+      const listRes = await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: { action: 'list', projectId: project.id, filters: { statusNot: 'closed' } },
+      });
+      const listed = parseToolResult(listRes as never) as {
+        issues: Array<{ documentId: string }>;
+      };
+      expect(listed.issues.some((i) => i.documentId === created.documentId)).toBe(false);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('forge_issues: get returns the fresh row immediately after a write', async () => {
+    const { user, project } = await seedProject('admin');
+    const { plaintext } = await issueDeviceToken({
+      ownerId: user.id,
+      name: 'd',
+      platform: 'linux',
+    });
+    const ctx = await connectClientAsDevice(plaintext);
+    try {
+      const createRes = await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'create',
+          projectId: project.id,
+          data: { title: 'get freshness probe', status: 'open' },
+        },
+      });
+      const created = parseToolResult(createRes as never) as { documentId: string };
+
+      await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'transition',
+          documentId: created.documentId,
+          data: { status: 'confirmed' },
+        },
+      });
+
+      const getRes = await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: { action: 'get', documentId: created.documentId },
+      });
+      const fetched = parseToolResult(getRes as never) as { status: string };
+      expect(fetched.status).toBe('confirmed');
+    } finally {
+      await ctx.close();
+    }
+  });
+
   it('forge_skills.register: stage=null clears the binding', async () => {
     const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r3');
