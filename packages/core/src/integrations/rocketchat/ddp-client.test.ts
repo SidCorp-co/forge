@@ -132,6 +132,58 @@ describe('RocketChatDdpClient handshake', () => {
   });
 });
 
+describe('RocketChatDdpClient subscription loss', () => {
+  it('post-ready nosub closes the socket so the manager redials (silent-deaf fix)', async () => {
+    const closes: unknown[] = [];
+    const errors: Error[] = [];
+    const fake = new FakeWs();
+    const client = new RocketChatDdpClient({
+      serverUrl: 'https://rc.test',
+      authToken: 'tok',
+      userId: 'bot',
+      onMessage: () => {},
+      onClose: (i) => closes.push(i),
+      onError: (e) => errors.push(e),
+      wsFactory: () => fake,
+    });
+    const connected = client.connect();
+    fake.emitOpen();
+    fake.emit({ msg: 'connected', session: 's' });
+    const loginFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.method === 'login');
+    fake.emit({ msg: 'result', id: loginFrame.id });
+    const subFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.msg === 'sub');
+    fake.emit({ msg: 'ready', subs: [subFrame.id] });
+    await connected;
+    expect(client.getState()).toBe('live');
+
+    // Server TERMINATES the subscription after it went live — previously a
+    // silent no-op that left the bot deaf; now it must close → redial.
+    fake.emit({ msg: 'nosub', id: subFrame.id, error: { error: 'stream-not-allowed' } });
+    expect(errors.some((e) => /subscription lost/i.test(e.message))).toBe(true);
+    expect(client.getState()).toBe('closed');
+    expect(closes).toHaveLength(1);
+  });
+
+  it('pre-ready nosub rejects connect', async () => {
+    const fake = new FakeWs();
+    const client = new RocketChatDdpClient({
+      serverUrl: 'https://rc.test',
+      authToken: 'tok',
+      userId: 'bot',
+      onMessage: () => {},
+      wsFactory: () => fake,
+    });
+    const connected = client.connect();
+    fake.emitOpen();
+    fake.emit({ msg: 'connected', session: 's' });
+    const loginFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.method === 'login');
+    fake.emit({ msg: 'result', id: loginFrame.id });
+    const subFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.msg === 'sub');
+    fake.emit({ msg: 'nosub', id: subFrame.id, error: { error: 'denied' } });
+    await expect(connected).rejects.toThrow(/subscription rejected/i);
+  });
+});
+
 describe('RocketChatDdpClient watchdog', () => {
   afterEach(() => {
     vi.useRealTimers();

@@ -102,6 +102,9 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
 const WATCHDOG_INTERVAL_MS = 30_000;
 const QUIET_PING_AFTER_MS = 60_000;
 const DEAD_AFTER_MS = 150_000;
+/** A `sendMessage` whose RC ack never arrives must not hang its caller (and
+ *  leak a `pending` entry) forever — the socket may be half-open. */
+const SEND_TIMEOUT_MS = 15_000;
 
 interface DdpFrame {
   msg?: string;
@@ -236,9 +239,22 @@ export class RocketChatDdpClient {
         this.setState('live');
         this.connectResolve?.();
         this.connectResolve = undefined;
+        this.connectReject = undefined;
         return;
       case 'nosub':
-        if (frame.id === this.subId) {
+        if (frame.id !== this.subId) return;
+        if (this.state === 'live') {
+          // The subscription was TERMINATED server-side after going live (RC
+          // session eviction, load-shedding, …). The socket stays open and
+          // server pings keep flowing, so the liveness watchdog never fires —
+          // but no more room messages arrive: the bot is silently deaf. Close
+          // so the connection-manager redials with a fresh login + sub. (Was a
+          // silent no-op → the "replies once then goes quiet" incident.)
+          this.opts.onError?.(
+            new Error(`DDP subscription lost (nosub): ${JSON.stringify(frame.error)}`),
+          );
+          this.close();
+        } else {
           this.connectReject?.(new Error(`subscription rejected: ${JSON.stringify(frame.error)}`));
           this.connectReject = undefined;
         }
@@ -302,7 +318,20 @@ export class RocketChatDdpClient {
   sendMessage(rid: string, text: string, tmid?: string): Promise<unknown> {
     const id = this.nextId();
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error('sendMessage ack timed out'));
+      }, SEND_TIMEOUT_MS);
+      timer.unref?.();
+      this.pending.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
       this.send({
         msg: 'method',
         method: 'sendMessage',

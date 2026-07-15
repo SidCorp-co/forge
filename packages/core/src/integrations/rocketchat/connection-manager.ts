@@ -87,6 +87,13 @@ const LOCK_REACQUIRE_DELAY_MS = 5000;
  *  HTTP request. */
 const RELOAD_CHANNEL = 'forge_rocketchat_reload';
 const LISTEN_RETRY_MS = 5000;
+/** Proactively redial each live DDP socket on this interval. A subscription
+ *  can die WITHOUT a `nosub` (silent server-side drop) while server pings keep
+ *  the link "alive", so the liveness watchdog never fires and the bot goes
+ *  deaf until something closes the socket. A periodic fresh login + sub bounds
+ *  that worst-case deaf window. The `nosub` handler recovers the SIGNALLED case
+ *  immediately; this is the backstop for the silent one. */
+const DDP_REFRESH_INTERVAL_MS = 10 * 60_000;
 /** Rocket.Chat rejects messages over `Message_MaxAllowedSize` (default 5000)
  *  outright — the user would get silence. Truncate below that. */
 const MAX_REPLY_CHARS = 4500;
@@ -171,6 +178,8 @@ interface ActiveConnection {
   routes: Map<string, Route>;
   reconnectAttempt: number;
   reconnectTimer?: NodeJS.Timeout | undefined;
+  /** Periodic socket-refresh timer (see DDP_REFRESH_INTERVAL_MS). */
+  refreshTimer?: NodeJS.Timeout | undefined;
   closing: boolean;
 }
 
@@ -347,17 +356,44 @@ class RocketChatConnectionManager {
       onClose: () => {
         if (isCurrent()) this.scheduleReconnect(connectionId);
       },
-      onError: (e) => logger.warn({ err: e, connectionId }, 'rocketchat: DDP error'),
+      onError: (e) => {
+        if (!isCurrent()) return;
+        logger.warn({ err: e, connectionId }, 'rocketchat: DDP error');
+        // Surface DDP-layer failures (subscription lost, link silent, login
+        // failure) to Sentry — they live BELOW the message handler, so without
+        // this they were invisible (the "replies once then deaf" blind spot).
+        Sentry.captureException(e, {
+          tags: { area: 'rocketchat', phase: 'ddp' },
+          extra: { connectionId },
+        });
+      },
     });
     ac.client = client;
     try {
       await client.connect();
       ac.reconnectAttempt = 0;
+      this.startRefresh(connectionId);
       logger.info({ connectionId }, 'rocketchat: DDP live');
     } catch (err) {
       logger.warn({ err, connectionId }, 'rocketchat: DDP connect failed');
       this.scheduleReconnect(connectionId);
     }
+  }
+
+  /** (Re)arm the periodic socket-refresh timer so a silently-dropped
+   *  subscription self-heals within DDP_REFRESH_INTERVAL_MS. Each successful
+   *  dial re-arms it, so the interval is measured from the last (re)connect. */
+  private startRefresh(connectionId: string): void {
+    const ac = this.conns.get(connectionId);
+    if (!ac) return;
+    if (ac.refreshTimer) clearInterval(ac.refreshTimer);
+    ac.refreshTimer = setInterval(() => {
+      const cur = this.conns.get(connectionId);
+      if (!cur || cur.closing) return;
+      logger.info({ connectionId }, 'rocketchat: periodic DDP refresh (fresh login + subscription)');
+      void this.dial(connectionId);
+    }, DDP_REFRESH_INTERVAL_MS);
+    ac.refreshTimer.unref?.();
   }
 
   private scheduleReconnect(connectionId: string): void {
@@ -586,6 +622,7 @@ class RocketChatConnectionManager {
     if (!ac) return;
     ac.closing = true;
     if (ac.reconnectTimer) clearTimeout(ac.reconnectTimer);
+    if (ac.refreshTimer) clearInterval(ac.refreshTimer);
     try {
       ac.client?.close();
     } catch {
