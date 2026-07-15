@@ -13,9 +13,10 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
   // (its live count rides on this row's badge).
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
-  // Promoted from SECONDARY_DESTINATIONS (ISS-667): the session cockpit
-  // (ISS-664) had no rail entry point — URL/⌘K only — so users couldn't find it.
-  { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
+  // ISS-668 — replaces the ISS-667 "Sessions" entry (mixed chat+pipeline) with
+  // a chat-only cross-project surface. Pipeline job sessions stay reachable via
+  // the project-tier Agents view + Ops monitor (see conversations-screen.tsx).
+  { key: "conversations", label: "Conversations", icon: "agent", href: "/conversations" },
   { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
   // ISS-628 — workspace resource management, first type = Private Keys.
