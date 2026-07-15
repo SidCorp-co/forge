@@ -81,7 +81,11 @@ A per-turn audit/analytics row — **one row per query→reply turn**, not a per
 | `usage` | Token/cost usage (jsonb) |
 | `iterations` | Agent loop iterations |
 | `durationMs` | Turn duration |
+| `error` | Turn error message, null on success |
+| `queryIntent` | Classified intent of the user query |
+| `condensedQuery` | Condensed/normalized form of the query used for retrieval |
 | `source` | Origin channel (default `web`) |
+| `qualitySignals` | Auto-derived quality signals for the turn (jsonb) |
 | `qaRating` / `qaNotes` | Manual QA rating (`good` \| `bad` \| `flagged`) and notes |
 | `createdAt` | Timestamp |
 
@@ -101,6 +105,15 @@ A per-turn audit/analytics row — **one row per query→reply turn**, not a per
 4. Response streams back to the browser via SSE
 5. Only the FINAL assistant text is appended inline to `chat_sessions.messages`; intra-turn tool round-trips are ephemeral. One `chat_logs` row written for the query→reply turn
 
+### Role-aware lenses
+
+The system prompt's tone/depth is shaped by the reader's assigned working lens(es), not by permissions or tool access:
+
+- `memberLenses = ['technical', 'product']` (`schema.ts:218`), stored on `organizationMembers.lenses` (migration `0149_member_lenses.sql`).
+- `resolveMemberLenses()` reads the member's lenses; `buildChatRoleSection()` / `buildChatNudge()` turn them into an orientation nudge injected into the system prompt (`prompt/system.ts:88-160`).
+- Lenses are **soft** — they change tone/depth only. `product` (or no lens) is the historical default; security guardrails apply regardless of lens.
+- A session's durable `metadata.lensOverride` marker (ISS-674) can pin the chat voice regardless of the principal's assigned lens — see `agent-sessions/chat-turn.ts`.
+
 ### Delete a session
 
 1. User deletes the session → `DELETE /api/chat/sessions/:id`
@@ -115,8 +128,9 @@ A per-turn audit/analytics row — **one row per query→reply turn**, not a per
 | `GET` | `/api/chat/sessions/:id` | user | Fetch one session (includes inline `messages`) |
 | `PATCH` | `/api/chat/sessions/:id` | user | Rename (title only) |
 | `DELETE` | `/api/chat/sessions/:id` | user | Hard-delete session |
-| `POST` | `/api/chat` | user / agent via MCP | Send message, get streamed response |
+| `POST` | `/api/chat` | user | Send message, get streamed response |
 | `GET` | `/api/chat-logs` | user | List per-turn audit rows (also `/recent`, `/flagged`, `/:id`) |
+| `PATCH` | `/api/chat-logs/:id` | user | Set manual QA rating/notes (`qaRating`/`qaNotes`) |
 
 ## Cross-Module Touchpoints
 
@@ -140,3 +154,49 @@ _No chat-specific crons or background jobs are registered._
 | Outcome | Answer / discussion | Status change / code change |
 | Captured | chat_logs (per query→reply turn, audit) | JobEvents (per stdout chunk) |
 | Related to issue | Optional | Always |
+
+## Ask Agent (device-backed chat)
+
+A second, distinct chat path — the "Ask Agent" dock in web-v2 — that dispatches the turn to a **paired device** instead of running the in-core tool-calling loop:
+
+- Frontend: `packages/web-v2/src/features/session/components/{chat-dock.tsx,chat-screen.tsx,runner-picker.tsx}` + `use-chat-dock.ts`; wired into `app/(workspace)/layout.tsx`.
+- Backend: `packages/core/src/agent-sessions/chat-turn.ts` (`dispatchChatTurn`) + `lifecycle-routes.ts` (`/start`, `/send`) + `turns-routes.ts` (per-turn edit/regenerate/fork/rerun).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/agent-sessions/start` | Create a session and dispatch its first turn |
+| `POST` | `/api/agent-sessions/send` | Send a follow-up message on an existing session (`sessionId` in body) |
+| `GET` | `/api/agent-sessions/:id/turns` | List turns |
+| `PATCH` | `/api/agent-sessions/:id/turns/:turnId` | Edit a user turn |
+| `POST` | `/api/agent-sessions/:id/turns/:turnId/regenerate` | Regenerate from a turn |
+| `POST` | `/api/agent-sessions/:id/fork` | Fork the session from a turn |
+| `POST` | `/api/agent-sessions/:id/rerun` | Rerun the session |
+
+**vs `/api/chat`:**
+
+- Runs `claude` on the paired device (or locally for desktop) against that runner's repo path — unlike `/api/chat`, which always runs the resolved LLM provider in-core and is **never** dispatched to a device.
+- Supports attachments, page-context headers, and fork/regenerate/rerun of individual turns.
+- Session-scoped `metadata.lensOverride` (ISS-674) can pin the chat voice for the session, similar to the role-aware lenses described above.
+
+## RocketChat inbound flow
+
+External-channel messages (Rocket.Chat rooms) are a third entry point, distinct from both `/api/chat` and Ask Agent:
+
+```
+RocketChat room message
+        │
+        ▼
+startRocketChatManager() (index.ts) → RocketChatConnectionManager
+        │ (one long-lived DDP connection per configured integration)
+        ▼
+runExternalChatTurn (chat/external-chat.ts)
+        │ — runs the shared runTurnEvents loop as an agentic worker:
+        │   temperature 0.2, requireInitialToolUse when tools are given
+        ▼
+Reply posted back to the RC room + one chat_logs row (source='rocketchat')
+```
+
+- One session per RC room, never rotated. Bounded so a chatty room can't grow the prompt unboundedly: provider-visible history window capped at 30 messages, persisted transcript capped at 200.
+- `requireInitialToolUse` forces the first round to call a tool when tools are provided, so the model can't invent an answer without investigating.
+- Persona is built via `rocketChatPersona()` (`integrations/rocketchat/connection-manager.ts`) and passed into the system prompt (ISS-609).
+- Writes a `chat_logs` row with `toolCalls` captured, so callers can verify reply claims against what actually ran.
