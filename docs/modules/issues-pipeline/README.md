@@ -77,7 +77,7 @@ with branches:
 
 - **Webhook → auto-triage**: external POST to `/api/webhooks/in/:slug` → auth via project webhook secret → issue created `open` → lifecycle hook fires `issue:created` → if `autoTriage`, `triage` job enqueued (execution: [../agents-jobs/README.md](../agents-jobs/README.md)).
 - **Human approves plan**: issue `waiting` with completed plan → user clicks "Approve" → status → `approved` → if `autoCode`, `forge-code` job enqueued → loop continues.
-- **Reopen cycle**: issue `testing`+ fails QA → user clicks "Reopen with feedback" → status → `reopen`, comment captures rejection reason → `forge-fix` job enqueued with feedback payload → on success status → `developed`, pipeline resumes. Max 5 reopen cycles; beyond → `on_hold` for human review.
+- **Reopen cycle**: issue `testing`+ fails QA → user clicks "Reopen with feedback" → status → `reopen`, comment captures rejection reason → `forge-fix` job enqueued with feedback payload → on success status → `developed`, pipeline resumes. Max 5 reopen cycles (`REOPEN_CAP`); beyond, the transition is rejected with `REOPEN_CAP_EXCEEDED` and the issue stays at `reopen` for human review. A `reopen` with no prior `code`/`fix` job (nothing for `forge-fix` to patch) is instead routed to `needs_info` by the empty-reopen guard (ISS-635).
 
 ## API Endpoints
 
