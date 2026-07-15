@@ -120,7 +120,7 @@ export function PipelineTracker({
   // page. The vertical padding keeps the active-bead halo + focus ring from
   // being clipped by `overflow`.
   return (
-    <div className="w-full overflow-x-auto py-1">
+    <div className="w-full overflow-x-auto py-1 [mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)] sm:[mask-image:none]">
       <div className="flex w-max min-w-full items-start">
         {STAGES.map((s, i) => {
         const cell = cells?.[s.key];
