@@ -209,14 +209,23 @@ async function loadProjectBranches(projectId: string): Promise<{
  * `userId` (the interactive reader) tunes the role section to their assigned
  * working lens(es) (ISS role-aware chat). Omitted / null (system/scheduled
  * sessions) → the non-technical default, unchanged.
+ *
+ * `forceLenses` pins the chat voice regardless of the reader's member lens
+ * (external product-bot runner sessions) and SKIPS the member-lens DB lookup
+ * entirely — the pin must not depend on / be corrupted by the principal's
+ * row. Omit (or pass null) for the principal-derived lens (normal chat).
  */
 export async function buildChatPreamble(
   projectId: string,
   userId?: string | null,
+  forceLenses?: readonly MemberLens[] | null,
 ): Promise<string> {
   const project = await loadProjectBranches(projectId);
   if (!project) return '';
-  const lenses = await resolveMemberLenses(projectId, userId ?? null);
+  const known = new Set<string>(memberLenses);
+  const lenses = forceLenses
+    ? forceLenses.filter((l): l is MemberLens => known.has(l))
+    : await resolveMemberLenses(projectId, userId ?? null);
   const sections: string[] = [
     buildChatNudge(lenses),
     formatProjectConfig(project.baseBranch, project.productionBranch),

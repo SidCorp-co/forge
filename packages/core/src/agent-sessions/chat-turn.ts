@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { agentSessions, devices } from '../db/schema.js';
+import { type MemberLens, agentSessions, devices, memberLenses } from '../db/schema.js';
 import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
 import { TOOL_REFERENCE, buildChatPreamble } from '../lib/chat-preamble.js';
 import {
@@ -61,6 +61,21 @@ export function deriveChatTitle(raw: string): string {
 function isPlaceholderTitle(title: string | null | undefined): boolean {
   const t = title?.trim();
   return !t || t === 'Chat';
+}
+
+/**
+ * Read the durable `metadata.lensOverride` marker (ISS-674) — the convention
+ * a session's initiator (e.g. an external product-bot escalating to a runner)
+ * uses to pin the chat voice regardless of the principal's assigned lens.
+ * Survives migration cold-start rehydrate, since that path rebuilds the
+ * preamble from this same session row. Guards against a stray non-array
+ * value; absent/malformed → null (principal-derived lens, normal chat).
+ */
+function readLensOverride(metadata: unknown): MemberLens[] | null {
+  const value = (metadata as { lensOverride?: unknown } | null)?.lensOverride;
+  if (!Array.isArray(value)) return null;
+  const known = new Set<string>(memberLenses);
+  return value.filter((l): l is MemberLens => typeof l === 'string' && known.has(l));
 }
 
 /**
@@ -257,6 +272,13 @@ export interface DispatchChatTurnArgs {
   /** /start passes prompts that already embed the preamble (skip rebuilding it). */
   preBuilt?: boolean;
   /**
+   * ISS-674 — pin the cold-start preamble's chat voice to these lenses
+   * regardless of the principal's assigned member lens(es). Falls back to
+   * the session's durable `metadata.lensOverride` marker when omitted; both
+   * absent → the existing principal-derived lens (normal desktop/CLI chat).
+   */
+  forceLenses?: readonly MemberLens[] | null;
+  /**
    * Which session event to broadcast. A freshly-created session (/start,
    * schedule) wants `agent-session.created` so web inserts it into the list; a
    * follow-up (/send) wants `agent-session.updated`. Default: updated.
@@ -396,8 +418,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
       try {
         // Pass the reader's userId so the preamble adopts their assigned
         // working lens(es) (ISS role-aware chat). Nullable for system/scheduled
-        // sessions → non-technical default.
-        const preamble = await buildChatPreamble(project.id, session.userId);
+        // sessions → non-technical default. `forceLenses` (explicit arg or the
+        // session's durable `metadata.lensOverride` marker) pins the voice for
+        // product-bot-initiated runner sessions instead (ISS-674).
+        const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
+        const preamble = await buildChatPreamble(project.id, session.userId, forceLenses);
         const history = migrated ? buildRehydrationBlock(prevMessages) : '';
         prompt = preamble + history + decoratedMessage;
       } catch {
