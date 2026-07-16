@@ -57,7 +57,6 @@ import {
   isAwaitingReply,
   isRetryable,
   sessionKind,
-  sessionSortRank,
   statusToChip,
   classifySessionOutcome,
   isRealFailure,
@@ -287,15 +286,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     return c;
   }, [rows, displays]);
 
-  // ISS-664 — float "waiting for me" rows to the top of EVERY tab (not just the
-  // dedicated `waiting` tab), stable within a rank so ties keep the API's
-  // `updatedAt desc` order.
   const visibleRows = useMemo(() => {
-    const matched = rows
+    return rows
       .map((r, i) => ({ row: r, display: displays[i] }))
-      .filter(({ row, display }) => matchesFilter(filter, row, display));
-    matched.sort((a, b) => sessionSortRank(a.row, a.display) - sessionSortRank(b.row, b.display));
-    return matched.map(({ row }) => row);
+      .filter(({ row, display }) => matchesFilter(filter, row, display))
+      .map(({ row }) => row);
   }, [rows, displays, filter]);
 
   const filterOptions: SegmentOption<SessionFilter>[] = FILTERS.map((f) => ({

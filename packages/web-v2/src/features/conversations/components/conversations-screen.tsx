@@ -33,7 +33,6 @@ import {
   deriveSessionDisplayStatus,
   isAwaitingReply,
   isInteractiveSession,
-  sessionSortRank,
   statusToChip,
   type SessionRow,
 } from "@/features/sessions/types";
@@ -87,13 +86,6 @@ export function ConversationsScreen() {
   const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
 
   const now = Date.now();
-  // `now` is intentionally excluded from deps — including it defeats the
-  // memo every render (it always differs); this only needs to recompute
-  // when `rows` changes, and the row/card components below independently
-  // recompute their own display status with a fresh `now` on every render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const displays = useMemo(() => rows.map((r) => deriveSessionDisplayStatus(r, now)), [rows]);
-
   const waitingCount = useMemo(() => rows.filter((r) => isAwaitingReply(r)).length, [rows]);
   const filterOptions: SegmentOption<ConversationFilter>[] = FILTERS.map((f) => ({
     value: f,
@@ -101,12 +93,8 @@ export function ConversationsScreen() {
   }));
 
   const visibleRows = useMemo(() => {
-    const matched = rows
-      .map((r, i) => ({ row: r, display: displays[i] }))
-      .filter(({ row }) => (filter === "waiting" ? isAwaitingReply(row) : true));
-    matched.sort((a, b) => sessionSortRank(a.row, a.display) - sessionSortRank(b.row, b.display));
-    return matched.map(({ row }) => row);
-  }, [rows, displays, filter]);
+    return rows.filter((row) => (filter === "waiting" ? isAwaitingReply(row) : true));
+  }, [rows, filter]);
 
   return (
     <PageContainer className="min-h-dvh">
