@@ -463,20 +463,3 @@ export function isRetryable(row: SessionRow): boolean {
   const type = row.metadata?.type;
   return (type === "pipeline" || type === "pm") && !!row.metadata?.issueId;
 }
-
-/**
- * Float "waiting for me" sessions to the top of every filter tab (ISS-664),
- * ahead of live work, queued/idle-pipeline, attention, and terminal rows. Rank
- * is stable within a bucket — callers sort a list already in `updatedAt desc`
- * order, so ties keep that order.
- */
-export function sessionSortRank(
-  row: Pick<SessionRow, "status" | "metadata" | "failureReason">,
-  display: AgentSessionDisplayStatus,
-): number {
-  if (isAwaitingReply(row)) return 0;
-  if (display === "running" || display === "stalled") return 1;
-  if (row.status === "queued" || row.status === "idle") return 2;
-  if (isRealFailure(display, row.failureReason)) return 3;
-  return 4;
-}
