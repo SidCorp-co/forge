@@ -79,6 +79,13 @@ export async function hasInFlightEscalation(projectId: string, rid: string): Pro
  * spelled out explicitly (stable slug + dedup-by-reuse + no volatile numbers)
  * because the runner's `forge_knowledge` access has no client-side guardrail
  * of its own — the persona IS the enforcement here.
+ *
+ * ISS-687 — this session is an ADVISOR, not the one talking to the user: it
+ * has no room-posting tool (structural — the bridge is the only path its
+ * output reaches the room) and is instructed here to never call
+ * `forge_issues` create itself. It hands back a structured payload; Bao
+ * (`escalation-bridge.ts`) synthesizes the final reply and owns issue
+ * creation.
  */
 export function buildEscalationPrompt(question: string): string {
   return [
@@ -87,7 +94,12 @@ export function buildEscalationPrompt(question: string): string {
     '',
     'Investigate the repository and this Forge project to answer it correctly. Then:',
     '1. Upsert your durable understanding into `forge_knowledge` — a stable kebab-case slug; if a similar topic already has an entry, REUSE its slug (upsert/dedup, do not create a near-duplicate); pick an appropriate `kind` and `confidence`. Write PRODUCT/BUSINESS understanding — how the feature/pipeline/mechanism works, the product map, interpretation rules. NEVER write volatile numbers (e.g. issue counts) into knowledge — those must stay a live query every time.',
-    '2. Reply with a concise, business-language final answer for a non-technical stakeholder: no code, file paths, line numbers, raw pipeline-status tokens, or bare ISS-ids — plain language only.',
+    '2. You are an ADVISOR only: do NOT post a reply to the room and do NOT create an issue yourself (do not call `forge_issues` create). A teammate will deliver the final answer to the user and create any follow-up issue on your behalf.',
+    '3. End your reply with EXACTLY ONE fenced JSON block and nothing after it:',
+    '```json',
+    '{ "answer": "<concise, business-language final answer for a non-technical stakeholder: no code, file paths, line numbers, raw pipeline-status tokens, or bare ISS-ids — plain language only>", "issueProposal": { "title": "<only if follow-up work is needed>", "description": "<what/where, expected vs actual>", "reason": "<why this needs an issue>" } }',
+    '```',
+    'Omit `issueProposal` entirely when no follow-up work is needed.',
   ].join('\n');
 }
 
@@ -124,6 +136,7 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
         tmid: args.tmid ?? null,
         botName: args.botName,
         askedByUsername: args.askedByUsername ?? null,
+        question: args.question,
         deliveredAt: null,
       },
       lensOverride: ['product'],
