@@ -1,0 +1,17 @@
+{
+  "_comment": "ISS-683 — opt-in browser MCP for a bare local-CLI /forge-test or /forge-verify-live run. NOT auto-loaded: a dispatched pipeline session already gets chrome-devtools-mcp injected via pipelineConfig.states.testing.mcpServers (see packages/core/src/jobs/resolve-job-mcp-servers.ts). This file exists only for a human running the skill interactively outside the dispatcher, and must be layered explicitly: `claude --mcp-config .forge/verify-mcp.json --mcp-config .mcp.json`. Secret-free by design (mirrors the MCP_CATALOG entry in packages/core/src/pipeline/mcp-catalog.ts) — safe to commit.",
+  "mcpServers": {
+    "chrome-devtools-mcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "chrome-devtools-mcp@latest",
+        "--headless",
+        "--isolated",
+        "--chrome-arg=--no-sandbox",
+        "--chrome-arg=--disable-setuid-sandbox"
+      ],
+      "env": {}
+    }
+  }
+}

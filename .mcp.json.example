@@ -1,5 +1,5 @@
 {
-    "_comment": "Copy to .mcp.json and fill with your own keys. Do not commit .mcp.json (gitignored).",
+    "_comment": "Copy to .mcp.json and fill with your own keys. Do not commit .mcp.json (gitignored). ISS-683: a bare local-CLI /forge-test or /forge-verify-live run only ever sees this file's servers — it never gets the pipeline's per-stage browser MCP injection (that only happens for a forge-runner-dispatched or core-dispatched session). To run one of those skills interactively with browser tools, layer the committed opt-in config on top: `claude --mcp-config .forge/verify-mcp.json` (adds chrome-devtools-mcp; without --strict-mcp-config it merges with this file rather than replacing it).",
     "mcpServers": {
         "forge": {
             "enabled": true,
