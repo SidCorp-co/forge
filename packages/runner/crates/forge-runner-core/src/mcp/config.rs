@@ -30,6 +30,17 @@ pub fn write(
     if let Some(extra) = override_servers {
         if let (Some(base), Some(extra)) = (servers.as_object_mut(), extra.as_object()) {
             for (name, cfg) in extra {
+                // ISS-683 belt-and-suspenders: a non-object entry (e.g. a
+                // catalog-shorthand `true` that failed to expand upstream)
+                // is not a valid MCP server spec — writing it verbatim would
+                // silently break that server's `claude --mcp-config` parse.
+                // Skip and warn rather than propagate an invalid entry.
+                if !cfg.is_object() {
+                    tracing::warn!(
+                        "mcp config: skipping non-object override entry for server={name} (expected an object spec)"
+                    );
+                    continue;
+                }
                 let enabled = cfg.get("enabled").and_then(Value::as_bool).unwrap_or(true);
                 if enabled {
                     base.insert(name.clone(), cfg.clone());
@@ -293,6 +304,28 @@ mod tests {
             "https://core.example/mcp"
         );
         let _ = std::fs::remove_file(&p1);
+    }
+
+    #[test]
+    fn skips_non_object_override_entry() {
+        // ISS-683 — a boolean override entry (e.g. an unexpanded catalog
+        // shorthand) must never be written verbatim; a valid sibling entry
+        // still comes through.
+        let overrides = serde_json::json!({
+            "chrome-devtools-mcp": true,
+            "playwright": { "type": "stdio", "command": "npx" },
+        });
+        let path = write(
+            "https://core.example",
+            "tok",
+            "skip-non-object-slug",
+            Some(&overrides),
+        )
+        .unwrap();
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(doc["mcpServers"]["chrome-devtools-mcp"].is_null());
+        assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

@@ -15,7 +15,7 @@
 import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { applySentryMcpServers } from '../integrations/sentry/resolver.js';
-import { isIntegrationSentinelName } from '../pipeline/mcp-catalog.js';
+import { expandMcpServers, isIntegrationSentinelName } from '../pipeline/mcp-catalog.js';
 import { resolveProjectDefaultMcpServers } from './stage-overrides.js';
 
 export type McpServersMap = Record<string, unknown> | null;
@@ -106,7 +106,17 @@ export async function resolveJobMcpServers(args: {
     ...(args.stageDeclaredNames ?? []),
   ]);
 
-  let map: McpServersMap = args.stageMcpServers;
+  // ISS-683 — `resolveStageOverrides` returns the per-state `mcpServers` RAW
+  // (unlike `resolveProjectDefaultMcpServers`, which already expands catalog
+  // shorthand). Without expanding here, a per-state `{ 'chrome-devtools-mcp':
+  // true }` shorthand survived the merge as the literal boolean `true` — which
+  // then overwrote the correctly-expanded project-default spec by key (stage
+  // wins) and reached the runner's temp `--mcp-config` write as an invalid
+  // `"chrome-devtools-mcp": true` entry, silently dropping the server. Expand
+  // here so per-state shorthand gets the same catalog spec as project-default;
+  // integration sentinels (`postman`/`epodsystem`/`sentry`) still pass through
+  // as `true` for the resolvers below (expandMcpServers preserves those).
+  let map: McpServersMap = args.stageMcpServers ? expandMcpServers(args.stageMcpServers) : null;
   if (Object.keys(projectDefault.servers).length > 0 || map !== null) {
     map = { ...projectDefault.servers, ...(map ?? {}) };
   }
