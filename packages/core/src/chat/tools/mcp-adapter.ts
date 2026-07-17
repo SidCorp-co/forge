@@ -29,9 +29,15 @@ export interface ChatToolSpec {
   allowedActions?: string[];
   /**
    * Vet/normalize args before dispatch (runs after the action gate; may mutate
-   * `args` in place). Return an error string to reject the call, null to allow.
+   * `args` in place). Return an error string to reject the call, null to
+   * allow. `ctx.projectId` is the session-bound project (resolved BEFORE it's
+   * pinned onto `args`, e.g. for a DB-backed check like the create-path dedup
+   * guard); may be async.
    */
-  guard?: (args: Record<string, unknown>) => string | null;
+  guard?: (
+    args: Record<string, unknown>,
+    ctx?: { projectId: string | null },
+  ) => string | null | Promise<string | null>;
 }
 
 export interface ChatToolset {
@@ -132,7 +138,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     }
 
     if (entry.spec.guard) {
-      const rejection = entry.spec.guard(args);
+      const rejection = await entry.spec.guard(args, { projectId: boundProjectId });
       if (rejection) return JSON.stringify({ error: rejection });
     }
 

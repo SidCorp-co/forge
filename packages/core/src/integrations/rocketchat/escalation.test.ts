@@ -100,6 +100,7 @@ describe('startEscalation', () => {
             connectionId: 'conn-1',
             rid: 'room-1',
             botName: 'Babo',
+            question: 'How does the pipeline dispatcher work?',
             deliveredAt: null,
           }),
           lensOverride: ['product'],
@@ -144,5 +145,18 @@ describe('buildEscalationPrompt', () => {
     expect(prompt).toMatch(/stable kebab-case slug/);
     expect(prompt).toMatch(/NEVER write volatile numbers/);
     expect(prompt).toMatch(/business-language/);
+  });
+
+  it('instructs the PM to advise only — no room post, no self-created issue', () => {
+    const prompt = buildEscalationPrompt('How does X work?');
+    expect(prompt).toMatch(/do NOT post a reply to the room/);
+    expect(prompt).toMatch(/do NOT create an issue yourself/);
+  });
+
+  it('requires a structured {answer, issueProposal?} fenced JSON contract', () => {
+    const prompt = buildEscalationPrompt('How does X work?');
+    expect(prompt).toMatch(/```json/);
+    expect(prompt).toMatch(/"answer"/);
+    expect(prompt).toMatch(/"issueProposal"/);
   });
 });

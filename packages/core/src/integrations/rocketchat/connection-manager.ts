@@ -82,8 +82,10 @@ export function rocketChatPersona(
 }
 
 /** Web-UI base for issue links in bot replies — the first CORS origin IS the
- *  web app's origin (operators must allow it for the UI to work at all). */
-const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
+ *  web app's origin (operators must allow it for the UI to work at all).
+ *  Exported (ISS-687) so the escalation completion bridge's Bao-synthesis
+ *  turn builds the exact same persona + issue-link base as the sync path. */
+export const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
 
 const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;

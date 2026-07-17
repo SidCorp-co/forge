@@ -257,6 +257,65 @@ describe('chat mcp-adapter', () => {
     expect(JSON.parse(out).error).toMatch(/unblock/);
   });
 
+  it('awaits an async guard before dispatch (rejection short-circuits)', async () => {
+    let called = false;
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', () => {
+            called = true;
+            return { ok: true };
+          }),
+        allowedActions: ['create'],
+        guard: async () => {
+          await Promise.resolve();
+          return 'a near-duplicate issue already exists';
+        },
+      },
+    ]);
+    const out = await execute('forge_issues', '{"action":"create","data":{}}');
+    expect(called).toBe(false);
+    expect(JSON.parse(out).error).toMatch(/near-duplicate/);
+  });
+
+  it('awaits an async guard that allows the call (resolves to null)', async () => {
+    let received: Record<string, unknown> | null = null;
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', (a) => {
+            received = a;
+            return { ok: true };
+          }),
+        allowedActions: ['create'],
+        guard: async () => {
+          await Promise.resolve();
+          return null;
+        },
+      },
+    ]);
+    const out = await execute('forge_issues', '{"action":"create","data":{}}');
+    expect(JSON.parse(out)).toEqual({ ok: true });
+    expect(received).toEqual({ action: 'create', data: {} });
+  });
+
+  it("passes the bound projectId to the guard's ctx argument", async () => {
+    const boundCtx = { boundProjectId: 'bound-proj-uuid' } as unknown as McpContext;
+    let seenCtx: { projectId: string | null } | undefined;
+    const { execute } = buildToolset(boundCtx, [
+      {
+        factory: () => stubTool('forge_issues', () => ({ ok: true })),
+        allowedActions: ['create'],
+        guard: (_args, ctx) => {
+          seenCtx = ctx;
+          return null;
+        },
+      },
+    ]);
+    await execute('forge_issues', '{"action":"create","data":{}}');
+    expect(seenCtx).toEqual({ projectId: 'bound-proj-uuid' });
+  });
+
   it('mergeToolsets routes by name, first owner wins', async () => {
     const a = buildToolset(ctx, [{ factory: () => stubTool('alpha', () => ({ from: 'a' })) }]);
     const b = buildToolset(ctx, [
