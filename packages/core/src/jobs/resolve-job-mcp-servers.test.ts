@@ -46,11 +46,10 @@ beforeEach(() => {
 
 describe('resolveJobMcpServers (ISS-683)', () => {
   it('testing-stage resolve: expands per-state catalog shorthand, dedupes playwright, no dropped names', async () => {
-    // project-default carries the catalog shorthand too (mirrors the live
-    // forge-dev pipelineConfig.mcpServers).
-    limitResults.push([
-      { agentConfig: { pipelineConfig: { mcpServers: { playwright: true, 'chrome-devtools-mcp': true } } } },
-    ]);
+    // Owner-enforced live shape (2026-07-17): top-level pipelineConfig.mcpServers
+    // is `{}` (browser servers never belong there — mcp-per-project-config-strict
+    // runbook); the browser tool comes ONLY from the per-state `testing` entry.
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
     const out = await resolveJobMcpServers({
       projectId: 'p-1',
       stageMcpServers: { playwright: true, 'chrome-devtools-mcp': true },
@@ -76,19 +75,27 @@ describe('resolveJobMcpServers (ISS-683)', () => {
     expect(out.droppedNames).toEqual([]);
   });
 
-  it('project-default returns the top-level browser specs when the stage declares nothing', async () => {
-    limitResults.push([
-      { agentConfig: { pipelineConfig: { mcpServers: { playwright: true, 'chrome-devtools-mcp': true } } } },
-    ]);
-    const out = await resolveJobMcpServers({
+  it('per-state browser injection does NOT depend on top-level being populated (guard, ISS-683 owner override)', async () => {
+    // Top-level `{}` on every dispatch (the enforced state) must never starve
+    // a stage that declares its own browser servers.
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
+    const withStage = await resolveJobMcpServers({
+      projectId: 'p-1',
+      stageMcpServers: { 'chrome-devtools-mcp': true },
+      stageDeclaredNames: ['chrome-devtools-mcp'],
+    });
+    expect(withStage.mcpServers?.['chrome-devtools-mcp']).toMatchObject({ type: 'stdio', command: 'npx' });
+    expect(withStage.droppedNames).toEqual([]);
+
+    // And a stage that declares nothing gets nothing back — top-level `{}`
+    // must stay `{}`, it is not a fallback source of browser servers.
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
+    const withoutStage = await resolveJobMcpServers({
       projectId: 'p-1',
       stageMcpServers: null,
       stageDeclaredNames: null,
     });
-
-    expect(out.mcpServers?.['chrome-devtools-mcp']).toMatchObject({ type: 'stdio', command: 'npx' });
-    expect(out.mcpServers?.playwright).toBeUndefined(); // dedupe still applies
-    expect(out.droppedNames).toEqual([]);
+    expect(withoutStage.mcpServers).toBeNull();
   });
 
   it('per-state raw object spec overrides the project default by name (no expansion needed)', async () => {
