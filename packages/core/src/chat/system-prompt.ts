@@ -73,11 +73,6 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     sections.push(`Page context:\n${JSON.stringify(input.pageContext, null, 2)}`);
   }
 
-  // ISS-673 — reinforces the project status-summary tool's own description;
-  // the bucket rule itself lives on the tool, not here.
-  sections.push(
-    'When asked about project progress, status, or how far along work is, call the project status-summary tool and report its numbers as fact — never count or reclassify issues yourself.',
-  );
 
   return sections.join('\n\n');
 }

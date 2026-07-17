@@ -21,7 +21,6 @@ import {
 } from '../../mcp/tools/forge-metrics.js';
 import { forgePipelineRunsGetTool } from '../../mcp/tools/forge-pipeline-runs.js';
 import { forgeProjectPipelineRunsTool } from '../../mcp/tools/forge-project-pipeline-runs.js';
-import { forgeProjectStatusSummaryTool } from '../../mcp/tools/forge-project-status-summary.js';
 import { forgeProjectsGetTool } from '../../mcp/tools/forge-projects.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
 import { guardIssueWrites } from './guards.js';
@@ -75,10 +74,6 @@ export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   { factory: forgeProjectPipelineRunsTool },
   { factory: forgeMetricsProjectStepDurationsTool },
   { factory: forgeMetricsProjectTimeseriesTool },
-  // ISS-673 — deterministic done/in-flight/remaining rollup, forced-tool-call
-  // exposure so the model reports authoritative counts instead of
-  // self-counting raw `forge_issues.list` rows.
-  { factory: forgeProjectStatusSummaryTool },
 ];
 
 /** Build the OpenAI toolset for a project-scoped chat context. */
