@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Desktop: multi-pane split-view for side-by-side conversations in a project.
 - forge_issues MCP tool now supports attaching/detaching labels directly, enabling pipeline skills to set filterable categories on issues.
 - Fixed documentation of reopen cap behavior — now accurately describes that rejected reopens stay at `reopen` for human review and may be routed to `needs_info` if they lack a prior code/fix job.
 - Skill rebases can now mark the project copy as reconciled with its global template, so the template-drift sweep stops re-drafting rebase reminders for skills that were already brought up to date.
