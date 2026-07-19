@@ -55,6 +55,7 @@ export function ChatScreen({
   projectId,
   onClose,
   initialDraft,
+  onSessionActive,
 }: {
   projectId: string;
   /** When set (docked panel), render a close control in the header to collapse
@@ -64,6 +65,10 @@ export function ChatScreen({
    *  "New conversation" flow — the project may already have chats, so the
    *  default resume-latest behavior would silently reopen an old one). */
   initialDraft?: boolean;
+  /** Fires whenever the resolved conversation is a real (non-draft) session —
+   *  on resume and again once a draft's first send creates one (ISS-689 "Open
+   *  as pane" flow). Additive/optional: existing callers are unaffected. */
+  onSessionActive?: (sessionId: string) => void;
 }) {
   useRoom(projectRoom(projectId));
 
@@ -103,6 +108,15 @@ export function ChatScreen({
 
   const recentSessions = latestQ.data?.items ?? [];
   const resolvedId = draft ? undefined : activeId ?? recentSessions[0]?.id;
+
+  // Latest-ref so the effect below doesn't need onSessionActive as a dep (a
+  // caller passing an inline function shouldn't re-fire the callback on every
+  // render, only when the resolved session actually changes).
+  const onSessionActiveRef = useRef(onSessionActive);
+  onSessionActiveRef.current = onSessionActive;
+  useEffect(() => {
+    if (resolvedId) onSessionActiveRef.current?.(resolvedId);
+  }, [resolvedId]);
 
   const sessionQ = useSession(resolvedId);
   const turnsQ = useSessionTurns(resolvedId);

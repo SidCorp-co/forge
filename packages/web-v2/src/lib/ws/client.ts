@@ -25,7 +25,7 @@ type Listener = (env: Envelope) => void;
 class ForgeWebSocket {
   private ws: WebSocket | null = null;
   private listeners = new Set<Listener>();
-  private rooms = new Set<string>();
+  private rooms = new Map<string, number>();
   private retry = 0;
   private readonly BASE_DELAY = 1000;
   private readonly MAX_DELAY = 30_000;
@@ -61,7 +61,7 @@ class ForgeWebSocket {
 
     ws.onopen = () => {
       this.retry = 0;
-      for (const room of this.rooms) {
+      for (const room of this.rooms.keys()) {
         ws.send(JSON.stringify({ type: 'subscribe', room }));
       }
       for (const cb of this.onOpenCallbacks) {
@@ -100,17 +100,28 @@ class ForgeWebSocket {
     };
   }
 
+  /**
+   * Ref-counted: multiple independent callers (e.g. overlapping conversation
+   * panes) can subscribe to the same room without one caller's unsubscribe
+   * killing live updates for the others (ISS-689).
+   */
   subscribe(room: string): void {
-    this.rooms.add(room);
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    const count = (this.rooms.get(room) ?? 0) + 1;
+    this.rooms.set(room, count);
+    if (count === 1 && this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'subscribe', room }));
     }
   }
 
   unsubscribe(room: string): void {
-    this.rooms.delete(room);
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'unsubscribe', room }));
+    const count = (this.rooms.get(room) ?? 0) - 1;
+    if (count <= 0) {
+      this.rooms.delete(room);
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'unsubscribe', room }));
+      }
+    } else {
+      this.rooms.set(room, count);
     }
   }
 
