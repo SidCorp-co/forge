@@ -393,6 +393,58 @@ describe('GET /api/attachments/:id/download', () => {
     });
     expect(res.status).toBe(410);
   });
+
+  it('image/svg+xml serves as attachment with CSP sandbox + nosniff (ISS-706 fix B)', async () => {
+    selectInnerJoinLimit.mockResolvedValueOnce([
+      {
+        id: ATT_ID,
+        path: '/tmp/x.svg',
+        mime: 'image/svg+xml',
+        name: 'mock.svg',
+        projectId: PROJECT_ID,
+      },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    storageGet.mockResolvedValueOnce(Buffer.from('<svg><script>alert(1)</script></svg>'));
+    const res = await buildApp().request(`/api/attachments/${ATT_ID}/download`, {
+      headers: { authorization: `Bearer ${await userJwt()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-disposition')).toContain('attachment');
+    expect(res.headers.get('content-security-policy')).toContain("default-src 'none'");
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('text/html serves as attachment with CSP sandbox + nosniff (ISS-706 fix B)', async () => {
+    selectInnerJoinLimit.mockResolvedValueOnce([
+      {
+        id: ATT_ID,
+        path: '/tmp/x.html',
+        mime: 'text/html',
+        name: 'mock.html',
+        projectId: PROJECT_ID,
+      },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    storageGet.mockResolvedValueOnce(Buffer.from('<script>alert(1)</script>'));
+    const res = await buildApp().request(`/api/attachments/${ATT_ID}/download`, {
+      headers: { authorization: `Bearer ${await userJwt()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-disposition')).toContain('attachment');
+    expect(res.headers.get('content-security-policy')).toContain('sandbox');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
 });
 
 describe('DELETE /api/attachments/:id', () => {
