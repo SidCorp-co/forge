@@ -204,6 +204,33 @@ describe('GET /api/agent-sessions', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('1');
   });
+
+  // ISS-698 live E2E regression: agent_session_turns.content is stored
+  // wrapped as `{ value: <messageEntry> }` (normalizeTurnContent), and the
+  // entry's previewable text lives one level further in at `value.content`.
+  // Passing the row straight into extractTurnPreview (or stopping at
+  // `.value`) always resolved to null against real data.
+  it('unwraps the row-storage shape so lastMessagePreview resolves from real turn data', async () => {
+    authVerified();
+    projectAccessAsMember();
+    whereResults.push([{ n: 1 }]);
+    selectOrderByOffset.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: null, status: 'idle' },
+    ]);
+    whereResults.push([]); // cost rollup: no usage rows
+    previewExecuteResults.push([
+      {
+        session_id: SESSION_ID,
+        content: { value: { role: 'user', content: 'Hello there', timestamp: '2026-07-20' } },
+      },
+    ]);
+    const res = await buildApp().request(`/api/agent-sessions?projectId=${PROJECT_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string; lastMessagePreview: string | null }>;
+    expect(body[0]?.lastMessagePreview).toBe('Hello there');
+  });
 });
 
 describe('POST /api/agent-sessions', () => {
