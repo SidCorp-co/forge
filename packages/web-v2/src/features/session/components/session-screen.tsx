@@ -184,8 +184,13 @@ export function SessionScreen({
   // full paneChrome header (with title/status/actions) needs `session`,
   // which isn't loaded yet here, but the pane must stay closable by pointer
   // in every state (ISS-689 always-closable-pane; ISS-714 review blocker).
+  // relative + z-20 lifts the header (and its close button) above the pane's
+  // absolutely-positioned resize splitter (ConversationPane, z-10) — without
+  // it, static content sits below any positioned z-indexed sibling regardless
+  // of DOM order, so the splitter silently ate pointer events over the header
+  // (ISS-714 live-E2E blocker: close button unclickable at the pane edge).
   const paneChromeStub = paneChrome && (
-    <header className="flex flex-none items-center gap-1.5 rounded-t-lg border-b border-line bg-app px-2.5 py-1.5">
+    <header className="relative z-20 flex flex-none items-center gap-1.5 rounded-t-lg border-b border-line bg-app px-2.5 py-1.5">
       <span className="fg-caption min-w-0 flex-1 truncate text-muted">{projectName}</span>
       <IconButton icon="x" size="sm" aria-label="Close pane" className="min-h-11 min-w-11" onClick={onClose} />
     </header>
@@ -274,7 +279,7 @@ export function SessionScreen({
           conversation-pane strip; the full-page route and the SlideOver
           reply panel keep the original two-line header below. */}
       {paneChrome ? (
-        <header className="flex flex-none items-center gap-1.5 rounded-t-lg border-b border-line bg-app px-2.5 py-1.5">
+        <header className="relative z-20 flex flex-none items-center gap-1.5 rounded-t-lg border-b border-line bg-app px-2.5 py-1.5">
           <span className="fg-caption min-w-0 max-w-[30%] flex-none truncate text-muted">
             {projectName}
           </span>
