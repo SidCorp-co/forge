@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
+import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
@@ -171,8 +172,7 @@ attachmentRoutes.get(
       }
       throw err;
     }
-    c.header('Content-Type', row.mime);
-    c.header('Content-Disposition', `inline; filename="${row.name}"`);
+    setInertAttachmentHeaders(c, row.mime, row.name);
     return c.body(new Uint8Array(buffer));
   },
 );

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -149,8 +150,7 @@ agentSessionAttachmentRoutes.get(
       }
       throw err;
     }
-    c.header('Content-Type', row.mime);
-    c.header('Content-Disposition', `inline; filename="${row.name}"`);
+    setInertAttachmentHeaders(c, row.mime, row.name);
     return c.body(new Uint8Array(buffer));
   },
 );

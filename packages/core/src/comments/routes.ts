@@ -1,17 +1,23 @@
 import { zValidator } from '@hono/zod-validator';
 import { asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { getStorage, isEnoent } from '../storage/index.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { type ActorRef, actorKey, resolveActors } from '../issues/actor-resolution.js';
+import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
+import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import {
   type CommentAttachmentLite,
@@ -37,6 +43,13 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+
+// Distinct 400 shape for the attachment endpoints (moved from upload.ts) —
+// preserves their original {message, code} response, separate from the
+// {message:'Invalid input', cause:{code:'BAD_REQUEST', details}} shape the
+// comment CRUD validators above already return.
+const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
+  new HTTPException(400, { message, cause: { code, details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -289,11 +302,40 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   );
 }
 
+function attachmentErrorToHttp(err: AttachmentError): HTTPException {
+  switch (err.code) {
+    case 'FILE_TOO_LARGE':
+      return new HTTPException(400, {
+        message: 'file too large',
+        cause: { code: 'FILE_TOO_LARGE' },
+      });
+    case 'MIME_NOT_ALLOWED':
+      return new HTTPException(400, {
+        message: err.message,
+        cause: { code: 'MIME_NOT_ALLOWED' },
+      });
+    case 'EMPTY_FILE':
+      return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
+    case 'INVALID_NAME':
+      return new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
+  }
+}
+
+const commentIdParamSchema = z.object({ commentId: z.uuid() });
+
+// NOTE: no `commentRoutes.use('*', ...)` wildcard here — ISS-706. A router-wide
+// wildcard on this Hono instance would also run for every path Hono merges in
+// from a second router mounted at the same `/api/comments` prefix (Hono
+// flattens use('*') from BOTH routers into one linear chain at that prefix),
+// so a strict JWT-only wildcard here would shadow a sibling router's more
+// permissive per-route auth before it ever runs. Each route below carries its
+// own auth middleware instead.
 export const commentRoutes = new Hono<{ Variables: AuthVars }>();
-commentRoutes.use('*', requireAuth(), assertEmailVerified());
 
 commentRoutes.get(
   '/:id/replies',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -337,6 +379,8 @@ commentRoutes.get(
 
 commentRoutes.patch(
   '/:id',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -383,6 +427,8 @@ commentRoutes.patch(
 
 commentRoutes.delete(
   '/:id',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -406,5 +452,110 @@ commentRoutes.delete(
       commentId: comment.id,
     });
     return c.body(null, 204);
+  },
+);
+
+/**
+ * Comment attachment endpoints. Accept user JWT (web upload), PAT, or device
+ * token (MCP runners post screenshots from forge-clarify / forge-test /
+ * forge-review) via `requireAnyAuth()` — deliberately per-route, NOT a
+ * router-wide wildcard (see the comment above `commentRoutes`).
+ */
+commentRoutes.post(
+  '/:commentId/attachments',
+  requireAnyAuth(),
+  // Reject the request before parseBody buffers the entire payload — this
+  // caps memory regardless of file size.
+  bodyLimit({
+    maxSize: env.UPLOADS_MAX_BYTES,
+    onError: () => {
+      throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
+    },
+  }),
+  zValidator('param', commentIdParamSchema, (r) => {
+    if (!r.success) throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { commentId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [comment] = await db
+      .select({ id: comments.id, issueId: comments.issueId, projectId: issues.projectId })
+      .from(comments)
+      .innerJoin(issues, eq(issues.id, comments.issueId))
+      .where(eq(comments.id, commentId))
+      .limit(1);
+    if (!comment) throw notFound('comment not found');
+
+    const access = await loadProjectAccess(comment.projectId, userId);
+    assertProjectRole(access, 'member');
+
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!(file instanceof File)) throw attachmentBadRequest('missing "file" field');
+    const mime = file.type || 'application/octet-stream';
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    let persisted;
+    try {
+      persisted = await persistCommentAttachment({
+        commentId: comment.id,
+        name: file.name || 'file',
+        mime,
+        bytes: buffer,
+        uploaderId: userId,
+        uploaderDeviceId: null,
+      });
+    } catch (err) {
+      if (err instanceof AttachmentError) throw attachmentErrorToHttp(err);
+      throw err;
+    }
+
+    return c.json(persisted, 201);
+  },
+);
+
+commentRoutes.get(
+  '/attachments/:id',
+  requireAnyAuth(),
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw attachmentBadRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [row] = await db
+      .select({
+        id: commentAttachments.id,
+        path: commentAttachments.path,
+        mime: commentAttachments.mime,
+        name: commentAttachments.name,
+        projectId: issues.projectId,
+      })
+      .from(commentAttachments)
+      .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
+      .innerJoin(issues, eq(issues.id, comments.issueId))
+      .where(eq(commentAttachments.id, id))
+      .limit(1);
+    if (!row) throw notFound('attachment not found');
+
+    const access = await loadProjectAccess(row.projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
+
+    let buffer: Buffer;
+    try {
+      buffer = await getStorage().get(row.path);
+    } catch (err) {
+      if (isEnoent(err)) {
+        throw new HTTPException(410, {
+          message: 'attachment file missing on disk',
+          cause: { code: 'ATTACHMENT_FILE_MISSING' },
+        });
+      }
+      throw err;
+    }
+    setInertAttachmentHeaders(c, row.mime, row.name);
+    return c.body(new Uint8Array(buffer));
   },
 );

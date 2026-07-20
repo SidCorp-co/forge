@@ -10,6 +10,8 @@ export const ALLOWED_MIMES = new Set([
   'image/jpeg',
   'image/gif',
   'image/webp',
+  'image/svg+xml',
+  'text/html',
   'application/pdf',
   'text/plain',
   'text/markdown',
