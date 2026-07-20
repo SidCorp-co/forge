@@ -844,6 +844,30 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
         );
         return;
       }
+      // ISS-702 — defense-in-depth mirror of the `on_hold` guard above for
+      // `waiting`. Both are documented parking states (line 57-58) that
+      // nothing should silently redispatch out of via a non-user actor. This
+      // guard is the second net: the primary fix is verdict-aware writes in
+      // finalize-failure.ts/retry.ts so a stray `waiting → approved` write
+      // should no longer happen at all, but this stops the resulting
+      // redispatch even if some other path flips the status by mistake.
+      // Same `operator_unblock` escape hatch as on_hold.
+      if (
+        payload.from === 'waiting' &&
+        payload.actor.type !== 'user' &&
+        payload.reason !== 'operator_unblock'
+      ) {
+        logger.info(
+          {
+            issueId: payload.issueId,
+            to: payload.to,
+            actor: payload.actor.type,
+            reason: payload.reason,
+          },
+          'orchestrator: skip enqueue — non-user advance out of waiting',
+        );
+        return;
+      }
       // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
       // skill — saves a DB hit on human-gated transitions.
       if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;

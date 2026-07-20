@@ -514,6 +514,64 @@ describe('pipeline/orchestrator', () => {
     expect(nextSelect).not.toHaveBeenCalled();
   });
 
+  // ISS-702 — defense-in-depth mirror of the ISS-411 on_hold guard for
+  // `waiting`: a non-user advance out of `waiting` (e.g. a stale zombie job's
+  // finalize-failure clobbering the park) must NOT re-dispatch.
+  it('ISS-702: does NOT enqueue on a non-user advance out of waiting (stale finalize-failure write)', async () => {
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({
+        from: 'waiting',
+        to: 'approved',
+        actor: { type: 'device', id: 'dev-1' },
+      }) as never,
+    );
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(nextSelect).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+  });
+
+  it('ISS-702: DOES enqueue on a human Resume out of waiting (user actor)', async () => {
+    cfgResolved({ enabled: true, autoCode: true });
+    skillRegistered('forge-code', 'code', 'autoCode');
+    liveIssue('approved');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'resume-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'waiting', to: 'approved', actor: { type: 'user', id: 'u-1' } }) as never,
+    );
+
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'resume-job' }));
+  });
+
+  it('ISS-702: DOES enqueue on non-user waiting advance with reason:operator_unblock', async () => {
+    cfgResolved({ enabled: true, autoCode: true });
+    skillRegistered('forge-code', 'code', 'autoCode');
+    liveIssue('approved');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'unblock-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({
+        from: 'waiting',
+        to: 'approved',
+        actor: { type: 'device', id: 'dev-1' },
+        reason: 'operator_unblock',
+      }) as never,
+    );
+
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'unblock-job' }));
+  });
+
   it('dedupes when an active job of the same type already exists', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');

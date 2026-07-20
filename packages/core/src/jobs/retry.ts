@@ -243,11 +243,18 @@ export async function scheduleAutoRetryWithVerify(
     try {
       verdict = await verifyRecovery(job);
     } catch (err) {
+      // ISS-702 — this reverses the ISS-197 fail-open-to-pending default for
+      // the throw case only. `verifyRecovery` throws solely when its single
+      // PK SELECT throws (a DB outage), during which we cannot confirm the
+      // issue is still eligible for a retry. Failing open let a stale zombie
+      // job's finalize-failure clobber a deliberately-parked `waiting`/
+      // `on_hold` status back to this job's entry-status (the ISS-701
+      // incident). Fail SAFE instead: no retry, caller parks at `waiting`.
       logger.warn(
         { err, jobId: job.id, issueId: job.issueId },
-        'retry: verifyRecovery failed, defaulting to pending',
+        'retry: verifyRecovery failed, failing safe — no retry scheduled',
       );
-      verdict = 'pending';
+      return { scheduled: false, reason: 'verify_unavailable' };
     }
     if (verdict === 'advanced') {
       if (job.agentSessionId) {

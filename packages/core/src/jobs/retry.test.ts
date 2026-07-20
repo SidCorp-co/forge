@@ -286,6 +286,14 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'cancelled_stale');
   });
 
+  it('ISS-702: fails safe to verify_unavailable (no retry) when verifyRecovery throws', async () => {
+    verifyRecoveryMock.mockRejectedValueOnce(new Error('db outage'));
+    const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    expect(result.scheduled).toBe(false);
+    expect(result.reason).toBe('verify_unavailable');
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
   it('does NOT retry a cancelled job', async () => {
     const result = await scheduleAutoRetryWithVerify(
       { ...baseJob, cancellationRequested: true } as never,
