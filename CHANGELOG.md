@@ -136,6 +136,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Web-v2 issue list, issue detail, and chat composer are now fully responsive and work correctly on mobile viewports.
 - Fixed a rare issue where the issue list could briefly show outdated status for a few issues.
 - Conversations: redesigned list with improved row layout and empty state.
+- Conversations: long chats now scroll inside the message pane instead of stretching and scrolling the whole page; the header and list stay put.
 
 ## [0.3.0] - 2026-06-11
 
