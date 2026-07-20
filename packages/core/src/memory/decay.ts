@@ -19,6 +19,12 @@ import { boss } from '../queue/boss.js';
  * ci-fix-pattern injections):
  *  - never retrieved and older than 30 days → archive
  *  - fewer than 3 retrievals and not updated in 90 days → archive
+ *  - flagged `metadata.staleSince` (ISS-708: a later release's
+ *    `reconcileForReleasedIssue` marked it possibly-stale) more than 14 days
+ *    ago AND not re-verified since → archive, INDEPENDENT of retrievalCount.
+ *    This is the fix for retrieval-decay shielding a popular-but-wrong note:
+ *    usage alone no longer grants immunity once a release has contradicted
+ *    the row and nobody re-confirmed it within the grace period.
  *  - archived more than 90 days ago → purge (hard delete)
  */
 
@@ -29,6 +35,8 @@ export const PRUNE_ZERO_RETRIEVAL_DAYS = 30;
 export const PRUNE_LOW_RETRIEVAL_DAYS = 90;
 export const PRUNE_LOW_RETRIEVAL_THRESHOLD = 3;
 export const PURGE_ARCHIVED_AFTER_DAYS = 90;
+/** ISS-708: grace period after a stale-flag stamp before it becomes archive-eligible. */
+export const STALE_UNCONFIRMED_DAYS = 14;
 
 // UTC arithmetic — setDate() math is local-time/DST-dependent and the
 // compared columns are timestamptz.
@@ -59,6 +67,15 @@ export async function runMemoryDecay(): Promise<DecayResult> {
           (${memories.retrievalCount} = 0 AND GREATEST(${memories.createdAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.createdAt})) < ${daysAgo(PRUNE_ZERO_RETRIEVAL_DAYS)})
           OR
           (${memories.retrievalCount} < ${PRUNE_LOW_RETRIEVAL_THRESHOLD} AND GREATEST(${memories.updatedAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.updatedAt})) < ${daysAgo(PRUNE_LOW_RETRIEVAL_DAYS)})
+          OR
+          (
+            ${memories.metadata}->>'staleSince' IS NOT NULL
+            AND (${memories.metadata}->>'staleSince')::timestamptz < ${daysAgo(STALE_UNCONFIRMED_DAYS)}
+            AND (
+              ${memories.lastVerifiedAt} IS NULL
+              OR ${memories.lastVerifiedAt} < (${memories.metadata}->>'staleSince')::timestamptz
+            )
+          )
         )`,
       ),
     )

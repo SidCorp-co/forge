@@ -33,6 +33,25 @@ export interface MemoryHit {
   metadata: unknown;
   score: number;
   embeddedAt: Date;
+  /** True when `metadata.staleSince` is set — a later release may have
+   *  contradicted this row (see `reconcileForReleasedIssue`). */
+  stale: boolean;
+  /** `"ISS-<n>"` provenance when a release flagged this row; only present
+   *  alongside `stale: true`. */
+  supersededBy?: string;
+}
+
+/**
+ * Derive the read-side staleness badge from a row's `metadata` jsonb.
+ * Pure so both search strategies (and their tests) share one source of truth.
+ */
+export function deriveMemoryStaleness(metadata: unknown): {
+  stale: boolean;
+  supersededBy?: string;
+} {
+  const md = (metadata ?? {}) as Record<string, unknown>;
+  const stale = Boolean(md.staleSince);
+  return typeof md.supersededBy === 'string' ? { stale, supersededBy: md.supersededBy } : { stale };
 }
 
 const MIN_TOP_K = 1;
@@ -89,6 +108,7 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
     metadata: r.metadata,
     score: 1 - Number(r.distance),
     embeddedAt: r.embeddedAt,
+    ...deriveMemoryStaleness(r.metadata),
   }));
 }
 
@@ -135,6 +155,7 @@ export async function keywordSearchMemories(input: KeywordSearchInput): Promise<
     metadata: r.metadata,
     score: Number(r.rank),
     embeddedAt: r.embeddedAt,
+    ...deriveMemoryStaleness(r.metadata),
   }));
 }
 
