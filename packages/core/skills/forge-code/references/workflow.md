@@ -17,7 +17,7 @@ Check comments for pipeline artifacts:
 - **Triage comment** (starts with `**Triage**`) → pipeline mode, extract complexity (`xs/s/m/l/xl`)
 - **Plan comment** (starts with `**Plan**`) → has forge-plan output
 
-**Pipeline mode** (has triage/plan comments): deploy mode merges **every** complexity to `baseBranch` + `forge_coolify_deploy`, then exits `xs/s` → `testing` (set staging previewUrl) and `m/l/xl` → `developed` (independent review, then testing); local-only pushes the ISS-* branch only and exits `developed`. **Never `deploying`** (retired). See Steps 13 + 15.
+**Pipeline mode** (has triage/plan comments): deploy · distinct-branch (`baseBranch !== productionBranch`) merges **every** complexity to `baseBranch` + `forge_coolify_deploy`, then exits `xs/s` → `testing` (set staging previewUrl) and `m/l/xl` → `developed` (independent review, then testing); deploy · same-branch (`baseBranch === productionBranch`) and local-only both push the ISS-* branch only — no merge, no deploy — and exit `developed` for every complexity. **Never `deploying`** (retired). See Steps 13 + 15.
 **Standalone mode** (no pipeline comments): exit as `closed`
 
 ## Step 3: Check Actionability
@@ -135,9 +135,9 @@ Agent → subagent_type: "code-simplifier"
 
 ## Step 13: Push & Deploy
 
-**Key principle:** The ISS-* feature branch is always kept alive through the pipeline — it is the single source of truth that forge-release squash-merges to the **production** branch at the end. `baseBranch` is staging (≠ production), so merging there is safe for **every** complexity and is exactly what makes the change reachable for QA. (This replaces the old "Complex doesn't merge until review" rule — that left large issues unreachable on a no-preview project.)
+**Key principle:** The ISS-* feature branch is always kept alive through the pipeline — it is the single source of truth that forge-release squash-merges to the **production** branch at the end. Whether merging to `baseBranch` here is safe depends on the project's **topology** — read both `baseBranch` and `productionBranch` from `forge_config → get` (Step 4) before deciding; never assume `baseBranch` is a safe pre-prod target.
 
-**Deploy mode (Coolify configured OR `previewDeploy.stagingUrl` set) — ALL complexities:** push the ISS-* branch, merge it into `baseBranch`, push base, then deploy.
+**Deploy mode · distinct-branch (`baseBranch !== productionBranch`) — ALL complexities:** `baseBranch` is a non-production integration branch, so merging there only reaches a pre-prod environment — safe for every complexity and exactly what makes the change reachable for QA. Push the ISS-* branch, merge it into `baseBranch`, push base, then deploy.
 
 ```bash
 git push -u origin ISS-XX-short-title
@@ -152,6 +152,12 @@ forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 ```
 
 **Decompose child/parent are the exception** — they target the integration branch, not `baseBranch` (child merges to it; parent integrate-verifies, doesn't merge here). See `.claude/skills/forge-plan/references/decompose-execution.md`.
+
+**Deploy mode · same-branch (`baseBranch === productionBranch`) — ALL complexities, including xs/s:** `baseBranch` IS the production branch on this topology — there is no pre-prod target to merge into. Merging or deploying here would ship unreviewed code straight to prod, before independent review ever runs. Push the ISS-* branch only; do **not** merge, do **not** `forge_coolify_deploy`. The merge (squash to `productionBranch`) and deploy are deferred to **forge-release**, which is also the stage that stamps `merged_at` on this topology (see `forge-test/SKILL.md` Step 0.7/9 — `forge-test` still reviews the diff/plan/AC at `testing` on this topology, but has no fresh deployment to QA live against and does not stamp `merged_at`, since the code isn't on `baseBranch`/`productionBranch` until forge-release lands it).
+
+```bash
+git push -u origin ISS-XX-short-title
+```
 
 **Local-only mode (no Coolify AND no staging URL):** push the ISS-* branch only — no `baseBranch` merge, no deploy.
 
@@ -169,16 +175,23 @@ forge_comments → create → { data: { body: "<markdown>", issue: "<documentId>
 
 What was implemented, notable decisions. No file paths or code snippets.
 
+**Deploy mode · same-branch:** additionally state plainly that the merge to `baseBranch`/`productionBranch` and the deploy are deferred to forge-release (not skipped) — so the next reader isn't left wondering why nothing merged.
+
 ## Step 15: Set Status (LAST)
 
 **Status update must be the LAST action.** It triggers downstream pipeline steps, so all work (push, deploy, comment) must complete first. `deploying` was **retired** — the only valid exits from the code step are `developed`, `testing`, or `reopen`.
 
-**Deploy mode, `xs` / `s`** — skip independent review, go straight to QA on the deployed staging build:
+**Deploy mode · distinct-branch, `xs` / `s`** — skip independent review, go straight to QA on the deployed staging build:
 ```
 forge_issues → update → { documentId: "<id>", data: { status: "testing", previewUrl: "<stagingUrl>", previewApiUrl: "<stagingApiUrl>", previewStatus: "live" } }
 ```
 
-**Deploy mode, `m` / `l` / `xl`** — the independent forge-review stage runs at `developed`, then advances to testing:
+**Deploy mode · distinct-branch, `m` / `l` / `xl`** — the independent forge-review stage runs at `developed`, then advances to testing:
+```
+forge_issues → update → { documentId: "<id>", data: { status: "developed" } }
+```
+
+**Deploy mode · same-branch (any complexity, incl. xs/s)** — no separate staging build exists to fast-path to, so independent review always runs first:
 ```
 forge_issues → update → { documentId: "<id>", data: { status: "developed" } }
 ```

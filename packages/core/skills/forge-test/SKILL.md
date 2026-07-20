@@ -60,6 +60,15 @@ Instead verify the **artifact**: confirm the planned `docs/proposals/<topic>.md`
 
 If the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`, it is part of a decomposed epic — QA behavior differs. **Read `.claude/skills/forge-plan/references/decompose-execution.md` and follow the forge-test section.** In short: a **child** is not deployed individually (no per-child preview), so don't FAIL it for lacking one — note "verified via build+review; e2e deferred to parent" and advance it; its merge target is the integration branch (`mark_merged target:'feature'`), never base/deploy. The **parent** (`useIntegrationBranch`) is where the assembled epic gets its real end-to-end QA, and is the only issue that promotes the integration branch to base. For a non-decompose issue (no such metadata), ignore this step.
 
+### Step 0.7: Deploy-deferred (same-branch) topology guard
+
+Read `baseBranch` / `productionBranch` off the `forge_config → get` call from Step 0 (or fetch now if Step 0 exited early). If `baseBranch === productionBranch`, this project is on the **same-branch** deploy topology — forge-code's deploy·same-branch sub-mode pushed the `ISS-*` branch only and deferred the merge + deploy to forge-release (there is no safe pre-prod branch to merge into; see forge-code `SKILL.md`). Two things follow for this step:
+
+- **No fresh deployment exists for this issue's change yet.** Whatever `testUrl`/`testApiUrl` resolve to in Step 4 is still serving the last *released* code, not this `ISS-*` branch — driving Steps 6–7 against it would silently QA the wrong build (a false PASS on a broken change, or a false FAIL from unrelated stale behavior). Skip Steps 3, 6, and 7 for this issue. Verify what IS knowable pre-merge instead: read the diff/plan/AC and confirm forge-code's build + test + inline review already covered them (cite that evidence in the report's `Plan`/`AC #N`/`Review` rows instead of a live observation), and state explicitly in the report that live functional/UX verification of this specific change is deferred until forge-release lands it.
+- **Do not stamp `merged_at` in Step 9.** The code isn't on `baseBranch`/`productionBranch` yet — see Step 9 below for why, and what stamps it instead.
+
+This guard doesn't change the PASS/FAIL verdict path — Step 9 still applies normally (advance to `tested` on PASS, `reopen` on FAIL); it only removes the live-deployment checks that can't be trusted on this topology and gates the `merged_at` stamp described in Step 9. For distinct-branch or local-only topology, ignore this step.
+
 ### Step 1: Fetch Issue + Pipeline Context
 
 ```
@@ -205,9 +214,11 @@ Report format:
 **Status update must be the LAST action.** It triggers downstream pipeline steps.
 
 - **All pass:**
-  1. **Stamp `merged_at` (base).** forge-code merges every complexity's `ISS-*` branch into the base branch at the code step, and you just QA'd that base/staging deployment — so a PASS means it is verified-on-base. Stamping `merged_at` is what releases the blocks-gate for any issue this one `blocks` (a blocked dependent only dispatches once its blocker's `merged_at` is set) and any decompose parent waiting on this child. Idempotent (COALESCE keeps the first timestamp):
-     `forge_issues → mark_merged → { data: { issueId: "<documentId>", target: "base" } }`
-     **Skip for a decomposed-epic issue** (`metadata.branchConfig`/`useIntegrationBranch`) — Step 0.6 stamps those against the integration branch (`target:'feature'`); don't double-stamp.
+  1. **Stamp `merged_at` (base) — ONLY when the code is actually on `baseBranch`.** This is topology-gated (Step 0.7):
+     - **distinct-branch or local-only topology** — forge-code already merged every complexity's `ISS-*` branch into the base branch at the code step, and you just QA'd that base/staging deployment, so a PASS means it is verified-on-base. Stamping `merged_at` is what releases the blocks-gate for any issue this one `blocks` (a blocked dependent only dispatches once its blocker's `merged_at` is set) and any decompose parent waiting on this child. Idempotent (COALESCE keeps the first timestamp):
+       `forge_issues → mark_merged → { data: { issueId: "<documentId>", target: "base" } }`
+     - **same-branch topology (Step 0.7)** — do **NOT** call `mark_merged` here. forge-code deferred the merge to forge-release, so the code still sits only on the `ISS-*` branch — stamping now would assert it already landed on base before it has (the exact state-never-lies failure forge-release's own verified-land gate exists to prevent). forge-release's Step 8 gate confirms the real land and stamps `merged_at` from there — directly, or via the kernel's automatic stamp on leaving `mergeStates.baseBranch`, or on the issue reaching `closed` (a guaranteed backstop regardless of `mergeStates` config).
+     - **Skip for a decomposed-epic issue** (`metadata.branchConfig`/`useIntegrationBranch`) regardless of topology — Step 0.6 stamps those against the integration branch (`target:'feature'`); don't double-stamp.
   2. Then set status as the LAST action → `forge_issues → update → { data: { status: "tested" } }`
 - **Any fail** → `forge_issues → update → { data: { status: "reopen" } }` + detailed failure report with actionable info for forge-fix
 
