@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq, exists, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -48,6 +48,9 @@ const searchQuerySchema = z
     // ISS-437 — opt-in per-issue `estimatedCost` rollup (one grouped query for
     // the whole page; replaces the web list's per-row cost-summary N+1).
     withCost: z.coerce.boolean().optional().default(false),
+    // ISS-700 — opt-in latest-failed-job info per issue (one grouped query,
+    // same shape as withCost) to back the row's Failed-badge tooltip.
+    withFailureInfo: z.coerce.boolean().optional().default(false),
   })
   .strict();
 
@@ -97,6 +100,46 @@ async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> 
     )
     .groupBy(pairs.issueId);
   return new Map(rows.map((r) => [r.issueId as string, r.estimatedCost]));
+}
+
+/**
+ * ISS-700 — the most recent failed job per issue, in ONE grouped query, to
+ * back the issues-list row's Failed-badge tooltip. Mirrors `sumCostByIssue`'s
+ * shape/convention exactly. `selectDistinctOn` requires the leading ORDER BY
+ * column to match the DISTINCT ON column (`issueId`); `desc(finishedAt)` then
+ * picks the newest failed job per issue.
+ */
+async function latestFailedJobByIssue(issueIds: string[]): Promise<
+  Map<
+    string,
+    { failedStep: string; failureReason: string | null; failureKind: string | null; failedAt: string }
+  >
+> {
+  if (issueIds.length === 0) return new Map();
+  const rows = await db
+    .selectDistinctOn([jobs.issueId], {
+      issueId: jobs.issueId,
+      failedStep: jobs.type,
+      failureReason: jobs.failureReason,
+      failureKind: jobs.failureKind,
+      finishedAt: jobs.finishedAt,
+    })
+    .from(jobs)
+    .where(and(inArray(jobs.issueId, issueIds), eq(jobs.status, 'failed'), isNotNull(jobs.issueId)))
+    .orderBy(jobs.issueId, desc(jobs.finishedAt));
+  return new Map(
+    rows
+      .filter((r): r is typeof r & { issueId: string } => r.issueId !== null)
+      .map((r) => [
+        r.issueId,
+        {
+          failedStep: r.failedStep,
+          failureReason: r.failureReason,
+          failureKind: r.failureKind,
+          failedAt: r.finishedAt?.toISOString() ?? new Date(0).toISOString(),
+        },
+      ]),
+  );
 }
 
 export const searchRoutes = new Hono<{ Variables: AuthVars }>();
@@ -186,6 +229,18 @@ searchRoutes.get(
       serialized = serialized.map((r) => ({
         ...r,
         estimatedCost: costMap.get(r.id as string) ?? 0,
+      }));
+    }
+
+    // ISS-700 — attach the latest failed job's step/reason/time when
+    // requested, so the row's Failed-badge tooltip has data without a
+    // per-row/hover fetch. Runs before the withAgentSessions early-return so
+    // it applies whether or not agent sessions are also requested.
+    if (q.withFailureInfo && serialized.length > 0) {
+      const failMap = await latestFailedJobByIssue(serialized.map((r) => r.id as string));
+      serialized = serialized.map((r) => ({
+        ...r,
+        failureInfo: failMap.get(r.id as string) ?? null,
       }));
     }
 

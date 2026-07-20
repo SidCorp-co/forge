@@ -54,6 +54,17 @@ export interface IssueAgentSession {
   claudeSessionId?: string | null;
 }
 
+/** ISS-700 — the latest failed job for this issue, present when the search
+ *  call opts in with `withFailureInfo=1` (the list always does). `null` means
+ *  no failed job exists for the issue. */
+export interface IssueFailureInfo {
+  /** Job type: triage|clarify|plan|code|review|test|release|fix|… */
+  failedStep: string;
+  failureReason: string | null;
+  failureKind: string | null;
+  failedAt: string;
+}
+
 /**
  * One issue row from `GET /api/projects/:id/issues/search`. The raw `issues`
  * row plus `displayId` (`ISS-<issSeq>`) and — when `withAgentSessions=1` —
@@ -82,6 +93,7 @@ export interface IssueRow {
   /** ISS-437 — per-issue usage rollup in USD, present when the search call
    *  opts in with `withCost=1` (the list always does). 0 = no usage recorded. */
   estimatedCost?: number;
+  failureInfo?: IssueFailureInfo | null;
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */

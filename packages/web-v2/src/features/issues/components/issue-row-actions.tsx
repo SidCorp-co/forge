@@ -21,11 +21,15 @@ import {
   type MenuItem,
   MonoTag,
   PipelineTracker,
+  Spinner,
   StatusChip,
   TD,
+  Tooltip,
   TR,
 } from "@/design";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
 import {
   allowedTransitions,
   complexityLabel,
@@ -40,6 +44,7 @@ import {
 import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
+  type IssueFailureInfo,
   type IssuePriority,
   type IssueRow,
   type ProjectMember,
@@ -51,6 +56,33 @@ import {
   type RowSelection,
 } from "./issue-table-row";
 
+/** ISS-700 — shared row-open behaviour: a pending flag set synchronously
+ *  before navigation (so the row can dim + show a spinner) and a double-click
+ *  guard (a second click during the pending window no-ops). The list stays
+ *  mounted through client nav, so `pending` naturally clears on unmount —
+ *  no reset needed. */
+function useOpenIssue(slug: string, id: string) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const open = useCallback(() => {
+    if (pending) return;
+    setPending(true);
+    router.push(`/projects/${slug}/issues/${id}`);
+  }, [pending, router, slug, id]);
+  return { open, pending };
+}
+
+/** ISS-700 — step · reason · time label for the Failed-badge tooltip. Falls
+ *  back to a calm line when no failure data reached the row (AC #2). */
+function failureTooltipLabel(info?: IssueFailureInfo | null): string {
+  if (!info) return "No failure details available";
+  const step = info.failedStep.charAt(0).toUpperCase() + info.failedStep.slice(1);
+  const when = formatRelativeTime(info.failedAt);
+  const reason = info.failureReason?.trim();
+  const short = reason && reason.length > 140 ? `${reason.slice(0, 139)}…` : reason;
+  return short ? `${step} failed · ${short} · ${when}` : `${step} failed · ${when}`;
+}
+
 // The two status axes are SEPARATE chips (ISS-436): the issue chip always
 // shows the TRUE lifecycle label (an in-progress issue never reads as just
 // "Running"), and a live agent (running/queued/failed) adds a session-domain
@@ -59,10 +91,16 @@ import {
 const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
   s === "running" || s === "queued" || s === "failed";
 
-/** Compact execution-state chip — rendered only while an agent is live. */
+/** Compact execution-state chip — rendered only while an agent is live. The
+ *  `failed` chip is wrapped in a `Tooltip` (AC #1) showing the failed step,
+ *  reason, and timestamp — non-Failed statuses never get one (AC #6). */
 function AgentChip({
   agentStatus,
-}: { agentStatus: IssueRow["agentStatus"] }) {
+  failureInfo,
+}: {
+  agentStatus: IssueRow["agentStatus"];
+  failureInfo?: IssueFailureInfo | null;
+}) {
   if (!hasLiveAgent(agentStatus)) return null;
   const status =
     agentStatus === "running"
@@ -70,7 +108,13 @@ function AgentChip({
       : agentStatus === "queued"
         ? "queued"
         : "failed";
-  return <StatusChip status={status} domain="session" size="sm" />;
+  const chip = <StatusChip status={status} domain="session" size="sm" />;
+  if (status !== "failed") return chip;
+  return (
+    <Tooltip label={failureTooltipLabel(failureInfo)} multiline>
+      {chip}
+    </Tooltip>
+  );
 }
 
 /** ISS-436 merged status cell: lifecycle chip (+ live agent chip) over the
@@ -86,7 +130,7 @@ function StatusCell({ row }: { row: IssueRow }) {
           label={statusLabel(row.status)}
           size="sm"
         />
-        <AgentChip agentStatus={row.agentStatus} />
+        <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
       </div>
       <PipelineTracker
         stage={stage}
@@ -233,11 +277,10 @@ export function IssueTableRow({
   actions: RowActions;
   selection?: RowSelection;
 }) {
-  const router = useRouter();
-  const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
+  const { open, pending } = useOpenIssue(slug, row.id);
 
   return (
-    <TR className="group">
+    <TR className={`group ${pending ? "opacity-60" : ""}`} aria-busy={pending}>
       {selection && (
         <TD className="w-9 pr-0">
           {/* Stop propagation so toggling never opens the issue. */}
@@ -256,23 +299,26 @@ export function IssueTableRow({
         </TD>
       )}
       <TD>
-        <button
-          type="button"
-          onClick={open}
-          aria-label={`Open ${row.displayId}`}
-          className="rounded-sm focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-        >
-          <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-        </button>
+        <span className="inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={open}
+            aria-label={`Open ${row.displayId}`}
+            className="cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <MonoTag hue="cobalt">{row.displayId}</MonoTag>
+          </button>
+          {pending && <Spinner size={14} />}
+        </span>
       </TD>
       <TD className="max-w-[320px]">
         <button
           type="button"
           onClick={open}
           aria-label={`Open ${row.displayId}: ${row.title}`}
-          className="block w-full rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="group/title block w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
-          <span className="fg-body-sm block truncate text-fg group-hover:text-accent-text">
+          <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
             {row.title}
           </span>
         </button>
@@ -326,12 +372,11 @@ export function IssueMobileCard({
   actions: RowActions;
   selection?: RowSelection;
 }) {
-  const router = useRouter();
-  const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
+  const { open, pending } = useOpenIssue(slug, row.id);
 
   return (
     <Card>
-      <CardContent>
+      <CardContent className={pending ? "opacity-60" : ""} aria-busy={pending}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
             {selection && (
@@ -348,10 +393,13 @@ export function IssueMobileCard({
               type="button"
               onClick={open}
               aria-label={`Open ${row.displayId}: ${row.title}`}
-              className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             >
-              <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-              <span className="fg-body-sm mt-1.5 block truncate text-fg">
+              <span className="inline-flex items-center gap-1.5">
+                <MonoTag hue="cobalt">{row.displayId}</MonoTag>
+                {pending && <Spinner size={14} />}
+              </span>
+              <span className="fg-body-sm mt-1.5 block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
                 {row.title}
               </span>
             </button>
