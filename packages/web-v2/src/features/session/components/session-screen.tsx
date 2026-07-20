@@ -180,22 +180,39 @@ export function SessionScreen({
       { onSuccess: (s) => projectSlug && goToSession(s.id) },
     );
 
+  // Minimal paneChrome header for the loading/error branches below — the
+  // full paneChrome header (with title/status/actions) needs `session`,
+  // which isn't loaded yet here, but the pane must stay closable by pointer
+  // in every state (ISS-689 always-closable-pane; ISS-714 review blocker).
+  const paneChromeStub = paneChrome && (
+    <header className="flex flex-none items-center gap-1.5 rounded-t-lg border-b border-line bg-app px-2.5 py-1.5">
+      <span className="fg-caption min-w-0 flex-1 truncate text-muted">{projectName}</span>
+      <IconButton icon="x" size="sm" aria-label="Close pane" className="min-h-11 min-w-11" onClick={onClose} />
+    </header>
+  );
+
   if (sessionQ.isLoading) {
     return (
-      <div className={`grid place-items-center ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
-        <ProjectLoader label="loading session…" />
+      <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
+        {paneChromeStub}
+        <div className="grid flex-1 place-items-center">
+          <ProjectLoader label="loading session…" />
+        </div>
       </div>
     );
   }
 
   if (sessionQ.isError || !session) {
     return (
-      <div className={`grid place-items-center ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
-        <ErrorState
-          title="Couldn't load session"
-          message={formatApiError(sessionQ.error)}
-          onRetry={() => sessionQ.refetch()}
-        />
+      <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
+        {paneChromeStub}
+        <div className="grid flex-1 place-items-center">
+          <ErrorState
+            title="Couldn't load session"
+            message={formatApiError(sessionQ.error)}
+            onRetry={() => sessionQ.refetch()}
+          />
+        </div>
       </div>
     );
   }
