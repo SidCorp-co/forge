@@ -49,7 +49,28 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
+// Spies on the real isNull/isNotNull so tests can assert which condition the
+// reviewed filter actually built, instead of relying on the mocked row count
+// (which returns rows regardless of the WHERE clause).
+const isNullSpy = vi.fn();
+const isNotNullSpy = vi.fn();
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return {
+    ...actual,
+    isNull: (...args: [unknown]) => {
+      isNullSpy(...args);
+      return actual.isNull(...args);
+    },
+    isNotNull: (...args: [unknown]) => {
+      isNotNullSpy(...args);
+      return actual.isNotNull(...args);
+    },
+  };
+});
+
 const { feedbackReportRoutes } = await import('./routes.js');
+const { feedbackReports } = await import('../db/schema.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -207,6 +228,40 @@ describe('GET /api/feedback-reports', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body).toHaveLength(1);
+    // Guards against z.coerce.boolean() regressing: Boolean('false') === true
+    // would silently build isNotNull(reviewedAt) here instead.
+    expect(isNullSpy).toHaveBeenCalledWith(feedbackReports.reviewedAt);
+    expect(isNotNullSpy).not.toHaveBeenCalled();
+  });
+
+  it('reviewed=true filters to reviewed reports (single project)', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({ role: 'viewer' });
+    selectLimit.mockResolvedValueOnce([MOCK_REPORT]);
+
+    const app = buildApp();
+    const res = await app.request(`/api/feedback-reports?projectId=${PROJECT_ID}&reviewed=true`, {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(isNotNullSpy).toHaveBeenCalledWith(feedbackReports.reviewedAt);
+    expect(isNullSpy).not.toHaveBeenCalled();
+  });
+
+  it('scope=all&reviewed=false filters to unreviewed reports (fleet)', async () => {
+    authVerified();
+    mockVisibleProjectIds([PROJECT_ID]);
+    selectLimit.mockResolvedValueOnce([
+      { ...MOCK_REPORT, projectId: PROJECT_ID, projectSlug: 'forge-dev' },
+    ]);
+
+    const app = buildApp();
+    const res = await app.request('/api/feedback-reports?scope=all&reviewed=false', {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(isNullSpy).toHaveBeenCalledWith(feedbackReports.reviewedAt);
+    expect(isNotNullSpy).not.toHaveBeenCalled();
   });
 });
 

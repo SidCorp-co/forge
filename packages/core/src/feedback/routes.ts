@@ -24,7 +24,10 @@ const listQuerySchema = z
     kind: z.enum(feedbackKinds).optional(),
     severity: z.enum(feedbackSeverities).optional(),
     target: z.enum(feedbackTargets).optional(),
-    reviewed: z.coerce.boolean().optional(),
+    reviewed: z
+      .union([z.literal('true'), z.literal('false'), z.boolean()])
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v === true || v === 'true')),
     limit: z.coerce.number().int().min(1).max(200).optional(),
   })
   .strict();
