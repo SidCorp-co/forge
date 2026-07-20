@@ -221,21 +221,21 @@ export function ConversationsScreen() {
 
       {!sessionsQ.isLoading && !sessionsQ.isError && visibleRows.length > 0 && (
         <>
-          {/* Desktop / tablet: split — resizable list column + pane strip. */}
+          {/* Desktop / tablet: master-detail. No pane open → full-width grid
+              (cuts vertical scroll); ≥1 pane open → narrow rail + pane strip. */}
           <div className="hidden min-h-0 flex-1 gap-3 md:flex">
-            <div className="flex min-h-0 flex-none flex-col" style={{ width: listW }}>
-              <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-0.5">
+            {panes.panes.length === 0 ? (
+              <div className="min-h-0 flex-1 space-y-4 overflow-auto pr-0.5">
                 {groupByRecency(visibleRows, now).map((bucket) => (
                   <div key={bucket.key}>
                     <div className="fg-overline px-1 pb-1 text-subtle">{bucket.label}</div>
-                    <div className="space-y-1">
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-2">
                       {bucket.rows.map((row) => (
                         <ConversationRow
                           key={row.id}
                           row={row}
                           project={nameById.get(row.projectId)}
                           now={now}
-                          open={panes.isOpen(row.id)}
                           onOpen={() => handleOpenPane({ sessionId: row.id, projectId: row.projectId })}
                         />
                       ))}
@@ -243,31 +243,58 @@ export function ConversationsScreen() {
                   </div>
                 ))}
               </div>
-            </div>
+            ) : (
+              <>
+                <div
+                  className="flex min-h-0 flex-none flex-col transition-[width]"
+                  style={{ width: listW }}
+                >
+                  <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-0.5">
+                    {groupByRecency(visibleRows, now).map((bucket) => (
+                      <div key={bucket.key}>
+                        <div className="fg-overline px-1 pb-1 text-subtle">{bucket.label}</div>
+                        <div className="space-y-1">
+                          {bucket.rows.map((row) => (
+                            <ConversationRow
+                              key={row.id}
+                              row={row}
+                              project={nameById.get(row.projectId)}
+                              now={now}
+                              open={panes.isOpen(row.id)}
+                              onOpen={() => handleOpenPane({ sessionId: row.id, projectId: row.projectId })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Splitter between the list and the pane strip. */}
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              onPointerDown={onListPointerDown}
-              onPointerMove={onListPointerMove}
-              onPointerUp={onListPointerUp}
-              onPointerCancel={onListPointerUp}
-              title="Drag to resize"
-              className="w-1.5 flex-none cursor-col-resize touch-none rounded-sm bg-transparent transition-colors hover:bg-[color:var(--link)]"
-            />
+                {/* Splitter between the list and the pane strip. */}
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  onPointerDown={onListPointerDown}
+                  onPointerMove={onListPointerMove}
+                  onPointerUp={onListPointerUp}
+                  onPointerCancel={onListPointerUp}
+                  title="Drag to resize"
+                  className="w-1.5 flex-none cursor-col-resize touch-none rounded-sm bg-transparent transition-colors hover:bg-[color:var(--link)]"
+                />
 
-            <ConversationPaneStrip
-              panes={panes.panes}
-              projectById={nameById}
-              awaitingBySession={awaitingBySession}
-              onClosePane={panes.removePane}
-              onResizePane={panes.resizePane}
-              recent={visibleRows.slice(0, 3)}
-              waiting={rows.filter((r) => isAwaitingReply(r))}
-              onOpenPane={handleOpenPane}
-              onNewConversation={() => setNewConversationOpen(true)}
-            />
+                <ConversationPaneStrip
+                  panes={panes.panes}
+                  projectById={nameById}
+                  awaitingBySession={awaitingBySession}
+                  onClosePane={panes.removePane}
+                  onResizePane={panes.resizePane}
+                  recent={visibleRows.slice(0, 3)}
+                  waiting={rows.filter((r) => isAwaitingReply(r))}
+                  onOpenPane={handleOpenPane}
+                  onNewConversation={() => setNewConversationOpen(true)}
+                />
+              </>
+            )}
           </div>
 
           {/* Mobile: stacked cards — no horizontal page scroll, works at 375px.
