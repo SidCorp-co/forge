@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 // DATABASE_URL; the RRF tests are pure and never touch it.
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { reciprocalRankFusion } = await import('./search.js');
+const { reciprocalRankFusion, deriveMemoryStaleness } = await import('./search.js');
 type MemoryHit = import('./search.js').MemoryHit;
 
 function hit(id: string, score: number): MemoryHit {
@@ -16,6 +16,7 @@ function hit(id: string, score: number): MemoryHit {
     metadata: {},
     score,
     embeddedAt: new Date('2026-01-01'),
+    stale: false,
   };
 }
 
@@ -53,5 +54,40 @@ describe('reciprocalRankFusion', () => {
 
   it('handles empty lists', () => {
     expect(reciprocalRankFusion([[], []], [0.7, 0.3], 5)).toEqual([]);
+  });
+
+  it('carries the stale/supersededBy flags through fusion (RRF spreads the hit)', () => {
+    const staleHit = { ...hit('a', 0.9), stale: true, supersededBy: 'ISS-708' };
+    const fused = reciprocalRankFusion([[staleHit]], [1], 10);
+    expect(fused[0]).toMatchObject({ stale: true, supersededBy: 'ISS-708' });
+  });
+});
+
+describe('deriveMemoryStaleness', () => {
+  it('flags stale:true with supersededBy when metadata.staleSince is set', () => {
+    expect(
+      deriveMemoryStaleness({ staleSince: '2026-07-01T00:00:00.000Z', supersededBy: 'ISS-708' }),
+    ).toEqual({ stale: true, supersededBy: 'ISS-708' });
+  });
+
+  it('flags stale:false with no supersededBy for ordinary metadata', () => {
+    expect(deriveMemoryStaleness({ category: 'convention' })).toEqual({ stale: false });
+  });
+
+  it('flags stale:true without supersededBy when only staleSince is set', () => {
+    expect(deriveMemoryStaleness({ staleSince: '2026-07-01T00:00:00.000Z' })).toEqual({
+      stale: true,
+    });
+  });
+
+  it('treats null/undefined metadata as not stale', () => {
+    expect(deriveMemoryStaleness(null)).toEqual({ stale: false });
+    expect(deriveMemoryStaleness(undefined)).toEqual({ stale: false });
+  });
+
+  it('ignores a non-string supersededBy', () => {
+    expect(deriveMemoryStaleness({ staleSince: '2026-07-01', supersededBy: 42 })).toEqual({
+      stale: true,
+    });
   });
 });

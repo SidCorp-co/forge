@@ -101,6 +101,26 @@ describe('runMemoryFeedback', () => {
     expect(Object.keys(set)).toEqual(['lastVerifiedAt']);
   });
 
+  it('confirmed on a stale-flagged row clears staleSince/supersededBy and stamps last_verified_at', async () => {
+    selectLimitMock.mockResolvedValue([
+      {
+        id: 'm-1',
+        metadata: { keep: true, staleSince: '2026-07-01T00:00:00.000Z', supersededBy: 'ISS-708' },
+        archivedAt: null,
+      },
+    ]);
+    const r = await runMemoryFeedback({ ...base, verdict: 'confirmed' });
+    expect(r).toEqual({ found: true, action: 'verified' });
+    const set = updateSetMock.mock.calls[0]?.[0] as {
+      lastVerifiedAt: unknown;
+      metadata: Record<string, unknown>;
+    };
+    expect(set.lastVerifiedAt).toBeDefined();
+    expect(set.metadata).toEqual({ keep: true });
+    expect(set.metadata.staleSince).toBeUndefined();
+    expect(set.metadata.supersededBy).toBeUndefined();
+  });
+
   it('outdated archives the row and appends capped feedback history', async () => {
     const existing = Array.from({ length: FEEDBACK_HISTORY_CAP }, (_, i) => ({
       verdict: 'outdated',

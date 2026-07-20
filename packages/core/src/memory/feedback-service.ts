@@ -10,7 +10,10 @@ import { logger } from '../logger.js';
  * lands instead of being discarded:
  *
  *  - `confirmed` → stamp `last_verified_at`. Decay treats it as activity, so
- *    a recently-confirmed row is never archived as "unused".
+ *    a recently-confirmed row is never archived as "unused". ISS-708: also
+ *    clears `metadata.staleSince`/`supersededBy` when present — an agent
+ *    just re-verified the row against live code, so the release-reconcile
+ *    staleness badge no longer applies.
  *  - `outdated`  → archive immediately and append the evidence to
  *    `metadata.feedback` (capped). Archive is soft — a fresh write to the
  *    same natural key revives the row (indexer resets `archived_at`); hard
@@ -75,7 +78,13 @@ export async function runMemoryFeedback(input: MemoryFeedbackInput): Promise<Mem
   if (row.archivedAt !== null) return { found: true, action: 'noop' };
 
   if (input.verdict === 'confirmed') {
-    await db.update(memories).set({ lastVerifiedAt: sql`now()` }).where(eq(memories.id, row.id));
+    const md = (row.metadata as Record<string, unknown>) ?? {};
+    const updateSet: Record<string, unknown> = { lastVerifiedAt: sql`now()` };
+    if ('staleSince' in md || 'supersededBy' in md) {
+      const { staleSince: _staleSince, supersededBy: _supersededBy, ...rest } = md;
+      updateSet.metadata = rest;
+    }
+    await db.update(memories).set(updateSet).where(eq(memories.id, row.id));
     return { found: true, action: 'verified' };
   }
 
