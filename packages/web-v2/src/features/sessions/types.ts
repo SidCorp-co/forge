@@ -121,6 +121,10 @@ export interface SessionRow {
   /** Per-session dollar cost rolled up from usage_records, attached by the list
    *  endpoint (ISS-391). 0 when the session has no usage rows yet. */
   estimatedCost?: number;
+  /** One-line preview of the last user/assistant turn, attached by the list
+   *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
+   *  brand-new session, or a legacy row with only the jsonb transcript). */
+  lastMessagePreview?: string | null;
 }
 
 /** `GET /api/agent-sessions/queue-stats` response (per-device counters). */

@@ -13,41 +13,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
-  MonoTag,
   PageContainer,
   SegmentedControl,
   SessionRowSkeleton,
-  StatusChip,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
   type SegmentOption,
 } from "@/design";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
-import { conversationTitle } from "@/features/session/components/conversation-list";
+import { groupByRecency } from "@/features/sessions/grouping";
 import { useSessions } from "@/features/sessions/hooks";
 import { SessionReplyPanel } from "@/features/sessions/components/session-reply-panel";
-import {
-  deriveSessionDisplayStatus,
-  isAwaitingReply,
-  isInteractiveSession,
-  statusToChip,
-  type SessionRow,
-} from "@/features/sessions/types";
+import { isAwaitingReply, isInteractiveSession } from "@/features/sessions/types";
 import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { ConversationPaneStrip } from "./conversation-pane-strip";
+import { ConversationRow } from "./conversation-row";
 import { useConversationPanes, type AddPaneResult } from "../hooks/use-conversation-panes";
 import { NewConversationPanel } from "./new-conversation-panel";
 
@@ -240,29 +224,24 @@ export function ConversationsScreen() {
           {/* Desktop / tablet: split — resizable list column + pane strip. */}
           <div className="hidden min-h-0 flex-1 gap-3 md:flex">
             <div className="flex min-h-0 flex-none flex-col" style={{ width: listW }}>
-              <div className="min-h-0 flex-1 overflow-auto">
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>Conversation</TH>
-                      <TH>Project</TH>
-                      <TH>Status</TH>
-                      <TH className="text-right">Updated</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {visibleRows.map((row) => (
-                      <ConversationTableRow
-                        key={row.id}
-                        row={row}
-                        project={nameById.get(row.projectId)}
-                        now={now}
-                        open={panes.isOpen(row.id)}
-                        onOpen={() => handleOpenPane({ sessionId: row.id, projectId: row.projectId })}
-                      />
-                    ))}
-                  </TBody>
-                </Table>
+              <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-0.5">
+                {groupByRecency(visibleRows, now).map((bucket) => (
+                  <div key={bucket.key}>
+                    <div className="fg-overline px-1 pb-1 text-subtle">{bucket.label}</div>
+                    <div className="space-y-1">
+                      {bucket.rows.map((row) => (
+                        <ConversationRow
+                          key={row.id}
+                          row={row}
+                          project={nameById.get(row.projectId)}
+                          now={now}
+                          open={panes.isOpen(row.id)}
+                          onOpen={() => handleOpenPane({ sessionId: row.id, projectId: row.projectId })}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -284,20 +263,31 @@ export function ConversationsScreen() {
               awaitingBySession={awaitingBySession}
               onClosePane={panes.removePane}
               onResizePane={panes.resizePane}
+              recent={visibleRows.slice(0, 3)}
+              waiting={rows.filter((r) => isAwaitingReply(r))}
+              onOpenPane={handleOpenPane}
+              onNewConversation={() => setNewConversationOpen(true)}
             />
           </div>
 
           {/* Mobile: stacked cards — no horizontal page scroll, works at 375px.
               No split here; single-session SlideOver overlay stays the flow. */}
-          <div className="space-y-2.5 md:hidden">
-            {visibleRows.map((row) => (
-              <ConversationMobileCard
-                key={row.id}
-                row={row}
-                project={nameById.get(row.projectId)}
-                now={now}
-                onOpen={() => setOpenSessionId(row.id)}
-              />
+          <div className="space-y-3 md:hidden">
+            {groupByRecency(visibleRows, now).map((bucket) => (
+              <div key={bucket.key}>
+                <div className="fg-overline px-1 pb-1 text-subtle">{bucket.label}</div>
+                <div className="space-y-2">
+                  {bucket.rows.map((row) => (
+                    <ConversationRow
+                      key={row.id}
+                      row={row}
+                      project={nameById.get(row.projectId)}
+                      now={now}
+                      onOpen={() => setOpenSessionId(row.id)}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </>
@@ -315,95 +305,5 @@ export function ConversationsScreen() {
         onOpenPane={handleOpenPane}
       />
     </PageContainer>
-  );
-}
-
-function ConversationIdentity({ row, onOpen }: { row: SessionRow; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex min-h-[44px] w-full items-center text-left focus-visible:outline-none"
-    >
-      <span className="fg-body-sm block truncate text-fg hover:text-accent-text">
-        {conversationTitle(row)}
-      </span>
-    </button>
-  );
-}
-
-function ConversationTableRow({
-  row,
-  project,
-  now,
-  open,
-  onOpen,
-}: {
-  row: SessionRow;
-  project: { name: string; slug: string } | undefined;
-  now: number;
-  /** Already open as a desktop pane (ISS-689). */
-  open?: boolean;
-  onOpen: () => void;
-}) {
-  const display = deriveSessionDisplayStatus(row, now);
-  const chipStatus = isAwaitingReply(row) ? "waiting" : statusToChip(display);
-  return (
-    <TR>
-      <TD className="max-w-[360px]">
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <ConversationIdentity row={row} onOpen={onOpen} />
-          </div>
-          {open && <MonoTag hue="cobalt">Open</MonoTag>}
-        </div>
-      </TD>
-      <TD className="max-w-[180px]">
-        {project ? (
-          <span className="fg-body-sm truncate text-muted">{project.name}</span>
-        ) : (
-          <MonoTag hue="neutral">{row.projectId.slice(0, 8)}</MonoTag>
-        )}
-      </TD>
-      <TD>
-        <StatusChip status={chipStatus} domain="session" />
-      </TD>
-      <TD className="whitespace-nowrap text-right font-mono text-muted">
-        {formatRelativeTime(row.updatedAt)}
-      </TD>
-    </TR>
-  );
-}
-
-function ConversationMobileCard({
-  row,
-  project,
-  now,
-  onOpen,
-}: {
-  row: SessionRow;
-  project: { name: string; slug: string } | undefined;
-  now: number;
-  onOpen: () => void;
-}) {
-  const display = deriveSessionDisplayStatus(row, now);
-  const chipStatus = isAwaitingReply(row) ? "waiting" : statusToChip(display);
-  return (
-    <Card>
-      <CardContent>
-        <div className="flex items-start justify-between gap-3">
-          <ConversationIdentity row={row} onOpen={onOpen} />
-          <StatusChip status={chipStatus} domain="session" />
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          {project ? (
-            <span className="fg-body-sm truncate text-muted">{project.name}</span>
-          ) : (
-            <MonoTag hue="neutral">{row.projectId.slice(0, 8)}</MonoTag>
-          )}
-          <span className="fg-caption text-subtle">{formatRelativeTime(row.updatedAt)}</span>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

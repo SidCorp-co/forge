@@ -38,6 +38,13 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const deleteWhere = vi.fn(() => Promise.resolve());
+// The list route's last-message-preview rollup (ISS-698) is a raw
+// `db.execute(sql\`DISTINCT ON …\`)`, not a chained select — stub it separately
+// from the `selectFrom`/`selectWhere` chain above. Defaults to no rows (every
+// row's `lastMessagePreview` resolves to null); tests that care push onto
+// `previewExecuteResults`.
+const previewExecuteResults: unknown[][] = [];
+const dbExecute = vi.fn(async () => previewExecuteResults.shift() ?? []);
 
 vi.mock('../db/client.js', () => {
   const dbStub = {
@@ -45,6 +52,7 @@ vi.mock('../db/client.js', () => {
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
     delete: vi.fn(() => ({ where: deleteWhere })),
+    execute: dbExecute,
     // Route handlers run dual-write inside db.transaction; pass the same stub
     // through so mocked .insert/.update/.delete chains keep working.
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
@@ -146,6 +154,7 @@ beforeEach(() => {
   verifyDeviceTokenMock.mockReset();
   verifyDeviceTokenMock.mockResolvedValue(null);
   whereResults.length = 0;
+  previewExecuteResults.length = 0;
   deliverEscalationReplyOnceMock.mockClear();
 });
 
