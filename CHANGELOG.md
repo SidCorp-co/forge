@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Fixed a bug where the release step could report an issue as merged and deployed, and close it, even when the code never actually reached the base branch.
 - Live E2E tests can now use Chrome DevTools browser automation reliably in dispatched pipeline runner sessions.
 - Agents now flag memory notes a newer release has made outdated, instead of repeating stale guidance.
 - Desktop: multi-pane split-view for side-by-side conversations in a project.
