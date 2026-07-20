@@ -169,19 +169,19 @@ export function ConversationsScreen() {
   );
 
   return (
-    <PageContainer className="flex min-h-dvh flex-col">
+    <PageContainer className="flex min-h-dvh flex-col md:h-full md:min-h-0 md:overflow-hidden">
       {orgProjects.map((p) => (
         <RoomSub key={p.id} projectId={p.id} />
       ))}
 
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <header className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
         <h1 className="fg-h2">Conversations</h1>
         <Button variant="primary" size="sm" icon="plus" onClick={() => setNewConversationOpen(true)}>
           New conversation
         </Button>
       </header>
 
-      <div className="mb-4 flex flex-wrap gap-3 overflow-x-auto">
+      <div className="mb-4 flex flex-none flex-wrap gap-3 overflow-x-auto">
         <SegmentedControl options={filterOptions} value={filter} onChange={setFilter} />
       </div>
 
