@@ -42,13 +42,31 @@ const dbSelect = vi.fn(() => ({ from: selectFrom }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// loadVisibleProjectIdsForPrincipal chain: selectDistinct({id}).from().leftJoin().leftJoin().where()
+const selectDistinctImpl = vi.fn();
+const dbSelectDistinct = vi.fn((...a: unknown[]) => selectDistinctImpl(...a));
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: dbSelect,
+    selectDistinct: dbSelectDistinct,
     insert: dbInsert,
     update: dbUpdate,
   },
 }));
+
+/** Stubs the single `loadVisibleProjectIdsForPrincipal` selectDistinct call for one test. */
+function mockVisibleProjectIds(ids: string[]) {
+  selectDistinctImpl.mockImplementationOnce(() => ({
+    from: () => ({
+      leftJoin: () => ({
+        leftJoin: () => ({
+          where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        }),
+      }),
+    }),
+  }));
+}
 
 const { forgeFeedbackTool } = await import('./forge-feedback.js');
 
@@ -92,7 +110,11 @@ function makeCtx(projectSlug = PROJECT_SLUG) {
 beforeEach(() => {
   vi.resetAllMocks();
   // Re-initialize chain mock implementations after reset (resetAllMocks clears them).
-  selectFrom.mockImplementation(() => ({ where: selectWhere, leftJoin: selectLeftJoin, innerJoin: selectInnerJoin }));
+  selectFrom.mockImplementation(() => ({
+    where: selectWhere,
+    leftJoin: selectLeftJoin,
+    innerJoin: selectInnerJoin,
+  }));
   selectWhere.mockImplementation(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
   selectOrderBy.mockImplementation(() => ({ limit: selectLimit }));
   selectLeftJoin.mockImplementation(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
@@ -104,6 +126,7 @@ beforeEach(() => {
   dbSelect.mockImplementation(() => ({ from: selectFrom }));
   dbInsert.mockImplementation(() => ({ values: insertValues }));
   dbUpdate.mockImplementation(() => ({ set: updateSet }));
+  dbSelectDistinct.mockImplementation((...a: unknown[]) => selectDistinctImpl(...a));
 });
 
 describe('forge_feedback submit', () => {
@@ -124,7 +147,10 @@ describe('forge_feedback submit', () => {
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     // insert returning
     insertReturning.mockResolvedValueOnce([
-      { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', signalKey: 'self_report:skill:plan-skill:friction' },
+      {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        signalKey: 'self_report:skill:plan-skill:friction',
+      },
     ]);
 
     const result = await tool.handler({
@@ -191,7 +217,10 @@ describe('forge_feedback submit', () => {
     // No job context resolution (principal.kind !== 'device')
     // No count check (no jobId)
     insertReturning.mockResolvedValueOnce([
-      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', signalKey: 'self_report:pipeline:-:unclear_step' },
+      {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        signalKey: 'self_report:pipeline:-:unclear_step',
+      },
     ]);
 
     const result = await tool.handler({
@@ -332,9 +361,9 @@ describe('forge_feedback list', () => {
     const fatReports = Array.from({ length: 200 }, (_, i) => ({
       ...baseReport,
       id: `rr${i}rrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrrr`.slice(0, 36),
-      summary: `A`.repeat(300),
-      detail: `B`.repeat(500),
-      suggestion: `C`.repeat(200),
+      summary: 'A'.repeat(300),
+      detail: 'B'.repeat(500),
+      suggestion: 'C'.repeat(200),
     }));
     selectLimit.mockResolvedValueOnce(fatReports);
 
@@ -345,6 +374,82 @@ describe('forge_feedback list', () => {
 
     expect(result.truncated).toBe(true);
     expect(JSON.stringify(result).length).toBeLessThanOrEqual(38_500);
+  });
+
+  it('scope=project (default): reviewed:false filter is applied without error', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([baseReport]);
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { reviewed: false },
+    })) as { reports: unknown[] };
+
+    expect(result.reports).toHaveLength(1);
+  });
+
+  describe('scope=all (fleet rollup)', () => {
+    const PROJECT_ID_2 = '22222222-2222-4222-8222-222222222222';
+
+    it('rolls up reports across every project the caller can see, carrying projectId/projectSlug', async () => {
+      const tool = forgeFeedbackTool(makeCtx());
+
+      mockVisibleProjectIds([PROJECT_ID, PROJECT_ID_2]);
+      // fleet list query: select().from().leftJoin(projects).where().orderBy().limit()
+      selectLimit.mockResolvedValueOnce([
+        { ...baseReport, projectId: PROJECT_ID, projectSlug: 'forge-dev' },
+        {
+          ...baseReport,
+          id: 'ssssssss-ssss-4sss-8sss-ssssssssssss',
+          projectId: PROJECT_ID_2,
+          projectSlug: 'other-proj',
+        },
+      ]);
+
+      const result = (await tool.handler({
+        action: 'list',
+        scope: 'all',
+      })) as { reports: Array<{ projectId: string; projectSlug: string }> };
+
+      expect(result.reports).toHaveLength(2);
+      expect(result.reports.map((r) => r.projectSlug).sort()).toEqual(['forge-dev', 'other-proj']);
+      expect(result.reports.every((r) => [PROJECT_ID, PROJECT_ID_2].includes(r.projectId))).toBe(
+        true,
+      );
+    });
+
+    it('returns empty reports (no DB list query) when the caller has no visible projects', async () => {
+      const tool = forgeFeedbackTool(makeCtx());
+
+      mockVisibleProjectIds([]);
+
+      const result = (await tool.handler({ action: 'list', scope: 'all' })) as {
+        reports: unknown[];
+      };
+
+      expect(result.reports).toEqual([]);
+      expect(selectLimit).not.toHaveBeenCalled();
+    });
+
+    it('applies the reviewed filter in fleet scope without error', async () => {
+      const tool = forgeFeedbackTool(makeCtx());
+
+      mockVisibleProjectIds([PROJECT_ID]);
+      selectLimit.mockResolvedValueOnce([
+        { ...baseReport, projectId: PROJECT_ID, projectSlug: 'forge-dev' },
+      ]);
+
+      const result = (await tool.handler({
+        action: 'list',
+        scope: 'all',
+        filters: { reviewed: true },
+      })) as { reports: unknown[] };
+
+      expect(result.reports).toHaveLength(1);
+    });
   });
 });
 
@@ -393,9 +498,9 @@ describe('forge_feedback review', () => {
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     updateReturning.mockResolvedValueOnce([]);
 
-    await expect(
-      tool.handler({ action: 'review', reportId: REPORT_ID }),
-    ).rejects.toThrow(/NOT_FOUND/);
+    await expect(tool.handler({ action: 'review', reportId: REPORT_ID })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
   });
 
   it('throws BAD_REQUEST when reportId is missing', async () => {

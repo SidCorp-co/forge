@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
@@ -9,11 +9,13 @@ import {
   feedbackSeverities,
   feedbackTargets,
   jobs,
+  projects,
 } from '../../db/schema.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
+  loadVisibleProjectIdsForPrincipal,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -24,6 +26,8 @@ const inputSchema = z
   .object({
     action: z.enum(['submit', 'list', 'review']),
     projectId: z.uuid().optional(),
+    // list fleet rollup — action=list only; ignored otherwise. Default 'project'.
+    scope: z.enum(['project', 'all']).optional(),
     // review fields
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
@@ -41,6 +45,7 @@ const inputSchema = z
         kind: z.enum(feedbackKinds).optional(),
         target: z.enum(feedbackTargets).optional(),
         severity: z.enum(feedbackSeverities).optional(),
+        reviewed: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -48,7 +53,11 @@ const inputSchema = z
   })
   .strict();
 
-function buildSignalKey(target: string, targetRef: string | null | undefined, kind: string): string {
+function buildSignalKey(
+  target: string,
+  targetRef: string | null | undefined,
+  kind: string,
+): string {
   const safeRef = targetRef ? stripFrameTokens(sanitizeUntrusted(targetRef)) : '-';
   return `self_report:${target}:${safeRef}:${kind}`;
 }
@@ -94,6 +103,24 @@ async function resolveActiveSessionId(deviceId: string): Promise<string | null> 
   return row?.id ?? null;
 }
 
+/** Tail-trim oldest rows so the serialized `{reports}` payload stays under the MCP output cap. */
+function trimFeedbackResponse(serialized: Array<Record<string, unknown>>): Record<string, unknown> {
+  let kept = serialized;
+  let truncated = false;
+  const totalCount = kept.length;
+  while (kept.length > 1 && JSON.stringify({ reports: kept }).length > MAX_RESPONSE_CHARS) {
+    kept = kept.slice(0, kept.length - 1);
+    truncated = true;
+  }
+
+  const result: Record<string, unknown> = { reports: kept };
+  if (truncated) {
+    result.truncated = true;
+    result.notice = `Response truncated to the ${kept.length} most recent of ${totalCount} reports to stay under the MCP output cap. Narrow with kind/target/severity filters or a smaller limit.`;
+  }
+  return result;
+}
+
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_feedback',
   description:
@@ -102,13 +129,74 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. ' +
     'Required fields: kind, target, summary. Optional: severity (default low), targetRef, detail, suggestion. ' +
     'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
-    'action=list: read the friction feed for a project. Supports filters.kind/target/severity, limit (default 25). ' +
+    'action=list: read the friction feed for a project. Supports filters.kind/target/severity/reviewed, limit (default 25). ' +
+    'scope="project" (default) reads one project (projectId arg > X-Forge-Project-Slug header). ' +
+    'scope="all" rolls up the feed across every project you can see (owned or member) — each row carries ' +
+    'projectId/projectSlug; results are bounded to your visible projects, never a bespoke admin-wide view. ' +
     'Large histories are tail-trimmed with truncated:true. Requires project membership. ' +
     'action=review: stamp reviewedAt on a report once it has been triaged/addressed (reportId required; reviewed:false clears the stamp). Requires project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const { principal, device } = ctx;
+
+    // Fleet rollup — bounded to the caller's own visible projects (owns or
+    // member), same primitive as forge_ops_health/forge_metrics. No single
+    // effective project to resolve/assert membership on here.
+    if (input.action === 'list' && input.scope === 'all') {
+      const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
+      if (visibleIds.length === 0) return { reports: [] };
+
+      const filters = input.filters ?? {};
+      const conditions = [inArray(feedbackReports.projectId, visibleIds)];
+      if (filters.kind) conditions.push(eq(feedbackReports.kind, filters.kind));
+      if (filters.target) conditions.push(eq(feedbackReports.target, filters.target));
+      if (filters.severity) conditions.push(eq(feedbackReports.severity, filters.severity));
+      if (filters.reviewed === true) conditions.push(isNotNull(feedbackReports.reviewedAt));
+      if (filters.reviewed === false) conditions.push(isNull(feedbackReports.reviewedAt));
+
+      const rows = await db
+        .select({
+          id: feedbackReports.id,
+          projectId: feedbackReports.projectId,
+          projectSlug: projects.slug,
+          issueId: feedbackReports.issueId,
+          runId: feedbackReports.runId,
+          jobId: feedbackReports.jobId,
+          stage: feedbackReports.stage,
+          kind: feedbackReports.kind,
+          severity: feedbackReports.severity,
+          target: feedbackReports.target,
+          targetRef: feedbackReports.targetRef,
+          summary: feedbackReports.summary,
+          detail: feedbackReports.detail,
+          suggestion: feedbackReports.suggestion,
+          signalKey: feedbackReports.signalKey,
+          sessionId: feedbackReports.sessionId,
+          reviewedAt: feedbackReports.reviewedAt,
+          createdAt: feedbackReports.createdAt,
+        })
+        .from(feedbackReports)
+        .leftJoin(projects, eq(projects.id, feedbackReports.projectId))
+        .where(and(...conditions))
+        .orderBy(desc(feedbackReports.createdAt))
+        .limit(input.limit ?? 25);
+
+      const serialized = rows.map((r) => ({
+        ...r,
+        // Untrusted: agent-submitted text must be framed as DATA, not instructions.
+        summary: markUntrusted(r.summary, { source: 'feedback.summary' }),
+        detail: r.detail ? markUntrusted(r.detail, { source: 'feedback.detail' }) : null,
+        suggestion: r.suggestion
+          ? markUntrusted(r.suggestion, { source: 'feedback.suggestion' })
+          : null,
+        targetRef: r.targetRef
+          ? markUntrusted(r.targetRef, { source: 'feedback.targetRef' })
+          : null,
+      }));
+
+      return trimFeedbackResponse(serialized);
+    }
 
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
     await assertPrincipalIsMember(principal, projectId);
@@ -186,6 +274,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (filters.kind) conditions.push(eq(feedbackReports.kind, filters.kind));
         if (filters.target) conditions.push(eq(feedbackReports.target, filters.target));
         if (filters.severity) conditions.push(eq(feedbackReports.severity, filters.severity));
+        if (filters.reviewed === true) conditions.push(isNotNull(feedbackReports.reviewedAt));
+        if (filters.reviewed === false) conditions.push(isNull(feedbackReports.reviewedAt));
 
         const rows = await db
           .select({
@@ -224,21 +314,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
             : null,
         }));
 
-        // Tail-trim oldest rows when the serialized response would exceed the cap.
-        let kept = serialized;
-        let truncated = false;
-        const totalCount = kept.length;
-        while (kept.length > 1 && JSON.stringify({ reports: kept }).length > MAX_RESPONSE_CHARS) {
-          kept = kept.slice(0, kept.length - 1);
-          truncated = true;
-        }
-
-        const result: Record<string, unknown> = { reports: kept };
-        if (truncated) {
-          result.truncated = true;
-          result.notice = `Response truncated to the ${kept.length} most recent of ${totalCount} reports to stay under the MCP output cap. Narrow with kind/target/severity filters or a smaller limit.`;
-        }
-        return result;
+        return trimFeedbackResponse(serialized);
       }
 
       case 'review': {
