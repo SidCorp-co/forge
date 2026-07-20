@@ -60,9 +60,28 @@ interface SessionScreenProps {
   /** Closes the panel. When set, the header back button calls this instead of
    *  navigating — used by the embedded workspace-tier reply panel. */
   onClose?: () => void;
+  /** Renders the condensed single-row header used by the desktop conversation
+   *  pane strip (ISS-714) instead of the full header — folds the pane's own
+   *  project/waiting bar + the full session header into ONE bar. Orthogonal
+   *  to `embedded` (the SlideOver reply panel stays on the full header) —
+   *  always pass `embedded` too when using this, `paneChrome` only swaps the
+   *  header markup. */
+  paneChrome?: boolean;
+  /** Project label shown in the paneChrome header (mirrors the row/list). */
+  projectName?: string;
+  /** "Waiting for me" signal (ISS-664) — mirrors the list, paneChrome only. */
+  awaiting?: boolean;
 }
 
-export function SessionScreen({ sessionId, projectSlug, embedded = false, onClose }: SessionScreenProps) {
+export function SessionScreen({
+  sessionId,
+  projectSlug,
+  embedded = false,
+  onClose,
+  paneChrome = false,
+  projectName,
+  awaiting,
+}: SessionScreenProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
@@ -161,157 +180,249 @@ export function SessionScreen({ sessionId, projectSlug, embedded = false, onClos
       { onSuccess: (s) => projectSlug && goToSession(s.id) },
     );
 
+  // Minimal paneChrome header for the loading/error branches below — the
+  // full paneChrome header (with title/status/actions) needs `session`,
+  // which isn't loaded yet here, but the pane must stay closable by pointer
+  // in every state (ISS-689 always-closable-pane; ISS-714 review blocker).
+  const paneChromeStub = paneChrome && (
+    <header className="flex flex-none items-center gap-1.5 rounded-t-lg border-b border-line bg-app px-2.5 py-1.5">
+      <span className="fg-caption min-w-0 flex-1 truncate text-muted">{projectName}</span>
+      <IconButton icon="x" size="sm" aria-label="Close pane" className="min-h-11 min-w-11" onClick={onClose} />
+    </header>
+  );
+
   if (sessionQ.isLoading) {
     return (
-      <div className={`grid place-items-center ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
-        <ProjectLoader label="loading session…" />
+      <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
+        {paneChromeStub}
+        <div className="grid flex-1 place-items-center">
+          <ProjectLoader label="loading session…" />
+        </div>
       </div>
     );
   }
 
   if (sessionQ.isError || !session) {
     return (
-      <div className={`grid place-items-center ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
-        <ErrorState
-          title="Couldn't load session"
-          message={formatApiError(sessionQ.error)}
-          onRetry={() => sessionQ.refetch()}
-        />
+      <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
+        {paneChromeStub}
+        <div className="grid flex-1 place-items-center">
+          <ErrorState
+            title="Couldn't load session"
+            message={formatApiError(sessionQ.error)}
+            onRetry={() => sessionQ.refetch()}
+          />
+        </div>
       </div>
     );
   }
 
+  // Overflow menu items shared by both header layouts — the full header
+  // exposes Fork/Open runner/Copy link this way already (ISS-351); the
+  // condensed paneChrome header additionally folds "Open issue" in here to
+  // keep its primary row to Stop/Rerun + one overflow trigger (ISS-714).
+  const menuItems = [
+    ...(paneChrome && issueId && projectSlug
+      ? [
+          {
+            label: "Open issue",
+            icon: "list" as const,
+            onSelect: () => router.push(`/projects/${projectSlug}/issues/${issueId}`),
+          },
+        ]
+      : []),
+    ...(!fromMessages && lastTurnId
+      ? [
+          {
+            label: "Fork from last turn",
+            icon: "fork" as const,
+            onSelect: () => handleFork(lastTurnId),
+          },
+        ]
+      : []),
+    ...(session.deviceId
+      ? [
+          {
+            label: "Open runner",
+            icon: "server" as const,
+            onSelect: () => router.push("/runners"),
+          },
+        ]
+      : []),
+    {
+      label: "Copy link",
+      icon: "link" as const,
+      onSelect: copyLink,
+    },
+  ];
+
+  const railToggle = (
+    <IconButton
+      icon={railCollapsed ? "chevronLeft" : "panelLeft"}
+      aria-label={railCollapsed ? "Show context rail" : "Hide context rail"}
+      aria-pressed={railCollapsed}
+      size={paneChrome ? "sm" : "md"}
+      className="hidden min-h-11 min-w-11 lg:inline-flex"
+      onClick={() => setRailCollapsed((c) => !c)}
+    />
+  );
+
   return (
     <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {goBack && (
-            <Button
-              variant="ghost"
+      {/* Header — paneChrome (ISS-714) folds the pane's own project/waiting
+          bar + this session header into ONE condensed row for the desktop
+          conversation-pane strip; the full-page route and the SlideOver
+          reply panel keep the original two-line header below. */}
+      {paneChrome ? (
+        <header className="flex flex-none items-center gap-1.5 rounded-t-lg border-b border-line bg-app px-2.5 py-1.5">
+          <span className="fg-caption min-w-0 max-w-[30%] flex-none truncate text-muted">
+            {projectName}
+          </span>
+          <h1 className="fg-body-sm min-w-0 flex-1 truncate text-fg">{session.title ?? "Session"}</h1>
+          {awaiting && <StatusChip status="waiting" domain="session" size="sm" />}
+          <StatusChip
+            status={statusToChip(display)}
+            stage={deriveStage(session.metadata)}
+            size="sm"
+            domain="session"
+          />
+          {live ? (
+            <IconButton
+              icon="stop"
               size="sm"
-              icon="arrowRight"
-              className="min-h-11 rotate-180"
-              aria-label="Back to sessions"
-              onClick={goBack}
+              variant="ghost"
+              aria-label="Stop"
+              className="min-h-11 min-w-11"
+              disabled={cancel.isPending}
+              onClick={() => cancel.mutate()}
+            />
+          ) : (
+            <IconButton
+              icon="rerun"
+              size="sm"
+              variant="ghost"
+              aria-label="Rerun"
+              className="min-h-11 min-w-11"
+              disabled={rerun.isPending}
+              onClick={() =>
+                rerun.mutate(undefined, {
+                  onSuccess: (r) => projectSlug && goToSession(r.id),
+                })
+              }
             />
           )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="fg-h3 truncate">{session.title ?? "Session"}</h1>
-              <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <StatusChip
-                status={statusToChip(display)}
-                stage={deriveStage(session.metadata)}
+          <Menu
+            align="right"
+            items={menuItems}
+            trigger={
+              <IconButton icon="more" size="sm" aria-label="Session actions" className="min-h-11 min-w-11" />
+            }
+          />
+          <IconButton
+            icon="rows"
+            size="sm"
+            aria-label="Show context"
+            className="min-h-11 min-w-11 lg:hidden"
+            onClick={() => setRailOpen(true)}
+          />
+          {railToggle}
+          <IconButton icon="x" size="sm" aria-label="Close pane" className="min-h-11 min-w-11" onClick={onClose} />
+        </header>
+      ) : (
+        <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {goBack && (
+              <Button
+                variant="ghost"
                 size="sm"
-                domain="session"
+                icon="arrowRight"
+                className="min-h-11 rotate-180"
+                aria-label="Back to sessions"
+                onClick={goBack}
               />
-              {taskCount > 0 && (
-                <Badge tone="neutral">
-                  {taskCount} {taskCount === 1 ? "task" : "tasks"}
-                </Badge>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h1 className="fg-h3 truncate">{session.title ?? "Session"}</h1>
+                <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <StatusChip
+                  status={statusToChip(display)}
+                  stage={deriveStage(session.metadata)}
+                  size="sm"
+                  domain="session"
+                />
+                {taskCount > 0 && (
+                  <Badge tone="neutral">
+                    {taskCount} {taskCount === 1 ? "task" : "tasks"}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {live ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon="stop"
+                  className="min-h-11"
+                  loading={cancel.isPending}
+                  onClick={() => cancel.mutate()}
+                >
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="rerun"
+                  className="min-h-11"
+                  loading={rerun.isPending}
+                  onClick={() =>
+                    rerun.mutate(undefined, {
+                      onSuccess: (r) => projectSlug && goToSession(r.id),
+                    })
+                  }
+                >
+                  Rerun
+                </Button>
               )}
+              {issueId && projectSlug && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="list"
+                  className="min-h-11"
+                  onClick={() =>
+                    router.push(`/projects/${projectSlug}/issues/${issueId}`)
+                  }
+                >
+                  Open issue
+                </Button>
+              )}
+              <Menu
+                align="right"
+                items={menuItems}
+                trigger={
+                  <IconButton
+                    icon="more"
+                    aria-label="Session actions"
+                    className="min-h-11 min-w-11"
+                  />
+                }
+              />
+              <IconButton
+                icon="rows"
+                aria-label="Show context"
+                className="min-h-11 min-w-11 lg:hidden"
+                onClick={() => setRailOpen(true)}
+              />
+              {railToggle}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {live ? (
-              <Button
-                variant="danger"
-                size="sm"
-                icon="stop"
-                className="min-h-11"
-                loading={cancel.isPending}
-                onClick={() => cancel.mutate()}
-              >
-                Stop
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="rerun"
-                className="min-h-11"
-                loading={rerun.isPending}
-                onClick={() =>
-                  rerun.mutate(undefined, {
-                    onSuccess: (r) => projectSlug && goToSession(r.id),
-                  })
-                }
-              >
-                Rerun
-              </Button>
-            )}
-            {issueId && projectSlug && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="list"
-                className="min-h-11"
-                onClick={() =>
-                  router.push(`/projects/${projectSlug}/issues/${issueId}`)
-                }
-              >
-                Open issue
-              </Button>
-            )}
-            <Menu
-              align="right"
-              items={[
-                // Fork is an advanced/branching action — demoted from a primary
-                // button into the overflow menu (ISS-351); capability preserved,
-                // gated by the same condition the inline button used.
-                ...(!fromMessages && lastTurnId
-                  ? [
-                      {
-                        label: "Fork from last turn",
-                        icon: "fork" as const,
-                        onSelect: () => handleFork(lastTurnId),
-                      },
-                    ]
-                  : []),
-                ...(session.deviceId
-                  ? [
-                      {
-                        label: "Open runner",
-                        icon: "server" as const,
-                        onSelect: () => router.push("/runners"),
-                      },
-                    ]
-                  : []),
-                {
-                  label: "Copy link",
-                  icon: "link" as const,
-                  onSelect: copyLink,
-                },
-              ]}
-              trigger={
-                <IconButton
-                  icon="more"
-                  aria-label="Session actions"
-                  className="min-h-11 min-w-11"
-                />
-              }
-            />
-            <IconButton
-              icon="rows"
-              aria-label="Show context"
-              className="min-h-11 min-w-11 lg:hidden"
-              onClick={() => setRailOpen(true)}
-            />
-            <IconButton
-              icon={railCollapsed ? "chevronLeft" : "panelLeft"}
-              aria-label={
-                railCollapsed ? "Show context rail" : "Hide context rail"
-              }
-              aria-pressed={railCollapsed}
-              className="hidden min-h-11 min-w-11 lg:inline-flex"
-              onClick={() => setRailCollapsed((c) => !c)}
-            />
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Body */}
       <div className="flex min-h-0 flex-1">

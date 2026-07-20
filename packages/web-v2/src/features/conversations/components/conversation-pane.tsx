@@ -4,10 +4,11 @@
 // closable card wrapping the existing embedded `SessionScreen` — the same
 // per-instance-safe primitive the workspace-tier reply panel already uses
 // (local rail-collapse state, no ⌘K recents side-effect). The pane only adds
-// the cross-project header (which project this is) + the resize/close chrome;
-// loading/error/empty/waiting-for-runner states are all inherited as-is.
+// the resize/close chrome; loading/error/empty/waiting-for-runner states are
+// all inherited as-is. The project/waiting bar this used to render as its own
+// header bar above `SessionScreen` now folds into `SessionScreen`'s
+// `paneChrome` mode (ISS-714) so a pane shows ONE header, not two stacked.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconButton, StatusChip } from "@/design";
 import { SessionScreen } from "@/features/session/components/session-screen";
 import { clampPaneWidth, type PaneEntry } from "../hooks/use-conversation-panes";
 
@@ -77,14 +78,16 @@ export function ConversationPane({
         if (e.key === "Escape") onClose();
       }}
     >
-      <div className="flex flex-none items-center gap-2 rounded-t-lg border-b border-line bg-app px-3 py-1.5">
-        <span className="fg-caption min-w-0 flex-1 truncate text-muted">{projectName}</span>
-        {awaiting && <StatusChip status="waiting" domain="session" size="sm" />}
-        <IconButton icon="x" size="sm" aria-label="Close pane" onClick={onClose} />
-      </div>
-
       <div className="min-h-0 flex-1">
-        <SessionScreen sessionId={entry.sessionId} projectSlug={projectSlug} embedded onClose={onClose} />
+        <SessionScreen
+          sessionId={entry.sessionId}
+          projectSlug={projectSlug}
+          embedded
+          onClose={onClose}
+          paneChrome
+          projectName={projectName}
+          awaiting={awaiting}
+        />
       </div>
 
       {/* Right-edge resizer — drag to widen/narrow this pane only. */}
