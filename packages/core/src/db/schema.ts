@@ -2952,6 +2952,12 @@ export const feedbackReports = pgTable(
     // No hard FK so steward sessions (which have no job row) can link cleanly.
     sessionId: uuid('session_id'),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    // ISS-712 — issue the report was curated INTO (distinct from `issueId`,
+    // which is the SOURCE issue the agent was working on when it reported).
+    // Set only via the `review` action's explicit linkedIssueId param.
+    linkedIssueId: uuid('linked_issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -2965,12 +2971,17 @@ export const feedbackReports = pgTable(
     signalKeyIdx: index('feedback_reports_signal_key_idx').on(t.signalKey),
     createdAtIdx: index('feedback_reports_created_at_idx').on(t.createdAt),
     sessionIdx: index('feedback_reports_session_id_idx').on(t.sessionId),
+    linkedIssueIdIdx: index('feedback_reports_linked_issue_id_idx').on(t.linkedIssueId),
   }),
 );
 
 export const feedbackReportsRelations = relations(feedbackReports, ({ one }) => ({
   project: one(projects, { fields: [feedbackReports.projectId], references: [projects.id] }),
   issue: one(issues, { fields: [feedbackReports.issueId], references: [issues.id] }),
+  linkedIssue: one(issues, {
+    fields: [feedbackReports.linkedIssueId],
+    references: [issues.id],
+  }),
   run: one(pipelineRuns, { fields: [feedbackReports.runId], references: [pipelineRuns.id] }),
   job: one(jobs, { fields: [feedbackReports.jobId], references: [jobs.id] }),
 }));

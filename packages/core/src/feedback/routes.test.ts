@@ -334,4 +334,71 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     const body = (await res.json()) as { reviewedAt: string | null };
     expect(body.reviewedAt).toBeNull();
   });
+
+  it('linkedIssueId stamps reviewedAt and the link atomically', async () => {
+    const LINKED_ISSUE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ role: 'member' });
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // same-project issue lookup
+    updateReturning.mockResolvedValueOnce([
+      { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: LINKED_ISSUE_ID },
+    ]);
+
+    const app = buildApp();
+    const res = await app.request(`/api/feedback-reports/${REPORT_ID}/reviewed`, {
+      method: 'POST',
+      body: JSON.stringify({ reviewed: true, linkedIssueId: LINKED_ISSUE_ID }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await token()}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { linkedIssueId: string | null };
+    expect(body.linkedIssueId).toBe(LINKED_ISSUE_ID);
+  });
+
+  it('linkedIssueId in a different project returns 404 and stamps nothing', async () => {
+    const OTHER_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ role: 'member' });
+    selectLimit.mockResolvedValueOnce([]); // no issue found for this project
+
+    const app = buildApp();
+    const res = await app.request(`/api/feedback-reports/${REPORT_ID}/reviewed`, {
+      method: 'POST',
+      body: JSON.stringify({ reviewed: true, linkedIssueId: OTHER_ISSUE_ID }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await token()}`,
+      },
+    });
+    expect(res.status).toBe(404);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('review without linkedIssueId still works (back-compat)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ role: 'member' });
+    updateReturning.mockResolvedValueOnce([
+      { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: null },
+    ]);
+
+    const app = buildApp();
+    const res = await app.request(`/api/feedback-reports/${REPORT_ID}/reviewed`, {
+      method: 'POST',
+      body: JSON.stringify({ reviewed: true }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await token()}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    // No linkedIssueId in the request → key omitted from the update set
+    // (existing link, if any, is left untouched).
+    expect(updateSet).toHaveBeenCalledWith({ reviewedAt: expect.any(Date) });
+  });
 });

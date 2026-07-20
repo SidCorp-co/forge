@@ -36,6 +36,7 @@ export interface FeedbackReport {
   signalKey: string;
   sessionId: string | null;
   reviewedAt: string | null;
+  linkedIssueId: string | null;
   createdAt: string;
 }
 

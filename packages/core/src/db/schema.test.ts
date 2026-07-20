@@ -1426,6 +1426,7 @@ describe('feedbackReports table (ISS-552 C1)', () => {
         'signal_key',
         'session_id',
         'reviewed_at',
+        'linked_issue_id',
         'created_at',
       ].sort(),
     );
@@ -1466,5 +1467,6 @@ describe('feedbackReports table (ISS-552 C1)', () => {
     expect(names).toContain('feedback_reports_signal_key_idx');
     expect(names).toContain('feedback_reports_created_at_idx');
     expect(names).toContain('feedback_reports_session_id_idx');
+    expect(names).toContain('feedback_reports_linked_issue_id_idx');
   });
 });

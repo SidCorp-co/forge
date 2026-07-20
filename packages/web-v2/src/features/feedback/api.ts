@@ -17,10 +17,13 @@ export const feedbackApi = {
   list: (projectId: string, filters?: FeedbackFilters, limit?: number) =>
     apiClient<FeedbackReport[]>(`/feedback-reports?${buildQuery(projectId, filters, limit)}`),
 
-  /** `POST /api/feedback-reports/:id/reviewed` — toggle reviewed state. */
-  markReviewed: (id: string, reviewed: boolean) =>
-    apiClient<{ id: string; reviewedAt: string | null }>(`/feedback-reports/${id}/reviewed`, {
-      method: "POST",
-      body: JSON.stringify({ reviewed }),
-    }),
+  /** `POST /api/feedback-reports/:id/reviewed` — toggle reviewed state, optionally linking the issue it was folded into. */
+  markReviewed: (id: string, reviewed: boolean, linkedIssueId?: string) =>
+    apiClient<{ id: string; reviewedAt: string | null; linkedIssueId: string | null }>(
+      `/feedback-reports/${id}/reviewed`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reviewed, ...(linkedIssueId ? { linkedIssueId } : {}) }),
+      },
+    ),
 };

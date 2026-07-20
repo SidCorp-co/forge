@@ -8,6 +8,7 @@ import {
   feedbackReports,
   feedbackSeverities,
   feedbackTargets,
+  issues,
   jobs,
   projects,
 } from '../../db/schema.js';
@@ -32,6 +33,10 @@ const inputSchema = z
     // review fields
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
+    // review: the issue this report was curated INTO (distinct from the
+    // report's own issueId, which is its source issue). Must belong to the
+    // same project as the report.
+    linkedIssueId: z.uuid().optional(),
     // bulk-review field: stamp every report sharing this signalKey
     signalKey: z.string().max(500).optional(),
     // submit fields
@@ -95,6 +100,7 @@ const reportColumns = {
   signalKey: feedbackReports.signalKey,
   sessionId: feedbackReports.sessionId,
   reviewedAt: feedbackReports.reviewedAt,
+  linkedIssueId: feedbackReports.linkedIssueId,
   createdAt: feedbackReports.createdAt,
 } as const;
 
@@ -158,7 +164,10 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
     'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
     'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
     'reportId stamps a single report (unchanged single-project behaviour). ' +
-    'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope}.',
+    'When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. ' +
+    'Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. ' +
+    'Curators (e.g. forge-memory-curator, or anyone triaging feedback into an issue) SHOULD pass linkedIssueId so the loop closes. ' +
+    'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope}. linkedIssueId is not supported on the bulk signalKey path.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -350,26 +359,56 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: scope="all" requires signalKey for a bulk review');
         }
 
-        // Single-report path — unchanged: scope the update to the resolved
-        // project so a member of project A can never stamp a report
-        // belonging to project B by guessing its id.
+        // Single-report path — scope the update to the resolved project so a
+        // member of project A can never stamp a report belonging to project
+        // B by guessing its id.
         const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
         await assertPrincipalIsMember(principal, projectId);
         if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
 
+        // linkedIssueId must belong to the SAME project as the report — this
+        // is the explicit-link path (ISS-712); no heuristic auto-stamping.
+        let validatedLinkedIssueId: string | undefined;
+        if (reviewed && input.linkedIssueId) {
+          const [issueRow] = await db
+            .select({ id: issues.id })
+            .from(issues)
+            .where(and(eq(issues.id, input.linkedIssueId), eq(issues.projectId, projectId)))
+            .limit(1);
+          if (!issueRow) {
+            throw new Error('NOT_FOUND: linkedIssueId not found in this project');
+          }
+          validatedLinkedIssueId = issueRow.id;
+        }
+
         const [updated] = await db
           .update(feedbackReports)
-          .set({ reviewedAt: reviewed ? new Date() : null })
+          .set({
+            reviewedAt: reviewed ? new Date() : null,
+            // Omitting linkedIssueId on a reviewed:true call leaves any
+            // existing link untouched (back-compat) — only include the key
+            // when we're clearing it (reviewed:false) or setting it.
+            ...(!reviewed
+              ? { linkedIssueId: null }
+              : validatedLinkedIssueId !== undefined
+                ? { linkedIssueId: validatedLinkedIssueId }
+                : {}),
+          })
           .where(
             and(eq(feedbackReports.id, input.reportId), eq(feedbackReports.projectId, projectId)),
           )
-          .returning({ id: feedbackReports.id, reviewedAt: feedbackReports.reviewedAt });
+          .returning({
+            id: feedbackReports.id,
+            reviewedAt: feedbackReports.reviewedAt,
+            linkedIssueId: feedbackReports.linkedIssueId,
+          });
 
         if (!updated) throw new Error('NOT_FOUND: feedback report not found in this project');
         return {
           ok: true,
           id: updated.id,
           reviewedAt: updated.reviewedAt?.toISOString() ?? null,
+          linkedIssueId: updated.linkedIssueId ?? null,
         };
       }
     }
