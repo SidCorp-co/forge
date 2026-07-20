@@ -18,40 +18,10 @@ import { Icon, IconButton, Input, Toggle } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { sessionApi } from "../api";
 import { useArchiveSession, useDeleteSession, useRenameSession } from "../hooks";
+import { groupByRecency } from "@/features/sessions/grouping";
 import type { SessionRow } from "@/features/sessions/types";
 
 const AGENT_TYPE = "agent";
-
-type Bucket = { key: "today" | "yesterday" | "week" | "older"; label: string; rows: SessionRow[] };
-
-function bucketFor(iso: string, now: number): Bucket["key"] {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "older";
-  const ageMs = now - then;
-  const dayMs = 24 * 60 * 60 * 1000;
-  // "Today" / "Yesterday" honour the local calendar day so a chat from 11pm
-  // last night reads as "Yesterday", not "1d ago today".
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  if (then >= todayStart.getTime()) return "today";
-  if (then >= todayStart.getTime() - dayMs) return "yesterday";
-  if (ageMs <= 7 * dayMs) return "week";
-  return "older";
-}
-
-function groupByRecency(rows: SessionRow[], now = Date.now()): Bucket[] {
-  const buckets: Record<Bucket["key"], Bucket> = {
-    today: { key: "today", label: "Today", rows: [] },
-    yesterday: { key: "yesterday", label: "Yesterday", rows: [] },
-    week: { key: "week", label: "Previous 7 days", rows: [] },
-    older: { key: "older", label: "Older", rows: [] },
-  };
-  for (const r of rows) {
-    const k = bucketFor(r.updatedAt, now);
-    buckets[k].rows.push(r);
-  }
-  return [buckets.today, buckets.yesterday, buckets.week, buckets.older].filter((b) => b.rows.length > 0);
-}
 
 /** Display title for a row — auto-titled (ISS-462) sessions look like the first
  *  user message, untitled rows fall back to a short id. Single source of truth

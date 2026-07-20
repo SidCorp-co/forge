@@ -4,7 +4,14 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type AgentSessionStatus, agentSessionStatuses, agentSessions, issues, usageRecords } from '../db/schema.js';
+import {
+  type AgentSessionStatus,
+  agentSessionStatuses,
+  agentSessionTurns,
+  agentSessions,
+  issues,
+  usageRecords,
+} from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -17,6 +24,7 @@ import {
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
+import { extractTurnPreview } from './chat-preview.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
@@ -387,6 +395,11 @@ agentSessionRoutes.get(
     // (NOT the job id), so filtering directly by the page's ids is correct and
     // does not fan out the way a join through jobs would.
     const costById = new Map<string, number>();
+    // Last-message preview (ISS-698): one bounded DISTINCT ON query over this
+    // page's ids, mirroring the cost rollup above — no per-row N+1. Excludes
+    // `tool` turns (no text to preview); a session with no user/assistant text
+    // turn yet (e.g. only a materialized-jsonb legacy row) resolves to null.
+    const previewById = new Map<string, string>();
     const pageIds = rows.map((r) => r.id);
     if (pageIds.length > 0) {
       const idList = sql.join(
@@ -406,9 +419,26 @@ agentSessionRoutes.get(
       for (const cr of costRows) {
         if (cr.sessionId) costById.set(cr.sessionId, cr.estimatedCost);
       }
+
+      const previewRows = (await db.execute(sql`
+        SELECT DISTINCT ON (${agentSessionTurns.agentSessionId}) ${agentSessionTurns.agentSessionId} AS session_id, ${agentSessionTurns.content} AS content
+        FROM ${agentSessionTurns}
+        WHERE ${agentSessionTurns.agentSessionId} IN (${idList}) AND ${agentSessionTurns.role} <> 'tool'
+        ORDER BY ${agentSessionTurns.agentSessionId}, ${agentSessionTurns.turnIndex} DESC
+      `)) as unknown as Array<{ session_id: string; content: unknown }>;
+      for (const pr of previewRows) {
+        const preview = extractTurnPreview(pr.content);
+        if (preview) previewById.set(pr.session_id, preview);
+      }
     }
 
-    return c.json(rows.map((r) => ({ ...r, estimatedCost: costById.get(r.id) ?? 0 })));
+    return c.json(
+      rows.map((r) => ({
+        ...r,
+        estimatedCost: costById.get(r.id) ?? 0,
+        lastMessagePreview: previewById.get(r.id) ?? null,
+      })),
+    );
   },
 );
 
