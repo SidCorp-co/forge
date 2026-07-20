@@ -9,6 +9,7 @@ import {
   feedbackReports,
   feedbackSeverities,
   feedbackTargets,
+  issues,
   projects,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
@@ -35,6 +36,9 @@ const listQuerySchema = z
 const markReviewedBodySchema = z
   .object({
     reviewed: z.boolean(),
+    // The issue this report was curated INTO (distinct from the source
+    // issue). Must belong to the same project as the report, or 404.
+    linkedIssueId: z.uuid().optional(),
   })
   .strict();
 
@@ -82,6 +86,7 @@ feedbackReportRoutes.get(
           signalKey: feedbackReports.signalKey,
           sessionId: feedbackReports.sessionId,
           reviewedAt: feedbackReports.reviewedAt,
+          linkedIssueId: feedbackReports.linkedIssueId,
           createdAt: feedbackReports.createdAt,
         })
         .from(feedbackReports)
@@ -126,6 +131,7 @@ feedbackReportRoutes.get(
         signalKey: feedbackReports.signalKey,
         sessionId: feedbackReports.sessionId,
         reviewedAt: feedbackReports.reviewedAt,
+        linkedIssueId: feedbackReports.linkedIssueId,
         createdAt: feedbackReports.createdAt,
       })
       .from(feedbackReports)
@@ -155,7 +161,7 @@ feedbackReportRoutes.post(
     if (!z.string().uuid().safeParse(reportId).success) {
       throw badRequest('id must be a valid uuid');
     }
-    const { reviewed } = c.req.valid('json');
+    const { reviewed, linkedIssueId } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [existing] = await db
@@ -169,13 +175,35 @@ feedbackReportRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
+    // linkedIssueId must belong to the SAME project as the report.
+    let validatedLinkedIssueId: string | undefined;
+    if (reviewed && linkedIssueId) {
+      const [issueRow] = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.id, linkedIssueId), eq(issues.projectId, existing.projectId)))
+        .limit(1);
+      if (!issueRow) throw notFound('linkedIssueId not found in this project');
+      validatedLinkedIssueId = issueRow.id;
+    }
+
     const [updated] = await db
       .update(feedbackReports)
-      .set({ reviewedAt: reviewed ? new Date() : null })
+      .set({
+        reviewedAt: reviewed ? new Date() : null,
+        // Omitting linkedIssueId on a reviewed:true call leaves any existing
+        // link untouched (back-compat).
+        ...(!reviewed
+          ? { linkedIssueId: null }
+          : validatedLinkedIssueId !== undefined
+            ? { linkedIssueId: validatedLinkedIssueId }
+            : {}),
+      })
       .where(eq(feedbackReports.id, reportId))
       .returning({
         id: feedbackReports.id,
         reviewedAt: feedbackReports.reviewedAt,
+        linkedIssueId: feedbackReports.linkedIssueId,
       });
 
     if (!updated) throw notFound('feedback report not found after update');
@@ -183,6 +211,7 @@ feedbackReportRoutes.post(
     return c.json({
       id: updated.id,
       reviewedAt: updated.reviewedAt?.toISOString() ?? null,
+      linkedIssueId: updated.linkedIssueId ?? null,
     });
   },
 );

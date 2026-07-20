@@ -507,28 +507,82 @@ describe('forge_feedback review', () => {
     const result = (await tool.handler({
       action: 'review',
       reportId: REPORT_ID,
-    })) as { ok: boolean; id: string; reviewedAt: string | null };
+    })) as { ok: boolean; id: string; reviewedAt: string | null; linkedIssueId: string | null };
 
-    expect(result).toEqual({ ok: true, id: REPORT_ID, reviewedAt: reviewedAt.toISOString() });
+    expect(result).toEqual({
+      ok: true,
+      id: REPORT_ID,
+      reviewedAt: reviewedAt.toISOString(),
+      linkedIssueId: null,
+    });
+    // No linkedIssueId provided → key omitted from the update set (back-compat:
+    // any existing link is left untouched, not overwritten).
     expect(updateSet).toHaveBeenCalledWith({ reviewedAt: expect.any(Date) });
   });
 
-  it('reviewed:false clears the stamp', async () => {
+  it('reviewed:false clears both reviewedAt and linkedIssueId', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    updateReturning.mockResolvedValueOnce([{ id: REPORT_ID, reviewedAt: null }]);
+    updateReturning.mockResolvedValueOnce([
+      { id: REPORT_ID, reviewedAt: null, linkedIssueId: null },
+    ]);
 
     const result = (await tool.handler({
       action: 'review',
       reportId: REPORT_ID,
       reviewed: false,
-    })) as { ok: boolean; reviewedAt: string | null };
+    })) as { ok: boolean; reviewedAt: string | null; linkedIssueId: string | null };
 
     expect(result.ok).toBe(true);
     expect(result.reviewedAt).toBeNull();
-    expect(updateSet).toHaveBeenCalledWith({ reviewedAt: null });
+    expect(result.linkedIssueId).toBeNull();
+    expect(updateSet).toHaveBeenCalledWith({ reviewedAt: null, linkedIssueId: null });
+  });
+
+  it('linkedIssueId stamps reviewedAt and the link atomically', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    const reviewedAt = new Date('2026-07-20T00:00:00Z');
+    const LINKED_ISSUE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveEffectiveProjectId
+    selectLimit.mockResolvedValueOnce([memberAccessRow]); // assertPrincipalIsMember
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // linkedIssueId same-project lookup
+    updateReturning.mockResolvedValueOnce([
+      { id: REPORT_ID, reviewedAt, linkedIssueId: LINKED_ISSUE_ID },
+    ]);
+
+    const result = (await tool.handler({
+      action: 'review',
+      reportId: REPORT_ID,
+      linkedIssueId: LINKED_ISSUE_ID,
+    })) as { ok: boolean; linkedIssueId: string | null };
+
+    expect(result).toEqual({
+      ok: true,
+      id: REPORT_ID,
+      reviewedAt: reviewedAt.toISOString(),
+      linkedIssueId: LINKED_ISSUE_ID,
+    });
+    expect(updateSet).toHaveBeenCalledWith({
+      reviewedAt: expect.any(Date),
+      linkedIssueId: LINKED_ISSUE_ID,
+    });
+  });
+
+  it('linkedIssueId in a different project throws NOT_FOUND and stamps nothing', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    const OTHER_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([]); // no issue found for this project
+
+    await expect(
+      tool.handler({ action: 'review', reportId: REPORT_ID, linkedIssueId: OTHER_ISSUE_ID }),
+    ).rejects.toThrow(/NOT_FOUND/);
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it('throws NOT_FOUND when the report is not in the resolved project', async () => {
