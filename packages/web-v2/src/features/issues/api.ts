@@ -73,6 +73,9 @@ export const issuesApi = {
     // ISS-437 — server-side per-issue cost rollup on the same response (one
     // grouped query) instead of the old per-row cost-summary N+1.
     params.set("withCost", "1");
+    // ISS-700 — same grouped-query pattern for the latest-failed-job info
+    // backing the Failed-badge tooltip (no per-row/hover fetch).
+    params.set("withFailureInfo", "1");
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.assignee) params.set("assignee", opts.assignee);

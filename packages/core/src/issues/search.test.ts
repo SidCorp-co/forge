@@ -41,9 +41,16 @@ const distinctAs = vi.fn(() => ({ issueId: 'issue_sessions.issue_id', sessionId:
 const dbSelectDistinct = vi.fn(() => ({
   from: vi.fn(() => ({ where: vi.fn(() => ({ as: distinctAs })) })),
 }));
+// ISS-700 — the withFailureInfo rollup runs
+// selectDistinctOn([jobs.issueId]).from(jobs).where().orderBy() (awaited
+// directly; mockReturnValueOnce an array of the grouped row shape).
+const failureInfoOrderBy = vi.fn((): Record<string, unknown>[] => []);
+const dbSelectDistinctOn = vi.fn(() => ({
+  from: vi.fn(() => ({ where: vi.fn(() => ({ orderBy: failureInfoOrderBy })) })),
+}));
 
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, selectDistinct: dbSelectDistinct },
+  db: { select: dbSelect, selectDistinct: dbSelectDistinct, selectDistinctOn: dbSelectDistinctOn },
 }));
 
 // ISS-437 — the agent-session hydrator hits the db with its own query shapes;
@@ -230,6 +237,78 @@ describe('withCost (ISS-437)', () => {
     const body = (await res.json()) as Record<string, unknown>[];
     expect(body[0]).toMatchObject({ id: ISSUE_A, estimatedCost: 0.5, agentStatus: 'running' });
     expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0, agentStatus: null });
+  });
+});
+
+// ISS-700 — opt-in latest-failed-job info on the search response, backing the
+// issues-list row's Failed-badge tooltip.
+describe('withFailureInfo (ISS-700)', () => {
+  const ISSUE_A = '33333333-3333-4333-8333-333333333333';
+  const ISSUE_B = '44444444-4444-4444-8444-444444444444';
+
+  function queueIssuesPage() {
+    selectOffset.mockReturnValueOnce([
+      { id: ISSUE_A, issSeq: 1, title: 'a' },
+      { id: ISSUE_B, issSeq: 2, title: 'b' },
+    ]);
+  }
+
+  it('omitted → response shape unchanged, no rollup query runs', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    const t = await token();
+    const res = await req('', t);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>[];
+    expect(body[0]).not.toHaveProperty('failureInfo');
+    expect(dbSelectDistinctOn).not.toHaveBeenCalled();
+  });
+
+  it('withFailureInfo=1 → attaches the latest failed job; issues with none get null', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    const finishedAt = new Date('2026-07-01T00:00:00.000Z');
+    failureInfoOrderBy.mockReturnValueOnce([
+      { issueId: ISSUE_A, failedStep: 'code', failureReason: 'build failed', failureKind: 'code', finishedAt },
+    ]);
+    const t = await token();
+    const res = await req('?withFailureInfo=1', t);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>[];
+    expect(body[0]).toMatchObject({
+      id: ISSUE_A,
+      failureInfo: {
+        failedStep: 'code',
+        failureReason: 'build failed',
+        failureKind: 'code',
+        failedAt: finishedAt.toISOString(),
+      },
+    });
+    expect(body[1]).toMatchObject({ id: ISSUE_B, failureInfo: null });
+    // Exactly ONE extra grouped query regardless of page size — no per-row fetch.
+    expect(dbSelectDistinctOn).toHaveBeenCalledTimes(1);
+  });
+
+  it('composes with withCost=1 (both fields on the same row)', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    costGroupBy.mockReturnValueOnce([{ issueId: ISSUE_A, estimatedCost: 0.5 }]);
+    failureInfoOrderBy.mockReturnValueOnce([
+      { issueId: ISSUE_B, failedStep: 'review', failureReason: null, failureKind: 'infra', finishedAt: null },
+    ]);
+    const t = await token();
+    const res = await req('?withCost=1&withFailureInfo=1', t);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>[];
+    expect(body[0]).toMatchObject({ id: ISSUE_A, estimatedCost: 0.5, failureInfo: null });
+    expect(body[1]).toMatchObject({
+      id: ISSUE_B,
+      estimatedCost: 0,
+      failureInfo: { failedStep: 'review', failureReason: null, failedAt: new Date(0).toISOString() },
+    });
   });
 });
 
