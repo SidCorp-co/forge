@@ -51,17 +51,45 @@ vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: (...args: unknown[]) => closeRunMock(...args),
 }));
 
+const JOB_TYPE_ENTRY_STATUS: Record<string, string> = {
+  triage: 'open',
+  clarify: 'confirmed',
+  plan: 'clarified',
+  code: 'approved',
+  review: 'developed',
+  test: 'testing',
+  fix: 'reopen',
+  release: 'released',
+};
+const JOB_TYPE_INFLIGHT_STATUS: Record<string, string> = {
+  code: 'in_progress',
+  fix: 'in_progress',
+};
+const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<string, string[]> = {
+  code: ['developed'],
+  fix: ['developed'],
+  plan: ['approved'],
+  review: ['testing', 'reopen'],
+  test: ['released', 'reopen', 'tested'],
+};
+// ISS-702 — real classifyVerdict semantics, mirrored here so this suite stays
+// a pure unit test of finalize-failure.ts without importing recovery-verifier.js.
+function classifyVerdict(
+  currentStatus: string,
+  jobType: string,
+): 'advanced' | 'pending' | 'reverted' {
+  const entry = JOB_TYPE_ENTRY_STATUS[jobType];
+  if (entry && currentStatus === entry) return 'pending';
+  if (JOB_TYPE_INFLIGHT_STATUS[jobType] === currentStatus) return 'pending';
+  const exits = JOB_TYPE_EXPECTED_EXIT_STATUS[jobType] ?? [];
+  if (exits.includes(currentStatus)) return 'advanced';
+  if (currentStatus === 'released' || currentStatus === 'closed') return 'advanced';
+  if (!entry) return 'pending';
+  return 'reverted';
+}
 vi.mock('../pipeline/recovery-verifier.js', () => ({
-  JOB_TYPE_ENTRY_STATUS: {
-    triage: 'open',
-    clarify: 'confirmed',
-    plan: 'clarified',
-    code: 'approved',
-    review: 'developed',
-    test: 'testing',
-    fix: 'reopen',
-    release: 'released',
-  },
+  JOB_TYPE_ENTRY_STATUS,
+  classifyVerdict,
 }));
 
 const hooksEmitMock = vi.fn(async (..._args: unknown[]) => undefined);
@@ -219,6 +247,15 @@ describe('finalizeFailedJob', () => {
       { id: 'i1', projectId: 'p1', status: 'reopen', reopenCount: 0, projectCreatedBy: 'owner1' },
     ]);
     await finalizeFailedJob(makeJob({ type: 'fix' }), { error: 'boom' });
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it('ISS-702: does NOT revert a stale code job onto `waiting` when a retry is scheduled (parked by a later step)', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
+    issueRowMock.mockReturnValueOnce([
+      { id: 'i1', projectId: 'p1', status: 'waiting', reopenCount: 0, projectCreatedBy: 'owner1' },
+    ]);
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
     expect(applyTransitionMock).not.toHaveBeenCalled();
   });
 

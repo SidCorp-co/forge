@@ -37,7 +37,7 @@ import {
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
-import { JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
+import { JOB_TYPE_ENTRY_STATUS, classifyVerdict } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -119,8 +119,17 @@ async function reconcileIssueStatusAfterFailure(
     // Revert the in-flight marker back to the stage entry-status (code →
     // approved, fix → reopen, …). Skip when the issue is already at entry
     // (clarify/plan/review/test never leave their entry status mid-job).
+    //
+    // ISS-702 — a bare `row.status !== entry` check isn't enough: a later
+    // step can have already parked the issue at `waiting`/`on_hold` or moved
+    // it to `developed`/`tested`/`released`/`closed`/a fix-owned `reopen`
+    // between when this now-stale job was dispatched and when its
+    // finalize-failure runs. Only revert when the verifier still calls the
+    // issue `pending` for THIS job's stage (still at entry, or at the
+    // in-flight marker) — never clobber a status the verifier calls
+    // `advanced`/`reverted`.
     const entry = JOB_TYPE_ENTRY_STATUS[job.type];
-    if (entry && row.status !== entry) {
+    if (entry && row.status !== entry && classifyVerdict(row.status, job.type) === 'pending') {
       try {
         await applyStatusTransition(issueRow, entry, device, { skip: true });
       } catch (err) {

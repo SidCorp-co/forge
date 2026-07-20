@@ -88,4 +88,8 @@ describe('classifyVerdict (pure)', () => {
   it('plan job, issue at open → reverted (regressed below entry)', () => {
     expect(classifyVerdict('open', 'plan')).toBe('reverted');
   });
+
+  it('ISS-702: code job, issue at waiting → reverted (parked by a later step; must not be reverted to approved)', () => {
+    expect(classifyVerdict('waiting', 'code')).toBe('reverted');
+  });
 });
