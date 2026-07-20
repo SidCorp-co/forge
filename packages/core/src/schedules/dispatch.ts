@@ -19,6 +19,7 @@ import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { hooks } from '../pipeline/hooks.js';
 import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
+import { buildFeedbackDigestPrompt } from './messages/feedback-digest-prompt.js';
 import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-prompt.js';
 import { getImprovementMessage } from './messages/registry.js';
 import { type AppliedVersions, buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
@@ -29,12 +30,17 @@ import { runScheduleScript } from './script/executor.js';
 // Add new standing-template keys here when they have a dedicated builder.
 const DRIFT_CHECK_KEY = 'knowledge-drift-check';
 const PRODUCT_MAP_KEY = 'product-map-refresh';
+const FEEDBACK_DIGEST_KEY = 'feedback-triage-digest';
 
 // Standing templates with a DEDICATED non-steward builder: their sessions must
 // NOT be tagged metadata.steward (the steward-report parser would mis-handle
 // them — their effect is draft issues / upserted knowledge entries, not a
 // steward report). Add a key here whenever you add a non-steward standing builder.
-const NON_STEWARD_STANDING_KEYS = new Set<string>([DRIFT_CHECK_KEY, PRODUCT_MAP_KEY]);
+const NON_STEWARD_STANDING_KEYS = new Set<string>([
+  DRIFT_CHECK_KEY,
+  PRODUCT_MAP_KEY,
+  FEEDBACK_DIGEST_KEY,
+]);
 
 export interface ScheduleRowForDispatch {
   id: string;
@@ -166,6 +172,15 @@ export async function dispatchScheduleRun(
           { scheduleId: schedule.id, templateKey: schedule.templateKey },
           'schedule.dispatch: standing product-map-refresh template dispatching (bypassing appliedMessageVersions)',
         );
+      } else if (schedule.templateKey === FEEDBACK_DIGEST_KEY) {
+        effectivePrompt = buildFeedbackDigestPrompt({
+          mode: schedule.mode ?? 'propose',
+          projectId: schedule.projectId,
+        });
+        logger.info(
+          { scheduleId: schedule.id, templateKey: schedule.templateKey },
+          'schedule.dispatch: standing feedback-digest template dispatching (bypassing appliedMessageVersions)',
+        );
       } else {
         effectivePrompt = buildSkillStewardPrompt({
           mode: schedule.mode ?? 'propose',
@@ -256,9 +271,9 @@ export async function dispatchScheduleRun(
   if (schedule.templateKey) metadata.templateKey = schedule.templateKey;
   // ISS-556 — tag standing sessions so the completion handler routes to the
   // steward report parser instead of the one-shot skill-improve parser.
-  // Drift-check + product-map-refresh are standing but do NOT use the steward
-  // report format (they create draft issues / upsert knowledge directly), so the
-  // parser must skip them — see NON_STEWARD_STANDING_KEYS.
+  // Drift-check + product-map-refresh + feedback-digest are standing but do NOT
+  // use the steward report format (they create draft issues / upsert knowledge
+  // directly), so the parser must skip them — see NON_STEWARD_STANDING_KEYS.
   if (
     isStandingTemplate &&
     !(schedule.templateKey != null && NON_STEWARD_STANDING_KEYS.has(schedule.templateKey))

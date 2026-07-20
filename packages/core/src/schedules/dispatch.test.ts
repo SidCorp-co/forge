@@ -132,6 +132,14 @@ vi.mock('./messages/product-map-refresh-prompt.js', () => ({
     buildProductMapRefreshPromptMock(input as never),
 }));
 
+// ISS-713 — mock the fleet feedback-digest prompt builder.
+const buildFeedbackDigestPromptMock = vi.fn<(input: { mode: string; projectId: string }) => string>(
+  () => 'BUILT_FEEDBACK_DIGEST_PROMPT',
+);
+vi.mock('./messages/feedback-digest-prompt.js', () => ({
+  buildFeedbackDigestPrompt: (input: unknown) => buildFeedbackDigestPromptMock(input as never),
+}));
+
 // ISS-618 — mock the sandbox executor so script-kind dispatch tests are
 // deterministic and never spawn a real worker thread.
 const runScheduleScriptMock =
@@ -1081,6 +1089,93 @@ describe('dispatchScheduleRun — product-map-refresh (ISS-587)', () => {
 
     expect(buildProductMapRefreshPromptMock).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'auto', projectId: SOURCE_PROJECT_ID }),
+    );
+  });
+});
+
+// ── ISS-713: feedback-triage-digest standing dispatch path ────────────────────
+
+describe('dispatchScheduleRun — feedback-triage-digest (ISS-713)', () => {
+  beforeEach(() => {
+    buildFeedbackDigestPromptMock.mockReset();
+    buildFeedbackDigestPromptMock.mockReturnValue('BUILT_FEEDBACK_DIGEST_PROMPT');
+  });
+
+  it('feedback-triage-digest key → builds digest prompt, NOT steward/drift/product-map', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'fallback-should-not-be-used',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'feedback-triage-digest',
+        mode: 'propose',
+        appliedMessageVersions: { 'feedback-triage-digest': 1 }, // standing ignores
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(buildFeedbackDigestPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'propose', projectId: SOURCE_PROJECT_ID }),
+    );
+    expect(buildSkillStewardPromptMock).not.toHaveBeenCalled();
+    expect(buildDriftCheckPromptMock).not.toHaveBeenCalled();
+    expect(buildProductMapRefreshPromptMock).not.toHaveBeenCalled();
+    expect(buildSkillImprovePromptMock).not.toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('feedback-triage-digest does NOT set metadata.steward (completion parser must skip it)', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'feedback-triage-digest',
+        mode: 'propose',
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
+      metadata?: { steward?: boolean; templateKey?: string };
+    };
+    expect(insertCall?.metadata?.templateKey).toBe('feedback-triage-digest');
+    expect(insertCall?.metadata?.steward).toBeUndefined();
+  });
+
+  it('mode null → defaults to propose', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
+    seedDesktopHappy();
+
+    await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
+        targetProjectSlug: null,
+        templateKey: 'feedback-triage-digest',
+        mode: null,
+        appliedMessageVersions: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(buildFeedbackDigestPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'propose', projectId: SOURCE_PROJECT_ID }),
     );
   });
 });

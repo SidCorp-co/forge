@@ -67,19 +67,40 @@ describe('improvementMessages registry', () => {
     expect(msg!.rationale).toBeTruthy();
   });
 
-  it('registry contains the standing templates (steward + drift-check + product-map-refresh)', () => {
+  it('registry contains the standing templates (steward + drift-check + product-map-refresh + feedback-digest)', () => {
     const keys = listImprovementMessages().map((m) => m.key);
     expect(keys).toEqual(
-      expect.arrayContaining(['optimize-skills', 'knowledge-drift-check', 'product-map-refresh']),
+      expect.arrayContaining([
+        'optimize-skills',
+        'knowledge-drift-check',
+        'product-map-refresh',
+        'feedback-triage-digest',
+      ]),
     );
-    expect(listImprovementMessages()).toHaveLength(3);
+    expect(listImprovementMessages()).toHaveLength(4);
   });
 
   it('all registry entries are standing', () => {
     const standing = listImprovementMessages().filter((m) => m.standing === true);
     expect(standing.map((m) => m.key).sort()).toEqual(
-      ['knowledge-drift-check', 'optimize-skills', 'product-map-refresh'].sort(),
+      [
+        'knowledge-drift-check',
+        'optimize-skills',
+        'product-map-refresh',
+        'feedback-triage-digest',
+      ].sort(),
     );
+  });
+
+  // feedback-triage-digest standing entry (ISS-713)
+  it('registry contains the feedback-triage-digest standing entry', () => {
+    const msg = getImprovementMessage('feedback-triage-digest');
+    expect(msg).toBeDefined();
+    expect(msg!.standing).toBe(true);
+    expect(msg!.category).toBe('ops');
+    expect(msg!.recommended).toBe(true);
+    expect(msg!.defaultMode).toBe('propose');
+    expect(msg!.version).toBe(1);
   });
 
   // product-map-refresh standing entry (ISS-587 Tier-3 MVP)

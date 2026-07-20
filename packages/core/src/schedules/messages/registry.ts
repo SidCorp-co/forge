@@ -227,6 +227,27 @@ export const improvementMessages: ImprovementMessage[] = [
     defaultMode: 'auto',
     standing: true,
   },
+  {
+    key: 'feedback-triage-digest',
+    title: 'Standing fleet feedback digest — weekly unreviewed-feedback rollup',
+    message:
+      'The feedback-digest agent pulls unreviewed forge_feedback reports fleet-wide ' +
+      '(scope="all", reviewed=false), dedupes by signalKey, groups by target then ' +
+      'severity, and files ONE draft issue into forge-dev per run summarizing the ' +
+      'backlog (top clusters, counts per project, capped). It never reviews or ' +
+      'edits feedback reports itself — a human triages the underlying reports.',
+    rationale:
+      'Without a standing digest, triage of forge_feedback reports depends on a ' +
+      'human hand-scanning every project — which happens rarely and lets friction ' +
+      'signals pile up unseen. A weekly fleet-wide rollup surfaces the backlog ' +
+      'continuously and routes it through the same draft-issue review gate as ' +
+      'the skill steward and knowledge-drift-check, keeping a human in the loop.',
+    category: 'ops',
+    version: 1,
+    recommended: true,
+    defaultMode: 'propose',
+    standing: true,
+  },
 ];
 
 // ── Lookups ───────────────────────────────────────────────────────────────────
