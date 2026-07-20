@@ -153,7 +153,7 @@ forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 
 **Decompose child/parent are the exception** — they target the integration branch, not `baseBranch` (child merges to it; parent integrate-verifies, doesn't merge here). See `.claude/skills/forge-plan/references/decompose-execution.md`.
 
-**Deploy mode · same-branch (`baseBranch === productionBranch`) — ALL complexities, including xs/s:** `baseBranch` IS the production branch on this topology — there is no pre-prod target to merge into. Merging or deploying here would ship unreviewed code straight to prod, before independent review or QA ever run. Push the ISS-* branch only; do **not** merge, do **not** `forge_coolify_deploy`. The merge (squash to `productionBranch`) and deploy are deferred to forge-release, which runs after review + QA have passed.
+**Deploy mode · same-branch (`baseBranch === productionBranch`) — ALL complexities, including xs/s:** `baseBranch` IS the production branch on this topology — there is no pre-prod target to merge into. Merging or deploying here would ship unreviewed code straight to prod, before independent review ever runs. Push the ISS-* branch only; do **not** merge, do **not** `forge_coolify_deploy`. The merge (squash to `productionBranch`) and deploy are deferred to **forge-release**, which is also the stage that stamps `merged_at` on this topology (see `forge-test/SKILL.md` Step 0.7/9 — `forge-test` still reviews the diff/plan/AC at `testing` on this topology, but has no fresh deployment to QA live against and does not stamp `merged_at`, since the code isn't on `baseBranch`/`productionBranch` until forge-release lands it).
 
 ```bash
 git push -u origin ISS-XX-short-title
