@@ -7,23 +7,41 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-// DB mock — select chain: select→from→where→{orderBy,limit}
+// DB mock — select chain: select→from→where→{orderBy,limit}; fleet path adds
+// an intervening leftJoin(projects): select→from→leftJoin→where→{orderBy,limit}
 // update chain: update→set→where→returning
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn((_p: unknown) => ({ limit: selectLimit }));
 const selectWhere = vi.fn((_p: unknown) => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn((_p: unknown) => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn((_p: unknown) => ({ where: selectWhere }));
+const selectFrom = vi.fn((_p: unknown) => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn((_p: unknown) => ({ returning: updateReturning }));
 const updateSet = vi.fn((_p: unknown) => ({ where: updateWhere }));
 
+// loadVisibleProjectIds chain: selectDistinct({id}).from().leftJoin().leftJoin().where()
+const selectDistinctImpl = vi.fn();
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
+    selectDistinct: (...a: unknown[]) => selectDistinctImpl(...a),
     update: vi.fn(() => ({ set: updateSet })),
   },
 }));
+
+function mockVisibleProjectIds(ids: string[]) {
+  selectDistinctImpl.mockImplementationOnce(() => ({
+    from: () => ({
+      leftJoin: () => ({
+        leftJoin: () => ({
+          where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        }),
+      }),
+    }),
+  }));
+}
 
 const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
@@ -31,7 +49,28 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
+// Spies on the real isNull/isNotNull so tests can assert which condition the
+// reviewed filter actually built, instead of relying on the mocked row count
+// (which returns rows regardless of the WHERE clause).
+const isNullSpy = vi.fn();
+const isNotNullSpy = vi.fn();
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return {
+    ...actual,
+    isNull: (...args: [unknown]) => {
+      isNullSpy(...args);
+      return actual.isNull(...args);
+    },
+    isNotNull: (...args: [unknown]) => {
+      isNotNullSpy(...args);
+      return actual.isNotNull(...args);
+    },
+  };
+});
+
 const { feedbackReportRoutes } = await import('./routes.js');
+const { feedbackReports } = await import('../db/schema.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -129,12 +168,100 @@ describe('GET /api/feedback-reports', () => {
     selectLimit.mockResolvedValueOnce([]);
 
     const app = buildApp();
-    const res = await app.request(
-      `/api/feedback-reports?projectId=${PROJECT_ID}&kind=friction`,
-      { headers: { Authorization: `Bearer ${await token()}` } },
-    );
+    const res = await app.request(`/api/feedback-reports?projectId=${PROJECT_ID}&kind=friction`, {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+  });
+
+  it('scope=all: rolls up reports across every visible project, carrying projectId/projectSlug', async () => {
+    authVerified();
+    const PROJECT_ID_2 = '55555555-5555-4555-8555-555555555555';
+    mockVisibleProjectIds([PROJECT_ID, PROJECT_ID_2]);
+    selectLimit.mockResolvedValueOnce([
+      { ...MOCK_REPORT, projectId: PROJECT_ID, projectSlug: 'forge-dev' },
+      {
+        ...MOCK_REPORT,
+        id: '66666666-6666-4666-8666-666666666666',
+        projectId: PROJECT_ID_2,
+        projectSlug: 'other-proj',
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await app.request('/api/feedback-reports?scope=all', {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ projectId: string; projectSlug: string }>;
+    expect(body).toHaveLength(2);
+    expect(body.map((r) => r.projectSlug).sort()).toEqual(['forge-dev', 'other-proj']);
+    // No project-membership call is made for the fleet path — bounding comes
+    // from loadVisibleProjectIds, not loadProjectAccess.
+    expect(projectAccess).not.toHaveBeenCalled();
+  });
+
+  it('scope=all: returns an empty list (no data query) when the caller has no visible projects', async () => {
+    authVerified();
+    mockVisibleProjectIds([]);
+
+    const app = buildApp();
+    const res = await app.request('/api/feedback-reports?scope=all', {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+    // Only the auth email-verify check hits selectLimit — no data query runs.
+    expect(selectLimit).toHaveBeenCalledTimes(1);
+  });
+
+  it('reviewed=false filters to unreviewed reports (single project)', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({ role: 'viewer' });
+    selectLimit.mockResolvedValueOnce([MOCK_REPORT]);
+
+    const app = buildApp();
+    const res = await app.request(`/api/feedback-reports?projectId=${PROJECT_ID}&reviewed=false`, {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body).toHaveLength(1);
+    // Guards against z.coerce.boolean() regressing: Boolean('false') === true
+    // would silently build isNotNull(reviewedAt) here instead.
+    expect(isNullSpy).toHaveBeenCalledWith(feedbackReports.reviewedAt);
+    expect(isNotNullSpy).not.toHaveBeenCalled();
+  });
+
+  it('reviewed=true filters to reviewed reports (single project)', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({ role: 'viewer' });
+    selectLimit.mockResolvedValueOnce([MOCK_REPORT]);
+
+    const app = buildApp();
+    const res = await app.request(`/api/feedback-reports?projectId=${PROJECT_ID}&reviewed=true`, {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(isNotNullSpy).toHaveBeenCalledWith(feedbackReports.reviewedAt);
+    expect(isNullSpy).not.toHaveBeenCalled();
+  });
+
+  it('scope=all&reviewed=false filters to unreviewed reports (fleet)', async () => {
+    authVerified();
+    mockVisibleProjectIds([PROJECT_ID]);
+    selectLimit.mockResolvedValueOnce([
+      { ...MOCK_REPORT, projectId: PROJECT_ID, projectSlug: 'forge-dev' },
+    ]);
+
+    const app = buildApp();
+    const res = await app.request('/api/feedback-reports?scope=all&reviewed=false', {
+      headers: { Authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(isNullSpy).toHaveBeenCalledWith(feedbackReports.reviewedAt);
+    expect(isNotNullSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -365,7 +365,7 @@ describe('forge_feedback list', () => {
     expect(JSON.stringify(result).length).toBeLessThanOrEqual(38_500);
   });
 
-  it('scope=org unions every visible project and includes projectId/projectSlug', async () => {
+  it('scope=all unions every visible project and includes projectId/projectSlug', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
@@ -376,7 +376,7 @@ describe('forge_feedback list', () => {
       { ...baseReport, id: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrr2', projectId: PROJECT_ID_2, projectSlug: 'other-project' },
     ]);
 
-    const result = (await tool.handler({ action: 'list', scope: 'org' })) as {
+    const result = (await tool.handler({ action: 'list', scope: 'all' })) as {
       reports: Array<{ projectId: string; projectSlug: string }>;
     };
 
@@ -385,12 +385,12 @@ describe('forge_feedback list', () => {
     expect(result.reports.map((r) => r.projectSlug)).toEqual([PROJECT_SLUG, 'other-project']);
   });
 
-  it('scope=org with no visible projects returns an empty list', async () => {
+  it('scope=all with no visible projects returns an empty list', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     mockVisibleProjects([]);
 
-    const result = (await tool.handler({ action: 'list', scope: 'org' })) as { reports: unknown[] };
+    const result = (await tool.handler({ action: 'list', scope: 'all' })) as { reports: unknown[] };
     expect(result.reports).toEqual([]);
     expect(selectLimit).not.toHaveBeenCalled();
   });
@@ -567,7 +567,7 @@ describe('forge_feedback review', () => {
     expect(result).toEqual({ ok: true, count: 3, scope: 'project' });
   });
 
-  it('signalKey + scope=org bulk-stamps only across visible projects', async () => {
+  it('signalKey + scope=all bulk-stamps only across visible projects', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
@@ -575,33 +575,33 @@ describe('forge_feedback review', () => {
 
     const result = await tool.handler({
       action: 'review',
-      scope: 'org',
+      scope: 'all',
       signalKey: 'self_report:skill:my-skill:friction',
     });
 
-    expect(result).toEqual({ ok: true, count: 2, scope: 'org' });
+    expect(result).toEqual({ ok: true, count: 2, scope: 'all' });
   });
 
-  it('signalKey + scope=org with no visible projects returns count:0', async () => {
+  it('signalKey + scope=all with no visible projects returns count:0', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     mockVisibleProjects([]);
 
     const result = await tool.handler({
       action: 'review',
-      scope: 'org',
+      scope: 'all',
       signalKey: 'self_report:skill:my-skill:friction',
     });
 
-    expect(result).toEqual({ ok: true, count: 0, scope: 'org' });
+    expect(result).toEqual({ ok: true, count: 0, scope: 'all' });
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('scope=org without signalKey throws BAD_REQUEST', async () => {
+  it('scope=all without signalKey throws BAD_REQUEST', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     await expect(
-      tool.handler({ action: 'review', scope: 'org', reportId: REPORT_ID }),
+      tool.handler({ action: 'review', scope: 'all', reportId: REPORT_ID }),
     ).rejects.toThrow(/BAD_REQUEST/);
   });
 });

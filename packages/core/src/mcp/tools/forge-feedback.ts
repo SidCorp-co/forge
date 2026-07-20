@@ -26,9 +26,9 @@ const inputSchema = z
   .object({
     action: z.enum(['submit', 'list', 'review', 'get']),
     projectId: z.uuid().optional(),
-    // scope: 'project' (default, caller's resolved project) or 'org' (every
+    // scope: 'project' (default, caller's resolved project) or 'all' (every
     // project the principal can see) — applies to list and bulk review.
-    scope: z.enum(['project', 'org']).optional(),
+    scope: z.enum(['project', 'all']).optional(),
     // review fields
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
@@ -152,13 +152,13 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. ' +
     'Required fields: kind, target, summary. Optional: severity (default low), targetRef, detail, suggestion. ' +
     'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
-    'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, org default 50). ' +
-    'scope="project" (default) reads the resolved project; scope="org" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
+    'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). ' +
+    'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
     'Large histories are tail-trimmed with truncated:true. ' +
     'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
     'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
     'reportId stamps a single report (unchanged single-project behaviour). ' +
-    'signalKey bulk-stamps every report sharing that signalKey — add scope="org" to bulk-stamp across every project you can see (scope="org" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope}.',
+    'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope}.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -252,7 +252,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         let scopeCondition: ReturnType<typeof eq> | ReturnType<typeof inArray>;
         let limit: number;
-        if (input.scope === 'org') {
+        if (input.scope === 'all') {
           const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
           if (visibleIds.length === 0) return { reports: [] };
           scopeCondition = inArray(feedbackReports.projectId, visibleIds);
@@ -315,9 +315,9 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         if (input.signalKey) {
           // Bulk stamp: every report carrying this signalKey, within scope.
-          if (input.scope === 'org') {
+          if (input.scope === 'all') {
             const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-            if (visibleIds.length === 0) return { ok: true, count: 0, scope: 'org' };
+            if (visibleIds.length === 0) return { ok: true, count: 0, scope: 'all' };
             const updated = await db
               .update(feedbackReports)
               .set({ reviewedAt: reviewed ? new Date() : null })
@@ -328,7 +328,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
                 ),
               )
               .returning({ id: feedbackReports.id });
-            return { ok: true, count: updated.length, scope: 'org' };
+            return { ok: true, count: updated.length, scope: 'all' };
           }
 
           const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
@@ -346,8 +346,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           return { ok: true, count: updated.length, scope: 'project' };
         }
 
-        if (input.scope === 'org') {
-          throw new Error('BAD_REQUEST: scope="org" requires signalKey for a bulk review');
+        if (input.scope === 'all') {
+          throw new Error('BAD_REQUEST: scope="all" requires signalKey for a bulk review');
         }
 
         // Single-report path — unchanged: scope the update to the resolved
