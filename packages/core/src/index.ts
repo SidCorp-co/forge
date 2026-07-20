@@ -100,7 +100,11 @@ import {
   registerCandidatesWorker,
 } from './memory/candidates-observer.js';
 import { memoryCandidatesRoutes } from './memory/candidates-routes.js';
-import { registerMemoryConsolidation } from './memory/consolidation.js';
+import {
+  registerMemoryConsolidation,
+  registerMemoryReconcileTrigger,
+  registerMemoryReconcileWorker,
+} from './memory/consolidation.js';
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
 import { registerMemoryExtraction } from './memory/extraction.js';
@@ -284,6 +288,7 @@ registerActivitySubscribers(hooks);
 registerPipelineSentryBreadcrumbs(hooks);
 registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
+registerMemoryReconcileTrigger(hooks);
 registerCiFixPatternLearner(hooks);
 registerMemoryExtraction(hooks);
 registerNotifyMentionsSubscriber(hooks);
@@ -507,6 +512,7 @@ if (isMain) {
   await registerEmbeddingBackfill();
   await registerMemoryDecay();
   await registerMemoryConsolidation();
+  await registerMemoryReconcileWorker();
   await registerCandidatesWorker();
   await registerCandidatesDecay();
   await registerDevicePrune();
