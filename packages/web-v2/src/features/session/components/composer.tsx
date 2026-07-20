@@ -233,7 +233,11 @@ export function Composer({
           </ul>
         )}
 
-        <div className="flex w-full items-end gap-2">
+        {/* Single rounded input container (Gemini-style) — attach + textarea +
+            send live inside ONE bordered box instead of three flex siblings,
+            with the focus ring moving to the container so it reads as one
+            control (ISS-714). */}
+        <div className="flex w-full items-end gap-1 rounded-2xl border border-line-strong bg-surface py-1.5 pl-1.5 pr-2 transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]">
           {allowAttachments && (
             <>
               <IconButton
@@ -241,7 +245,7 @@ export function Composer({
                 variant="ghost"
                 icon="plus"
                 aria-label="Attach files"
-                className="min-h-11 min-w-11"
+                className="h-11 w-11 flex-none"
                 disabled={disabled || busy}
                 onClick={() => fileInputRef.current?.click()}
               />
@@ -266,20 +270,19 @@ export function Composer({
             placeholder={
               disabled ? "No device online — start a runner to chat." : placeholder
             }
-            className="max-h-40 min-h-11 min-w-0 flex-1"
+            className="max-h-40 min-h-11 min-w-0 flex-1 border-0 bg-transparent px-1.5 py-2.5 shadow-none focus-visible:shadow-none"
             aria-label="Message"
           />
           <Button
             variant="primary"
             size="md"
             icon="arrowRight"
-            className="min-h-11 min-w-11"
+            aria-label="Send message"
+            className="h-11 w-11 flex-none rounded-full p-0"
             loading={busy}
             disabled={!canSend}
             onClick={submit}
-          >
-            Send
-          </Button>
+          />
         </div>
       </div>
     </div>

@@ -10,6 +10,9 @@ export interface SidebarState {
   /** Icon-only rail when true. */
   collapsed: boolean;
   toggleCollapsed: () => void;
+  /** Idempotent collapse-to-icon-rail (ISS-714 focus mode) — never expands,
+   *  so it's safe to call on every pane-open without fighting a manual toggle. */
+  collapse: () => void;
   /** Per-cluster open map keyed by cluster key. Missing key ⇒ open. */
   groupOpen: Record<string, boolean>;
   toggleGroup: (key: string) => void;
@@ -32,6 +35,11 @@ export function useSidebar(): SidebarState {
     [setState],
   );
 
+  const collapse = useCallback(
+    () => setState((s) => (s.collapsed ? s : { ...s, collapsed: true })),
+    [setState],
+  );
+
   const toggleGroup = useCallback(
     (key: string) =>
       setState((s) => ({
@@ -44,6 +52,7 @@ export function useSidebar(): SidebarState {
   return {
     collapsed: state.collapsed,
     toggleCollapsed,
+    collapse,
     groupOpen: state.groupOpen ?? {},
     toggleGroup,
   };

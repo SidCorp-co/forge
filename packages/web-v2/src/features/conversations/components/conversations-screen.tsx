@@ -21,6 +21,7 @@ import {
   type SegmentOption,
 } from "@/design";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
+import { useSidebarContext } from "@/features/shell";
 import { groupByRecency } from "@/features/sessions/grouping";
 import { useSessions } from "@/features/sessions/hooks";
 import { SessionReplyPanel } from "@/features/sessions/components/session-reply-panel";
@@ -72,6 +73,18 @@ export function ConversationsScreen() {
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const { toast } = useToast();
   const panes = useConversationPanes();
+
+  // Focus mode (ISS-714): opening the first pane auto-collapses the left nav
+  // to its icon rail so the pane strip gets the reclaimed width. `collapse()`
+  // is idempotent and one-directional — closing panes never re-expands, and
+  // the manual toggle in the nav still works independently.
+  const sidebar = useSidebarContext();
+  const prevPaneCountRef = useRef(0);
+  useEffect(() => {
+    const count = panes.panes.length;
+    if (prevPaneCountRef.current === 0 && count >= 1) sidebar.collapse();
+    prevPaneCountRef.current = count;
+  }, [panes.panes.length, sidebar]);
 
   const nameById = useMemo(() => {
     const m = new Map<string, { name: string; slug: string }>();

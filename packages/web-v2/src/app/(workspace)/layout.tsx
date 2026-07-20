@@ -31,7 +31,8 @@ import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { useUnreadCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
 import {
-  useSidebar,
+  useSidebarContext,
+  SidebarProvider,
   useRecents,
   usePinnedViews,
   NavRailCompact,
@@ -56,7 +57,9 @@ import {
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
     <ActiveOrgProvider>
-      <WorkspaceShell>{children}</WorkspaceShell>
+      <SidebarProvider>
+        <WorkspaceShell>{children}</WorkspaceShell>
+      </SidebarProvider>
     </ActiveOrgProvider>
   );
 }
@@ -70,7 +73,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { user, isLoading, logout } = useAuth();
   const { toast } = useToast();
   const { data: projects } = useProjects();
-  const sidebar = useSidebar();
+  const sidebar = useSidebarContext();
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
   const { pinnedIds } = usePinnedProjects();
