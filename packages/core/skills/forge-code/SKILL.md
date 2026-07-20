@@ -27,9 +27,11 @@ When a plan exists (from forge-plan), this skill should be fast and focused — 
 Before following the workflow below, call `forge_config → get` and `forge_coolify_deploy → list`. Decide **deployMode** for this project:
 
 - **local-only** — `previewDeploy` is null/missing OR has no `stagingUrl`, AND `forge_coolify_deploy → list` returns empty. Project builds only locally; no staging, no production deploy infrastructure.
-- **deploy** — Coolify resources are configured OR `previewDeploy.stagingUrl` is set.
+- **deploy** — Coolify resources are configured OR `previewDeploy.stagingUrl` is set. Deploy mode has two **topology** sub-modes — read `baseBranch` and `productionBranch` from that same `forge_config → get` call (never assume, never hardcode which one is "safe to merge to"):
+  - **deploy · distinct-branch** (`baseBranch !== productionBranch`) — `baseBranch` is a non-production integration branch; merging there is safe for every complexity because it only reaches a pre-prod environment.
+  - **deploy · same-branch** (`baseBranch === productionBranch`) — there is no separate integration branch; merging to `baseBranch` IS merging to production. Never merge or deploy here, for any complexity — push the ISS-* branch only and defer the merge + deploy to forge-release, which runs after independent review and QA have passed, not before.
 
-The two modes differ only in steps 11 and 13 (push + status). Everything else (branch, build, test, review, commit, session context) is identical.
+The three sub-modes differ only in steps 11 and 13 (push + status). Everything else (branch, build, test, review, commit, session context) is identical.
 
 ## Quick Start (Pipeline Mode)
 
@@ -49,17 +51,19 @@ When the issue has a plan and triage/plan comments from Forge AI:
 9.5. Simplify the diff (quality-only pass — see Tiered Review below; preserve behavior, stay inside the diff)
 10. Commit
 11. Push — see the **Push & exit matrix** below:
-    - **deploy mode** — push the ISS-* branch, merge it into `baseBranch`, then trigger `forge_coolify_deploy`. **Every complexity merges to `baseBranch` and deploys** — `baseBranch` is staging (≠ the production branch), so getting the change onto a reachable, QA-able environment is the point. Keep the ISS-* branch alive (release promotes it to prod).
+    - **deploy mode · distinct-branch** (`baseBranch !== productionBranch`) — push the ISS-* branch, merge it into `baseBranch`, then trigger `forge_coolify_deploy`. **Every complexity merges to `baseBranch` and deploys** — `baseBranch` is a non-production integration branch on this topology, so getting the change onto a reachable, QA-able environment is the point. Keep the ISS-* branch alive (release promotes it to prod).
+    - **deploy mode · same-branch** (`baseBranch === productionBranch`) — push the ISS-* branch only; **no** merge, **no** `forge_coolify_deploy`, for ANY complexity (incl. xs/s). `baseBranch` IS the production branch on this topology, so merging here would ship unreviewed code straight to prod before independent review or QA run. Post a comment stating the merge + deploy is deferred to forge-release.
     - **local-only mode** — push the ISS-* branch only; **no** `baseBranch` merge, **no** `forge_coolify_deploy`.
     - **decompose child/parent** — different base/target branch; see **Decompose-aware branching** above (child → integration branch, no deploy; parent → integrate-verify, no merge).
 12. Post comment
 13. Set status LAST (triggers the next step). **Never set `deploying` — it was retired from the lifecycle; the only valid exits from the code step are `developed` or `testing`.**
-    - **deploy mode** — `xs`/`s` → **`testing`** (skip independent review — the inline self-review is enough for a trivial change; set `previewUrl`/`previewApiUrl` to the staging URLs). `m`/`l`/`xl` → **`developed`** (independent forge-review runs, then advances to testing).
+    - **deploy mode · distinct-branch** — `xs`/`s` → **`testing`** (skip independent review — the inline self-review is enough for a trivial change; set `previewUrl`/`previewApiUrl` to the staging URLs). `m`/`l`/`xl` → **`developed`** (independent forge-review runs, then advances to testing).
+    - **deploy mode · same-branch** — **`developed`** for ALL complexities (incl. xs/s) — there is no separate staging environment to fast-path to, so independent review, QA, and the deferred merge/deploy all run downstream.
     - **local-only mode** — **`developed`** for ALL complexities (human reviews at `developed` and closes manually).
 
 **Do NOT:** re-derive the file map (the plan already has the paths), re-explore the codebase, second-guess the plan, read files that aren't in the plan.
 
-Build and review happen BEFORE push. Only clean, reviewed code gets pushed (and, in deploy mode, deployed).
+Build and review happen BEFORE push. Only clean, reviewed code gets pushed (and, in deploy · distinct-branch mode, deployed).
 
 Read `references/workflow.md` for the full step-by-step including standalone mode.
 
@@ -103,7 +107,7 @@ Bug-hunting is the opposite concern and lives elsewhere — your self-review abo
 **Pipeline mode** (has triage/plan comments):
 - Plan exists → follow it directly.
 - The ISS-* branch is always kept alive — it is the source of truth that forge-release promotes to the production branch (deploy mode) or that a human closes (local-only).
-- Push + exit status follow the single **Push & exit matrix** (Quick Start steps 11–13): deploy mode merges **every** complexity to `baseBranch` + deploys, then exits `xs/s` → `testing` and `m/l/xl` → `developed`; local-only pushes the branch only and exits `developed`. **Never `deploying`** (retired).
+- Push + exit status follow the single **Push & exit matrix** (Quick Start steps 11–13): deploy · distinct-branch merges **every** complexity to `baseBranch` + deploys, then exits `xs/s` → `testing` and `m/l/xl` → `developed`; deploy · same-branch and local-only both push the branch only and exit `developed` for every complexity — same-branch defers the merge + deploy to forge-release (there's no safe pre-prod target to merge into), local-only leaves it for a human to close. **Never `deploying`** (retired).
 
 **Standalone mode** (manual invocation, no pipeline comments):
 - May not have a plan → explore and self-plan
