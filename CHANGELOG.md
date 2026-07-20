@@ -142,6 +142,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Conversations: redesigned list with improved row layout and empty state.
 - Conversations: long chats now scroll inside the message pane instead of stretching and scrolling the whole page; the header and list stay put.
 - forge_feedback API now aggregates feedback across projects and supports filtering by review status.
+- Scheduled fleet now receives standing digest of unreviewed feedback, enabling regular review cycles without manual requests.
 
 ## [0.3.0] - 2026-06-11
 
