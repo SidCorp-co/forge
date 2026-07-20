@@ -183,11 +183,19 @@ Style: present-tense, one short sentence, no trailing period after the bold (`**
 ```bash
 git fetch origin
 git merge-base --is-ancestor $HEAD_SHA origin/<productionBranch> && echo LANDED
-# squash fallback if the ancestry check does not print LANDED:
-git log origin/<productionBranch> --grep 'ISS-XX' --oneline
+# squash fallback if the ancestry check does not print LANDED — this MUST confirm the issue's
+# CODE is present, never just a commit whose message mentions the ID. Step 7.5's own
+# `docs(changelog): ISS-XX <topic>` commit also matches a bare `--grep 'ISS-XX'`, so a plain
+# log-grep here would report LANDED off the changelog bump alone with zero code landed —
+# exactly the class of lie this gate exists to catch. Use the same diff-presence check as
+# Step 4 instead, scoped to the issue's own changed files:
+git diff $HEAD_SHA origin/<productionBranch> -- <issue's changed files>
+# empty output (no missing hunks) = the issue's net diff is fully present = LANDED.
+# If you still want the commit-message signal as a secondary corroboration, exclude the
+# changelog commit explicitly: git log origin/<productionBranch> --grep 'ISS-XX' --oneline | grep -v '^.* docs(changelog):'
 ```
 
-- **LANDED** (ancestry check prints `LANDED`, or the squash-commit fallback finds the issue's commit on `origin/<productionBranch>`) → continue to Step 9.
+- **LANDED** (ancestry check prints `LANDED`, or the diff-presence fallback shows no missing hunks for the issue's changed files) → continue to Step 9.
 - **NOT LANDED** → **HALT.** Do NOT run Step 9 (branch delete), do NOT post the Step 10 "Released" comment, do NOT close the issue, and do NOT let `merged_at` stamp. Post a comment stating the actual git state — `$HEAD_SHA` (the ISS-* branch tip) vs the current `origin/<productionBranch>` HEAD, and that the issue's diff is absent from the remote — then set status `reopen` (so forge-fix lands the diff) or `waiting` if it genuinely can't be released on its own. Stop here; do not proceed to Step 9 or Step 10.
 
 ### Step 9: Clean Up Feature Branch (only after Step 8 returns LANDED)
@@ -227,5 +235,6 @@ forge_issues → update → { documentId: "<id>", data: { status: "closed" } }
 2. Run Step 4 — confirm it no longer skips the merge on branch-name equality alone; with no ancestry/squash evidence, it falls through to Step 5 + 6 and actually lands the diff.
 3. If the land step is forced to fail (simulate a push that silently no-ops), confirm Step 8's gate reports NOT LANDED, and that no branch delete, no "Released" comment, no `closed` transition, and no `merged_at` stamp occur — the run halts at `reopen`/`waiting` with a comment naming the real `$HEAD_SHA` vs `origin/<productionBranch>` HEAD.
 4. Confirm the legitimate already-merged short-circuit (ancestry TRUE) still skips the merge in Step 4 and still reaches `closed` via Step 8 → 9 → 10 without a spurious halt.
+5. **Changelog-commit false-positive (review finding on this issue):** simulate Step 6's land silently failing/no-opping AFTER Step 7.5 has already committed+pushed `docs(changelog): ISS-XX <topic>` to `origin/<productionBranch>`. Confirm Step 8's ancestry check is false (squash tip never lands verbatim) and the diff-presence fallback (`git diff $HEAD_SHA origin/<productionBranch> -- <issue's changed files>`) correctly reports missing hunks → NOT LANDED, even though `origin/<productionBranch>` now contains a commit whose message matches `ISS-XX`. A bare `--grep 'ISS-XX'` fallback (the old wording) would have wrongly matched that changelog commit and reported LANDED with zero code landed — this is why Step 8's fallback is diff-presence, not commit-message grep.
 
 This project's own `forge-test`/`forge-release` overrides are unaffected — `forge-test` already does the real merge + verified push before this skill ever runs here, so Step 4's ancestry check finds `ALREADY_MERGED` and Step 8's gate finds `LANDED` on the first try. Other projects that hold their own project-scoped copy of this template (not this shared default) must be separately reseeded to inherit this fix — tracked as a follow-up, not part of this change.
