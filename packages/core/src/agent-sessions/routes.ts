@@ -427,7 +427,16 @@ agentSessionRoutes.get(
         ORDER BY ${agentSessionTurns.agentSessionId}, ${agentSessionTurns.turnIndex} DESC
       `)) as unknown as Array<{ session_id: string; content: unknown }>;
       for (const pr of previewRows) {
-        const preview = extractTurnPreview(pr.content);
+        // Row storage wraps the original message entry as `{ value: entry }`
+        // (see normalizeTurnContent in turns-helpers.ts); the entry itself is
+        // `{ role/type, content, ... }`, so the previewable text is one level
+        // further in at `value.content`, not `value` itself.
+        const entryValue = (pr.content as { value?: unknown } | null)?.value;
+        const entryContent =
+          entryValue && typeof entryValue === 'object'
+            ? (entryValue as { content?: unknown }).content
+            : undefined;
+        const preview = extractTurnPreview(entryContent);
         if (preview) previewById.set(pr.session_id, preview);
       }
     }
