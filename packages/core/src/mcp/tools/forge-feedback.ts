@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
@@ -9,11 +9,13 @@ import {
   feedbackSeverities,
   feedbackTargets,
   jobs,
+  projects,
 } from '../../db/schema.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
+  loadVisibleProjectIdsForPrincipal,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -22,11 +24,16 @@ const MAX_RESPONSE_CHARS = 38_000;
 
 const inputSchema = z
   .object({
-    action: z.enum(['submit', 'list', 'review']),
+    action: z.enum(['submit', 'list', 'review', 'get']),
     projectId: z.uuid().optional(),
+    // scope: 'project' (default, caller's resolved project) or 'org' (every
+    // project the principal can see) — applies to list and bulk review.
+    scope: z.enum(['project', 'org']).optional(),
     // review fields
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
+    // bulk-review field: stamp every report sharing this signalKey
+    signalKey: z.string().max(500).optional(),
     // submit fields
     kind: z.enum(feedbackKinds).optional(),
     severity: z.enum(feedbackSeverities).optional(),
@@ -41,12 +48,55 @@ const inputSchema = z
         kind: z.enum(feedbackKinds).optional(),
         target: z.enum(feedbackTargets).optional(),
         severity: z.enum(feedbackSeverities).optional(),
+        reviewed: z.boolean().optional(),
       })
       .strict()
       .optional(),
     limit: z.number().int().min(1).max(200).optional(),
   })
   .strict();
+
+type ReportRow = {
+  summary: string;
+  detail: string | null;
+  suggestion: string | null;
+  targetRef: string | null;
+};
+
+// Untrusted-framing shared by list and get: agent-submitted text must be
+// framed as DATA, not instructions.
+function frameReport<T extends ReportRow>(r: T): T {
+  return {
+    ...r,
+    summary: markUntrusted(r.summary, { source: 'feedback.summary' }),
+    detail: r.detail ? markUntrusted(r.detail, { source: 'feedback.detail' }) : null,
+    suggestion: r.suggestion
+      ? markUntrusted(r.suggestion, { source: 'feedback.suggestion' })
+      : null,
+    targetRef: r.targetRef ? markUntrusted(r.targetRef, { source: 'feedback.targetRef' }) : null,
+  };
+}
+
+const reportColumns = {
+  id: feedbackReports.id,
+  projectId: feedbackReports.projectId,
+  projectSlug: projects.slug,
+  issueId: feedbackReports.issueId,
+  runId: feedbackReports.runId,
+  jobId: feedbackReports.jobId,
+  stage: feedbackReports.stage,
+  kind: feedbackReports.kind,
+  severity: feedbackReports.severity,
+  target: feedbackReports.target,
+  targetRef: feedbackReports.targetRef,
+  summary: feedbackReports.summary,
+  detail: feedbackReports.detail,
+  suggestion: feedbackReports.suggestion,
+  signalKey: feedbackReports.signalKey,
+  sessionId: feedbackReports.sessionId,
+  reviewedAt: feedbackReports.reviewedAt,
+  createdAt: feedbackReports.createdAt,
+} as const;
 
 function buildSignalKey(target: string, targetRef: string | null | undefined, kind: string): string {
   const safeRef = targetRef ? stripFrameTokens(sanitizeUntrusted(targetRef)) : '-';
@@ -97,24 +147,28 @@ async function resolveActiveSessionId(deviceId: string): Promise<string | null> 
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_feedback',
   description:
-    'Submit or list agent friction reports. ' +
+    'Submit, list, get, or review agent friction reports. ' +
     'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +
     'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. ' +
     'Required fields: kind, target, summary. Optional: severity (default low), targetRef, detail, suggestion. ' +
     'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
-    'action=list: read the friction feed for a project. Supports filters.kind/target/severity, limit (default 25). ' +
-    'Large histories are tail-trimmed with truncated:true. Requires project membership. ' +
-    'action=review: stamp reviewedAt on a report once it has been triaged/addressed (reportId required; reviewed:false clears the stamp). Requires project membership.',
+    'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, org default 50). ' +
+    'scope="project" (default) reads the resolved project; scope="org" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
+    'Large histories are tail-trimmed with truncated:true. ' +
+    'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
+    'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
+    'reportId stamps a single report (unchanged single-project behaviour). ' +
+    'signalKey bulk-stamps every report sharing that signalKey — add scope="org" to bulk-stamp across every project you can see (scope="org" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope}.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const { principal, device } = ctx;
 
-    const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await assertPrincipalIsMember(principal, projectId);
-
     switch (input.action) {
       case 'submit': {
+        const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+        await assertPrincipalIsMember(principal, projectId);
+
         if (!input.kind) throw new Error('BAD_REQUEST: kind is required for submit');
         if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
         if (!input.summary) throw new Error('BAD_REQUEST: summary is required for submit');
@@ -182,47 +236,43 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'list': {
         const filters = input.filters ?? {};
-        const conditions = [eq(feedbackReports.projectId, projectId)];
-        if (filters.kind) conditions.push(eq(feedbackReports.kind, filters.kind));
-        if (filters.target) conditions.push(eq(feedbackReports.target, filters.target));
-        if (filters.severity) conditions.push(eq(feedbackReports.severity, filters.severity));
+        const kindCondition = filters.kind ? eq(feedbackReports.kind, filters.kind) : undefined;
+        const targetCondition = filters.target
+          ? eq(feedbackReports.target, filters.target)
+          : undefined;
+        const severityCondition = filters.severity
+          ? eq(feedbackReports.severity, filters.severity)
+          : undefined;
+        const reviewedCondition =
+          filters.reviewed === true
+            ? isNotNull(feedbackReports.reviewedAt)
+            : filters.reviewed === false
+              ? isNull(feedbackReports.reviewedAt)
+              : undefined;
+
+        let scopeCondition: ReturnType<typeof eq> | ReturnType<typeof inArray>;
+        let limit: number;
+        if (input.scope === 'org') {
+          const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
+          if (visibleIds.length === 0) return { reports: [] };
+          scopeCondition = inArray(feedbackReports.projectId, visibleIds);
+          limit = input.limit ?? 50;
+        } else {
+          const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+          await assertPrincipalIsMember(principal, projectId);
+          scopeCondition = eq(feedbackReports.projectId, projectId);
+          limit = input.limit ?? 25;
+        }
 
         const rows = await db
-          .select({
-            id: feedbackReports.id,
-            issueId: feedbackReports.issueId,
-            runId: feedbackReports.runId,
-            jobId: feedbackReports.jobId,
-            stage: feedbackReports.stage,
-            kind: feedbackReports.kind,
-            severity: feedbackReports.severity,
-            target: feedbackReports.target,
-            targetRef: feedbackReports.targetRef,
-            summary: feedbackReports.summary,
-            detail: feedbackReports.detail,
-            suggestion: feedbackReports.suggestion,
-            signalKey: feedbackReports.signalKey,
-            sessionId: feedbackReports.sessionId,
-            reviewedAt: feedbackReports.reviewedAt,
-            createdAt: feedbackReports.createdAt,
-          })
+          .select(reportColumns)
           .from(feedbackReports)
-          .where(and(...conditions))
+          .leftJoin(projects, eq(projects.id, feedbackReports.projectId))
+          .where(and(scopeCondition, kindCondition, targetCondition, severityCondition, reviewedCondition))
           .orderBy(desc(feedbackReports.createdAt))
-          .limit(input.limit ?? 25);
+          .limit(limit);
 
-        const serialized = rows.map((r) => ({
-          ...r,
-          // Untrusted: agent-submitted text must be framed as DATA, not instructions.
-          summary: markUntrusted(r.summary, { source: 'feedback.summary' }),
-          detail: r.detail ? markUntrusted(r.detail, { source: 'feedback.detail' }) : null,
-          suggestion: r.suggestion
-            ? markUntrusted(r.suggestion, { source: 'feedback.suggestion' })
-            : null,
-          targetRef: r.targetRef
-            ? markUntrusted(r.targetRef, { source: 'feedback.targetRef' })
-            : null,
-        }));
+        const serialized = rows.map((r) => frameReport(r));
 
         // Tail-trim oldest rows when the serialized response would exceed the cap.
         let kept = serialized;
@@ -241,12 +291,72 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         return result;
       }
 
+      case 'get': {
+        if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for get');
+
+        const [row] = await db
+          .select(reportColumns)
+          .from(feedbackReports)
+          .leftJoin(projects, eq(projects.id, feedbackReports.projectId))
+          .where(eq(feedbackReports.id, input.reportId))
+          .limit(1);
+
+        if (!row) throw new Error('NOT_FOUND: feedback report not found');
+
+        // No caller-supplied project here — membership is checked against the
+        // row's own project, resolved only after the row is known.
+        await assertPrincipalIsMember(principal, row.projectId);
+
+        return { report: frameReport(row) };
+      }
+
       case 'review': {
-        if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
         const reviewed = input.reviewed ?? true;
 
-        // Scope the update to the resolved project so a member of project A
-        // can never stamp a report belonging to project B by guessing its id.
+        if (input.signalKey) {
+          // Bulk stamp: every report carrying this signalKey, within scope.
+          if (input.scope === 'org') {
+            const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
+            if (visibleIds.length === 0) return { ok: true, count: 0, scope: 'org' };
+            const updated = await db
+              .update(feedbackReports)
+              .set({ reviewedAt: reviewed ? new Date() : null })
+              .where(
+                and(
+                  inArray(feedbackReports.projectId, visibleIds),
+                  eq(feedbackReports.signalKey, input.signalKey),
+                ),
+              )
+              .returning({ id: feedbackReports.id });
+            return { ok: true, count: updated.length, scope: 'org' };
+          }
+
+          const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+          await assertPrincipalIsMember(principal, projectId);
+          const updated = await db
+            .update(feedbackReports)
+            .set({ reviewedAt: reviewed ? new Date() : null })
+            .where(
+              and(
+                eq(feedbackReports.projectId, projectId),
+                eq(feedbackReports.signalKey, input.signalKey),
+              ),
+            )
+            .returning({ id: feedbackReports.id });
+          return { ok: true, count: updated.length, scope: 'project' };
+        }
+
+        if (input.scope === 'org') {
+          throw new Error('BAD_REQUEST: scope="org" requires signalKey for a bulk review');
+        }
+
+        // Single-report path — unchanged: scope the update to the resolved
+        // project so a member of project A can never stamp a report
+        // belonging to project B by guessing its id.
+        const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+        await assertPrincipalIsMember(principal, projectId);
+        if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
+
         const [updated] = await db
           .update(feedbackReports)
           .set({ reviewedAt: reviewed ? new Date() : null })

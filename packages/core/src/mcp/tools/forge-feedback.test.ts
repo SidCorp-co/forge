@@ -42,18 +42,32 @@ const dbSelect = vi.fn(() => ({ from: selectFrom }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// loadVisibleProjectIdsForPrincipal chain (org scope):
+// selectDistinct({id}).from(projects).leftJoin(...).leftJoin(...).where(...)
+const selectDistinctWhere = vi.fn();
+const selectDistinctLeftJoin2 = vi.fn(() => ({ where: selectDistinctWhere }));
+const selectDistinctLeftJoin = vi.fn(() => ({ leftJoin: selectDistinctLeftJoin2 }));
+const selectDistinctFrom = vi.fn(() => ({ leftJoin: selectDistinctLeftJoin }));
+const dbSelectDistinct = vi.fn(() => ({ from: selectDistinctFrom }));
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: dbSelect,
+    selectDistinct: dbSelectDistinct,
     insert: dbInsert,
     update: dbUpdate,
   },
 }));
 
+function mockVisibleProjects(ids: string[]) {
+  selectDistinctWhere.mockResolvedValueOnce(ids.map((id) => ({ id })));
+}
+
 const { forgeFeedbackTool } = await import('./forge-feedback.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_SLUG = 'forge-dev';
+const PROJECT_ID_2 = '22222222-2222-4222-8222-222222222222';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 const JOB_ID = '55555555-5555-4555-8555-555555555555';
@@ -104,6 +118,10 @@ beforeEach(() => {
   dbSelect.mockImplementation(() => ({ from: selectFrom }));
   dbInsert.mockImplementation(() => ({ values: insertValues }));
   dbUpdate.mockImplementation(() => ({ set: updateSet }));
+  selectDistinctLeftJoin2.mockImplementation(() => ({ where: selectDistinctWhere }));
+  selectDistinctLeftJoin.mockImplementation(() => ({ leftJoin: selectDistinctLeftJoin2 }));
+  selectDistinctFrom.mockImplementation(() => ({ leftJoin: selectDistinctLeftJoin }));
+  dbSelectDistinct.mockImplementation(() => ({ from: selectDistinctFrom }));
 });
 
 describe('forge_feedback submit', () => {
@@ -346,6 +364,133 @@ describe('forge_feedback list', () => {
     expect(result.truncated).toBe(true);
     expect(JSON.stringify(result).length).toBeLessThanOrEqual(38_500);
   });
+
+  it('scope=org unions every visible project and includes projectId/projectSlug', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
+    // No resolveEffectiveProjectId/assertPrincipalIsMember call for org scope —
+    // membership is fenced by loadVisibleProjectIdsForPrincipal itself.
+    selectLimit.mockResolvedValueOnce([
+      { ...baseReport, projectId: PROJECT_ID, projectSlug: PROJECT_SLUG },
+      { ...baseReport, id: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrr2', projectId: PROJECT_ID_2, projectSlug: 'other-project' },
+    ]);
+
+    const result = (await tool.handler({ action: 'list', scope: 'org' })) as {
+      reports: Array<{ projectId: string; projectSlug: string }>;
+    };
+
+    expect(result.reports).toHaveLength(2);
+    expect(result.reports.map((r) => r.projectId)).toEqual([PROJECT_ID, PROJECT_ID_2]);
+    expect(result.reports.map((r) => r.projectSlug)).toEqual([PROJECT_SLUG, 'other-project']);
+  });
+
+  it('scope=org with no visible projects returns an empty list', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    mockVisibleProjects([]);
+
+    const result = (await tool.handler({ action: 'list', scope: 'org' })) as { reports: unknown[] };
+    expect(result.reports).toEqual([]);
+    expect(selectLimit).not.toHaveBeenCalled();
+  });
+
+  it('filters.reviewed=true returns only reviewed reports', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ ...baseReport, reviewedAt: new Date('2026-02-01T00:00:00Z') }]);
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { reviewed: true },
+    })) as { reports: unknown[] };
+
+    expect(result.reports).toHaveLength(1);
+  });
+
+  it('filters.reviewed=false returns only unreviewed reports', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ ...baseReport, reviewedAt: null }]);
+
+    const result = (await tool.handler({
+      action: 'list',
+      filters: { reviewed: false },
+    })) as { reports: unknown[] };
+
+    expect(result.reports).toHaveLength(1);
+  });
+});
+
+describe('forge_feedback get', () => {
+  const REPORT_ID = '88888888-8888-4888-8888-888888888880';
+  const baseReport = {
+    id: REPORT_ID,
+    projectId: PROJECT_ID,
+    projectSlug: PROJECT_SLUG,
+    issueId: null,
+    runId: null,
+    jobId: null,
+    stage: null,
+    kind: 'friction',
+    severity: 'low',
+    target: 'skill',
+    targetRef: 'my-skill',
+    summary: 'Some friction text',
+    detail: null,
+    suggestion: null,
+    signalKey: 'self_report:skill:my-skill:friction',
+    sessionId: null,
+    reviewedAt: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+  };
+
+  it('returns a report the principal is a member of, untrusted-framed', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    // db.select(...).from(feedbackReports).leftJoin(projects,...).where(...).limit(1)
+    selectLimit.mockResolvedValueOnce([baseReport]);
+    // assertPrincipalIsMember(row.projectId) — effectiveProjectRole
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    const result = (await tool.handler({ action: 'get', reportId: REPORT_ID })) as {
+      report: Record<string, string>;
+    };
+
+    expect(result.report.id).toBe(REPORT_ID);
+    expect(result.report.summary).toContain('UNTRUSTED_DATA');
+  });
+
+  it('throws NOT_FOUND when the report does not exist', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    selectLimit.mockResolvedValueOnce([]);
+
+    await expect(
+      tool.handler({ action: 'get', reportId: REPORT_ID }),
+    ).rejects.toThrow(/NOT_FOUND/);
+  });
+
+  it('throws BAD_REQUEST when reportId is missing', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    await expect(tool.handler({ action: 'get' })).rejects.toThrow(/BAD_REQUEST/);
+  });
+
+  it('checks membership against the row\'s own project, not the caller context', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ ...baseReport, projectId: PROJECT_ID_2 }]);
+    // effectiveProjectRole for PROJECT_ID_2 finds no membership row
+    selectLimit.mockResolvedValueOnce([]);
+
+    await expect(
+      tool.handler({ action: 'get', reportId: REPORT_ID }),
+    ).rejects.toThrow(/FORBIDDEN/);
+  });
 });
 
 describe('forge_feedback review', () => {
@@ -405,5 +550,58 @@ describe('forge_feedback review', () => {
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
     await expect(tool.handler({ action: 'review' })).rejects.toThrow(/BAD_REQUEST/);
+  });
+
+  it('signalKey bulk-stamps every matching report in project scope and returns count', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
+
+    const result = await tool.handler({
+      action: 'review',
+      signalKey: 'self_report:skill:my-skill:friction',
+    });
+
+    expect(result).toEqual({ ok: true, count: 3, scope: 'project' });
+  });
+
+  it('signalKey + scope=org bulk-stamps only across visible projects', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
+    updateReturning.mockResolvedValueOnce([{ id: 'r1' }, { id: 'r2' }]);
+
+    const result = await tool.handler({
+      action: 'review',
+      scope: 'org',
+      signalKey: 'self_report:skill:my-skill:friction',
+    });
+
+    expect(result).toEqual({ ok: true, count: 2, scope: 'org' });
+  });
+
+  it('signalKey + scope=org with no visible projects returns count:0', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    mockVisibleProjects([]);
+
+    const result = await tool.handler({
+      action: 'review',
+      scope: 'org',
+      signalKey: 'self_report:skill:my-skill:friction',
+    });
+
+    expect(result).toEqual({ ok: true, count: 0, scope: 'org' });
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('scope=org without signalKey throws BAD_REQUEST', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    await expect(
+      tool.handler({ action: 'review', scope: 'org', reportId: REPORT_ID }),
+    ).rejects.toThrow(/BAD_REQUEST/);
   });
 });
