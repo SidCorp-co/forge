@@ -135,6 +135,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Chat module documentation now covers Ask Agent device chat flows, role-aware lenses, and RocketChat inbound integration setup.
 - Web-v2 issue list, issue detail, and chat composer are now fully responsive and work correctly on mobile viewports.
 - Fixed a rare issue where the issue list could briefly show outdated status for a few issues.
+- Conversations: redesigned list with improved row layout and empty state.
 
 ## [0.3.0] - 2026-06-11
 
