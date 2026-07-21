@@ -71,6 +71,32 @@ function clip(text: string): string {
 }
 
 /**
+ * Tool calls the runner actually made, flattened across every assistant
+ * message in the transcript (`agent-stream-parser.ts`'s `ToolCall` shape:
+ * `{id, name, input}`). One-shot dispatch (ISS-727) means the whole
+ * transcript IS the one turn `screenStakeholderReply`'s claimed-creation
+ * check is judging, so there is no "final turn" to isolate — unlike the
+ * escalation bridge, which passes `[]` because its synthesis reply comes
+ * from a separate Bao turn with no tool calls of its own.
+ */
+function extractToolCalls(messages: unknown): Array<{ name: string; arguments: string }> {
+  if (!Array.isArray(messages)) return [];
+  const calls: Array<{ name: string; arguments: string }> = [];
+  for (const entry of messages) {
+    if (!entry || typeof entry !== 'object') continue;
+    const toolCalls = (entry as { toolCalls?: unknown }).toolCalls;
+    if (!Array.isArray(toolCalls)) continue;
+    for (const tc of toolCalls) {
+      if (!tc || typeof tc !== 'object') continue;
+      const t = tc as { name?: unknown; input?: unknown };
+      if (typeof t.name !== 'string') continue;
+      calls.push({ name: t.name, arguments: JSON.stringify(t.input ?? {}) });
+    }
+  }
+  return calls;
+}
+
+/**
  * Deliver an agent-chat session's final answer to its originating
  * RocketChat room/thread — exactly once. No-op when `session` is not an
  * agent-chat session, or the CAS stamp shows it was already delivered.
@@ -114,7 +140,11 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   if (!finalText) {
     reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
   } else {
-    const verdict = await screenStakeholderReply(session.projectId, finalText, []);
+    const verdict = await screenStakeholderReply(
+      session.projectId,
+      finalText,
+      extractToolCalls(session.messages),
+    );
     reply = verdict.ok ? finalText : AGENT_CHAT_FALLBACK_REPLY(meta.botName);
   }
 

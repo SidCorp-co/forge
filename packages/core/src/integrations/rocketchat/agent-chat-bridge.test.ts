@@ -126,6 +126,30 @@ describe('deliverAgentChatReplyOnce', () => {
     );
   });
 
+  it('threads the transcript tool calls into the output guard (ISS-727 review fix)', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+    extractFinalAssistantText.mockReturnValue('Created ISS-42 for you.');
+    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+
+    await deliverAgentChatReplyOnce(
+      makeSession({
+        messages: [
+          { type: 'user', content: 'please create an issue' },
+          {
+            type: 'assistant',
+            content: 'Created ISS-42 for you.',
+            toolCalls: [{ id: 't1', name: 'forge_issues', input: { action: 'create' } }],
+          },
+        ],
+      }),
+    );
+
+    expect(screenStakeholderReply).toHaveBeenCalledWith('proj-1', 'Created ISS-42 for you.', [
+      { name: 'forge_issues', arguments: JSON.stringify({ action: 'create' }) },
+    ]);
+  });
+
   it('falls back when the output guard rejects the reply', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
