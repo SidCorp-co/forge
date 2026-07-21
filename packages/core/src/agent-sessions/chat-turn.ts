@@ -14,7 +14,9 @@ import { openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type SessionAttachmentRef, listSessionAttachmentsByIds } from './attachment-service.js';
+import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
+import { stripSystemNoise } from './content-filter.js';
 import {
   type PageContext,
   formatPageContextLine,
@@ -360,14 +362,18 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   updates.metadata = nextMeta;
 
   // Auto-title a brand-new, still-untitled session from its first user message
-  // (ISS-462) so the history switcher can tell conversations apart instead of
-  // showing a wall of "Chat". Strict guard — FIRST turn only AND title still a
-  // placeholder — so a follow-up turn or a user-renamed session is never
-  // overwritten. Uses the RAW message (not `decoratedMessage`) to keep the
-  // `[Context: …]` header out of the title.
-  if (prevMessages.length === 0 && isPlaceholderTitle(session.title)) {
-    const derived = deriveChatTitle(args.message);
-    if (derived) updates.title = derived;
+  // (ISS-462, upgraded to AI titling by ISS-725) so the history switcher can
+  // tell conversations apart instead of showing a wall of "Chat". Strict guard
+  // — FIRST turn only AND title still a placeholder — so a follow-up turn or
+  // a user-renamed session is never overwritten. Uses the RAW message (not
+  // `decoratedMessage`) to keep the `[Context: …]` header out of the title,
+  // and filters system/error strings (e.g. a `[RESULT_ERROR] …` first
+  // message) so they never become the title.
+  const shouldAutoTitle = prevMessages.length === 0 && isPlaceholderTitle(session.title);
+  let fallbackTitle: string | null = null;
+  if (shouldAutoTitle) {
+    fallbackTitle = deriveChatTitle(stripSystemNoise(args.message)) || null;
+    if (fallbackTitle) updates.title = fallbackTitle;
   }
 
   const { updated, sync } = await db.transaction(async (tx) => {
@@ -383,6 +389,13 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     return { updated: row, sync: s };
   });
   for (const t of sync.appended) broadcastTurnAppended(updated, t);
+
+  // AI title upgrade — fire-and-forget, OUTSIDE the turn transaction, never
+  // awaited (must not block or slow the chat response). Covers both LOCAL
+  // (desktop) and REMOTE turns since it runs before the isLocal branch.
+  if (shouldAutoTitle && fallbackTitle) {
+    void applyAutoTitleAsync({ sessionId: updated.id, userMessage: args.message, fallbackTitle });
+  }
 
   if (isLocal) {
     // Desktop runs Claude locally — just mirror the user turn to web viewers.
