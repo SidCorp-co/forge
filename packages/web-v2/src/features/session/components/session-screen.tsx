@@ -47,6 +47,7 @@ import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
 import { Composer, ReadOnlyComposerNote } from "./composer";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
+import { useStickToBottom } from "./use-stick-to-bottom";
 
 interface SessionScreenProps {
   sessionId: string;
@@ -174,6 +175,16 @@ export function SessionScreen({
   const elapsed = useElapsed(startMs, live);
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
+
+  // Auto-scroll the thread to the newest message (ISS-728) — this pane and the
+  // mobile SlideOver reply panel both render this screen (embedded mode), so
+  // one hook wiring covers both surfaces.
+  const { scrollRef, bottomRef, onScroll } = useStickToBottom({
+    conversationKey: sessionId,
+    ready: items.length > 0,
+    itemCount: items.length,
+    live,
+  });
 
   const goToSession = (id: string) =>
     router.push(`/projects/${projectSlug ?? ""}/agents/${id}`);
@@ -442,7 +453,7 @@ export function SessionScreen({
       {/* Body */}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex-1 overflow-y-auto">
+          <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 xl:max-w-5xl">
               {turnsQ.isLoading ? (
                 <ProjectLoader label="loading turns…" size={110} />
@@ -478,6 +489,7 @@ export function SessionScreen({
                   <AgentWorking label="Agent is working…" elapsed={elapsed} />
                 </div>
               )}
+              <div ref={bottomRef} />
             </div>
           </div>
           {canWrite ? (
