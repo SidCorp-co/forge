@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Opening an existing conversation now jumps straight to the latest message instead of the oldest — no more scrolling to find where you left off.
 - Cleaned up the conversation pane header (Rerun and the pane collapse toggle now live in the ⋯ menu) and unified the message box style across new and existing conversations.
 - Agents can now download attached files (screenshots, PDFs) using their automation credentials, and image design-reference uploads (SVG) are no longer rejected.
 - Conversations feels roomier: denser list rows with one clear status per conversation, the side nav tucks away while you're focused on a chat, temporary menus now pop up as overlays instead of taking permanent space, and the message composer is more compact with model/skills/attach tucked inline.
