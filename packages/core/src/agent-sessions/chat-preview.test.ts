@@ -31,6 +31,10 @@ describe('extractTurnPreview', () => {
     );
   });
 
+  it('returns null for a [RESULT_ERROR] runner-internal blob', () => {
+    expect(extractTurnPreview("[RESULT_ERROR] success: You've hit a rate limit")).toBeNull();
+  });
+
   it('truncates to 140 chars with an ellipsis', () => {
     const long = 'x'.repeat(200);
     const result = extractTurnPreview(long);

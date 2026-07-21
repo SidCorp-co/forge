@@ -1,11 +1,6 @@
-const PREVIEW_MAX_CHARS = 140;
+import { stripSystemNoise } from './content-filter.js';
 
-/**
- * A user turn's raw content is prefixed with a `[Context: …]` line
- * (`formatPageContextLine` in `page-context.ts`) before being sent to the
- * agent — strip it so the list preview reads as what the human actually said.
- */
-const CONTEXT_LINE_RE = /^\[Context:[^\]]*\]\s*/;
+const PREVIEW_MAX_CHARS = 140;
 
 function extractTextContent(content: unknown): string | null {
   if (typeof content === 'string') return content;
@@ -32,10 +27,13 @@ export function extractTurnPreview(content: unknown): string | null {
   const text = extractTextContent(content);
   if (!text) return null;
 
-  const collapsed = text.replace(/\s+/g, ' ').trim().replace(CONTEXT_LINE_RE, '').trim();
+  const collapsed = text.replace(/\s+/g, ' ').trim();
   if (!collapsed) return null;
 
-  return collapsed.length > PREVIEW_MAX_CHARS
-    ? `${collapsed.slice(0, PREVIEW_MAX_CHARS - 1)}…`
-    : collapsed;
+  const cleaned = stripSystemNoise(collapsed);
+  if (!cleaned) return null;
+
+  return cleaned.length > PREVIEW_MAX_CHARS
+    ? `${cleaned.slice(0, PREVIEW_MAX_CHARS - 1)}…`
+    : cleaned;
 }

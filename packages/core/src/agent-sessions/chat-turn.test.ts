@@ -65,6 +65,10 @@ vi.mock('./broadcast.js', () => ({
   broadcastSession: vi.fn(),
   broadcastTurnAppended: vi.fn(),
 }));
+const applyAutoTitleAsyncSpy = vi.fn(async () => undefined);
+vi.mock('./auto-title.js', () => ({
+  applyAutoTitleAsync: (...args: unknown[]) => applyAutoTitleAsyncSpy(...args),
+}));
 const syncTurnsSpy = vi.fn(async () => ({ appended: [], truncatedFromTurnIndex: null }));
 vi.mock('./turns-helpers.js', () => ({
   syncTurnsWithMessages: (...args: unknown[]) => syncTurnsSpy(...(args as [])),
@@ -368,5 +372,50 @@ describe('dispatchChatTurn', () => {
     });
     const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
     expect(updates.title).toBeUndefined();
+  });
+
+  it('fires the AI title upgrade fire-and-forget after a first-turn dispatch (ISS-725)', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession({ title: 'Chat' }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'What files are in this repo?',
+    });
+    expect(applyAutoTitleAsyncSpy).toHaveBeenCalledWith({
+      sessionId: 'sess-1',
+      userMessage: 'What files are in this repo?',
+      fallbackTitle: 'What files are in this repo?',
+    });
+  });
+
+  it('does NOT fire the AI title upgrade on a follow-up turn', async () => {
+    updateReturning.mockResolvedValueOnce([
+      baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
+    ]);
+    await dispatchChatTurn({
+      session: baseSession({
+        title: 'Chat',
+        claudeSessionId: 'c-1',
+        messages: [{ role: 'user', content: 'first' }],
+      }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'second message',
+    });
+    expect(applyAutoTitleAsyncSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire the AI title upgrade when the fallback title derives empty (system-noise first message)', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession({ title: 'Chat' }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: "[RESULT_ERROR] success: You've hit a rate limit",
+    });
+    const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
+    expect(updates.title).toBeUndefined();
+    expect(applyAutoTitleAsyncSpy).not.toHaveBeenCalled();
   });
 });
