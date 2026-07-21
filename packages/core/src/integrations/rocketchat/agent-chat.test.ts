@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Unit tests for the ISS-727 `agent`-mode dispatcher — dedup, device
 // resolution, and the dispatch-failure safety net. Mirrors
@@ -26,9 +26,18 @@ vi.mock('../../lifecycle/transition.js', () => ({
   applyKernelTransition: (...args: unknown[]) => applyKernelTransition(...args),
 }));
 
-const { buildAgentChatPrompt, hasInFlightAgentChat, startAgentChat } = await import(
-  './agent-chat.js'
-);
+const postRoomMessage = vi.fn();
+vi.mock('./rest-client.js', () => ({
+  postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
+}));
+
+const resolveRoomPostAuth = vi.fn();
+vi.mock('./room-delivery.js', () => ({
+  resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
+}));
+
+const { AGENT_CHAT_ACK, AGENT_CHAT_ACK_DELAY_MS, buildAgentChatPrompt, hasInFlightAgentChat, scheduleDelayedAck, startAgentChat } =
+  await import('./agent-chat.js');
 
 const BASE_ARGS = {
   projectId: 'proj-1',
@@ -162,5 +171,94 @@ describe('buildAgentChatPrompt', () => {
   it('omits the conversation-context section when none is seeded', () => {
     const prompt = buildAgentChatPrompt({ persona: 'P', message: 'hi' });
     expect(prompt).not.toContain('Conversation context');
+  });
+});
+
+describe('scheduleDelayedAck', () => {
+  const ACK_ARGS = {
+    sessionId: 'session-1',
+    connectionId: 'conn-1',
+    rid: 'room-1',
+    tmid: null as string | null,
+    botName: 'Babo',
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    selectLimit.mockReset();
+    postRoomMessage.mockReset();
+    resolveRoomPostAuth.mockReset();
+    resolveRoomPostAuth.mockResolvedValue({
+      serverUrl: 'https://rc.example',
+      authToken: 'tok',
+      userId: 'u1',
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not post before the delay elapses', async () => {
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
+    scheduleDelayedAck(ACK_ARGS);
+    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS - 1000);
+    expect(postRoomMessage).not.toHaveBeenCalled();
+  });
+
+  it('posts the interim ack when the turn is still running and undelivered after the delay', async () => {
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
+    scheduleDelayedAck(ACK_ARGS);
+    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
+    expect(postRoomMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: 'https://rc.example' }),
+      'room-1',
+      AGENT_CHAT_ACK('Babo'),
+      undefined,
+    );
+  });
+
+  it('posts the interim ack to the thread when a tmid is set', async () => {
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
+    scheduleDelayedAck({ ...ACK_ARGS, tmid: 'thread-1' });
+    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
+    expect(postRoomMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      'room-1',
+      AGENT_CHAT_ACK('Babo'),
+      'thread-1',
+    );
+  });
+
+  it('does NOT post when the turn already finished (fast case — answer landed first)', async () => {
+    selectLimit.mockResolvedValue([{ status: 'completed', metadata: { agentChat: { deliveredAt: null } } }]);
+    scheduleDelayedAck(ACK_ARGS);
+    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
+    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(resolveRoomPostAuth).not.toHaveBeenCalled();
+  });
+
+  it('does NOT post when the answer was already delivered (deliveredAt stamped)', async () => {
+    selectLimit.mockResolvedValue([
+      { status: 'running', metadata: { agentChat: { deliveredAt: '2026-07-21T07:00:00.000Z' } } },
+    ]);
+    scheduleDelayedAck(ACK_ARGS);
+    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
+    expect(postRoomMessage).not.toHaveBeenCalled();
+  });
+
+  it('does NOT post when the session row is gone', async () => {
+    selectLimit.mockResolvedValue([]);
+    scheduleDelayedAck(ACK_ARGS);
+    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
+    expect(postRoomMessage).not.toHaveBeenCalled();
+  });
+
+  it('swallows a missing-connection resolve (no throw, no post)', async () => {
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
+    resolveRoomPostAuth.mockResolvedValue(null);
+    scheduleDelayedAck(ACK_ARGS);
+    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
+    expect(postRoomMessage).not.toHaveBeenCalled();
   });
 });

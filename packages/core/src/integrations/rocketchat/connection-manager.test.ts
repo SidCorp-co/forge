@@ -230,7 +230,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
   });
 
-  it("mode='agent' routes to startAgentChat and skips the fast turn entirely", async () => {
+  it("mode='agent' routes to startAgentChat, skips the fast turn, and sends NO synchronous ack", async () => {
     selectLimit.mockResolvedValue([
       { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
     ]);
@@ -251,7 +251,10 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
       }),
     );
     expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_ACK:Babo', undefined);
+    // No immediate ack — a fast turn's answer arrives on its own via the
+    // completion bridge; only a slow turn gets the delayed ack, scheduled
+    // inside startAgentChat, not sent here.
+    expect(ac.client.sendMessage).not.toHaveBeenCalled();
   });
 
   it("mode='agent' replies with the dedup message on an in-flight agent-chat turn", async () => {

@@ -26,7 +26,6 @@ import { logger } from '../../logger.js';
 import { Sentry } from '../../observability/sentry.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
 import {
-  AGENT_CHAT_ACK,
   AGENT_CHAT_DEDUP_REPLY,
   AGENT_CHAT_NO_DEVICE_REPLY,
   startAgentChat,
@@ -578,7 +577,13 @@ class RocketChatConnectionManager {
               persona,
               conversationContext,
             });
-            if (outcome.started) return AGENT_CHAT_ACK(ac.botName);
+            // No synchronous ack: a fast turn's real answer (delivered by
+            // agent-chat-bridge when the session goes terminal) should arrive
+            // on its own. Only a genuinely slow turn gets an interim ack, and
+            // startAgentChat schedules that itself (scheduleDelayedAck,
+            // AGENT_CHAT_ACK_DELAY_MS). Returning '' skips this turn's own DDP
+            // send, same convention as the dispatch-failed case below.
+            if (outcome.started) return '';
             if (outcome.reason === 'deduped') return AGENT_CHAT_DEDUP_REPLY(ac.botName);
             if (outcome.reason === 'no-device') return AGENT_CHAT_NO_DEVICE_REPLY(ac.botName);
             // 'dispatch-failed': the session was created then immediately

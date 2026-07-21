@@ -26,8 +26,19 @@ import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
+import { postRoomMessage } from './rest-client.js';
+import { resolveRoomPostAuth } from './room-delivery.js';
 
 const AGENT_CHAT_TITLE_MAX = 80;
+
+/**
+ * How long a runner-hosted turn may run before Babo posts an interim
+ * "still working" ack to the room. Under this, the runner's real answer
+ * (delivered by `agent-chat-bridge.ts` the moment the session goes terminal)
+ * arrives on its own with NO ack in front of it — the common fast case.
+ * Only a genuinely slow turn ever shows the ack.
+ */
+export const AGENT_CHAT_ACK_DELAY_MS = 2 * 60 * 1000;
 
 export const AGENT_CHAT_ACK = (botName: string): string =>
   `${botName} đang xử lý câu hỏi này qua trợ lý đầy đủ, lát nữa quay lại trả lời bạn nhé.`; // i18n-allow: user-facing channel reply
@@ -191,5 +202,74 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
     return { started: false, reason: 'dispatch-failed' };
   }
 
+  scheduleDelayedAck({
+    sessionId: session.id,
+    connectionId: args.connectionId,
+    rid: args.rid,
+    tmid: args.tmid ?? null,
+    botName: args.botName,
+  });
+
   return { started: true, sessionId: session.id };
+}
+
+/**
+ * Post the interim "still working" ack ONLY if the turn is genuinely slow.
+ * Fires once, `AGENT_CHAT_ACK_DELAY_MS` after dispatch; at fire time it
+ * re-reads the session and posts the ack only when it is still `running`
+ * AND the completion bridge has not already stamped `deliveredAt` (i.e. the
+ * real answer hasn't landed). A fast turn therefore shows no ack at all —
+ * the bridge delivers the answer before this timer fires and this no-ops.
+ *
+ * Best-effort by design: the timer is `unref()`-ed so it never keeps the
+ * process alive, and a core restart inside the window simply drops the ack
+ * (the answer is still delivered by the bridge on the terminal transition,
+ * and a hung session is still reaped by the loop monitor). Errors are
+ * swallowed — an undelivered ack must never surface as a failure.
+ */
+export function scheduleDelayedAck(args: {
+  sessionId: string;
+  connectionId: string;
+  rid: string;
+  tmid: string | null;
+  botName: string;
+}): void {
+  const timer = setTimeout(() => {
+    void postDelayedAck(args);
+  }, AGENT_CHAT_ACK_DELAY_MS);
+  // Don't let a pending ack timer keep the Node process alive on shutdown.
+  timer.unref?.();
+}
+
+async function postDelayedAck(args: {
+  sessionId: string;
+  connectionId: string;
+  rid: string;
+  tmid: string | null;
+  botName: string;
+}): Promise<void> {
+  try {
+    const rows = await db
+      .select({ status: agentSessions.status, metadata: agentSessions.metadata })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, args.sessionId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return;
+    // Turn already finished (any terminal status) — the bridge owns the reply.
+    if (row.status !== 'running') return;
+    // Answer already delivered by the bridge — no interim ack needed.
+    const deliveredAt = (row.metadata as { agentChat?: { deliveredAt?: string | null } } | null)
+      ?.agentChat?.deliveredAt;
+    if (deliveredAt) return;
+
+    const auth = await resolveRoomPostAuth(args.connectionId, { sessionId: args.sessionId });
+    if (!auth) return;
+    await postRoomMessage(auth, args.rid, AGENT_CHAT_ACK(args.botName), args.tmid ?? undefined);
+  } catch (err) {
+    logger.error(
+      { err, sessionId: args.sessionId, rid: args.rid },
+      'rocketchat.agent-chat: delayed ack post failed',
+    );
+  }
 }
