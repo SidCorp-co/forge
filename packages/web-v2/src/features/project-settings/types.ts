@@ -61,6 +61,9 @@ export interface ProjectUpdateInput {
 	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
 	 *  `agentConfig.personaStyle`. null/'' clears it. */
 	personaStyle?: string | null;
+	/** ISS-727 — RC bot answer-engine knob; scoped server-side write into
+	 *  `agentConfig.rocketChatAnswerMode`. null clears it (reverts to `fast`). */
+	rocketChatAnswerMode?: "fast" | "agent" | null;
 }
 
 /** One `previewDeploy.testingUrls` row — mirrors `testingUrlSchema` in core. */

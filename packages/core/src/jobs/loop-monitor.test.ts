@@ -174,6 +174,11 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     // no-client pass below can never claim it) still gets reaped instead of
     // running forever.
     expect(pass2).toMatch(/->\s*'escalation'\s+IS\s+NOT\s+NULL/);
+    // ISS-727 review fix: the heartbeat pass ALSO matches an agent-chat
+    // session (metadata.agentChat set, no metadata.type) for the same reason
+    // escalation needed the clause above — an attached-then-hung runner
+    // would otherwise never reap, wedging the room's dedup forever.
+    expect(pass2).toMatch(/->\s*'agentChat'\s+IS\s+NOT\s+NULL/);
     // ISS-584 (C): the no-client pass carries the fast-ack branch — acked=true
     // session whose claudeSessionId never landed within the short grace.
     expect(pass3).toMatch(/->>\s*'acked'\s*=\s*'true'/);
@@ -235,6 +240,30 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     );
     expect(emitWedgeMock).toHaveBeenCalledWith(
       expect.objectContaining({ hop: 'heartbeat', entity: 'session', entityId: 'sess-esc' }),
+    );
+  });
+
+  it('ISS-727: reaps an attached-then-hung agent-chat session via the heartbeat pass (no metadata.type, claudeSessionId already set)', async () => {
+    updateReturning
+      .mockResolvedValueOnce([]) // queue pass
+      .mockResolvedValueOnce([
+        { id: 'sess-chat', projectId: 'p1', deviceId: 'd1', pipelineRunId: 'run-chat' },
+      ]) // heartbeat pass reaps the agent-chat session
+      .mockResolvedValueOnce([]); // no-client pass never sees it (claudeSessionId set)
+    selectLimit.mockResolvedValueOnce([{ issueId: null }]);
+
+    const result = await reapZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
+
+    expect(result).toEqual({ queueTimedOut: 0, heartbeatTimedOut: 1, noClientAcked: 0 });
+    expect(broadcastSessionEventMock).toHaveBeenCalledWith(
+      'sess-chat',
+      'p1',
+      'd1',
+      'agent-session.status',
+      expect.objectContaining({ status: 'failed', failureReason: 'heartbeat_timeout' }),
+    );
+    expect(emitWedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ hop: 'heartbeat', entity: 'session', entityId: 'sess-chat' }),
     );
   });
 });

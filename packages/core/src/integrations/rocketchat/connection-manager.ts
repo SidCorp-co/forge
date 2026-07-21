@@ -25,6 +25,13 @@ import { integrationConnections, organizations, projects } from '../../db/schema
 import { logger } from '../../logger.js';
 import { Sentry } from '../../observability/sentry.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
+import {
+  AGENT_CHAT_ACK,
+  AGENT_CHAT_DEDUP_REPLY,
+  AGENT_CHAT_NO_DEVICE_REPLY,
+  startAgentChat,
+} from './agent-chat.js';
+import { readRocketChatAnswerMode } from './answer-mode.js';
 import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import {
@@ -541,6 +548,48 @@ class RocketChatConnectionManager {
               .where(eq(projects.id, route.projectId))
               .limit(1),
           ]);
+          const persona = rocketChatPersona(route.projectName, m.username, {
+            projectSlug: route.projectSlug,
+            webBaseUrl,
+            botName: ac.botName,
+          });
+
+          // ISS-727 — per-project answer-mode switch: `agent` routes the
+          // ENTIRE turn through a runner-hosted Claude session (Ask Agent
+          // path) instead of the fast provider-chat model below. No MCP
+          // toolset build, no fast turn — the dispatched session's reply
+          // lands later via the completion bridge, so an ack (or dedup/
+          // no-device reply) is all this turn sends synchronously.
+          if (readRocketChatAnswerMode(projectRow[0]?.agentConfig) === 'agent') {
+            phase = 'agent-chat';
+            const outcome = await startAgentChat({
+              projectId: route.projectId,
+              project: {
+                id: route.projectId,
+                slug: route.projectSlug,
+                repoPath: projectRow[0]?.repoPath ?? null,
+              },
+              connectionId,
+              rid: m.rid,
+              tmid: m.tmid,
+              botName: ac.botName,
+              message: m.text,
+              askedByUsername: m.username,
+              persona,
+              conversationContext,
+            });
+            if (outcome.started) return AGENT_CHAT_ACK(ac.botName);
+            if (outcome.reason === 'deduped') return AGENT_CHAT_DEDUP_REPLY(ac.botName);
+            if (outcome.reason === 'no-device') return AGENT_CHAT_NO_DEVICE_REPLY(ac.botName);
+            // 'dispatch-failed': the session was created then immediately
+            // marked failed — the completion bridge (wired at every
+            // session-terminal writer) already delivers the one honest
+            // fallback asynchronously via REST. An empty reply here skips
+            // this turn's own DDP send, same convention as the escalation
+            // dispatch-failed case below.
+            return '';
+          }
+
           phase = 'mcp';
           external = await buildExternalMcpToolsets(projectRow[0]?.agentConfig);
           const tools = mergeToolsets(
@@ -555,11 +604,6 @@ class RocketChatConnectionManager {
             buildEscalationToolset(),
             ...external.toolsets,
           );
-          const persona = rocketChatPersona(route.projectName, m.username, {
-            projectSlug: route.projectSlug,
-            webBaseUrl,
-            botName: ac.botName,
-          });
           phase = 'turn';
           let result = await runExternalChatTurn({
             projectId: route.projectId,

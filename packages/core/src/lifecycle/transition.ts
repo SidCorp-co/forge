@@ -186,6 +186,7 @@ export async function applyKernelTransition(
     if (args.entity === 'session') {
       for (const row of updated as SessionRow[]) {
         fireEscalationBridge(row);
+        fireAgentChatBridge(row);
       }
     }
   }
@@ -208,5 +209,21 @@ function fireEscalationBridge(row: SessionRow): void {
     .then((mod) => mod.deliverEscalationReplyOnce(row))
     .catch((err) => {
       logger.error({ err, sessionId: row.id }, 'lifecycle.transition: escalation bridge failed');
+    });
+}
+
+/**
+ * ISS-727 — the `agent`-mode counterpart to {@link fireEscalationBridge}.
+ * Same chokepoint, distinct metadata marker (`metadata.agentChat`), distinct
+ * bridge module — see that function's JSDoc for why this chokepoint is the
+ * only reliable catch-all for non-happy-path terminal writes.
+ */
+function fireAgentChatBridge(row: SessionRow): void {
+  const metadata = row.metadata as { agentChat?: unknown } | null;
+  if (!metadata?.agentChat) return;
+  void import('../integrations/rocketchat/agent-chat-bridge.js')
+    .then((mod) => mod.deliverAgentChatReplyOnce(row))
+    .catch((err) => {
+      logger.error({ err, sessionId: row.id }, 'lifecycle.transition: agent-chat bridge failed');
     });
 }

@@ -78,13 +78,16 @@ async function verifyReplyClaims(
 
 /**
  * Compose the issue-claim guard with the product-only lint and the
- * empty-promise guard into one verdict. Used by BOTH the synchronous
- * mention-reply path (`connection-manager.ts`) and the async escalation
- * completion bridge (`escalation-bridge.ts`) so neither can drift from the
- * other's guarantees. `toolCalls` is `[]` for the bridge (a runner-hosted
- * session's tool calls aren't tracked as OpenAI toolCalls) — the
- * claimed-creation-but-no-create-call check is then skipped, but the pure
- * product-lint + empty-promise + issue-id-existence checks still apply.
+ * empty-promise guard into one verdict. Used by the synchronous
+ * mention-reply path (`connection-manager.ts`) and both async completion
+ * bridges (`escalation-bridge.ts`, `agent-chat-bridge.ts`) so none can drift
+ * from the others' guarantees. `toolCalls` is `[]` for the escalation bridge
+ * (its reply comes from a separate Bao synthesis turn with no tool calls of
+ * its own) — the claimed-creation-but-no-create-call check is then skipped,
+ * but the pure product-lint + empty-promise + issue-id-existence checks
+ * still apply. The agent-chat bridge instead threads in the runner
+ * session's own tool calls (`agent-chat-bridge.ts`'s `extractToolCalls`),
+ * so that check applies there too.
  */
 export async function screenStakeholderReply(
   projectId: string,
