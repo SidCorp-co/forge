@@ -425,7 +425,6 @@ export function ChatScreen({
         <Composer
           onSend={handleSend}
           busy={busy}
-          placeholder="Message the agent…"
           allowAttachments
           sticky={false}
         />

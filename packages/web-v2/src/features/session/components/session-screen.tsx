@@ -13,6 +13,7 @@ import {
   SlideOver,
   StatusChip,
   useElapsed,
+  useMediaQuery,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import {
@@ -100,6 +101,9 @@ export function SessionScreen({
   const railCollapsed = embedded ? embeddedRailCollapsed : persistedRailCollapsed;
   const setRailCollapsed = embedded ? setEmbeddedRailCollapsed : setPersistedRailCollapsed;
   const goBack = onClose ?? (projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined);
+  // Drives the paneChrome ⋯ menu's single context-toggle item: inline rail
+  // collapse at lg+, mobile SlideOver below it.
+  const isLgUp = useMediaQuery("(min-width: 1024px)");
 
   const session = sessionQ.data;
   const issueId = session?.metadata?.issueId;
@@ -223,9 +227,10 @@ export function SessionScreen({
   }
 
   // Overflow menu items shared by both header layouts — the full header
-  // exposes Fork/Open runner/Copy link this way already (ISS-351); the
-  // condensed paneChrome header additionally folds "Open issue" in here to
-  // keep its primary row to Stop/Rerun + one overflow trigger (ISS-714).
+  // exposes Branch/View runner machine/Copy link this way already (ISS-351);
+  // the condensed paneChrome header additionally folds "Open issue", "Run
+  // again from start", and the context-rail toggle in here so its primary
+  // row stays to Stop + one overflow trigger (ISS-714, ISS-724).
   const menuItems = [
     ...(paneChrome && issueId && projectSlug
       ? [
@@ -236,10 +241,22 @@ export function SessionScreen({
           },
         ]
       : []),
+    ...(paneChrome && !live
+      ? [
+          {
+            label: "Run again from start",
+            icon: "rerun" as const,
+            onSelect: () =>
+              rerun.mutate(undefined, {
+                onSuccess: (r) => projectSlug && goToSession(r.id),
+              }),
+          },
+        ]
+      : []),
     ...(!fromMessages && lastTurnId
       ? [
           {
-            label: "Fork from last turn",
+            label: "Branch this conversation",
             icon: "fork" as const,
             onSelect: () => handleFork(lastTurnId),
           },
@@ -248,7 +265,7 @@ export function SessionScreen({
     ...(session.deviceId
       ? [
           {
-            label: "Open runner",
+            label: "View runner machine",
             icon: "server" as const,
             onSelect: () => router.push("/runners"),
           },
@@ -259,6 +276,21 @@ export function SessionScreen({
       icon: "link" as const,
       onSelect: copyLink,
     },
+    ...(paneChrome
+      ? [
+          isLgUp
+            ? {
+                label: railCollapsed ? "Show context" : "Hide context",
+                icon: "panelLeft" as const,
+                onSelect: () => setRailCollapsed((c) => !c),
+              }
+            : {
+                label: "Show context",
+                icon: "rows" as const,
+                onSelect: () => setRailOpen(true),
+              },
+        ]
+      : []),
   ];
 
   const railToggle = (
@@ -291,7 +323,7 @@ export function SessionScreen({
             size="sm"
             domain="session"
           />
-          {live ? (
+          {live && (
             <IconButton
               icon="stop"
               size="sm"
@@ -301,20 +333,6 @@ export function SessionScreen({
               disabled={cancel.isPending}
               onClick={() => cancel.mutate()}
             />
-          ) : (
-            <IconButton
-              icon="rerun"
-              size="sm"
-              variant="ghost"
-              aria-label="Rerun"
-              className="min-h-11 min-w-11"
-              disabled={rerun.isPending}
-              onClick={() =>
-                rerun.mutate(undefined, {
-                  onSuccess: (r) => projectSlug && goToSession(r.id),
-                })
-              }
-            />
           )}
           <Menu
             align="right"
@@ -323,14 +341,6 @@ export function SessionScreen({
               <IconButton icon="more" size="sm" aria-label="Session actions" className="min-h-11 min-w-11" />
             }
           />
-          <IconButton
-            icon="rows"
-            size="sm"
-            aria-label="Show context"
-            className="min-h-11 min-w-11 lg:hidden"
-            onClick={() => setRailOpen(true)}
-          />
-          {railToggle}
           <IconButton icon="x" size="sm" aria-label="Close pane" className="min-h-11 min-w-11" onClick={onClose} />
         </header>
       ) : (
@@ -472,11 +482,12 @@ export function SessionScreen({
           </div>
           {canWrite ? (
             <Composer
-              onSend={async (message) => {
-                await send.mutateAsync({ sessionId, message });
+              onSend={async (message, files) => {
+                await send.mutateAsync({ sessionId, message, files });
               }}
               busy={live || send.isPending}
               disabled={!session.deviceId}
+              allowAttachments
             />
           ) : (
             <ReadOnlyComposerNote />
