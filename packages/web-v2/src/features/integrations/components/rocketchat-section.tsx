@@ -66,7 +66,47 @@ export function RocketchatSection({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-4">
       <RocketchatBindingPanel projectId={projectId} binding={binding} />
+      <AnswerModePanel projectId={projectId} />
       <BotPersonalityPanel projectId={projectId} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Answer mode (agentConfig.rocketChatAnswerMode — fast vs agent engine)
+// ─────────────────────────────────────────────────────────────
+
+const ANSWER_MODE_OPTIONS = [
+  { value: "fast", label: "Fast (default)" },
+  { value: "agent", label: "Agent (runner Claude)" },
+];
+
+function AnswerModePanel({ projectId }: { projectId: string }) {
+  const projectQ = useProject(projectId);
+  const update = useUpdateProject(projectId);
+
+  const saved =
+    ((projectQ.data?.agentConfig as Record<string, unknown> | null)?.rocketChatAnswerMode as
+      | "fast"
+      | "agent"
+      | undefined) ?? "fast";
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+      <span className="fg-label font-semibold">Answer mode</span>
+      <p className="fg-body-sm text-muted">
+        Fast answers with the quick-chat model; Agent routes every question
+        through the full runner assistant instead — slower, but understands
+        the repo and project in depth.
+      </p>
+      <Select
+        value={saved}
+        onChange={(value) =>
+          update.mutate({ rocketChatAnswerMode: value === "fast" ? null : (value as "agent") })
+        }
+        options={ANSWER_MODE_OPTIONS}
+        disabled={projectQ.isLoading || update.isPending}
+      />
     </div>
   );
 }

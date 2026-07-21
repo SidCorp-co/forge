@@ -813,6 +813,79 @@ describe('PATCH /api/projects/:id', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // ISS-727 — RC bot answer-mode knob (agentConfig.rocketChatAnswerMode).
+  it('200 rocketChatAnswerMode: writes the scoped patch under agentConfig (preserves siblings)', async () => {
+    const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ agentConfig: { personaStyle: 'keep me' } }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
+        agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' },
+        createdAt: new Date(),
+      },
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ rocketChatAnswerMode: 'agent' }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({
+      agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' },
+    });
+  });
+
+  it('200 rocketChatAnswerMode: null clears the key back to the fast default (preserves siblings)', async () => {
+    const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([
+        { agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' } },
+      ]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
+        agentConfig: { personaStyle: 'keep me' },
+        createdAt: new Date(),
+      },
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ rocketChatAnswerMode: null }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({
+      agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: undefined },
+    });
+  });
+
+  it("400 BAD_REQUEST when rocketChatAnswerMode is not 'fast'|'agent'", async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ rocketChatAnswerMode: 'slow' }),
+      token,
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('POST /api/projects/:id/runners (ISS-172)', () => {

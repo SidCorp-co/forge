@@ -33,12 +33,11 @@ import {
   projects,
 } from '../../db/schema.js';
 import { logger } from '../../logger.js';
-import { decryptConnectionSecrets, findConnectionById } from '../store.js';
 import { rocketChatPersona, webBaseUrl } from './connection-manager.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { postRoomMessage } from './rest-client.js';
-import type { RocketChatConfig, RocketChatSecrets } from './types.js';
+import { resolveRoomPostAuth } from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
 
@@ -281,28 +280,11 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
     .returning({ id: agentSessions.id });
   if (claimed.length === 0) return;
 
-  const connection = await findConnectionById(meta.connectionId);
-  if (!connection) {
-    logger.error(
-      { sessionId: session.id, connectionId: meta.connectionId },
-      'rocketchat.escalation-bridge: connection not found',
-    );
-    return;
-  }
-  const secrets = decryptConnectionSecrets<RocketChatSecrets>(connection);
-  const config = (connection.config ?? {}) as RocketChatConfig;
-  if (!config.serverUrl || !secrets.authToken || !secrets.userId) {
-    logger.error(
-      { sessionId: session.id, connectionId: meta.connectionId },
-      'rocketchat.escalation-bridge: connection missing serverUrl/credentials',
-    );
-    return;
-  }
-  const auth = {
-    serverUrl: config.serverUrl,
-    authToken: secrets.authToken,
-    userId: secrets.userId,
-  };
+  const auth = await resolveRoomPostAuth(meta.connectionId, {
+    sessionId: session.id,
+    source: 'rocketchat.escalation-bridge',
+  });
+  if (!auth) return;
 
   const finalText =
     session.status === 'completed' ? extractFinalAssistantText(session.messages) : null;

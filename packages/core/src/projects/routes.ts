@@ -105,6 +105,10 @@ export const updateProjectSchema = z
     // chat/RC-bot reply-style knob) so the UI never round-trips the whole
     // agentConfig jsonb. null/'' clears the style.
     personaStyle: z.string().trim().max(4000).nullable().optional(),
+    // ISS-727 — scoped write for `agentConfig.rocketChatAnswerMode` (the RC
+    // bot answer-engine knob: `fast` provider-chat vs `agent` runner Claude).
+    // null clears it (reverts to the `fast` default).
+    rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
     previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     stateContext: stateContextSchema.nullable().optional(),
@@ -475,6 +479,20 @@ projectRoutes.patch(
         baseAc.personaStyle = undefined;
       } else {
         baseAc.personaStyle = patch.personaStyle;
+      }
+      updates.agentConfig = baseAc;
+    }
+    if (patch.rocketChatAnswerMode !== undefined) {
+      // Scoped agentConfig.rocketChatAnswerMode write — read-modify-write
+      // (like personaStyle above) so a mode-only patch can't wipe sibling keys.
+      let baseAc = updates.agentConfig as Record<string, unknown> | undefined;
+      if (baseAc === undefined) {
+        baseAc = { ...((await readAgentConfig(id)) ?? {}) };
+      }
+      if (patch.rocketChatAnswerMode === null) {
+        baseAc.rocketChatAnswerMode = undefined;
+      } else {
+        baseAc.rocketChatAnswerMode = patch.rocketChatAnswerMode;
       }
       updates.agentConfig = baseAc;
     }

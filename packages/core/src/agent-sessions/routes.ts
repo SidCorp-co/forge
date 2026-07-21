@@ -702,18 +702,29 @@ agentSessionRoutes.patch(
     // bridge must fire from here too, or a class of escalations (the runner
     // finishing normally) would hang silent. Best-effort: never fail the
     // runner's PATCH over a room-reply problem.
-    if (
-      patch.status !== undefined &&
-      TERMINAL_SESSION_STATUSES.has(patch.status) &&
-      (updated.metadata as { escalation?: unknown } | null)?.escalation
-    ) {
-      try {
-        const { deliverEscalationReplyOnce } = await import(
-          '../integrations/rocketchat/escalation-bridge.js'
-        );
-        await deliverEscalationReplyOnce(updated);
-      } catch (err) {
-        logger.error({ err, sessionId: updated.id }, 'agent-sessions: escalation bridge failed');
+    if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
+      const meta = updated.metadata as { escalation?: unknown; agentChat?: unknown } | null;
+      if (meta?.escalation) {
+        try {
+          const { deliverEscalationReplyOnce } = await import(
+            '../integrations/rocketchat/escalation-bridge.js'
+          );
+          await deliverEscalationReplyOnce(updated);
+        } catch (err) {
+          logger.error({ err, sessionId: updated.id }, 'agent-sessions: escalation bridge failed');
+        }
+      }
+      // ISS-727 — the `agent`-mode counterpart: same happy-path completion
+      // gate, distinct metadata marker, distinct bridge module.
+      if (meta?.agentChat) {
+        try {
+          const { deliverAgentChatReplyOnce } = await import(
+            '../integrations/rocketchat/agent-chat-bridge.js'
+          );
+          await deliverAgentChatReplyOnce(updated);
+        } catch (err) {
+          logger.error({ err, sessionId: updated.id }, 'agent-sessions: agent-chat bridge failed');
+        }
       }
     }
 

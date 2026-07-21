@@ -54,6 +54,14 @@ vi.mock('./reply-screen.js', () => ({
   screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
 }));
 
+const startAgentChat = vi.fn();
+vi.mock('./agent-chat.js', () => ({
+  AGENT_CHAT_ACK: (botName: string) => `AGENT_ACK:${botName}`,
+  AGENT_CHAT_DEDUP_REPLY: (botName: string) => `AGENT_DEDUP:${botName}`,
+  AGENT_CHAT_NO_DEVICE_REPLY: (botName: string) => `AGENT_NO_DEVICE:${botName}`,
+  startAgentChat: (...args: unknown[]) => startAgentChat(...args),
+}));
+
 vi.mock('../store.js', () => ({
   decryptConnectionSecrets: vi.fn(),
   listBindingsForConnection: vi.fn(async () => []),
@@ -106,6 +114,7 @@ describe('connection-manager escalation wiring', () => {
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: '/repo' }]);
     runExternalChatTurn.mockReset();
     startEscalation.mockReset();
+    startAgentChat.mockReset();
     screenStakeholderReply.mockReset();
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
   });
@@ -209,5 +218,113 @@ describe('connection-manager escalation wiring', () => {
       'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
       undefined,
     );
+  });
+});
+
+describe('connection-manager ISS-727 answer-mode routing', () => {
+  beforeEach(() => {
+    selectLimit.mockReset();
+    runExternalChatTurn.mockReset();
+    startAgentChat.mockReset();
+    screenStakeholderReply.mockReset();
+    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+  });
+
+  it("mode='agent' routes to startAgentChat and skips the fast turn entirely", async () => {
+    selectLimit.mockResolvedValue([
+      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
+    ]);
+    startAgentChat.mockResolvedValue({ started: true, sessionId: 'agent-session-1' });
+
+    const ac = makeAc();
+    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+
+    expect(startAgentChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'proj-1',
+        connectionId: 'conn-1',
+        rid: 'room-1',
+        botName: 'Babo',
+        message: 'How does the pipeline work?',
+        askedByUsername: 'alice',
+        persona: expect.any(String),
+      }),
+    );
+    expect(runExternalChatTurn).not.toHaveBeenCalled();
+    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_ACK:Babo', undefined);
+  });
+
+  it("mode='agent' replies with the dedup message on an in-flight agent-chat turn", async () => {
+    selectLimit.mockResolvedValue([
+      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
+    ]);
+    startAgentChat.mockResolvedValue({ started: false, reason: 'deduped' });
+
+    const ac = makeAc();
+    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+
+    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_DEDUP:Babo', undefined);
+  });
+
+  it("mode='agent' replies with the no-device message when no runner is available", async () => {
+    selectLimit.mockResolvedValue([
+      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
+    ]);
+    startAgentChat.mockResolvedValue({ started: false, reason: 'no-device' });
+
+    const ac = makeAc();
+    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+
+    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_NO_DEVICE:Babo', undefined);
+  });
+
+  it("mode='agent' sends nothing over DDP on dispatch-failed — the completion bridge delivers the fallback", async () => {
+    selectLimit.mockResolvedValue([
+      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
+    ]);
+    startAgentChat.mockResolvedValue({ started: false, reason: 'dispatch-failed' });
+
+    const ac = makeAc();
+    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+
+    expect(ac.client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('absent answerMode (null agentConfig) runs the existing fast path unchanged — regression guard', async () => {
+    selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: '/repo' }]);
+    runExternalChatTurn.mockResolvedValue({
+      sessionId: 'chat-session-1',
+      reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
+      terminal: 'done',
+      error: null,
+      iterations: 1,
+      toolCalls: [],
+    });
+
+    const ac = makeAc();
+    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+
+    expect(startAgentChat).not.toHaveBeenCalled();
+    expect(runExternalChatTurn).toHaveBeenCalled();
+  });
+
+  it("mode='fast' (explicit) runs the existing fast path unchanged — regression guard", async () => {
+    selectLimit.mockResolvedValue([
+      { agentConfig: { rocketChatAnswerMode: 'fast' }, repoPath: '/repo' },
+    ]);
+    runExternalChatTurn.mockResolvedValue({
+      sessionId: 'chat-session-1',
+      reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
+      terminal: 'done',
+      error: null,
+      iterations: 1,
+      toolCalls: [],
+    });
+
+    const ac = makeAc();
+    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+
+    expect(startAgentChat).not.toHaveBeenCalled();
+    expect(runExternalChatTurn).toHaveBeenCalled();
   });
 });
