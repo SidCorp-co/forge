@@ -83,7 +83,7 @@ export function Composer({
   onSend,
   disabled,
   busy,
-  placeholder = "Send a message…",
+  placeholder = "Message the agent…",
   allowAttachments = false,
   sticky = true,
 }: ComposerProps) {

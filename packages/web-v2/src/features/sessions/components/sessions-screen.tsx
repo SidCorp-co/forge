@@ -545,7 +545,7 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
     items.push({ label: "Retry", icon: "rerun", onSelect: () => a.retry.mutate(row.id) });
   }
   if (isTerminal) {
-    items.push({ label: "Rerun", icon: "fork", onSelect: () => a.rerun.mutate(row.id) });
+    items.push({ label: "Rerun", icon: "rerun", onSelect: () => a.rerun.mutate(row.id) });
   }
   return items;
 }
