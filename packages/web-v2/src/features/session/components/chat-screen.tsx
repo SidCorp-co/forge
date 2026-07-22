@@ -57,6 +57,8 @@ export function ChatScreen({
   onClose,
   initialDraft,
   onSessionActive,
+  activeSessionId,
+  hideHistory,
 }: {
   projectId: string;
   /** When set (docked panel), render a close control in the header to collapse
@@ -70,6 +72,14 @@ export function ChatScreen({
    *  on resume and again once a draft's first send creates one (ISS-689 "Open
    *  as pane" flow). Additive/optional: existing callers are unaffected. */
   onSessionActive?: (sessionId: string) => void;
+  /** Open this specific session instead of resuming the project's latest chat
+   *  (ISS-729 conversations redesign — the caller owns selection and mounts a
+   *  fresh `ChatScreen` per pick via `key`, so this only needs to seed the
+   *  INITIAL id). Ignored when `initialDraft` is set. */
+  activeSessionId?: string;
+  /** Hide the in-header History + New-chat controls (ISS-729) — set when a
+   *  caller renders its own history sidebar/list and owns those actions. */
+  hideHistory?: boolean;
 }) {
   useRoom(projectRoom(projectId));
 
@@ -97,7 +107,9 @@ export function ChatScreen({
     enabled: !!projectId,
   });
 
-  const [activeId, setActiveId] = useState<string | undefined>();
+  const [activeId, setActiveId] = useState<string | undefined>(
+    initialDraft ? undefined : activeSessionId,
+  );
   // ISS-465 — explicit "draft" state so "New chat" doesn't fall through to
   // recentSessions[0]. A draft never touches the server; the send-path lazy-
   // creates the row on first message (handleSend).
@@ -287,39 +299,43 @@ export function ChatScreen({
             onSelect={setSelectedDeviceId}
             readOnly={!canWrite}
           />
-          <div className="relative">
+          {!hideHistory && (
+            <div className="relative">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="clock"
+                className="min-h-11 @[560px]:min-h-0"
+                aria-label="History"
+                onClick={() => setHistoryOpen((v) => !v)}
+                aria-expanded={historyOpen}
+                aria-haspopup="dialog"
+              >
+                <span className="hidden @[560px]:inline">History</span>
+              </Button>
+              <ConversationList
+                open={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                projectId={projectId}
+                rows={recentSessions}
+                activeId={resolvedId}
+                onPick={(s) => handlePick(s.id)}
+                onActiveRemoved={handleActiveRemoved}
+              />
+            </div>
+          )}
+          {!hideHistory && (
             <Button
               variant="secondary"
               size="sm"
-              icon="clock"
+              icon="plus"
               className="min-h-11 @[560px]:min-h-0"
-              aria-label="History"
-              onClick={() => setHistoryOpen((v) => !v)}
-              aria-expanded={historyOpen}
-              aria-haspopup="dialog"
+              aria-label="New chat"
+              onClick={handleNewChat}
             >
-              <span className="hidden @[560px]:inline">History</span>
+              <span className="hidden @[560px]:inline">New chat</span>
             </Button>
-            <ConversationList
-              open={historyOpen}
-              onClose={() => setHistoryOpen(false)}
-              projectId={projectId}
-              rows={recentSessions}
-              activeId={resolvedId}
-              onPick={(s) => handlePick(s.id)}
-              onActiveRemoved={handleActiveRemoved}
-            />
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="plus"
-            className="min-h-11 @[560px]:min-h-0"
-            aria-label="New chat"
-            onClick={handleNewChat}
-          >
-            <span className="hidden @[560px]:inline">New chat</span>
-          </Button>
+          )}
           {onClose && (
             <IconButton
               icon="x"
