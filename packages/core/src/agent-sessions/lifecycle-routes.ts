@@ -26,6 +26,7 @@ import type { AuthVars } from '../middleware/auth.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
+import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
@@ -68,6 +69,10 @@ const startBodySchema = z
     pageContext: pageContextSchema.optional(),
     // ISS-499 — session attachments to attach to the first turn.
     attachmentIds: z.array(z.uuid()).max(10).optional(),
+    // ISS-733 — run an install_only project skill as turn 1 (chat-runs-skill).
+    // Validated below against the project's registered effective skills so an
+    // arbitrary caller cannot slash-inject a skill it hasn't been granted.
+    skillName: z.string().min(1).max(128).optional(),
   })
   .strict();
 
@@ -257,6 +262,18 @@ agentSessionLifecycleRoutes.post(
       return c.json(inserted, 201);
     }
 
+    // ISS-733 — a skillName must resolve to an install_only effective skill for
+    // THIS project before it can ride turn 1 as a slash-command; otherwise any
+    // caller could slash-inject an arbitrary command via /start.
+    if (input.skillName) {
+      const effective = await resolveRegisteredEffectiveSkills(project.id);
+      if (!effective.some((s) => s.name === input.skillName && s.installOnly)) {
+        throw badRequest({
+          message: `skillName '${input.skillName}' is not install_only for this project`,
+        });
+      }
+    }
+
     // ===== Interactive chat: create an empty row, then deliver turn #1 through
     // the ONE shared dispatcher — identical to a /send follow-up. =====
     const metadata: Record<string, unknown> = {};
@@ -277,6 +294,7 @@ agentSessionLifecycleRoutes.post(
       pageContext: input.pageContext ?? null,
       preBuilt: input.preBuilt ?? false,
       attachmentIds: input.attachmentIds,
+      skillName: input.skillName ?? null,
       broadcastEvent: 'agent-session.created',
     });
 

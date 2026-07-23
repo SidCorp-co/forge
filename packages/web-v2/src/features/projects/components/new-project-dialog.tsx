@@ -23,7 +23,7 @@ import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/providers/toast-provider';
 import { SLUG_RE, slugify } from '@/lib/slug';
-import { useBootstrapProject, useCreateProject } from '../hooks';
+import { useBootstrapProject, useCreateProject, useOnboardProject } from '../hooks';
 import type { BootstrapResult, CreatedProject } from '../types';
 
 export { slugify };
@@ -58,8 +58,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [productionBranch, setProductionBranch] = useState('main');
   const [seedResult, setSeedResult] = useState<BootstrapResult | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
+  const [onboardError, setOnboardError] = useState<string | null>(null);
   const update = useUpdateProject(created?.id);
   const bootstrap = useBootstrapProject(created?.id);
+  const onboard = useOnboardProject(created?.id);
 
   // Reset the whole form each time the dialog opens — never leak a prior draft
   // or stale error into a fresh create.
@@ -77,6 +79,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setProductionBranch('main');
       setSeedResult(null);
       setSeedError(null);
+      setOnboardError(null);
       create.reset();
     }
     // `create` is stable from React Query; resetting only on `open` is intended.
@@ -169,6 +172,24 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
   const seeding = update.isPending || bootstrap.isPending;
 
+  /**
+   * ISS-733 — "Build Project Brain": open a fresh chat session that runs
+   * `forge-onboard` as turn 1, then jump straight to it (same detail route a
+   * chat notification/history entry would open — no new UI surface).
+   */
+  async function onBuildBrain() {
+    if (!created) return;
+    setOnboardError(null);
+    try {
+      const result = await onboard.mutateAsync();
+      toast({ title: 'Onboarding chat started', tone: 'success' });
+      onClose();
+      router.push(`/projects/${created.slug}/agents/${result.sessionId}`);
+    } catch (err) {
+      setOnboardError(formatApiError(err));
+    }
+  }
+
   return (
     <SlideOver
       open={open}
@@ -255,6 +276,32 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               </li>
             </ol>
           </div>
+
+          {seedResult && (
+            <div className="border-t border-line-subtle pt-4">
+              <span className="fg-label">Build the Project Brain</span>
+              {onboardError && (
+                <div className="mt-2">
+                  <Banner tone="danger">{onboardError}</Banner>
+                </div>
+              )}
+              <div className="mt-2">
+                <Button
+                  variant="secondary"
+                  loading={onboard.isPending}
+                  onClick={onBuildBrain}
+                  className="min-h-11"
+                >
+                  Build Project Brain
+                </Button>
+                <p className="fg-body-sm mt-1.5 text-subtle">
+                  Opens a chat that surveys the repo and asks you a few questions to seed
+                  knowledge, memory, and pipeline config. Needs a runner bound to this project —
+                  connect one above first if this fails.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
             {seedResult ? (

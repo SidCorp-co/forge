@@ -18,6 +18,7 @@ import type {
   BootstrapResult,
   CreatedProject,
   CreateProjectInput,
+  OnboardResult,
   ProjectConsoleItem,
   ProjectListItem,
   WorkspaceTotals,
@@ -164,6 +165,23 @@ export function useBootstrapProject(projectId: string | undefined) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project', projectId] });
       qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
+/**
+ * ISS-733 — "Build Project Brain": opens a fresh chat session running
+ * `forge-onboard` via `POST /api/projects/:id/onboard`. Invalidates the
+ * project's chat session list so it shows up immediately once the caller
+ * navigates there. Errors surface through the mutation — the trigger UI owns
+ * the failure state (error + retry), not a toast here.
+ */
+export function useOnboardProject(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<OnboardResult, unknown, void>({
+    mutationFn: () => projectApi.onboard(projectId as string),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-sessions', 'chat', projectId] });
     },
   });
 }

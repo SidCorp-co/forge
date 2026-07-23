@@ -1,10 +1,40 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { skillRegistrations } from '../db/schema.js';
+import { skillRegistrations, skills } from '../db/schema.js';
+import { logger } from '../logger.js';
 import { defaultStatesConfig } from '../pipeline/pipeline-config-schema.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
 import { readAgentConfig, writeAgentConfig } from '../projects/agent-config.js';
 import { resolveOrAdoptProjectSkill } from './service.js';
+
+// ISS-733 — the interactive onboarding chat skill. Force-synced to every
+// bootstrapped project's device manifest as `install_only` (no stage binding,
+// manually triggered from web) so it can run turn 1 of a chat session without
+// touching the stage-registration model. Adopted from the same-name builtin
+// global template (packages/core/skills/forge-onboard) the same way stage
+// skills are — see `resolveOrAdoptProjectSkill`.
+const ONBOARD_SKILL_NAME = 'forge-onboard';
+
+/**
+ * Idempotent: adopt the project's own copy of `forge-onboard` (cloning the
+ * global template on first call) and flip it `install_only` if not already.
+ * Best-effort — a server that hasn't deployed the builtin template yet (no
+ * global row) or any other failure here must never break the surrounding
+ * bootstrap call, since this is additive backfill, not the bootstrap's core
+ * job (stage skills + pipeline preset).
+ */
+async function ensureOnboardSkill(projectId: string): Promise<void> {
+  try {
+    const skillId = await resolveOrAdoptProjectSkill(projectId, ONBOARD_SKILL_NAME);
+    if (!skillId) return;
+    await db
+      .update(skills)
+      .set({ installOnly: true })
+      .where(and(eq(skills.id, skillId), eq(skills.installOnly, false)));
+  } catch (err) {
+    logger.error({ err, projectId }, 'bootstrap-service: ensureOnboardSkill failed');
+  }
+}
 
 // ISS-2A: idempotent first-run bootstrap. Binds the 7 stage-mapped global
 // `forge-*` skills to the project, applies the Balanced pipelineConfig
@@ -140,11 +170,19 @@ export async function bootstrapProjectSkills(
       });
     }
 
-    return {
+    const result = {
       alreadyBootstrapped: true,
       skillsBound: Number(countRows[0]?.count ?? 0),
       pipelineEnabled: currentPipeline.enabled === true,
     };
+
+    // ISS-733 — backfill: a project bootstrapped before this skill existed
+    // still gets its install_only forge-onboard copy, without re-running
+    // (or re-registering) the stage seed. Runs last so it never shifts the
+    // pipelineConfig write above.
+    await ensureOnboardSkill(projectId);
+
+    return result;
   }
 
   // Single path: each stage binds a PROJECT-owned skill. Materialise one by
@@ -191,6 +229,12 @@ export async function bootstrapProjectSkills(
       pipelineConfig: { ...currentPipeline, states: defaultStatesConfig() },
     });
   }
+
+  // ISS-733 — seed the project's install_only forge-onboard copy alongside
+  // the stage-mapped skills, so a fresh project can immediately trigger the
+  // onboarding chat once a runner is bound. Runs last so it never shifts the
+  // pipelineConfig write above.
+  await ensureOnboardSkill(projectId);
 
   return {
     alreadyBootstrapped: false,

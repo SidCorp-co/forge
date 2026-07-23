@@ -1230,8 +1230,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       ['approved', 'clarified', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
     );
 
-    // The Balanced preset write went through update().set(...).where(...).
-    expect(updateSet).toHaveBeenCalledTimes(1);
+    // The Balanced preset write went through update().set(...).where(...);
+    // ISS-733 adds a second update (forge-onboard's install_only flip) after it.
+    expect(updateSet).toHaveBeenCalledTimes(2);
     const setArg = updateSet.mock.calls[0]?.[0] as {
       agentConfig: { pipelineConfig: Record<string, unknown> };
     };
@@ -1337,8 +1338,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     const body = (await res.json()) as { pipelineEnabled: boolean };
     expect(body.pipelineEnabled).toBe(false);
     // ISS-108 — preset write is skipped (enabled=false is the user's choice),
-    // but states still gets backfilled.
-    expect(updateSet).toHaveBeenCalledTimes(1);
+    // but states still gets backfilled. ISS-733 adds a second update
+    // (forge-onboard's install_only flip) after it.
+    expect(updateSet).toHaveBeenCalledTimes(2);
     const updateCalls = updateSet.mock.calls as unknown as Array<
       [{ agentConfig: { pipelineConfig: { enabled: boolean; states: Record<string, unknown> } } }]
     >;

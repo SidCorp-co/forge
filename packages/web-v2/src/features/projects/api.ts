@@ -6,6 +6,7 @@ import type {
   BootstrapResult,
   CreatedProject,
   CreateProjectInput,
+  OnboardResult,
   ProjectDetail,
   ProjectHealthRow,
   ProjectListItem,
@@ -39,4 +40,11 @@ export const projectApi = {
    *  owns `pipelineConfig.states` — never send a partial config from here. */
   bootstrap: (id: string) =>
     apiClient<BootstrapResult>(`/projects/${id}/skills/bootstrap`, { method: 'POST' }),
+
+  /** `POST /api/projects/:id/onboard` — the "Build Project Brain" trigger
+   *  (ISS-733): opens a fresh chat session that runs `forge-onboard` as its
+   *  first turn. Requires the project to already be bootstrapped (the skill
+   *  is seeded there). Returns the new session id to open in chat. */
+  onboard: (id: string) =>
+    apiClient<OnboardResult>(`/projects/${id}/onboard`, { method: 'POST' }),
 };

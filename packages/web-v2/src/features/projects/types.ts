@@ -121,6 +121,16 @@ export interface BootstrapResult {
   pipelineEnabled: boolean;
 }
 
+/**
+ * Response of `POST /api/projects/:id/onboard` (ISS-733) — the "Build
+ * Project Brain" trigger. `sessionId` is the freshly-created chat session
+ * running `forge-onboard` as turn 1; the caller navigates there to continue
+ * the conversation.
+ */
+export interface OnboardResult {
+  sessionId: string;
+}
+
 /** Sort options for the projects console toolbar. */
 export type ProjectSort = 'recent' | 'name' | 'health';
 
