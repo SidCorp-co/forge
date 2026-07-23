@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Multiple browser tabs in the same organization no longer randomly jump to the same project on workspace screens — each tab keeps its own rail project across background refreshes.
 - Opening the agent chat panel now always starts a fresh conversation instead of silently jumping into whatever chat was most recently active in another tab.
 - Each browser tab now keeps its own last-viewed project instead of switching to whatever project you opened most recently in another tab.
 - Conversations is now a single full-width chat with a collapsible history sidebar, like ChatGPT/Claude/Gemini — no more multi-pane split view, and starting a new conversation no longer restarts or opens a separate panel.
