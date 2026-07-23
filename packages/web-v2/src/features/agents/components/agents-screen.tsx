@@ -56,7 +56,7 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
           <SessionsScreen scope={sessionsScope} />
         ) : (
           <div className="min-h-0 flex-1">
-            <ChatScreen projectId={scope.projectId} />
+            <ChatScreen projectId={scope.projectId} initialDraft />
           </div>
         )}
       </div>

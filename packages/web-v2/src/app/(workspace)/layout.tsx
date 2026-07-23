@@ -442,7 +442,11 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               fitBody
               hideHeader
             >
-              <ChatScreen projectId={railProject.id} onClose={() => setChatOpen(false)} />
+              <ChatScreen
+                projectId={railProject.id}
+                onClose={() => setChatOpen(false)}
+                initialDraft
+              />
             </SlideOver>
           </div>
         )}
