@@ -37,6 +37,7 @@ import {
 } from '../pipeline/pipeline-config-schema.js';
 import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { readAgentConfig } from './agent-config.js';
+import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { skillsBootstrapRoutes } from './skills-bootstrap-routes.js';
@@ -805,3 +806,7 @@ projectRoutes.get(
 // ./skills-bootstrap-routes.ts. Mounted here so it inherits this router's
 // auth middleware exactly as before the split.
 projectRoutes.route('/', skillsBootstrapRoutes);
+
+// ISS-733 — POST /:id/onboard. The "Build Project Brain" trigger; the thin
+// HTTP delegate lives in ./onboard-routes.ts.
+projectRoutes.route('/', projectOnboardRoutes);

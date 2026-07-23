@@ -286,7 +286,22 @@ export interface DispatchChatTurnArgs {
    * follow-up (/send) wants `agent-session.updated`. Default: updated.
    */
   broadcastEvent?: 'agent-session.created' | 'agent-session.updated';
+  /**
+   * ISS-733 — run an installed skill's slash-command as turn 1 of this chat
+   * session (the "chat-runs-skill" mechanism). Only applied on the COLD-START
+   * branch (first turn / post-migration rehydrate): the slash-command is
+   * prepended as line 1 of the `-p` prompt, exactly how a pipeline job embeds
+   * `/forge-<stage>` (see `prompt/user.ts`) — no runner change needed, since
+   * the command travels inside the existing prompt string. Ignored on a
+   * `--resume` follow-up (the skill is already active in that Claude session).
+   * Callers MUST validate this resolves to an install_only/user_invocable
+   * project skill BEFORE calling — this module only sanity-checks the shape.
+   */
+  skillName?: string | null;
 }
+
+/** Slash-command-safe skill name: lowercase, digits, hyphens, 1–128 chars. */
+const SKILL_NAME_RE = /^[a-z][a-z0-9-]{0,127}$/;
 
 /**
  * Append one user turn to a session and dispatch it to its Claude client.
@@ -441,6 +456,15 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
       } catch {
         // non-fatal — proceed with the raw prompt
       }
+    }
+    // ISS-733 — job-parity skill invocation: line 1 = the slash-command, same
+    // shape a pipeline job's `-p` prompt already uses. Cold-start only (this
+    // whole branch is `!resumable`) — a `--resume` turn never re-prepends it.
+    if (args.skillName) {
+      if (!SKILL_NAME_RE.test(args.skillName)) {
+        throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
+      }
+      prompt = `/${args.skillName}\n${prompt}`;
     }
     roomManager.publish(deviceRoom(target), {
       event: 'agent:start',
