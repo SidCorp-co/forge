@@ -349,6 +349,42 @@ pub async fn run(
         });
     }
 
+    // Shared-skill plugin-marketplace sweep (ISS-739, 3rd delivery channel).
+    // Jittered <=10min initial delay (avoids every device in a fleet hammering
+    // the marketplace git remote at the same instant on a simultaneous restart),
+    // then a periodic tick at `plugins.poll_interval_secs`. Cheap no-op when
+    // `plugins.enabled == false` — `ensure_plugins` early-returns immediately.
+    {
+        let cfg = cfg.clone();
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            let jitter_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_millis() as u64
+                % 1000;
+            let initial_delay_ms = jitter_ms * 600; // spreads across ~0-600s (<=10min)
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_millis(initial_delay_ms)) => {}
+                _ = cancel_rx.changed() => { if *cancel_rx.borrow() { return; } }
+            }
+            crate::workspace::plugin_sync::ensure_plugins(&cfg.plugins).await;
+
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(
+                cfg.plugins.poll_interval_secs.max(1),
+            ));
+            tick.tick().await; // skip the immediate tick — we just ran above
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        crate::workspace::plugin_sync::ensure_plugins(&cfg.plugins).await;
+                    }
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
+
     let mut cancel_rx = cancel_rx.clone();
     loop {
         tokio::select! {
