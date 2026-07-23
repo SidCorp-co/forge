@@ -633,7 +633,18 @@ agentSessionRoutes.patch(
         : null;
     if (pendingSkillName && (patch.status === 'completed' || patch.status === 'failed')) {
       if (patch.status === 'completed') {
-        const priorCount = Array.isArray(existing.messages) ? existing.messages.length : 0;
+        // Prefer the pre-turn baseline stamped in chat-turn.ts (the message
+        // count right after the user turn, before any assistant reply) over
+        // `existing.messages.length` — an interim `running` PATCH may have
+        // already persisted this turn's assistant messages before this
+        // terminal PATCH lands, which would make a freshly-recomputed count
+        // include them and slice them out of the scan.
+        const priorCount =
+          typeof existingMetaForSkillCheck?.pendingSkillBaselineCount === 'number'
+            ? existingMetaForSkillCheck.pendingSkillBaselineCount
+            : Array.isArray(existing.messages)
+              ? existing.messages.length
+              : 0;
         const unexpanded = detectUnexpandedSkillFailure(
           patch.messages ?? existing.messages,
           pendingSkillName,
@@ -648,7 +659,11 @@ agentSessionRoutes.patch(
         (updates.metadata as Record<string, unknown> | undefined) ??
         existingMetaForSkillCheck ??
         {};
-      const { pendingSkillName: _droppedPendingSkillName, ...restMeta } = metaBase;
+      const {
+        pendingSkillName: _droppedPendingSkillName,
+        pendingSkillBaselineCount: _droppedPendingSkillBaselineCount,
+        ...restMeta
+      } = metaBase;
       updates.metadata = restMeta;
     }
 

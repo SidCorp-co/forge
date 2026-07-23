@@ -394,8 +394,16 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // see `detectUnexpandedSkillFailure` in session-failure.ts) instead of
   // silently completing. Remote cold-start only: `isLocal` never applies
   // skillName (see the known limitation on the desktop trigger path).
+  // `pendingSkillBaselineCount` is stamped now (== `messages.length`, i.e. the
+  // count right after the user turn and BEFORE any assistant reply) rather
+  // than recomputed from `existing.messages.length` at terminal-PATCH time —
+  // the runner flushes interim `running` PATCHes every ~750ms that persist
+  // assistant messages before the final `completed` PATCH; a priorCount
+  // recomputed then could already include this turn's own messages and slice
+  // them out of the scan (review finding, `session-failure.ts` re-review).
   if (!resumable && !isLocal && args.skillName) {
     nextMeta.pendingSkillName = args.skillName;
+    nextMeta.pendingSkillBaselineCount = messages.length;
   }
   updates.metadata = nextMeta;
 

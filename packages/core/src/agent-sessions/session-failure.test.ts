@@ -62,4 +62,40 @@ describe('detectUnexpandedSkillFailure', () => {
     const userOnly = [{ role: 'user', content: 'Unknown command: /forge-onboard' }];
     expect(detectUnexpandedSkillFailure(userOnly, 'forge-onboard', 0)).toBe(false);
   });
+
+  // ISS-733 re-fix (review 3c4281c2 blocker) — the messages this detector actually
+  // sees on the armed (remote, cold-start) path are produced by the CLI runner's
+  // `parse_assistant_message` (chat.rs), which emits `{ type: 'assistant', content }`
+  // with NO `role` field (packages/web-v2/src/features/session/types.ts:64-83). The
+  // `role`-only fixtures above never exercise this shape — these do.
+  describe('CLI-runner type-shaped messages (no role field)', () => {
+    it('matches an "Unknown command" reply shaped like parse_assistant_message output', () => {
+      const messages = [
+        { id: 'u1', type: 'user', content: '/forge-onboard\nhi' },
+        { id: 'a1', type: 'assistant', content: 'Unknown command: /forge-onboard' },
+      ];
+      expect(detectUnexpandedSkillFailure(messages, 'forge-onboard', 1)).toBe(true);
+    });
+
+    it('does not match a genuine type-shaped skill reply', () => {
+      const messages = [
+        { id: 'u1', type: 'user', content: '/forge-onboard\nhi' },
+        { id: 'a1', type: 'assistant', content: "Here's what I found surveying the repo…" },
+      ];
+      expect(detectUnexpandedSkillFailure(messages, 'forge-onboard', 1)).toBe(false);
+    });
+
+    it('does not match a type-shaped user message', () => {
+      const userOnly = [{ id: 'u1', type: 'user', content: 'Unknown command: /forge-onboard' }];
+      expect(detectUnexpandedSkillFailure(userOnly, 'forge-onboard', 0)).toBe(false);
+    });
+  });
+
+  it('escapes regex-special characters in skillName instead of throwing/misparsing', () => {
+    const messages = [{ type: 'assistant', content: 'Unknown command: /forge.onboard' }];
+    expect(detectUnexpandedSkillFailure(messages, 'forge.onboard', 0)).toBe(true);
+    // a literal dot must not match an arbitrary character
+    const messages2 = [{ type: 'assistant', content: 'Unknown command: /forgeXonboard' }];
+    expect(detectUnexpandedSkillFailure(messages2, 'forge.onboard', 0)).toBe(false);
+  });
 });

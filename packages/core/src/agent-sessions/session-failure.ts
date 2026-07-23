@@ -50,11 +50,16 @@ export function detectUnexpandedSkillFailure(
   priorMessageCount: number,
 ): boolean {
   if (!Array.isArray(messages)) return false;
-  const pattern = new RegExp(`unknown command:\\s*/${skillName}\\b`, 'i');
+  const escapedSkillName = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`unknown command:\\s*/${escapedSkillName}\\b`, 'i');
   for (const m of messages.slice(priorMessageCount)) {
-    if (m && typeof m === 'object' && (m as { role?: unknown }).role === 'assistant') {
-      const text = extractPromptString((m as { content?: unknown }).content);
-      if (pattern.test(text)) return true;
+    if (m && typeof m === 'object') {
+      const shape = m as { role?: unknown; type?: unknown; content?: unknown };
+      const kind = shape.role ?? shape.type;
+      if (kind === 'assistant') {
+        const text = extractPromptString(shape.content);
+        if (pattern.test(text)) return true;
+      }
     }
   }
   return false;

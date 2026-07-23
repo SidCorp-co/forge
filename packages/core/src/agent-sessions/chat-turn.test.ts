@@ -420,8 +420,13 @@ describe('dispatchChatTurn', () => {
     );
     const prompt = String((start?.[1] as { data: { prompt: string } }).data.prompt);
     expect(prompt.startsWith('/forge-onboard\n')).toBe(true);
-    const updates = updateSet.mock.calls[0]?.[0] as { metadata?: { pendingSkillName?: string } };
+    const updates = updateSet.mock.calls[0]?.[0] as {
+      metadata?: { pendingSkillName?: string; pendingSkillBaselineCount?: number };
+    };
     expect(updates.metadata?.pendingSkillName).toBe('forge-onboard');
+    // baseSession() starts with zero messages, so the baseline is 1 (just the
+    // user turn this dispatch appends) — before any assistant reply exists.
+    expect(updates.metadata?.pendingSkillBaselineCount).toBe(1);
   });
 
   it('ISS-733: an invalid skillName throws BEFORE writing the DB (no orphaned running row)', async () => {
@@ -448,8 +453,11 @@ describe('dispatchChatTurn', () => {
       message: 'again',
       skillName: 'forge-onboard',
     });
-    const updates = updateSet.mock.calls[0]?.[0] as { metadata?: { pendingSkillName?: string } };
+    const updates = updateSet.mock.calls[0]?.[0] as {
+      metadata?: { pendingSkillName?: string; pendingSkillBaselineCount?: number };
+    };
     expect(updates.metadata?.pendingSkillName).toBeUndefined();
+    expect(updates.metadata?.pendingSkillBaselineCount).toBeUndefined();
   });
 
   it('does NOT fire the AI title upgrade when the fallback title derives empty (system-noise first message)', async () => {

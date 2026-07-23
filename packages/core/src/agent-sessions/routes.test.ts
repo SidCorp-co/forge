@@ -427,6 +427,52 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
     expect(updates.metadata).not.toHaveProperty('pendingSkillName');
   });
 
+  it('still detects the failure when an interim flush already persisted the "Unknown command" message before the terminal PATCH (review minor finding)', async () => {
+    authVerified();
+    // Simulates the runner's 750ms interim `running` PATCH already having
+    // written the "Unknown command" assistant line into `existing.messages`
+    // BEFORE this terminal `completed` PATCH arrives with the identical,
+    // unchanged message array. Recomputing priorCount from
+    // `existing.messages.length` here would equal `patch.messages.length` and
+    // slice(priorCount) would find nothing — the stamped
+    // `pendingSkillBaselineCount` (from cold-start, before any assistant
+    // reply) is what makes this still detectable.
+    const turnMessages = [
+      { role: 'user', content: '/forge-onboard\nhi' },
+      { role: 'assistant', content: 'Unknown command: /forge-onboard' },
+    ];
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: turnMessages,
+        metadata: { pendingSkillName: 'forge-onboard', pendingSkillBaselineCount: 1 },
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed', messages: turnMessages }),
+    });
+
+    expect(res.status).toBe(200);
+    const updates = updateSet.mock.calls[0]?.[0] as {
+      status?: string;
+      failureReason?: string;
+      metadata?: Record<string, unknown>;
+    };
+    expect(updates.status).toBe('failed');
+    expect(updates.failureReason).toBe('skill_not_synced');
+    expect(updates.metadata).not.toHaveProperty('pendingSkillBaselineCount');
+  });
+
   it('clears the pendingSkillName marker without touching status when the skill DID run', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
