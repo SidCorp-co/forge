@@ -42,7 +42,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import { finalizeUsageLimitOnFailure } from './session-failure.js';
+import { detectUnexpandedSkillFailure, finalizeUsageLimitOnFailure } from './session-failure.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -615,6 +615,56 @@ agentSessionRoutes.patch(
       existing.failureReason !== 'user_cancelled'
     ) {
       updates.failureReason = null;
+    }
+
+    // ISS-733 fix — a chat-runs-skill cold start (turn 1 = `/${skillName}`,
+    // see chat-turn.ts `pendingSkillName`) can complete normally even when the
+    // sync-then-dispatch race hit: the skill file lands on the runner's disk
+    // AFTER `agent:start` fires, so the CLI treats `/<skillName>` as unknown
+    // text and reports success with zero real turns. Detect that signature on
+    // THIS terminal report and correct it to a real, actionable failure — the
+    // reviewed AC forbids a silent plain-reply "completed". The marker is
+    // one-shot: cleared here regardless of outcome so a later follow-up turn
+    // is never re-checked.
+    const existingMetaForSkillCheck = (existing.metadata as Record<string, unknown> | null) ?? null;
+    const pendingSkillName =
+      typeof existingMetaForSkillCheck?.pendingSkillName === 'string'
+        ? existingMetaForSkillCheck.pendingSkillName
+        : null;
+    if (pendingSkillName && (patch.status === 'completed' || patch.status === 'failed')) {
+      if (patch.status === 'completed') {
+        // Prefer the pre-turn baseline stamped in chat-turn.ts (the message
+        // count right after the user turn, before any assistant reply) over
+        // `existing.messages.length` — an interim `running` PATCH may have
+        // already persisted this turn's assistant messages before this
+        // terminal PATCH lands, which would make a freshly-recomputed count
+        // include them and slice them out of the scan.
+        const priorCount =
+          typeof existingMetaForSkillCheck?.pendingSkillBaselineCount === 'number'
+            ? existingMetaForSkillCheck.pendingSkillBaselineCount
+            : Array.isArray(existing.messages)
+              ? existing.messages.length
+              : 0;
+        const unexpanded = detectUnexpandedSkillFailure(
+          patch.messages ?? existing.messages,
+          pendingSkillName,
+          priorCount,
+        );
+        if (unexpanded) {
+          updates.status = 'failed';
+          updates.failureReason = 'skill_not_synced';
+        }
+      }
+      const metaBase =
+        (updates.metadata as Record<string, unknown> | undefined) ??
+        existingMetaForSkillCheck ??
+        {};
+      const {
+        pendingSkillName: _droppedPendingSkillName,
+        pendingSkillBaselineCount: _droppedPendingSkillBaselineCount,
+        ...restMeta
+      } = metaBase;
+      updates.metadata = restMeta;
     }
 
     // ISS-572 — chat/schedule sessions finalize HERE (the runner's patch_failed

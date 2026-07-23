@@ -29,6 +29,43 @@ export function extractSessionFailureText(
 }
 
 /**
+ * ISS-733 fix — detect the "unexpanded skill slash-command" failure signature
+ * on a chat-runs-skill cold start (turn 1 = `/${skillName}`, see chat-turn.ts
+ * `pendingSkillName`). The sync-then-dispatch race: `requestSkillSync` is
+ * fire-and-forget, so the skill file can land on the runner's disk AFTER
+ * `agent:start` fires. The CLI then short-circuits `/<skillName>` as an
+ * unrecognized command (`Unknown command: /<skillName>`), produces zero
+ * turns, but still reports `is_error=false` — the exact zero-turn no-op
+ * `claude_code.rs` / `stage-stall-guard.ts` already guard for pipeline JOBS
+ * (`is_issue_job` only); chat has no runner-side equivalent, so without this
+ * check the session silently reports `completed`.
+ *
+ * Scoped to the assistant messages appended AFTER `priorMessageCount` (the
+ * session's message count before this turn) so a later, unrelated turn that
+ * happens to mention the phrase in prose can never match.
+ */
+export function detectUnexpandedSkillFailure(
+  messages: unknown,
+  skillName: string,
+  priorMessageCount: number,
+): boolean {
+  if (!Array.isArray(messages)) return false;
+  const escapedSkillName = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`unknown command:\\s*/${escapedSkillName}\\b`, 'i');
+  for (const m of messages.slice(priorMessageCount)) {
+    if (m && typeof m === 'object') {
+      const shape = m as { role?: unknown; type?: unknown; content?: unknown };
+      const kind = shape.role ?? shape.type;
+      if (kind === 'assistant') {
+        const text = extractPromptString(shape.content);
+        if (pattern.test(text)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * ISS-572 — detect a usage/session-limit failure from a session's transcript +
  * the runner's terminal note. Returns `{ hit, resetAt }`. Pure detection reused
  * by both terminal-report paths (the runner's chat/schedule failure PATCHes

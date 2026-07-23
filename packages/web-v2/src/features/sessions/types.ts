@@ -70,7 +70,11 @@ export type SessionFailureReason =
   | "issue_busy"
   | "waiting_on_dep"
   | "project_full"
-  | "runner_full";
+  | "runner_full"
+  // ISS-733 fix — a chat-runs-skill cold start (e.g. Build Project Brain) fired
+  // before the skill finished syncing to the runner; the CLI treated the
+  // slash-command as unknown text. Real failure (red), not a benign cleanup.
+  | "skill_not_synced";
 
 /** Usage telemetry jsonb — every key is optional (older rows omit fields). */
 export interface SessionUsage {
@@ -190,6 +194,7 @@ export const FAILURE_REASON_LABEL: Record<string, string> = {
   waiting_on_dep: "Waiting on dependency",
   project_full: "Project at capacity",
   runner_full: "Runner at capacity",
+  skill_not_synced: "Skill not ready yet",
 };
 
 /** Suggested next action for a failed/stalled session — the one-line remedy on
@@ -204,6 +209,7 @@ export const FAILURE_REASON_ACTION: Record<string, string> = {
   waiting_on_dep: "Blocked on a dependency issue — resolve the blocker first.",
   project_full: "Project hit its concurrency cap — it will dispatch when a slot frees.",
   runner_full: "The runner is at capacity — it will dispatch when a slot frees.",
+  skill_not_synced: "The skill hadn't finished syncing to the runner yet — start a new chat to retry.",
 };
 
 /**
