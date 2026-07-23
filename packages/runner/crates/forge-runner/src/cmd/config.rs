@@ -15,8 +15,8 @@ pub enum Action {
     Show,
     /// Print the config file path.
     Path,
-    /// Set a config value: `core-url`, `projects-root`, `update.auto`, or
-    /// `update.manifest-url`.
+    /// Set a config value: `core-url`, `projects-root`, `update.auto`,
+    /// `update.manifest-url`, or `skills.auto_pull`.
     Set { key: String, value: String },
 }
 
@@ -41,8 +41,16 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 "update.manifest-url" | "update.manifest_url" => {
                     cfg.update.manifest_url = Some(value);
                 }
+                // ISS-736 — canary gate for background skill auto-pull.
+                "skills.auto_pull" | "skills.auto-pull" => {
+                    cfg.skills.auto_pull = value.parse::<bool>().map_err(|_| {
+                        anyhow::anyhow!(
+                            "`skills.auto_pull` expects `true` or `false`, got `{value}`"
+                        )
+                    })?;
+                }
                 other => anyhow::bail!(
-                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url)"
+                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url | skills.auto_pull)"
                 ),
             }
             cfg.save()?;

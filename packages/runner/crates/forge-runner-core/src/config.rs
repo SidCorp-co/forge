@@ -33,6 +33,9 @@ pub struct Config {
     #[serde(default)]
     pub update: UpdateSettings,
 
+    #[serde(default)]
+    pub skills: SkillSettings,
+
     /// project-slug -> local repo binding. One runner is registered per binding.
     #[serde(default)]
     pub bindings: HashMap<String, Binding>,
@@ -62,6 +65,21 @@ impl Default for UpdateSettings {
             manifest_url: None,
             auto: default_auto(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillSettings {
+    /// Background skill auto-pull. OFF at ship time (canary gate) — enable on
+    /// exactly one device via `forge-runner config set skills.auto_pull true`,
+    /// verify, then a follow-up release flips the fleet default. See ISS-736.
+    #[serde(default)]
+    pub auto_pull: bool,
+}
+
+impl Default for SkillSettings {
+    fn default() -> Self {
+        Self { auto_pull: false }
     }
 }
 
@@ -170,5 +188,6 @@ mod tests {
         assert_eq!(back.core_url.as_deref(), Some("https://core.example.com"));
         assert_eq!(back.runner.max_concurrent, 1);
         assert_eq!(back.bindings.len(), 1);
+        assert!(!back.skills.auto_pull);
     }
 }

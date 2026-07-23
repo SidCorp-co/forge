@@ -9,6 +9,7 @@
 pub mod chat;
 pub mod dispatch;
 pub mod preflight;
+pub mod skill_pull;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -347,6 +348,19 @@ pub async fn run(
                 }
             }
         });
+    }
+
+    // Background skill auto-pull (ISS-736) — OFF by default (canary gate).
+    // Independent poller; `skill.sync` above stays the immediate, explicit path.
+    if cfg.skills.auto_pull {
+        let (client, cfg) = (client.clone(), cfg.clone());
+        let cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move { skill_pull::run(client, cfg, cancel_rx).await });
+        tracing::info!("[skills] background auto-pull enabled");
+    } else {
+        tracing::debug!(
+            "[skills] background auto-pull disabled (set skills.auto_pull=true to enable)"
+        );
     }
 
     let mut cancel_rx = cancel_rx.clone();
