@@ -268,7 +268,13 @@ projectRoutes.get('/', async (c) => {
         sql`${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin')`,
         ...(includeArchived ? [] : [isNull(projects.archivedAt)]),
       ),
-    );
+    )
+    // DISTINCT ON requires its leading ORDER BY expression to match the
+    // distinct column. Without this the list order was arbitrary/run-varying,
+    // so a refetch could reorder it and shift list[0] — the rail's raw-order
+    // fallback (ISS-734) then jumps every workspace tab in the same org onto
+    // the new list[0] at once. Console display is unaffected (client-sorted).
+    .orderBy(projects.id);
 
   // apiKey is returned as-is — the caller has effective access (ADR 0013
   // documents the key is embedded in the widget page anyway). Redacting broke

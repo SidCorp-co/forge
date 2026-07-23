@@ -63,6 +63,32 @@ export function activeSlug(pathname: string): string | null {
   return m ? m[1] : null;
 }
 
+/** The project the rail renders on a workspace screen (no slug in the URL):
+ *  this tab's last-visited project (ISS-731), else this tab's last-RESOLVED
+ *  rail project (`stickySlug`), else the shared pinned-first/first project.
+ *
+ *  `stickySlug` anchors a tab so a `scopedProjects` reorder or transient empty
+ *  list (e.g. a projects-list refetch on window focus) can never bounce it
+ *  onto a shared `list[0]` — the mechanism behind ISS-734 (same-org tabs
+ *  converging on one project). Both `lastSlug` and `stickySlug` are only
+ *  honored when still present in `scopedProjects`, so a foreign-org slug can
+ *  never surface (ISS-470/476/480 org-scope guard). */
+export function resolveRailSlug(opts: {
+  slug: string | null;
+  lastSlug: string | null;
+  stickySlug: string | null;
+  scopedProjects: Array<{ id: string; slug: string }>;
+  pinnedIds: ReadonlySet<string>;
+}): string | null {
+  const { slug, lastSlug, stickySlug, scopedProjects: list, pinnedIds } = opts;
+  if (slug) return slug;
+  const inScope = (s: string | null) => !!s && list.some((p) => p.slug === s);
+  if (inScope(lastSlug)) return lastSlug;
+  if (inScope(stickySlug)) return stickySlug;
+  const pinnedFirst = list.find((p) => pinnedIds.has(p.id));
+  return pinnedFirst?.slug ?? list[0]?.slug ?? null;
+}
+
 /** Project items by descending sub-length so the longest match wins (e.g.
  *  "/issues" beats "" for Overview). Sorted once — the list is a module const. */
 export const PROJECT_ITEMS_BY_SPECIFICITY = [...PROJECT_ITEMS].sort(
