@@ -86,7 +86,7 @@ export function ChatDock({
         className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-[color:var(--link)]"
       />
       <div className="flex min-h-0 flex-1 flex-col">
-        <ChatScreen projectId={projectId} onClose={onClose} />
+        <ChatScreen projectId={projectId} onClose={onClose} initialDraft />
       </div>
     </aside>
   );
