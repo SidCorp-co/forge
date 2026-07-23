@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import type { ProjectListItem } from "@/features/projects/types";
-import { usePersistedState } from "@/lib/utils/use-persisted-state";
+import { usePerTabState } from "@/lib/utils/use-persisted-state";
 
 export function useProjectOrgScopeSync(opts: {
   /** Active project slug from the pathname (null outside a project). */
@@ -57,7 +57,9 @@ export function useProjectOrgScopeSync(opts: {
 
   // Remember the last project visited so the rail can keep showing a project
   // context (mark + tier) even on workspace screens — no vanishing block.
-  const [lastSlug, setLastSlug] = usePersistedState<string | null>("web-v2:last-project", null);
+  // Per-tab (ISS-731): each tab keeps its own last-visited project instead of
+  // adopting whatever another open tab last wrote.
+  const [lastSlug, setLastSlug] = usePerTabState<string | null>("web-v2:last-project", null);
   useEffect(() => {
     if (slug && slug !== lastSlug) setLastSlug(slug);
   }, [slug, lastSlug, setLastSlug]);
