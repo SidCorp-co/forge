@@ -92,3 +92,71 @@ export function usePersistedState<T>(
 
   return [value, set];
 }
+
+function readPerTab<T>(key: string, initial: T): T {
+  if (typeof window === 'undefined') return initial;
+  try {
+    const session = window.sessionStorage.getItem(key);
+    if (session != null) return JSON.parse(session) as T;
+  } catch {
+    /* fall through to the localStorage seed */
+  }
+  // No per-tab value yet: seed once from the shared localStorage value (the
+  // most-recently-used value across all tabs) and capture it into this tab's
+  // sessionStorage so future reads/reloads of this tab are stable.
+  const seeded = read(key, initial);
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(seeded));
+  } catch {
+    /* best-effort: quota / disabled storage */
+  }
+  return seeded;
+}
+
+/**
+ * `usePerTabState('web-v2:last-project', null)` → `[value, setValue]`.
+ *
+ * Like `usePersistedState`, but the per-tab `sessionStorage` is this tab's
+ * source of truth — writes made in OTHER tabs are never adopted, live or on
+ * reload. A brand-new tab (no session value yet) seeds once from the shared
+ * `localStorage` value so it starts on the most-recently-used selection, and
+ * every `set` mirrors into `localStorage` so that seed stays current for
+ * future new tabs. Use this instead of `usePersistedState` for state that
+ * must stay independent per tab — e.g. the last-visited project — where
+ * cross-tab sync would leak one tab's navigation into another's.
+ */
+export function usePerTabState<T>(
+  key: string,
+  initial: T,
+): [T, (value: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(initial);
+
+  // Hydrate after mount (storage is unavailable during SSR).
+  useEffect(() => {
+    setValue(readPerTab(key, initial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const set = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      setValue((prev) => {
+        const resolved =
+          typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
+        try {
+          window.sessionStorage.setItem(key, JSON.stringify(resolved));
+        } catch {
+          /* best-effort: quota / disabled storage */
+        }
+        try {
+          window.localStorage.setItem(key, JSON.stringify(resolved));
+        } catch {
+          /* best-effort: quota / disabled storage */
+        }
+        return resolved;
+      });
+    },
+    [key],
+  );
+
+  return [value, set];
+}
