@@ -1,38 +1,47 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { skillRegistrations, skills } from '../db/schema.js';
+import { projects, skillRegistrations, skills } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { defaultStatesConfig } from '../pipeline/pipeline-config-schema.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
 import { readAgentConfig, writeAgentConfig } from '../projects/agent-config.js';
 import { resolveOrAdoptProjectSkill } from './service.js';
 
-// ISS-733 — the interactive onboarding chat skill. Force-synced to every
-// bootstrapped project's device manifest as `install_only` (no stage binding,
-// manually triggered from web) so it can run turn 1 of a chat session without
-// touching the stage-registration model. Adopted from the same-name builtin
-// global template (packages/core/skills/forge-onboard) the same way stage
-// skills are — see `resolveOrAdoptProjectSkill`.
-const ONBOARD_SKILL_NAME = 'forge-onboard';
+// ISS-737 — the seed-list of shared skills every project must carry as
+// `install_only` (no stage binding), regardless of whether it registers any
+// stage-mapped skills. Adding a name here is the ENTIRE change needed to make
+// a builtin skill fan out to every project (new + backfill) — no per-skill
+// function, no new call site. Mirrors `TEMPLATE_SETS` below: the skill body
+// still ships as a global builtin template (needs a deploy), this list only
+// says which builtins get force-adopted everywhere.
+// ISS-733 seeded the first entry: the interactive onboarding chat skill, run
+// manually triggered from web to drive turn 1 of a chat session.
+const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = ['forge-onboard'];
 
 /**
- * Idempotent: adopt the project's own copy of `forge-onboard` (cloning the
- * global template on first call) and flip it `install_only` if not already.
- * Best-effort — a server that hasn't deployed the builtin template yet (no
- * global row) or any other failure here must never break the surrounding
- * bootstrap call, since this is additive backfill, not the bootstrap's core
- * job (stage skills + pipeline preset).
+ * Idempotent: for each seed-list entry, adopt the project's own copy
+ * (cloning the global template on first call) and flip it `install_only` if
+ * not already. Per-entry try/catch — a server that hasn't deployed one
+ * builtin template yet (no global row) or any other failure on one entry
+ * must never block the rest of the seed-list or the surrounding bootstrap
+ * call, since this is additive backfill, not the bootstrap's core job (stage
+ * skills + pipeline preset).
  */
-async function ensureOnboardSkill(projectId: string): Promise<void> {
-  try {
-    const skillId = await resolveOrAdoptProjectSkill(projectId, ONBOARD_SKILL_NAME);
-    if (!skillId) return;
-    await db
-      .update(skills)
-      .set({ installOnly: true })
-      .where(and(eq(skills.id, skillId), eq(skills.installOnly, false)));
-  } catch (err) {
-    logger.error({ err, projectId }, 'bootstrap-service: ensureOnboardSkill failed');
+export async function ensureSharedInstallOnlySkills(projectId: string): Promise<void> {
+  for (const skillName of SHARED_INSTALL_ONLY_SKILLS) {
+    try {
+      const skillId = await resolveOrAdoptProjectSkill(projectId, skillName);
+      if (!skillId) continue;
+      await db
+        .update(skills)
+        .set({ installOnly: true })
+        .where(and(eq(skills.id, skillId), eq(skills.installOnly, false)));
+    } catch (err) {
+      logger.error(
+        { err, projectId, skillName },
+        'bootstrap-service: ensureSharedInstallOnlySkills failed for one entry',
+      );
+    }
   }
 }
 
@@ -176,11 +185,11 @@ export async function bootstrapProjectSkills(
       pipelineEnabled: currentPipeline.enabled === true,
     };
 
-    // ISS-733 — backfill: a project bootstrapped before this skill existed
-    // still gets its install_only forge-onboard copy, without re-running
-    // (or re-registering) the stage seed. Runs last so it never shifts the
+    // ISS-737 — backfill: a project bootstrapped before a seed-list entry
+    // existed still gets its install_only copy, without re-running (or
+    // re-registering) the stage seed. Runs last so it never shifts the
     // pipelineConfig write above.
-    await ensureOnboardSkill(projectId);
+    await ensureSharedInstallOnlySkills(projectId);
 
     return result;
   }
@@ -230,15 +239,52 @@ export async function bootstrapProjectSkills(
     });
   }
 
-  // ISS-733 — seed the project's install_only forge-onboard copy alongside
-  // the stage-mapped skills, so a fresh project can immediately trigger the
-  // onboarding chat once a runner is bound. Runs last so it never shifts the
-  // pipelineConfig write above.
-  await ensureOnboardSkill(projectId);
+  // ISS-737 — seed the project's install_only copies of every shared skill
+  // alongside the stage-mapped skills, so a fresh project can immediately use
+  // them (e.g. trigger the onboarding chat once a runner is bound). Runs last
+  // so it never shifts the pipelineConfig write above.
+  await ensureSharedInstallOnlySkills(projectId);
 
   return {
     alreadyBootstrapped: false,
     skillsBound: toInsert.length,
     pipelineEnabled: shouldSetPreset ? preset.enabled : currentPipeline.enabled === true,
   };
+}
+
+export interface FanOutResult {
+  totalProjects: number;
+  succeeded: number;
+  failed: number;
+}
+
+/**
+ * Cross-project sweep: run `ensureSharedInstallOnlySkills` for every existing
+ * project, so a name added to `SHARED_INSTALL_ONLY_SKILLS` reaches projects
+ * that were bootstrapped before the entry existed and never hit the
+ * per-project bootstrap endpoint again. Best-effort per project — one
+ * project's failure must not abort the sweep (mirrors the migration pattern
+ * in `knowledge/migrate-project-facts.ts`).
+ */
+export async function fanOutSharedInstallOnlySkills(): Promise<FanOutResult> {
+  const rows = await db.select({ id: projects.id }).from(projects);
+
+  let succeeded = 0;
+  let failed = 0;
+  for (const { id } of rows) {
+    try {
+      await ensureSharedInstallOnlySkills(id);
+      succeeded++;
+    } catch (err) {
+      logger.error(
+        { err, projectId: id },
+        'bootstrap-service: fanOutSharedInstallOnlySkills failed for one project',
+      );
+      failed++;
+    }
+  }
+
+  const result: FanOutResult = { totalProjects: rows.length, succeeded, failed };
+  logger.info(result, 'bootstrap-service: fan-out sweep complete');
+  return result;
 }
