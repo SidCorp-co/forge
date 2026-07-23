@@ -151,6 +151,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - forge_feedback API now aggregates feedback across projects and supports filtering by review status.
 - Scheduled fleet now receives standing digest of unreviewed feedback, enabling regular review cycles without manual requests.
 - Rocket.Chat projects can opt into answering questions via the full runner assistant instead of the quick-chat model, and the bot now replies directly when it finishes quickly — only posting a "still working" note if an answer takes more than two minutes.
+- Fixed per-tab project selection to prevent tabs viewing the same organization from sharing the fallback project, ensuring each tab maintains its own independent project view.
 
 ## [0.3.0] - 2026-06-11
 
