@@ -36,6 +36,13 @@ pub struct Config {
     #[serde(default)]
     pub skills: SkillSettings,
 
+    /// Shared-skill delivery via a Claude Code plugin marketplace (ISS-739),
+    /// the 3rd channel alongside per-project disk sync (ISS-737) and
+    /// MCP-served meta prompts. Defaults to fully disabled — canary rollout
+    /// opts in one device at a time.
+    #[serde(default)]
+    pub plugins: PluginSettings,
+
     /// project-slug -> local repo binding. One runner is registered per binding.
     #[serde(default)]
     pub bindings: HashMap<String, Binding>,
@@ -64,6 +71,62 @@ impl Default for UpdateSettings {
         Self {
             manifest_url: None,
             auto: default_auto(),
+        }
+    }
+}
+
+/// Device-level shared-skill delivery via a Claude Code plugin marketplace
+/// (ISS-739). See `docs/architecture/skill-delivery-plugin-channel.md` for
+/// the 3-channel doctrine and the SHA-pin decision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginSettings {
+    /// Master switch. Defaults to OFF — the runner ships to every device via
+    /// the Rust release channel, so this is a canary opt-in (enable on one
+    /// device, prove it, then widen), mirroring the ISS-736 rollout discipline.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Marketplace source: a GitHub `owner/repo` shorthand or full git URL,
+    /// passed straight to `claude plugin marketplace add`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marketplace_repo: Option<String>,
+    /// Plugin name(s) from the marketplace to install + enable. Empty = none
+    /// (marketplace added but nothing installed).
+    #[serde(default)]
+    pub plugin_names: Vec<String>,
+    /// Commit SHA the marketplace clone is checked out to right after
+    /// `marketplace add`, giving a deterministic floor for the initial
+    /// install. When `auto_update` is on, subsequent polls fast-forward past
+    /// this pin — it seeds a known-good starting point, it does not lock the
+    /// device to that commit forever.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned_ref: Option<String>,
+    /// Auto-update the marketplace + installed plugins on each poll.
+    /// Defaults ON for the first-party Forge marketplace (owner decision).
+    #[serde(default = "default_plugin_auto_update")]
+    pub auto_update: bool,
+    /// Background sweep cadence, in seconds, after the initial jittered
+    /// (<=10min) startup delay.
+    #[serde(default = "default_plugin_poll_interval_secs")]
+    pub poll_interval_secs: u64,
+}
+
+fn default_plugin_auto_update() -> bool {
+    true
+}
+
+fn default_plugin_poll_interval_secs() -> u64 {
+    6 * 3600
+}
+
+impl Default for PluginSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            marketplace_repo: None,
+            plugin_names: Vec::new(),
+            pinned_ref: None,
+            auto_update: default_plugin_auto_update(),
+            poll_interval_secs: default_plugin_poll_interval_secs(),
         }
     }
 }
@@ -189,5 +252,33 @@ mod tests {
         assert_eq!(back.runner.max_concurrent, 1);
         assert_eq!(back.bindings.len(), 1);
         assert!(!back.skills.auto_pull);
+    }
+
+    #[test]
+    fn plugin_settings_default_disabled_with_auto_update_on() {
+        let cfg = Config::default();
+        assert!(!cfg.plugins.enabled);
+        assert!(cfg.plugins.auto_update);
+        assert_eq!(cfg.plugins.poll_interval_secs, 6 * 3600);
+        assert!(cfg.plugins.marketplace_repo.is_none());
+        assert!(cfg.plugins.plugin_names.is_empty());
+    }
+
+    #[test]
+    fn plugin_settings_roundtrip_through_toml() {
+        let mut cfg = Config::default();
+        cfg.plugins.enabled = true;
+        cfg.plugins.marketplace_repo = Some("SidCorp-co/forge-pipeline-skills".into());
+        cfg.plugins.plugin_names = vec!["forge-shared-skills".into()];
+        cfg.plugins.pinned_ref = Some("deadbeef".into());
+        let s = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&s).unwrap();
+        assert!(back.plugins.enabled);
+        assert_eq!(
+            back.plugins.marketplace_repo.as_deref(),
+            Some("SidCorp-co/forge-pipeline-skills")
+        );
+        assert_eq!(back.plugins.plugin_names, vec!["forge-shared-skills"]);
+        assert_eq!(back.plugins.pinned_ref.as_deref(), Some("deadbeef"));
     }
 }
