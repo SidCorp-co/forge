@@ -17,6 +17,7 @@ import { buildIlikePattern } from '../issues/search.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
+import { fanOutSharedInstallOnlySkills } from '../skills/bootstrap-service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -174,6 +175,16 @@ adminProtected.get(
     return c.json(rows);
   },
 );
+
+// ISS-737 — cross-project sweep so a name added to
+// bootstrap-service.ts's SHARED_INSTALL_ONLY_SKILLS reaches every existing
+// project without a per-project manual push. Best-effort per project;
+// returns a summary rather than per-project detail (kept POST-only + admin
+// gated since it's a mutating batch op, not a read).
+adminProtected.post('/skills/fan-out', async (c) => {
+  const result = await fanOutSharedInstallOnlySkills();
+  return c.json(result);
+});
 
 // Mount whoami without requireAdmin — the point is to let any authenticated
 // user discover admin status via the 200/403 split. requireAuth still runs.
