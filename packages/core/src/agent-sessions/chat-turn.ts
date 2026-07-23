@@ -356,6 +356,19 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   };
   const messages = [...prevMessages, userMessage];
 
+  // Resolved here (not just inside the remote-dispatch branch below) so the
+  // ISS-733 `pendingSkillName` marker can be persisted in THIS transaction —
+  // the remote branch only ever publishes a WS event, it never writes the DB.
+  const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
+  const resumable = !!claudeSessionId && !migrated;
+  // Fail BEFORE any write when the shape is wrong, rather than after the user
+  // turn + status='running' have already been committed with nothing to
+  // dispatch it (the previous validation point was inside the cold-start
+  // publish branch, after this transaction).
+  if (args.skillName && !SKILL_NAME_RE.test(args.skillName)) {
+    throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
+  }
+
   const updates: Record<string, unknown> = {
     messages: messages as never,
     status: 'running',
@@ -374,6 +387,16 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   const nextMeta = { ...prevMeta };
   if (deviceId) nextMeta.deviceId = deviceId;
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
+  // ISS-733 fix — mark this turn as "invoked a skill on cold start" so the
+  // PATCH /:id terminal-report handler can detect the sync-then-dispatch race
+  // (skill not yet synced to the runner's disk → CLI short-circuits with
+  // "Unknown command: /<skillName>", zero turns, but still reports success —
+  // see `detectUnexpandedSkillFailure` in session-failure.ts) instead of
+  // silently completing. Remote cold-start only: `isLocal` never applies
+  // skillName (see the known limitation on the desktop trigger path).
+  if (!resumable && !isLocal && args.skillName) {
+    nextMeta.pendingSkillName = args.skillName;
+  }
   updates.metadata = nextMeta;
 
   // Auto-title a brand-new, still-untitled session from its first user message
@@ -432,10 +455,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // (`agent:send`) needs it as much as the cold start. Best-effort: returns `{}`
   // (harmless) when the project has no `pipelineConfig.mcpServers` configured.
   const { servers: mcpServersOverride } = await resolveProjectDefaultMcpServers(project.id);
-  const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
-  // Resume only when we have a Claude session id AND we are still on the device
-  // that owns it. A migration breaks resume affinity → cold-start + rehydrate.
-  const resumable = !!claudeSessionId && !migrated;
+  // `claudeSessionId`/`resumable` were already resolved above (before the
+  // transaction, so the `pendingSkillName` marker could be persisted).
   if (!resumable) {
     // Cold start — fresh Claude session: carry the tool reference + project
     // preamble. On a migration, re-inject the prior transcript from the DB so
@@ -460,10 +481,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     // ISS-733 — job-parity skill invocation: line 1 = the slash-command, same
     // shape a pipeline job's `-p` prompt already uses. Cold-start only (this
     // whole branch is `!resumable`) — a `--resume` turn never re-prepends it.
+    // Shape already validated above (before the DB transaction).
     if (args.skillName) {
-      if (!SKILL_NAME_RE.test(args.skillName)) {
-        throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
-      }
       prompt = `/${args.skillName}\n${prompt}`;
     }
     roomManager.publish(deviceRoom(target), {

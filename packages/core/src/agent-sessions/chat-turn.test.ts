@@ -406,6 +406,52 @@ describe('dispatchChatTurn', () => {
     expect(applyAutoTitleAsyncSpy).not.toHaveBeenCalled();
   });
 
+  it('ISS-733: cold start with skillName prepends the slash-command and stamps pendingSkillName', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession(),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'hello',
+      skillName: 'forge-onboard',
+    });
+    const start = publishSpy.mock.calls.find(
+      ([, env]) => (env as { event: string }).event === 'agent:start',
+    );
+    const prompt = String((start?.[1] as { data: { prompt: string } }).data.prompt);
+    expect(prompt.startsWith('/forge-onboard\n')).toBe(true);
+    const updates = updateSet.mock.calls[0]?.[0] as { metadata?: { pendingSkillName?: string } };
+    expect(updates.metadata?.pendingSkillName).toBe('forge-onboard');
+  });
+
+  it('ISS-733: an invalid skillName throws BEFORE writing the DB (no orphaned running row)', async () => {
+    await expect(
+      dispatchChatTurn({
+        session: baseSession(),
+        project: PROJECT,
+        client: { deviceId: DEVICE, isLocal: false },
+        message: 'hello',
+        skillName: 'Not Valid!',
+      }),
+    ).rejects.toThrow(/invalid skillName/);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('ISS-733: a follow-up (--resume) turn never stamps pendingSkillName', async () => {
+    updateReturning.mockResolvedValueOnce([
+      baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
+    ]);
+    await dispatchChatTurn({
+      session: baseSession({ claudeSessionId: 'c-1', messages: [{ role: 'user', content: 'a' }] }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'again',
+      skillName: 'forge-onboard',
+    });
+    const updates = updateSet.mock.calls[0]?.[0] as { metadata?: { pendingSkillName?: string } };
+    expect(updates.metadata?.pendingSkillName).toBeUndefined();
+  });
+
   it('does NOT fire the AI title upgrade when the fallback title derives empty (system-noise first message)', async () => {
     updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
     await dispatchChatTurn({
