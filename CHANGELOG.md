@@ -154,6 +154,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Rocket.Chat projects can opt into answering questions via the full runner assistant instead of the quick-chat model, and the bot now replies directly when it finishes quickly — only posting a "still working" note if an answer takes more than two minutes.
 - Fixed per-tab project selection to prevent tabs viewing the same organization from sharing the fallback project, ensuring each tab maintains its own independent project view.
 - Projects can now use an interactive chat skill to guide users through onboarding and Forge project setup
+- Shared skills now deploy automatically to all projects instead of requiring manual fan-out pushes
 
 ## [0.3.0] - 2026-06-11
 
