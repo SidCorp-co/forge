@@ -50,6 +50,7 @@ import {
   projectRailItems,
   bottomTabItems,
   buildWorkspaceCommands,
+  resolveRailSlug,
   useProjectOrgScopeSync,
   useRailProjectData,
 } from "@/features/shell";
@@ -149,14 +150,28 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   );
 
   // The project the rail renders: the one you're in, else the last visited, else
-  // your first (pinned-first) project. Lets you re-enter a project from anywhere.
-  const railSlug = useMemo(() => {
-    if (slug) return slug;
-    const list = scopedProjects;
-    if (lastSlug && list.some((p) => p.slug === lastSlug)) return lastSlug;
-    const pinnedFirst = list.find((p) => pinnedIds.has(p.id));
-    return pinnedFirst?.slug ?? list[0]?.slug ?? null;
-  }, [slug, lastSlug, scopedProjects, pinnedIds]);
+  // this tab's last-resolved rail project, else your first (pinned-first)
+  // project. Lets you re-enter a project from anywhere.
+  //
+  // `lastRailSlugRef` anchors this tab to the project it was already showing so
+  // a `scopedProjects` reorder/refetch (e.g. window-focus refetch of the
+  // projects list) can't bounce it onto a shared list[0] — the mechanism
+  // behind ISS-734 (same-org tabs converging on one project).
+  const lastRailSlugRef = useRef<string | null>(null);
+  const railSlug = useMemo(
+    () =>
+      resolveRailSlug({
+        slug,
+        lastSlug,
+        stickySlug: lastRailSlugRef.current,
+        scopedProjects,
+        pinnedIds,
+      }),
+    [slug, lastSlug, scopedProjects, pinnedIds],
+  );
+  useEffect(() => {
+    if (railSlug) lastRailSlugRef.current = railSlug;
+  }, [railSlug]);
   const railProject = useMemo(
     () => (railSlug ? projects?.find((p) => p.slug === railSlug) ?? null : null),
     [projects, railSlug],

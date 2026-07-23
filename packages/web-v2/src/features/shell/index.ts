@@ -18,6 +18,7 @@ export {
   PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub, buildCrumbs,
   buildActiveKey, buildBottomActiveKey, workspaceNavItems,
   compactWorkspaceRailItems, projectRailItems, bottomTabItems,
+  resolveRailSlug,
   type ProjItem,
 } from './nav-model';
 export { buildWorkspaceCommands, type WorkspaceCommandDeps } from './commands';

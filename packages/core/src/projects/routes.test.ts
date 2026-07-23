@@ -21,8 +21,9 @@ const selectFrom = vi.fn(() => ({
 }));
 
 // GET / visibility query:
-// selectDistinctOn(...).from().innerJoin(orgs).leftJoin().leftJoin().where()
-const distinctWhere = vi.fn((): Promise<unknown[]> => Promise.resolve([]));
+// selectDistinctOn(...).from().innerJoin(orgs).leftJoin().leftJoin().where().orderBy()
+const distinctOrderBy = vi.fn((): Promise<unknown[]> => Promise.resolve([]));
+const distinctWhere = vi.fn((): Record<string, unknown> => ({ orderBy: distinctOrderBy }));
 const distinctLeftJoin = vi.fn(
   (): Record<string, unknown> => ({
     leftJoin: distinctLeftJoin,
@@ -128,7 +129,9 @@ beforeEach(() => {
   selectWhere.mockClear();
   innerJoin.mockClear();
   distinctWhere.mockReset();
-  distinctWhere.mockResolvedValue([]);
+  distinctWhere.mockReturnValue({ orderBy: distinctOrderBy });
+  distinctOrderBy.mockReset();
+  distinctOrderBy.mockResolvedValue([]);
   txInsertProjectReturning.mockReset();
   updateReturning.mockReset();
   deleteWhere.mockClear();
@@ -265,7 +268,7 @@ describe('GET /api/projects', () => {
   it('returns the visible projects with effective role', async () => {
     const token = await signUserToken('uuid-user');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    distinctWhere.mockResolvedValueOnce([
+    distinctOrderBy.mockResolvedValueOnce([
       {
         id: 'p1',
         slug: 'p-one',
@@ -290,7 +293,7 @@ describe('GET /api/projects', () => {
   it('derives project admin from org role when there is no member row', async () => {
     const token = await signUserToken('uuid-user');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    distinctWhere.mockResolvedValueOnce([
+    distinctOrderBy.mockResolvedValueOnce([
       {
         id: 'p2',
         slug: 'p-two',
