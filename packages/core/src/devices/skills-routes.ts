@@ -16,7 +16,7 @@ import {
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
-// Device-token endpoints let the Rust runner pull the effective (post-override)
+// Device-token endpoints let the Rust runner pull the effective (post-shadow)
 // skill manifest for a project, fetch only the skills whose hash changed, and
 // report back the `installedHash` it seeded onto disk. A user-authed read
 // endpoint exposes the per-device synced/outdated/missing status for the web UI

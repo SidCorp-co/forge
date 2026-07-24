@@ -347,7 +347,7 @@ describe('updateProjectSkill — reserved meta-skill rename guard (ISS-741)', ()
 });
 
 describe('resolveOrAdoptProjectSkill — system bridge bypasses the meta-name guard (ISS-741)', () => {
-  it('still adopts forge-onboard from its global template (install_only bridge keeps working)', async () => {
+  it('still adopts a reserved meta name (forge-onboard) from its global template via the system bypass', async () => {
     pushSelect([]); // no existing project skill named forge-onboard
     pushSelect([
       {

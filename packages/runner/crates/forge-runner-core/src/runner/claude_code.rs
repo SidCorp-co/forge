@@ -341,11 +341,12 @@ impl Runner for ClaudeCodeRunner {
             None => repo,
         };
 
-        // Server-driven skill seeding was removed: the runner uses the skills
-        // already in the working dir's `.claude/skills/` (delivered out-of-band
-        // — committed in the repo or rsync'd in), instead of pulling the
-        // server's effective manifest and overwriting them at job start. The
-        // server's global skills were clobbering project-local skill overrides.
+        // No skill seeding at job start: the job consumes whatever is already
+        // in `<worktree>/.claude/skills/`, delivered ahead of time by the disk
+        // sync channel (`workspace::skill_sync`, driven by provision / the
+        // `skill.sync` event / background auto-pull), plus any device-scope
+        // plugin skills inherited from the config dir. A job-start re-seed was
+        // removed because it clobbered project-shadowed skills mid-flight.
 
         let prompt = spec
             .prompt

@@ -9,8 +9,8 @@ import { type ZipEntry, buildZip } from './zip.js';
  * cannot read the dispatching device's filesystem.
  *
  * Real implementation (replaces the prior null stub):
- *   1. Resolve the project's REGISTERED effective skills (global + per-project
- *      overrides) via `resolveRegisteredEffectiveSkills` — the same set the
+ *   1. Resolve the project's REGISTERED effective skills (project skills, which
+ *      shadow a same-name global) via `resolveRegisteredEffectiveSkills` — the same set the
  *      device-sync manifest uses.
  *   2. Serialize them into a deterministic ZIP: `<skill-name>/SKILL.md` plus
  *      each attached file at `<skill-name>/<file.path>`.

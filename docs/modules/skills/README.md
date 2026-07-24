@@ -118,20 +118,20 @@ Global skills are **read-only default templates**; a project customizes one by c
 - `skills/effective.ts` dedups by name (**project wins**) → one row per name plus a `shadowsGlobal` marker; `forge_skills.list`/`effective` surface it.
 - **Removed**: `forge_skills.override_set`/`override_delete`, REST `override-routes.ts`, the `projectSkillOverrides` table, and the override-merge `isOverridden` branch. Shadow-by-name only.
 
-## Skill delivery: stage (disk) vs meta (MCP-served)
+## Skill delivery: three channels, two skill KINDS
 
-Two distinct delivery channels — do not conflate them:
+Every skill is one of **two kinds**, each with its canonical channel; a third channel serves a live read-reference prompt. Do not conflate them.
 
-| Channel | Skills | How delivered | Disk sync / device status? | Bound to a stage? |
-|---------|--------|---------------|----------------------------|-------------------|
-| **Stage** (disk) | the registered pipeline + custom skills | runner pulls `resolveRegisteredEffectiveSkills` (registered project-scoped skills only) → `.claude/skills` | yes — deterministic, shadowable, has per-device sync-status | yes |
-| **Meta** (MCP-served) | `forge-skills` and any other `MANAGED_META_SKILLS` | served LIVE as MCP **prompts** from the Forge MCP server — zero disk, always-latest | **no** — never installed to disk, no device sync-status | no (user-invocable) |
+| Channel | Kind / skills | How delivered | Overridable? | Works in headless `claude -p`? |
+|---------|---------------|---------------|--------------|--------------------------------|
+| **1. Per-project (disk)** | pipeline stage + project custom skills | server computes `resolveRegisteredEffectiveSkills` (`skills/effective.ts`) → runner `sync_skills` writes `<repo>/.claude/skills/<name>/` | **yes** — a project shadows a global by name (ISS-388); per-device sync-status | yes (slash-commands read at CLI init) |
+| **2. Meta (plugin)** | Forge-owned, all-project (`forge-onboard`, …) | device-scope Claude Code plugin from marketplace `SidCorp-co/forge-pipeline-skills` (SHA-pinnable, auto-update); `META_SKILL_NAMES` reserves the name | **no** — device-scope install is structurally non-overridable; a same-name project skill is rejected (`MetaSkillReservedError`) | yes |
+| **3. MCP-served (read-reference)** | `forge-skills` (`MANAGED_META_SKILLS`) | served LIVE as an MCP **prompt** — zero disk, always-latest | n/a — not installed | **no** — expands only when the Forge MCP is already `connected` (warm/interactive session), so it is a read-reference, NOT an execution channel |
 
-- `MANAGED_META_SKILLS` (`packages/core/src/skills/effective.ts`) is the list of meta-skill names; add a name there to serve a new meta builtin everywhere.
-- `resolveManagedMetaPrompts(projectId)` resolves each meta skill's body per project (a project-adopted copy wins over the global template; `null` projectId → global).
-- Forge MCP server (`packages/core/src/mcp/server.ts`) advertises the `prompts: {}` capability and answers `ListPrompts`/`GetPrompt`, project-scoped via the `X-Forge-Project-Slug` header.
-- The meta disk-install path (with a `pipelineConfig.syncManagedSkills` opt-out) was added then **removed** — MCP-serve replaced it. `syncManagedSkills` no longer exists; do **not** reintroduce it.
-- `GET /api/skills` tags each row with `managedMeta` (computed from `MANAGED_META_SKILLS`, by name) so the **Skill Studio** UI renders meta skills as MCP-served (no sync-status, no stage-registration), with a source label of *Platform default* (global) vs *Project-adopted* (a same-name project copy exists).
+- **Which channel for a new skill:** a project tunes it → **channel 1** (disk, shadowable). Forge owns it for every project and it must be non-overridable → **channel 2** (add to the marketplace repo + `META_SKILL_NAMES`). A live meta-guide for warm sessions only → **channel 3**.
+- **Anchors — where to code:** *what installs* = `resolveRegisteredEffectiveSkills` (`skills/effective.ts`); *how it installs* = runner `sync_skills`; *who may write a skill* = the `service` layer (carries the `isMetaSkillName` guard — never `db.insert(skills)` directly).
+- **Removed — do NOT reintroduce:** the meta disk-install path (`syncManagedSkills` / `resolveInstallableSkills`) — channels 2+3 replaced it; the override/fork mechanism (`projectSkillOverrides`, ISS-388) — shadow-by-name only; the per-project `install_only` bridge for meta skills (`SHARED_INSTALL_ONLY_SKILLS`, ISS-742) — the plugin channel owns meta now, so that seed-list is empty and is only for genuinely per-project shared utilities.
+- `GET /api/skills` tags each row `managedMeta` (by name, from `MANAGED_META_SKILLS`) so **Skill Studio** renders channel-3 skills as MCP-served (no sync-status, no stage-registration).
 
 ## Future (v0.2+)
 

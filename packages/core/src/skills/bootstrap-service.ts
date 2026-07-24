@@ -11,12 +11,15 @@ import { resolveOrAdoptProjectSkill } from './service.js';
 // `install_only` (no stage binding), regardless of whether it registers any
 // stage-mapped skills. Adding a name here is the ENTIRE change needed to make
 // a builtin skill fan out to every project (new + backfill) — no per-skill
-// function, no new call site. Mirrors `TEMPLATE_SETS` below: the skill body
-// still ships as a global builtin template (needs a deploy), this list only
-// says which builtins get force-adopted everywhere.
-// ISS-733 seeded the first entry: the interactive onboarding chat skill, run
-// manually triggered from web to drive turn 1 of a chat session.
-const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = ['forge-onboard'];
+// function, no new call site.
+//
+// ISS-742 — EMPTY by design. The one former entry, `forge-onboard`, was a
+// transitional disk bridge; it is a META skill and now ships via the device
+// plugin channel (`META_SKILL_NAMES`, marketplace `SidCorp-co/forge-pipeline-
+// skills`) — non-overridable, one device install serves every project. Only
+// add a name here for a genuinely PER-PROJECT shared utility (disk-synced,
+// project-shadowable), NEVER a meta skill.
+const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = [];
 
 /**
  * Idempotent: for each seed-list entry, adopt the project's own copy
@@ -27,8 +30,11 @@ const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = ['forge-onboard'];
  * call, since this is additive backfill, not the bootstrap's core job (stage
  * skills + pipeline preset).
  */
-export async function ensureSharedInstallOnlySkills(projectId: string): Promise<void> {
-  for (const skillName of SHARED_INSTALL_ONLY_SKILLS) {
+export async function ensureSharedInstallOnlySkills(
+  projectId: string,
+  seed: ReadonlyArray<string> = SHARED_INSTALL_ONLY_SKILLS,
+): Promise<void> {
+  for (const skillName of seed) {
     try {
       const skillId = await resolveOrAdoptProjectSkill(projectId, skillName);
       if (!skillId) continue;
@@ -264,16 +270,19 @@ export interface FanOutResult {
  * that were bootstrapped before the entry existed and never hit the
  * per-project bootstrap endpoint again. Best-effort per project — one
  * project's failure must not abort the sweep (mirrors the migration pattern
- * in `knowledge/migrate-project-facts.ts`).
+ * in `knowledge/migrate-project-facts.ts`). `seed` defaults to the (currently
+ * empty, ISS-742) shared list; a caller/test may pass an explicit list.
  */
-export async function fanOutSharedInstallOnlySkills(): Promise<FanOutResult> {
+export async function fanOutSharedInstallOnlySkills(
+  seed: ReadonlyArray<string> = SHARED_INSTALL_ONLY_SKILLS,
+): Promise<FanOutResult> {
   const rows = await db.select({ id: projects.id }).from(projects);
 
   let succeeded = 0;
   let failed = 0;
   for (const { id } of rows) {
     try {
-      await ensureSharedInstallOnlySkills(id);
+      await ensureSharedInstallOnlySkills(id, seed);
       succeeded++;
     } catch (err) {
       logger.error(
