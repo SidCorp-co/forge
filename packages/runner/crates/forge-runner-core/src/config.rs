@@ -133,17 +133,24 @@ impl Default for PluginSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillSettings {
-    /// Background skill auto-pull. OFF at ship time (canary gate) — enable on
-    /// exactly one device via `forge-runner config set skills.auto_pull true`,
-    /// verify, then a follow-up release flips the fleet default. See ISS-736.
-    #[serde(default)]
+    /// Background skill auto-pull. Defaults to ON (ISS-738) after the ISS-736
+    /// canary confirmed it fleet-wide; the atomic + hash-gated + instance-locked
+    /// sync (ISS-743) makes concurrent pulls torn-read-safe. Absent `[skills]` /
+    /// `auto_pull =` ⇒ ON; an explicit `auto_pull = false` opts a device out.
+    #[serde(default = "default_skill_auto_pull")]
     pub auto_pull: bool,
 }
 
 impl Default for SkillSettings {
     fn default() -> Self {
-        Self { auto_pull: false }
+        Self {
+            auto_pull: default_skill_auto_pull(),
+        }
     }
+}
+
+fn default_skill_auto_pull() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,7 +258,7 @@ mod tests {
         assert_eq!(back.core_url.as_deref(), Some("https://core.example.com"));
         assert_eq!(back.runner.max_concurrent, 1);
         assert_eq!(back.bindings.len(), 1);
-        assert!(!back.skills.auto_pull);
+        assert!(back.skills.auto_pull);
     }
 
     #[test]
