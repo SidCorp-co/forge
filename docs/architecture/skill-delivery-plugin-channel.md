@@ -1,5 +1,7 @@
 # Skill delivery, channel 3: the plugin marketplace (ISS-739)
 
+> Canonical model + decisions: [skill-delivery.md](skill-delivery.md) (ADR). This doc is the channel-3 mechanism detail.
+
 Forge delivers pipeline skills to a job's Claude Code process through three
 independent channels. This doc covers the third — a Claude Code **plugin**,
 distributed via a git-repo **marketplace**, installed once per device by the

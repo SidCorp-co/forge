@@ -120,6 +120,8 @@ Global skills are **read-only default templates**; a project customizes one by c
 
 ## Skill delivery: three channels, two skill KINDS
 
+> Decision record + code anchors: [../../architecture/skill-delivery.md](../../architecture/skill-delivery.md) (ADR).
+
 Every skill is one of **two kinds**, each with its canonical channel; a third channel serves a live read-reference prompt. Do not conflate them.
 
 | Channel | Kind / skills | How delivered | Overridable? | Works in headless `claude -p`? |

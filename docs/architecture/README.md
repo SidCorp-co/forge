@@ -9,6 +9,11 @@ System-level documentation. For feature-by-feature detail, see [../modules/](../
 3. [WebSocket implementation](websocket.md) — room-scoped broadcast details
 4. [Runner daemon](runner-daemon.md) — the Rust `forge-runner` CLI that bridges core ↔ local machine
 
+## Decision records
+
+- [Skill delivery](skill-delivery.md) — **canonical ADR**: two skill kinds, three channels (disk / plugin / MCP-reference), anchors, load-bearing shims.
+  - [Skill delivery, channel 3: the plugin marketplace](skill-delivery-plugin-channel.md) — plugin channel mechanism detail.
+
 ## Related
 
 - Module-level detail: [../modules/](../modules/)
