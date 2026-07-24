@@ -9,6 +9,7 @@ import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
+import { isMetaSkillName } from './meta-skills.js';
 import {
   SkillDeleteBlockedError,
   SkillNotProjectScopedError,
@@ -82,6 +83,18 @@ skillSyncRoutes.post(
     const { isAdmin } = await loadDeviceProjectRole(device.ownerId, projectId);
     if (body.mode === 'full' && !isAdmin) {
       throw forbidden("mode 'full' requires a project-admin device");
+    }
+
+    // Meta skills (plugin channel) are Forge-owned and non-overridable — a
+    // device must never author/overwrite one via this manifest push. The
+    // user-token CRUD/adopt/register paths funnel through the service guard
+    // (`createProjectSkill`); this device-token path writes `skills` directly,
+    // so it must enforce the same reservation here (ISS-741 / task 703cc186).
+    const reserved = body.skills.find((s) => isMetaSkillName(s.name));
+    if (reserved) {
+      throw forbidden(
+        `'${reserved.name}' is a Forge meta skill delivered via the plugin channel and cannot be authored per-project`,
+      );
     }
 
     // Single SERIALIZABLE transaction: read existing inside the tx, categorise,
