@@ -111,9 +111,7 @@ pub async fn sync_bound_projects(
                     project_id: String::new(),
                     slug: slug.to_string(),
                     repo_path: PathBuf::new(),
-                    outcome: Err(format!(
-                        "no bound project '{slug}' with a local repo path"
-                    )),
+                    outcome: Err(format!("no bound project '{slug}' with a local repo path")),
                 }]);
             }
         };
@@ -170,7 +168,10 @@ async fn poll_once(client: &CoreClient, cfg: &Config) -> bool {
             }
             Ok(_) => {}
             Err(e) => {
-                tracing::warn!("[skills] auto-pull: project={} sync failed: {e}", r.project_id);
+                tracing::warn!(
+                    "[skills] auto-pull: project={} sync failed: {e}",
+                    r.project_id
+                );
                 ok = false;
             }
         }

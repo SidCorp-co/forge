@@ -68,7 +68,11 @@ fn skill_lock_path(project_id: &str, skill_id: &str) -> Result<PathBuf> {
 /// filesystem critical section across concurrent runner instances (and
 /// concurrent tasks within one instance). Blocking — call from a context that
 /// can afford to wait for the flock (e.g. `tokio::task::spawn_blocking`).
-fn with_skill_lock<T>(project_id: &str, skill_id: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
+fn with_skill_lock<T>(
+    project_id: &str,
+    skill_id: &str,
+    f: impl FnOnce() -> Result<T>,
+) -> Result<T> {
     let lock_path = skill_lock_path(project_id, skill_id)?;
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -105,10 +109,7 @@ fn publish_dir_atomically(staged: &Path, dest: &Path) -> Result<()> {
     std::fs::create_dir_all(parent)?;
 
     if dest.exists() {
-        let name = dest
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("skill");
+        let name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
         let displaced = parent.join(format!(".{name}.old-{}", Uuid::new_v4()));
         std::fs::rename(dest, &displaced)?;
         std::fs::rename(staged, dest)?;
@@ -126,10 +127,7 @@ fn staging_dir_for(dest: &Path, tag: &str) -> Result<PathBuf> {
     let parent = dest
         .parent()
         .ok_or_else(|| Error::Config("staging target has no parent".into()))?;
-    let name = dest
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("skill");
+    let name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
     Ok(parent.join(format!(".{name}.{tag}-{}", Uuid::new_v4())))
 }
 
@@ -163,7 +161,9 @@ fn write_skill_tree(dir: &Path, content: &SkillContent, effective_hash: &str) ->
             if f.encoding == "base64" {
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(f.content.as_bytes())
-                    .map_err(|e| Error::Other(format!("skill file base64 decode ({}): {e}", f.path)))?;
+                    .map_err(|e| {
+                        Error::Other(format!("skill file base64 decode ({}): {e}", f.path))
+                    })?;
                 std::fs::write(&dest, bytes)?;
             } else {
                 std::fs::write(&dest, f.content.as_bytes())?;
@@ -288,7 +288,14 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
             let dir = dir.clone();
             let dest = dest.clone();
             tokio::task::spawn_blocking(move || {
-                sync_one_skill_locked(&project_id_owned, &skill_id, &dir, &dest, &effective_hash, content)
+                sync_one_skill_locked(
+                    &project_id_owned,
+                    &skill_id,
+                    &dir,
+                    &dest,
+                    &effective_hash,
+                    content,
+                )
             })
             .await
             .map_err(|e| Error::Other(format!("skill sync task join error: {e}")))??;
@@ -527,7 +534,10 @@ mod tests {
         seed_dest(&cache, &dest, "hash-1").unwrap();
         assert!(is_fresh(&dest, "hash-1"));
 
-        let mtime_before = std::fs::metadata(dest.join("SKILL.md")).unwrap().modified().unwrap();
+        let mtime_before = std::fs::metadata(dest.join("SKILL.md"))
+            .unwrap()
+            .modified()
+            .unwrap();
 
         // Caller-side gate: since dest is already fresh, sync_skills would
         // skip calling seed_dest at all. Assert the gate itself reports fresh
@@ -537,7 +547,10 @@ mod tests {
             seed_dest(&cache, &dest, "hash-1").unwrap();
         }
 
-        let mtime_after = std::fs::metadata(dest.join("SKILL.md")).unwrap().modified().unwrap();
+        let mtime_after = std::fs::metadata(dest.join("SKILL.md"))
+            .unwrap()
+            .modified()
+            .unwrap();
         assert_eq!(mtime_before, mtime_after, "hash-gated dest was rewritten");
         let _ = std::fs::remove_dir_all(&root);
     }
