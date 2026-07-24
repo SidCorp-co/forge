@@ -14,6 +14,7 @@ import { PIPELINE_STEPS } from '../pipeline/registry.js';
 import { SkillContentBlockedError } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { hashSkillBody } from './hash.js';
+import { MetaSkillReservedError, isMetaSkillName } from './meta-skills.js';
 
 export interface SkillFileInput {
   path: string;
@@ -330,9 +331,20 @@ export interface CreateProjectSkillInput {
   /** ISS-605 template lineage — set when the skill is adopted from a global. */
   basedOnGlobalSkillId?: string | undefined;
   basedOnGlobalVersion?: number | undefined;
+  /**
+   * ISS-741 — bypass the reserved meta-skill-name guard. Only the SYSTEM
+   * provisioning bridge (`resolveOrAdoptProjectSkill`, used by the
+   * `install_only` bootstrap fan-out + domain-template apply) may set this;
+   * a user-facing create/adopt path must never pass true.
+   */
+  allowReservedMetaName?: boolean | undefined;
 }
 
 export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
+  if (!input.allowReservedMetaName && isMetaSkillName(input.name)) {
+    throw new MetaSkillReservedError(input.name);
+  }
+
   const scanFindings = scanSkillContent({
     name: input.name,
     description: input.description,
@@ -408,6 +420,10 @@ export async function updateProjectSkill(
     Partial<Pick<SkillRow, 'basedOnGlobalSkillId'>>,
   patch: UpdateProjectSkillPatch,
 ): Promise<SkillRow> {
+  if (patch.name !== undefined && patch.name !== existing.name && isMetaSkillName(patch.name)) {
+    throw new MetaSkillReservedError(patch.name);
+  }
+
   const hasTextPatch =
     patch.skillMd !== undefined || patch.description !== undefined || patch.name !== undefined;
   if (hasTextPatch) {
@@ -580,6 +596,10 @@ export async function resolveOrAdoptProjectSkill(
     files: (Array.isArray(global.files) ? global.files : []) as SkillFileInput[],
     basedOnGlobalSkillId: global.id,
     basedOnGlobalVersion: global.version,
+    // ISS-741 — this is the SYSTEM provisioning bridge (bootstrap fan-out +
+    // domain-template apply), not a user create/adopt path; it must keep
+    // delivering forge-onboard's disk copy until ISS-742 retires it.
+    allowReservedMetaName: true,
   });
   return created.id;
 }

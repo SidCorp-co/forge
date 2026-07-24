@@ -8,6 +8,7 @@ import { skills } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { globalEffectiveMd } from './effective.js';
+import { MetaSkillReservedError } from './meta-skills.js';
 import { SkillAlreadyShadowedError, applyGlobalSkillDefault } from './service.js';
 
 /**
@@ -129,6 +130,12 @@ skillStudioRoutes.post(
         throw new HTTPException(400, {
           message: err.message,
           cause: { code: 'ALREADY_SHADOWED' },
+        });
+      }
+      if (err instanceof MetaSkillReservedError) {
+        throw new HTTPException(400, {
+          message: err.message,
+          cause: { code: 'META_SKILL_RESERVED' },
         });
       }
       throw err;
