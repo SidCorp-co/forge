@@ -4,6 +4,7 @@ import {
   loadProjectSkillSyncStatus,
   resolveEffectiveSkillsForProject,
 } from '../../skills/effective.js';
+import { MetaSkillReservedError } from '../../skills/meta-skills.js';
 import {
   SkillAlreadyShadowedError,
   SkillDeleteBlockedError,
@@ -238,16 +239,23 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const input = createInputSchema.parse(args);
     await assertPrincipalIsAdmin(ctx.principal, input.projectId);
-    const skill = await createProjectSkill({
-      projectId: input.projectId,
-      name: input.name,
-      description: input.description,
-      skillMd: input.skillMd,
-      target: input.target ?? null,
-      files: input.files,
-      localGuide: input.localGuide ?? null,
-    });
-    return { skill };
+    try {
+      const skill = await createProjectSkill({
+        projectId: input.projectId,
+        name: input.name,
+        description: input.description,
+        skillMd: input.skillMd,
+        target: input.target ?? null,
+        files: input.files,
+        localGuide: input.localGuide ?? null,
+      });
+      return { skill };
+    } catch (err) {
+      if (err instanceof MetaSkillReservedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      throw err;
+    }
   },
 });
 
@@ -266,8 +274,15 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
         'BAD_REQUEST: global skills are immutable templates; create a same-name project skill to shadow one',
       );
     }
-    const skill = await updateProjectSkill(row, { ...patch, target: patch.target ?? undefined });
-    return { skill };
+    try {
+      const skill = await updateProjectSkill(row, { ...patch, target: patch.target ?? undefined });
+      return { skill };
+    } catch (err) {
+      if (err instanceof MetaSkillReservedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      throw err;
+    }
   },
 });
 
@@ -331,6 +346,9 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { skill };
     } catch (err) {
       if (err instanceof SkillAlreadyShadowedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      if (err instanceof MetaSkillReservedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;

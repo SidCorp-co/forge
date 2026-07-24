@@ -9,6 +9,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { SkillContentBlockedError } from '../security/findings.js';
 import { MANAGED_META_SKILLS } from './effective.js';
+import { MetaSkillReservedError } from './meta-skills.js';
 import {
   createProjectSkill,
   deleteProjectSkill,
@@ -200,6 +201,12 @@ skillCrudRoutes.post(
           cause: { code: 'SKILL_CONTENT_BLOCKED', details: { findings: err.findings } },
         });
       }
+      if (err instanceof MetaSkillReservedError) {
+        throw new HTTPException(400, {
+          message: err.message,
+          cause: { code: 'META_SKILL_RESERVED' },
+        });
+      }
       throw err;
     }
   },
@@ -237,6 +244,12 @@ skillCrudRoutes.put(
         throw new HTTPException(400, {
           message: 'SKILL_CONTENT_BLOCKED',
           cause: { code: 'SKILL_CONTENT_BLOCKED', details: { findings: err.findings } },
+        });
+      }
+      if (err instanceof MetaSkillReservedError) {
+        throw new HTTPException(400, {
+          message: err.message,
+          cause: { code: 'META_SKILL_RESERVED' },
         });
       }
       throw err;

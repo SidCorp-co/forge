@@ -63,8 +63,11 @@ const {
   registerSkillForProject,
   createProjectSkill,
   updateProjectSkill,
+  resolveOrAdoptProjectSkill,
+  applyGlobalSkillDefault,
 } = await import('./service.js');
 const { SkillContentBlockedError } = await import('../security/findings.js');
+const { MetaSkillReservedError } = await import('./meta-skills.js');
 
 beforeEach(() => {
   selectQueue.length = 0;
@@ -284,5 +287,107 @@ describe('createProjectSkill — SkillContentBlockedError (ISS-539 security gate
   it('succeeds and inserts a clean skill body', async () => {
     await createProjectSkill({ ...base, skillMd: 'Help the user with code review tasks.' });
     expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createProjectSkill — reserved meta-skill name guard (ISS-741)', () => {
+  const base = {
+    projectId: '00000000-0000-0000-0000-000000000001',
+    name: 'forge-onboard',
+    description: 'd',
+    skillMd: 'Help the user onboard.',
+  };
+
+  it('rejects a plain create attempt on a reserved meta-skill name', async () => {
+    await expect(createProjectSkill(base)).rejects.toBeInstanceOf(MetaSkillReservedError);
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  it('bypasses the guard when allowReservedMetaName is set (system provisioning bridge)', async () => {
+    await createProjectSkill({ ...base, allowReservedMetaName: true });
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a non-meta name unaffected', async () => {
+    await createProjectSkill({ ...base, name: 'forge-code' });
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('updateProjectSkill — reserved meta-skill rename guard (ISS-741)', () => {
+  const existing = {
+    id: 'skill-1',
+    skillMd: '# body',
+    prompt: '# body',
+    files: [],
+    version: 1,
+    name: 'my-custom-skill',
+    description: 'a project skill',
+  };
+
+  it('rejects renaming a project skill to a reserved meta-skill name', async () => {
+    await expect(
+      updateProjectSkill(existing as never, { name: 'forge-onboard' }),
+    ).rejects.toBeInstanceOf(MetaSkillReservedError);
+    expect(updatedSets).toHaveLength(0);
+  });
+
+  it('allows renaming to a non-reserved name', async () => {
+    await updateProjectSkill(existing as never, { name: 'my-renamed-skill' });
+    expect(updatedSets).toHaveLength(1);
+  });
+
+  it('does not reject when name is unchanged (no-op rename)', async () => {
+    await updateProjectSkill(existing as never, {
+      name: 'my-custom-skill',
+      description: 'updated',
+    });
+    expect(updatedSets).toHaveLength(1);
+  });
+});
+
+describe('resolveOrAdoptProjectSkill — system bridge bypasses the meta-name guard (ISS-741)', () => {
+  it('still adopts forge-onboard from its global template (install_only bridge keeps working)', async () => {
+    pushSelect([]); // no existing project skill named forge-onboard
+    pushSelect([
+      {
+        id: 'global-1',
+        version: 3,
+        name: 'forge-onboard',
+        description: 'onboarding chat',
+        skillMd: '# onboard',
+        prompt: '# onboard',
+        target: null,
+        files: [],
+      },
+    ]); // the global template
+
+    const skillId = await resolveOrAdoptProjectSkill('proj-1', 'forge-onboard');
+    expect(skillId).toBe('new-skill-id');
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(insertedValues.at(-1)).toMatchObject({ name: 'forge-onboard' });
+  });
+});
+
+describe('applyGlobalSkillDefault — user adopt path stays guarded (ISS-741)', () => {
+  it('rejects adopting a reserved meta-skill name (no system bypass on this path)', async () => {
+    pushSelect([]); // no existing project skill shadow
+
+    await expect(
+      applyGlobalSkillDefault({
+        projectId: 'proj-1',
+        global: {
+          id: 'global-1',
+          version: 1,
+          name: 'forge-onboard',
+          description: 'onboarding chat',
+          skillMd: '# onboard',
+          prompt: '# onboard',
+          target: null,
+          files: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(MetaSkillReservedError);
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 });
