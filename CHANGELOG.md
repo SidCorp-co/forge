@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 - Runners now automatically pick up newly published or updated skills in the background, without a manual sync.
+- Runners now support a Claude Code plugin marketplace channel for distributing shared skills with device-wide availability.
 - Multiple browser tabs in the same organization no longer randomly jump to the same project on workspace screens — each tab keeps its own rail project across background refreshes.
 - Opening the agent chat panel now always starts a fresh conversation instead of silently jumping into whatever chat was most recently active in another tab.
 - Each browser tab now keeps its own last-viewed project instead of switching to whatever project you opened most recently in another tab.
