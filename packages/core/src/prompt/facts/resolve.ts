@@ -14,7 +14,7 @@ import {
 } from "../../integrations/sentry/targets.js";
 import type { SentryConfig, SentryTarget } from "../../integrations/sentry/types.js";
 import { listBindingsForProject } from "../../integrations/store.js";
-import { getIntegrationUsage } from "../../integrations/usage-registry.js";
+import { getIntegrationGuide, getIntegrationUsage } from "../../integrations/usage-registry.js";
 import {
 	selectAlwaysInjectFromKnowledge,
 	selectOnDemandSlugsFromKnowledge,
@@ -92,7 +92,12 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
 	const lines = rows.map((r) => {
 		const hint = getIntegrationUsage(r.provider);
 		const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : "";
-		const bullet = `- **${r.provider}** [${r.environment}]${health} — ${hint}`;
+		// ISS-746 — a provider with a seeded capability-guide slug gets a
+		// fetch-on-demand pointer appended to its bullet; providers without one
+		// (no `guide` set in usage-registry.ts) render unchanged.
+		const guideSlug = getIntegrationGuide(r.provider);
+		const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : "";
+		const bullet = `- **${r.provider}** [${r.environment}]${health} — ${hint}${guidePointer}`;
 		// ISS-526 — for Sentry, list the configured targets (label → org/project
 		// → notes) under the bullet so the agent knows which org/project slug to
 		// pass per Sentry MCP call. The MCP server still gets only host + token.

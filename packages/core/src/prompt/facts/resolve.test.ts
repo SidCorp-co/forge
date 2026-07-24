@@ -207,3 +207,23 @@ describe('renderIntegrations — Sentry targets (ISS-526)', () => {
     expect(text).not.toContain('  - ');
   });
 });
+
+describe('renderIntegrations — capability-guide pointer (ISS-746)', () => {
+  it('appends a forge_guide pointer on the same line for a provider with a seeded guide (coolify)', () => {
+    const text = renderIntegrations([
+      { provider: 'coolify', environment: 'staging', lastHealthStatus: 'ok' },
+    ]);
+    expect(text).toContain('Full guide: `forge_guide get deploy-safety`.');
+    // Same bullet line, not a new line.
+    expect(text).toContain(
+      '- **coolify** [staging] (health: ok) — Deploy / redeploy and poll deployment status via the `forge_coolify_deploy` tool. Full guide: `forge_guide get deploy-safety`.',
+    );
+  });
+
+  it('renders unchanged for a provider with no seeded guide (postman)', () => {
+    const text = renderIntegrations([
+      { provider: 'postman', environment: 'production', lastHealthStatus: null },
+    ]);
+    expect(text).not.toContain('Full guide:');
+  });
+});

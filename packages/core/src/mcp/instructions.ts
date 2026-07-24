@@ -17,8 +17,9 @@ export const FORGE_MCP_INSTRUCTIONS = `You are connected to a Forge-managed proj
 
 - Project memory is the cross-device source of truth and is NOT auto-loaded. At the start of any task needing project context, recall it first: forge_memory_search({ projectId, query: <topic>, topK: 5 }). Hits are point-in-time — verify against live code/git before trusting.
 - For codebase & project knowledge, call \`forge_knowledge\` (list/get/search) before broad file search, and use forge_memory_search for accumulated knowledge.
-- Project settings & secrets live in Forge, not the repo (fetch at runtime, never hardcode): repo paths, branches, preview/staging URLs & **test credentials** via \`forge_projects.get\` → \`previewDeploy.testCredentials\`; pipeline config & \`projectFacts\` via \`forge_config\` — which does NOT return test creds/URLs.
-- For issues / tasks / status, use forge_issues / forge_comments rather than inventing a tracker. Encode ordering between issues as a \`forge_project_pm action=set_dependency kind:blocks\` edge (NOT prose — only a blocks edge gates dispatch); record a note/follow-up as a \`draft\` issue (NOT \`open\`, which auto-triages a pipeline run).
+- Project settings/secrets live in Forge, not the repo: test creds & preview URLs via \`forge_projects.get\` → \`previewDeploy\`; pipeline/process config via \`forge_config\` (never returns creds/URLs).
+- For issues / tasks / status, use forge_issues / forge_comments rather than inventing a tracker. Dependencies + draft-vs-open: \`forge_guide get issue-dependencies-and-decompose\`.
 - Before writing, rewriting, or tuning this project's pipeline skills, read the \`forge-skills\` MCP prompt (the always-latest authoring guide).
+- Forge capability guides are fetchable, not preloaded: \`forge_guide\` (action \`list\` → \`get <slug>\`), or \`<host>/api/guides/<slug>.md\`. Look one up before guessing how a Forge feature works.
 
 This project's projectId is in the repo's CLAUDE.md.`;

@@ -2,6 +2,8 @@
 
 How-to guides for specific developer tasks. Each guide is task-oriented — "how do I do X" — and written for a developer who already has Forge running.
 
+**Not the same thing as the capability-guide index.** These markdown files are contributor-facing docs, checked into the repo. Agents connected to a Forge project have a separate, server-canonical index of how-to-use-Forge guides (test credentials, dependencies, memory, deploy safety, pipeline lifecycle, uploads) fetched live via the `forge_guide` MCP tool or `GET <host>/api/guides/<slug>.md` — no disk sync, no membership required. That registry lives in `packages/core/src/guides/registry.ts`; add a guide there via a normal PR, not here.
+
 ## Available guides
 
 | Guide | Covers |
