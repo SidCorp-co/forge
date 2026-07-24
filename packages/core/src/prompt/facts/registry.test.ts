@@ -5,7 +5,13 @@ import {
   SKILL_FACT_TIERS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
-import { FORGE_FACTS, getFact, listFacts, OPERATING_AFFORDANCES_TEXT, renderFact } from './registry.js';
+import {
+  FORGE_FACTS,
+  OPERATING_AFFORDANCES_TEXT,
+  getFact,
+  listFacts,
+  renderFact,
+} from './registry.js';
 
 describe('forge facts registry', () => {
   it('has unique fact ids', () => {
@@ -38,6 +44,22 @@ describe('forge facts registry', () => {
     // Step check-in is the mandated first action (forge_step_start tool).
     expect(text).toContain('forge_step_start');
     expect(renderFact('mcp-tool-reference')).toContain('forge_step_start');
+  });
+
+  // AC5 token evidence (measured via renderFact + estimateTokens, no new
+  // instrumentation): the mcp-tool-reference block grew 735 -> 766 estTokens
+  // (+31, +111 chars) for this one bullet. A connected provider with a seeded
+  // capability guide (e.g. coolify) adds another ~12 estTokens to its
+  // preamble integrations bullet; providers without one are unaffected. On a
+  // representative full pipeline preamble (pipeline-rules + tool-reference +
+  // forge-facts + a per-stage state block, ~4090 estTokens) that is a ~0.8%
+  // total growth in the common case and ~1.05% in the worst case (an
+  // integration with a guide connected) — see FORGE_MCP_INSTRUCTIONS' own
+  // guardrail test for the CLI-side number (net -77 chars, well under +50).
+  it('mcp-tool-reference names forge_guide + the public /api/guides pointer (ISS-746)', () => {
+    const text = renderFact('mcp-tool-reference') ?? '';
+    expect(text).toContain('forge_guide');
+    expect(text).toContain('/api/guides');
   });
 
   it('pipeline-rules carries the Operating affordances table + red flags (ISS-541)', () => {

@@ -119,7 +119,8 @@ const TOOL_REFERENCE_TEXT = `## Tool Reference
 - **forge_memory** — per-project semantic memory. \`.search({projectId, query, topK, sourceFilter?})\` → scored hits; \`.write({projectId, source, sourceRef, textContent, metadata?})\` upserts on (projectId, source, sourceRef); \`.get\` for natural-key lookups, \`.delete\` to remove; \`.feedback({projectId, source, sourceRef, verdict: 'confirmed'|'outdated', evidence?})\` reports a verify-at-recall outcome (note/knowledge only — confirmed protects from decay, outdated archives immediately, evidence required). Sources: issue, comment, job, note, knowledge, decision, policy.
 - **forge_knowledge** — curated project knowledge entries (list/get/upsert/delete/search). \`search\` supports \`scope: 'knowledge'|'memory'|'all'\` — scope \`all\` queries both stores and labels each hit with \`origin\`. On-demand guides: fetch via \`action=get\` + slug. Upsert embeds for semantic search; tolerates embeddings outage (degraded write).
 - **forge_config** — read/write per-project settings: baseBranch, repoPath, productionBranch, categories, pipelineConfig, stateContext, projectFacts (+ projectFactsConfig for the always-inject tier).
-- **forge_skills** — list available skills + per-project enable/disable.`;
+- **forge_skills** — list available skills + per-project enable/disable.
+- **forge_guide** — capability guides, fetched live: \`list\` / \`get {slug}\` (or \`<host>/api/guides/<slug>.md\`).`;
 
 // Canonical happy-path ladder — the single source of truth for the full
 // status sequence (mirrors the line embedded in PIPELINE_RULES). The
@@ -183,7 +184,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
 		tier: "mandatory",
 		scope: "global",
 		namespace: "forge",
-		version: 1,
+		version: 2,
 		render: () => TOOL_REFERENCE_TEXT,
 	},
 

@@ -19,6 +19,7 @@ import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
+import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
 import {
@@ -253,6 +254,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeProjectPmTool(ctx),
     forgePmSetDependencyTool(ctx),
     forgeHealthTool(ctx.device),
+    // ISS-746 — appended last; product-global, no per-request context needed.
+    forgeGuideTool,
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 

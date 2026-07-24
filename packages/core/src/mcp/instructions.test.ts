@@ -26,6 +26,9 @@ describe("FORGE_MCP_INSTRUCTIONS", () => {
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_issues");
 		// skill-authoring meta prompt
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge-skills");
+		// capability-guide index (ISS-746) — pointer only, never a guide body
+		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_guide");
+		expect(FORGE_MCP_INSTRUCTIONS).toContain("/api/guides");
 		// projectId is delegated to the repo CLAUDE.md, not baked here (stays
 		// cache-shareable across projects)
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("CLAUDE.md");
@@ -34,9 +37,9 @@ describe("FORGE_MCP_INSTRUCTIONS", () => {
 	it("stays tight — it costs context tokens on every connected session", () => {
 		// Guardrail, not a hard spec: if this grows a lot, reconsider whether the
 		// content belongs in a forge-* MCP prompt instead of always-on instructions.
-		// (ISS-541 trigger-framed the deps/draft affordances inline → ~1200;
-		// the project-settings pointer added ~260 more — the capability-map issue
-		// will move the on-demand detail behind a fetchable guide index.)
+		// (ISS-746 moved the deps/draft detail and the project-settings detail
+		// behind `forge_guide` pointers, paying for the new capability-guide
+		// bullet and landing net BELOW the prior ~1442-char baseline.)
 		expect(FORGE_MCP_INSTRUCTIONS.length).toBeLessThan(1450);
 	});
 });

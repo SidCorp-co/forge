@@ -48,6 +48,7 @@ import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerFeedbackNormalizer } from './feedback/normalizer.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
+import { guideRoutes } from './guides/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
@@ -315,6 +316,14 @@ app.delete('/mcp', mcpHandler);
 // route handlers echo the arriving prefix into the download URLs they emit.
 app.route('/', installRoutes);
 app.route('/api', installRoutes);
+
+// Public capability-guide index (ISS-746): GET /guides, /guides/:slug,
+// /guides/:slug.md. Same dual-mount reasoning as installRoutes above — the
+// hosted edge proxy forwards only `/api/*`, so every pointer we emit
+// elsewhere (FORGE_MCP_INSTRUCTIONS, the mcp-tool-reference fact) uses the
+// `/api/guides` form; the root mount is for self-hosters.
+app.route('/', guideRoutes);
+app.route('/api', guideRoutes);
 
 // The CLI runner's browser-approve login prints `{core_url}/pair?code=…`, but
 // `core_url` is the API host (e.g. forge-beta-api.…) while the /pair page lives
