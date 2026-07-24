@@ -8,11 +8,7 @@ import { deviceSkills, runners } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import {
-  loadDeviceSkillStatus,
-  loadProjectSkillSyncStatus,
-  resolveRegisteredEffectiveSkills,
-} from '../skills/effective.js';
+import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -230,25 +226,7 @@ deviceSkillStatusRoutes.get(
   },
 );
 
-const syncStatusParamSchema = z.object({ projectId: z.uuid() });
-
-// GET /api/projects/:projectId/skill-sync-status
-// Aggregated skill-major freshness for the Studio by-skill panel (ISS-279):
-// every project-bound device × every registered skill, sourced from the real
-// `device_skills` rows. Replaces the legacy empty-`devices` stub.
-deviceSkillStatusRoutes.get(
-  '/:projectId/skill-sync-status',
-  requireAuth(),
-  assertEmailVerified(),
-  zValidator('param', syncStatusParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('param');
-    const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId, 'viewer');
-
-    const data = await loadProjectSkillSyncStatus(projectId);
-    return c.json(data);
-  },
-);
+// NOTE: the skill-major freshness aggregation (`loadProjectSkillSyncStatus`,
+// ISS-279) is served over MCP (`forge_skills.sync_status`) and consumed by
+// smoke-verify — it never had a REST wrapper with a client, so no GET route is
+// exposed here. Add one back if a web Studio by-skill panel ever needs it.

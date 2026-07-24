@@ -46,7 +46,6 @@ const resolveRegisteredEffectiveSkills = vi.fn(async () => [
 vi.mock('../skills/effective.js', () => ({
   resolveRegisteredEffectiveSkills: () => resolveRegisteredEffectiveSkills(),
   loadDeviceSkillStatus: vi.fn(async () => []),
-  loadProjectSkillSyncStatus: vi.fn(async () => ({ devices: [], skills: [] })),
 }));
 
 const { deviceSkillRoutes } = await import('./skills-routes.js');
