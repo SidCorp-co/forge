@@ -16,6 +16,12 @@ describe("FORGE_MCP_INSTRUCTIONS", () => {
 		expect(FORGE_MCP_INSTRUCTIONS).not.toContain("get_knowledge");
 		expect(FORGE_MCP_INSTRUCTIONS).not.toContain(".forge/knowledge.json");
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_knowledge");
+		// project settings discoverability — test creds/URLs live on
+		// forge_projects.get → previewDeploy, NOT in forge_config (recurring
+		// confusion; feedback cd8ad9f9 / the capability-map issue).
+		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_projects.get");
+		expect(FORGE_MCP_INSTRUCTIONS).toContain("previewDeploy");
+		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_config");
 		// project-management tools
 		expect(FORGE_MCP_INSTRUCTIONS).toContain("forge_issues");
 		// skill-authoring meta prompt
@@ -28,7 +34,9 @@ describe("FORGE_MCP_INSTRUCTIONS", () => {
 	it("stays tight — it costs context tokens on every connected session", () => {
 		// Guardrail, not a hard spec: if this grows a lot, reconsider whether the
 		// content belongs in a forge-* MCP prompt instead of always-on instructions.
-		// (ISS-541 trigger-framed the deps/draft affordances inline → ~1200.)
-		expect(FORGE_MCP_INSTRUCTIONS.length).toBeLessThan(1300);
+		// (ISS-541 trigger-framed the deps/draft affordances inline → ~1200;
+		// the project-settings pointer added ~260 more — the capability-map issue
+		// will move the on-demand detail behind a fetchable guide index.)
+		expect(FORGE_MCP_INSTRUCTIONS.length).toBeLessThan(1450);
 	});
 });
