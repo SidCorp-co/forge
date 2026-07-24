@@ -7,6 +7,7 @@ pub mod runners;
 pub mod service;
 pub mod start;
 pub mod status;
+pub mod sync;
 pub mod update;
 
 use forge_runner_core::config::Config;
