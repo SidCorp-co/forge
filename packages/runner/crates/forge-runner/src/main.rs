@@ -40,6 +40,8 @@ enum Command {
     Service(cmd::service::Args),
     /// List runners registered for this device.
     Runners(cmd::runners::Args),
+    /// Pull the latest skills for bound projects now (on-demand, one-shot).
+    Sync(cmd::sync::Args),
     /// Check for a newer release and self-update.
     Update(cmd::update::Args),
 }
@@ -68,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Doctor(a) => cmd::doctor::run(ctx, a).await,
         Command::Service(a) => cmd::service::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
+        Command::Sync(a) => cmd::sync::run(ctx, a).await,
         Command::Update(a) => cmd::update::run(ctx, a).await,
     }
 }
