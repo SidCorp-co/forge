@@ -25,6 +25,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { redeemPairingCode } from './pair.js';
 
@@ -513,6 +514,24 @@ deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
     .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')));
 
   return c.json(rows);
+});
+
+// cm:why a plugin installs at device scope, so the union of the bound projects is the only resolvable unit (plugins/designation.ts)
+deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
+  const device = c.get('device');
+  if (device.status === 'revoked') throw unauth();
+
+  const rows = await db
+    .select({ slug: projects.slug, agentConfig: projects.agentConfig })
+    .from(runners)
+    .innerJoin(projects, eq(projects.id, runners.projectId))
+    .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')));
+
+  const plugins = unionPluginDesignations(
+    rows.map((r) => ({ slug: r.slug, designations: readPluginDesignations(r.agentConfig) })),
+  );
+
+  return c.json({ plugins });
 });
 
 // ISS-271 — device self-service PATCH of its own runner repo path/branch.

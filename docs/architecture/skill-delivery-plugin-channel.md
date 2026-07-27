@@ -54,6 +54,10 @@ it never panics, so a flaky network or an already-satisfied precondition
 Per cycle, when `plugins.enabled` (config: `[plugins]` in
 `~/.config/forge-runner/config.toml`):
 
+0. `GET /api/devices/me/plugins` — the **server-designated** targets (see below). Best-effort:
+   a failure degrades to local-config-only, it does not skip the cycle. Local ∪ server, keyed by
+   `marketplace + name`.
+
 1. `claude plugin marketplace add <marketplace_repo> --scope user` — idempotent;
    an "already added" failure is logged at `info` and ignored.
 2. If `plugins.pinned_ref` is set, checkout that commit SHA (detached HEAD) in
@@ -67,6 +71,33 @@ Per cycle, when `plugins.enabled` (config: `[plugins]` in
 4. If `plugins.auto_update` (default **on**): `claude plugin marketplace
    update <marketplace>` followed by `claude plugin update <plugin>` for each
    configured plugin.
+
+### Server-designated targets
+
+Editing a TOML file on every box does not scale past the canary, so a project declares what its
+runners need and the device resolves it.
+
+| Layer | Where | Semantics |
+|---|---|---|
+| Designation | `projects.agent_config.plugins` — `[{marketplace, name, pinnedRef?, autoUpdate?}]`. Read/written via `forge_config` (`plugins`), validated by `packages/core/src/plugins/designation.ts` | Per **project**. Wholesale-replace list (no stable per-entry key to patch by) |
+| Resolution | `GET /api/devices/me/plugins` — union over every `claude-code` runner bound to the calling device | Per **device**, because that is the scope a plugin installs at |
+| Reconciliation | `plugin_sync::{local_targets, merge_targets, ensure_plugins}` | Local config ∪ server, grouped per marketplace |
+
+Designation is per-project but install is per-device, so a plugin designated by one project lands
+for every project on that device. **Per-project opt-out is not expressible here** — that lever is
+`enabledPlugins` in the repo's own `.claude/settings.json`, which Claude Code honours at project
+scope (`pluginConfigs` from a repo is ignored since CLI v2.1.207, `enabledPlugins` is not).
+
+Conflicts resolve toward the safer outcome on both sides, because a device holds one marketplace
+clone and one installed version:
+
+| Conflict | Resolution |
+|---|---|
+| Two projects disagree on `autoUpdate` | `false` wins — staying put outranks floating |
+| Two projects pin different SHAs | pin is **dropped**, both values reported (`pinnedRefConflict`) and logged by the runner. Guessing one would report a state true for only some projects (VISION №10) |
+| Local config and server designate the same plugin | **local wins** — an operator must be able to override or freeze a fleet-wide designation without server access |
+| Anything at all, vs `plugins.enabled = false` | the local kill switch wins absolutely |
+| A marketplace group has any pin, and something wants auto-update | the auto-update pass is skipped for that marketplace — `marketplace update` fast-forwards the clone past the pin, so floating would silently defeat it |
 
 ### The SHA-pin decision (OQ1, resolved)
 

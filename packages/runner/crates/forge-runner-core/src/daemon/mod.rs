@@ -369,7 +369,7 @@ pub async fn run(
     // then a periodic tick at `plugins.poll_interval_secs`. Cheap no-op when
     // `plugins.enabled == false` — `ensure_plugins` early-returns immediately.
     {
-        let cfg = cfg.clone();
+        let (client, cfg) = (client.clone(), cfg.clone());
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             let jitter_ms = std::time::SystemTime::now()
@@ -382,7 +382,7 @@ pub async fn run(
                 _ = tokio::time::sleep(std::time::Duration::from_millis(initial_delay_ms)) => {}
                 _ = cancel_rx.changed() => { if *cancel_rx.borrow() { return; } }
             }
-            crate::workspace::plugin_sync::ensure_plugins(&cfg.plugins).await;
+            sweep_plugins(&client, &cfg).await;
 
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(
                 cfg.plugins.poll_interval_secs.max(1),
@@ -391,7 +391,7 @@ pub async fn run(
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
-                        crate::workspace::plugin_sync::ensure_plugins(&cfg.plugins).await;
+                        sweep_plugins(&client, &cfg).await;
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
                 }
@@ -477,4 +477,49 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+/// One plugin sweep: ask the server which plugins this device's bound projects designate, then
+/// reconcile. A server error degrades to local-only config rather than skipping the sweep — the
+/// device must keep converging on its own `[plugins]` block when core is unreachable.
+async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
+    if !cfg.plugins.enabled {
+        return;
+    }
+
+    let designated = match crate::transport::plugins::list_designated(client).await {
+        Ok(list) => list,
+        Err(e) => {
+            tracing::warn!("[plugins] server designation fetch failed, using local config only: {e}");
+            Vec::new()
+        }
+    };
+
+    let server: Vec<crate::workspace::plugin_sync::PluginTarget> = designated
+        .iter()
+        .map(|d| {
+            if let Some(conflict) = &d.pinned_ref_conflict {
+                tracing::warn!(
+                    "[plugins] {}/{} — bound projects pinned different refs {:?}; server sent no pin",
+                    d.marketplace,
+                    d.name,
+                    conflict
+                );
+            }
+            tracing::info!(
+                "[plugins] designated {}/{} by project(s) {:?}",
+                d.marketplace,
+                d.name,
+                d.projects
+            );
+            crate::workspace::plugin_sync::PluginTarget {
+                marketplace: d.marketplace.clone(),
+                name: d.name.clone(),
+                pinned_ref: d.pinned_ref.clone(),
+                auto_update: d.auto_update,
+            }
+        })
+        .collect();
+
+    crate::workspace::plugin_sync::ensure_plugins(&cfg.plugins, &server).await;
 }

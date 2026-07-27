@@ -16,6 +16,11 @@ import {
   updatePipelineConfig,
 } from '../../pipeline/pipeline-config-service.js';
 import {
+  mergePluginDesignations,
+  pluginDesignationsPatchSchema,
+  readPluginDesignations,
+} from '../../plugins/designation.js';
+import {
   RESERVED_PROJECT_FACT_KEYS,
   mergeProjectFacts,
   mergeProjectFactsConfig,
@@ -40,6 +45,7 @@ const inputSchema = z
     stateContext: stateContextSchema.nullable().optional(),
     projectFacts: projectFactsPatchSchema,
     projectFactsConfig: projectFactsConfigPatchSchema,
+    plugins: pluginDesignationsPatchSchema.optional(),
   })
   .strict();
 
@@ -79,6 +85,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
       projectFacts: (ac.projectFacts as Record<string, string> | undefined) ?? {},
       projectFactsConfig:
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
+      plugins: readPluginDesignations(ac),
     },
   };
 }
@@ -86,7 +93,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
 export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
   description:
-    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `productionBranch` read DIRECTLY from the `projects` table columns (may be `null` when not configured — callers MUST NOT silently default to 'main'); plus `categories`, `pipelineConfig`, `stateContext`, `projectFacts` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config`, a `stateContext` patch (per-state merge — passing `{ code: {...} }` replaces only the `code` entry, other states untouched; pass `null` to wipe stateContext, or `{ code: null }` to remove one state), and a `projectFacts` patch (kebab-case key→text map referenced from skill bodies as `{{project:<key>}}`; per-key merge, value `null` removes a key, whole-map `null` wipes it; reserved keys base-branch/production-branch/repo-path/test-urls/test-creds are derived and ignored here; NEVER store secrets — they would sync to disk), and a `projectFactsConfig` patch (per-key `{ alwaysInject }` map — when a fact key is flagged `alwaysInject: true` its FULL body is injected verbatim into every agent system prompt for this project, like a mandatory rule, instead of the default fetch-on-demand pointer; same per-key merge semantics, value `null` removes a key's config, whole-map `null` wipes it; capped at a char budget that warns on overflow). Errors surface as `BAD_REQUEST: <code>: <message>`.",
+    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `productionBranch` read DIRECTLY from the `projects` table columns (may be `null` when not configured — callers MUST NOT silently default to 'main'); plus `categories`, `pipelineConfig`, `stateContext`, `projectFacts` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config`, a `stateContext` patch (per-state merge — passing `{ code: {...} }` replaces only the `code` entry, other states untouched; pass `null` to wipe stateContext, or `{ code: null }` to remove one state), and a `projectFacts` patch (kebab-case key→text map referenced from skill bodies as `{{project:<key>}}`; per-key merge, value `null` removes a key, whole-map `null` wipes it; reserved keys base-branch/production-branch/repo-path/test-urls/test-creds are derived and ignored here; NEVER store secrets — they would sync to disk), and a `projectFactsConfig` patch (per-key `{ alwaysInject }` map — when a fact key is flagged `alwaysInject: true` its FULL body is injected verbatim into every agent system prompt for this project, like a mandatory rule, instead of the default fetch-on-demand pointer; same per-key merge semantics, value `null` removes a key's config, whole-map `null` wipes it; capped at a char budget that warns on overflow), and a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE the patches above, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -148,6 +155,24 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
           mergedFacts === null
             ? Object.fromEntries(Object.entries(currentAc).filter(([k]) => k !== 'projectFacts'))
             : { ...currentAc, projectFacts: mergedFacts };
+        await db
+          .update(projects)
+          .set({ agentConfig: nextAc })
+          .where(eq(projects.id, input.projectId));
+      }
+      if (input.plugins !== undefined) {
+        const [row] = await db
+          .select({ agentConfig: projects.agentConfig })
+          .from(projects)
+          .where(eq(projects.id, input.projectId))
+          .limit(1);
+        if (!row) throw new Error('NOT_FOUND: project not found');
+        const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
+        const merged = mergePluginDesignations(input.plugins);
+        const nextAc: Record<string, unknown> =
+          merged === null
+            ? Object.fromEntries(Object.entries(currentAc).filter(([k]) => k !== 'plugins'))
+            : { ...currentAc, plugins: merged };
         await db
           .update(projects)
           .set({ agentConfig: nextAc })
