@@ -97,6 +97,7 @@ const ACK_FAST_MS_DEFAULT = 90_000;
  *  bumped 5→60 min because legit forge-release/forge-code merges run >5min
  *  between event emissions). Exported so the demoted stale-detector alarm can
  *  derive its margin from the same number. */
+// cm:guard never lower RESULT_QUIET_MINUTES — legitimate release/code merges run long and get reaped as orphans
 export const RESULT_QUIET_MINUTES = 60;
 
 const PIPELINE_METADATA_TYPES = sql`('pipeline','pm')`;

@@ -652,6 +652,7 @@ impl Runner for ClaudeCodeRunner {
             if succeeded {
                 let _ = tx.send(RunnerEvent::Done { exit_code: 0 }).await;
             } else if let Some(msg) = usage_limit {
+                // cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — an unrecognized token degrades to infra + needsReview
                 let _ = tx
                     .send(RunnerEvent::Failed {
                         error: format!("[USAGE_LIMIT] {msg}"),

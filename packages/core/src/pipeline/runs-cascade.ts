@@ -47,6 +47,9 @@ export interface CascadeResult {
  * one. `cancelPipelineRun` previously cleaned only `queued|dispatched`;
  * unifying here closes that gap.
  */
+// cm:guard every terminal pipeline_runs.status transition must route through this helper — nothing else reaps child jobs
+// cm:edge lockstep -> packages/core/src/jobs/loop-monitor.ts — orphan-hygiene defence 2; the three defences move together
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — orphan-hygiene defence 3
 export async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,

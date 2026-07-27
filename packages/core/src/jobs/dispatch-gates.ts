@@ -199,6 +199,8 @@ export async function hasNonTerminalPriorSession(
  * 2026-05-27 stall). The cascade in `runs.ts` is the primary defence; this
  * filter is the safety net for state drift.
  */
+// cm:guard every dispatch gate must require pr.status IN ('running','paused') or a terminal-parent orphan wedges the runner cap
+// cm:edge sideeffect -> packages/core/drizzle/migrations/0113_i1_orphan_trigger.sql — a DB trigger also cancels active jobs under terminal runs
 export async function countInFlightForRunner(runnerId: string): Promise<number> {
   const rows = await db.execute<{ count: string }>(sql`
     SELECT COUNT(*)::text AS count

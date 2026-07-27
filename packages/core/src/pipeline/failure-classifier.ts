@@ -68,6 +68,8 @@
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 import { isUsageLimitError } from '../runners/limit-detect.js';
 
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
+// cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
 export const CLASSIFIER_VERSION = 5;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
