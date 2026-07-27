@@ -32,6 +32,36 @@ Open-source control plane for Claude Code — full-stack project management + an
 - Bearer token in Authorization header; web always uses `apiClient` (`src/lib/api/client.ts`), never raw `fetch`
 - DB is source of truth: enums/tables live in `packages/core/src/db/schema.ts`; change via `pnpm db:generate` + `pnpm db:migrate` (drizzle-kit)
 
+## Comments & CodeMap (`codemap/1`)
+
+This repo is onboarded onto the `forge-codemap` plugin. Config: `.forge/codemap.json` (flow
+vocabulary + enforcement scope) · `.forge/codemap-baseline.json` (15.6k legacy comments frozen —
+a file fails only when its count **rises**). Gate: the `codemap` job in `.github/workflows/ci.yml`,
+pinned to tag `codemap-v0.1.3`. Spec: the plugin's `SPEC.md`.
+
+**Rule: if a tool can derive it, don't write it.** No `// Load the config` — the compiler already
+says that. No new `TODO`/`FIXME`: file an issue at `draft` instead. Orientation prose goes in the
+**module header** (first comment block, followed by a blank line, ≤20 lines); `/** */` on an
+`export` is fine (IDE hover docs).
+
+Record the couplings no tool can see, as one-line annotations on line comments (never inside
+`/** */`):
+
+| | |
+|---|---|
+| `// cm:guard <text>` | invariant whoever edits this must obey — **injected into the agent's context before it edits the file** |
+| `// cm:edge <kind> -> <repo/path> — <why>` | coupling nothing links. Kinds: `contract` `ordering` `lockstep` `sideeffect` `naming` `protocol` |
+| `// cm:flow <flow>/<step> [after:<step>]` | step of a named runtime flow (declare the flow first: `cm new flow`) |
+| `// cm:hack ISS-<n> until:<cond> — <text>` | live workaround with an exit condition |
+| `// cm:why <text>` | one-line rationale |
+
+Before changing a file with declared couplings: `cm impact <path>` (declared half) **plus** LSP
+references (derivable half) — neither is a substitute for the other. `cm verify` before pushing;
+`cm fmt` normalizes. Full verb list: `cm` with no args, or the `codemap` skill.
+
+The lockstep edges on `cascadeCancelChildJobs` are the machine-readable form of the orphan-hygiene
+table below — change one, check the other.
+
 ## Commands
 
 From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm typecheck` / `pnpm lint`. Per package (from inside `packages/<pkg>/`):

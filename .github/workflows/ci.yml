@@ -61,6 +61,22 @@ jobs:
           node-version: '22'
       - run: node scripts/check-source-language.mjs --all
 
+  # codemap/1 declared-edge layer (.forge/codemap.json + .forge/codemap-baseline.json).
+  # Always-on and ungated by paths-filter: a cm:edge target can be left dangling by
+  # deleting or moving a file in any change set, not just in the annotated one.
+  # Zero-dep script pulled from a PINNED tag — bumping the tool is a deliberate edit
+  # here, so a grammar change in the plugin can never break this repo's CI on its own.
+  # ~1s on the whole tree.
+  codemap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: git clone --depth 1 --branch codemap-v0.1.3 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
+      - run: node /tmp/codemap/plugins/forge-codemap/scripts/cm.mjs verify
+
   changes:
     runs-on: ubuntu-latest
     outputs:
