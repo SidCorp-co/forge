@@ -122,7 +122,10 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
             );
         }
 
-        let pins: BTreeSet<&str> = group.iter().filter_map(|t| t.pinned_ref.as_deref()).collect();
+        let pins: BTreeSet<&str> = group
+            .iter()
+            .filter_map(|t| t.pinned_ref.as_deref())
+            .collect();
         if pins.len() > 1 {
             tracing::warn!(
                 "[plugins] {repo}: conflicting pins {pins:?} across designated plugins — a device \
@@ -145,8 +148,7 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
 
         for t in &group {
             let install_id = qualified_id(&t.name, marketplace.as_ref());
-            if let Err(e) =
-                run_claude(&["plugin", "install", &install_id, "--scope", "user"]).await
+            if let Err(e) = run_claude(&["plugin", "install", &install_id, "--scope", "user"]).await
             {
                 tracing::info!(
                     "[plugins] install {install_id} (may already be installed, best-effort): {e}"
@@ -165,8 +167,7 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
             continue;
         }
 
-        let wants_update: Vec<&&PluginTarget> =
-            group.iter().filter(|t| t.auto_update).collect();
+        let wants_update: Vec<&&PluginTarget> = group.iter().filter(|t| t.auto_update).collect();
         if wants_update.is_empty() {
             continue;
         }
@@ -185,7 +186,6 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
         }
     }
 }
-
 
 /// `<plugin>@<marketplace-name>` when the marketplace name is known, else the
 /// bare plugin name (works when only one marketplace serves it).

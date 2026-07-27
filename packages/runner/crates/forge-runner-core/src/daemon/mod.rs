@@ -490,7 +490,9 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
     let designated = match crate::transport::plugins::list_designated(client).await {
         Ok(list) => list,
         Err(e) => {
-            tracing::warn!("[plugins] server designation fetch failed, using local config only: {e}");
+            tracing::warn!(
+                "[plugins] server designation fetch failed, using local config only: {e}"
+            );
             Vec::new()
         }
     };
