@@ -158,6 +158,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed per-tab project selection to prevent tabs viewing the same organization from sharing the fallback project, ensuring each tab maintains its own independent project view.
 - Projects can now use an interactive chat skill to guide users through onboarding and Forge project setup
 - Shared skills now deploy automatically to all projects instead of requiring manual fan-out pushes
+- Chat now immediately switches to a selected runner and recalculates repository paths, with improved cold-start rehydration and runner health signals.
 
 ## [0.3.0] - 2026-06-11
 
