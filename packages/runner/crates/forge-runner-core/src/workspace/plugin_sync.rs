@@ -159,11 +159,17 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
             }
         }
 
-        // cm:why a marketplace update fast-forwards the clone past any pin, so a pinned group must not float
+        // cm:why `marketplace update` git-pulls and would fast-forward past the pin, but `plugin update` only
+        // re-installs from the clone — which is AT the pin — so a pinned group still needs the latter to move
         if !pins.is_empty() {
             tracing::info!(
-                "[plugins] {repo}: pinned, so the auto-update pass is skipped this cycle"
+                "[plugins] {repo}: pinned — skipping marketplace update, syncing installs to the pin"
             );
+            for t in &group {
+                if let Err(e) = run_claude(&["plugin", "update", &t.name]).await {
+                    tracing::debug!("[plugins] update {} to pin: {e}", t.name);
+                }
+            }
             continue;
         }
 
