@@ -17,8 +17,10 @@ import {
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
+  findChatCapableDeviceForProject,
   resolveRepoPath,
   resolveRunnerRepoPath,
+  resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -104,6 +106,9 @@ const abortBodySchema = z
     sessionId: z.uuid(),
   })
   .strict();
+
+// cm:why deviceId: null means Auto — clears the pin so the next turn auto-picks
+const setRunnerBodySchema = z.object({ deviceId: z.uuid().nullable() }).strict();
 
 const buildPromptBodySchema = z
   .object({
@@ -450,6 +455,78 @@ agentSessionLifecycleRoutes.post(
     }
 
     broadcastSession(updated, 'agent-session.status', { failureReason: 'user_cancelled' });
+    return c.json(updated);
+  },
+);
+
+// cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — clears claudeSessionId so the next turn cold-starts + rehydrates
+agentSessionLifecycleRoutes.post(
+  '/:id/runner',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', setRunnerBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const { session } = await ensureSessionOwnerOrAdmin(id, userId);
+
+    // cm:why re-pinning mid-turn 403s the streaming device's write-back PATCH (assertDeviceOwnsSession) and loses the in-flight reply
+    if (session.status === 'running' || session.status === 'queued') {
+      throw new HTTPException(409, {
+        message:
+          'The agent is still working on this conversation. Wait for it to finish or stop it, then switch runner.',
+        cause: { code: 'SESSION_BUSY' },
+      });
+    }
+
+    const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & {
+      deviceId?: string | undefined;
+    };
+    const pinned = prevMeta.deviceId ?? session.deviceId ?? null;
+
+    // cm:why re-picking the current device is a no-op — keeps claudeSessionId so it doesn't force a needless --resume loss
+    if (input.deviceId === pinned) return c.json(session);
+
+    const [project] = await db
+      .select({ id: projects.id, repoPath: projects.repoPath })
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+      .limit(1);
+    if (!project) throw notFound('project not found');
+
+    let picked: string | null = null;
+    if (input.deviceId) {
+      picked = await findChatCapableDeviceForProject(session.projectId, input.deviceId);
+      if (!picked) throw noClaudeClient('picked');
+    }
+
+    const nextMeta = { ...prevMeta };
+    // cm:why undefined (not delete) — JSON.stringify drops the key on write, same effect without the noDelete lint cost
+    nextMeta.deviceId = picked ?? undefined;
+
+    const repoPath = picked
+      ? await resolveSessionRepoPathForDevice(session.projectId, picked, project.repoPath)
+      : null;
+
+    const [updated] = await db
+      .update(agentSessions)
+      .set({
+        deviceId: picked,
+        metadata: nextMeta as never,
+        claudeSessionId: null,
+        repoPath,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentSessions.id, id))
+      .returning();
+    if (!updated) throw notFound('agent session not found');
+
+    broadcastSession(updated, 'agent-session.updated');
     return c.json(updated);
   },
 );

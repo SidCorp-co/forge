@@ -32,13 +32,19 @@ vi.mock('../db/client.js', () => {
 
 const findAvailableDeviceForProject = vi.fn();
 const findChatCapableDeviceForProject = vi.fn();
+const resolveSessionRepoPathForDevice = vi.fn(
+  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
+    projectRepoPath ?? null,
+);
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
   findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
     findChatCapableDeviceForProject(projectId, deviceId),
-  resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
-    (override ?? repo ?? '').trim() || null,
-  resolveRunnerRepoPath: () => Promise.resolve(null),
+  resolveSessionRepoPathForDevice: (
+    projectId: string,
+    deviceId: string | null,
+    repo: string | null,
+  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
 }));
 
 vi.mock('../lib/chat-preamble.js', () => ({
@@ -197,6 +203,14 @@ describe('resolveChatDevice', () => {
     expect(r).toEqual({ deviceId: null, isLocal: true, migrated: false });
     expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
   });
+
+  it('pin with stale devices.status but still a live chat-capable runner → pin honoured, not stolen back', async () => {
+    findChatCapableDeviceForProject.mockResolvedValueOnce(DEVICE);
+    const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(selectLimit).not.toHaveBeenCalled();
+    expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
+  });
 });
 
 describe('dispatchChatTurn', () => {
@@ -285,6 +299,78 @@ describe('dispatchChatTurn', () => {
     // The stale Claude session id (file lives on the dead box) is cleared.
     const updates = updateSet.mock.calls[0]?.[0] as { claudeSessionId?: string | null };
     expect(updates.claudeSessionId).toBeNull();
+  });
+
+  it('migration recomputes repoPath for the NEW device instead of reusing the old box\'s stale path (ISS-755 bug guard)', async () => {
+    updateReturning.mockResolvedValueOnce([
+      baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
+    ]);
+    resolveSessionRepoPathForDevice.mockResolvedValueOnce('/repo/on/dev-2');
+    await dispatchChatTurn({
+      session: baseSession({
+        claudeSessionId: 'c-1',
+        deviceId: DEVICE,
+        metadata: { deviceId: DEVICE },
+        repoPath: '/repo/on/dev-1',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      project: PROJECT,
+      client: { deviceId: 'dev-2', isLocal: false, migrated: true },
+      message: 'again on the new box',
+    });
+    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(PROJECT.id, 'dev-2', PROJECT.repoPath);
+    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
+    expect(updates.repoPath).toBe('/repo/on/dev-2');
+    expect(updates.repoPath).not.toBe('/repo/on/dev-1');
+  });
+
+  it('no device change + session.repoPath already set → NOT re-resolved (no extra query)', async () => {
+    updateReturning.mockResolvedValueOnce([
+      baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
+    ]);
+    await dispatchChatTurn({
+      session: baseSession({
+        claudeSessionId: 'c-1',
+        deviceId: DEVICE,
+        repoPath: '/repo/on/dev-1',
+        messages: [{ role: 'user', content: 'a' }],
+      }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false, migrated: false },
+      message: 'again',
+    });
+    expect(resolveSessionRepoPathForDevice).not.toHaveBeenCalled();
+    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
+    expect(updates.repoPath).toBe('/repo/on/dev-1');
+  });
+
+  it('explicit re-pin already applied (migrated=false, no claudeSessionId, prior history) still cold-starts WITH rehydration', async () => {
+    updateReturning.mockResolvedValueOnce([
+      baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
+    ]);
+    await dispatchChatTurn({
+      session: baseSession({
+        deviceId: 'dev-2',
+        metadata: { deviceId: 'dev-2' },
+        claudeSessionId: null,
+        messages: [
+          { role: 'user', content: 'where is the runner code' },
+          { role: 'assistant', content: 'in packages/runner' },
+        ],
+      }),
+      project: PROJECT,
+      client: { deviceId: 'dev-2', isLocal: false, migrated: false },
+      message: 'and the dispatch loop?',
+    });
+    const start = publishSpy.mock.calls.find(
+      ([room, env]) =>
+        room === 'device:dev-2' && (env as { event: string }).event === 'agent:start',
+    );
+    expect(start).toBeDefined();
+    const prompt = String((start?.[1] as { data: { prompt: string } }).data.prompt);
+    expect(prompt).toContain('resumed on a different machine');
+    expect(prompt).toContain('where is the runner code');
+    expect(prompt).toContain('in packages/runner');
   });
 
   it('local (desktop) → mirrors agent:user-message, no device dispatch', async () => {

@@ -156,3 +156,18 @@ export async function resolveRunnerRepoPath(
   const v = (row?.repoPath ?? '').trim();
   return v.length === 0 ? null : v;
 }
+
+/**
+ * Single cwd resolver for a chat/schedule turn dispatched to `deviceId` (or
+ * `null` for the desktop/local path). Combines the runner binding lookup with
+ * the project-default fallback so callers never hand-roll the chain.
+ */
+// cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — the turn dispatcher and the runner re-pin route must resolve cwd identically
+export async function resolveSessionRepoPathForDevice(
+  projectId: string,
+  deviceId: string | null,
+  projectRepoPath: string | null,
+): Promise<string | null> {
+  const bindingRepo = deviceId ? await resolveRunnerRepoPath(projectId, deviceId) : null;
+  return resolveRepoPath(null, bindingRepo ?? projectRepoPath ?? null);
+}

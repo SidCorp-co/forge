@@ -44,16 +44,32 @@ vi.mock('../db/client.js', () => ({
 // ISS-244 — schedule dispatch rides the interactive agent-session rails now.
 // Stub out every collaborator the new path touches.
 const findDeviceMock = vi.fn<(projectId: string) => Promise<string | null>>(async () => 'dev-1');
+const findChatCapableDeviceMock = vi.fn<
+  (projectId: string, deviceId: string) => Promise<string | null>
+>(async () => null);
 const resolveRepoPathMock = vi.fn(
   (_o: string | null | undefined, p: string | null): string | null => p ?? null,
 );
 const resolveRunnerRepoMock = vi.fn<
   (projectId: string, deviceId: string) => Promise<string | null>
 >(async () => null);
+// cm:why composes resolveRunnerRepoMock + resolveRepoPathMock exactly like the real function, so tests seeding those two keep working unchanged
+const resolveSessionRepoPathForDeviceMock = vi.fn<
+  (
+    projectId: string,
+    deviceId: string | null,
+    projectRepoPath: string | null,
+  ) => Promise<string | null>
+>(async (projectId, deviceId, projectRepoPath) => {
+  const bindingRepo = deviceId ? await resolveRunnerRepoMock(projectId, deviceId) : null;
+  return resolveRepoPathMock(null, bindingRepo ?? projectRepoPath ?? null);
+});
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: findDeviceMock,
+  findChatCapableDeviceForProject: findChatCapableDeviceMock,
   resolveRepoPath: resolveRepoPathMock,
   resolveRunnerRepoPath: resolveRunnerRepoMock,
+  resolveSessionRepoPathForDevice: resolveSessionRepoPathForDeviceMock,
 }));
 
 const syncTurnsMock = vi.fn(

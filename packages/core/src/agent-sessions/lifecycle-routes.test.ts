@@ -24,7 +24,7 @@ const dbInsert = vi.fn(() => ({ values: insertValues }));
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((_values: Record<string, unknown>) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
 vi.mock('../db/client.js', () => {
@@ -41,11 +41,23 @@ vi.mock('../db/client.js', () => {
 });
 
 const findAvailableDeviceForProject = vi.fn();
+const findChatCapableDeviceForProject = vi.fn();
+const resolveSessionRepoPathForDevice = vi.fn(
+  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
+    projectRepoPath ?? null,
+);
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
+  findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
+    findChatCapableDeviceForProject(projectId, deviceId),
   resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
     (override ?? repo ?? '').trim() || null,
   resolveRunnerRepoPath: () => Promise.resolve(null),
+  resolveSessionRepoPathForDevice: (
+    projectId: string,
+    deviceId: string | null,
+    repo: string | null,
+  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
 }));
 
 const buildChatPreamble = vi.fn(async (..._args: unknown[]) => '## Project Config\n\n---\n\n');
@@ -114,6 +126,7 @@ const USER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 const SESSION_ID = '55555555-5555-4555-8555-555555555555';
+const OTHER_DEVICE_ID = '66666666-6666-4666-8666-666666666666';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -122,6 +135,7 @@ beforeEach(() => {
   insertReturning.mockReset();
   updateReturning.mockReset();
   projectAccessMock.mockReset();
+  findChatCapableDeviceForProject.mockReset();
 });
 
 function grantAccess(role: 'admin' | 'member' | 'viewer' | null) {
@@ -567,6 +581,202 @@ describe('POST /api/agent-sessions/abort', () => {
     );
     expect(res.status).toBe(403);
     expect(updateSet).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/agent-sessions/:id/runner', () => {
+  it('200 re-pins deviceId + metadata.deviceId, nulls claudeSessionId, writes the NEW device repoPath, broadcasts agent-session.updated', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        metadata: { deviceId: DEVICE_ID },
+        status: 'idle',
+        claudeSessionId: 'claude-abc',
+        repoPath: '/repo/on/old-device',
+      },
+    ]);
+    grantAccess('admin');
+    findChatCapableDeviceForProject.mockResolvedValueOnce(OTHER_DEVICE_ID);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
+    resolveSessionRepoPathForDevice.mockResolvedValueOnce('/repo/on/new-device');
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: OTHER_DEVICE_ID,
+        metadata: { deviceId: OTHER_DEVICE_ID },
+        status: 'idle',
+        claudeSessionId: null,
+        repoPath: '/repo/on/new-device',
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deviceId: OTHER_DEVICE_ID,
+        metadata: expect.objectContaining({ deviceId: OTHER_DEVICE_ID }),
+        claudeSessionId: null,
+        repoPath: '/repo/on/new-device',
+      }),
+    );
+    const updateCall = publishSpy.mock.calls.find(
+      ([, env]) => (env as { event: string }).event === 'agent-session.updated',
+    );
+    expect(updateCall).toBeDefined();
+  });
+
+  it('409 NO_CLAUDE_CLIENT when the picked device is offline/disabled/not a chat runner', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        metadata: { deviceId: DEVICE_ID },
+        status: 'idle',
+        claudeSessionId: 'claude-abc',
+        repoPath: '/repo/on/old-device',
+      },
+    ]);
+    grantAccess('admin');
+    findChatCapableDeviceForProject.mockResolvedValueOnce(null);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('NO_CLAUDE_CLIENT');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('409 SESSION_BUSY while the session is running', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        metadata: { deviceId: DEVICE_ID },
+        status: 'running',
+        claudeSessionId: 'claude-abc',
+      },
+    ]);
+    grantAccess('admin');
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('SESSION_BUSY');
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
+  });
+
+  it('{ deviceId: null } clears the pin + metadata.deviceId + repoPath (Auto)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        metadata: { deviceId: DEVICE_ID },
+        status: 'idle',
+        claudeSessionId: 'claude-abc',
+        repoPath: '/repo/on/old-device',
+      },
+    ]);
+    grantAccess('admin');
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        metadata: {},
+        status: 'idle',
+        claudeSessionId: null,
+        repoPath: null,
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ deviceId: null }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceId: null, claudeSessionId: null, repoPath: null }),
+    );
+    const updates = updateSet.mock.calls[0]?.[0] as { metadata?: Record<string, unknown> };
+    expect(updates.metadata?.deviceId).toBeUndefined();
+  });
+
+  it('same-device (idempotent) pick → no-op, keeps claudeSessionId (no needless --resume loss)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        metadata: { deviceId: DEVICE_ID },
+        status: 'idle',
+        claudeSessionId: 'claude-abc',
+        repoPath: '/repo/on/old-device',
+      },
+    ]);
+    grantAccess('admin');
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ deviceId: DEVICE_ID }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
+    const body = (await res.json()) as { claudeSessionId?: string | null };
+    expect(body.claudeSessionId).toBe('claude-abc');
   });
 });
 

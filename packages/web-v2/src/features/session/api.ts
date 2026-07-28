@@ -103,6 +103,16 @@ export const sessionApi = {
   /** `POST /:id/cancel` — stop the in-flight turn. */
   cancel: (id: string) => apiClient<SessionRow>(`/agent-sessions/${id}/cancel`, { method: "POST" }),
 
+  /**
+   * `POST /:id/runner` — switch the chat to a runner NOW (server-side pin),
+   * instead of riding the next `send`. `deviceId: null` = Auto (clears the pin).
+   */
+  setRunner: (id: string, deviceId: string | null) =>
+    apiClient<SessionRow>(`/agent-sessions/${id}/runner`, {
+      method: "POST",
+      body: JSON.stringify({ deviceId }),
+    }),
+
   /** `POST /:id/rerun` — clone into a fresh session. */
   rerun: (id: string) => apiClient<{ id: string }>(`/agent-sessions/${id}/rerun`, { method: "POST" }),
 
