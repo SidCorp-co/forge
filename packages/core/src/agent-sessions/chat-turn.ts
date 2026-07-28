@@ -7,8 +7,7 @@ import { TOOL_REFERENCE, buildChatPreamble } from '../lib/chat-preamble.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
-  resolveRepoPath,
-  resolveRunnerRepoPath,
+  resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
@@ -151,6 +150,9 @@ export async function resolveChatDevice(
     return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
   }
   if (pinned) {
+    // cm:why try the chat-capable (runners table) gate before devices.status — a live CLI runner can have devices.status stale offline, which would otherwise self-heal away from a just-picked runner
+    const capable = await findChatCapableDeviceForProject(session.projectId, pinned);
+    if (capable) return { deviceId: capable, isLocal: false, migrated: false };
     const [dev] = await db
       .select({ status: devices.status, disabledAt: devices.disabledAt })
       .from(devices)
@@ -201,11 +203,10 @@ export function buildRehydrationBlock(
   }
   kept.reverse();
   return (
-    '[Your previous session was resumed on a different machine; its local ' +
-    'context is unavailable. The prior conversation transcript follows — treat ' +
-    'it as the established history and continue seamlessly.]\n\n' +
-    `${kept.join('\n\n')}\n\n` +
-    '[End of prior transcript. Continue with the new message below.]\n\n'
+    `[This is a cold start; the previous local process context is unavailable. ` +
+    `The prior conversation transcript follows — treat it as the established ` +
+    `history and continue seamlessly.]\n\n${kept.join('\n\n')}\n\n[End of prior ` +
+    `transcript. Continue with the new message below.]\n\n`
   );
 }
 
@@ -331,13 +332,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     ? `${formatPageContextLine(args.pageContext as PageContext)}\n${args.message}`
     : args.message;
 
-  // cwd for `claude` runs on the chosen runner's box → prefer that runner's
-  // binding path; the project default is only valid on the owner's own machine
-  // (correct for the desktop, which has no binding). Resolve once, when unset.
+  // cm:guard repoPath must be re-resolved whenever this turn's device differs from the one it was resolved for, else claude spawns in a nonexistent cwd and hangs the session
+  const deviceChanged = !!deviceId && (migrated || deviceId !== (session.deviceId ?? null));
   let repoPath = session.repoPath ?? null;
-  if (!repoPath) {
-    const bindingRepo = deviceId ? await resolveRunnerRepoPath(project.id, deviceId) : null;
-    repoPath = resolveRepoPath(null, bindingRepo ?? project.repoPath ?? null);
+  if (!repoPath || deviceChanged) {
+    repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId, project.repoPath);
   }
 
   // ISS-499 — hydrate attachment refs (drops ids not belonging to this session)
@@ -480,7 +479,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         // product-bot-initiated runner sessions instead (ISS-674).
         const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
         const preamble = await buildChatPreamble(project.id, session.userId, forceLenses);
-        const history = migrated ? buildRehydrationBlock(prevMessages) : '';
+        // cm:edge lockstep -> packages/core/src/agent-sessions/lifecycle-routes.ts — POST /:id/runner drops claudeSessionId at pin time, so this must rehydrate on any cold start with history, not just `migrated`
+        const history = buildRehydrationBlock(prevMessages);
         prompt = preamble + history + decoratedMessage;
       } catch {
         // non-fatal — proceed with the raw prompt

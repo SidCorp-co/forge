@@ -42,6 +42,7 @@ import {
   useSendMessage,
   useSession,
   useSessionTurns,
+  useSetSessionRunner,
 } from "../hooks";
 import { parseTurns } from "../types";
 import { Composer, ReadOnlyComposerNote } from "./composer";
@@ -115,8 +116,7 @@ export function ChatScreen({
   // creates the row on first message (handleSend).
   const [draft, setDraft] = useState(initialDraft ?? false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  // Explicit runner pick (RunnerPicker). undefined = Auto / follow the session's
-  // binding; a set value re-pins the conversation on the next message.
+  // cm:why draft-mode pick only — a real session's runner is the server pin (session.deviceId via POST /:id/runner), not this state
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>();
 
   const recentSessions = latestQ.data?.items ?? [];
@@ -143,10 +143,13 @@ export function ChatScreen({
   const regenerate = useRegenerateTurn(resolvedId ?? "");
   const fork = useForkSession(resolvedId ?? "");
   const editTurn = useEditTurn(resolvedId ?? "");
+  const setRunner = useSetSessionRunner(resolvedId ?? "");
 
   const session = sessionQ.data;
   const display = session ? deriveSessionDisplayStatus(session) : undefined;
   const live = display === "running" || display === "stalled";
+  // cm:edge contract -> packages/core/src/agent-sessions/lifecycle-routes.ts — mirrors the POST /:id/runner SESSION_BUSY guard (running/queued) so the picker states the reason before the round-trip
+  const switchLocked = live || display === "queued";
   const startMs = session?.startedAt
     ? new Date(session.startedAt).getTime()
     : undefined;
@@ -168,6 +171,14 @@ export function ChatScreen({
     setActiveId(undefined);
     setSelectedDeviceId(undefined);
     setHistoryOpen(false);
+  };
+
+  const handleRunnerSelect = (deviceId: string | undefined, label: string) => {
+    if (!resolvedId) {
+      setSelectedDeviceId(deviceId);
+      return;
+    }
+    setRunner.mutate({ deviceId: deviceId ?? null, label });
   };
 
   const handlePick = (id: string) => {
@@ -208,6 +219,7 @@ export function ChatScreen({
     // Pass the explicit runner pick (if any) so the server re-pins + dispatches
     // this turn to it; omitted = reuse binding / auto-pick.
     await send.mutateAsync({ sessionId: id, message, files, deviceId: selectedDeviceId });
+    if (selectedDeviceId !== undefined) setSelectedDeviceId(undefined);
   };
 
   const busy = live || send.isPending || create.isPending;
@@ -289,15 +301,15 @@ export function ChatScreen({
               domain="session"
             />
           )}
-          {/* Which runner handles this conversation + pick another (ISS runner
-              picker). Bound id is live via session.deviceId; a fresh draft shows
-              "Auto" until the first message pins one. */}
           <RunnerPicker
             projectId={projectId}
             boundDeviceId={session?.deviceId ?? null}
             selectedDeviceId={selectedDeviceId}
-            onSelect={setSelectedDeviceId}
+            onSelect={handleRunnerSelect}
             readOnly={!canWrite}
+            switching={setRunner.isPending}
+            pendingNote={!resolvedId ? "Applies to your first message." : null}
+            lockedReason={switchLocked ? "The agent is busy — you can switch when it's free." : null}
           />
           {!hideHistory && (
             <div className="relative">

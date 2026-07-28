@@ -126,6 +126,29 @@ export function useCancelSession(id: string) {
   });
 }
 
+/**
+ * Runner picker "switch now" — re-pins the session server-side immediately
+ * (ISS-755). `label` is the picked device's display name, used only for the
+ * success toast copy; `deviceId: null` = Auto.
+ */
+export function useSetSessionRunner(id: string) {
+  const invalidate = useInvalidateSession(id);
+  const { toast } = useToast();
+  const onError = useToastError();
+  return useMutation({
+    mutationFn: ({ deviceId }: { deviceId: string | null; label: string }) =>
+      sessionApi.setRunner(id, deviceId),
+    onSuccess: (_, vars) => {
+      invalidate();
+      toast({
+        title: vars.deviceId ? `Chat moved to ${vars.label}` : "Runner set to Auto",
+        tone: "success",
+      });
+    },
+    onError,
+  });
+}
+
 export function useRerunSession(id: string) {
   const onError = useToastError();
   return useMutation({ mutationFn: () => sessionApi.rerun(id), onError });

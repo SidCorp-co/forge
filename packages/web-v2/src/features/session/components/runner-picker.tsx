@@ -1,23 +1,9 @@
 "use client";
 
-// Chat runner picker (header of ChatScreen). Shows which runner currently
-// handles the conversation and lets the user pin a specific one.
-//
-//  - "which runner": the trigger resolves the EFFECTIVE device — the pending
-//    pick if the user chose one, else the session's bound `deviceId` (live via
-//    WS), else "Auto" (server picks the freshest online runner on send).
-//  - "choose a runner": the dropdown lists the project's device-hosted
-//    chat runners with a live health dot. Selecting one sets a pending override
-//    that rides the NEXT send (`sessionApi.send({ deviceId })` → core re-pins +
-//    migrates the conversation to that runner). Offline / disabled runners are
-//    shown but not selectable (the server would 409). "Auto" clears the pick.
-//
-// Self-managing popover (own outside-click / Esc close), anchored under its
-// trigger — mirrors the History switcher pattern in this feature.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { HealthDot, Icon } from "@/design";
+import { HealthDot, Icon, Spinner } from "@/design";
 import { useProjectRunners } from "@/features/runners/hooks";
-import { deviceHealth, type ProjectRunner } from "@/features/runners/types";
+import { runnerHealth, type ProjectRunner } from "@/features/runners/types";
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -25,27 +11,33 @@ const PLATFORM_LABEL: Record<string, string> = {
   windows: "Windows",
 };
 
-/** A runner is pickable for chat only when its device is online + enabled. */
+// cm:edge contract -> packages/core/src/lib/device-pool.ts#findChatCapableDeviceForProject — pickability must key off runnerStatus, since deviceStatus is stale for a live CLI runner (ISS-426 class)
 function isSelectable(r: ProjectRunner): boolean {
-  return !!r.deviceId && r.deviceStatus === "online" && !r.deviceDisabledAt;
+  return !!r.deviceId && r.runnerStatus === "online" && !r.deviceDisabledAt;
 }
 
-/** Health + short label for a runner's device state (accounts for "turned off"). */
+// cm:edge contract -> packages/core/src/lib/device-pool.ts#findChatCapableDeviceForProject — dot+note must key off the same signal as isSelectable, since deviceStatus is stale for a live CLI runner (ISS-426 class)
 function runnerState(r: ProjectRunner): { health: Parameters<typeof HealthDot>[0]["health"]; note: string | null } {
   if (r.deviceDisabledAt) return { health: "attention", note: "off" };
-  if (r.deviceStatus !== "online") return { health: "idle", note: "offline" };
-  return { health: deviceHealth(r.deviceStatus), note: null };
+  if (r.runnerStatus !== "online") return { health: runnerHealth(r.runnerStatus), note: r.runnerStatus };
+  return { health: "healthy", note: null };
 }
 
 interface RunnerPickerProps {
   projectId: string;
   /** The runner the session is currently bound to (live from `session.deviceId`). */
   boundDeviceId: string | null;
-  /** Pending explicit pick — undefined = Auto / follow the binding. */
+  /** Draft-mode pick (no session yet) — undefined once a real session exists. */
   selectedDeviceId: string | undefined;
-  onSelect: (deviceId: string | undefined) => void;
+  onSelect: (deviceId: string | undefined, label: string) => void;
   /** Viewers: show the current runner but don't allow changing it. */
   readOnly?: boolean;
+  /** A switch is in flight (`useSetSessionRunner` pending) — locks the picker + spins. */
+  switching?: boolean;
+  /** Plain-language note shown inside the dropdown (e.g. draft-mode "applies to your first message"). */
+  pendingNote?: string | null;
+  /** Non-null keeps the popover openable but disables every row with this reason (e.g. agent busy). */
+  lockedReason?: string | null;
 }
 
 export function RunnerPicker({
@@ -54,6 +46,9 @@ export function RunnerPicker({
   selectedDeviceId,
   onSelect,
   readOnly,
+  switching,
+  pendingNote,
+  lockedReason,
 }: RunnerPickerProps) {
   const runnersQ = useProjectRunners(projectId);
   const runners = (runnersQ.data ?? []).filter((r) => !!r.deviceId);
@@ -62,15 +57,13 @@ export function RunnerPicker({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // Effective device = the pending pick, else the live binding. `pending` marks
-  // a pick that differs from what's bound now (applies on the next message).
   const effectiveId = selectedDeviceId ?? boundDeviceId ?? undefined;
-  const pending = selectedDeviceId !== undefined && selectedDeviceId !== boundDeviceId;
   const effective = effectiveId ? runners.find((r) => r.deviceId === effectiveId) : undefined;
   const triggerLabel = effectiveId
     ? effective?.deviceName ?? effectiveId.slice(0, 8)
     : "Auto";
   const triggerHealth = effective ? runnerState(effective).health : undefined;
+  const rowsDisabled = !!switching || !!lockedReason;
 
   useEffect(() => {
     if (!open) return;
@@ -110,8 +103,9 @@ export function RunnerPicker({
     };
   }, [open]);
 
-  const pick = (deviceId: string | undefined) => {
-    onSelect(deviceId);
+  const pick = (deviceId: string | undefined, label: string) => {
+    if (rowsDisabled) return;
+    onSelect(deviceId, label);
     setOpen(false);
   };
 
@@ -123,14 +117,14 @@ export function RunnerPicker({
         onClick={() => !readOnly && setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={pending ? "Runner for the next message" : "Runner handling this conversation"}
+        aria-busy={switching}
+        title="Runner handling this conversation"
         className="inline-flex h-8 max-w-[200px] items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] text-fg transition-colors hover:bg-hover focus-visible:outline-none disabled:cursor-default disabled:opacity-70"
       >
         <Icon name="server" size={14} className="flex-none text-subtle" />
         <span className="truncate">{triggerLabel}</span>
         {triggerHealth && <HealthDot health={triggerHealth} />}
-        {pending && <span className="flex-none text-[11px] text-subtle">· next</span>}
-        {!readOnly && <Icon name="chevronDown" size={13} className="flex-none text-subtle" />}
+        {!readOnly && (switching ? <Spinner size={13} /> : <Icon name="chevronDown" size={13} className="flex-none text-subtle" />)}
       </button>
 
       {open && (
@@ -143,12 +137,15 @@ export function RunnerPicker({
           <div className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-subtle">
             Runner
           </div>
+          {pendingNote && <div className="px-2 pb-1.5 text-[12px] text-subtle">{pendingNote}</div>}
+          {lockedReason && <div className="px-2 pb-1.5 text-[12px] text-subtle">{lockedReason}</div>}
 
           <PickerRow
             label="Auto"
             sub="Freshest online runner"
-            selected={selectedDeviceId === undefined}
-            onSelect={() => pick(undefined)}
+            selected={effectiveId === undefined}
+            disabled={rowsDisabled}
+            onSelect={() => pick(undefined, "Auto")}
           />
 
           {runnersQ.isLoading && (
@@ -161,17 +158,18 @@ export function RunnerPicker({
           {runners.map((r) => {
             const { health, note } = runnerState(r);
             const selectable = isSelectable(r);
+            const label = r.deviceName ?? r.deviceId!.slice(0, 8);
             return (
               <PickerRow
                 key={r.runnerId}
-                label={r.deviceName ?? r.deviceId!.slice(0, 8)}
+                label={label}
                 sub={[PLATFORM_LABEL[r.platform ?? ""] ?? r.platform ?? undefined, note ?? undefined]
                   .filter(Boolean)
                   .join(" · ") || undefined}
                 health={health}
-                selected={selectedDeviceId === r.deviceId}
-                disabled={!selectable}
-                onSelect={() => pick(r.deviceId ?? undefined)}
+                selected={effectiveId === r.deviceId}
+                disabled={!selectable || rowsDisabled}
+                onSelect={() => pick(r.deviceId ?? undefined, label)}
               />
             );
           })}
