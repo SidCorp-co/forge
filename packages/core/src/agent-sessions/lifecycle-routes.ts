@@ -512,6 +512,14 @@ agentSessionLifecycleRoutes.post(
     const repoPath = picked
       ? await resolveSessionRepoPathForDevice(session.projectId, picked, project.repoPath)
       : null;
+    // cm:guard a picked device with no resolvable repoPath must be refused, not silently written — else the next turn spawns claude in the runner's default cwd, possibly the wrong repo
+    if (picked && !repoPath) {
+      throw new HTTPException(409, {
+        message:
+          'This runner has no project folder configured (no runner binding and no project default). Set a repo path for it, or pick a different runner, then try again.',
+        cause: { code: 'NO_REPO_PATH' },
+      });
+    }
 
     const [updated] = await db
       .update(agentSessions)

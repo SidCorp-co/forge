@@ -671,6 +671,39 @@ describe('POST /api/agent-sessions/:id/runner', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
+  it('409 NO_REPO_PATH when the picked device has no runner binding and the project has no default repoPath (ISS-755 fix)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        metadata: { deviceId: DEVICE_ID },
+        status: 'idle',
+        claudeSessionId: 'claude-abc',
+        repoPath: '/repo/on/old-device',
+      },
+    ]);
+    grantAccess('admin');
+    findChatCapableDeviceForProject.mockResolvedValueOnce(OTHER_DEVICE_ID);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: null }]);
+    resolveSessionRepoPathForDevice.mockResolvedValueOnce(null);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('NO_REPO_PATH');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
   it('409 SESSION_BUSY while the session is running', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();

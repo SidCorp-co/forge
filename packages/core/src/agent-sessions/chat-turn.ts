@@ -203,11 +203,10 @@ export function buildRehydrationBlock(
   }
   kept.reverse();
   return (
-    '[Your previous session was resumed on a different machine; its local ' +
-    'context is unavailable. The prior conversation transcript follows — treat ' +
-    'it as the established history and continue seamlessly.]\n\n' +
-    `${kept.join('\n\n')}\n\n` +
-    '[End of prior transcript. Continue with the new message below.]\n\n'
+    `[This is a cold start; the previous local process context is unavailable. ` +
+    `The prior conversation transcript follows — treat it as the established ` +
+    `history and continue seamlessly.]\n\n${kept.join('\n\n')}\n\n[End of prior ` +
+    `transcript. Continue with the new message below.]\n\n`
   );
 }
 

@@ -148,6 +148,8 @@ export function ChatScreen({
   const session = sessionQ.data;
   const display = session ? deriveSessionDisplayStatus(session) : undefined;
   const live = display === "running" || display === "stalled";
+  // cm:edge contract -> packages/core/src/agent-sessions/lifecycle-routes.ts — mirrors the POST /:id/runner SESSION_BUSY guard (running/queued) so the picker states the reason before the round-trip
+  const switchLocked = live || display === "queued";
   const startMs = session?.startedAt
     ? new Date(session.startedAt).getTime()
     : undefined;
@@ -307,7 +309,7 @@ export function ChatScreen({
             readOnly={!canWrite}
             switching={setRunner.isPending}
             pendingNote={!resolvedId ? "Applies to your first message." : null}
-            lockedReason={live ? "The agent is working — you can switch when it finishes." : null}
+            lockedReason={switchLocked ? "The agent is busy — you can switch when it's free." : null}
           />
           {!hideHistory && (
             <div className="relative">

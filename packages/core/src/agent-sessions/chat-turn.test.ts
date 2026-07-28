@@ -292,7 +292,7 @@ describe('dispatchChatTurn', () => {
     const prompt = String((start?.[1] as { data: { prompt: string } }).data.prompt);
     // Preamble + prior transcript + the new message are all primed into the cold start.
     expect(prompt).toContain('[Preamble]');
-    expect(prompt).toContain('resumed on a different machine');
+    expect(prompt).toContain('This is a cold start');
     expect(prompt).toContain('where is the runner code');
     expect(prompt).toContain('in packages/runner');
     expect(prompt).toContain('and the dispatch loop?');
@@ -301,7 +301,7 @@ describe('dispatchChatTurn', () => {
     expect(updates.claudeSessionId).toBeNull();
   });
 
-  it('migration recomputes repoPath for the NEW device instead of reusing the old box\'s stale path (ISS-755 bug guard)', async () => {
+  it("migration recomputes repoPath for the NEW device instead of reusing the old box's stale path (ISS-755 bug guard)", async () => {
     updateReturning.mockResolvedValueOnce([
       baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
     ]);
@@ -318,7 +318,11 @@ describe('dispatchChatTurn', () => {
       client: { deviceId: 'dev-2', isLocal: false, migrated: true },
       message: 'again on the new box',
     });
-    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(PROJECT.id, 'dev-2', PROJECT.repoPath);
+    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(
+      PROJECT.id,
+      'dev-2',
+      PROJECT.repoPath,
+    );
     const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
     expect(updates.repoPath).toBe('/repo/on/dev-2');
     expect(updates.repoPath).not.toBe('/repo/on/dev-1');
@@ -368,7 +372,7 @@ describe('dispatchChatTurn', () => {
     );
     expect(start).toBeDefined();
     const prompt = String((start?.[1] as { data: { prompt: string } }).data.prompt);
-    expect(prompt).toContain('resumed on a different machine');
+    expect(prompt).toContain('This is a cold start');
     expect(prompt).toContain('where is the runner code');
     expect(prompt).toContain('in packages/runner');
   });

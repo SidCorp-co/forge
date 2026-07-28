@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { HealthDot, Icon, Spinner } from "@/design";
 import { useProjectRunners } from "@/features/runners/hooks";
-import { deviceHealth, type ProjectRunner } from "@/features/runners/types";
+import { runnerHealth, type ProjectRunner } from "@/features/runners/types";
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -16,11 +16,11 @@ function isSelectable(r: ProjectRunner): boolean {
   return !!r.deviceId && r.runnerStatus === "online" && !r.deviceDisabledAt;
 }
 
-/** Health + short label for a runner's device state (accounts for "turned off"). */
+// cm:edge contract -> packages/core/src/lib/device-pool.ts#findChatCapableDeviceForProject — dot+note must key off the same signal as isSelectable, since deviceStatus is stale for a live CLI runner (ISS-426 class)
 function runnerState(r: ProjectRunner): { health: Parameters<typeof HealthDot>[0]["health"]; note: string | null } {
   if (r.deviceDisabledAt) return { health: "attention", note: "off" };
-  if (r.deviceStatus !== "online") return { health: "idle", note: "offline" };
-  return { health: deviceHealth(r.deviceStatus), note: null };
+  if (r.runnerStatus !== "online") return { health: runnerHealth(r.runnerStatus), note: r.runnerStatus };
+  return { health: "healthy", note: null };
 }
 
 interface RunnerPickerProps {

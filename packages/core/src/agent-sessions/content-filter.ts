@@ -11,7 +11,7 @@ const SYSTEM_NOISE_PREFIXES: RegExp[] = [
   // `formatPageContextLine` in page-context.ts.
   /^\[Context:/,
   // Rehydration transcript markers from `buildRehydrationBlock` (chat-turn.ts).
-  /^\[Your previous session/,
+  /^\[This is a cold start/,
   /^\[End of prior/,
 ];
 

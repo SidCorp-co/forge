@@ -15,9 +15,11 @@ describe('isSystemNoise', () => {
   });
 
   it('flags the rehydration transcript markers', () => {
-    expect(isSystemNoise('[Your previous session was resumed on a different machine; ...]')).toBe(
-      true,
-    );
+    expect(
+      isSystemNoise(
+        '[This is a cold start; the previous local process context is unavailable. ...]',
+      ),
+    ).toBe(true);
     expect(isSystemNoise('[End of prior transcript. Continue with the new message below.]')).toBe(
       true,
     );
@@ -46,7 +48,11 @@ describe('stripSystemNoise', () => {
   });
 
   it('drops the whole string when it is a rehydration marker', () => {
-    expect(stripSystemNoise('[Your previous session was resumed...]')).toBe('');
+    expect(
+      stripSystemNoise(
+        '[This is a cold start; the previous local process context is unavailable. ...]',
+      ),
+    ).toBe('');
   });
 
   it('passes through clean text unchanged', () => {
