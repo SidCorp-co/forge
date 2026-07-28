@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   COMMENT_KIND_META,
   COMPLEXITY_LABELS,
+  FORGE_AGENT_LABEL,
   HEARTBEAT_STALE_MS,
   PRIORITY_LABELS,
   STATUS_LABELS,
   allowedTransitions,
   bulkAllowedStatuses,
   complexityLabel,
+  creatorLabelOf,
   deriveBlockerState,
   deriveCommentKind,
   deriveStageOutcomes,
@@ -49,6 +51,10 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
     category: over.category ?? null,
     complexity: over.complexity ?? null,
     assigneeId: over.assigneeId ?? null,
+    createdById: over.createdById ?? "owner-1",
+    creatorEmail: over.creatorEmail ?? "owner@example.com",
+    creatorIsAgent: over.creatorIsAgent ?? false,
+    creatorLabel: over.creatorLabel ?? "owner@example.com",
     parentIssueId: over.parentIssueId ?? null,
     reopenCount: over.reopenCount ?? 0,
     mergedAt: over.mergedAt ?? null,
@@ -280,9 +286,9 @@ describe("filterToStatusParams", () => {
 
 describe("groupRows", () => {
   const rows = [
-    row({ id: "a", status: "open", priority: "high", assigneeId: "u1" }),
-    row({ id: "b", status: "open", priority: "low", assigneeId: null }),
-    row({ id: "c", status: "developed", priority: "high", assigneeId: "u1" }),
+    row({ id: "a", status: "open", priority: "high", createdById: "u1", creatorLabel: "ann@x.co" }),
+    row({ id: "b", status: "open", priority: "low", createdById: "u2", creatorLabel: "bob@x.co" }),
+    row({ id: "c", status: "developed", priority: "high", createdById: "u1", creatorLabel: "ann@x.co" }),
   ];
   it("returns a single group for none", () => {
     const g = groupRows(rows, "none");
@@ -294,10 +300,16 @@ describe("groupRows", () => {
     expect(g.map((x) => x.key)).toEqual(["open", "developed"]);
     expect(g[0].rows.map((r) => r.id)).toEqual(["a", "b"]);
   });
-  it("groups by assignee with Unassigned last + resolved labels", () => {
-    const g = groupRows(rows, "assignee", [{ userId: "u1", email: "ann@x.co" }]);
-    expect(g[g.length - 1].label).toBe("Unassigned");
+  it("groups by creator, distinct group per creator, agent group last", () => {
+    const mixed = [
+      ...rows,
+      row({ id: "d", createdById: "u3", creatorIsAgent: true, creatorLabel: FORGE_AGENT_LABEL }),
+    ];
+    const g = groupRows(mixed, "creator");
+    expect(g.map((x) => x.key)).toEqual(["u1", "u2", "__agent__"]);
     expect(g[0].label).toBe("ann@x.co");
+    expect(g[1].label).toBe("bob@x.co");
+    expect(g[g.length - 1].label).toBe(FORGE_AGENT_LABEL);
   });
 });
 
@@ -310,6 +322,20 @@ describe("memberLabel / initials", () => {
   it("derives two-letter initials", () => {
     expect(initials("ann.smith@x.co")).toBe("AS");
     expect(initials("bob@x.co")).toBe("BO");
+  });
+});
+
+describe("creatorLabelOf", () => {
+  it("prefers the server-provided creatorLabel", () => {
+    expect(creatorLabelOf({ creatorLabel: "ann@x.co", creatorEmail: "ann@x.co", creatorIsAgent: false })).toBe(
+      "ann@x.co",
+    );
+  });
+  it("falls back to Forge Agent for an agent row with no label", () => {
+    expect(creatorLabelOf({ creatorLabel: "", creatorEmail: null, creatorIsAgent: true })).toBe(FORGE_AGENT_LABEL);
+  });
+  it("never falls back to a raw id — 'Unknown user' when nothing resolves", () => {
+    expect(creatorLabelOf({ creatorLabel: "", creatorEmail: null, creatorIsAgent: false })).toBe("Unknown user");
   });
 });
 

@@ -83,6 +83,11 @@ export interface IssueRow {
   category: string | null;
   complexity: IssueComplexity | null;
   assigneeId: string | null;
+  createdById: string;
+  /** ISS-756 — never rendered raw; always go through `creatorLabelOf`. */
+  creatorEmail: string | null;
+  creatorIsAgent: boolean;
+  creatorLabel: string;
   parentIssueId: string | null;
   reopenCount: number;
   mergedAt: string | null;
@@ -157,7 +162,7 @@ export interface IssueDependencies {
 export type IssueFilter = "all" | "draft" | "active" | "review" | "blocked" | "done";
 
 /** Client-side grouping for the list. */
-export type GroupBy = "none" | "status" | "priority" | "assignee";
+export type GroupBy = "none" | "status" | "priority" | "creator";
 
 export type IssueSort =
   | "createdAt:desc"
@@ -168,14 +173,14 @@ export type IssueSort =
   | "priority:asc";
 
 /** Options passed to the search endpoint via the `useIssues` hook. `priority`
- *  and `assignee` map 1:1 onto the server search params (ISS-436 — the
- *  endpoint always supported them; the UI just never exposed a control). */
+ *  maps 1:1 onto the server search params (ISS-436 — the endpoint always
+ *  supported them; the UI just never exposed a control). */
 export interface IssueSearchOpts {
   q?: string;
   filter?: IssueFilter;
   priority?: IssuePriority;
-  /** Member userId. */
-  assignee?: string;
+  /** Member userId, or the literal "agent" (ISS-756). */
+  createdBy?: string;
   /** Label uuid — maps to `?label=<id>` on the search endpoint (ISS-586). */
   label?: string;
   sort?: IssueSort;

@@ -6,14 +6,10 @@
 // clickable `ISS-X` badges linking to the related issue — ISS-331).
 
 import { Avatar, Badge, MonoTag, Stat } from "@/design";
-import {
-  COMPLEXITY_OPTIONS,
-  PRIORITY_OPTIONS,
-  assigneeOptions,
-} from "./issue-table-row";
+import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { initials, memberLabel } from "../derive";
+import { creatorLabelOf, initials } from "../derive";
 import type {
   IssueComplexity,
   IssueCostSummary,
@@ -22,7 +18,6 @@ import type {
   IssueDetail,
   IssuePriority,
   IssueStatus,
-  ProjectMember,
 } from "../types";
 
 function fmtDate(iso: string | null): string {
@@ -127,18 +122,16 @@ interface PropertiesRailProps {
   issue: IssueDetail;
   /** Project slug — for building links from relation badges to related issues. */
   slug: string;
-  members: ProjectMember[] | undefined;
   cost: IssueCostSummary | undefined;
   deps: IssueDependencies | undefined;
   pending: boolean;
-  onPatch: (body: { priority?: IssuePriority; complexity?: IssueComplexity | null; assigneeId?: string | null }) => void;
+  onPatch: (body: { priority?: IssuePriority; complexity?: IssueComplexity | null }) => void;
   onTransition: (toStatus: IssueStatus) => void;
 }
 
 export function PropertiesRail({
   issue,
   slug,
-  members,
   cost,
   deps,
   pending,
@@ -191,17 +184,12 @@ export function PropertiesRail({
           className="w-36"
         />
       </Row>
-      <Row label="Assignee">
+      <Row label="Creator">
         <div className="flex items-center justify-end gap-2">
-          <Avatar initials={initials(memberLabel(issue.assigneeId, members))} size={22} />
-          <InlineSelect
-            ariaLabel="Assignee"
-            value={issue.assigneeId ?? ""}
-            options={assigneeOptions(members)}
-            disabled={pending}
-            onCommit={(uid) => onPatch({ assigneeId: uid === "" ? null : uid })}
-            className="w-40"
-          />
+          <Avatar initials={initials(creatorLabelOf(issue))} size={22} />
+          <span className="fg-body-sm truncate text-fg" title={creatorLabelOf(issue)}>
+            {creatorLabelOf(issue)}
+          </span>
         </div>
       </Row>
       <Row label="Category">

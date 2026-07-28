@@ -19,10 +19,12 @@ const selectWhere = vi.fn(() => ({
 }));
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
 // .where().limit() — route the join chain back into the same where/limit FIFO.
-const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
-  leftJoin: selectLeftJoin,
-  where: selectWhere,
-}));
+const selectLeftJoin = vi.fn(
+  (): Record<string, unknown> => ({
+    leftJoin: selectLeftJoin,
+    where: selectWhere,
+  }),
+);
 // ISS-437 — the withCost rollup runs select().from(subquery).innerJoin()
 // .groupBy() (awaited directly; mockReturnValueOnce an array of
 // `{ issueId, estimatedCost }` rows).
@@ -37,7 +39,10 @@ const dbSelect = vi.fn(() => ({ from: selectFrom }));
 // ISS-437 — the rollup's DISTINCT (issue, session) subquery is only BUILT
 // (never awaited): selectDistinct().from().where().as('…') must return a
 // column-bag the outer query can reference.
-const distinctAs = vi.fn(() => ({ issueId: 'issue_sessions.issue_id', sessionId: 'issue_sessions.session_id' }));
+const distinctAs = vi.fn(() => ({
+  issueId: 'issue_sessions.issue_id',
+  sessionId: 'issue_sessions.session_id',
+}));
 const dbSelectDistinct = vi.fn(() => ({
   from: vi.fn(() => ({ where: vi.fn(() => ({ as: distinctAs })) })),
 }));
@@ -57,10 +62,20 @@ vi.mock('../db/client.js', () => ({
 // stub it so the withCost ∘ withAgentSessions composition test stays a pure
 // serialization check.
 vi.mock('./agent-sessions-hydrator.js', () => ({
-  hydrateAgentSessionsForIssues: vi.fn(async () => new Map([
-    ['33333333-3333-4333-8333-333333333333', { agentSessions: [], agentStatus: 'running' }],
-  ])),
+  hydrateAgentSessionsForIssues: vi.fn(
+    async () =>
+      new Map([
+        ['33333333-3333-4333-8333-333333333333', { agentSessions: [], agentStatus: 'running' }],
+      ]),
+  ),
 }));
+
+// cm:why buildCreatedByCondition stays real (SQL-shape covered by creator.test.ts); only hydrateCreatorsForIssues is stubbed
+const hydrateCreatorsForIssues = vi.fn(async () => new Map());
+vi.mock('./creator.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./creator.js')>();
+  return { ...actual, hydrateCreatorsForIssues };
+});
 
 const { searchRoutes, buildIlikePattern } = await import('./search.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -271,7 +286,13 @@ describe('withFailureInfo (ISS-700)', () => {
     queueIssuesPage();
     const finishedAt = new Date('2026-07-01T00:00:00.000Z');
     failureInfoOrderBy.mockReturnValueOnce([
-      { issueId: ISSUE_A, failedStep: 'code', failureReason: 'build failed', failureKind: 'code', finishedAt },
+      {
+        issueId: ISSUE_A,
+        failedStep: 'code',
+        failureReason: 'build failed',
+        failureKind: 'code',
+        finishedAt,
+      },
     ]);
     const t = await token();
     const res = await req('?withFailureInfo=1', t);
@@ -297,7 +318,13 @@ describe('withFailureInfo (ISS-700)', () => {
     queueIssuesPage();
     costGroupBy.mockReturnValueOnce([{ issueId: ISSUE_A, estimatedCost: 0.5 }]);
     failureInfoOrderBy.mockReturnValueOnce([
-      { issueId: ISSUE_B, failedStep: 'review', failureReason: null, failureKind: 'infra', finishedAt: null },
+      {
+        issueId: ISSUE_B,
+        failedStep: 'review',
+        failureReason: null,
+        failureKind: 'infra',
+        finishedAt: null,
+      },
     ]);
     const t = await token();
     const res = await req('?withCost=1&withFailureInfo=1', t);
@@ -307,8 +334,87 @@ describe('withFailureInfo (ISS-700)', () => {
     expect(body[1]).toMatchObject({
       id: ISSUE_B,
       estimatedCost: 0,
-      failureInfo: { failedStep: 'review', failureReason: null, failedAt: new Date(0).toISOString() },
+      failureInfo: {
+        failedStep: 'review',
+        failureReason: null,
+        failedAt: new Date(0).toISOString(),
+      },
     });
+  });
+});
+
+describe('createdBy filter + creator hydration (ISS-756)', () => {
+  const ISSUE_A = '33333333-3333-4333-8333-333333333333';
+  const ISSUE_B = '44444444-4444-4444-8444-444444444444';
+  const PERSON_ID = '55555555-5555-4555-8555-555555555555';
+
+  function queueIssuesPage() {
+    selectOffset.mockReturnValueOnce([
+      { id: ISSUE_A, issSeq: 1, title: 'a', createdById: PERSON_ID, createdVia: 'web' },
+      { id: ISSUE_B, issSeq: 2, title: 'b', createdById: PERSON_ID, createdVia: 'mcp' },
+    ]);
+  }
+
+  it('400 on a createdBy value that is neither a uuid nor "agent"', async () => {
+    queueAuthSelect();
+    const t = await token();
+    const res = await req('?createdBy=not-a-uuid-or-agent', t);
+    expect(res.status).toBe(400);
+  });
+
+  it('200 accepts createdBy=agent', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    const t = await token();
+    const res = await req('?createdBy=agent', t);
+    expect(res.status).toBe(200);
+  });
+
+  it('200 accepts a person uuid', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    const t = await token();
+    const res = await req(`?createdBy=${PERSON_ID}`, t);
+    expect(res.status).toBe(200);
+  });
+
+  it('hydrates creatorEmail/creatorIsAgent/creatorLabel on every row unconditionally', async () => {
+    queueAuthSelect();
+    queueProjectAccessMember();
+    queueIssuesPage();
+    hydrateCreatorsForIssues.mockResolvedValueOnce(
+      new Map([
+        [
+          ISSUE_A,
+          {
+            creatorEmail: 'owner@example.com',
+            creatorIsAgent: false,
+            creatorLabel: 'owner@example.com',
+          },
+        ],
+        [
+          ISSUE_B,
+          { creatorEmail: 'owner@example.com', creatorIsAgent: true, creatorLabel: 'Forge Agent' },
+        ],
+      ]),
+    );
+    const t = await token();
+    const res = await req('', t);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>[];
+    expect(body[0]).toMatchObject({
+      id: ISSUE_A,
+      creatorLabel: 'owner@example.com',
+      creatorIsAgent: false,
+    });
+    expect(body[1]).toMatchObject({
+      id: ISSUE_B,
+      creatorLabel: 'Forge Agent',
+      creatorIsAgent: true,
+    });
+    expect(hydrateCreatorsForIssues).toHaveBeenCalledTimes(1);
   });
 });
 

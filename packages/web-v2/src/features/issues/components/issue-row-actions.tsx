@@ -1,14 +1,6 @@
 "use client";
 
 // Calmer issue row renderers for the Issues list (ISS-293 redesign).
-//
-// The always-visible inline `<Select>`s that used to live in every table cell
-// (priority / complexity / assignee) and the StatusChip-menu now read as
-// quiet, read-only display cells. Every mutation (status transition + the three
-// PATCH fields) is folded into ONE hover/overflow row-action `Menu` so the
-// table reads calmly. No behaviour is lost: the menu exposes the full status
-// enum + every priority / complexity / assignee option, committing through the
-// same `actions.patch` / `actions.transition` mutations the screen passes down.
 
 import {
   Avatar,
@@ -33,8 +25,8 @@ import { useCallback, useState } from "react";
 import {
   allowedTransitions,
   complexityLabel,
+  creatorLabelOf,
   initials,
-  memberLabel,
   priorityLabel,
   statusLabel,
   statusToChip,
@@ -47,7 +39,6 @@ import {
   type IssueFailureInfo,
   type IssuePriority,
   type IssueRow,
-  type ProjectMember,
 } from "../types";
 import {
   CostCell,
@@ -174,7 +165,6 @@ function ComplexityCell({
  */
 function useRowMenuItems(
   row: IssueRow,
-  members: ProjectMember[] | undefined,
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
@@ -214,38 +204,22 @@ function useRowMenuItems(
       onSelect: () => actions.patch({ id: row.id, body: { complexity: null } }),
     });
   }
-  for (const m of members ?? []) {
-    if (m.userId === row.assigneeId) continue;
-    items.push({
-      label: `Assign: ${m.email}`,
-      onSelect: () =>
-        actions.patch({ id: row.id, body: { assigneeId: m.userId } }),
-    });
-  }
-  if (row.assigneeId) {
-    items.push({
-      label: "Unassign",
-      onSelect: () => actions.patch({ id: row.id, body: { assigneeId: null } }),
-    });
-  }
   return items;
 }
 
 /** Overflow row-action menu (⋯). Disabled while a mutation is in flight. */
 function RowMenu({
   row,
-  members,
   actions,
   open,
   side = "bottom",
 }: {
   row: IssueRow;
-  members: ProjectMember[] | undefined;
   actions: RowActions;
   open: () => void;
   side?: "top" | "bottom";
 }) {
-  const items = useRowMenuItems(row, members, actions, open);
+  const items = useRowMenuItems(row, actions, open);
   return (
     <Menu
       align="right"
@@ -267,13 +241,11 @@ function RowMenu({
 export function IssueTableRow({
   row,
   slug,
-  members,
   actions,
   selection,
 }: {
   row: IssueRow;
   slug: string;
-  members: ProjectMember[] | undefined;
   actions: RowActions;
   selection?: RowSelection;
 }) {
@@ -341,18 +313,15 @@ export function IssueTableRow({
       </TD>
       <TD>
         <div className="flex items-center gap-2">
-          <Avatar
-            initials={initials(memberLabel(row.assigneeId, members))}
-            size={22}
-          />
-          <span className="fg-caption truncate text-muted">
-            {memberLabel(row.assigneeId, members)}
+          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
+          <span className="fg-caption truncate text-muted" title={creatorLabelOf(row)}>
+            {creatorLabelOf(row)}
           </span>
         </div>
       </TD>
       <TD className="text-right">
         <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          <RowMenu row={row} members={members} actions={actions} open={open} />
+          <RowMenu row={row} actions={actions} open={open} />
         </div>
       </TD>
     </TR>
@@ -362,13 +331,11 @@ export function IssueTableRow({
 export function IssueMobileCard({
   row,
   slug,
-  members,
   actions,
   selection,
 }: {
   row: IssueRow;
   slug: string;
-  members: ProjectMember[] | undefined;
   actions: RowActions;
   selection?: RowSelection;
 }) {
@@ -404,13 +371,7 @@ export function IssueMobileCard({
               </span>
             </button>
           </div>
-          <RowMenu
-            row={row}
-            members={members}
-            actions={actions}
-            open={open}
-            side="bottom"
-          />
+          <RowMenu row={row} actions={actions} open={open} side="bottom" />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -431,12 +392,9 @@ export function IssueMobileCard({
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          <Avatar
-            initials={initials(memberLabel(row.assigneeId, members))}
-            size={22}
-          />
-          <span className="fg-caption truncate text-muted">
-            {memberLabel(row.assigneeId, members)}
+          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
+          <span className="fg-caption truncate text-muted" title={creatorLabelOf(row)}>
+            {creatorLabelOf(row)}
           </span>
         </div>
       </CardContent>

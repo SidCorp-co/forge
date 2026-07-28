@@ -41,7 +41,7 @@ import { usePathname } from "next/navigation";
 // exact view without a remount (the old hydrate-once useState went stale).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ISSUES_PAGE_SIZE } from "../api";
-import { groupRows, priorityLabel } from "../derive";
+import { FORGE_AGENT_LABEL, groupRows, priorityLabel } from "../derive";
 import {
   useIssues,
   usePatchIssue,
@@ -78,7 +78,7 @@ const GROUP_OPTIONS: SelectOption[] = [
   { value: "none", label: "No grouping" },
   { value: "status", label: "Group: status" },
   { value: "priority", label: "Group: priority" },
-  { value: "assignee", label: "Group: assignee" },
+  { value: "creator", label: "Group: creator" },
 ];
 
 const SORT_OPTIONS: SelectOption[] = [
@@ -101,8 +101,8 @@ interface IssuesListViewProps {
   /** Open the New-issue dialog (owned by the host screen). */
   onNewIssue?: () => void;
   /** False for project viewers (read-only): row quick-action mutations
-   *  (transition / priority / complexity / assign) are hidden. Optional,
-   *  defaults true so other callers keep their behaviour. */
+   *  (transition / priority / complexity) are hidden. Optional, defaults
+   *  true so other callers keep their behaviour. */
   canWrite?: boolean;
 }
 
@@ -125,7 +125,7 @@ export function IssuesListView({
   const priority = (ISSUE_PRIORITIES as string[]).includes(rawPriority)
     ? (rawPriority as IssuePriority)
     : undefined;
-  const assignee = sp.get("assignee") ?? "";
+  const createdBy = sp.get("createdBy") ?? "";
   const label = sp.get("label") ?? "";
   const groupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
@@ -212,7 +212,7 @@ export function IssuesListView({
     q,
     filter,
     priority,
-    assignee: assignee || undefined,
+    createdBy: createdBy || undefined,
     label: label || undefined,
     sort,
     page,
@@ -223,9 +223,11 @@ export function IssuesListView({
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
 
-  const assigneeFilterOptions = useMemo<SelectOption[]>(
+  // cm:why options list project members only; a non-member creator's row still displays correctly since its label comes from the row payload, not this list
+  const creatorFilterOptions = useMemo<SelectOption[]>(
     () => [
-      { value: "", label: "Assignee: anyone" },
+      { value: "", label: "Creator: anyone" },
+      { value: "agent", label: `Creator: ${FORGE_AGENT_LABEL}` },
       ...(membersQ.data ?? []).map((m) => ({ value: m.userId, label: m.email })),
     ],
     [membersQ.data],
@@ -243,10 +245,7 @@ export function IssuesListView({
   const total = issuesQ.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
-  const groups = useMemo(
-    () => groupRows(rows, groupBy, membersQ.data),
-    [rows, groupBy, membersQ.data],
-  );
+  const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
 
   const actions: RowActions = {
     patch: patch.mutate,
@@ -264,7 +263,7 @@ export function IssuesListView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
   useEffect(() => {
     setSelected(new Set());
-  }, [q, filter, priority, assignee, label, sort, page]);
+  }, [q, filter, priority, createdBy, label, sort, page]);
 
   const toggleRow = useCallback((id: string, next: boolean) => {
     setSelected((prev) => {
@@ -292,7 +291,7 @@ export function IssuesListView({
     [rows, selected],
   );
 
-  const isFiltered = q !== "" || filter !== "all" || !!priority || !!assignee || !!label;
+  const isFiltered = q !== "" || filter !== "all" || !!priority || !!createdBy || !!label;
 
   // ── Mobile "Filters" SlideOver (<sm): the 5 advanced Selects collapse behind
   // a single trigger with an active-count badge so the header fits ~2 rows on
@@ -301,7 +300,7 @@ export function IssuesListView({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const activeFilterCount =
     (priority ? 1 : 0) +
-    (assignee ? 1 : 0) +
+    (createdBy ? 1 : 0) +
     (label ? 1 : 0) +
     (groupBy !== "none" ? 1 : 0) +
     (sort !== "createdAt:desc" ? 1 : 0);
@@ -344,10 +343,10 @@ export function IssuesListView({
             className="w-36"
           />
           <Select
-            aria-label="Assignee filter"
-            value={assignee}
-            options={assigneeFilterOptions}
-            onChange={(v) => setParams({ assignee: v, page: "" })}
+            aria-label="Creator filter"
+            value={createdBy}
+            options={creatorFilterOptions}
+            onChange={(v) => setParams({ createdBy: v, page: "" })}
             className="w-44"
           />
           <Select
@@ -442,10 +441,10 @@ export function IssuesListView({
             className="w-full"
           />
           <Select
-            aria-label="Assignee filter"
-            value={assignee}
-            options={assigneeFilterOptions}
-            onChange={(v) => setParams({ assignee: v, page: "" })}
+            aria-label="Creator filter"
+            value={createdBy}
+            options={creatorFilterOptions}
+            onChange={(v) => setParams({ createdBy: v, page: "" })}
             className="w-full"
           />
           <Select
@@ -498,15 +497,26 @@ export function IssuesListView({
         <EmptyState
           title={isFiltered ? "Nothing here" : "No issues yet"}
           message={
-            isFiltered
-              ? "No issues match this search or filter."
-              : "Issues for this project will appear here as work is filed."
+            createdBy
+              ? `No issues created by ${
+                  creatorFilterOptions.find((o) => o.value === createdBy)?.label.replace(/^Creator: /, "") ??
+                  "that creator"
+                }.`
+              : isFiltered
+                ? "No issues match this search or filter."
+                : "Issues for this project will appear here as work is filed."
           }
           mascot={!isFiltered}
           action={
-            !isFiltered && onNewIssue
-              ? { label: "New issue", onClick: onNewIssue }
-              : undefined
+            isFiltered
+              ? {
+                  label: "Clear filters",
+                  onClick: () =>
+                    setParams({ q: "", priority: "", createdBy: "", label: "", page: "" }),
+                }
+              : onNewIssue
+                ? { label: "New issue", onClick: onNewIssue }
+                : undefined
           }
         />
       )}
@@ -548,7 +558,7 @@ export function IssuesListView({
                         <TH>Priority</TH>
                         <TH>Complexity</TH>
                         <TH className="text-right">Cost</TH>
-                        <TH>Assignee</TH>
+                        <TH>Creator</TH>
                         <TH className="sr-only">Actions</TH>
                       </TR>
                     </THead>
@@ -558,7 +568,6 @@ export function IssuesListView({
                           key={row.id}
                           row={row}
                           slug={slug}
-                          members={membersQ.data}
                           actions={actions}
                           selection={
                             bulkEnabled
@@ -592,7 +601,6 @@ export function IssuesListView({
                       key={row.id}
                       row={row}
                       slug={slug}
-                      members={membersQ.data}
                       actions={actions}
                       selection={
                         bulkEnabled

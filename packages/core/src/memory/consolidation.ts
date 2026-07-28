@@ -143,6 +143,7 @@ export async function proposeKnowledgePromotions(projectId: string): Promise<voi
         priority: 'low',
         category: 'knowledge-promotion',
         createdById: projectRow.createdBy,
+        createdVia: 'schedule',
       })
       .returning({ id: issues.id });
 

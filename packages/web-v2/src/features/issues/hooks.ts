@@ -61,7 +61,7 @@ export function useIssueDeps(id: string | undefined, enabled = true) {
   });
 }
 
-/** Project members (assignee options). Keyed `['project', projectId, 'members']`. */
+/** Project members (creator filter options). Keyed `['project', projectId, 'members']`. */
 export function useProjectMembers(projectId: string | undefined) {
   return useQuery({
     queryKey: ["project", projectId, "members"],

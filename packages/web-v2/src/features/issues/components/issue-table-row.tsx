@@ -1,11 +1,5 @@
 "use client";
 
-// Shared building blocks for the Issues list: the row-action contract
-// (`RowActions`), the humanized priority/complexity/assignee option lists, and
-// the lazy per-row dependency + cost cells. The active row/card renderers live
-// in `issue-row-actions.tsx` (ISS-293 redesign) and consume these exports; the
-// rail and new-issue dialog reuse the option lists.
-
 import {
   Icon,
   type IconName,
@@ -23,7 +17,7 @@ import {
   openBlockingRefs,
 } from "../derive";
 import { useIssueDeps } from "../hooks";
-import type { IssueDependencyEdge, IssueStatus, ProjectMember } from "../types";
+import type { IssueDependencyEdge, IssueStatus } from "../types";
 
 export interface RowActions {
   patch: (args: { id: string; body: PatchIssueInput }) => void;
@@ -60,15 +54,6 @@ export const COMPLEXITY_OPTIONS: SelectOption[] = [
   { value: "l", label: COMPLEXITY_LABELS.l },
   { value: "xl", label: COMPLEXITY_LABELS.xl },
 ];
-
-export function assigneeOptions(
-  members: ProjectMember[] | undefined,
-): SelectOption[] {
-  return [
-    { value: "", label: "Unassigned" },
-    ...(members ?? []).map((m) => ({ value: m.userId, label: m.email })),
-  ];
-}
 
 const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
   k === "decomposes" || k === "parent";

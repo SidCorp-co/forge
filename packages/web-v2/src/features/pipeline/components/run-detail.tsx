@@ -10,7 +10,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Avatar,
   Badge,
   Button,
   EmptyState,
@@ -37,7 +36,6 @@ import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import {
   formatDurationMs,
   formatUsd,
-  initialsFor,
   issueStatusToStatusKey,
   jobTypeToStage,
   runStatusToStatusKey,
@@ -206,11 +204,9 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             <div className="sticky -top-4 z-10 -mx-5 -mt-4 border-b border-line bg-surface/95 px-5 pb-3 pt-4 backdrop-blur-sm">
               <IssueQuickActions
                 issueId={issue.id}
-                projectId={issue.projectId}
                 status={issue.status as IssueStatus}
                 agentStatus={issue.agentStatus ?? null}
                 priority={issue.priority as IssuePriority}
-                assigneeId={issue.assigneeId}
                 slug={slug}
                 onOpenIssue={openIssue}
               />
@@ -227,14 +223,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                 <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
                   {priorityLabel(issue.priority as IssuePriority)}
                 </Badge>
-              )}
-              {issue?.assigneeId && (
-                <span
-                  className="inline-flex items-center"
-                  title={issue.assigneeId}
-                >
-                  <Avatar initials={initialsFor(issue.assigneeId) ?? "?"} size={20} />
-                </span>
               )}
               {branch && (
                 <MonoTag>

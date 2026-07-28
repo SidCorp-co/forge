@@ -23,7 +23,6 @@ export const ISSUES_PAGE_SIZE = 25;
 export interface PatchIssueInput {
   priority?: IssuePriority;
   complexity?: IssueComplexity | null;
-  assigneeId?: string | null;
 }
 
 /** Body for `POST /api/projects/:id/issues`. Mirrors the core
@@ -78,7 +77,7 @@ export const issuesApi = {
     params.set("withFailureInfo", "1");
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
-    if (opts.assignee) params.set("assignee", opts.assignee);
+    if (opts.createdBy) params.set("createdBy", opts.createdBy);
     if (opts.label) params.set("label", opts.label);
     const { status, statusNot } = filterToStatusParams(opts.filter ?? "all");
     for (const s of status ?? []) params.append("status", s);
@@ -86,8 +85,8 @@ export const issuesApi = {
     return apiClientList<IssueRow>(`/projects/${projectId}/issues/search?${params}`);
   },
 
-  /** `PATCH /api/issues/:id` — priority/complexity/assignee (status is NOT
-   *  patchable here; use `transition`). */
+  /** `PATCH /api/issues/:id` — priority/complexity (status is NOT patchable
+   *  here; use `transition`). */
   patch: (id: string, body: PatchIssueInput) =>
     apiClient<IssueRow>(`/issues/${id}`, {
       method: "PATCH",
@@ -108,7 +107,7 @@ export const issuesApi = {
   /** `GET /api/issues/:id/dependencies` → `{ outgoing, incoming }` (IDs only). */
   dependencies: (id: string) => apiClient<IssueDependencies>(`/issues/${id}/dependencies`),
 
-  /** `GET /api/projects/:projectId/members` — assignee option source. */
+  /** `GET /api/projects/:projectId/members` — creator filter option source. */
   members: (projectId: string) => apiClient<ProjectMember[]>(`/projects/${projectId}/members`),
 
   /** `GET /api/projects/:projectId/labels` — label filter option source (ISS-586). */

@@ -326,7 +326,7 @@ export function IssueDetailScreen({
           <HelpButton
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
             actions={[
-              "Edit properties (status, priority, assignee) in the rail",
+              "Edit properties (status, priority, complexity) in the rail",
               "Run / pause / reopen the pipeline from the header",
               "Jump to related sessions, pipeline, and runs",
             ]}
@@ -580,7 +580,6 @@ export function IssueDetailScreen({
               <PropertiesRail
                 issue={issue}
                 slug={slug}
-                members={membersQ.data}
                 cost={costQ.data}
                 deps={depsQ.data}
                 pending={pending || !canWrite}
@@ -595,7 +594,6 @@ export function IssueDetailScreen({
             <PropertiesRail
               issue={issue}
               slug={slug}
-              members={membersQ.data}
               cost={costQ.data}
               deps={depsQ.data}
               pending={pending || !canWrite}

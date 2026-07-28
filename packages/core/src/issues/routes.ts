@@ -34,6 +34,7 @@ import {
   decodeAndValidateAttachments,
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
+import { hydrateCreatorsForIssues } from './creator.js';
 import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
 import { SHARED_ISSUE_PATCH_FIELDS, collectIssueFieldUpdates } from './patch-fields.js';
 import { type PipelineHealth, hydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -174,6 +175,7 @@ type IssueRow = {
   aiConfidence: number | null;
   assigneeId: string | null;
   createdById: string;
+  createdVia: string | null;
   parentIssueId: string | null;
   metadata: ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null;
   releaseNotes: ReleaseNotes | null;
@@ -277,6 +279,7 @@ issueProjectRoutes.post(
           aiSuggestedSolution: input.aiSuggestedSolution ?? null,
           aiAcceptanceCriteria: input.aiAcceptanceCriteria ?? null,
           createdById: userId,
+          createdVia: 'web',
         })
         .returning();
       if (!inserted) throw new Error('issues: insert returned no row');
@@ -365,8 +368,12 @@ issueProjectRoutes.get(
 
     const serialized = serializeIssue(issue);
     const healthMap = await safeHydratePipelineHealth(projectId, [issue.id]);
+    const creatorMap = await hydrateCreatorsForIssues([
+      { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia },
+    ]);
     return c.json({
       ...serialized,
+      ...creatorMap.get(issue.id),
       pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
       labels: labelRows,
       comments: [],
@@ -422,11 +429,16 @@ issueProjectRoutes.get(
     // row to render gate-aware badges.
     const ids = serialized.map((r) => r.id);
     const healthMap = await safeHydratePipelineHealth(projectId, ids);
+    // cm:why no opt-in flag here — every list/detail surface needs the creator fields, unlike withCost/withAgentSessions
+    const creatorMap = await hydrateCreatorsForIssues(
+      serialized.map((r) => ({ id: r.id, createdById: r.createdById, createdVia: r.createdVia })),
+    );
 
     if (!q.withAgentSessions) {
       return c.json(
         serialized.map((r) => ({
           ...r,
+          ...creatorMap.get(r.id),
           pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
         })),
       );
@@ -438,6 +450,7 @@ issueProjectRoutes.get(
         const bucket = map.get(r.id);
         return {
           ...r,
+          ...creatorMap.get(r.id),
           agentSessions: bucket?.agentSessions ?? [],
           agentStatus: bucket?.agentStatus ?? null,
           pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
@@ -488,8 +501,12 @@ issueRoutes.get(
     // status-only bead, so a `testing` issue whose agent FAILED still drew green.
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
+    const creatorMap = await hydrateCreatorsForIssues([
+      { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia },
+    ]);
     return c.json({
       ...serialized,
+      ...creatorMap.get(issue.id),
       agentSessions: agentBucket?.agentSessions ?? [],
       agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },

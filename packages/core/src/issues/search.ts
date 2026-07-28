@@ -4,11 +4,19 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { issueLabels, issuePriorities, issueStatuses, issues, jobs, usageRecords } from '../db/schema.js';
-import { setTotalCount } from '../lib/pagination.js';
+import {
+  issueLabels,
+  issuePriorities,
+  issueStatuses,
+  issues,
+  jobs,
+  usageRecords,
+} from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import { buildCreatedByCondition, hydrateCreatorsForIssues } from './creator.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
@@ -39,6 +47,8 @@ const searchQuerySchema = z
       .optional()
       .transform(coerceArray),
     assignee: z.uuid().optional(),
+    // cm:why a uuid here means that person's non-agent-channel rows ONLY — see buildCreatedByCondition
+    createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
     category: z.string().trim().min(1).max(100).optional(),
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -109,10 +119,17 @@ async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> 
  * column to match the DISTINCT ON column (`issueId`); `desc(finishedAt)` then
  * picks the newest failed job per issue.
  */
-async function latestFailedJobByIssue(issueIds: string[]): Promise<
+async function latestFailedJobByIssue(
+  issueIds: string[],
+): Promise<
   Map<
     string,
-    { failedStep: string; failureReason: string | null; failureKind: string | null; failedAt: string }
+    {
+      failedStep: string;
+      failureReason: string | null;
+      failureKind: string | null;
+      failedAt: string;
+    }
   >
 > {
   if (issueIds.length === 0) return new Map();
@@ -185,6 +202,9 @@ searchRoutes.get(
     if (q.assignee) {
       conditions.push(eq(issues.assigneeId, q.assignee));
     }
+    if (q.createdBy) {
+      conditions.push(buildCreatedByCondition(q.createdBy));
+    }
     if (q.category) {
       conditions.push(eq(issues.category, q.category));
     }
@@ -241,6 +261,21 @@ searchRoutes.get(
       serialized = serialized.map((r) => ({
         ...r,
         failureInfo: failMap.get(r.id as string) ?? null,
+      }));
+    }
+
+    // cm:why no opt-in flag here, unlike withCost/withFailureInfo — every list/detail surface needs the creator fields
+    if (serialized.length > 0) {
+      const creatorMap = await hydrateCreatorsForIssues(
+        serialized.map((r) => ({
+          id: r.id as string,
+          createdById: r.createdById as string,
+          createdVia: r.createdVia as string | null,
+        })),
+      );
+      serialized = serialized.map((r) => ({
+        ...r,
+        ...creatorMap.get(r.id as string),
       }));
     }
 
