@@ -80,6 +80,7 @@ const GROUP_OPTIONS: SelectOption[] = [
   { value: "priority", label: "Group: priority" },
   { value: "creator", label: "Group: creator" },
 ];
+const VALID_GROUP_BY: GroupBy[] = ["none", "status", "priority", "creator"];
 
 const SORT_OPTIONS: SelectOption[] = [
   { value: "createdAt:desc", label: "Newest" },
@@ -127,7 +128,8 @@ export function IssuesListView({
     : undefined;
   const createdBy = sp.get("createdBy") ?? "";
   const label = sp.get("label") ?? "";
-  const groupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
+  const rawGroupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
+  const groupBy = VALID_GROUP_BY.includes(rawGroupBy) ? rawGroupBy : "none";
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
   const page = decodeNumber(sp, "page", 1);
 
@@ -512,7 +514,14 @@ export function IssuesListView({
               ? {
                   label: "Clear filters",
                   onClick: () =>
-                    setParams({ q: "", priority: "", createdBy: "", label: "", page: "" }),
+                    setParams({
+                      q: "",
+                      filter: "",
+                      priority: "",
+                      createdBy: "",
+                      label: "",
+                      page: "",
+                    }),
                 }
               : onNewIssue
                 ? { label: "New issue", onClick: onNewIssue }

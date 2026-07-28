@@ -52,10 +52,10 @@ async function upsertExternalIssue(
   // ISS-606: a gated project parks the webhook-created issue at draft.
   const intake = await applyIntakeGate(projectId, 'open');
 
-  // INSERT ON CONFLICT DO NOTHING to guard against a racing replay.
+  // cm:edge contract -> packages/core/src/issues/creator.ts — stamp created_via or Creator mislabels this row
   const inserted = await db.execute<{ id: string }>(sql`
-    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, status)
-    VALUES (${projectId}, ${fields.title}, ${fields.description}, ${fields.createdById}, ${source}, ${externalId}, ${intake.status})
+    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, status, created_via)
+    VALUES (${projectId}, ${fields.title}, ${fields.description}, ${fields.createdById}, ${source}, ${externalId}, ${intake.status}, 'system')
     ON CONFLICT (project_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING
     RETURNING id
   `);
