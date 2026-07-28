@@ -256,6 +256,26 @@ fn repo_matches(configured: &str, recorded: &str) -> bool {
 /// `~/.claude/plugins/cache/...` is copied from whatever this clone has
 /// checked out at install/update time.
 async fn pin_marketplace_ref(install_location: &Path, sha: &str) -> crate::error::Result<()> {
+    // cm:why a pinned marketplace skips the auto-update pass, so without this fetch the clone never learns a newer SHA and a pin can only ever move backwards
+    let fetched = tokio::time::timeout(
+        COMMAND_TIMEOUT,
+        Command::new("git")
+            .args(["-C"])
+            .arg(install_location)
+            .args(["fetch", "--quiet", "--all", "--tags"])
+            .output(),
+    )
+    .await;
+    match fetched {
+        Ok(Ok(o)) if !o.status.success() => tracing::info!(
+            "[plugins] fetch before pin {sha} (continuing, the sha may already be local): {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ),
+        Ok(Err(e)) => tracing::info!("[plugins] fetch before pin {sha} failed (continuing): {e}"),
+        Err(_) => tracing::info!("[plugins] fetch before pin {sha} timed out (continuing)"),
+        Ok(Ok(_)) => {}
+    }
+
     let output = tokio::time::timeout(
         COMMAND_TIMEOUT,
         Command::new("git")
