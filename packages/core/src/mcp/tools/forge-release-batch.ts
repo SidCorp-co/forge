@@ -12,8 +12,9 @@
  *             Idempotent (second call is a clean no-op).
  *  - abort  — release all claims, write one comment per issue, close nothing.
  *
- * Authorization: project membership (assertPrincipalIsMember). The tool does
- * not require a real device runner — PAT principals can call it.
+ * Authorization: get is member-gated (read); finish/abort are writer-gated
+ * (mutating — closes/aborts issues). The tool does not require a real device
+ * runner — PAT principals can call it.
  */
 
 import { z } from 'zod';
@@ -25,6 +26,7 @@ import {
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
+  assertPrincipalIsWriter,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -50,7 +52,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'abort: release all claims (issues remain at their current status), write one comment per issue ' +
     'explaining the abort reason, close nothing. Use when a merge conflict, deploy failure, or ' +
     'pendingHumanConfirm prevents the batch from completing. ' +
-    'Authorization: project membership.',
+    'Authorization: get requires project membership; finish and abort require writer role.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -71,7 +73,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!context) {
           return { error: 'NOT_FOUND', runId: input.runId };
         }
-        await assertPrincipalIsMember(principal, context.projectId);
+        await assertPrincipalIsWriter(principal, context.projectId);
 
         const actor =
           principal.kind === 'pat'
@@ -87,7 +89,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!context) {
           return { error: 'NOT_FOUND', runId: input.runId };
         }
-        await assertPrincipalIsMember(principal, context.projectId);
+        await assertPrincipalIsWriter(principal, context.projectId);
 
         const actorUserId =
           principal.kind === 'pat' ? principal.userId : device.ownerId;
