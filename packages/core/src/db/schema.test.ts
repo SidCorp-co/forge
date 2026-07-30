@@ -857,6 +857,7 @@ describe('db/schema — issues', () => {
         'complexity',
         'created_at',
         'created_by_id',
+        'created_via',
         'description',
         'external_id',
         'id',
@@ -1404,7 +1405,9 @@ describe('tasks table (ISS-146 cascade verification)', () => {
 
 describe('feedbackReports table (ISS-552 C1)', () => {
   it('has the expected columns', () => {
-    const names = getTableConfig(feedbackReports).columns.map((c) => c.name).sort();
+    const names = getTableConfig(feedbackReports)
+      .columns.map((c) => c.name)
+      .sort();
     expect(names).toEqual(
       [
         'id',

@@ -113,6 +113,7 @@ export async function sweepTemplateDrift(bump: TemplateBump): Promise<TemplateDr
         priority: 'medium',
         category: 'skills',
         createdById: project.createdBy,
+        createdVia: 'system',
       });
       result.drafted += 1;
     } catch (err) {

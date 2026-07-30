@@ -229,11 +229,3 @@ export function aggregateStageInsights(
   });
 }
 
-/** Two-letter avatar initials from an assignee id / email. */
-export function initialsFor(id: string | null | undefined): string | undefined {
-  if (!id) return undefined;
-  const local = id.includes("@") ? (id.split("@")[0] ?? id) : id;
-  const parts = local.split(/[._\- ]+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return local.slice(0, 2).toUpperCase();
-}

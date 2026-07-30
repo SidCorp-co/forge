@@ -290,7 +290,19 @@ export function memberLabel(
   return m ? m.email : assigneeId.slice(0, 8);
 }
 
-/** Two-letter initials from an email/id, for the assignee Avatar. */
+// cm:edge contract -> packages/core/src/issues/creator.ts — mirrors FORGE_AGENT_LABEL/isAgentChannel
+export const FORGE_AGENT_LABEL = "Forge Agent";
+
+/** ISS-756 — the ONE creator-label helper for every surface (cell, mobile
+ *  card, rail, filter option, group header). NEVER falls back to a raw id —
+ *  a creator need not be a project member (unlike `memberLabel`'s id-slice). */
+export function creatorLabelOf(
+  row: Pick<IssueRow, "creatorLabel" | "creatorEmail" | "creatorIsAgent">,
+): string {
+  return row.creatorLabel || (row.creatorIsAgent ? FORGE_AGENT_LABEL : row.creatorEmail || "Unknown user");
+}
+
+/** Two-letter initials from an email/id, for an Avatar. */
 export function initials(label: string): string {
   const at = label.indexOf("@");
   const base = at > 0 ? label.slice(0, at) : label;
@@ -304,11 +316,7 @@ export function initials(label: string): string {
  * server-provided order is preserved (server already sorted). Group ordering is
  * deterministic (by the natural enum/status order, Unassigned last for people).
  */
-export function groupRows(
-  rows: IssueRow[],
-  groupBy: GroupBy,
-  members?: { userId: string; email: string }[],
-): IssueGroup[] {
+export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
   if (groupBy === "none") {
     return [{ key: "all", label: "All issues", rows }];
   }
@@ -317,7 +325,7 @@ export function groupRows(
     let key: string;
     if (groupBy === "status") key = r.status;
     else if (groupBy === "priority") key = r.priority;
-    else key = r.assigneeId ?? "__unassigned__";
+    else key = r.creatorIsAgent ? "__agent__" : r.createdById;
     const arr = buckets.get(key);
     if (arr) arr.push(r);
     else buckets.set(key, [r]);
@@ -325,17 +333,15 @@ export function groupRows(
   const groups: IssueGroup[] = [];
   for (const [key, groupRowsArr] of buckets) {
     let label = key;
-    if (groupBy === "assignee") {
-      label = key === "__unassigned__" ? "Unassigned" : memberLabel(key, members);
+    if (groupBy === "creator") {
+      label = key === "__agent__" ? FORGE_AGENT_LABEL : creatorLabelOf(groupRowsArr[0]);
     }
     groups.push({ key, label, rows: groupRowsArr });
   }
-  // Stable order: people groups push Unassigned last; status/priority keep map
-  // insertion order (which follows the server sort).
-  if (groupBy === "assignee") {
+  if (groupBy === "creator") {
     groups.sort((a, b) => {
-      if (a.key === "__unassigned__") return 1;
-      if (b.key === "__unassigned__") return -1;
+      if (a.key === "__agent__") return 1;
+      if (b.key === "__agent__") return -1;
       return a.label.localeCompare(b.label);
     });
   }

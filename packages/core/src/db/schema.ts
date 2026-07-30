@@ -1009,6 +1009,10 @@ export type IssueComplexity = (typeof issueComplexities)[number];
 export const issueSources = ['manual', 'github'] as const;
 export type IssueSource = (typeof issueSources)[number];
 
+// cm:why NEW column, not reused reportedBy — reportedBy is client-writable free text, so it can't carry a trusted label
+export const issueCreationChannels = ['web', 'mcp', 'pipeline', 'schedule', 'system'] as const;
+export type IssueCreationChannel = (typeof issueCreationChannels)[number];
+
 export const projectIssCounters = pgTable('project_iss_counters', {
   projectId: uuid('project_id')
     .primaryKey()
@@ -1031,6 +1035,8 @@ export const issues = pgTable(
     category: text('category'),
     // Set by webhook/MCP imports; NULL when `createdById` covers the actor.
     reportedBy: text('reported_by'),
+    // cm:guard never expose as client-settable on issueCreateSchema or the MCP create input
+    createdVia: text('created_via', { enum: issueCreationChannels }),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
       .notNull()

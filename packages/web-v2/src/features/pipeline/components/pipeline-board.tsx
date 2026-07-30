@@ -25,7 +25,6 @@ import type { IssueStatus } from "@/features/issues/types";
 import {
   formatUsd,
   groupIssuesByStage,
-  initialsFor,
   issueStatusToStatusKey,
   runStatusToStatusKey,
   runsByIssue,
@@ -129,7 +128,6 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                 const statusLabel = run
                   ? undefined
                   : issueStatusLabel(issue.status as IssueStatus);
-                const initials = initialsFor(issue.assigneeId);
                 return (
                   <KanbanCard
                     key={issue.id}
@@ -145,7 +143,6 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                         ? formatUsd(run.cost.estimatedCost)
                         : undefined
                     }
-                    assignee={initials ? { initials } : undefined}
                     onClick={() => setSelected({ issue, runId: run?.id ?? null })}
                   />
                 );

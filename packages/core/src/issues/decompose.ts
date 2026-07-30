@@ -272,6 +272,7 @@ export async function decomposeParent(
           priority: spec.priority ?? parentRow.priority,
           category: spec.category ?? parentRow.category,
           createdById: actor.userId,
+          createdVia: 'pipeline',
         })
         .returning({
           id: issues.id,

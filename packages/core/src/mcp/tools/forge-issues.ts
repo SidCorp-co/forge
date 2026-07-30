@@ -878,6 +878,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             category: input.data.category ?? null,
             complexity: input.data.complexity ?? null,
             createdById: device.ownerId,
+            createdVia: 'mcp',
             plan: input.data.plan ?? null,
             acceptanceCriteria: input.data.acceptanceCriteria ?? null,
             suggestedSolution: input.data.suggestedSolution ?? null,

@@ -8,7 +8,11 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+// cm:why the creator hydrator awaits select().from(users).where(...) with no .limit(), so this chain must double as a thenable
+const selectWhere = vi.fn(() => ({
+  limit: selectLimit,
+  then: (resolve: (v: unknown[]) => void) => resolve([]),
+}));
 const innerJoinWhere = vi.fn();
 const selectInnerJoin = vi.fn(() => ({ where: innerJoinWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
@@ -61,9 +65,7 @@ async function token() {
 
 describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
   it('401 without token', async () => {
-    const res = await buildApp().request(
-      `/api/projects/${PROJECT_ID}/issues/by-display/ISS-1`,
-    );
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/issues/by-display/ISS-1`);
     expect(res.status).toBe(401);
   });
 
@@ -84,10 +86,9 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
       role: null,
       orgRole: null,
     });
-    const res = await buildApp().request(
-      `/api/projects/${PROJECT_ID}/issues/by-display/ISS-1`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/issues/by-display/ISS-1`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(403);
   });
 
@@ -101,10 +102,9 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
     });
     selectLimit.mockResolvedValueOnce([]); // issue lookup empty
 
-    const res = await buildApp().request(
-      `/api/projects/${PROJECT_ID}/issues/by-display/ISS-999`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/issues/by-display/ISS-999`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(404);
   });
 
@@ -135,10 +135,9 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
     ]);
     innerJoinWhere.mockResolvedValueOnce([]); // labels query result
 
-    const res = await buildApp().request(
-      `/api/projects/${PROJECT_ID}/issues/by-display/ISS-7`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/issues/by-display/ISS-7`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       id: string;
