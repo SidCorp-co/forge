@@ -25,14 +25,17 @@ vi.mock("next/navigation", () => ({
 
 const mutate = vi.fn();
 vi.mock("@/features/issues/hooks", () => ({
-  useBulkUpdateIssues: () => ({ mutate, isPending: false }),
+  useBatchRelease: () => ({ mutate, isPending: false }),
+}));
+vi.mock("@/features/issues/components/batch-release-dialog", () => ({
+  BatchReleaseDialog: () => null,
 }));
 
 function renderCard(runs: PipelineRunListItem[]) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <AwaitingReleaseCard runs={runs} slug="acme" />
+      <AwaitingReleaseCard runs={runs} slug="acme" projectId="proj-1" />
     </QueryClientProvider>,
   );
 }
@@ -81,16 +84,16 @@ describe("AwaitingReleaseCard — bulk release", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("clicking Release calls the bulk mutation with the selected ids + toStatus:'released'", () => {
+  it("clicking Release opens the batch dialog (not a direct mutate)", () => {
+    // ISS-764: Release now opens BatchReleaseDialog for confirmation,
+    // not a direct fan-out mutation. The dialog is mocked to null here;
+    // end-to-end confirmation is tested in BatchReleaseDialog unit tests.
     renderCard(RUNS);
     fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-2" }));
     fireEvent.click(screen.getByRole("button", { name: "Release 2" }));
-
-    expect(mutate).toHaveBeenCalledTimes(1);
-    const [args] = mutate.mock.calls[0];
-    expect(args.update).toEqual({ kind: "status", toStatus: "released" });
-    expect(new Set(args.ids)).toEqual(new Set(["iss-1", "iss-2"]));
+    // mutate is NOT called on click — the confirm dialog intercepts.
+    expect(mutate).not.toHaveBeenCalled();
   });
 
   it("rows with no issueId render without a checkbox and don't count toward selection", () => {

@@ -52,6 +52,10 @@ const inputSchema = z
     action: z.enum(['list', 'deploy', 'status', 'logs', 'runtime-logs']),
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
+    /** ISS-764 — batch release path: deploy via an existing pipeline run that
+     *  has no associated issue. Mutually exclusive with issueId. When set,
+     *  dispatches prod (allowProd=true) through the shared release path. */
+    pipelineRunId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
     deploymentUuid: z.string().optional(),
     /** runtime-logs: the Coolify application (target) resourceUuid to tail;
@@ -112,7 +116,11 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'the issue has reached the release stage (status released/closed) — every pre-release call ' +
     '(code/fix/testing) is staging-only and NEVER touches a prod binding, regardless of ' +
     'pipelineConfig.autoProdDeploy (that flag only bypasses the gate for the release-triggered ' +
-    'auto-subscriber, not for this tool pre-release). Without issueId — run-less resource redeploy: ' +
+    'auto-subscriber, not for this tool pre-release). With pipelineRunId (no issueId) — ISS-764 ' +
+    'batch release path: the run is already open (kind=system); dispatches ALL targets prod-allowed ' +
+    '(allowProd=true) via the shared release path. Prod human-confirm gate still applies — ' +
+    'pendingHumanConfirm:true means abort the batch. Mutually exclusive with issueId. ' +
+    'Without issueId or pipelineRunId — run-less resource redeploy: ' +
     'resolves the target integration like the logs action (explicit integrationId, else the single ' +
     'active Coolify integration, else BAD_REQUEST when multiple exist) and dispatches with no run ' +
     'attached (webhooks record deliveries but advance no pipeline). Each call is its own dispatch ' +
@@ -169,6 +177,25 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'deploy': {
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
+
+        // pipelineRunId present (ISS-764 batch release path): the run is already
+        // open (kind='system'); dispatch prod-allowed via the shared release path
+        // with issueId=null. Mutually exclusive with issueId.
+        if (input.pipelineRunId && !input.issueId) {
+          const outcome = await tryDispatchCoolifyRelease({
+            projectId,
+            issueId: null,
+            runId: input.pipelineRunId,
+            integrationId: input.integrationId ?? null,
+            allowProd: true,
+          });
+          return {
+            dispatched: outcome.dispatched,
+            pendingHumanConfirm: outcome.pendingHumanConfirm,
+            integrationIds: outcome.integrationIds,
+            ...(outcome.reason ? { reason: outcome.reason } : {}),
+          };
+        }
 
         // issueId present → run-tracked deploy (unchanged): resolve the issue's
         // latest run and dispatch via the shared release path.

@@ -476,7 +476,7 @@ export function IssuesListView({
       </SlideOver>
 
       {bulkEnabled && (
-        <BulkActionBar selectedRows={selectedRows} onCleared={clearSelection} />
+        <BulkActionBar projectId={projectId} selectedRows={selectedRows} onCleared={clearSelection} />
       )}
 
       {issuesQ.isLoading && (

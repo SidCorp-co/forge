@@ -121,3 +121,24 @@ export const issuesApi = {
       body: JSON.stringify(stage ? { stage } : {}),
     }),
 };
+
+/** ISS-764 — batch release API. Separate from issuesApi since these are
+ *  project-level endpoints (not per-issue). */
+export interface CreateReleaseBatchResult {
+  runId: string;
+  jobId: string;
+  issueIds: string[];
+  gateStatus: string;
+}
+
+export const releaseBatchApi = {
+  /** `POST /api/projects/:projectId/release-batches` — create + claim a batch. */
+  create: (projectId: string, issueIds: string[]) =>
+    apiClient<CreateReleaseBatchResult>(
+      `/projects/${projectId}/release-batches`,
+      {
+        method: "POST",
+        body: JSON.stringify({ issueIds }),
+      },
+    ),
+};

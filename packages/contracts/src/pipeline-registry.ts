@@ -43,6 +43,8 @@ export const REGISTRY_JOB_TYPES = [
   'pm',
   // ISS-455 — skill smoke-verify canary (issue-less, one-shot 'system' run).
   'smoke',
+  // ISS-764 — batch-release: closes many tested issues together in one job.
+  'release_batch',
 ] as const;
 
 export const REGISTRY_RUNNER_TYPES = ['claude-code', 'antigravity'] as const;

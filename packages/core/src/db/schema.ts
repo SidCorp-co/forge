@@ -592,6 +592,10 @@ export const jobTypes = [
   // 'system' pipeline_run; PASS/FAIL is read from the job's terminal status
   // (which still flips only via applyKernelTransition, like every job).
   'smoke',
+  // ISS-764 — batch-release: one issue-less job per project batch closes all
+  // claimed `tested` issues together (single deploy, single changelog line).
+  // Runs on a `kind='system'` run tagged metadata.source='release-batch'.
+  'release_batch',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 
@@ -1087,6 +1091,14 @@ export const issues = pgTable(
         } & Record<string, unknown>)
       | null
     >(),
+    // ISS-764 — atomic batch-release claim. NULL = unclaimed; non-NULL = claimed
+    // by this pipeline_run_id (kind='system', metadata.source='release-batch').
+    // CAS UPDATE (WHERE release_batch_run_id IS NULL) is the single authority;
+    // FK ON DELETE SET NULL auto-releases when the run is deleted.
+    // cm:guard never use issues.metadata as a lock — PATCH replaces it wholesale.
+    releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1102,6 +1114,10 @@ export const issues = pgTable(
       foreignColumns: [t.id],
       name: 'issues_parent_issue_id_fk',
     }).onDelete('set null'),
+    // ISS-764 — partial index so "claimed by run X" lookups are O(1).
+    releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
+      .on(t.releaseBatchRunId)
+      .where(sql`release_batch_run_id IS NOT NULL`),
   }),
 );
 

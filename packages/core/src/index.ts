@@ -46,6 +46,8 @@ import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-rou
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
+import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subscriber.js';
+import { releaseBatchRoutes } from './release-batch/routes.js';
 import { registerFeedbackNormalizer } from './feedback/normalizer.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
@@ -296,6 +298,7 @@ registerTransitionNotifications(hooks);
 registerPmSubscribers(hooks);
 registerCandidatesObserver(hooks);
 registerFeedbackNormalizer(hooks);
+registerReleaseBatchClaimSubscriber(hooks);
 
 // MCP endpoint authentication (ISS-202 + ISS-150).
 // Accepts either a device token (legacy desktop path) or a Personal Access
@@ -447,6 +450,8 @@ app.route('/api/projects', deviceUserRoutes);
 app.route('/api/projects', deviceSkillStatusRoutes);
 app.route('/api/pipeline/registry', pipelineRegistryRoutes);
 app.route('/api/pipeline', pipelineAnalyticsRoutes);
+// ISS-764 — Batch release create + active query, project-scoped under /api/projects.
+app.route('/api/projects', releaseBatchRoutes);
 app.route('/api/projects', projectCostAnalyticsRoutes);
 app.route('/api/schedules', scheduleRoutes);
 app.route('/api/feedback-reports', feedbackReportRoutes);
