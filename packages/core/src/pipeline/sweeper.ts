@@ -28,7 +28,7 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, agentSessions, comments, jobs } from '../db/schema.js';
+import { type IssueStatus, agentSessions, comments, issues, jobs } from '../db/schema.js';
 import {
   type DeviceLite,
   type TransitionIssueRow,
@@ -93,6 +93,10 @@ export interface ParkClosedUnmergedResult {
   parked: number;
 }
 
+export interface StaleReleaseBatchClaimsResult {
+  released: number;
+}
+
 export interface SweepResult {
   durationMs: number;
   /** ISS-449 — the primary closed-loop pass (reaps). */
@@ -108,6 +112,8 @@ export interface SweepResult {
   stalledDependencies: StallDetectResult;
   /** ISS-639 — dependents parked because their blocker closed without merging. */
   parkedClosedUnmerged: ParkClosedUnmergedResult;
+  /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
+  staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -187,6 +193,11 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const parkedClosedUnmerged = await runPass('parkClosedUnmergedBlockedDependents', () =>
     parkClosedUnmergedBlockedDependents(now),
   );
+
+  // cm:edge sideeffect -> packages/core/src/release-batch/claim-subscriber.ts — backstop for the pipelineRunStatusChanged hook: releases release_batch_run_id claims left behind if the subscriber threw or was skipped
+  const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
+    reapStaleReleaseBatchClaims(),
+  );
   const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
   // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
@@ -214,6 +225,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
     stalledDependencies: stalledDependencies as StallDetectResult,
     parkedClosedUnmerged: parkedClosedUnmerged as ParkClosedUnmergedResult,
+    staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,
   };
@@ -900,6 +912,39 @@ export async function reapOrphanedIssueRuns(
   }
 
   return { reaped };
+}
+
+/**
+ * ISS-764 — backstop for orphaned release_batch claims.
+ *
+ * The primary claim release is the `registerReleaseBatchClaimSubscriber` hook
+ * on `pipelineRunStatusChanged`. This pass is the fallback: find issues whose
+ * `release_batch_run_id` references a terminal (non-running, non-paused) run
+ * and clear the pointer. Best-effort: never throws; a residual is safe — it
+ * just means the issue stays un-selectable until the next tick.
+ */
+export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchClaimsResult> {
+  try {
+    const released = await db.execute<{ id: string }>(sql`
+      UPDATE issues
+      SET release_batch_run_id = NULL, updated_at = now()
+      WHERE release_batch_run_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM pipeline_runs r
+          WHERE r.id = issues.release_batch_run_id
+            AND r.status NOT IN ('running', 'paused')
+        )
+      RETURNING id
+    `);
+    const count = Array.isArray(released) ? released.length : 0;
+    if (count > 0) {
+      logger.info({ count }, 'pipeline-sweeper: stale release-batch claims cleared');
+    }
+    return { released: count };
+  } catch (err) {
+    logger.error({ err }, 'pipeline-sweeper: stale release-batch claim reap failed (skipped)');
+    return { released: 0 };
+  }
 }
 
 let registered = false;

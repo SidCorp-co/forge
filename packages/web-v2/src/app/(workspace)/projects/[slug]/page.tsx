@@ -194,7 +194,7 @@ export default function ProjectOverviewPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsActive} slug={project.slug} />
-          <AwaitingReleaseCard runs={runsAwaitingRelease} slug={project.slug} />
+          <AwaitingReleaseCard runs={runsAwaitingRelease} slug={project.slug} projectId={project.id} />
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
           <RunnersCard summary={runners} slug={project.slug} />

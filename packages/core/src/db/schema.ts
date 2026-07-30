@@ -592,6 +592,8 @@ export const jobTypes = [
   // 'system' pipeline_run; PASS/FAIL is read from the job's terminal status
   // (which still flips only via applyKernelTransition, like every job).
   'smoke',
+  // cm:edge naming -> packages/core/src/release-batch/service.ts — a release_batch job's run has metadata.source==='release-batch', not type-checked
+  'release_batch',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 
@@ -1087,6 +1089,10 @@ export const issues = pgTable(
         } & Record<string, unknown>)
       | null
     >(),
+    // cm:guard claim release_batch_run_id only via the CAS UPDATE (WHERE release_batch_run_id IS NULL) in release-batch/service.ts — never write it directly
+    releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1102,6 +1108,9 @@ export const issues = pgTable(
       foreignColumns: [t.id],
       name: 'issues_parent_issue_id_fk',
     }).onDelete('set null'),
+    releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
+      .on(t.releaseBatchRunId)
+      .where(sql`release_batch_run_id IS NOT NULL`),
   }),
 );
 

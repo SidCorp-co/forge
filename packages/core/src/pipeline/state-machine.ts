@@ -25,7 +25,9 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   // it to `released`. The former `pass`/`staging`/`deploying` happy-path states
   // were retired entirely (unify gate model) — migrations drained any stranded
   // issue onto `tested`/`testing`, so they no longer exist in the lifecycle.
-  tested: ['released', 'reopen', 'on_hold'],
+
+  // cm:guard do not repoint STAGE_FORWARD's tested entry to 'closed' — projects with tested disabled would skip released entirely; the batch-release tested->closed exit stays advisory-only here
+  tested: ['released', 'closed', 'reopen', 'on_hold'],
   released: ['closed', 'on_hold'],
   closed: ['reopen'],
   reopen: ['developed', 'testing', 'in_progress', 'on_hold'],

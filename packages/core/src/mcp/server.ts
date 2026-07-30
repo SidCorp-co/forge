@@ -18,6 +18,7 @@ import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
+import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -231,6 +232,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),
     forgeCoolifyDeployTool(ctx),
+    forgeReleaseBatchTool(ctx),
     forgePostmanTargetTool(ctx),
     forgeStorefrontTargetTool(ctx),
     forgeJobsListTool(ctx.device),

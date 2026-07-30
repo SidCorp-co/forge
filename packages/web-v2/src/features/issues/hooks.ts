@@ -12,7 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, issuesApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, issuesApi, releaseBatchApi } from "./api";
 import type { IssueLabel, IssuePriority, IssueRow, IssueSearchOpts, IssueStatus } from "./types";
 
 /**
@@ -137,6 +137,35 @@ export function useRunPipelineStep() {
 export type BulkUpdate =
   | { kind: "status"; toStatus: IssueStatus }
   | { kind: "priority"; priority: IssuePriority };
+
+/**
+ * ISS-764 — create a batch release for a project. On success invalidates
+ * `['issues']` + `['pipeline-runs']` so claimed issues update immediately.
+ * On failure preserves the selection (does NOT clear `onCleared`) so the user
+ * can retry after fixing the issue.
+ */
+export function useBatchRelease(projectId: string) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation<CreateReleaseBatchResult, unknown, { issueIds: string[] }>({
+    mutationFn: ({ issueIds }) => releaseBatchApi.create(projectId, issueIds),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      toast({
+        title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
+        tone: "success",
+      });
+    },
+    onError: (err) => {
+      toast({
+        title: "Batch release failed",
+        description: formatApiError(err),
+        tone: "error",
+      });
+    },
+  });
+}
 
 /** Outcome tally of a bulk apply. `skipped` = the server rejected the change
  *  with 409 (invalid transition / no-op / stale) — surfaced, not failed. */

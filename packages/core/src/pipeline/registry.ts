@@ -117,9 +117,11 @@ export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map
 // no step semantics, so every runner type that can run a pipeline step can run
 // it; without the entry the dispatcher would permanently fail the job as
 // `runner_unsupported_type`.
+
+// cm:why release_batch has no PIPELINE_STEPS entry (dispatched explicitly via the batch-release REST endpoint, not a trigger status) but still needs a RUNNER_CAPABILITIES entry or the dispatcher fails it runner_unsupported_type
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke'],
-  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke', 'release_batch'],
+  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke', 'release_batch'],
 };
 
 export interface JobTypeMapping {

@@ -25,14 +25,21 @@ vi.mock("next/navigation", () => ({
 
 const mutate = vi.fn();
 vi.mock("@/features/issues/hooks", () => ({
-  useBulkUpdateIssues: () => ({ mutate, isPending: false }),
+  useBatchRelease: () => ({ mutate, isPending: false }),
+}));
+let lastDialogProps: { selectedIssues: Array<{ id: string }> } | null = null;
+vi.mock("@/features/issues/components/batch-release-dialog", () => ({
+  BatchReleaseDialog: (props: { selectedIssues: Array<{ id: string }> }) => {
+    lastDialogProps = props;
+    return null;
+  },
 }));
 
 function renderCard(runs: PipelineRunListItem[]) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <AwaitingReleaseCard runs={runs} slug="acme" />
+      <AwaitingReleaseCard runs={runs} slug="acme" projectId="proj-1" />
     </QueryClientProvider>,
   );
 }
@@ -81,16 +88,36 @@ describe("AwaitingReleaseCard — bulk release", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("clicking Release calls the bulk mutation with the selected ids + toStatus:'released'", () => {
+  it("clicking Release opens the batch dialog (not a direct mutate)", () => {
     renderCard(RUNS);
     fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-2" }));
     fireEvent.click(screen.getByRole("button", { name: "Release 2" }));
+    expect(mutate).not.toHaveBeenCalled();
+  });
 
-    expect(mutate).toHaveBeenCalledTimes(1);
-    const [args] = mutate.mock.calls[0];
-    expect(args.update).toEqual({ kind: "status", toStatus: "released" });
-    expect(new Set(args.ids)).toEqual(new Set(["iss-1", "iss-2"]));
+  it("keeps a selected row in selectedIssues after it scrolls out of the visible window", () => {
+    const { rerender } = renderCard(RUNS);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-2" }));
+    expect(lastDialogProps?.selectedIssues.map((i) => i.id)).toEqual(["iss-2"]);
+
+    const olderRuns = Array.from({ length: 5 }, (_, i) => ({
+      id: `run-older-${i}`,
+      issueId: `iss-older-${i}`,
+      issueRef: `ISS-older-${i}`,
+      issueTitle: "Older",
+      startedAt: `2025-01-0${i + 1}T00:00:00Z`,
+      cost: { estimatedCost: 0 },
+    })) as PipelineRunListItem[];
+    const qc = new QueryClient();
+    rerender(
+      <QueryClientProvider client={qc}>
+        <AwaitingReleaseCard runs={[...olderRuns, ...RUNS]} slug="acme" projectId="proj-1" />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByRole("checkbox", { name: "Select ISS-2" })).toBeNull();
+    expect(lastDialogProps?.selectedIssues.map((i) => i.id)).toEqual(["iss-2"]);
   });
 
   it("rows with no issueId render without a checkbox and don't count toward selection", () => {

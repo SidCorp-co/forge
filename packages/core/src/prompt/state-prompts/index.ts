@@ -17,6 +17,7 @@ import { clarifyStatePrompt } from './clarify.js';
 import { codeStatePrompt } from './code.js';
 import { fixStatePrompt } from './fix.js';
 import { planStatePrompt } from './plan.js';
+import { releaseBatchStatePrompt } from './release-batch.js';
 import { releaseStatePrompt } from './release.js';
 import { reviewStatePrompt } from './review.js';
 import { testStatePrompt } from './test.js';
@@ -54,6 +55,8 @@ export const DEFAULT_STATE_SYSTEM_PROMPTS: Partial<Record<JobType, string>> = {
   test: withOpenItemsObligation(testStatePrompt, 'test'),
   fix: withOpenItemsObligation(fixStatePrompt, 'fix'),
   release: releaseStatePrompt,
+  // cm:why release_batch is issue-less — the agent never calls forge_step_start; its entry point is the forge_release_batch get action
+  release_batch: releaseBatchStatePrompt,
 };
 
 /** Resolve the built-in state block for a step, or null when none applies. */

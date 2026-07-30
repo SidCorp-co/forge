@@ -6,19 +6,12 @@
 // list with a calm "Verified" chip instead of the pulsing "running" one, and a
 // collapsed default so a large backlog can't push the rest of the dashboard
 // (Runners, Upcoming schedules) below the fold.
-//
-// Bulk release (ISS-621): rows with a resolvable issue get a checkbox;
-// selecting ≥1 reveals a "Release {n}" action that fans out tested→released
-// via the same `useBulkUpdateIssues` hook the Issues-list bulk bar uses. That
-// hook only invalidates `['issues']` — it has no notion of the dashboard's
-// runs query — so on success we explicitly invalidate `['pipeline-runs']`
-// ourselves; without it a released run would linger on this card until an
-// unrelated refetch happened to occur.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Card, CardContent, Checkbox, Icon, StatusChip } from "@/design";
-import { useBulkUpdateIssues } from "@/features/issues/hooks";
+import { useBatchRelease } from "@/features/issues/hooks";
+import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
 
@@ -30,19 +23,37 @@ function byOldestFirst(runs: PipelineRunListItem[]): PipelineRunListItem[] {
   return [...runs].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
 }
 
-export function AwaitingReleaseCard({ runs, slug }: { runs: PipelineRunListItem[]; slug: string }) {
+export function AwaitingReleaseCard({
+  runs,
+  slug,
+  projectId,
+}: {
+  runs: PipelineRunListItem[];
+  slug: string;
+  projectId: string;
+}) {
   const router = useRouter();
   const qc = useQueryClient();
-  const bulk = useBulkUpdateIssues();
+  const batch = useBatchRelease(projectId);
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const sorted = byOldestFirst(runs);
   const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_LIMIT);
   const hiddenCount = sorted.length - visible.length;
+  const selectableAll = sorted.filter((run) => run.issueId != null);
   const selectableVisible = visible.filter((run) => run.issueId != null);
   const selectedCount = selected.size;
   const allVisibleSelected =
     selectableVisible.length > 0 && selectableVisible.every((run) => selected.has(run.issueId as string));
+
+  const selectedIssues: BatchReleaseIssue[] = selectableAll
+    .filter((run) => selected.has(run.issueId as string))
+    .map((run) => ({
+      id: run.issueId as string,
+      displayId: run.issueRef ?? (run.issueId as string),
+      title: run.issueTitle ?? "",
+    }));
 
   const open = (run: PipelineRunListItem) => {
     router.push(run.issueId ? `/projects/${slug}/issues/${run.issueId}` : `/projects/${slug}/pipeline`);
@@ -68,19 +79,8 @@ export function AwaitingReleaseCard({ runs, slug }: { runs: PipelineRunListItem[
     });
   };
 
-  const release = () => {
-    bulk.mutate(
-      { ids: [...selected], update: { kind: "status", toStatus: "released" } },
-      {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
-          setSelected(new Set());
-        },
-      },
-    );
-  };
-
   return (
+    <>
     <Card className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
         <div className="flex items-center gap-2">
@@ -108,8 +108,8 @@ export function AwaitingReleaseCard({ runs, slug }: { runs: PipelineRunListItem[
                   size="sm"
                   className="ml-auto"
                   disabled={selectedCount === 0}
-                  loading={bulk.isPending}
-                  onClick={release}
+                  loading={batch.isPending}
+                  onClick={() => setBatchDialogOpen(true)}
                 >
                   {selectedCount > 0 ? `Release ${selectedCount}` : "Release"}
                 </Button>
@@ -165,5 +165,16 @@ export function AwaitingReleaseCard({ runs, slug }: { runs: PipelineRunListItem[
         )}
       </CardContent>
     </Card>
+    <BatchReleaseDialog
+      projectId={projectId}
+      selectedIssues={selectedIssues}
+      open={batchDialogOpen}
+      onClose={() => setBatchDialogOpen(false)}
+      onSuccess={() => {
+        setSelected(new Set());
+        qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      }}
+    />
+    </>
   );
 }

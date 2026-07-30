@@ -99,6 +99,9 @@ export interface IssueRow {
    *  opts in with `withCost=1` (the list always does). 0 = no usage recorded. */
   estimatedCost?: number;
   failureInfo?: IssueFailureInfo | null;
+  /** ISS-764 — set when a batch release has claimed this issue. Non-null means
+   *  the issue is locked into a batch and cannot be selected for a new one. */
+  releaseBatchRunId?: string | null;
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
