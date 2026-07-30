@@ -10,10 +10,6 @@
 // (mirrors the per-row ISS-308 E1 guard); when there is no common-valid target
 // the control is disabled. Priority has no state-machine constraint, so all
 // five values are always offered.
-//
-// ISS-764 — Batch Release button: enabled only when every selected issue is at
-// the `tested` gate status AND is unclaimed (releaseBatchRunId is null).
-// Opens BatchReleaseDialog for confirmation before the POST fires.
 
 import { useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
@@ -22,7 +18,7 @@ import { type BulkUpdate, useBulkUpdateIssues } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
-// Gate status for batch release — matches gate.ts resolveReleaseGateStatus default.
+// cm:edge naming -> packages/core/src/release-batch/gate.ts — must match resolveReleaseGateStatus's default gate status
 const BATCH_RELEASE_GATE = "tested" as const;
 
 function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {

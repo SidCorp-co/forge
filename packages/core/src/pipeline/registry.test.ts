@@ -223,6 +223,7 @@ describe('GET /api/pipeline/registry', () => {
       'release',
       'clarify',
       'smoke',
+      'release_batch',
     ]);
   });
 });

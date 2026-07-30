@@ -55,7 +55,7 @@ export const DEFAULT_STATE_SYSTEM_PROMPTS: Partial<Record<JobType, string>> = {
   test: withOpenItemsObligation(testStatePrompt, 'test'),
   fix: withOpenItemsObligation(fixStatePrompt, 'fix'),
   release: releaseStatePrompt,
-  // ISS-764 — issue-less batch close job; no forge_step_start, entry is forge_release_batch get.
+  // cm:why release_batch is issue-less — the agent never calls forge_step_start; its entry point is the forge_release_batch get action
   release_batch: releaseBatchStatePrompt,
 };
 

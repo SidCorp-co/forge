@@ -6,13 +6,6 @@
 // list with a calm "Verified" chip instead of the pulsing "running" one, and a
 // collapsed default so a large backlog can't push the rest of the dashboard
 // (Runners, Upcoming schedules) below the fold.
-//
-// ISS-764 Batch Release: rows with a resolvable issue get a checkbox;
-// selecting ≥1 reveals a "Release {n}" action that creates a batch release
-// via the batch endpoint (single deploy + single changelog + simultaneous
-// close). Previously this was a per-issue tested→released fan-out via
-// `useBulkUpdateIssues`; replaced with `useBatchRelease` so the whole set
-// deploys and closes atomically in one agent session.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -48,14 +41,14 @@ export function AwaitingReleaseCard({
   const sorted = byOldestFirst(runs);
   const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_LIMIT);
   const hiddenCount = sorted.length - visible.length;
+  const selectableAll = sorted.filter((run) => run.issueId != null);
   const selectableVisible = visible.filter((run) => run.issueId != null);
   const selectedCount = selected.size;
   const allVisibleSelected =
     selectableVisible.length > 0 && selectableVisible.every((run) => selected.has(run.issueId as string));
 
-  // Synthesize minimal BatchReleaseIssue shape from the run list item fields.
-  const selectedIssues: BatchReleaseIssue[] = selectableVisible
-    .filter((run) => run.issueId != null && selected.has(run.issueId as string))
+  const selectedIssues: BatchReleaseIssue[] = selectableAll
+    .filter((run) => selected.has(run.issueId as string))
     .map((run) => ({
       id: run.issueId as string,
       displayId: run.issueRef ?? (run.issueId as string),

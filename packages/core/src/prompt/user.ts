@@ -119,7 +119,6 @@ const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
   custom: [],
   pm: [],
   smoke: [],
-  // ISS-764 — release_batch is issue-less; no issue fields to inline.
   release_batch: [],
 };
 

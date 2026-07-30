@@ -450,7 +450,6 @@ app.route('/api/projects', deviceUserRoutes);
 app.route('/api/projects', deviceSkillStatusRoutes);
 app.route('/api/pipeline/registry', pipelineRegistryRoutes);
 app.route('/api/pipeline', pipelineAnalyticsRoutes);
-// ISS-764 — Batch release create + active query, project-scoped under /api/projects.
 app.route('/api/projects', releaseBatchRoutes);
 app.route('/api/projects', projectCostAnalyticsRoutes);
 app.route('/api/schedules', scheduleRoutes);

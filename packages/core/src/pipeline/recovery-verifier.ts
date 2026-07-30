@@ -57,7 +57,6 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   pm: [],
   // smoke canaries (ISS-455) are issue-less; there is no status to advance.
   smoke: [],
-  // ISS-764 — release_batch is issue-less; verifyRecovery returns 'pending' on !job.issueId.
   release_batch: [],
 };
 

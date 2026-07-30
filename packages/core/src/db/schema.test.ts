@@ -618,6 +618,7 @@ describe('db/schema — jobs', () => {
       'custom',
       'pm',
       'smoke',
+      'release_batch',
     ]);
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });
@@ -868,6 +869,7 @@ describe('db/schema — issues', () => {
         'plan',
         'priority',
         'project_id',
+        'release_batch_run_id',
         'release_notes',
         'reopen_count',
         'reported_by',
@@ -924,9 +926,9 @@ describe('db/schema — issues', () => {
     }
   });
 
-  it('FKs: project cascade, assignee set null, created_by restrict, parent self set null', () => {
+  it('FKs: project cascade, assignee set null, created_by restrict, parent self set null, release batch run set null', () => {
     const cfg = getTableConfig(issues);
-    expect(cfg.foreignKeys).toHaveLength(4);
+    expect(cfg.foreignKeys).toHaveLength(5);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
@@ -935,6 +937,7 @@ describe('db/schema — issues', () => {
     expect(byCol.get('created_by_id')?.onDelete).toBe('restrict');
     expect(byCol.get('parent_issue_id')?.onDelete).toBe('set null');
     expect(byCol.get('parent_issue_id')?.reference().foreignTable).toBe(issues);
+    expect(byCol.get('release_batch_run_id')?.onDelete).toBe('set null');
   });
 
   it('has unique index on (project_id, iss_seq) and named indexes', () => {

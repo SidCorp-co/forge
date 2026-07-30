@@ -56,7 +56,7 @@ releaseBatchRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'member');
+    assertProjectRole(access, 'admin');
 
     try {
       const result = await createReleaseBatch({ projectId, issueIds, userId });

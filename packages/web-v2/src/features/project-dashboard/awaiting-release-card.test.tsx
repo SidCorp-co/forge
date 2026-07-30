@@ -27,8 +27,12 @@ const mutate = vi.fn();
 vi.mock("@/features/issues/hooks", () => ({
   useBatchRelease: () => ({ mutate, isPending: false }),
 }));
+let lastDialogProps: { selectedIssues: Array<{ id: string }> } | null = null;
 vi.mock("@/features/issues/components/batch-release-dialog", () => ({
-  BatchReleaseDialog: () => null,
+  BatchReleaseDialog: (props: { selectedIssues: Array<{ id: string }> }) => {
+    lastDialogProps = props;
+    return null;
+  },
 }));
 
 function renderCard(runs: PipelineRunListItem[]) {
@@ -85,15 +89,35 @@ describe("AwaitingReleaseCard — bulk release", () => {
   });
 
   it("clicking Release opens the batch dialog (not a direct mutate)", () => {
-    // ISS-764: Release now opens BatchReleaseDialog for confirmation,
-    // not a direct fan-out mutation. The dialog is mocked to null here;
-    // end-to-end confirmation is tested in BatchReleaseDialog unit tests.
     renderCard(RUNS);
     fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-2" }));
     fireEvent.click(screen.getByRole("button", { name: "Release 2" }));
-    // mutate is NOT called on click — the confirm dialog intercepts.
     expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a selected row in selectedIssues after it scrolls out of the visible window", () => {
+    const { rerender } = renderCard(RUNS);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-2" }));
+    expect(lastDialogProps?.selectedIssues.map((i) => i.id)).toEqual(["iss-2"]);
+
+    const olderRuns = Array.from({ length: 5 }, (_, i) => ({
+      id: `run-older-${i}`,
+      issueId: `iss-older-${i}`,
+      issueRef: `ISS-older-${i}`,
+      issueTitle: "Older",
+      startedAt: `2025-01-0${i + 1}T00:00:00Z`,
+      cost: { estimatedCost: 0 },
+    })) as PipelineRunListItem[];
+    const qc = new QueryClient();
+    rerender(
+      <QueryClientProvider client={qc}>
+        <AwaitingReleaseCard runs={[...olderRuns, ...RUNS]} slug="acme" projectId="proj-1" />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByRole("checkbox", { name: "Select ISS-2" })).toBeNull();
+    expect(lastDialogProps?.selectedIssues.map((i) => i.id)).toEqual(["iss-2"]);
   });
 
   it("rows with no issueId render without a checkbox and don't count toward selection", () => {

@@ -592,9 +592,7 @@ export const jobTypes = [
   // 'system' pipeline_run; PASS/FAIL is read from the job's terminal status
   // (which still flips only via applyKernelTransition, like every job).
   'smoke',
-  // ISS-764 — batch-release: one issue-less job per project batch closes all
-  // claimed `tested` issues together (single deploy, single changelog line).
-  // Runs on a `kind='system'` run tagged metadata.source='release-batch'.
+  // cm:edge naming -> packages/core/src/release-batch/service.ts — a release_batch job's run has metadata.source==='release-batch', not type-checked
   'release_batch',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
@@ -1091,11 +1089,7 @@ export const issues = pgTable(
         } & Record<string, unknown>)
       | null
     >(),
-    // ISS-764 — atomic batch-release claim. NULL = unclaimed; non-NULL = claimed
-    // by this pipeline_run_id (kind='system', metadata.source='release-batch').
-    // CAS UPDATE (WHERE release_batch_run_id IS NULL) is the single authority;
-    // FK ON DELETE SET NULL auto-releases when the run is deleted.
-    // cm:guard never use issues.metadata as a lock — PATCH replaces it wholesale.
+    // cm:guard claim release_batch_run_id only via the CAS UPDATE (WHERE release_batch_run_id IS NULL) in release-batch/service.ts — never write it directly
     releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
       onDelete: 'set null',
     }),
@@ -1114,7 +1108,6 @@ export const issues = pgTable(
       foreignColumns: [t.id],
       name: 'issues_parent_issue_id_fk',
     }).onDelete('set null'),
-    // ISS-764 — partial index so "claimed by run X" lookups are O(1).
     releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),

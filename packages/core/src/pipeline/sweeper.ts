@@ -94,7 +94,6 @@ export interface ParkClosedUnmergedResult {
 }
 
 export interface StaleReleaseBatchClaimsResult {
-  // claims released because the batch run was already terminal (claim-subscriber backstop).
   released: number;
 }
 
@@ -194,11 +193,8 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const parkedClosedUnmerged = await runPass('parkClosedUnmergedBlockedDependents', () =>
     parkClosedUnmergedBlockedDependents(now),
   );
-  // ISS-764 — belt-and-suspenders backstop: release any release_batch_run_id
-  // claims whose batch run is already terminal (the primary claim-subscriber
-  // on pipelineRunStatusChanged handles this on the hot path; this pass catches
-  // the residual if the subscriber threw or the run closed via a path that
-  // skipped the hook).
+
+  // cm:edge sideeffect -> packages/core/src/release-batch/claim-subscriber.ts — backstop for the pipelineRunStatusChanged hook: releases release_batch_run_id claims left behind if the subscriber threw or was skipped
   const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
     reapStaleReleaseBatchClaims(),
   );

@@ -14,11 +14,7 @@ import type { PipelineConfig } from '../pipeline/pipeline-config-schema.js';
  */
 export function resolveReleaseGateStatus(cfg: PipelineConfig | null): IssueStatus | null {
   const testedCfg = cfg?.states?.tested;
-  // Default config has tested enabled + manual (pipeline-config-schema.ts:291-303).
-  // Explicitly disabled → project sends issues straight to released without parking.
   if (testedCfg?.enabled === false) return null;
-  // mode defaults to 'manual' when not set; 'auto' means the pipeline advances
-  // automatically and there is no human gate to batch-release through.
   if (testedCfg?.mode === 'auto') return null;
   return 'tested';
 }

@@ -1,10 +1,5 @@
 "use client";
 
-// ISS-764 — Confirm dialog (SlideOver) for batch releasing a set of issues.
-// The dialog renders BEFORE the batch POST fires so the user sees exactly which
-// issues will be closed and can cancel. Uses SlideOver (focus-trapped, Esc to
-// close) with a destructive confirm button pattern (per the UX contract).
-
 import { Button, SlideOver } from "@/design";
 import { useBatchRelease } from "../hooks";
 

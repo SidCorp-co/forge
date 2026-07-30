@@ -38,6 +38,7 @@ import {
   resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
+import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,
@@ -178,10 +179,13 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
 
-        // pipelineRunId present (ISS-764 batch release path): the run is already
-        // open (kind='system'); dispatch prod-allowed via the shared release path
-        // with issueId=null. Mutually exclusive with issueId.
+        // cm:guard allowProd:true here is only safe once the run is proven to be this project's open release-batch run — never widen this to accept an arbitrary pipelineRunId
         if (input.pipelineRunId && !input.issueId) {
+          if (!(await isOpenReleaseBatchRun(projectId, input.pipelineRunId))) {
+            throw new Error(
+              'BAD_REQUEST: pipelineRunId is not an open release-batch run for this project',
+            );
+          }
           const outcome = await tryDispatchCoolifyRelease({
             projectId,
             issueId: null,

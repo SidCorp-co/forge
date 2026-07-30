@@ -21,10 +21,8 @@ const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 export function registerReleaseBatchClaimSubscriber(bus: HooksBus): void {
   bus.on('pipelineRunStatusChanged', (p) => {
-    // Only act on terminal transitions — running/paused mean the batch is still live.
     if (!TERMINAL_STATUSES.has(p.toStatus)) return;
 
-    // Fire-and-forget: do not block the run-close path.
     void db
       .update(issues)
       .set({ releaseBatchRunId: null, updatedAt: sql`now()` })

@@ -1,5 +1,3 @@
-// ISS-764 — Batch Release service.
-//
 // create: opens a system run, atomically claims N tested issues, enqueues one
 // release_batch job. finish: closes all claimed issues tested→closed. abort:
 // releases claims, writes one comment per issue, closes nothing.
@@ -28,8 +26,6 @@ import { insertAndEnqueueJob, ActiveJobConflictError } from '../pipeline/enqueue
 import { resolveReleaseGateStatus } from './gate.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
-// ── Errors ──────────────────────────────────────────────────────────────────
-
 export class NoReleaseGateError extends Error {
   constructor() {
     super('NO_RELEASE_GATE');
@@ -57,8 +53,6 @@ export class BatchInFlightError extends Error {
     this.name = 'BatchInFlightError';
   }
 }
-
-// ── Config helpers ───────────────────────────────────────────────────────────
 
 async function loadProjectPipelineConfig(projectId: string): Promise<PipelineConfig | null> {
   const [row] = await db
@@ -90,8 +84,6 @@ async function loadProjectBranchConfig(
   };
 }
 
-// ── create ───────────────────────────────────────────────────────────────────
-
 export interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
@@ -110,12 +102,10 @@ export async function createReleaseBatch(
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, issueIds, userId } = args;
 
-  // 1. Resolve gate status.
   const cfg = await loadProjectPipelineConfig(projectId);
   const gateStatus = resolveReleaseGateStatus(cfg);
   if (!gateStatus) throw new NoReleaseGateError();
 
-  // 2. Preflight — verify every issue is claimable.
   const preflightRows = await db
     .select({ id: issues.id, status: issues.status, releaseBatchRunId: issues.releaseBatchRunId })
     .from(issues)
@@ -130,24 +120,21 @@ export async function createReleaseBatch(
   );
   if (notClaimable.length > 0) throw new ClaimConflictError(notClaimable.map((r) => r.id));
 
-  // 3. Check a runner is available.
   const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {} });
   if (!runner) throw new NoRunnerOnlineError();
 
-  // 4. Load branch config for the prompt.
   const branchCfg = await loadProjectBranchConfig(projectId);
   const baseBranch = branchCfg?.baseBranch ?? 'main';
   const productionBranch = branchCfg?.productionBranch ?? 'main';
   const deployPlanned = productionBranch !== baseBranch;
 
-  // 5. Open a one-shot system run tagged as release-batch.
   const run = await openOneShotRun({
     projectId,
     kind: 'system',
     metadata: { source: 'release-batch', gateStatus, issueIds, deployPlanned },
   });
 
-  // 6. Atomic CAS claim — the real authority.
+  // cm:edge protocol -> packages/core/src/release-batch/routes.ts — this CAS UPDATE is the sole claim authority; issues.metadata is never used as a lock (see schema.ts guard)
   const claimed = await db.execute<{ id: string }>(sql`
     UPDATE issues
     SET release_batch_run_id = ${run.id}, updated_at = now()
@@ -159,14 +146,12 @@ export async function createReleaseBatch(
   `);
 
   if (claimed.length !== issueIds.length) {
-    // Compensate: cancel the run (cascade is a no-op — no jobs yet).
     await closeRunIfOneShot(run.id, 'cancelled');
     throw new ClaimConflictError(
       issueIds.filter((id) => !claimed.some((r) => r.id === id)),
     );
   }
 
-  // 7. Load issue titles for the prompt.
   const issueRows = await db
     .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
     .from(issues)
@@ -184,7 +169,6 @@ export async function createReleaseBatch(
     })),
   });
 
-  // 8. Enqueue the release_batch job.
   let jobId: string;
   try {
     const result = await insertAndEnqueueJob({
@@ -204,7 +188,6 @@ export async function createReleaseBatch(
     });
     jobId = result.jobId;
   } catch (err) {
-    // The partial unique index fired → another batch is already in flight.
     if (err instanceof ActiveJobConflictError) {
       await db.execute(sql`
         UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
@@ -218,8 +201,6 @@ export async function createReleaseBatch(
 
   return { runId: run.id, jobId, issueIds, gateStatus };
 }
-
-// ── loadReleaseBatchContext ──────────────────────────────────────────────────
 
 export interface ReleaseBatchIssue {
   id: string;
@@ -289,8 +270,6 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   };
 }
 
-// ── finishReleaseBatch ───────────────────────────────────────────────────────
-
 export interface FinishReleaseBatchResult {
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
@@ -308,7 +287,6 @@ export async function finishReleaseBatch(
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
 
-  // Sequential close — each close runs its own cascade + WS broadcast.
   for (const issue of claimed) {
     try {
       await transitionIssueStatus(
@@ -319,7 +297,6 @@ export async function finishReleaseBatch(
       closed.push(issue.id);
     } catch (err) {
       if (err instanceof TransitionError && err.code === 'NO_OP') {
-        // Already closed — idempotent success.
         closed.push(issue.id);
       } else {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: failed to close issue');
@@ -328,7 +305,6 @@ export async function finishReleaseBatch(
     }
   }
 
-  // Clear any remaining claims (closed ones were cleared by transitionIssueStatus hook).
   await db.execute(sql`
     UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
     WHERE release_batch_run_id = ${runId}
@@ -337,14 +313,11 @@ export async function finishReleaseBatch(
   return { closed, failed };
 }
 
-// ── abortReleaseBatch ────────────────────────────────────────────────────────
-
 export async function abortReleaseBatch(
   runId: string,
   reason: string,
   actorUserId: string,
 ): Promise<string[]> {
-  // Release claims.
   const released = await db.execute<{ id: string; issue_id_col: string }>(sql`
     UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
     WHERE release_batch_run_id = ${runId}
@@ -353,7 +326,6 @@ export async function abortReleaseBatch(
 
   const releasedIds = released.map((r) => r.id);
 
-  // Write one comment per issue.
   for (const issueId of releasedIds) {
     try {
       await db.insert(comments).values({
@@ -370,7 +342,26 @@ export async function abortReleaseBatch(
   return releasedIds;
 }
 
-// ── getActiveReleaseBatch ────────────────────────────────────────────────────
+export async function isOpenReleaseBatchRun(projectId: string, runId: string): Promise<boolean> {
+  const [run] = await db
+    .select({
+      projectId: pipelineRuns.projectId,
+      kind: pipelineRuns.kind,
+      status: pipelineRuns.status,
+      metadata: pipelineRuns.metadata,
+    })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!run) return false;
+  const meta = (run.metadata ?? {}) as Record<string, unknown>;
+  return (
+    run.projectId === projectId &&
+    run.kind === 'system' &&
+    meta.source === 'release-batch' &&
+    (run.status === 'running' || run.status === 'paused')
+  );
+}
 
 export interface ActiveReleaseBatchInfo {
   runId: string;
