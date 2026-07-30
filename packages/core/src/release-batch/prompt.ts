@@ -24,9 +24,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
 
-  return `/forge-release-batch ${runId}
-
-## Batch Release
+  return `## Batch Release
 
 projectId: ${projectId}
 runId: ${runId}
