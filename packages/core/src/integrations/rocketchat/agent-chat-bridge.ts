@@ -128,6 +128,13 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     .returning({ id: agentSessions.id });
   if (claimed.length === 0) return;
 
+  // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision
+  if (session.status !== 'completed' && session.failureReason !== 'user_cancelled') {
+    const { redispatchAgentChatSessionOnFailover } = await import('./agent-chat.js');
+    const failover = await redispatchAgentChatSessionOnFailover(session);
+    if (failover.ok) return;
+  }
+
   const auth = await resolveRoomPostAuth(meta.connectionId, {
     sessionId: session.id,
     source: 'rocketchat.agent-chat-bridge',

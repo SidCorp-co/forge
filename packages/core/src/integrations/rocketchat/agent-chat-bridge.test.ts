@@ -36,8 +36,11 @@ vi.mock('./escalation-bridge.js', () => ({
 }));
 
 const AGENT_CHAT_FALLBACK_REPLY = vi.fn((botName: string) => `FALLBACK(${botName})`);
+const redispatchAgentChatSessionOnFailover = vi.fn();
 vi.mock('./agent-chat.js', () => ({
   AGENT_CHAT_FALLBACK_REPLY: (...args: unknown[]) => AGENT_CHAT_FALLBACK_REPLY(...args),
+  redispatchAgentChatSessionOnFailover: (...args: unknown[]) =>
+    redispatchAgentChatSessionOnFailover(...args),
 }));
 
 const { deliverAgentChatReplyOnce } = await import('./agent-chat-bridge.js');
@@ -73,6 +76,8 @@ describe('deliverAgentChatReplyOnce', () => {
     postRoomMessage.mockReset();
     extractFinalAssistantText.mockReset();
     AGENT_CHAT_FALLBACK_REPLY.mockClear();
+    redispatchAgentChatSessionOnFailover.mockReset();
+    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
   });
 
   it('is a no-op for a session with no agentChat metadata', async () => {
@@ -163,13 +168,55 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(postedText).toBe('FALLBACK(Babo)');
   });
 
-  it('falls back on a failed/empty session without calling the guard', async () => {
+  it('falls back on a failed/empty session without calling the guard, once failover is exhausted', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
+    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
 
     await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
+    expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
     expect(screenStakeholderReply).not.toHaveBeenCalled();
+    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+  });
+
+  it('re-dispatches a failed/transient session to a healthy runner instead of posting the fallback', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    redispatchAgentChatSessionOnFailover.mockResolvedValue({
+      ok: true,
+      status: 'redispatched',
+      sessionId: 'session-2',
+      deviceId: 'device-2',
+    });
+
+    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
+
+    expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
+    expect(resolveRoomPostAuth).not.toHaveBeenCalled();
+    expect(postRoomMessage).not.toHaveBeenCalled();
+  });
+
+  it('never retries a user_cancelled session — goes straight to fallback', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+
+    await deliverAgentChatReplyOnce(
+      makeSession({ status: 'failed', failureReason: 'user_cancelled', messages: [] }),
+    );
+
+    expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
+    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+  });
+
+  it('never retries a content-side outcome (completed session, output-guard rejected)', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+    extractFinalAssistantText.mockReturnValue('```leaky```');
+    screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['leaks a code fence'] });
+
+    await deliverAgentChatReplyOnce(makeSession({ status: 'completed' }));
+
+    expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
     expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
   });
 

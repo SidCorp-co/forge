@@ -23,11 +23,14 @@ import {
   resolveChatDevice,
 } from '../../agent-sessions/chat-turn.js';
 import { db } from '../../db/client.js';
-import { agentSessions } from '../../db/schema.js';
+import { agentSessions, projects } from '../../db/schema.js';
+import { findAvailableDeviceForProject } from '../../lib/device-pool.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
 import { postRoomMessage } from './rest-client.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
+
+type SessionRow = typeof agentSessions.$inferSelect;
 
 const AGENT_CHAT_TITLE_MAX = 80;
 
@@ -211,6 +214,116 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
   });
 
   return { started: true, sessionId: session.id };
+}
+
+// cm:why mirrors redispatchScheduleSessionOnFailover (schedules/dispatch.ts) — that machinery is hard-gated to metadata.source==='schedule.run', so agent-chat needs its own copy
+const MAX_AGENT_CHAT_FAILOVERS = 2;
+
+interface AgentChatFailoverState {
+  attempt: number;
+  triedDeviceIds: string[];
+}
+
+export type AgentChatFailoverResult =
+  | { ok: true; status: 'redispatched'; sessionId: string; deviceId: string }
+  | { ok: false; status: 'not-agent-chat' | 'exhausted' | 'no-device' | 'no-prompt' | 'error' };
+
+/**
+ * Re-dispatch a failed agent-chat `session` onto another healthy runner,
+ * reusing the prompt already stored on it (no prompt re-build — the stored
+ * text is exactly what `buildAgentChatPrompt` produced for the first
+ * attempt). Called from `deliverAgentChatReplyOnce` BEFORE it commits to the
+ * fallback reply; the caller has already CAS-claimed `deliveredAt` on the
+ * failed session, so this never races a second failover for the same turn.
+ */
+export async function redispatchAgentChatSessionOnFailover(
+  session: SessionRow,
+): Promise<AgentChatFailoverResult> {
+  const meta = (session.metadata ?? {}) as Record<string, unknown>;
+  const agentChat = meta.agentChat as Record<string, unknown> | undefined;
+  if (
+    !agentChat ||
+    typeof agentChat.connectionId !== 'string' ||
+    typeof agentChat.rid !== 'string' ||
+    typeof agentChat.botName !== 'string'
+  ) {
+    return { ok: false, status: 'not-agent-chat' };
+  }
+
+  const prior = (agentChat.failover as AgentChatFailoverState | undefined) ?? {
+    attempt: 0,
+    triedDeviceIds: [],
+  };
+  const tried = Array.from(
+    new Set([...(prior.triedDeviceIds ?? []), session.deviceId].filter((d): d is string => !!d)),
+  );
+  const attempt = (prior.attempt ?? 0) + 1;
+  if (attempt > MAX_AGENT_CHAT_FAILOVERS) return { ok: false, status: 'exhausted' };
+
+  const messages = Array.isArray(session.messages) ? session.messages : [];
+  const firstUser = messages.find(
+    (m): m is { role: string; content: string } =>
+      !!m &&
+      (m as { role?: string }).role === 'user' &&
+      typeof (m as { content?: unknown }).content === 'string',
+  );
+  if (!firstUser) return { ok: false, status: 'no-prompt' };
+
+  const deviceId = await findAvailableDeviceForProject(session.projectId, {
+    excludeDeviceIds: tried,
+  });
+  if (!deviceId) return { ok: false, status: 'no-device' };
+
+  const [project] = await db
+    .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+    .from(projects)
+    .where(eq(projects.id, session.projectId))
+    .limit(1);
+  if (!project) return { ok: false, status: 'error' };
+
+  const nextAgentChat = {
+    ...agentChat,
+    deliveredAt: null,
+    failover: { attempt, triedDeviceIds: tried } satisfies AgentChatFailoverState,
+  };
+
+  try {
+    const retrySession = await createChatSessionRow({
+      projectId: session.projectId,
+      userId: session.userId,
+      title:
+        session.title ?? `Chat: ${String(agentChat.question ?? '').slice(0, AGENT_CHAT_TITLE_MAX)}`,
+      runKind: 'system',
+      runMetadata: { source: 'rocketchat.agentChat', rid: agentChat.rid },
+      metadata: { agentChat: nextAgentChat, lensOverride: ['product'] },
+    });
+    const dispatched = await dispatchChatTurn({
+      session: retrySession,
+      project,
+      client: { deviceId, isLocal: false, migrated: false },
+      message: firstUser.content,
+      forceLenses: ['product'],
+      broadcastEvent: 'agent-session.created',
+    });
+    logger.info(
+      {
+        failedSessionId: session.id,
+        retrySessionId: dispatched.id,
+        fromDeviceId: session.deviceId,
+        toDeviceId: deviceId,
+        failureReason: session.failureReason,
+        attempt,
+      },
+      'agent-chat failover: re-dispatched to another runner',
+    );
+    return { ok: true, status: 'redispatched', sessionId: dispatched.id, deviceId };
+  } catch (err) {
+    logger.error(
+      { err, failedSessionId: session.id, rid: agentChat.rid, attempt },
+      'agent-chat failover: re-dispatch failed',
+    );
+    return { ok: false, status: 'error' };
+  }
 }
 
 /**

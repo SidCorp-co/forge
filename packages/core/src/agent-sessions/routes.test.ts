@@ -120,6 +120,14 @@ vi.mock('../integrations/rocketchat/escalation-bridge.js', () => ({
   deliverEscalationReplyOnce: (...args: unknown[]) => deliverEscalationReplyOnceMock(...args),
 }));
 
+// ISS-780 — a classified chat usage-limit failure stamps the owning runner
+// row (best-effort). Stub it so the hook can be asserted in isolation from
+// `apply-runner-limit.ts`'s own DB writes.
+const stampRunnerLimitMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../runners/apply-runner-limit.js', () => ({
+  stampRunnerLimit: (...args: unknown[]) => stampRunnerLimitMock(...args),
+}));
+
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -156,6 +164,7 @@ beforeEach(() => {
   whereResults.length = 0;
   previewExecuteResults.length = 0;
   deliverEscalationReplyOnceMock.mockClear();
+  stampRunnerLimitMock.mockClear();
 });
 
 function authVerified() {
@@ -546,6 +555,81 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
     const updates = updateSet.mock.calls[0]?.[0] as { status?: string; failureReason?: string };
     expect(updates.status).toBe('completed');
     expect(updates.failureReason).toBeUndefined();
+  });
+});
+
+describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the runner row', () => {
+  it("stamps the deviceId's runner row when the failure classifies as a usage limit", async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+    // The (projectId, deviceId) runner lookup that resolves which row to stamp.
+    selectLimit.mockResolvedValueOnce([{ id: 'runner-1' }]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        status: 'failed',
+        messages: [
+          {
+            role: 'assistant',
+            content: "[RESULT_ERROR] You've hit your session limit · resets 7pm (Asia/Ho_Chi_Minh)",
+          },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(stampRunnerLimitMock).toHaveBeenCalledWith(
+      'runner-1',
+      PROJECT_ID,
+      expect.objectContaining({ reason: 'usage_limit' }),
+    );
+  });
+
+  it('does not stamp anything for a plain failure that is not a classified usage limit', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        status: 'failed',
+        messages: [{ role: 'assistant', content: 'some unrelated tool error' }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(stampRunnerLimitMock).not.toHaveBeenCalled();
   });
 });
 

@@ -38,8 +38,11 @@ const resolveSessionRepoPathForDevice = vi.fn(
 );
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
-  findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
-    findChatCapableDeviceForProject(projectId, deviceId),
+  findChatCapableDeviceForProject: (
+    projectId: string,
+    deviceId: string,
+    opts?: { allowLimited?: boolean },
+  ) => findChatCapableDeviceForProject(projectId, deviceId, opts),
   resolveSessionRepoPathForDevice: (
     projectId: string,
     deviceId: string | null,
@@ -210,6 +213,34 @@ describe('resolveChatDevice', () => {
     expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
     expect(selectLimit).not.toHaveBeenCalled();
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
+  });
+
+  // --- ISS-780: health-gated pin self-heal ---
+
+  it('limited-but-live pin migrates to a healthy runner (no re-grab via devices.status)', async () => {
+    // First call (default gate) rejects the limited pin; the allowLimited
+    // liveness check confirms it's still online, just unhealthy — so this
+    // must migrate straight to the auto-pick WITHOUT ever consulting
+    // devices.status (that path is reserved for a truly offline runner row).
+    findChatCapableDeviceForProject.mockImplementation(
+      async (_projectId: string, _deviceId: string, opts?: { allowLimited?: boolean }) =>
+        opts?.allowLimited ? DEVICE : null,
+    );
+    findAvailableDeviceForProject.mockResolvedValueOnce('dev-2');
+    const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true });
+    expect(selectLimit).not.toHaveBeenCalled();
+  });
+
+  it('limited-but-live pin, auto-pick lands back on the SAME device → not a migration', async () => {
+    findChatCapableDeviceForProject.mockImplementation(
+      async (_projectId: string, _deviceId: string, opts?: { allowLimited?: boolean }) =>
+        opts?.allowLimited ? DEVICE : null,
+    );
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE);
+    const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(selectLimit).not.toHaveBeenCalled();
   });
 });
 

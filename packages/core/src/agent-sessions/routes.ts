@@ -10,12 +10,14 @@ import {
   agentSessionTurns,
   agentSessions,
   issues,
+  runners,
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
+import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -42,7 +44,11 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import { detectUnexpandedSkillFailure, finalizeUsageLimitOnFailure } from './session-failure.js';
+import {
+  detectUnexpandedSkillFailure,
+  extractSessionFailureText,
+  finalizeUsageLimitOnFailure,
+} from './session-failure.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -744,6 +750,34 @@ agentSessionRoutes.patch(
     // rate-limited schedule run via cross-account failover (best-effort).
     if (usageLimit) {
       await usageLimit.recoverAfterWrite(updated.metadata ?? existing.metadata);
+    }
+
+    // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
+    if (usageLimit?.hit && updated.deviceId) {
+      try {
+        const [runner] = await db
+          .select({ id: runners.id })
+          .from(runners)
+          .where(
+            and(eq(runners.projectId, updated.projectId), eq(runners.deviceId, updated.deviceId)),
+          )
+          .limit(1);
+        if (runner) {
+          const detail = extractSessionFailureText(patch.messages ?? existing.messages, null).slice(
+            -300,
+          );
+          await stampRunnerLimit(runner.id, updated.projectId, {
+            reason: 'usage_limit',
+            until: usageLimit.resetAt ? new Date(usageLimit.resetAt) : null,
+            detail: detail || 'usage limit detected from a chat session failure',
+          });
+        }
+      } catch (err) {
+        logger.warn(
+          { err, sessionId: id, deviceId: updated.deviceId },
+          'agent-sessions: stampRunnerLimit from chat usage-limit failed, continuing',
+        );
+      }
     }
 
     // ISS-675 — this PATCH is the runner's happy-path completion write (a
