@@ -10,12 +10,15 @@ import {
   agentSessionTurns,
   agentSessions,
   issues,
+  runners,
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
+import { clearRunnerLimit, stampRunnerLimit } from '../runners/apply-runner-limit.js';
+import { detectRunnerLimit } from '../runners/limit-detect.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -42,7 +45,11 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import { detectUnexpandedSkillFailure, finalizeUsageLimitOnFailure } from './session-failure.js';
+import {
+  detectUnexpandedSkillFailure,
+  extractSessionFailureText,
+  finalizeUsageLimitOnFailure,
+} from './session-failure.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -744,6 +751,62 @@ agentSessionRoutes.patch(
     // rate-limited schedule run via cross-account failover (best-effort).
     if (usageLimit) {
       await usageLimit.recoverAfterWrite(updated.metadata ?? existing.metadata);
+    }
+
+    // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
+    // cm:guard gate on the DEVICE principal — a user/member PATCH can carry an arbitrary crafted `messages` array (patchSchema.messages is unvalidated), so classifying non-device-authored PATCHes would let a project member mis-stamp a healthy runner and DoS pipeline dispatch (dispatch-gates.ts hard-excludes a rate-limited runner)
+    if (
+      c.get('principal') === 'device' &&
+      patch.status === 'failed' &&
+      !isUserCancelled &&
+      updated.deviceId
+    ) {
+      try {
+        // cm:guard classify only runner-authored text — the transcript's first message is buildAgentChatPrompt's output (the user's own question), so an unfiltered blob lets user content trip isRateLimitError/isAuthError and mis-limit a healthy runner
+        const text = extractSessionFailureText(patch.messages ?? existing.messages, null, {
+          excludeRoles: ['user'],
+        });
+        const limit = detectRunnerLimit(text, null);
+        if (limit) {
+          const [runner] = await db
+            .select({ id: runners.id })
+            .from(runners)
+            .where(
+              and(eq(runners.projectId, updated.projectId), eq(runners.deviceId, updated.deviceId)),
+            )
+            .limit(1);
+          if (runner) {
+            await stampRunnerLimit(runner.id, updated.projectId, limit);
+          }
+        }
+      } catch (err) {
+        logger.warn(
+          { err, sessionId: id, deviceId: updated.deviceId },
+          'agent-sessions: stampRunnerLimit from chat limit-detect failed, continuing',
+        );
+      }
+    }
+
+    // cm:why clear the limit on session completion — symmetric to the stamp above; prevents a runner stamped 'auth' once from being excluded forever on chat-only projects
+    // cm:guard gate on the PERSISTED updated.status, not patch.status — the ISS-733 block above can rewrite a reported 'completed' into 'failed' before the write, and clearing on that rewritten outcome would hide the failure from the health gate
+    if (updated.status === 'completed' && updated.deviceId) {
+      try {
+        const [runner] = await db
+          .select({ id: runners.id })
+          .from(runners)
+          .where(
+            and(eq(runners.projectId, updated.projectId), eq(runners.deviceId, updated.deviceId)),
+          )
+          .limit(1);
+        if (runner) {
+          await clearRunnerLimit(runner.id, updated.projectId);
+        }
+      } catch (err) {
+        logger.warn(
+          { err, sessionId: id, deviceId: updated.deviceId },
+          'agent-sessions: clearRunnerLimit on chat completion failed, continuing',
+        );
+      }
     }
 
     // ISS-675 — this PATCH is the runner's happy-path completion write (a

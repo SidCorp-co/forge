@@ -9,7 +9,10 @@ import { dispatchLivenessMs } from './dispatch-liveness.js';
  * Resolution order:
  *  1. The freshest online `claude-code` runner row for this project (mirrors
  *     `selectRunnerForJob` filters: status='online', host='device',
- *     last_seen_at within the dispatch-liveness window).
+ *     last_seen_at within the dispatch-liveness window), preferring a
+ *     HEALTHY runner (no future `rate_limited_until`, `limit_reason` not
+ *     `auth`) over a limited one — a limited runner is still returned when it
+ *     is the only online candidate, so the pool never wedges (ISS-780).
  *  2. The project's `defaultDeviceId` if it points to an online device.
  *  3. `null` — caller must surface "no device available" to the user.
  *
@@ -51,7 +54,11 @@ export async function findAvailableDeviceForProject(
         SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
       )
       ${excludeClause}
-    ORDER BY r.last_seen_at DESC
+    ORDER BY
+      (CASE WHEN (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+                 AND r.limit_reason IS DISTINCT FROM 'auth'
+            THEN 0 ELSE 1 END) ASC,
+      r.last_seen_at DESC
     LIMIT 1
   `);
   if (rows[0]) return rows[0].device_id;
@@ -88,12 +95,23 @@ export async function findAvailableDeviceForProject(
  * gate the auto-pick uses, and a stale/offline/foreign choice is rejected rather
  * than silently dispatched to a dead cwd (ISS-420). Used by the chat runner
  * picker (`resolveChatDevice` override path).
+ *
+ * By default also gates on health (no future `rate_limited_until`, `limit_reason`
+ * not `auth`) — a runner whose daemon is online but whose Claude CLI is dead is
+ * not chat-capable (ISS-780). `allowLimited:true` skips that gate for callers
+ * that must honour an explicit pick (an override) or check pin liveness
+ * regardless of health (the self-heal migration check in `resolveChatDevice`).
  */
 export async function findChatCapableDeviceForProject(
   projectId: string,
   deviceId: string,
+  opts: { allowLimited?: boolean } = {},
 ): Promise<string | null> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  const healthClause = opts.allowLimited
+    ? sql``
+    : sql`AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+          AND r.limit_reason IS DISTINCT FROM 'auth'`;
   const rows = await db.execute<{ device_id: string }>(sql`
     SELECT r.device_id
     FROM runners r
@@ -107,6 +125,7 @@ export async function findChatCapableDeviceForProject(
       AND NOT EXISTS (
         SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
       )
+      ${healthClause}
     LIMIT 1
   `);
   return rows[0]?.device_id ?? null;

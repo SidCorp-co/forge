@@ -924,13 +924,8 @@ export const runners = pgTable(
     status: text('status', { enum: runnerStatuses }).notNull().default('offline'),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     lastError: text('last_error'),
-    // Rate-limit / usage-limit / auth highlighting (ported from forge-agents).
-    // `limitReason` records why the runner is limited; `rateLimitedUntil` is the
-    // parsed reset time for usage/rate limits (NULL for `auth`, which needs a
-    // manual fix). All three are cleared on a healthy heartbeat or a job that
-    // completes (see heartbeat-ws + finalize-failure). A non-null `limitReason`
-    // with `rateLimitedUntil` in the future is the dispatcher's skip signal and
-    // the UI's "limited" badge source.
+    // cm:why rateLimitedUntil is NULL for reason='auth' (no parseable reset — needs a manual re-login); a non-null limitReason with a future rateLimitedUntil is the dispatcher's skip signal and the UI's "limited" badge source
+    // cm:edge sideeffect -> packages/core/src/agent-sessions/routes.ts — chat session completion also clears these fields, not only job lifecycle
     limitReason: text('limit_reason', { enum: runnerLimitReasons }),
     rateLimitedUntil: timestamp('rate_limited_until', { withTimezone: true }),
     limitDetail: text('limit_detail'),

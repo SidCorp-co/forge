@@ -143,7 +143,10 @@ export async function resolveChatDevice(
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
   if (overrideDeviceId) {
-    const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId);
+    // cm:why honour the explicit pick regardless of health — an unhealthy pick fails the turn, then the agent-chat failover retries onto a healthy runner, rather than silently overriding the user's choice
+    const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId, {
+      allowLimited: true,
+    });
     // Not eligible (offline / disabled / not a chat runner for this project) →
     // report no client so the caller can name the picked runner in the 409.
     if (!picked) return { deviceId: null, isLocal: false, migrated: false };
@@ -153,15 +156,21 @@ export async function resolveChatDevice(
     // cm:why try the chat-capable (runners table) gate before devices.status — a live CLI runner can have devices.status stale offline, which would otherwise self-heal away from a just-picked runner
     const capable = await findChatCapableDeviceForProject(session.projectId, pinned);
     if (capable) return { deviceId: capable, isLocal: false, migrated: false };
-    const [dev] = await db
-      .select({ status: devices.status, disabledAt: devices.disabledAt })
-      .from(devices)
-      .where(eq(devices.id, pinned))
-      .limit(1);
-    // A turned-off device is ignored even when online + pinned — fall through to
-    // pick another available device (or report no client).
-    if (dev?.status === 'online' && !dev.disabledAt)
-      return { deviceId: pinned, isLocal: false, migrated: false };
+    // cm:why distinguish "limited but live" (migrate to a healthy runner below) from "offline runner row" (the existing devices.status self-heal, which only re-grabs the pin while its device row is still online)
+    const liveButLimited = await findChatCapableDeviceForProject(session.projectId, pinned, {
+      allowLimited: true,
+    });
+    if (!liveButLimited) {
+      const [dev] = await db
+        .select({ status: devices.status, disabledAt: devices.disabledAt })
+        .from(devices)
+        .where(eq(devices.id, pinned))
+        .limit(1);
+      // A turned-off device is ignored even when online + pinned — fall through to
+      // pick another available device (or report no client).
+      if (dev?.status === 'online' && !dev.disabledAt)
+        return { deviceId: pinned, isLocal: false, migrated: false };
+    }
   }
   const deviceId = await findAvailableDeviceForProject(session.projectId);
   // Migration = we had a pin but could not honour it and landed on another live

@@ -26,6 +26,11 @@ vi.mock('../../lifecycle/transition.js', () => ({
   applyKernelTransition: (...args: unknown[]) => applyKernelTransition(...args),
 }));
 
+const findAvailableDeviceForProject = vi.fn();
+vi.mock('../../lib/device-pool.js', () => ({
+  findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
+}));
+
 const postRoomMessage = vi.fn();
 vi.mock('./rest-client.js', () => ({
   postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
@@ -36,8 +41,20 @@ vi.mock('./room-delivery.js', () => ({
   resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
 }));
 
-const { AGENT_CHAT_ACK, AGENT_CHAT_ACK_DELAY_MS, buildAgentChatPrompt, hasInFlightAgentChat, scheduleDelayedAck, startAgentChat } =
-  await import('./agent-chat.js');
+const loggerInfo = vi.fn();
+vi.mock('../../logger.js', () => ({
+  logger: { info: (...args: unknown[]) => loggerInfo(...args), error: vi.fn(), warn: vi.fn() },
+}));
+
+const {
+  AGENT_CHAT_ACK,
+  AGENT_CHAT_ACK_DELAY_MS,
+  buildAgentChatPrompt,
+  hasInFlightAgentChat,
+  redispatchAgentChatSessionOnFailover,
+  scheduleDelayedAck,
+  startAgentChat,
+} = await import('./agent-chat.js');
 
 const BASE_ARGS = {
   projectId: 'proj-1',
@@ -145,6 +162,213 @@ describe('startAgentChat', () => {
         reason: 'ws-publish-failed',
       }),
     );
+  });
+});
+
+describe('redispatchAgentChatSessionOnFailover', () => {
+  function makeSession(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'session-1',
+      projectId: 'proj-1',
+      userId: null,
+      deviceId: 'device-1',
+      title: 'Chat: How does X work?',
+      failureReason: 'no_client_ack',
+      messages: [{ role: 'user', content: 'the built agent-chat prompt' }],
+      metadata: {
+        agentChat: {
+          connectionId: 'conn-1',
+          rid: 'room-1',
+          tmid: null,
+          botName: 'Babo',
+          askedByUsername: 'alice',
+          question: 'How does X work?',
+          deliveredAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+      ...overrides,
+    } as never;
+  }
+
+  beforeEach(() => {
+    selectLimit.mockReset();
+    createChatSessionRow.mockReset();
+    dispatchChatTurn.mockReset();
+    findAvailableDeviceForProject.mockReset();
+    applyKernelTransition.mockReset();
+  });
+
+  it('reports not-agent-chat for a session with no agentChat metadata', async () => {
+    const result = await redispatchAgentChatSessionOnFailover(makeSession({ metadata: {} }));
+    expect(result).toEqual({ ok: false, status: 'not-agent-chat' });
+    expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
+  });
+
+  it('is exhausted past MAX_AGENT_CHAT_FAILOVERS (2)', async () => {
+    const result = await redispatchAgentChatSessionOnFailover(
+      makeSession({
+        metadata: {
+          agentChat: {
+            connectionId: 'conn-1',
+            rid: 'room-1',
+            botName: 'Babo',
+            deliveredAt: null,
+            failover: { attempt: 2, triedDeviceIds: ['device-1', 'device-2'] },
+          },
+        },
+      }),
+    );
+    expect(result).toEqual({ ok: false, status: 'exhausted' });
+    expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
+  });
+
+  it('reports no-prompt when the session carries no reusable user message', async () => {
+    const result = await redispatchAgentChatSessionOnFailover(makeSession({ messages: [] }));
+    expect(result).toEqual({ ok: false, status: 'no-prompt' });
+  });
+
+  it('reports no-device when no healthy runner is available', async () => {
+    findAvailableDeviceForProject.mockResolvedValue(null);
+    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    expect(result).toEqual({ ok: false, status: 'no-device' });
+    expect(findAvailableDeviceForProject).toHaveBeenCalledWith('proj-1', {
+      excludeDeviceIds: ['device-1'],
+    });
+  });
+
+  it('excludes every device already tried across a bumped failover chain', async () => {
+    findAvailableDeviceForProject.mockResolvedValue(null);
+    await redispatchAgentChatSessionOnFailover(
+      makeSession({
+        deviceId: 'device-2',
+        metadata: {
+          agentChat: {
+            connectionId: 'conn-1',
+            rid: 'room-1',
+            botName: 'Babo',
+            deliveredAt: null,
+            failover: { attempt: 1, triedDeviceIds: ['device-1'] },
+          },
+        },
+      }),
+    );
+    expect(findAvailableDeviceForProject).toHaveBeenCalledWith('proj-1', {
+      excludeDeviceIds: ['device-1', 'device-2'],
+    });
+  });
+
+  it('re-dispatches to a healthy runner, carrying the bumped failover chain in metadata', async () => {
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
+    dispatchChatTurn.mockResolvedValue({ id: 'session-2' });
+
+    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+
+    expect(result).toEqual({
+      ok: true,
+      status: 'redispatched',
+      sessionId: 'session-2',
+      deviceId: 'device-3',
+    });
+    expect(createChatSessionRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'proj-1',
+        runKind: 'system',
+        metadata: expect.objectContaining({
+          agentChat: expect.objectContaining({
+            rid: 'room-1',
+            deliveredAt: null,
+            failover: { attempt: 1, triedDeviceIds: ['device-1'] },
+          }),
+        }),
+      }),
+    );
+    expect(dispatchChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'the built agent-chat prompt',
+        client: { deviceId: 'device-3', isLocal: false, migrated: false },
+        broadcastEvent: 'agent-session.created',
+      }),
+    );
+    expect(loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fromDeviceId: 'device-1',
+        toDeviceId: 'device-3',
+        failureReason: 'no_client_ack',
+      }),
+      'agent-chat failover: re-dispatched to another runner',
+    );
+  });
+
+  it('schedules a delayed ack for the retry session so the room gets an interim signal', async () => {
+    vi.useFakeTimers();
+    selectLimit.mockResolvedValueOnce([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    selectLimit.mockResolvedValueOnce([
+      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
+    ]);
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
+    dispatchChatTurn.mockResolvedValue({ id: 'session-2' });
+    resolveRoomPostAuth.mockResolvedValue({
+      serverUrl: 'https://chat.example.co',
+      authToken: 'tok',
+      userId: 'bot',
+    });
+    postRoomMessage.mockResolvedValue(undefined);
+
+    await redispatchAgentChatSessionOnFailover(makeSession());
+
+    await vi.runAllTimersAsync();
+
+    expect(postRoomMessage).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('reports error when the project row is missing', async () => {
+    selectLimit.mockResolvedValue([]);
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    expect(result).toEqual({ ok: false, status: 'error' });
+    expect(createChatSessionRow).not.toHaveBeenCalled();
+  });
+
+  it('reports error, marks the retry session failed, and pre-stamps deliveredAt so the bridge short-circuits (no double fallback)', async () => {
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    createChatSessionRow.mockResolvedValue({
+      id: 'session-2',
+      status: 'idle',
+      metadata: { agentChat: { connectionId: 'conn-1', rid: 'room-1', botName: 'Babo', deliveredAt: null } },
+    });
+    dispatchChatTurn.mockRejectedValue(new Error('ws publish failed'));
+    applyKernelTransition.mockResolvedValue([{ id: 'session-2', status: 'failed' }]);
+
+    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    expect(result).toEqual({ ok: false, status: 'error' });
+    expect(applyKernelTransition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        entity: 'session',
+        to: 'failed',
+        reason: 'ws-publish-failed',
+        set: expect.objectContaining({
+          metadata: expect.objectContaining({
+            agentChat: expect.objectContaining({ deliveredAt: expect.any(String) }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('does not mark the retry session failed when createChatSessionRow itself throws (nothing to mark)', async () => {
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    createChatSessionRow.mockRejectedValue(new Error('insert failed'));
+
+    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    expect(result).toEqual({ ok: false, status: 'error' });
+    expect(applyKernelTransition).not.toHaveBeenCalled();
   });
 });
 
