@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessionTurns, agentSessions, projects } from '../db/schema.js';
-import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
+import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { assertProjectRole } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -400,10 +400,8 @@ agentSessionTurnsRoutes.post(
         .from(projects)
         .where(eq(projects.id, inserted.projectId))
         .limit(1);
-      // Seed the project-default MCP servers (e.g. playwright) into the rerun's
-      // fresh interactive Claude turn, mirroring `dispatchChatTurn` — without
-      // this the re-spawned `claude` only sees the `forge` MCP. Best-effort `{}`.
-      const { servers: mcpServersOverride } = await resolveProjectDefaultMcpServers(
+      // cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — a rerun must resolve MCP servers through the same chain as a normal turn, or the re-spawned `claude` sees a different toolset than the session it reruns
+      const { mcpServers: mcpServersOverride } = await resolveSessionMcpServers(
         inserted.projectId,
       );
       roomManager.publish(deviceRoom(targetDeviceId), {

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { type MemberLens, agentSessions, devices, memberLenses } from '../db/schema.js';
-import { resolveProjectDefaultMcpServers } from '../jobs/stage-overrides.js';
+import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { TOOL_REFERENCE, buildChatPreamble } from '../lib/chat-preamble.js';
 import {
   findAvailableDeviceForProject,
@@ -457,11 +457,12 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const target = deviceId as string;
-  // Seed the project-default MCP servers (e.g. playwright) into every chat turn.
-  // Each turn re-spawns `claude` with a fresh `--mcp-config`, so the follow-up
-  // (`agent:send`) needs it as much as the cold start. Best-effort: returns `{}`
-  // (harmless) when the project has no `pipelineConfig.mcpServers` configured.
-  const { servers: mcpServersOverride } = await resolveProjectDefaultMcpServers(project.id);
+  // cm:why resolved on EVERY turn, not just cold start — each turn re-spawns `claude` with a fresh `--mcp-config`, so a follow-up that skipped this would silently lose every MCP server mid-conversation
+  const {
+    mcpServers: mcpServersOverride,
+    resolvedNames,
+    droppedNames,
+  } = await resolveSessionMcpServers(project.id);
   // `claudeSessionId`/`resumable` were already resolved above (before the
   // transaction, so the `pendingSkillName` marker could be persisted).
   if (!resumable) {
@@ -478,7 +479,10 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         // session's durable `metadata.lensOverride` marker) pins the voice for
         // product-bot-initiated runner sessions instead (ISS-674).
         const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
-        const preamble = await buildChatPreamble(project.id, session.userId, forceLenses);
+        const preamble = await buildChatPreamble(project.id, session.userId, forceLenses, {
+          resolved: resolvedNames,
+          dropped: droppedNames,
+        });
         // cm:edge lockstep -> packages/core/src/agent-sessions/lifecycle-routes.ts — POST /:id/runner drops claudeSessionId at pin time, so this must rehydrate on any cold start with history, not just `migrated`
         const history = buildRehydrationBlock(prevMessages);
         prompt = preamble + history + decoratedMessage;

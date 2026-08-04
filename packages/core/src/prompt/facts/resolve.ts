@@ -81,10 +81,29 @@ interface IntegrationRow {
 	sentryTargets?: SentryTarget[];
 }
 
-// Per-integration usage hints come from the data-driven registry
-// (`integrations/usage-registry.ts`) so adding an integration never edits this
-// rendering code. Listing only the connected providers keeps the guide
-// accurate; the agent then knows which tool to reach for which task.
+// cm:edge contract -> packages/core/src/integrations/usage-registry.ts — per-provider usage hints are data-driven there; adding an integration edits that table, never this renderer
+// cm:why one query, shared by the pipeline facts block and the chat preamble — a chat-only copy of the active-filter + sentry-target mapping would drift from what a job sees
+export async function loadActiveIntegrationRows(
+	projectId: string,
+): Promise<IntegrationRow[]> {
+	// cm:guard both flags must hold — an inactive binding on an active connection (or vice versa) injects nothing at dispatch, so listing it here would advertise tools the agent will not receive
+	const pairs = await listBindingsForProject(projectId);
+	return pairs
+		.filter((p) => p.binding.active && p.connection.active)
+		.map((p) => ({
+			provider: p.binding.provider,
+			environment: p.binding.environment,
+			lastHealthStatus: p.connection.lastHealthStatus,
+			...(p.binding.provider === "sentry"
+				? {
+						sentryTargets: resolveSentryTargets(
+							p.connection.config as SentryConfig,
+						),
+					}
+				: {}),
+		}));
+}
+
 export function renderIntegrations(rows: IntegrationRow[]): string {
 	if (rows.length === 0) {
 		return "## Project integrations\nNo external integrations are connected to this project.";
@@ -211,25 +230,7 @@ export async function loadProjectFactInputs(
 		productionBranch = row?.productionBranch ?? null;
 		repoPath = row?.repoPath ?? null;
 
-		// Active bindings joined to their connection (health lives on the
-		// connection after the ISS-399 cutover).
-		const pairs = await listBindingsForProject(projectId);
-		integrations = pairs
-			.filter((p) => p.binding.active && p.connection.active)
-			.map((p) => ({
-				provider: p.binding.provider,
-				environment: p.binding.environment,
-				lastHealthStatus: p.connection.lastHealthStatus,
-				// ISS-526 — attach the Sentry target list so renderIntegrations
-				// can surface it to the agent (config lives on the connection).
-				...(p.binding.provider === "sentry"
-					? {
-							sentryTargets: resolveSentryTargets(
-								p.connection.config as SentryConfig,
-							),
-						}
-					: {}),
-			}));
+		integrations = await loadActiveIntegrationRows(projectId);
 	} catch {
 		// defaults → full ladder, empty {{project:}} resolver
 	}

@@ -147,3 +147,15 @@ export async function resolveJobMcpServers(args: {
 
   return { mcpServers: map, resolvedNames: [...resolvedNames], droppedNames };
 }
+
+// cm:why stage-less callers must still run the integration resolvers — resolveProjectDefaultMcpServers alone stops at catalog expansion, leaking an `epodsystem` sentinel to the runner as bare `true`, which mcp/config.rs skips (connected integration, zero tools)
+// cm:edge contract -> packages/core/src/prompt/system.ts — buildChatPreamble renders these diagnostics as the `mcp-servers` block; pass them or a dropped sentinel stays invisible to the agent
+export async function resolveSessionMcpServers(
+  projectId: string,
+): Promise<ResolvedJobMcpServers> {
+  return resolveJobMcpServers({
+    projectId,
+    stageMcpServers: null,
+    stageDeclaredNames: null,
+  });
+}

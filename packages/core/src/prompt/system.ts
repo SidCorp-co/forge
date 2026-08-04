@@ -29,9 +29,15 @@ import {
   projects,
 } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
+import { logger } from '../logger.js';
 import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
 import { OPERATING_AFFORDANCES_TEXT, renderFact } from './facts/registry.js';
-import { loadProjectFactInputs, renderStageFactsText } from './facts/resolve.js';
+import {
+  loadActiveIntegrationRows,
+  loadProjectFactInputs,
+  renderIntegrations,
+  renderStageFactsText,
+} from './facts/resolve.js';
 import { getStatePrompt } from './state-prompts/index.js';
 
 export type PreambleBlockId =
@@ -214,11 +220,15 @@ async function loadProjectBranches(projectId: string): Promise<{
  * (external product-bot runner sessions) and SKIPS the member-lens DB lookup
  * entirely — the pin must not depend on / be corrupted by the principal's
  * row. Omit (or pass null) for the principal-derived lens (normal chat).
+ *
+ * `mcpDiagnostics` carries the caller's resolved/dropped MCP server names for
+ * this turn (see `resolveSessionMcpServers`).
  */
 export async function buildChatPreamble(
   projectId: string,
   userId?: string | null,
   forceLenses?: readonly MemberLens[] | null,
+  mcpDiagnostics?: { resolved: string[]; dropped: string[] } | null,
 ): Promise<string> {
   const project = await loadProjectBranches(projectId);
   if (!project) return '';
@@ -230,7 +240,24 @@ export async function buildChatPreamble(
     buildChatNudge(lenses),
     formatProjectConfig(project.baseBranch, project.productionBranch),
   ];
+  // cm:why chat drives connected integrations (an MCP-only project has no code to read), so the tool-routing hint must reach it too — renderStageFactsText gates the whole facts block behind a JobType, which chat has none of
+  const integrations = await renderChatIntegrations(projectId);
+  if (integrations) sections.push(integrations);
+  if (mcpDiagnostics && mcpDiagnostics.dropped.length > 0) {
+    sections.push(formatMcpServersBlock(mcpDiagnostics.resolved, mcpDiagnostics.dropped));
+  }
   return `${sections.join('\n\n')}\n\n---\n\n`;
+}
+
+// cm:why best-effort: an integrations-lookup hiccup must degrade chat to the plain preamble, never fail the send
+async function renderChatIntegrations(projectId: string): Promise<string | null> {
+  try {
+    const rows = await loadActiveIntegrationRows(projectId);
+    return rows.length > 0 ? renderIntegrations(rows) : null;
+  } catch (err) {
+    logger.warn({ err, projectId }, 'chat preamble: integrations block unavailable');
+    return null;
+  }
 }
 
 /** Options for the pipeline preamble builders. */
@@ -266,7 +293,7 @@ export interface BuildPreambleOptions {
 function formatMcpServersBlock(resolved: string[], dropped: string[]): string {
   const resolvedList =
     resolved.length > 0 ? resolved.map((n) => `\`mcp__${n}__*\``).join(', ') : '(none)';
-  return `## MCP servers — this dispatch
+  return `## MCP servers — this session
 Resolved and available this session: ${resolvedList}
 
 WARNING — declared in \`pipelineConfig.mcpServers\` but did NOT resolve: ${dropped.map((n) => `\`${n}\``).join(', ')}

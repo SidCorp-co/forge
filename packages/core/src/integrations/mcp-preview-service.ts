@@ -2,23 +2,18 @@
  * MCP injection preview (ISS-429) — service behind
  * `GET /:projectId/integrations/mcp-preview` (thin handler in routes.ts).
  *
- * ⚠️ DRIFT PAIR with `src/jobs/resolve-job-mcp-servers.ts` (and the
- * per-provider `apply*McpServers` resolvers it registers): this preview
- * MIRRORS dispatch-time semantics — same entry builders, same
- * active+credential filters, same oldest-first winning-binding pick
- * (`listActiveBindingsForProjectProvider`), same ISS-581/ISS-623 sentinel
- * opt-in gate — but it deliberately CANNOT call the dispatch resolvers:
- *   1. the resolvers decrypt the real vault credential into the entry; the
- *      preview must never mint secret bytes (placeholder key, redacted
- *      headers by construction);
- *   2. the resolvers return only the final winning map, while the preview
- *      reports one diagnostic row PER BINDING (disabled / no_credential /
- *      shadowed / not_declared);
- *   3. the resolvers gate on ONE dispatch's stage-resolved sentinel map; the
- *      preview checks the project-wide declared set (all stages).
- * When dispatch-time resolution changes (new provider, new gate, new pick
- * order), update BOTH files.
+ * Mirrors dispatch-time semantics with the same entry builders, active+
+ * credential filters, oldest-first winning-binding pick, and ISS-581/ISS-623
+ * sentinel gate, but cannot reuse the dispatch resolvers: they decrypt real
+ * vault credentials (the preview must never mint secret bytes) and return only
+ * the winning map, while this reports one row PER BINDING (disabled /
+ * no_credential / shadowed / not_declared) against the project-wide declared
+ * set rather than one dispatch's stage-resolved map.
+ *
+ * `resolveSessionMcpServers` runs the same chain minus the stage layer, so this
+ * preview describes chat turns too.
  */
+// cm:edge lockstep -> packages/core/src/jobs/resolve-job-mcp-servers.ts — a new provider, gate or binding-pick order must land in both files or the preview lies about what a runner receives
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
