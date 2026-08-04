@@ -754,7 +754,13 @@ agentSessionRoutes.patch(
     }
 
     // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
-    if (patch.status === 'failed' && !isUserCancelled && updated.deviceId) {
+    // cm:guard gate on the DEVICE principal — a user/member PATCH can carry an arbitrary crafted `messages` array (patchSchema.messages is unvalidated), so classifying non-device-authored PATCHes would let a project member mis-stamp a healthy runner and DoS pipeline dispatch (dispatch-gates.ts hard-excludes a rate-limited runner)
+    if (
+      c.get('principal') === 'device' &&
+      patch.status === 'failed' &&
+      !isUserCancelled &&
+      updated.deviceId
+    ) {
       try {
         // cm:guard classify only runner-authored text — the transcript's first message is buildAgentChatPrompt's output (the user's own question), so an unfiltered blob lets user content trip isRateLimitError/isAuthError and mis-limit a healthy runner
         const text = extractSessionFailureText(patch.messages ?? existing.messages, null, {

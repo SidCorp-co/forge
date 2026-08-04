@@ -562,8 +562,9 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
 });
 
 describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the runner row', () => {
-  it("stamps the deviceId's runner row when the failure classifies as a usage limit", async () => {
-    authVerified();
+  // cm:why these stamp only from a DEVICE-principal PATCH — a member PATCH with a crafted `messages` array must never mis-stamp a healthy runner (round-4 review blocker 1)
+  it("stamps the deviceId's runner row when a device-authored failure classifies as a usage limit", async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -575,7 +576,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
         failureReason: null,
       },
     ]);
-    projectAccessAsMember();
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
     ]);
@@ -583,7 +583,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
       body: JSON.stringify({
         status: 'failed',
         messages: [
@@ -603,8 +603,8 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
     );
   });
 
-  it('does not stamp anything for a plain failure that is not a classified usage limit', async () => {
-    authVerified();
+  it('does not stamp anything for a device-authored plain failure that is not a classified usage limit', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -616,14 +616,13 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
         failureReason: null,
       },
     ]);
-    projectAccessAsMember();
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
     ]);
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
       body: JSON.stringify({
         status: 'failed',
         messages: [{ role: 'assistant', content: 'some unrelated tool error' }],
@@ -635,7 +634,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
   });
 
   it('stamps with a non-null until (DEFAULT_LIMIT_COOLDOWN) when reset text is unparseable', async () => {
-    authVerified();
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -647,7 +646,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
         failureReason: null,
       },
     ]);
-    projectAccessAsMember();
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
     ]);
@@ -655,7 +653,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
       body: JSON.stringify({
         status: 'failed',
         messages: [{ role: 'assistant', content: "[USAGE_LIMIT] you've hit your limit" }],
@@ -673,6 +671,36 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
   });
 
   it('does not stamp when only the USER message mentions rate limits/429 (healthy runner)', async () => {
+    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: null,
+      },
+    ]);
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
+      body: JSON.stringify({
+        status: 'failed',
+        messages: [{ role: 'user', content: 'why do we keep hitting 429 / rate limits lately?' }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(stampRunnerLimitMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT stamp a non-device (user/member) PATCH even with a crafted assistant message mentioning "rate limit" (round-4 blocker 1 — DoS via chat PATCH)', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       {
@@ -695,7 +723,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
       body: JSON.stringify({
         status: 'failed',
-        messages: [{ role: 'user', content: 'why do we keep hitting 429 / rate limits lately?' }],
+        messages: [{ role: 'assistant', content: 'rate limit' }],
       }),
     });
 

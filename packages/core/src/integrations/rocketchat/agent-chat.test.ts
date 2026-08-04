@@ -41,6 +41,11 @@ vi.mock('./room-delivery.js', () => ({
   resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
 }));
 
+const loggerInfo = vi.fn();
+vi.mock('../../logger.js', () => ({
+  logger: { info: (...args: unknown[]) => loggerInfo(...args), error: vi.fn(), warn: vi.fn() },
+}));
+
 const {
   AGENT_CHAT_ACK,
   AGENT_CHAT_ACK_DELAY_MS,
@@ -285,6 +290,14 @@ describe('redispatchAgentChatSessionOnFailover', () => {
         client: { deviceId: 'device-3', isLocal: false, migrated: false },
         broadcastEvent: 'agent-session.created',
       }),
+    );
+    expect(loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fromDeviceId: 'device-1',
+        toDeviceId: 'device-3',
+        failureReason: 'no_client_ack',
+      }),
+      'agent-chat failover: re-dispatched to another runner',
     );
   });
 
