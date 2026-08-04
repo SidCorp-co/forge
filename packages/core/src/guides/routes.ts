@@ -1,5 +1,17 @@
+import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
+import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import {
+  deleteIntegrationGuide,
+  integrationGuideSlug,
+  resolveGuide,
+  resolveGuideIndex,
+  upsertIntegrationGuide,
+} from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
 
 /**
@@ -12,8 +24,93 @@ import { getGuide, listGuides } from './registry.js';
  * `installRoutes`: the hosted edge proxy forwards only `/api/*` to core, so
  * every pointer we emit elsewhere in the product MUST use the `/api/guides`
  * form; the root mount exists for self-hosters exposing core directly.
+ *
+ * The `/orgs/:orgId/integration-guides` sub-tree below is the write tier and is
+ * separately authenticated.
  */
 export const guideRoutes = new Hono();
+
+// cm:guard the two public GETs serve the CODE tier only — this router is unauthenticated, so layering an org's guide into them would publish tenant bytes to anyone who can guess an org id
+const upsertSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  summary: z.string().trim().min(1).max(500),
+  body: z.string().min(1).max(200000),
+});
+
+const orgGuideRoutes = new Hono<{ Variables: AuthVars }>();
+orgGuideRoutes.use('*', requireAuth());
+
+async function assertOrgAdmin(orgId: string, userId: string): Promise<void> {
+  const role = await loadOrgRole(orgId, userId);
+  if (!orgRoleAtLeast(role, 'admin')) {
+    throw new HTTPException(403, {
+      message: 'org admin or owner required',
+      cause: { code: 'FORBIDDEN' },
+    });
+  }
+}
+
+function assertKnownProvider(provider: string): void {
+  if (!INTEGRATION_PROVIDERS.includes(provider as (typeof INTEGRATION_PROVIDERS)[number])) {
+    throw new HTTPException(400, {
+      message: `unknown integration provider '${provider}'. Known: ${INTEGRATION_PROVIDERS.join(', ')}`,
+      cause: { code: 'BAD_REQUEST' },
+    });
+  }
+}
+
+orgGuideRoutes.get('/:orgId/guides', async (c) => {
+  const orgId = c.req.param('orgId');
+  await assertOrgAdmin(orgId, c.get('userId'));
+  return c.json({ guides: await resolveGuideIndex(orgId) });
+});
+
+orgGuideRoutes.get('/:orgId/guides/:slug', async (c) => {
+  const orgId = c.req.param('orgId');
+  await assertOrgAdmin(orgId, c.get('userId'));
+  const guide = await resolveGuide(c.req.param('slug'), orgId);
+  if (!guide) {
+    throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
+  }
+  return c.json({ guide });
+});
+
+orgGuideRoutes.put(
+  '/:orgId/integration-guides/:provider',
+  zValidator('json', upsertSchema),
+  async (c) => {
+    const orgId = c.req.param('orgId');
+    const provider = c.req.param('provider');
+    assertKnownProvider(provider);
+    const userId = c.get('userId');
+    await assertOrgAdmin(orgId, userId);
+    const row = await upsertIntegrationGuide({
+      orgId,
+      provider: provider as (typeof INTEGRATION_PROVIDERS)[number],
+      ...c.req.valid('json'),
+      updatedBy: userId,
+    });
+    return c.json({
+      guide: {
+        slug: integrationGuideSlug(row.provider),
+        title: row.title,
+        summary: row.summary,
+        version: row.version,
+        updatedAt: row.updatedAt,
+      },
+    });
+  },
+);
+
+orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
+  const orgId = c.req.param('orgId');
+  const provider = c.req.param('provider');
+  assertKnownProvider(provider);
+  await assertOrgAdmin(orgId, c.get('userId'));
+  return c.json({ deleted: await deleteIntegrationGuide(orgId, provider) });
+});
+
+guideRoutes.route('/orgs', orgGuideRoutes);
 
 function validSlugsMessage(): string {
   const slugs = listGuides()

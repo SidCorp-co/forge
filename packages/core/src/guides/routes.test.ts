@@ -1,9 +1,16 @@
 import { Hono } from 'hono';
-import { describe, expect, it } from 'vitest';
-import { errorHandler } from '../middleware/error.js';
-import type { RequestIdVars } from '../middleware/request-id.js';
-import { FORGE_GUIDES, getGuide, listGuides } from './registry.js';
-import { guideRoutes } from './routes.js';
+import { describe, expect, it, vi } from 'vitest';
+
+// cm:why the router stopped being DB-free when the write tier landed, so the client is stubbed — the public GETs still never query, and this suite exists to prove they need no tenant context
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
+}));
+vi.mock('../db/client.js', () => ({ db: { select: vi.fn() } }));
+
+const { errorHandler } = await import('../middleware/error.js');
+type RequestIdVars = import('../middleware/request-id.js').RequestIdVars;
+const { FORGE_GUIDES, getGuide, listGuides } = await import('./registry.js');
+const { guideRoutes } = await import('./routes.js');
 
 // Mirrors how index.ts mounts + errors this route in production, so the
 // 404 shape and headers match what a real client sees.

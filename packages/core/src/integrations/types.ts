@@ -2,6 +2,20 @@ import type { IntegrationEnvironment } from '../db/schema.js';
 
 export type IntegrationProvider = 'coolify' | 'postman' | 'epodsystem' | 'sentry' | 'rocketchat';
 
+/** Runtime form of {@link IntegrationProvider} — for validating caller-supplied strings. */
+export const INTEGRATION_PROVIDERS = [
+  'coolify',
+  'postman',
+  'epodsystem',
+  'sentry',
+  'rocketchat',
+] as const satisfies readonly IntegrationProvider[];
+
+// cm:guard adding a provider to the union above without adding it here fails this line — keep both in lockstep rather than letting the runtime list silently lag the type
+const _providersExhaustive: IntegrationProvider =
+  null as unknown as (typeof INTEGRATION_PROVIDERS)[number];
+void _providersExhaustive;
+
 export interface AdapterContext<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
   TSecrets extends Record<string, unknown> = Record<string, unknown>,

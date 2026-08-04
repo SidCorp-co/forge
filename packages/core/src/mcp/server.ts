@@ -18,7 +18,6 @@ import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
-import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -63,6 +62,7 @@ import {
   forgeProjectsListTool,
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
+import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
@@ -256,8 +256,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeProjectPmTool(ctx),
     forgePmSetDependencyTool(ctx),
     forgeHealthTool(ctx.device),
-    // ISS-746 — appended last; product-global, no per-request context needed.
-    forgeGuideTool,
+    // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
+    forgeGuideTool(ctx),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
