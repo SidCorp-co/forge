@@ -24,7 +24,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { agentSessions, type agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
-import { AGENT_CHAT_FALLBACK_REPLY } from './agent-chat.js';
+import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
 import { extractFinalAssistantText } from './escalation-bridge.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { postRoomMessage } from './rest-client.js';
@@ -128,9 +128,13 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     .returning({ id: agentSessions.id });
   if (claimed.length === 0) return;
 
-  // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision
-  if (session.status !== 'completed' && session.failureReason !== 'user_cancelled') {
-    const { redispatchAgentChatSessionOnFailover } = await import('./agent-chat.js');
+  // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision; deterministic non-infra failures (skill_not_synced, ws-publish-failed) are excluded because retrying them on every runner produces the same outcome
+  if (
+    session.status !== 'completed' &&
+    session.failureReason !== 'user_cancelled' &&
+    session.failureReason !== 'skill_not_synced' &&
+    session.failureReason !== 'ws-publish-failed'
+  ) {
     const failover = await redispatchAgentChatSessionOnFailover(session);
     if (failover.ok) return;
   }

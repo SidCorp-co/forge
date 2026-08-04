@@ -287,6 +287,33 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     );
   });
 
+  it('schedules a delayed ack for the retry session so the room gets an interim signal', async () => {
+    vi.useFakeTimers();
+    // First selectLimit: projects lookup inside redispatchAgentChatSessionOnFailover.
+    selectLimit.mockResolvedValueOnce([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    // Second selectLimit: agentSessions re-read inside postDelayedAck (still running).
+    selectLimit.mockResolvedValueOnce([
+      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
+    ]);
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
+    dispatchChatTurn.mockResolvedValue({ id: 'session-2' });
+    resolveRoomPostAuth.mockResolvedValue({
+      serverUrl: 'https://chat.example.co',
+      authToken: 'tok',
+      userId: 'bot',
+    });
+    postRoomMessage.mockResolvedValue(undefined);
+
+    await redispatchAgentChatSessionOnFailover(makeSession());
+
+    // Fire the delayed ack timer.
+    await vi.runAllTimersAsync();
+
+    expect(postRoomMessage).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('reports error when the project row is missing', async () => {
     selectLimit.mockResolvedValue([]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');

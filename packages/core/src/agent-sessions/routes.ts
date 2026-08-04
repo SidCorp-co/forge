@@ -17,7 +17,8 @@ import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../
 import { setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
-import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
+import { clearRunnerLimit, stampRunnerLimit } from '../runners/apply-runner-limit.js';
+import { detectRunnerLimit } from '../runners/limit-detect.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -753,7 +754,33 @@ agentSessionRoutes.patch(
     }
 
     // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
-    if (usageLimit?.hit && updated.deviceId) {
+    if (patch.status === 'failed' && !isUserCancelled && updated.deviceId) {
+      try {
+        const text = extractSessionFailureText(patch.messages ?? existing.messages, null);
+        const limit = detectRunnerLimit(text, null);
+        if (limit) {
+          const [runner] = await db
+            .select({ id: runners.id })
+            .from(runners)
+            .where(
+              and(eq(runners.projectId, updated.projectId), eq(runners.deviceId, updated.deviceId)),
+            )
+            .limit(1);
+          if (runner) {
+            await stampRunnerLimit(runner.id, updated.projectId, limit);
+          }
+        }
+      } catch (err) {
+        logger.warn(
+          { err, sessionId: id, deviceId: updated.deviceId },
+          'agent-sessions: stampRunnerLimit from chat limit-detect failed, continuing',
+        );
+      }
+    }
+
+    // cm:why clear the limit when a chat session completes — symmetric to the stamp above;
+    // prevents a runner stamped 'auth' once from being excluded forever on chat-only projects
+    if (patch.status === 'completed' && updated.deviceId) {
       try {
         const [runner] = await db
           .select({ id: runners.id })
@@ -763,19 +790,12 @@ agentSessionRoutes.patch(
           )
           .limit(1);
         if (runner) {
-          const detail = extractSessionFailureText(patch.messages ?? existing.messages, null).slice(
-            -300,
-          );
-          await stampRunnerLimit(runner.id, updated.projectId, {
-            reason: 'usage_limit',
-            until: usageLimit.resetAt ? new Date(usageLimit.resetAt) : null,
-            detail: detail || 'usage limit detected from a chat session failure',
-          });
+          await clearRunnerLimit(runner.id, updated.projectId);
         }
       } catch (err) {
         logger.warn(
           { err, sessionId: id, deviceId: updated.deviceId },
-          'agent-sessions: stampRunnerLimit from chat usage-limit failed, continuing',
+          'agent-sessions: clearRunnerLimit on chat completion failed, continuing',
         );
       }
     }

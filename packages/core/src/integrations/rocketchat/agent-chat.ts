@@ -316,6 +316,13 @@ export async function redispatchAgentChatSessionOnFailover(
       },
       'agent-chat failover: re-dispatched to another runner',
     );
+    scheduleDelayedAck({
+      sessionId: dispatched.id,
+      connectionId: agentChat.connectionId as string,
+      rid: agentChat.rid as string,
+      tmid: typeof agentChat.tmid === 'string' ? agentChat.tmid : null,
+      botName: agentChat.botName as string,
+    });
     return { ok: true, status: 'redispatched', sessionId: dispatched.id, deviceId };
   } catch (err) {
     logger.error(

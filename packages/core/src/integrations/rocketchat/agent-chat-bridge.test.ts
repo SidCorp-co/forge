@@ -208,6 +208,30 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
   });
 
+  it('never retries a skill_not_synced failure — deterministic, retrying would reproduce the same outcome', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+
+    await deliverAgentChatReplyOnce(
+      makeSession({ status: 'failed', failureReason: 'skill_not_synced', messages: [] }),
+    );
+
+    expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
+    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+  });
+
+  it('never retries a ws-publish-failed dispatch failure — deterministic, not an infra routing issue', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+
+    await deliverAgentChatReplyOnce(
+      makeSession({ status: 'failed', failureReason: 'ws-publish-failed', messages: [] }),
+    );
+
+    expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
+    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+  });
+
   it('never retries a content-side outcome (completed session, output-guard rejected)', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     resolveRoomPostAuth.mockResolvedValue(AUTH);

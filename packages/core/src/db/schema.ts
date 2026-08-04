@@ -927,10 +927,10 @@ export const runners = pgTable(
     // Rate-limit / usage-limit / auth highlighting (ported from forge-agents).
     // `limitReason` records why the runner is limited; `rateLimitedUntil` is the
     // parsed reset time for usage/rate limits (NULL for `auth`, which needs a
-    // manual fix). All three are cleared on a healthy heartbeat or a job that
-    // completes (see heartbeat-ws + finalize-failure). A non-null `limitReason`
-    // with `rateLimitedUntil` in the future is the dispatcher's skip signal and
-    // the UI's "limited" badge source.
+    // manual fix). All three are cleared when a job or chat session completes
+    // successfully (see jobs/lifecycle-routes + agent-sessions/routes). A non-null
+    // `limitReason` with `rateLimitedUntil` in the future is the dispatcher's skip
+    // signal and the UI's "limited" badge source.
     limitReason: text('limit_reason', { enum: runnerLimitReasons }),
     rateLimitedUntil: timestamp('rate_limited_until', { withTimezone: true }),
     limitDetail: text('limit_detail'),

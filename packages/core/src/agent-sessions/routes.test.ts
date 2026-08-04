@@ -120,12 +120,13 @@ vi.mock('../integrations/rocketchat/escalation-bridge.js', () => ({
   deliverEscalationReplyOnce: (...args: unknown[]) => deliverEscalationReplyOnceMock(...args),
 }));
 
-// ISS-780 — a classified chat usage-limit failure stamps the owning runner
-// row (best-effort). Stub it so the hook can be asserted in isolation from
-// `apply-runner-limit.ts`'s own DB writes.
+// ISS-780 — chat limit-detect stamps and clears the owning runner row
+// (best-effort). Stub both so hooks can be asserted without hitting real DB writes.
 const stampRunnerLimitMock = vi.fn(async (..._args: unknown[]) => undefined);
+const clearRunnerLimitMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../runners/apply-runner-limit.js', () => ({
   stampRunnerLimit: (...args: unknown[]) => stampRunnerLimitMock(...args),
+  clearRunnerLimit: (...args: unknown[]) => clearRunnerLimitMock(...args),
 }));
 
 const { agentSessionRoutes } = await import('./routes.js');
@@ -165,6 +166,7 @@ beforeEach(() => {
   previewExecuteResults.length = 0;
   deliverEscalationReplyOnceMock.mockClear();
   stampRunnerLimitMock.mockClear();
+  clearRunnerLimitMock.mockClear();
 });
 
 function authVerified() {
@@ -630,6 +632,47 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
 
     expect(res.status).toBe(200);
     expect(stampRunnerLimitMock).not.toHaveBeenCalled();
+  });
+
+  it('stamps with a non-null until (DEFAULT_LIMIT_COOLDOWN) when reset text is unparseable', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+    // The (projectId, deviceId) runner lookup.
+    selectLimit.mockResolvedValueOnce([{ id: 'runner-1' }]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        status: 'failed',
+        // [USAGE_LIMIT] token with no parseable (timezone) parenthetical — common from the Rust runner
+        messages: [{ role: 'assistant', content: "[USAGE_LIMIT] you've hit your limit" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(stampRunnerLimitMock).toHaveBeenCalledWith(
+      'runner-1',
+      PROJECT_ID,
+      expect.objectContaining({ reason: 'usage_limit', until: expect.any(Date) }),
+    );
+    // until must be a future date (the DEFAULT_LIMIT_COOLDOWN fallback), not null
+    const call = stampRunnerLimitMock.mock.calls[0] as [string, string, { until: Date | null }];
+    expect(call[2].until).not.toBeNull();
   });
 });
 
