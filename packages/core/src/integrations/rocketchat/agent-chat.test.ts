@@ -320,10 +320,14 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     expect(createChatSessionRow).not.toHaveBeenCalled();
   });
 
-  it('reports error and marks the retry session failed when the re-dispatch throws (no orphaned running row)', async () => {
+  it('reports error, marks the retry session failed, and pre-stamps deliveredAt so the bridge short-circuits (no double fallback)', async () => {
     selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');
-    createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
+    createChatSessionRow.mockResolvedValue({
+      id: 'session-2',
+      status: 'idle',
+      metadata: { agentChat: { connectionId: 'conn-1', rid: 'room-1', botName: 'Babo', deliveredAt: null } },
+    });
     dispatchChatTurn.mockRejectedValue(new Error('ws publish failed'));
     applyKernelTransition.mockResolvedValue([{ id: 'session-2', status: 'failed' }]);
 
@@ -335,6 +339,11 @@ describe('redispatchAgentChatSessionOnFailover', () => {
         entity: 'session',
         to: 'failed',
         reason: 'ws-publish-failed',
+        set: expect.objectContaining({
+          metadata: expect.objectContaining({
+            agentChat: expect.objectContaining({ deliveredAt: expect.any(String) }),
+          }),
+        }),
       }),
     );
   });

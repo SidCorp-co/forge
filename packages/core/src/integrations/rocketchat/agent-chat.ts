@@ -346,11 +346,20 @@ export async function redispatchAgentChatSessionOnFailover(
       'agent-chat failover: re-dispatch failed',
     );
     // cm:edge lockstep -> packages/core/src/integrations/rocketchat/agent-chat-bridge.ts — dispatchChatTurn commits status:'running' before its throwable work, so a throw here must terminate the retry row itself (mirrors startAgentChat's catch above) or hasInFlightAgentChat wedges the room on a phantom in-flight session
+    // cm:why pre-stamp deliveredAt in the same write so the row applyKernelTransition returns to fireAgentChatBridge already has a non-null deliveredAt — without this the bridge CAS-claims the retry row and posts a second fallback while the original caller also posts one
+    const retryMeta = (retrySession.metadata as Record<string, unknown>) ?? {};
+    const retryAgentChat = (retryMeta.agentChat as Record<string, unknown>) ?? {};
     try {
       await applyKernelTransition(db, {
         entity: 'session',
         to: 'failed',
-        set: { failureReason: 'ws-publish-failed' },
+        set: {
+          failureReason: 'ws-publish-failed',
+          metadata: {
+            ...retryMeta,
+            agentChat: { ...retryAgentChat, deliveredAt: new Date().toISOString() },
+          } as never,
+        },
         where: eq(agentSessions.id, retrySession.id),
         fromStatus: retrySession.status,
         reason: 'ws-publish-failed',

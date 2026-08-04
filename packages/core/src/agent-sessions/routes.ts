@@ -781,8 +781,7 @@ agentSessionRoutes.patch(
       }
     }
 
-    // cm:why clear the limit when a chat session completes — symmetric to the stamp above;
-    // prevents a runner stamped 'auth' once from being excluded forever on chat-only projects
+    // cm:why clear the limit on session completion — symmetric to the stamp above; prevents a runner stamped 'auth' once from being excluded forever on chat-only projects
     // cm:guard gate on the PERSISTED updated.status, not patch.status — the ISS-733 block above can rewrite a reported 'completed' into 'failed' before the write, and clearing on that rewritten outcome would hide the failure from the health gate
     if (updated.status === 'completed' && updated.deviceId) {
       try {

@@ -232,6 +232,17 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
   });
 
+  it('posts exactly one fallback when failover dispatch throws (dispatch-throw path returns {ok:false,status:error})', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'error' });
+
+    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
+
+    expect(postRoomMessage).toHaveBeenCalledTimes(1);
+    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+  });
+
   it('never retries a content-side outcome (completed session, output-guard rejected)', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
