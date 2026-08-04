@@ -3,16 +3,20 @@
 //!
 //! Triggered by the `provision.request` WS event and by a periodic sweep (so an
 //! offline device catches up on reconnect). For each `queued` provision the
-//! runner pulls from core it:
-//!   1. resolves the target folder (server `repoPath`, else `projects_root/<slug>`),
-//!   2. writes the project's git SSH key (if delivered) and pins git to it,
-//!   3. clones the repo if the folder is missing (degrades to `needs_manual_setup`
-//!      when there's no repo URL / the clone can't authenticate),
-//!   4. seeds `.claude/skills/`,
-//!   5. writes a persistent `.mcp.json` (Forge MCP) + Forge orientation
-//!      (`.forge/orientation.md` + a fixed `CLAUDE.md` pointer),
-//! reporting each stage back so web renders a live stepper. Best-effort by
-//! contract — a failure reports `failed`/`needs_manual_setup`, never panics.
+//! runner pulls from core it resolves the target folder (server `repoPath`, else
+//! `projects_root/<slug>`), writes the project's git SSH key when one was
+//! delivered and pins git to it, clones the repo when the folder is not already a
+//! work tree, then seeds `.claude/skills/`, a persistent `.mcp.json` (Forge MCP)
+//! and the Forge orientation (`.forge/orientation.md` + a fixed `CLAUDE.md`
+//! pointer), reporting each stage back so web renders a live stepper.
+//!
+//! Git is OPTIONAL: a project with no repo URL whose folder already exists is a
+//! repo-less workspace (an MCP-driven storefront has no codebase) and gets every
+//! non-git step. `needs_manual_setup` is reserved for the cases nothing can
+//! proceed from — no resolvable path, or a missing folder with no URL to clone.
+//!
+//! Best-effort by contract — a failure reports `failed`/`needs_manual_setup`,
+//! never panics.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -81,10 +85,19 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         None => None,
     };
 
-    // 3. Clone if the folder isn't already a git work tree.
-    let is_repo = repo_path.join(".git").exists();
-    if !is_repo {
-        let Some(repo_url) = p.repo_url.as_deref().filter(|u| !u.trim().is_empty()) else {
+    // 3. Clone, or recognise a deliberately repo-less workspace.
+    match classify_workspace(&repo_path, p.repo_url.as_deref()) {
+        WorkspaceMode::AlreadyRepo => {}
+        WorkspaceMode::RepoLess => {
+            tracing::info!(
+                "[provision] project={} has no repo URL and no git work tree — treating {} as a repo-less workspace",
+                p.slug,
+                repo_path.display()
+            );
+            finish_workspace(client, cfg, p, &repo_path).await;
+            return;
+        }
+        WorkspaceMode::ManualSetup => {
             report(
                 client,
                 &p.runner_id,
@@ -93,24 +106,27 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
             )
             .await;
             return;
-        };
-        report(client, &p.runner_id, "cloning", None).await;
-        // `branch` = the project's base branch (server sends `runner.branch ??
-        // project.baseBranch`). Check it out right after clone — BEFORE we write
-        // the orientation/MCP files below — so the main worktree sits on the base
-        // branch, which the job dispatcher assumes is already checked out. Doing
-        // it pre-orientation also avoids the untracked-file collision you'd hit
-        // switching branches after those files land.
-        if let Err(detail) = clone_repo(
-            repo_url,
-            &repo_path,
-            ssh_cmd.as_deref(),
-            p.branch.as_deref(),
-        ) {
-            // A clone we can't complete is a manual-setup situation, not a hard
-            // failure: the user can clone it themselves and re-assign.
-            report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
-            return;
+        }
+        WorkspaceMode::Clone => {
+            let repo_url = p
+                .repo_url
+                .as_deref()
+                .map(str::trim)
+                .expect("WorkspaceMode::Clone implies a non-empty repo url");
+            report(client, &p.runner_id, "cloning", None).await;
+            // cm:guard check the base branch out BEFORE the orientation/MCP writes — the
+            // dispatcher assumes the main worktree already sits on the base branch, and
+            // switching afterwards collides with those now-untracked files.
+            if let Err(detail) = clone_repo(
+                repo_url,
+                &repo_path,
+                ssh_cmd.as_deref(),
+                p.branch.as_deref(),
+            ) {
+                // cm:why an unfinishable clone is manual-setup, not `failed` — the operator can clone it by hand and re-assign, which a hard failure would not invite
+                report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
+                return;
+            }
         }
     }
 
@@ -120,23 +136,29 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         set_repo_ssh_command(&repo_path, cmd);
     }
 
-    // 4. Skills.
+    finish_workspace(client, cfg, p, &repo_path).await;
+}
+
+/// Steps 4-6: skills, persistent MCP config, orientation, then `ready`. Shared
+/// by the cloned and the repo-less paths — the workspace contents an agent needs
+/// do not depend on whether git is involved.
+async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, repo_path: &Path) {
     report(client, &p.runner_id, "syncing_skills", None).await;
-    match skill_sync::sync_skills(client, &p.project_id, &repo_path).await {
+    match skill_sync::sync_skills(client, &p.project_id, repo_path).await {
         Ok(n) => tracing::info!("[provision] project={} synced {n} skill(s)", p.slug),
         Err(e) => tracing::warn!("[provision] skill sync failed: {e}"),
     }
 
-    // 5. Persistent MCP config + Forge orientation (.forge/orientation.md +
-    // CLAUDE.md pointer). Both folded under the `writing_mcp` step — neither is a
-    // hard failure, so we log and press on to `ready`.
+    // cm:why neither write is a hard failure — a workspace missing its orientation
+    // is degraded but usable, while refusing to reach `ready` over it would leave
+    // the project looking unprovisioned and block dispatch entirely.
     report(client, &p.runner_id, "writing_mcp", None).await;
     if let Err(e) =
-        mcp::config::write_persistent(&repo_path, client.base(), client.device_token(), &p.slug)
+        mcp::config::write_persistent(repo_path, client.base(), client.device_token(), &p.slug)
     {
         tracing::warn!("[provision] write .mcp.json failed: {e}");
     }
-    if let Err(e) = orientation::write_orientation(&repo_path, &p.project_id, &p.slug) {
+    if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
         tracing::warn!("[provision] write orientation failed: {e}");
     }
 
@@ -230,4 +252,106 @@ fn set_repo_ssh_command(repo_path: &Path, ssh_cmd: &str) {
 pub async fn handle_request(client: &CoreClient, cfg: &Config) -> Result<()> {
     run_pending(client, cfg).await;
     Ok(())
+}
+
+/// What provisioning should do with the resolved folder.
+#[derive(Debug, PartialEq, Eq)]
+enum WorkspaceMode {
+    /// Already a git work tree — skip the clone, keep every later step.
+    AlreadyRepo,
+    /// Folder exists, no repo URL: a deliberate repo-less workspace.
+    RepoLess,
+    /// Folder exists or not, repo URL present: clone into it.
+    Clone,
+    /// Nothing to work with — no folder and nothing to clone from.
+    ManualSetup,
+}
+
+// cm:guard the ONLY branch that may report `needs_manual_setup` is a MISSING folder
+// with no URL. An existing folder without a URL is an MCP-driven project that has
+// no codebase by design; refusing it there is what forced a fake `git init` before
+// any such store could be provisioned at all.
+fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode {
+    if repo_path.join(".git").exists() {
+        return WorkspaceMode::AlreadyRepo;
+    }
+    let has_url = repo_url.map(str::trim).is_some_and(|u| !u.is_empty());
+    if has_url {
+        return WorkspaceMode::Clone;
+    }
+    if repo_path.is_dir() {
+        WorkspaceMode::RepoLess
+    } else {
+        WorkspaceMode::ManualSetup
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn tmp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge-provision-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn a_git_work_tree_skips_the_clone() {
+        let dir = tmp("already-repo");
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        assert_eq!(classify_workspace(&dir, None), WorkspaceMode::AlreadyRepo);
+        assert_eq!(
+            classify_workspace(&dir, Some("git@example.com:a/b.git")),
+            WorkspaceMode::AlreadyRepo
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_existing_folder_without_a_url_is_repo_less() {
+        let dir = tmp("repo-less");
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(classify_workspace(&dir, None), WorkspaceMode::RepoLess);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_blank_url_counts_as_no_url() {
+        let dir = tmp("blank-url");
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(
+            classify_workspace(&dir, Some("   ")),
+            WorkspaceMode::RepoLess
+        );
+        assert_eq!(classify_workspace(&dir, Some("")), WorkspaceMode::RepoLess);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_url_means_clone_even_into_an_existing_empty_folder() {
+        let dir = tmp("clone-into-existing");
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(
+            classify_workspace(&dir, Some("git@example.com:a/b.git")),
+            WorkspaceMode::Clone
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_folder_with_a_url_still_clones() {
+        let dir = tmp("missing-with-url");
+        assert_eq!(
+            classify_workspace(&dir, Some("git@example.com:a/b.git")),
+            WorkspaceMode::Clone
+        );
+    }
+
+    #[test]
+    fn only_a_missing_folder_with_no_url_needs_manual_setup() {
+        let dir = tmp("missing-no-url");
+        assert_eq!(classify_workspace(&dir, None), WorkspaceMode::ManualSetup);
+    }
 }
