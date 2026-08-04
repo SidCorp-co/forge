@@ -12,12 +12,17 @@ import { extractPromptString } from './turns-helpers.js';
 export function extractSessionFailureText(
   messages: unknown,
   note: string | null | undefined,
+  opts?: { excludeRoles?: string[] },
 ): string {
   const parts: string[] = [];
   if (typeof note === 'string' && note.trim()) parts.push(note);
   if (Array.isArray(messages)) {
     for (const m of messages.slice(-6)) {
       if (m && typeof m === 'object') {
+        const role = (m as { role?: unknown }).role;
+        if (opts?.excludeRoles && typeof role === 'string' && opts.excludeRoles.includes(role)) {
+          continue;
+        }
         const content = (m as { content?: unknown }).content;
         const text = extractPromptString(content);
         if (text) parts.push(text);

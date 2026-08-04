@@ -190,6 +190,7 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     createChatSessionRow.mockReset();
     dispatchChatTurn.mockReset();
     findAvailableDeviceForProject.mockReset();
+    applyKernelTransition.mockReset();
   });
 
   it('reports not-agent-chat for a session with no agentChat metadata', async () => {
@@ -289,9 +290,7 @@ describe('redispatchAgentChatSessionOnFailover', () => {
 
   it('schedules a delayed ack for the retry session so the room gets an interim signal', async () => {
     vi.useFakeTimers();
-    // First selectLimit: projects lookup inside redispatchAgentChatSessionOnFailover.
     selectLimit.mockResolvedValueOnce([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
-    // Second selectLimit: agentSessions re-read inside postDelayedAck (still running).
     selectLimit.mockResolvedValueOnce([
       { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
     ]);
@@ -307,7 +306,6 @@ describe('redispatchAgentChatSessionOnFailover', () => {
 
     await redispatchAgentChatSessionOnFailover(makeSession());
 
-    // Fire the delayed ack timer.
     await vi.runAllTimersAsync();
 
     expect(postRoomMessage).toHaveBeenCalled();
@@ -322,14 +320,33 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     expect(createChatSessionRow).not.toHaveBeenCalled();
   });
 
-  it('reports error when the re-dispatch throws', async () => {
+  it('reports error and marks the retry session failed when the re-dispatch throws (no orphaned running row)', async () => {
     selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');
     createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
     dispatchChatTurn.mockRejectedValue(new Error('ws publish failed'));
+    applyKernelTransition.mockResolvedValue([{ id: 'session-2', status: 'failed' }]);
 
     const result = await redispatchAgentChatSessionOnFailover(makeSession());
     expect(result).toEqual({ ok: false, status: 'error' });
+    expect(applyKernelTransition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        entity: 'session',
+        to: 'failed',
+        reason: 'ws-publish-failed',
+      }),
+    );
+  });
+
+  it('does not mark the retry session failed when createChatSessionRow itself throws (nothing to mark)', async () => {
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    createChatSessionRow.mockRejectedValue(new Error('insert failed'));
+
+    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    expect(result).toEqual({ ok: false, status: 'error' });
+    expect(applyKernelTransition).not.toHaveBeenCalled();
   });
 });
 

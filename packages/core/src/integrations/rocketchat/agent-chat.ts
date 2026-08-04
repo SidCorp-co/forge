@@ -287,8 +287,9 @@ export async function redispatchAgentChatSessionOnFailover(
     failover: { attempt, triedDeviceIds: tried } satisfies AgentChatFailoverState,
   };
 
+  let retrySession: SessionRow;
   try {
-    const retrySession = await createChatSessionRow({
+    retrySession = await createChatSessionRow({
       projectId: session.projectId,
       userId: session.userId,
       title:
@@ -297,6 +298,15 @@ export async function redispatchAgentChatSessionOnFailover(
       runMetadata: { source: 'rocketchat.agentChat', rid: agentChat.rid },
       metadata: { agentChat: nextAgentChat, lensOverride: ['product'] },
     });
+  } catch (err) {
+    logger.error(
+      { err, failedSessionId: session.id, rid: agentChat.rid, attempt },
+      'agent-chat failover: retry session creation failed',
+    );
+    return { ok: false, status: 'error' };
+  }
+
+  try {
     const dispatched = await dispatchChatTurn({
       session: retrySession,
       project,
@@ -326,9 +336,33 @@ export async function redispatchAgentChatSessionOnFailover(
     return { ok: true, status: 'redispatched', sessionId: dispatched.id, deviceId };
   } catch (err) {
     logger.error(
-      { err, failedSessionId: session.id, rid: agentChat.rid, attempt },
+      {
+        err,
+        failedSessionId: session.id,
+        retrySessionId: retrySession.id,
+        rid: agentChat.rid,
+        attempt,
+      },
       'agent-chat failover: re-dispatch failed',
     );
+    // cm:edge lockstep -> packages/core/src/integrations/rocketchat/agent-chat-bridge.ts — dispatchChatTurn commits status:'running' before its throwable work, so a throw here must terminate the retry row itself (mirrors startAgentChat's catch above) or hasInFlightAgentChat wedges the room on a phantom in-flight session
+    try {
+      await applyKernelTransition(db, {
+        entity: 'session',
+        to: 'failed',
+        set: { failureReason: 'ws-publish-failed' },
+        where: eq(agentSessions.id, retrySession.id),
+        fromStatus: retrySession.status,
+        reason: 'ws-publish-failed',
+        actor: { type: 'system' },
+        source: 'rocketchat.agent-chat',
+      });
+    } catch (cleanupErr) {
+      logger.error(
+        { err: cleanupErr, retrySessionId: retrySession.id },
+        'agent-chat failover: failed to mark retry session failed after dispatch failure',
+      );
+    }
     return { ok: false, status: 'error' };
   }
 }

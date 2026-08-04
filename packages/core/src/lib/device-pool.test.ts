@@ -1,11 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-// ISS-780 — health-gate coverage for the chat/agent-turn device pick.
 // `db.execute` is mocked (no real Postgres), so ORDER BY ranking itself is
 // trusted to the database; these tests assert (a) the health-preference
 // clause is actually sent, and (b) the function's own logic — pass-through
 // of whatever the DB ranked first, last-resort fallback when only a limited
 // runner exists, and the WHERE-level gate toggle on `findChatCapableDeviceForProject`.
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const execute = vi.fn();
 const limit = vi.fn();
@@ -46,8 +45,6 @@ describe('findAvailableDeviceForProject', () => {
   });
 
   it('returns the healthy runner when the DB ranks it ahead of a rate-limited/auth runner', async () => {
-    // The DB is the one that ranks healthy-first; this asserts the function
-    // passes that ranking straight through (rows[0]).
     execute.mockResolvedValueOnce([{ device_id: DEVICE_HEALTHY }]);
     await expect(findAvailableDeviceForProject(PROJECT)).resolves.toBe(DEVICE_HEALTHY);
   });
@@ -74,9 +71,6 @@ describe('findAvailableDeviceForProject', () => {
 });
 
 describe('findChatCapableDeviceForProject', () => {
-  // Simulates a Postgres WHERE clause: the device only "matches" when the
-  // health-gate fragment is ABSENT from the query (i.e. allowLimited:true
-  // dropped it) — modelling a device that is online but currently limited.
   function mockLimitedDevice(deviceId: string) {
     execute.mockImplementation(async (q: unknown) => {
       const str = JSON.stringify(q);

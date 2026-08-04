@@ -215,13 +215,7 @@ describe('resolveChatDevice', () => {
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
 
-  // --- ISS-780: health-gated pin self-heal ---
-
   it('limited-but-live pin migrates to a healthy runner (no re-grab via devices.status)', async () => {
-    // First call (default gate) rejects the limited pin; the allowLimited
-    // liveness check confirms it's still online, just unhealthy — so this
-    // must migrate straight to the auto-pick WITHOUT ever consulting
-    // devices.status (that path is reserved for a truly offline runner row).
     findChatCapableDeviceForProject.mockImplementation(
       async (_projectId: string, _deviceId: string, opts?: { allowLimited?: boolean }) =>
         opts?.allowLimited ? DEVICE : null,

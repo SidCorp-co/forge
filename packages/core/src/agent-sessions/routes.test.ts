@@ -120,8 +120,6 @@ vi.mock('../integrations/rocketchat/escalation-bridge.js', () => ({
   deliverEscalationReplyOnce: (...args: unknown[]) => deliverEscalationReplyOnceMock(...args),
 }));
 
-// ISS-780 — chat limit-detect stamps and clears the owning runner row
-// (best-effort). Stub both so hooks can be asserted without hitting real DB writes.
 const stampRunnerLimitMock = vi.fn(async (..._args: unknown[]) => undefined);
 const clearRunnerLimitMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../runners/apply-runner-limit.js', () => ({
@@ -500,6 +498,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'completed' },
     ]);
+    selectLimit.mockResolvedValueOnce([{ id: 'runner-1' }]);
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
@@ -522,6 +521,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
     expect(updates.status).toBe('completed');
     expect(updates.failureReason).toBeUndefined();
     expect(updates.metadata).toEqual({ deviceId: DEVICE_ID });
+    expect(clearRunnerLimitMock).toHaveBeenCalledWith('runner-1', PROJECT_ID);
   });
 
   it('does not touch status/metadata when no skill was pending on this session', async () => {
@@ -540,6 +540,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'completed' },
     ]);
+    selectLimit.mockResolvedValueOnce([{ id: 'runner-1' }]);
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
@@ -578,7 +579,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
     ]);
-    // The (projectId, deviceId) runner lookup that resolves which row to stamp.
     selectLimit.mockResolvedValueOnce([{ id: 'runner-1' }]);
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
@@ -651,7 +651,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
     ]);
-    // The (projectId, deviceId) runner lookup.
     selectLimit.mockResolvedValueOnce([{ id: 'runner-1' }]);
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
@@ -659,7 +658,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
       body: JSON.stringify({
         status: 'failed',
-        // [USAGE_LIMIT] token with no parseable (timezone) parenthetical — common from the Rust runner
         messages: [{ role: 'assistant', content: "[USAGE_LIMIT] you've hit your limit" }],
       }),
     });
@@ -670,9 +668,101 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
       PROJECT_ID,
       expect.objectContaining({ reason: 'usage_limit', until: expect.any(Date) }),
     );
-    // until must be a future date (the DEFAULT_LIMIT_COOLDOWN fallback), not null
     const call = stampRunnerLimitMock.mock.calls[0] as [string, string, { until: Date | null }];
     expect(call[2].until).not.toBeNull();
+  });
+
+  it('does not stamp when only the USER message mentions rate limits/429 (healthy runner)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        status: 'failed',
+        messages: [{ role: 'user', content: 'why do we keep hitting 429 / rate limits lately?' }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(stampRunnerLimitMock).not.toHaveBeenCalled();
+  });
+
+  it('clears the runner limit when a chat session completes', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'completed' },
+    ]);
+    selectLimit.mockResolvedValueOnce([{ id: 'runner-1' }]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(clearRunnerLimitMock).toHaveBeenCalledWith('runner-1', PROJECT_ID);
+  });
+
+  it('does not clear the runner limit when the ISS-733 guard rewrites a reported completed into failed', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [{ role: 'user', content: '/forge-onboard\nhi' }],
+        metadata: { pendingSkillName: 'forge-onboard' },
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        status: 'completed',
+        messages: [
+          { role: 'user', content: '/forge-onboard\nhi' },
+          { role: 'assistant', content: 'Unknown command: /forge-onboard' },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(clearRunnerLimitMock).not.toHaveBeenCalled();
   });
 });
 

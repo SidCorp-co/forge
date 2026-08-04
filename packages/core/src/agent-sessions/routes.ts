@@ -756,7 +756,10 @@ agentSessionRoutes.patch(
     // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
     if (patch.status === 'failed' && !isUserCancelled && updated.deviceId) {
       try {
-        const text = extractSessionFailureText(patch.messages ?? existing.messages, null);
+        // cm:guard classify only runner-authored text — the transcript's first message is buildAgentChatPrompt's output (the user's own question), so an unfiltered blob lets user content trip isRateLimitError/isAuthError and mis-limit a healthy runner
+        const text = extractSessionFailureText(patch.messages ?? existing.messages, null, {
+          excludeRoles: ['user'],
+        });
         const limit = detectRunnerLimit(text, null);
         if (limit) {
           const [runner] = await db
@@ -780,7 +783,8 @@ agentSessionRoutes.patch(
 
     // cm:why clear the limit when a chat session completes — symmetric to the stamp above;
     // prevents a runner stamped 'auth' once from being excluded forever on chat-only projects
-    if (patch.status === 'completed' && updated.deviceId) {
+    // cm:guard gate on the PERSISTED updated.status, not patch.status — the ISS-733 block above can rewrite a reported 'completed' into 'failed' before the write, and clearing on that rewritten outcome would hide the failure from the health gate
+    if (updated.status === 'completed' && updated.deviceId) {
       try {
         const [runner] = await db
           .select({ id: runners.id })
