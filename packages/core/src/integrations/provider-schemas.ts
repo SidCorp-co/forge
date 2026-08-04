@@ -210,6 +210,8 @@ export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
+  // cm:why deliberately NOT a provider-config key — this is Forge-side prompt text, so routing it through configSchemaForProvider would force all five provider schemas to carry a field none of them consume
+  instructions: z.string().max(4000).nullable().optional(),
 });
 
 // Owner-scoped connection create (no environment — that's a binding concern).

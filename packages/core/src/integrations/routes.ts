@@ -249,10 +249,16 @@ integrationsRoutes.patch(
       if (mergedSecrets !== undefined) connPatch.secrets = mergedSecrets;
       await updateConnection(connection.id, connPatch);
     }
-    if (mergedBindingConfig !== undefined || patch.active !== undefined) {
+    if (
+      mergedBindingConfig !== undefined ||
+      patch.active !== undefined ||
+      patch.instructions !== undefined
+    ) {
       const bindingPatch: Parameters<typeof updateBinding>[1] = {};
       if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
       if (patch.active !== undefined) bindingPatch.active = patch.active;
+      // cm:why project-admin editable without the org-owner escalation above — instructions are per-project prompt text, not a shared credential, so a project admin scoping their own store's guidance touches nothing another project can see
+      if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
       await updateBinding(binding.id, bindingPatch);
     }
 

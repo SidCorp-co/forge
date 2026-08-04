@@ -289,6 +289,7 @@ export interface UpdateBindingPatch {
   integrationSecret?: string | null;
   active?: boolean;
   label?: string;
+  instructions?: string | null;
 }
 
 export async function updateBinding(
@@ -300,6 +301,7 @@ export async function updateBinding(
   if (patch.integrationSecret !== undefined) set.integrationSecret = patch.integrationSecret;
   if (patch.active !== undefined) set.active = patch.active;
   if (patch.label !== undefined) set.label = patch.label;
+  if (patch.instructions !== undefined) set.instructions = patch.instructions;
   const [row] = await db
     .update(integrationBindings)
     .set(set)

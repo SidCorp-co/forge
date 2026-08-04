@@ -226,4 +226,98 @@ describe('renderIntegrations — capability-guide pointer (ISS-746)', () => {
     ]);
     expect(text).not.toContain('Full guide:');
   });
+
+  it('points at the org runtime guide for a provider that has no seeded slug (epodsystem)', () => {
+    const text = renderIntegrations([
+      {
+        provider: 'epodsystem',
+        environment: 'prod',
+        lastHealthStatus: 'ok',
+        hasOrgGuide: true,
+      },
+    ]);
+    expect(text).toContain('Full guide: `forge_guide get integration-epodsystem`.');
+  });
+
+  // cm:guard the org's runtime guide must WIN over the seeded slug — an org authors one to correct the shipped default, so pointing at the default would send the agent to the text they replaced
+  it('the org guide overrides a seeded slug (coolify)', () => {
+    const text = renderIntegrations([
+      {
+        provider: 'coolify',
+        environment: 'staging',
+        lastHealthStatus: 'ok',
+        hasOrgGuide: true,
+      },
+    ]);
+    expect(text).toContain('Full guide: `forge_guide get integration-coolify`.');
+    expect(text).not.toContain('deploy-safety');
+  });
+});
+
+describe('renderIntegrations — per-binding instructions (A11)', () => {
+  it('renders operator instructions as an indented sub-block under the bullet', () => {
+    const text = renderIntegrations([
+      {
+        provider: 'epodsystem',
+        environment: 'prod',
+        lastHealthStatus: 'ok',
+        instructions: 'Never publish before 09:00 ICT.\nAsk the owner for the size chart.',
+      },
+    ]);
+    expect(text).toContain('Project-specific instructions for **epodsystem**');
+    expect(text).toContain('    Never publish before 09:00 ICT.');
+    expect(text).toContain('    Ask the owner for the size chart.');
+  });
+
+  // cm:guard every line must stay indented — an unindented operator line escapes its bullet and reads to the agent as a new top-level instruction
+  it('indents every line of a multi-line instruction', () => {
+    const text = renderIntegrations([
+      {
+        provider: 'epodsystem',
+        environment: 'prod',
+        lastHealthStatus: null,
+        instructions: 'line one\nline two\nline three',
+      },
+    ]);
+    for (const line of ['line one', 'line two', 'line three']) {
+      expect(text).toContain(`    ${line}`);
+    }
+    expect(text).not.toMatch(/^line two$/m);
+  });
+
+  it('says instructions win over the general guide where they conflict', () => {
+    const text = renderIntegrations([
+      {
+        provider: 'epodsystem',
+        environment: 'prod',
+        lastHealthStatus: null,
+        instructions: 'x',
+      },
+    ]);
+    expect(text).toContain('follow these over the general guide where they conflict');
+  });
+
+  it('renders nothing extra for blank or whitespace-only instructions', () => {
+    for (const instructions of [null, '', '   \n  ']) {
+      const text = renderIntegrations([
+        { provider: 'epodsystem', environment: 'prod', lastHealthStatus: null, instructions },
+      ]);
+      expect(text).not.toContain('Project-specific instructions');
+    }
+  });
+
+  it('keeps both Sentry targets and instructions, targets first', () => {
+    const text = renderIntegrations([
+      {
+        provider: 'sentry',
+        environment: 'prod',
+        lastHealthStatus: 'ok',
+        sentryTargets: [{ label: 'Backend', organizationSlug: 'acme', projectSlug: 'be' }],
+        instructions: 'Only triage P1s.',
+      },
+    ]);
+    expect(text.indexOf('Backend: org=acme')).toBeLessThan(
+      text.indexOf('Project-specific instructions'),
+    );
+  });
 });

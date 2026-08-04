@@ -13,6 +13,10 @@ import {
 	resolveSentryTargets,
 } from "../../integrations/sentry/targets.js";
 import type { SentryConfig, SentryTarget } from "../../integrations/sentry/types.js";
+import {
+	integrationGuideSlug,
+	loadOrgGuideProviders,
+} from "../../guides/integration-guides.js";
 import { listBindingsForProject } from "../../integrations/store.js";
 import { getIntegrationGuide, getIntegrationUsage } from "../../integrations/usage-registry.js";
 import {
@@ -79,29 +83,50 @@ interface IntegrationRow {
 	/** ISS-526 — Sentry-only: the labelled targets the agent picks between when
 	 *  querying the Sentry MCP (org/project is passed per call). */
 	sentryTargets?: SentryTarget[];
+	/** Operator text for THIS project's binding, rendered verbatim. */
+	instructions?: string | null;
+	/** The caller's org authored a runtime guide for this provider. */
+	hasOrgGuide?: boolean;
 }
 
 // cm:edge contract -> packages/core/src/integrations/usage-registry.ts — per-provider usage hints are data-driven there; adding an integration edits that table, never this renderer
 // cm:why one query, shared by the pipeline facts block and the chat preamble — a chat-only copy of the active-filter + sentry-target mapping would drift from what a job sees
 export async function loadActiveIntegrationRows(
 	projectId: string,
+	orgId?: string | null,
 ): Promise<IntegrationRow[]> {
 	// cm:guard both flags must hold — an inactive binding on an active connection (or vice versa) injects nothing at dispatch, so listing it here would advertise tools the agent will not receive
 	const pairs = await listBindingsForProject(projectId);
-	return pairs
-		.filter((p) => p.binding.active && p.connection.active)
-		.map((p) => ({
-			provider: p.binding.provider,
-			environment: p.binding.environment,
-			lastHealthStatus: p.connection.lastHealthStatus,
-			...(p.binding.provider === "sentry"
-				? {
-						sentryTargets: resolveSentryTargets(
-							p.connection.config as SentryConfig,
-						),
-					}
-				: {}),
-		}));
+	const active = pairs.filter((p) => p.binding.active && p.connection.active);
+	if (active.length === 0) return [];
+
+	// cm:why the guide lookup is skipped when nothing is connected — an unconnected project must not pay a query to discover guides it will never be pointed at
+	const orgGuides = orgId
+		? await loadOrgGuideProviders(orgId)
+		: new Set<string>();
+
+	return active.map((p) => ({
+		provider: p.binding.provider,
+		environment: p.binding.environment,
+		lastHealthStatus: p.connection.lastHealthStatus,
+		instructions: p.binding.instructions ?? null,
+		hasOrgGuide: orgGuides.has(p.binding.provider),
+		...(p.binding.provider === "sentry"
+			? {
+					sentryTargets: resolveSentryTargets(
+						p.connection.config as SentryConfig,
+					),
+				}
+			: {}),
+	}));
+}
+
+// cm:why indented as a markdown sub-block so multi-line operator text cannot break out of its bullet and read as a new top-level instruction to the agent
+function indentBlock(text: string): string {
+	return text
+		.split("\n")
+		.map((line) => `    ${line}`)
+		.join("\n");
 }
 
 export function renderIntegrations(rows: IntegrationRow[]): string {
@@ -111,19 +136,27 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
 	const lines = rows.map((r) => {
 		const hint = getIntegrationUsage(r.provider);
 		const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : "";
-		// ISS-746 — a provider with a seeded capability-guide slug gets a
-		// fetch-on-demand pointer appended to its bullet; providers without one
-		// (no `guide` set in usage-registry.ts) render unchanged.
-		const guideSlug = getIntegrationGuide(r.provider);
+		// cm:why the org's runtime guide WINS over the seeded slug — an org authors one precisely to correct or replace the shipped default, so pointing at the default would send the agent to the text they overrode
+		const guideSlug = r.hasOrgGuide
+			? integrationGuideSlug(r.provider)
+			: getIntegrationGuide(r.provider);
 		const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : "";
 		const bullet = `- **${r.provider}** [${r.environment}]${health} — ${hint}${guidePointer}`;
+		const extra: string[] = [];
 		// ISS-526 — for Sentry, list the configured targets (label → org/project
 		// → notes) under the bullet so the agent knows which org/project slug to
 		// pass per Sentry MCP call. The MCP server still gets only host + token.
 		if (r.provider === "sentry" && r.sentryTargets && r.sentryTargets.length > 0) {
-			return `${bullet}\n${renderSentryTargetsLine(r.sentryTargets)}`;
+			extra.push(renderSentryTargetsLine(r.sentryTargets));
 		}
-		return bullet;
+		// cm:guard operator text, rendered VERBATIM and last so it is the final word for this provider — never summarise, reorder or truncate it here
+		const instructions = r.instructions?.trim();
+		if (instructions) {
+			extra.push(
+				`  - Project-specific instructions for **${r.provider}** (follow these over the general guide where they conflict):\n${indentBlock(instructions)}`,
+			);
+		}
+		return extra.length > 0 ? `${bullet}\n${extra.join("\n")}` : bullet;
 	});
 	return `## Project integrations\nConnected integrations and how to use them:\n${lines.join("\n")}`;
 }
@@ -204,6 +237,7 @@ export async function loadProjectFactInputs(
 				repoPath: projects.repoPath,
 				baseBranch: projects.baseBranch,
 				productionBranch: projects.productionBranch,
+				orgId: projects.orgId,
 			})
 			.from(projects)
 			.where(eq(projects.id, projectId))
@@ -230,7 +264,7 @@ export async function loadProjectFactInputs(
 		productionBranch = row?.productionBranch ?? null;
 		repoPath = row?.repoPath ?? null;
 
-		integrations = await loadActiveIntegrationRows(projectId);
+		integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
 	} catch {
 		// defaults → full ladder, empty {{project:}} resolver
 	}

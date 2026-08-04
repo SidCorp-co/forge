@@ -2732,6 +2732,8 @@ export const integrationBindings = pgTable(
     // one-per-(project,provider,env) invariant for coolify/postman/sentry.
     label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
+    // cm:guard NEVER put a credential here — this text is rendered verbatim into every agent prompt for the project, so anything stored is effectively published to the model
+    instructions: text('instructions'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

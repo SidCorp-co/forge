@@ -183,15 +183,18 @@ function formatProjectConfig(baseBranch: string | null, productionBranch: string
   return out;
 }
 
+// cm:why orgId rides along on the row the chat preamble already reads — the integration block needs it to resolve that org's runtime guides, and a second projects SELECT for one column would double this path's cheapest query
 async function loadProjectBranches(projectId: string): Promise<{
   baseBranch: string | null;
   productionBranch: string | null;
+  orgId: string | null;
 } | null> {
   try {
     const [project] = await db
       .select({
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
+        orgId: projects.orgId,
       })
       .from(projects)
       .where(eq(projects.id, projectId))
@@ -241,7 +244,7 @@ export async function buildChatPreamble(
     formatProjectConfig(project.baseBranch, project.productionBranch),
   ];
   // cm:why chat drives connected integrations (an MCP-only project has no code to read), so the tool-routing hint must reach it too — renderStageFactsText gates the whole facts block behind a JobType, which chat has none of
-  const integrations = await renderChatIntegrations(projectId);
+  const integrations = await renderChatIntegrations(projectId, project.orgId);
   if (integrations) sections.push(integrations);
   if (mcpDiagnostics && mcpDiagnostics.dropped.length > 0) {
     sections.push(formatMcpServersBlock(mcpDiagnostics.resolved, mcpDiagnostics.dropped));
@@ -250,9 +253,12 @@ export async function buildChatPreamble(
 }
 
 // cm:why best-effort: an integrations-lookup hiccup must degrade chat to the plain preamble, never fail the send
-async function renderChatIntegrations(projectId: string): Promise<string | null> {
+async function renderChatIntegrations(
+  projectId: string,
+  orgId: string | null,
+): Promise<string | null> {
   try {
-    const rows = await loadActiveIntegrationRows(projectId);
+    const rows = await loadActiveIntegrationRows(projectId, orgId);
     return rows.length > 0 ? renderIntegrations(rows) : null;
   } catch (err) {
     logger.warn({ err, projectId }, 'chat preamble: integrations block unavailable');
