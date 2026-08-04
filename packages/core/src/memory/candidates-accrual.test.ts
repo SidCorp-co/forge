@@ -125,7 +125,9 @@ describe('upsertCandidate — existing accruing row', () => {
   });
 
   it('does not graduate when evidence_count < 2', async () => {
-    selectMock.mockResolvedValue(makeExisting({ confidence: '0.45', evidenceCount: 0, evidence: [] }));
+    selectMock.mockResolvedValue(
+      makeExisting({ confidence: '0.45', evidenceCount: 0, evidence: [] }),
+    );
     await upsertCandidate('proj-1', CANDIDATE);
     const updateSet = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(updateSet?.['status']).toBe('accruing');

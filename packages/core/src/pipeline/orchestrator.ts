@@ -16,6 +16,7 @@ import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
+import { findUnansweredBounce } from './bounce-replay-guard.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
 import { postEmptyReopenComment } from './empty-reopen-guard.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
@@ -460,6 +461,32 @@ async function considerEnqueue(args: {
     logger.info(
       { issueId: args.issueId },
       'orchestrator: empty-reopen guard — no prior code/fix job, routed to needs_info',
+    );
+    return;
+  }
+
+  // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — checked AFTER the live-status re-verify (so we know the issue really is at this stage) and BEFORE skill resolution, since resolving a skill for a step we are about to refuse is wasted work
+  const unanswered = await findUnansweredBounce(args.issueId, args.status);
+  if (unanswered) {
+    const device = resolveSkipDevice(args.actor, projectCreatedBy);
+    if (device) {
+      try {
+        await applyStatusTransition(liveIssue, unanswered.bounced, device, { skip: true });
+      } catch (err) {
+        logger.warn(
+          { err, issueId: args.issueId, to: unanswered.bounced },
+          'orchestrator: bounce-replay guard failed to route back',
+        );
+      }
+    }
+    logger.info(
+      {
+        issueId: args.issueId,
+        stage: args.status,
+        bounced: unanswered.bounced,
+        bouncedAt: unanswered.at,
+      },
+      'orchestrator: bounce-replay guard — stage already exited via bounce with no new input, not re-dispatching',
     );
     return;
   }

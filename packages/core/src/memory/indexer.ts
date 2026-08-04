@@ -53,6 +53,15 @@ export interface IndexResult {
    * future refinements instead of their requested one.
    */
   dedupedInto?: string;
+  /**
+   * Set alongside `dedupedInto`: cosine score of the absorbing row, and the
+   * `sourceRef` of the archived snapshot holding the text this write replaced.
+   * Present so a caller can SEE that a merge happened and recover the previous
+   * wording — dedup is similarity-based, so it can absorb a topically different
+   * row, and silently overwriting that row's text destroyed unique knowledge.
+   */
+  dedupeScore?: number;
+  supersededSnapshotRef?: string;
 }
 
 export interface IndexOptions {
@@ -112,6 +121,7 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
   if (opts?.semanticDedup && vector !== null) {
     const target = await findDedupTarget(input, vector);
     if (target) {
+      const supersededSnapshotRef = await archiveSupersededText(input, target);
       const [updated] = await db
         .update(memories)
         .set({
@@ -141,6 +151,8 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
           truncated,
           degraded: false,
           dedupedInto: target.sourceRef,
+          dedupeScore: target.score,
+          ...(supersededSnapshotRef ? { supersededSnapshotRef } : {}),
         };
       }
       // Row vanished between search and update (concurrent delete) — fall
@@ -191,6 +203,53 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
  * upsert path refines it — that's intentional), otherwise return the closest
  * same-source row above DEDUP_THRESHOLD.
  */
+// cm:guard the only thing between similarity-based dedup and permanent knowledge loss — a merge overwrites the target's textContent, and without this snapshot the previous wording is unrecoverable (already lost twice, on two deliberately distinct sourceRefs)
+async function archiveSupersededText(
+  input: IndexInput,
+  target: { id: string; sourceRef: string },
+): Promise<string | null> {
+  try {
+    const [previous] = await db
+      .select({ textContent: memories.textContent, metadata: memories.metadata })
+      .from(memories)
+      .where(eq(memories.id, target.id))
+      .limit(1);
+    if (!previous) return null;
+    if (previous.textContent.trim() === input.text.trim()) return null;
+
+    const snapshotRef = `${target.sourceRef}__superseded-${Date.now()}`;
+    await db.insert(memories).values({
+      projectId: input.projectId,
+      source: input.source,
+      sourceRef: snapshotRef,
+      textContent: previous.textContent,
+      // cm:why archived on insert — the snapshot must stay out of every read surface and out of the dedup search (an archived copy is a near-perfect match, so a searchable one would absorb the next write and cascade)
+      archivedAt: sql`now()`,
+      metadata: {
+        ...((previous.metadata as Record<string, unknown> | null) ?? {}),
+        supersededBySourceRef: input.sourceRef,
+        supersededIntoSourceRef: target.sourceRef,
+      },
+    });
+    logger.info(
+      {
+        projectId: input.projectId,
+        source: input.source,
+        supersededInto: target.sourceRef,
+        snapshotRef,
+      },
+      'memory.indexer: archived the text a semantic-dedup merge is about to replace',
+    );
+    return snapshotRef;
+  } catch (err) {
+    logger.warn(
+      { err, projectId: input.projectId, targetId: target.id },
+      'memory.indexer: could not archive superseded text before dedup merge',
+    );
+    return null;
+  }
+}
+
 async function findDedupTarget(
   input: IndexInput,
   vector: number[],

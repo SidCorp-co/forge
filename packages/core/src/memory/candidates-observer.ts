@@ -28,7 +28,10 @@ export async function runCandidateMine(payload: MinePayload): Promise<void> {
   ]);
 
   const signals = signalSets[0].flat();
-  logger.info({ runId, projectId, issueId, count: signals.length }, 'candidates-observer: signals extracted');
+  logger.info(
+    { runId, projectId, issueId, count: signals.length },
+    'candidates-observer: signals extracted',
+  );
 
   for (const signal of signals) {
     await upsertCandidate(projectId, signal);

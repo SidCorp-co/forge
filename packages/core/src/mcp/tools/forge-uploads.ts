@@ -10,8 +10,10 @@ import {
   issues,
   sessionAttachments,
 } from '../../db/schema.js';
+import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
+import { createDownloadTicket } from '../../uploads/download-ticket-service.js';
 import {
   UPLOAD_TICKET_TTL_MS,
   UploadTicketError,
@@ -20,9 +22,9 @@ import {
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
+  assertPrincipalIsWriter,
   principalUserId,
   zodToMcpSchema,
-  assertPrincipalIsWriter,
 } from './lib.js';
 
 // Single top-level object schema (NOT a discriminated union) — MCP tool
@@ -175,6 +177,30 @@ async function loadAttachmentForFetch(
 
 const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 
+// cm:guard the returned URL carries its own credential — never log it, echo it into a comment, or hand it to anything that persists request URLs
+async function mintDownloadTicket(
+  target: 'issue' | 'comment' | 'session',
+  attachmentId: string,
+  projectId: string,
+  principal: McpPrincipal,
+): Promise<{ url: string; expiresAt: string } | null> {
+  try {
+    const ticket = await createDownloadTicket({
+      targetType: target,
+      attachmentId,
+      projectId,
+      issuedToUserId: principal.kind === 'pat' ? principal.userId : principal.device.ownerId,
+      issuedToDeviceId: principal.kind === 'device' ? principal.device.id : null,
+    });
+    return {
+      url: `/api/uploads/download/${ticket.id}`,
+      expiresAt: ticket.expiresAt.toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_uploads',
   description:
@@ -187,6 +213,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Forge API origin to uploadPath). The PUT returns the attachment {id,name,mime,size,url}.\n' +
     "action=fetch — read an EXISTING attachment's content so you can analyze it. " +
     'data={target:"issue"|"comment"|"session", attachmentId:<uuid from any attachments[].id>}. Images ' +
+    'EVERY fetch also returns `downloadUrl` (+ `downloadExpiresAt`): a short-lived, ' +
+    'self-authenticating URL you can `curl` to get the RAW BYTES onto disk, and that you can hand ' +
+    'to a third-party service that must fetch the file itself (e.g. re-hosting an owner-supplied ' +
+    'image into a store media library). Use it instead of `url`, which requires a Forge session ' +
+    'the runner does not have. Treat it as a secret: do not log it or paste it into a comment. ' +
     '(png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot); text/markdown ' +
     'return inline as text. PDFs/video and oversized files (> inline cap) return metadata + the ' +
     'download url only (not inlined). Use this whenever an issue/comment references an attached ' +
@@ -204,12 +235,16 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
       const att = await loadAttachmentForFetch(target, attachmentId);
       await assertPrincipalIsWriter(principal, att.projectId);
 
+      // cm:why every fetch mints one, inlinable or not — the bearer-guarded `url` 401s for a device token, a PAT and no-auth alike, so without this an agent that can SEE an attachment still has no way to obtain its bytes (or to hand a fetchable URL to a third-party service that must re-host it)
+      const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
       const meta = {
         attachmentId,
         name: att.name,
         mime: att.mime,
         size: att.size,
         url: att.url,
+        downloadUrl: download?.url ?? null,
+        downloadExpiresAt: download?.expiresAt ?? null,
       };
 
       const isImage = att.mime.startsWith('image/');

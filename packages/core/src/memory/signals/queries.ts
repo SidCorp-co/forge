@@ -101,10 +101,7 @@ export async function getHandoffsForRun(runId: string): Promise<HandoffRow[]> {
     })
     .from(issueStepContexts)
     .where(
-      and(
-        eq(issueStepContexts.pipelineRunId, runId),
-        sql`${issueStepContexts.kind} = 'handoff'`,
-      ),
+      and(eq(issueStepContexts.pipelineRunId, runId), sql`${issueStepContexts.kind} = 'handoff'`),
     )
     .orderBy(issueStepContexts.createdAt);
 }

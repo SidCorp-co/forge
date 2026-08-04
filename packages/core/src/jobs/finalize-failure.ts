@@ -28,7 +28,7 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, jobs, projects } from '../db/schema.js';
+import { issues, type jobs, projects } from '../db/schema.js';
 import {
   type DeviceLite,
   type TransitionIssueRow,
@@ -36,17 +36,18 @@ import {
 } from '../issues/apply-transition.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
+import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { JOB_TYPE_ENTRY_STATUS, classifyVerdict } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
-import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
+import { postParkReasonComment } from './park-comment.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -149,13 +150,20 @@ async function reconcileIssueStatusAfterFailure(
   // Budget exhausted / non-retryable kind / resume-abort: park the issue at
   // `waiting` for human review and reap the still-`running` pipeline_run.
   if (row.status !== 'waiting') {
+    // cm:edge ordering -> packages/core/src/jobs/park-comment.ts — post the reason BEFORE the transition, so a watcher woken by the status change already finds the explanation rather than a bare `waiting`
+    await postParkReasonComment({
+      issueId: row.id,
+      projectId: row.projectId,
+      jobType: job.type,
+      stageStatus: JOB_TYPE_ENTRY_STATUS[job.type] ?? null,
+      reason: retry.reason ?? 'unknown',
+      failureKind: job.failureKind ?? null,
+      failureReason: job.failureReason ?? null,
+    });
     try {
       await applyStatusTransition(issueRow, 'waiting', device, { skip: true });
     } catch (err) {
-      logger.warn(
-        { err, issueId: row.id },
-        'finalize-failure: park-to-waiting failed',
-      );
+      logger.warn({ err, issueId: row.id }, 'finalize-failure: park-to-waiting failed');
     }
   }
   // Issue-kind runs are not closed by `syncAgentSessionLifecycle`
@@ -165,10 +173,7 @@ async function reconcileIssueStatusAfterFailure(
   try {
     await closeOpenRunForIssue(row.id, 'failed');
   } catch (err) {
-    logger.warn(
-      { err, issueId: row.id },
-      'finalize-failure: closeOpenRunForIssue failed',
-    );
+    logger.warn({ err, issueId: row.id }, 'finalize-failure: closeOpenRunForIssue failed');
   }
 }
 

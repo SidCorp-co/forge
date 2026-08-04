@@ -16,6 +16,9 @@ import {
   AttachmentError as IssueAttachmentError,
   persistIssueAttachment,
 } from '../issues/attachment-service.js';
+import { getStorage } from '../storage/index.js';
+import { loadAttachmentBytesTarget } from './attachment-bytes.js';
+import { resolveDownloadTicket } from './download-ticket-service.js';
 import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST') =>
@@ -107,5 +110,41 @@ uploadRoutes.put(
       }
       throw err;
     }
+  },
+);
+
+// cm:edge contract -> packages/core/src/uploads/download-ticket-service.ts — the ticket id in this path IS the credential, so this route must stay OUTSIDE any auth middleware; adding one here re-breaks third-party fetchers, which is the whole reason it exists
+uploadRoutes.get(
+  '/download/:ticketId',
+  zValidator('param', z.object({ ticketId: z.uuid() }), (r) => {
+    if (!r.success) throw badRequest('invalid ticketId', 'BAD_REQUEST');
+  }),
+  async (c) => {
+    const { ticketId } = c.req.valid('param');
+    const ticket = await resolveDownloadTicket(ticketId);
+    if (!ticket) {
+      throw new HTTPException(404, {
+        message: 'download ticket not found or expired',
+        cause: { code: 'DOWNLOAD_TICKET_INVALID' },
+      });
+    }
+
+    const att = await loadAttachmentBytesTarget(ticket.targetType, ticket.attachmentId);
+    if (!att) {
+      throw new HTTPException(404, {
+        message: 'attachment not found',
+        cause: { code: 'NOT_FOUND' },
+      });
+    }
+
+    const bytes = await getStorage().get(att.path);
+    // cm:guard the filename is uploaded (untrusted) content — keep it quoted and header-encoded so it cannot inject additional response headers
+    const safeName = att.name.replace(/[\r\n"]/g, '_');
+    return c.body(new Uint8Array(bytes), 200, {
+      'content-type': att.mime,
+      'content-length': String(bytes.byteLength),
+      'content-disposition': `attachment; filename="${safeName}"`,
+      'cache-control': 'private, no-store',
+    });
   },
 );

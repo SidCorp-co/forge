@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { memoryCandidates } from '../db/schema.js';
 
 export interface CandidatePage {
-  items: typeof memoryCandidates.$inferSelect[];
+  items: (typeof memoryCandidates.$inferSelect)[];
   totalCount: number;
 }
 
@@ -23,7 +23,10 @@ export async function listGraduatedCandidates(
       .select()
       .from(memoryCandidates)
       .where(where)
-      .orderBy(desc(sql`${memoryCandidates.confidence}::numeric`), desc(memoryCandidates.graduatedAt))
+      .orderBy(
+        desc(sql`${memoryCandidates.confidence}::numeric`),
+        desc(memoryCandidates.graduatedAt),
+      )
       .limit(limit)
       .offset(offset),
     db.select({ total: count() }).from(memoryCandidates).where(where),

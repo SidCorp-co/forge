@@ -26,10 +26,7 @@ interface EvidenceRef {
  * Reads the existing row, merges evidence, increments confidence, then updates.
  * The pg-boss worker serialises calls per-queue, so read-modify-write is safe enough for v1.
  */
-export async function upsertCandidate(
-  projectId: string,
-  candidate: CandidateInput,
-): Promise<void> {
+export async function upsertCandidate(projectId: string, candidate: CandidateInput): Promise<void> {
   const runId = candidate.evidence.runId;
 
   const [existing] = await db
@@ -66,7 +63,9 @@ export async function upsertCandidate(
   )
     return;
 
-  const existingEvidence = (Array.isArray(existing.evidence) ? existing.evidence : []) as EvidenceRef[];
+  const existingEvidence = (
+    Array.isArray(existing.evidence) ? existing.evidence : []
+  ) as EvidenceRef[];
   const alreadySeen = existingEvidence.some((e) => e.runId === runId);
 
   const newEvidence = alreadySeen ? existingEvidence : [...existingEvidence, candidate.evidence];

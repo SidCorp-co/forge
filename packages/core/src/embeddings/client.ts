@@ -178,6 +178,12 @@ export class EmbeddingsClient {
       if (response.status >= 500) {
         throw new RetriableError(`${response.status} ${body.slice(0, 200)}`);
       }
+      // cm:guard a budget/quota rejection MUST classify as unavailable, not as a hard error — callers degrade gracefully on EmbeddingUnavailableError (memory stores a keyword-searchable row for backfill) but propagate anything else, and that difference is a whole session's learning silently lost
+      if (isQuotaRejection(response.status, body)) {
+        throw new EmbeddingUnavailableError(
+          `embeddings quota exhausted (${response.status}): ${body.slice(0, 200)}`,
+        );
+      }
       throw new Error(`embeddings ${response.status}: ${body.slice(0, 200)}`);
     }
 
@@ -214,6 +220,22 @@ class RetriableError extends Error {
 
 function isRetriable(err: unknown): boolean {
   return err instanceof RetriableError;
+}
+
+// cm:why matched on body text and not status alone — providers signal an exhausted budget as 400/402/403 as readily as 429, and the case that actually cost us a learning was a 400 reading "Budget has been exceeded"
+const QUOTA_MARKERS = [
+  'budget has been exceeded',
+  'budget exceeded',
+  'quota',
+  'insufficient_quota',
+  'rate limit',
+  'billing',
+] as const;
+
+export function isQuotaRejection(status: number, body: string): boolean {
+  if (status === 429) return true;
+  const haystack = body.toLowerCase();
+  return QUOTA_MARKERS.some((m) => haystack.includes(m));
 }
 
 function sleep(ms: number): Promise<void> {

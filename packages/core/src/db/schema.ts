@@ -3179,3 +3179,29 @@ export const integrationGuidesRelations = relations(integrationGuides, ({ one })
     references: [organizations.id],
   }),
 }));
+
+// cm:why the unguessable id IS the credential (mirror of `upload_tickets`) — the bearer-guarded download route 401s for a device token, a PAT and no-auth alike, so nothing on a runner, and no third-party told to fetch the URL, could ever obtain an attachment's bytes
+export const downloadTickets = pgTable(
+  'download_tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    targetType: text('target_type').notNull(),
+    attachmentId: uuid('attachment_id').notNull(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issuedToUserId: uuid('issued_to_user_id').references(() => users.id, { onDelete: 'set null' }),
+    issuedToDeviceId: uuid('issued_to_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
+    // cm:guard NOT single-use — a third-party fetcher retries, and burning the ticket on the first attempt reintroduces the "cannot get the bytes" dead end. The short TTL is the containment, not a use counter.
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    fetchCount: integer('fetch_count').notNull().default(0),
+    lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    attachmentIdx: index('download_tickets_attachment_idx').on(t.targetType, t.attachmentId),
+    expiresIdx: index('download_tickets_expires_at_idx').on(t.expiresAt),
+  }),
+);

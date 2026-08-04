@@ -104,7 +104,9 @@ describe('parseExtractionOutput', () => {
       fact: `fact number ${i}`,
       category: 'correction',
     }));
-    const parsed = parseExtractionOutput(`\`\`\`json\n${JSON.stringify({ facts, edges: [] })}\n\`\`\``);
+    const parsed = parseExtractionOutput(
+      `\`\`\`json\n${JSON.stringify({ facts, edges: [] })}\n\`\`\``,
+    );
     expect(parsed?.facts).toHaveLength(3);
     expect(parsed?.facts[0]?.category).toBe('correction');
   });

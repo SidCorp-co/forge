@@ -154,12 +154,77 @@ describe('indexMemory semantic dedup', () => {
 
     expect(result.id).toBe('m-existing');
     expect(result.dedupedInto).toBe('old-ref');
-    // No new row inserted.
+    expect(result.dedupeScore).toBe(0.93);
     expect(valuesMock).not.toHaveBeenCalled();
     // The absorbing row is revived and refreshed.
     const set = updateSetMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(set.archivedAt).toBeNull();
     expect(set.textContent).toBe('always use python3');
+  });
+
+  // cm:guard the merge overwrites the target's text — without this snapshot the previous wording is gone for good, which already destroyed unique knowledge twice
+  it('archives the text a merge is about to overwrite', async () => {
+    searchMemoriesMock.mockResolvedValueOnce([
+      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
+    ]);
+    selectLimitMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ textContent: 'THE ORIGINAL WORDING', metadata: { k: 'v' } }]);
+
+    const result = await indexMemory(input, { semanticDedup: true });
+
+    expect(result.supersededSnapshotRef).toMatch(/^old-ref__superseded-\d+$/);
+    const archived = valuesMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(archived.textContent).toBe('THE ORIGINAL WORDING');
+    expect(archived.sourceRef).toBe(result.supersededSnapshotRef);
+    expect(archived.metadata).toMatchObject({
+      k: 'v',
+      supersededBySourceRef: 'new-ref',
+      supersededIntoSourceRef: 'old-ref',
+    });
+  });
+
+  // cm:guard the snapshot must be archived on insert — a searchable copy is a near-perfect match for the text that just replaced it, so it would absorb the next write and cascade
+  it('archives the snapshot so it can never become a dedup target itself', async () => {
+    searchMemoriesMock.mockResolvedValueOnce([
+      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
+    ]);
+    selectLimitMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ textContent: 'THE ORIGINAL WORDING', metadata: {} }]);
+
+    await indexMemory(input, { semanticDedup: true });
+
+    const archived = valuesMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(archived.archivedAt).toBeDefined();
+    expect(archived.archivedAt).not.toBeNull();
+  });
+
+  it('skips the snapshot when the merge would rewrite identical text', async () => {
+    searchMemoriesMock.mockResolvedValueOnce([
+      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
+    ]);
+    selectLimitMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ textContent: 'always use python3', metadata: {} }]);
+
+    const result = await indexMemory(input, { semanticDedup: true });
+
+    expect(result.supersededSnapshotRef).toBeUndefined();
+    expect(valuesMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard losing the snapshot must not lose the write — the merge is still the caller's intent, so a failed archive degrades to the old behaviour rather than throwing
+  it('still completes the merge when archiving fails', async () => {
+    searchMemoriesMock.mockResolvedValueOnce([
+      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
+    ]);
+    selectLimitMock.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('db down'));
+
+    const result = await indexMemory(input, { semanticDedup: true });
+
+    expect(result.dedupedInto).toBe('old-ref');
+    expect(result.supersededSnapshotRef).toBeUndefined();
   });
 
   it('skips dedup when the exact natural key already exists (upsert refines it)', async () => {
