@@ -41,3 +41,49 @@ describe('state-prompts — ADDRESS_INHERITED_OPEN_ITEMS obligation (ISS-537)', 
     expect(ADDRESS_INHERITED_OPEN_ITEMS).toContain('not a status gate');
   });
 });
+
+/**
+ * Skills fork per project at adoption and never merge back, so an invariant
+ * written into a skill body reaches only projects bootstrapped after it.
+ * anhome ISS-362/ISS-399 stalled at `released` twice against anhome's own
+ * forked forge-release; fixing the shared template did not reach it. These
+ * pin the invariant to the layer that DOES reach every project.
+ */
+describe('state-prompts — release terminal-exit invariant lives in the non-forking layer', () => {
+  const release = getStatePrompt('release') ?? '';
+
+  it('forbids exiting while the issue is still at `released`', () => {
+    expect(release).toMatch(/FORBIDDEN/);
+    expect(release).toMatch(/still at\s+\\?`released\\?`/);
+  });
+
+  it('enumerates all three legal exits', () => {
+    for (const status of ['closed', 'reopen', 'waiting']) {
+      expect(release, `missing exit ${status}`).toContain(status);
+    }
+  });
+
+  it('orders the close BEFORE cleanup, and marks cleanup best-effort', () => {
+    expect(release).toContain('best-effort');
+    expect(release).toMatch(/AFTER the close/);
+    // The reason must survive rewording — it is why the order is not arbitrary.
+    expect(release).toMatch(/only action that stops this stage being re-dispatched/);
+  });
+
+  it('requires remote verification and rejects a push exit code as evidence', () => {
+    expect(release).toContain('REMOTE');
+    expect(release).toContain('push exit code');
+  });
+
+  it('tells a re-dispatched attempt to establish prior state before redoing work', () => {
+    expect(release).toMatch(/re-dispatch/);
+    expect(release).toMatch(/never blindly re-merge/);
+  });
+
+  // cm:guard POLICY here, PROCEDURE in the per-project skill — anhome merges nothing at this
+  // stage (batched cutoff), so a default that hardcodes a merge would contradict its skill.
+  it('defers the merge decision to the project skill instead of mandating one', () => {
+    expect(release).toContain("governed by the project's adopted");
+    expect(release).toMatch(/promote in batches and merge nothing here/);
+  });
+});
