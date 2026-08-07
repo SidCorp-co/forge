@@ -27,6 +27,24 @@ The ISS-* branch holds this issue's changes. Release = get **this issue's own ch
 - **forge_coolify_deploy** — trigger production deploy (if configured)
 - **Bash** — git merge, push, branch cleanup
 
+## Terminal-exit invariant
+
+This stage may end in exactly one of these states. There is no other legal exit:
+
+| Exit | Requires |
+|---|---|
+| `closed` | the verify-land gate returned LANDED, and the release comment is posted |
+| `reopen` | a comment naming what is missing (gate returned NOT LANDED, or an unlandable conflict) |
+| `waiting` | a comment naming the human decision needed |
+
+**Exiting while the issue is still at `released` is forbidden**, including on a partial or confused run. If you cannot determine the state, post what you observed and set `waiting` — a silent exit at `released` leaves the reconciler re-dispatching this stage forever while the run holds a concurrency slot.
+
+**Re-entrancy.** A re-dispatch means a prior attempt may have done part of the work. Establish what already landed before doing anything:
+
+- The verify-land gate's ancestry / diff-presence check already tells you whether the code is on production. If it is, the merge is done — do not re-merge.
+- Before appending to `CHANGELOG.md`, check whether this issue's changelog commit already exists on the production branch: `git log origin/<productionBranch> --oneline --grep "docs(changelog): ISS-XX"`. A hit means a prior attempt already appended it — skip the append. (Deterministic on purpose: grepping `CHANGELOG.md` for the bullet text is fuzzy and will both false-positive on similar wording and false-negative on a reworded entry.)
+- Code landed AND changelog commit present → go straight to the close. Do not re-merge, do not re-deploy, do not re-append.
+
 ## Workflow
 
 ### Step 0: Local-only mode guard
@@ -49,7 +67,7 @@ Stop. Do NOT call `forge_issues → update`, do NOT merge branches.
 
 ### Step 0.5: Decompose-aware guard (epic child vs parent)
 
-If the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`, it is part of a decomposed epic — **only the parent reaches production/base**. **Read `.claude/skills/forge-plan/references/decompose-execution.md` and follow the forge-release section.** In short: a **child** already landed on the integration branch, so skip the merge steps — just CHANGELOG (if present), optionally delete its own `ISS-*` branch, comment, and close (still subject to the Step 8 verify-land gate below — a child's own commits must show as landed on the integration branch before it deletes its branch or closes). The **parent** (`useIntegrationBranch`) is the single promotion point: substitute the integration branch (`metadata.integrationBranch`) for the `ISS-*` branch in the merge steps (`git fetch` + retry if a child looks missing) and in the Step 8 gate, deploy, CHANGELOG, **delete the integration branch** in Step 9, then in Step 10 close the parent AND cascade-close any still-open children. For a non-decompose issue (no such metadata), ignore this step.
+If the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`, it is part of a decomposed epic — **only the parent reaches production/base**. **Read `.claude/skills/forge-plan/references/decompose-execution.md` and follow the forge-release section.** In short: a **child** already landed on the integration branch, so skip the merge steps — just CHANGELOG (if present), comment, close, and optionally delete its own `ISS-*` branch (still subject to the Step 8 verify-land gate below — a child's own commits must show as landed on the integration branch before it closes or deletes its branch). The **parent** (`useIntegrationBranch`) is the single promotion point: substitute the integration branch (`metadata.integrationBranch`) for the `ISS-*` branch in the merge steps (`git fetch` + retry if a child looks missing) and in the Step 8 gate, deploy, CHANGELOG, then at the close cascade-close any still-open children alongside the parent, and **delete the integration branch** during cleanup. For a non-decompose issue (no such metadata), ignore this step.
 
 ### Step 1: Fetch Issue & Config
 
@@ -176,9 +194,9 @@ Always a separate commit — the Step 6 merge (when there was one) is already pu
 
 Style: present-tense, one short sentence, no trailing period after the bold (`**…**`) text is fine. Don't include `ISS-XX` IDs or PR references — those live in git history.
 
-### Step 8: Verify the land (mandatory gate — before branch delete or close)
+### Step 8: Verify the land (mandatory gate — before the close or any cleanup)
 
-**This is the state-never-lies gate.** Nothing between here and Step 4 re-confirmed against the remote — Steps 5–7.5 could have hit a push that silently failed, or Step 4 could have wrongly skipped the merge. Re-establish ground truth from the remote before doing anything irreversible (branch delete) or declaring success (the "Released" comment, `closed`, `merged_at`):
+**This is the state-never-lies gate.** Nothing between here and Step 4 re-confirmed against the remote — Steps 5–7.5 could have hit a push that silently failed, or Step 4 could have wrongly skipped the merge. Re-establish ground truth from the remote before declaring success (the "Released" comment, `closed`, `merged_at`) or doing anything irreversible (branch delete):
 
 ```bash
 git fetch origin
@@ -195,18 +213,14 @@ git diff $HEAD_SHA origin/<productionBranch> -- <issue's changed files>
 # changelog commit explicitly: git log origin/<productionBranch> --grep 'ISS-XX' --oneline | grep -v '^.* docs(changelog):'
 ```
 
-- **LANDED** (ancestry check prints `LANDED`, or the diff-presence fallback shows no missing hunks for the issue's changed files) → continue to Step 9.
-- **NOT LANDED** → **HALT.** Do NOT run Step 9 (branch delete), do NOT post the Step 10 "Released" comment, do NOT close the issue, and do NOT let `merged_at` stamp. Post a comment stating the actual git state — `$HEAD_SHA` (the ISS-* branch tip) vs the current `origin/<productionBranch>` HEAD, and that the issue's diff is absent from the remote — then set status `reopen` (so forge-fix lands the diff) or `waiting` if it genuinely can't be released on its own. Stop here; do not proceed to Step 9 or Step 10.
+- **LANDED** (ancestry check prints `LANDED`, or the diff-presence fallback shows no missing hunks for the issue's changed files) → continue to the close.
+- **NOT LANDED** → **HALT.** Do NOT post the release comment, do NOT close the issue, do NOT delete the branch, and do NOT let `merged_at` stamp. Post a comment stating the actual git state — `$HEAD_SHA` (the ISS-* branch tip) vs the current `origin/<productionBranch>` HEAD, and that the issue's diff is absent from the remote — then set status `reopen` (so forge-fix lands the diff) or `waiting` if it genuinely can't be released on its own. Stop here.
 
-### Step 9: Clean Up Feature Branch (only after Step 8 returns LANDED)
+### Post Comment & Close (only after the verify-land gate returns LANDED)
 
-```bash
-git push origin --delete ISS-XX-short-title
-```
+**This runs BEFORE any cleanup, deliberately.** The close is the only action that stops the reconciler re-dispatching this stage. Branch cleanup is recoverable if lost; the close is not. Nothing that can fail may sit between the LANDED verdict and here.
 
-### Step 10: Post Comment & Close (only after Step 8 returns LANDED)
-
-Reaching this step means Step 8 already confirmed the issue's commits are on `origin/<productionBranch>` — the comment below is true by construction, never a hopeful guess:
+Reaching this point means the gate already confirmed the issue's commits are on `origin/<productionBranch>` — the comment below is true by construction, never a hopeful guess:
 
 ```
 forge_comments → create → {
@@ -224,6 +238,14 @@ Close the issue (and any sibling issues on the same branch):
 forge_issues → update → { documentId: "<id>", data: { status: "closed" } }
 ```
 
+### Clean Up Feature Branch (best-effort, last)
+
+```bash
+git push origin --delete ISS-XX-short-title
+```
+
+If this fails, the release is still complete — log it and stop. Never let a cleanup failure change the issue's status, reopen anything, or fail the stage.
+
 (General output rules — see pipeline preamble.)
 
 ## Regression: verified-land gate (brand-gateway ISS-28 manual repro)
@@ -233,8 +255,21 @@ forge_issues → update → { documentId: "<id>", data: { status: "closed" } }
 **Verify the fix against this scenario:**
 1. Reproduce the setup: an ISS-* branch with unmerged commits, `productionBranch == baseBranch`, nothing pushed to `origin/<productionBranch>` yet.
 2. Run Step 4 — confirm it no longer skips the merge on branch-name equality alone; with no ancestry/squash evidence, it falls through to Step 5 + 6 and actually lands the diff.
-3. If the land step is forced to fail (simulate a push that silently no-ops), confirm Step 8's gate reports NOT LANDED, and that no branch delete, no "Released" comment, no `closed` transition, and no `merged_at` stamp occur — the run halts at `reopen`/`waiting` with a comment naming the real `$HEAD_SHA` vs `origin/<productionBranch>` HEAD.
-4. Confirm the legitimate already-merged short-circuit (ancestry TRUE) still skips the merge in Step 4 and still reaches `closed` via Step 8 → 9 → 10 without a spurious halt.
+3. If the land step is forced to fail (simulate a push that silently no-ops), confirm Step 8's gate reports NOT LANDED, and that no "Released" comment, no `closed` transition, no `merged_at` stamp, and no branch delete occur — the run halts at `reopen`/`waiting` with a comment naming the real `$HEAD_SHA` vs `origin/<productionBranch>` HEAD.
+4. Confirm the legitimate already-merged short-circuit (ancestry TRUE) still skips the merge in Step 4 and still reaches `closed` via the verify-land gate → the close, without a spurious halt.
 5. **Changelog-commit false-positive (review finding on this issue):** simulate Step 6's land silently failing/no-opping AFTER Step 7.5 has already committed+pushed `docs(changelog): ISS-XX <topic>` to `origin/<productionBranch>`. Confirm Step 8's ancestry check is false (squash tip never lands verbatim) and the diff-presence fallback (`git diff $HEAD_SHA origin/<productionBranch> -- <issue's changed files>`) correctly reports missing hunks → NOT LANDED, even though `origin/<productionBranch>` now contains a commit whose message matches `ISS-XX`. A bare `--grep 'ISS-XX'` fallback (the old wording) would have wrongly matched that changelog commit and reported LANDED with zero code landed — this is why Step 8's fallback is diff-presence, not commit-message grep.
+
+## Regression: terminal-exit invariant (anhome ISS-362 / ISS-399)
+
+**Scenario that exposed the bug:** the release stage completed `done`/exit 0 THREE times without the issue ever leaving `released`, posting zero comments. Job #1 did the irreversible work — squash commit `7cceccff` and CHANGELOG commit `a6ac1433` both landed on `main` — then finished without posting the comment or closing. Re-dispatches #2 and #3 had nothing to merge and did nothing at all, silently, exit 0. The stalled run held one of the project's concurrency slots, leaving an unrelated issue's triage job queued with `deviceId:null` for ~2 days. It recurred on ISS-399 (stuck 6 days).
+
+Two template-level causes, both addressed above:
+1. **Ordering** — the close was placed AFTER best-effort cleanup, so anything that killed the session during teardown guaranteed the stall it was trying to avoid. The close now runs first; cleanup is last and explicitly may not affect status.
+2. **No invariant, no re-entrancy** — nothing forbade a silent exit at `released`, and nothing told a re-dispatched attempt to detect a prior attempt's merge and route straight to the close. Both are now stated in the Terminal-exit invariant section.
+
+**Verify the fix against this scenario:**
+1. Simulate a session dying immediately after the CHANGELOG push. Confirm the close has already happened (it now precedes cleanup), so the reconciler does not re-dispatch.
+2. Simulate a re-dispatch of an issue whose code and changelog commit are both already on the production branch. Confirm the run skips the merge, skips the CHANGELOG append (the `docs(changelog): ISS-XX` grep hits), and goes straight to the close — no duplicate changelog bullet.
+3. Confirm a run that cannot determine its state exits at `waiting` with a comment, never silently at `released`.
 
 This project's own `forge-test`/`forge-release` overrides are unaffected — `forge-test` already does the real merge + verified push before this skill ever runs here, so Step 4's ancestry check finds `ALREADY_MERGED` and Step 8's gate finds `LANDED` on the first try. Other projects that hold their own project-scoped copy of this template (not this shared default) must be separately reseeded to inherit this fix — tracked as a follow-up, not part of this change.
