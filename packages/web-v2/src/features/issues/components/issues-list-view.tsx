@@ -67,12 +67,13 @@ import type { RowActions } from "./issue-table-row";
 const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
   { value: "draft", label: "Draft" },
+  { value: "findings", label: "Findings" },
   { value: "active", label: "Active" },
   { value: "review", label: "Review" },
   { value: "blocked", label: "Blocked" },
   { value: "done", label: "Done" },
 ];
-const VALID_FILTERS: IssueFilter[] = ["all", "draft", "active", "review", "blocked", "done"];
+const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "active", "review", "blocked", "done"];
 
 const GROUP_OPTIONS: SelectOption[] = [
   { value: "none", label: "No grouping" },

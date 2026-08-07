@@ -860,6 +860,7 @@ describe('db/schema — issues', () => {
         'created_by_id',
         'created_via',
         'description',
+        'detector_key',
         'external_id',
         'id',
         'iss_seq',

@@ -162,7 +162,7 @@ export interface IssueDependencies {
  *  excludes drafts" rule). `draft` and `done` are explicit buckets (ISS-438) —
  *  unlike the removed ISS-236 "All + drafts" split, they narrow rather than
  *  change what "All" means. */
-export type IssueFilter = "all" | "draft" | "active" | "review" | "blocked" | "done";
+export type IssueFilter = "all" | "draft" | "findings" | "active" | "review" | "blocked" | "done";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "creator";

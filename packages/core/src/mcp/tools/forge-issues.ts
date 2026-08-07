@@ -21,6 +21,7 @@ import {
   listIssueAttachments,
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
+import { claimDetectorKey, isValidDetectorKey } from '../../issues/detector-key.js';
 import { applyIntakeGate, finalizeIntake } from '../../issues/intake-gate.js';
 import { listIssueLabels } from '../../issues/label-service.js';
 import {
@@ -102,6 +103,9 @@ const dataSchema = z
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
+    // Detector identity — see issues/detector-key.ts. Set it on create and the
+    // kernel guarantees at most one live issue per (project, key).
+    detectorKey: z.string().trim().min(1).max(120).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     suggestedSolution: z.string().max(100_000).nullable().optional(),
@@ -867,6 +871,35 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           labelIds = await resolveLabelIdsForWrite(projectId, input.data.labels);
         }
 
+        // One live issue per detector. A recurring finding must land on the
+        // issue that already tracks it, never as issue number N+1.
+        const detectorKey = input.data.detectorKey ?? null;
+        if (detectorKey) {
+          if (!isValidDetectorKey(detectorKey)) {
+            throw new Error(
+              `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${detectorKey}')`,
+            );
+          }
+          const { existingIssueId } = await claimDetectorKey(projectId, detectorKey);
+          if (existingIssueId) {
+            const [live] = await db
+              .select({ issSeq: issues.issSeq, status: issues.status })
+              .from(issues)
+              .where(eq(issues.id, existingIssueId))
+              .limit(1);
+            return {
+              created: false,
+              deduped: true,
+              detectorKey,
+              existingIssueId,
+              existingIssueDisplayId: live ? `ISS-${live.issSeq}` : null,
+              existingIssueStatus: live?.status ?? null,
+              message:
+                'A live issue already tracks this detectorKey. Nothing was created — add your finding as a comment on existingIssueId (forge_comments action=create), or extend it via forge_issues action=update.',
+            } as Record<string, unknown>;
+          }
+        }
+
         const [inserted] = await db
           .insert(issues)
           .values({
@@ -879,6 +912,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             complexity: input.data.complexity ?? null,
             createdById: device.ownerId,
             createdVia: 'mcp',
+            detectorKey,
             plan: input.data.plan ?? null,
             acceptanceCriteria: input.data.acceptanceCriteria ?? null,
             suggestedSolution: input.data.suggestedSolution ?? null,

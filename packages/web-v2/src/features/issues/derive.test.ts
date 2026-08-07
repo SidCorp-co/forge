@@ -14,7 +14,7 @@ import {
   deriveCommentKind,
   deriveStageOutcomes,
   depCounts,
-  filterToStatusParams,
+  filterToQueryParams,
   groupRows,
   heartbeatState,
   initials,
@@ -264,23 +264,31 @@ describe("depCounts", () => {
   });
 });
 
-describe("filterToStatusParams", () => {
+describe("filterToQueryParams", () => {
   it("all applies no filter — every issue incl. drafts + closed (ISS-360)", () => {
-    expect(filterToStatusParams("all")).toEqual({});
+    expect(filterToQueryParams("all")).toEqual({});
   });
   it("review targets the verification band", () => {
-    expect(filterToStatusParams("review").status).toContain("developed");
-    expect(filterToStatusParams("review").status).toContain("testing");
+    expect(filterToQueryParams("review").status).toContain("developed");
+    expect(filterToQueryParams("review").status).toContain("testing");
   });
   it("blocked targets parked statuses", () => {
-    expect(filterToStatusParams("blocked")).toEqual({ status: ["on_hold", "needs_info"] });
+    expect(filterToQueryParams("blocked")).toEqual({ status: ["on_hold", "needs_info"] });
   });
   // ISS-438 — explicit Draft + Done buckets.
   it("draft targets only drafts", () => {
-    expect(filterToStatusParams("draft")).toEqual({ status: ["draft"] });
+    expect(filterToQueryParams("draft")).toEqual({ status: ["draft"], origin: "human" });
+  });
+
+  it("findings selects detector origin at any status", () => {
+    expect(filterToQueryParams("findings")).toEqual({ origin: "detector" });
+  });
+
+  it("all stays unfiltered so nothing is unreachable", () => {
+    expect(filterToQueryParams("all")).toEqual({});
   });
   it("done targets shipped work (released + closed)", () => {
-    expect(filterToStatusParams("done")).toEqual({ status: ["released", "closed"] });
+    expect(filterToQueryParams("done")).toEqual({ status: ["released", "closed"] });
   });
 });
 

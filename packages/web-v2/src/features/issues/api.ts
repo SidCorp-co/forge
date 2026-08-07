@@ -5,7 +5,7 @@
 // `issues/dependency-routes.ts`, `projects/members-routes.ts`.
 
 import { apiClient, apiClientList } from "@/lib/api/client";
-import { filterToStatusParams } from "./derive";
+import { filterToQueryParams } from "./derive";
 import type {
   IssueComplexity,
   IssueCostSummary,
@@ -79,9 +79,10 @@ export const issuesApi = {
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.createdBy) params.set("createdBy", opts.createdBy);
     if (opts.label) params.set("label", opts.label);
-    const { status, statusNot } = filterToStatusParams(opts.filter ?? "all");
+    const { status, statusNot, origin } = filterToQueryParams(opts.filter ?? "all");
     for (const s of status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);
+    if (origin) params.set("origin", origin);
     return apiClientList<IssueRow>(`/projects/${projectId}/issues/search?${params}`);
   },
 

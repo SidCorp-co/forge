@@ -16,7 +16,11 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
-import { buildCreatedByCondition, hydrateCreatorsForIssues } from './creator.js';
+import {
+  buildCreatedByCondition,
+  buildOriginCondition,
+  hydrateCreatorsForIssues,
+} from './creator.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
@@ -49,6 +53,9 @@ const searchQuerySchema = z
     assignee: z.uuid().optional(),
     // cm:why a uuid here means that person's non-agent-channel rows ONLY — see buildCreatedByCondition
     createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
+    // Splits unreviewed detector output from work someone chose to do. Distinct
+    // from `createdBy=agent`, which is a display concern and counts `mcp` too.
+    origin: z.enum(['detector', 'human']).optional(),
     category: z.string().trim().min(1).max(100).optional(),
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -204,6 +211,9 @@ searchRoutes.get(
     }
     if (q.createdBy) {
       conditions.push(buildCreatedByCondition(q.createdBy));
+    }
+    if (q.origin) {
+      conditions.push(buildOriginCondition(q.origin));
     }
     if (q.category) {
       conditions.push(eq(issues.category, q.category));

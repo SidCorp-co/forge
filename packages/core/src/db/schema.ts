@@ -1034,6 +1034,13 @@ export const issues = pgTable(
     reportedBy: text('reported_by'),
     // cm:guard never expose as client-settable on issueCreateSchema or the MCP create input
     createdVia: text('created_via', { enum: issueCreationChannels }),
+    // Stable identity of the DETECTOR that produced this row (e.g.
+    // `doc-drift/architecture`). At most one non-closed issue may carry a given
+    // key per project — a repeat finding comments on the live one instead of
+    // opening a duplicate. NULL for everything a human authored.
+    // cm:guard enforced by the partial unique index `issues_detector_key_live_uq` (migration 0158);
+    // claimDetectorKey() is the graceful path — the index is the backstop, do not drop it
+    detectorKey: text('detector_key'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
       .notNull()

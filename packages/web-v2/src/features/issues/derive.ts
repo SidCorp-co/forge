@@ -248,19 +248,29 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
  *   core/issues/search.ts). ISS-360: "all issues" means all issues, drafts
  *   included; this intentionally reverses the ISS-236 "All excludes drafts"
  *   rule and removes the separate Drafts tab the reporter flagged as confusing.
- * - draft: only drafts (ISS-438 — there was no way to see just drafts)
+ * - draft: human-authored drafts only — the backlog someone parked on purpose
+ * - findings: unreviewed detector output (scheduled sweeps, server-side passes)
  * - active: the in-flight lifecycle band
  * - review: developed/deploying/testing/tested
  * - blocked: on_hold + needs_info (work parked / waiting on input)
  * - done: shipped work (released + closed)
  */
-export function filterToStatusParams(filter: IssueFilter): {
+export function filterToQueryParams(filter: IssueFilter): {
   status?: IssueStatus[];
   statusNot?: IssueStatus[];
+  origin?: "detector" | "human";
 } {
   switch (filter) {
+    // Parked work a PERSON chose to do. Detector output is excluded so this
+    // bucket answers "what did I decide to build?" and nothing else.
+    // cm:edge contract -> packages/core/src/issues/creator.ts — `origin` values must match buildOriginCondition
     case "draft":
-      return { status: ["draft"] };
+      return { status: ["draft"], origin: "human" };
+    // Unreviewed machine findings, any status. Deliberately its own lane: on
+    // one project these outnumbered the real parked backlog and made the Draft
+    // tab unreadable.
+    case "findings":
+      return { origin: "detector" };
     case "active":
       return { status: ["open", "confirmed", "clarified", "waiting", "approved", "in_progress", "reopen"] };
     case "review":

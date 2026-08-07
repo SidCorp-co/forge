@@ -1,4 +1,4 @@
-import { type SQL, inArray, sql } from 'drizzle-orm';
+import { type SQL, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 
@@ -7,6 +7,28 @@ export const FORGE_AGENT_LABEL = 'Forge Agent';
 // cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — creatorLabelOf mirrors this rule
 export function isAgentChannel(createdVia: string | null): boolean {
   return createdVia != null && createdVia !== 'web';
+}
+
+/**
+ * Channels whose rows are unreviewed DETECTOR output rather than work anyone
+ * decided to do — a scheduled sweep's finding (`schedule`) or a server-side
+ * sweep's notice (`system`). `mcp` and `pipeline` are excluded on purpose:
+ * both carry human intent (an operator's CLI session, a decompose child).
+ */
+// cm:guard the ONLY origins hidden from the default Backlog lane. Adding a channel here
+// silently removes rows from every user's issue list — change the UI copy in the same commit.
+export const DETECTOR_CHANNELS = ['system', 'schedule'] as const;
+
+export function isDetectorChannel(createdVia: string | null): boolean {
+  return createdVia != null && (DETECTOR_CHANNELS as readonly string[]).includes(createdVia);
+}
+
+// cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — the Backlog/Findings split mirrors this predicate
+export function buildOriginCondition(origin: 'detector' | 'human'): SQL {
+  const channels = [...DETECTOR_CHANNELS];
+  if (origin === 'detector') return inArray(issues.createdVia, channels);
+  // Legacy rows predate created_via and are human backlog, so NULL lands here.
+  return or(isNull(issues.createdVia), notInArray(issues.createdVia, channels)) as SQL;
 }
 
 export interface IssueCreator {
