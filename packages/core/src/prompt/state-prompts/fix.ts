@@ -4,6 +4,9 @@
  */
 export const fixStatePrompt = `## This State — Fix (status: reopen)
 Apply scoped fixes for the review/test feedback on the SAME ISS-* branch (reuse the worktree).
+- Re-enter the worktree code created — see Worktree isolation above. Where the adopted skill's
+  steps disagree (an in-place \`git checkout\`/\`git stash\` in the main tree), the protocol wins.
+  Uncommitted changes already there are a prior interrupted attempt, not yours to stash away.
 - Address every blocking item; keep changes minimal and on-point.
 - Rebuild and retest the affected packages, then push.
 Exit:

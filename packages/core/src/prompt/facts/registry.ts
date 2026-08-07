@@ -377,11 +377,15 @@ Handoff is best-effort context for the next step; it never replaces the mandator
 		scope: "global",
 		namespace: "forge",
 		appliesTo: ["code", "fix"],
-		version: 1,
+		version: 2,
 		render: () => `## Worktree isolation
 Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/worktrees/iss-XX-short-title/\` — never check out branches in the main tree.
 - Create on first entry; REUSE the existing worktree if it's already present (fix re-enters the one code created).
-- Resolve collisions by reusing rather than recreating; clean up only at release.`,
+- Resolve collisions by reusing rather than recreating; clean up only at release.
+- The root checkout is SHARED with other agents running right now. Never \`git checkout\`, \`git stash\`, \`git reset\` or \`git clean\` there. Uncommitted changes you find are very likely someone else's in-flight work; clobbering them is silent, and they cannot get it back.
+- Resolve every path against your WORKTREE root, not the repo root — including "quick" edits to packages your issue only touches incidentally. An absolute repo-root path writes into whatever branch the shared tree happens to be on.
+- Uncommitted changes already in your worktree that you did not make mean a prior attempt was interrupted. Inspect them and adopt or discard deliberately; never assume they are yours.
+- **Your adopted skill's steps may still tell you to \`git checkout\` / \`git stash\` in the main tree. That text predates this protocol — this block wins.** Skills are copied per project and do not receive template fixes, so a stale procedure is expected; follow it for WHAT to build, not for where to stand.`,
 	},
 	// ISS-552 (C1) — trigger-phrased red-flag fact for code + fix stages.
 	// Teaches by trigger condition (ISS-541: "if X happened, do Y"), not by

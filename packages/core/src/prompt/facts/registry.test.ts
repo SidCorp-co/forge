@@ -140,3 +140,54 @@ describe('forge facts registry', () => {
     expect(renderFact('nope')).toBeUndefined();
   });
 });
+
+/**
+ * Worktree isolation is the one protocol whose violation destroys another
+ * agent's work irrecoverably, and it has done so repeatedly: anhome
+ * (redesign wiped twice), epodsystem-core (~30 min across 6 files),
+ * brand-gateway (main tree switched to a sibling issue's branch mid-edit),
+ * sidpeak (a crashed attempt kept committing into a reused worktree).
+ *
+ * Delivery was never the problem — the fact is `scope: global`,
+ * `appliesTo: [code, fix]`, and `resolve.ts` injects contextual facts for
+ * every applicable stage. It lost to the adopted skill's concrete
+ * step-by-step `git checkout` / `git stash`, which the agent was actively
+ * walking. Skills fork per project and never receive template fixes, so the
+ * precedence clause here is the only statement that reaches all of them.
+ */
+describe('worktree-protocol fact — the invariant that must outrank a stale skill step', () => {
+  const body = renderFact('worktree-protocol') ?? '';
+
+  it('reaches exactly the stages that write code, globally', () => {
+    const fact = getFact('worktree-protocol');
+    expect(fact?.scope).toBe('global');
+    expect(fact?.appliesTo).toEqual(['code', 'fix']);
+  });
+
+  it('names every destructive op on the shared root, not just checkout', () => {
+    for (const op of ['git checkout', 'git stash', 'git reset', 'git clean']) {
+      expect(body, `missing prohibition: ${op}`).toContain(op);
+    }
+  });
+
+  it("states the reason — the changes belong to someone else's live session", () => {
+    expect(body).toMatch(/SHARED with other agents/);
+    expect(body).toMatch(/cannot get it back/);
+  });
+
+  it('requires paths to resolve against the worktree root', () => {
+    expect(body).toMatch(/WORKTREE root, not the repo root/);
+  });
+
+  it('tells the agent that foreign uncommitted changes are a prior attempt', () => {
+    expect(body).toMatch(/prior attempt was interrupted/);
+    expect(body).toMatch(/never assume they are yours/);
+  });
+
+  // cm:guard the precedence clause is load-bearing — without it the fact keeps losing to the
+  // forked skill body, which is exactly how this protocol failed on four projects.
+  it('explicitly outranks a contradicting step in the adopted skill', () => {
+    expect(body).toMatch(/this block wins/);
+    expect(body).toMatch(/do not receive template fixes/);
+  });
+});

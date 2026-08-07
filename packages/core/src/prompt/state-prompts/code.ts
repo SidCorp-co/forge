@@ -4,6 +4,9 @@
  */
 export const codeStatePrompt = `## This State — Code (status: approved)
 Implement the approved plan on the ISS-* branch (cut from \`baseBranch\`).
+- Work inside this issue's dedicated worktree — see Worktree isolation above. Where the adopted
+  skill's steps disagree (an in-place \`git checkout\`/\`git stash\` in the main tree), the protocol
+  wins: that step predates it, and a shared root checkout has cost other agents real work.
 - Match existing conventions; build and test the affected packages before pushing.
 - Push the ISS-* branch. Merging is governed by the project's adopted forge-code skill, not this
   default — but the safety invariant always holds: never merge unreviewed code onto the
