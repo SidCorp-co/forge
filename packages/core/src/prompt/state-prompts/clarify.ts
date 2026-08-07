@@ -7,6 +7,9 @@ export const clarifyStatePrompt = `## This State — Clarify (status: confirmed)
 Validate understanding before planning: reproduce bugs, verify UX expectations, capture evidence.
 - Use the running deploy + browser automation when behaviour must be confirmed first-hand.
 - For bugs, end with a code-level root-cause hypothesis so plan starts from verified behaviour.
+- \`git fetch origin\` BEFORE concluding a prerequisite never landed, and read \`origin/<baseBranch>\`
+  rather than a feature branch — see "A stale clone is not evidence of absence" above. A bounce
+  built on a stale checkout sends the reporter back for work that was already merged.
 - Draft the release-notes summary if the issue lacks one.
 Exit:
 - Reproduced / UX validated → set status \`clarified\` (plan runs next).

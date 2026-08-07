@@ -326,3 +326,40 @@ describe('pipeline-rules — affordances table stays in sync with the guide + or
     }
   });
 });
+
+/**
+ * getcontent ISS-127: clarify reported "zero commits anywhere (local or
+ * remote)", no `session_log` column, commit a8d709b nonexistent — and bounced
+ * a valid issue to needs_info concluding its prerequisite ISS-126 had been
+ * closed prematurely. The runner's checkout was 8 commits behind origin/main;
+ * a plain `git fetch` showed the column, the commit and the whole merge chain.
+ * Forge's own bookkeeping had been right the entire time.
+ *
+ * The second half matters as much: clarify also read "no ISS-126 branch" as
+ * evidence, but branches are pruned after merge, so absence is the normal
+ * post-merge state.
+ */
+describe('pipeline-rules — a stale clone is not evidence of absence', () => {
+  const text = renderFact('pipeline-rules') ?? '';
+
+  it('requires a fetch before concluding something does not exist', () => {
+    expect(text).toMatch(/stale clone is not evidence of absence/);
+    expect(text).toContain('git fetch origin');
+    expect(text).toMatch(/many commits behind/);
+  });
+
+  it('points reads at the base branch rather than local HEAD', () => {
+    expect(text).toContain('read `origin/<baseBranch>`, not your local');
+  });
+
+  // cm:guard the branch-absence half — without it the rule only covers half of what ISS-127 got wrong
+  it('states that a missing ISS-* branch proves nothing after a merge', () => {
+    expect(text).toContain('MISSING `ISS-XX-*` BRANCH proves nothing');
+    expect(text).toMatch(/pruned after merge/);
+    expect(text).toMatch(/git ls-remote/);
+  });
+
+  it('tells the agent to trust Forge over a disagreeing working copy until it fetches', () => {
+    expect(text).toMatch(/fetch before you trust your copy/);
+  });
+});
