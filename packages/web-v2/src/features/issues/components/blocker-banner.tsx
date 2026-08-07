@@ -5,7 +5,7 @@
 // pipelineHealth.waitingOn / blocks edges) as a prominent banner. Shown ONLY
 // when blocked; the screen renders nothing when the verdict is null (AC#1/#2).
 // The banner says WHY + WHO + the next action.
-import { Banner, Button, Markdown } from "@/design";
+import { Banner, Button } from "@/design";
 import type { BlockerState } from "../derive";
 import { IssueRefBadge } from "./issue-ref-badge";
 
@@ -55,11 +55,8 @@ export function BlockerBanner({
         <p className="font-medium">{blocker.reason}</p>
         <p className="opacity-90">{blocker.whoMustAct}</p>
         {blocker.question && (
-          // cm:why the question is a raw comment body — markdown with fenced diagrams and hard line breaks; a bare <p> collapsed every newline into a space, so a clarify decision-fork arrived as one unreadable paragraph
-          <div className="mt-1 rounded-md bg-app/40 px-2 py-1">
-            <div className="font-medium">Question</div>
-            <Markdown className="mt-1 max-h-80 overflow-auto">{blocker.question}</Markdown>
-          </div>
+          // cm:why the body is deliberately NOT rendered here — it is a full agent comment that already renders in the thread below; duplicating it into the banner buried the one thing a banner is for, which is naming the next action. `question` survives as a presence signal only.
+          <p className="opacity-90">The agent left a question in the comments below.</p>
         )}
         {blocker.detail && <p className="opacity-80">{blocker.detail}</p>}
         {blocker.blockingRefs && blocker.blockingRefs.length > 0 && (

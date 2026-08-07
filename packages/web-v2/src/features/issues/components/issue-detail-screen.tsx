@@ -227,6 +227,16 @@ export function IssueDetailScreen({
     }
   };
 
+  // cm:why the blocker banner names the question but never reproduces it, so its CTA has to actually move the reader — switching the tab alone was a no-op whenever comments was already the open tab and the thread sat below the fold
+  const focusComments = () => {
+    setTab("comments");
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() =>
+        document.getElementById("issue-comments")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      );
+    }
+  };
+
   // Header action set (ISS-360) — wired to EXISTING transition / nav endpoints
   // only (no fabricated APIs). The contextual primary button depends on where
   // the issue sits in its lifecycle; the rest live in the ⋯ menu.
@@ -400,7 +410,7 @@ export function IssueDetailScreen({
               pending={pending || !canWrite}
               onApprove={() => onTransition("approved")}
               onResume={() => onTransition("reopen")}
-              onProvideInfo={() => setTab("comments")}
+              onProvideInfo={focusComments}
             />
           )}
 
@@ -514,7 +524,7 @@ export function IssueDetailScreen({
             </Collapsible>
           )}
 
-          <Card>
+          <Card id="issue-comments">
             <CardContent>
               <Tabs tabs={tabs} value={tab} onChange={setTab} />
               <div className="mt-4">
