@@ -12,6 +12,10 @@ Implement the approved plan on the ISS-* branch (cut from \`baseBranch\`).
   default — but the safety invariant always holds: never merge unreviewed code onto the
   production branch. If the project's \`baseBranch\` and \`productionBranch\` are the same branch,
   there is no safe pre-prod merge target — push only and defer the merge + deploy to release.
+- Deploy only where a deploy target actually exists. \`forge_coolify_deploy\` \`list\` returning an
+  empty array is DECISIVE: this project has none, and a deploy call will no-op
+  (\`reason: "no-integration"\`). A \`previewDeploy.stagingUrl\` on its own is not a target — it can
+  point at a URL some other mechanism updates, or at production.
 Exit:
 - Implemented and pushed → set status \`developed\`.
 - The plan is wrong or unworkable → set status \`reopen\` (or \`needs_info\`) with the reason.`;

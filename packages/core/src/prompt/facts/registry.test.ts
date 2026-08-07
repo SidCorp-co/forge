@@ -191,3 +191,42 @@ describe('worktree-protocol fact — the invariant that must outrank a stale ski
     expect(body).toMatch(/do not receive template fixes/);
   });
 });
+
+/**
+ * `deploying` was retired platform-wide (db/schema.ts: removed from the
+ * lifecycle, one-shot migrations re-parked every stranded row), but the
+ * forked skill bodies still name it in their exit tables. Six reports across
+ * four projects — portal-lighthuman x2, sid-desk x2, finance-automation,
+ * pixelight — each burned a rejected `forge_issues.update` and then guessed a
+ * fallback independently. The ladder is the only place that can correct all
+ * fifteen forks at once.
+ */
+describe('status-ladder fact — authoritative over a stale exit status in a forked skill', () => {
+  const body = renderFact('status-ladder', { projectId: 'p1', stage: 'code' }) ?? '';
+
+  it('declares itself the authoritative status set, not just the happy path', () => {
+    expect(body).toMatch(/authoritative set of statuses/);
+  });
+
+  // cm:guard naming `deploying` explicitly is the point — a generic "check the enum" loses to a
+  // concrete numbered step the agent is already executing, which is how this failed six times.
+  it('names `deploying` and says what to do instead', () => {
+    expect(body).toContain('deploying');
+    expect(body).toMatch(/retired platform-wide/);
+    expect(body).toMatch(/advance to the ladder's next rung instead/);
+  });
+
+  it('explains why the skill is wrong, so the agent trusts the ladder over its steps', () => {
+    expect(body).toMatch(/do not receive template fixes/);
+  });
+
+  it('still renders the project ladder it is resolved with', () => {
+    const custom =
+      renderFact('status-ladder', {
+        projectId: 'p1',
+        stage: 'code',
+        ladder: ['open', 'approved', 'closed'],
+      }) ?? '';
+    expect(custom).toContain('open → approved → closed');
+  });
+});

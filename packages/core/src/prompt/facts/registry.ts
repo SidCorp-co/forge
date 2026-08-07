@@ -266,13 +266,14 @@ Edges are directional \`fromIssue --kind--> toIssue\`. Allowed \`kind\` values:
 		scope: "project-resolved",
 		namespace: "forge",
 		appliesTo: ISSUE_STAGES,
-		version: 1,
+		version: 2,
 		render: (ctx) => {
 			const ladder = ctx?.ladder?.length ? ctx.ladder : CANONICAL_LADDER;
 			return `## Status ladder
 This project's happy-path forward ladder (enabled stages only) — OVERRIDES the default chain in Pipeline Rules:
 \`${ladder.join(" → ")}\`
-Advance one step at a time as the FINAL action. Bounce states (\`needs_info\`, \`reopen\`, \`on_hold\`) are reachable from anywhere; \`draft\` is never a valid target.`;
+Advance one step at a time as the FINAL action. Bounce states (\`needs_info\`, \`reopen\`, \`on_hold\`) are reachable from anywhere; \`draft\` is never a valid target.
+This ladder is also the authoritative set of statuses. **If your adopted skill's exit table names a status that is not on it, that step is stale — advance to the ladder's next rung instead.** \`deploying\` is the recurring case: retired platform-wide, no row can hold it, and \`forge_issues.update\` rejects it outright. Skills are copied per project and do not receive template fixes, so a stale exit status is expected; do not burn a retry discovering it.`;
 		},
 	},
 	{

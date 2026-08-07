@@ -87,3 +87,28 @@ describe('state-prompts — release terminal-exit invariant lives in the non-for
     expect(release).toMatch(/promote in batches and merge nothing here/);
   });
 });
+
+/**
+ * epodsystem-core reported the same conflict four times: `previewDeploy
+ * .stagingUrl` is set, so the skill's deploy-mode heuristic picks "deploy",
+ * but `forge_coolify_deploy list` is empty so the call is a guaranteed no-op
+ * (`reason: "no-integration"`). Worse, that stagingUrl actually served
+ * production from master, so forge-test QA'd stale code against it.
+ */
+describe('state-prompts — code stage resolves deploy target from reality, not config strings', () => {
+  const code = getStatePrompt('code') ?? '';
+
+  it('treats an empty Coolify list as decisive', () => {
+    expect(code).toContain('DECISIVE');
+    expect(code).toMatch(/no-integration/);
+  });
+
+  it('refuses to accept previewDeploy.stagingUrl as a deploy target on its own', () => {
+    expect(code).toMatch(/stagingUrl.*is not a target|not a target/);
+    expect(code).toMatch(/or at production/);
+  });
+
+  it('keeps the pre-existing same-branch merge guard (brand-gateway ISS-11)', () => {
+    expect(code).toMatch(/no safe pre-prod merge target/);
+  });
+});
