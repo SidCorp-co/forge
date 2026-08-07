@@ -230,3 +230,99 @@ describe('status-ladder fact — authoritative over a stale exit status in a for
     expect(custom).toContain('open → approved → closed');
   });
 });
+
+/**
+ * `merged_at` is the pipeline's load-bearing lie. Six reports across five
+ * projects: brand-gateway ISS-28 (closed + stamped + "Released — Merged to
+ * master" while the commits sat only on the branch, with three children
+ * queued behind it), epodsystem-core ISS-81 (stamped + tested, ISS-84
+ * dispatched onto a base missing the code), pixelight ISS-182 (merged to
+ * `testing` while prod publishes `main` — same bug reopened 3x in 2 days),
+ * devbox ISS-4, getcontent ISS-161.
+ *
+ * The prompt layer already said plenty about merged_at — all of it "remember
+ * to stamp it so downstream doesn't stall". Nothing said verify before you
+ * stamp, and nothing said a blocker's stamp is not proof. Both halves now
+ * live in the mandatory block, which every stage receives.
+ */
+describe('pipeline-rules — merged_at is caller-asserted, both directions', () => {
+  const text = renderFact('pipeline-rules') ?? '';
+
+  it('states plainly that nothing server-side verifies it', () => {
+    expect(text).toMatch(/CALLER-ASSERTED/);
+    expect(text).toMatch(/nothing server-side checks git/);
+  });
+
+  it('requires remote reachability before stamping, and handles the squash case', () => {
+    expect(text).toMatch(/ON THE REMOTE/);
+    expect(text).toContain('git merge-base --is-ancestor');
+    expect(text).toMatch(/after a squash merge the sha never appears/);
+  });
+
+  it('rejects the three things agents actually substituted for evidence', () => {
+    expect(text).toMatch(/push exit code/);
+    expect(text).toMatch(/matching branch\s*names/);
+    expect(text).toMatch(/the previous step said so/);
+  });
+
+  // The owner's own case: closing an abandoned issue silently unblocks its dependents.
+  it('warns that closing auto-stamps, and names the undo', () => {
+    expect(text).toMatch(/[Cc]losing also auto-stamps/);
+    expect(text).toContain('forge_issues.unmark');
+  });
+
+  // cm:guard the READ side is the half nobody had stated — devbox ISS-4 had to discover by hand
+  // that a `closed` blocker's code was never on main.
+  it("tells a dependent that a blocker's stamp is a claim, not proof", () => {
+    expect(text).toMatch(/is a claim, not proof/);
+    expect(text).toMatch(/do NOT silently build against it/);
+    expect(text).toMatch(/do NOT merge\s*the blocker yourself/);
+  });
+});
+
+/**
+ * The mandatory block outranks the contextual worktree fact, so while it said
+ * `git checkout <baseBranch> && git checkout -b ISS-XX` the worktree protocol
+ * could never win — the four projects that lost work were following the
+ * higher-precedence rule. Fixing the fact alone (d4f9f253) was not enough.
+ */
+describe('pipeline-rules — branch discipline defers to worktree isolation', () => {
+  const text = renderFact('pipeline-rules') ?? '';
+
+  it('no longer instructs a checkout in the shared root', () => {
+    expect(text).not.toMatch(/git checkout <baseBranch> && git pull && git checkout -b/);
+  });
+
+  it('directs branch creation into the issue worktree and names the destructive ops', () => {
+    expect(text).toContain('git worktree add');
+    for (const op of ['git checkout', 'stash', 'reset', 'clean']) {
+      expect(text, `missing prohibition: ${op}`).toContain(op);
+    }
+    expect(text).toMatch(/shared root checkout/);
+  });
+});
+
+/**
+ * Third copy of the note/plan affordance rules (guide registry and the runner's
+ * orientation template are the other two). It drifted the moment the first two
+ * were fixed — the same copy-paste failure the skill layer has, one level up.
+ */
+describe('pipeline-rules — affordances table stays in sync with the guide + orientation', () => {
+  const text = renderFact('pipeline-rules') ?? '';
+
+  it('routes notes to memory and keeps draft for real queued work', () => {
+    expect(text).toMatch(/nobody browses the issue list for notes/);
+    expect(text).toMatch(/queue work that must actually happen LATER/);
+  });
+
+  it('warns against pre-filling plan / acceptanceCriteria', () => {
+    expect(text).toMatch(/Pre-filling/);
+    expect(text).toMatch(/written by the clarify\/plan steps/);
+  });
+
+  it('carries the current red-flag vocabulary', () => {
+    for (const flag of ['draft-as-note', 'plan-by-hand', 'open-as-note', 'prose-deps']) {
+      expect(text, `missing red flag: ${flag}`).toContain(flag);
+    }
+  });
+});
