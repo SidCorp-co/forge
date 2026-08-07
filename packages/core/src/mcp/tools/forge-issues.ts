@@ -651,6 +651,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'returned a lean manifest (bodyTruncated:true), pull only the fields you need ' +
     'via get with fields:[...] (e.g. { action:"get", documentId, fields:["plan"] }). ' +
     'Do NOT re-get an issue whose full body you already loaded this session. ' +
+    'On create, fill title/description/priority/category — `plan` and ' +
+    '`acceptanceCriteria` are written by the clarify/plan steps; pre-filling them ' +
+    'deletes the plan step\'s reason to exist (red flag: plan-by-hand). Keep the ' +
+    'description a requirements contract (outcome, business rules, invariants, ' +
+    'out-of-scope) — not an implementation script naming files, endpoints or ' +
+    '"follow the pattern at <path>"; those claims go stale and outrank live ' +
+    'exploration in practice. See guide pipeline-and-issue-lifecycle. ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
     'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
     'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +

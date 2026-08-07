@@ -52,13 +52,15 @@ reach for the tool — and avoid the red flag.\n\
 | When you need | Use | Red flag (DON'T) |\n\
 |---|---|---|\n\
 | Ordering between issues | `forge_project_pm action=set_dependency kind:blocks` (`from` = the blocker) | Describing the dependency in prose instead of setting the edge — only a `blocks` edge gates dispatch |\n\
-| To record a note / follow-up | create an issue at `draft` | Creating it at `open` — that auto-triages and spawns a pipeline run |\n\
+| To record a note, learning, or decision | `forge_memory_write` (durable business logic → repo `docs/`) | Filing it as an issue — `draft` or not, nobody browses the issue list for notes |\n\
+| To queue work that must actually happen LATER | create an issue at `draft` | Creating it at `open` — that auto-triages and spawns a pipeline run |\n\
+| To report an issue | fill `title`, `description`, `priority`, `category` | Pre-filling `plan`/`acceptanceCriteria` — those are written by the clarify/plan steps |\n\
 | To change project config (`pipelineConfig.states`, `projectFacts`, …) | GET the current config first, then send a complete entry | Blind-patching a nested map you never read — you can clobber sibling keys |\n\
 | Before you design / fix | `forge_memory_search` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |\n\
 | To park work that never started | leave it at `draft` | `on_hold` from `draft` — `on_hold` is a deliberate pause for ACTIVE work only |\n\
 | To finish a fix made by hand, outside the pipeline | drive it through `status` and/or capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded |\n\
 \n\
-**Forge red flags:** prose-deps · open-as-note · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.\n",
+**Forge red flags:** prose-deps · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.\n",
     )
 }
 

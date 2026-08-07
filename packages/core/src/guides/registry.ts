@@ -139,12 +139,25 @@ Verify liveness on the deployed environment before declaring success — a deplo
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'draft vs open, status-last discipline, bounce states, and who owns which derived fields.',
-    version: 1,
+      'What belongs in a description, draft vs open, status-last discipline, bounce states, and who owns which derived fields.',
+    version: 2,
     body: `## Pipeline & issue lifecycle
 
-### draft vs open
-\`draft\` never dispatches — it's inert, safe for notes, follow-ups, and decompose children awaiting parent approval. \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. Creating a note-only issue at \`open\` is the single most common way to accidentally start unwanted pipeline work.
+### An issue is a unit of WORK — draft vs open
+\`draft\` never dispatches; \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. Creating a note-only issue at \`open\` is the single most common way to accidentally start unwanted pipeline work.
+
+But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later, and for decompose children awaiting parent approval. Red flags: \`open-as-note\` AND \`draft-as-note\`.
+
+### The description is a requirements contract, not an implementation script
+A description is the one context channel every downstream step trusts without re-verifying, so what you put in it decides whether plan and code explore the repo or just obey a stale snapshot.
+
+**Belongs** — the stable half, owned by the requester: the outcome and who it serves; business and domain rules; invariants stated as behaviour; what the user must see when it fails; explicit out-of-scope; acceptance criteria as observable outcomes; external-system facts the repo cannot know (a vendor API's required call order) — labelled as unverified reference material, not as instructions.
+
+**Does not belong** — the volatile half, owned by plan and code reading the live repo: which files or components to touch; endpoint-by-endpoint call scripts and internal sequencing; "follow the pattern at <path>"; assertions about the current implementation state (these go stale fastest and do the most damage); anything that pre-decides a design the plan step exists to decide.
+
+Two rules follow, both enforced at triage:
+- **Never promote a description's implementation claim to a verified fact.** Either check it against the live repo in this run and say you did, or record it as "claimed by author, unverified". Writing "(verified: …)" without checking costs a whole downstream run.
+- **When a prescriptive description arrives anyway** — common, humans paste vendor docs and audit output — DEMOTE it, don't delete it. Move the prose under "Reference material from the author — UNVERIFIED, verify against the repo before relying on it" and keep the requirement/AC section authoritative. Don't silently trust it; don't throw away genuine third-party knowledge either.
 
 ### Status is always the last action
 Within a pipeline step: do your real work, post your findings/decision comment, write your handoff — status transition comes **last**, after all of that. The next step only picks the issue up once status has actually moved, so setting it early (before the comment lands) means the next step can start reading a half-written record.
@@ -153,8 +166,12 @@ Within a pipeline step: do your real work, post your findings/decision comment, 
 \`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision), \`reopen\` (regression or failed check), \`on_hold\` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. \`on_hold\` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at \`draft\`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
 
 ### Derived fields you don't hand-set
+- \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.
+- \`acceptanceCriteria\` — written by **clarify/plan**. Draft ACs from the requester belong in \`description\` prose, not in this field.
 - Decompose parent/child status — system-owned; moving it by hand breaks the kickoff.
-- \`merged_at\` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above.
+- \`merged_at\` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above. It is **caller-asserted, never verified against git** — so before stamping it, confirm the commit is actually reachable from the target branch, and never read someone else's \`merged_at\` as proof a merge happened.
+
+When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline.
 
 ### A crash is not a reason to hold
 If your job fails mechanically (process crash, non-zero exit), the system itself reverts the issue to the stage's entry status and re-dispatches with a retry budget — you never need to (and shouldn't) set \`on_hold\` to paper over that.`,
