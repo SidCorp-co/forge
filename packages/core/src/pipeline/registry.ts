@@ -142,6 +142,16 @@ export const WORKING_STATUS_BY_JOB_TYPE: Partial<Record<JobType, IssueStatus>> =
   PIPELINE_STEPS.filter((s) => s.workingStatus !== null).map((s) => [s.jobType, s.workingStatus]),
 ) as Partial<Record<JobType, IssueStatus>>;
 
+/**
+ * Trigger status → the in-flight status that step's agent flips the issue to
+ * (sparse — only code/fix have one). Keyed by trigger status rather than job
+ * type for callers that only know where the issue sits, not which job runs.
+ */
+export const WORKING_STATUS_BY_STATUS: Partial<Record<IssueStatus, IssueStatus>> =
+  Object.fromEntries(
+    PIPELINE_STEPS.filter((s) => s.workingStatus !== null).map((s) => [s.status, s.workingStatus]),
+  ) as Partial<Record<IssueStatus, IssueStatus>>;
+
 /** Trigger status for a step (the status whose transition dispatches it). */
 export const TRIGGER_STATUS_BY_JOB_TYPE: Partial<Record<JobType, IssueStatus>> = Object.fromEntries(
   PIPELINE_STEPS.map((s) => [s.jobType, s.status]),

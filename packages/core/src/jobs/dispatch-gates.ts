@@ -479,6 +479,17 @@ function buildBarrierFragments(args: {
   const blockClosedArm = baseStampable ? sql`` : sql` AND p.status <> 'closed'`;
   const decompClosedArm = baseStampable ? sql`` : sql` AND c2.status <> 'closed'`;
 
+  // sid-desk ISS-20/25 — `merged_at` is COALESCE-once and never cleared, so a
+  // blocker that reached `tested` (stamping it) and was then REJECTED back to
+  // `reopen` still reads as satisfied. The parent dispatched for integration
+  // work while the child's fix was mid-cycle and staging was genuinely broken.
+  // Treat a currently-reopened blocker as unsatisfied regardless of the stamp:
+  // the stamp records that code landed once, not that it is still good.
+  //
+  // cm:why ONLY `reopen` — `on_hold`/`needs_info` were considered and rejected. Over-blocking wedges a queue silently (the ISS-639 failure mode this file was already burned by); `reopen` is the only bounce that asserts the landed code itself is suspect.
+  const blockReopenArm = sql` OR p.status = 'reopen'`;
+  const decompReopenArm = sql` OR c2.status = 'reopen'`;
+
   const predicates = {
     issueBusySession: sql`EXISTS (
       SELECT 1 FROM agent_sessions s
@@ -508,7 +519,7 @@ function buildBarrierFragments(args: {
       WHERE d.to_issue_id = j.issue_id
         AND d.kind = 'blocks'
         AND (d.valid_until IS NULL OR d.valid_until > now())
-        AND p.merged_at IS NULL${blockClosedArm}
+        AND (p.merged_at IS NULL${blockReopenArm})${blockClosedArm}
     )`,
     // Decompose redesign — the PARENT runs its integration LAST. A decompose
     // parent's forward jobs (code/review/test/fix) stay queued until every
@@ -525,7 +536,7 @@ function buildBarrierFragments(args: {
       WHERE d2.from_issue_id = j.issue_id
         AND d2.kind = 'decomposes'
         AND (d2.valid_until IS NULL OR d2.valid_until > now())
-        AND c2.merged_at IS NULL${decompClosedArm}
+        AND (c2.merged_at IS NULL${decompReopenArm})${decompClosedArm}
     )`,
   };
 

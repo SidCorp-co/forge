@@ -67,6 +67,48 @@ describe('findUnansweredBounce', () => {
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
   });
 
+  // cm:guard the code/fix shape — forge_step_start flips the issue to `in_progress`, so the
+  // departure FROM `approved` is the in-flight hop and the bounce is recorded one hop later.
+  // Before ISS-85 the guard stopped at the first hop and returned null, so it never fired for
+  // the two most expensive stages — sid-desk ISS-85 re-dispatched 7 times past it.
+  it('follows the in-flight hop for code/fix and still blocks the replay', async () => {
+    const bouncedAt = new Date('2026-08-01T10:05:00Z');
+    setup(
+      departure('in_progress'),
+      [{ payload: { from: 'in_progress', to: 'waiting' }, createdAt: bouncedAt }],
+      [],
+      [],
+    );
+    const out = await findUnansweredBounce('iss-1', 'approved');
+    expect(out).toEqual({ bounced: 'waiting', at: bouncedAt });
+  });
+
+  it('allows the dispatch when the in-flight hop exited forward', async () => {
+    setup(
+      departure('in_progress'),
+      [{ payload: { from: 'in_progress', to: 'developed' }, createdAt: BOUNCED_AT }],
+      [],
+      [],
+    );
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
+  // cm:guard input landing after the BOUNCE (not after the in-flight hop) must still release it
+  it('allows the dispatch when a comment landed after the in-flight bounce', async () => {
+    setup(
+      departure('in_progress'),
+      [{ payload: { from: 'in_progress', to: 'waiting' }, createdAt: BOUNCED_AT }],
+      [{ id: 'c1' }],
+      [],
+    );
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
+  it('allows the dispatch when the in-flight hop has no recorded exit yet', async () => {
+    setup(departure('in_progress'), [], [], []);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
   it('ignores a departure whose `to` is missing', async () => {
     setup([{ payload: { from: 'approved' }, createdAt: BOUNCED_AT }], [], []);
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();

@@ -268,8 +268,14 @@ describe('pickNextDispatchableJobForProject', () => {
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    expect(text).toMatch(/p\.merged_at\s+IS\s+NULL\s+AND\s+p\.status\s*<>\s*'closed'/);
-    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL\s+AND\s+c2\.status\s*<>\s*'closed'/);
+    // The reopen arm (sid-desk ISS-20/25) sits INSIDE the parens with merged_at;
+    // the closed bypass stays OUTSIDE so it still short-circuits the whole test.
+    expect(text).toMatch(
+      /\(\s*p\.merged_at\s+IS\s+NULL\s+OR\s+p\.status\s*=\s*'reopen'\s*\)\s+AND\s+p\.status\s*<>\s*'closed'/,
+    );
+    expect(text).toMatch(
+      /\(\s*c2\.merged_at\s+IS\s+NULL\s+OR\s+c2\.status\s*=\s*'reopen'\s*\)\s+AND\s+c2\.status\s*<>\s*'closed'/,
+    );
   });
 
   // Cohesion + ISS-102 defence: pause/resume/cancel ride on `r.status='running'`.

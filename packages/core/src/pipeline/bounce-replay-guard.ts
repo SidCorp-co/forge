@@ -16,6 +16,7 @@ import { and, desc, eq, gt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, activityLog, comments } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { WORKING_STATUS_BY_STATUS } from './registry.js';
 
 /** Statuses that mean "a human must act before this issue can progress". */
 export const BOUNCE_STATUSES = ['waiting', 'needs_info', 'on_hold'] as const;
@@ -42,21 +43,19 @@ export async function findUnansweredBounce(
 ): Promise<BounceReplay | null> {
   try {
     // cm:why the most recent departure from THIS stage only — an older bounce from a different stage says nothing about whether this one can succeed now
-    const [row] = await db
-      .select({ payload: activityLog.payload, createdAt: activityLog.createdAt })
-      .from(activityLog)
-      .where(
-        and(
-          eq(activityLog.issueId, issueId),
-          eq(activityLog.action, 'issue.statusChanged'),
-          sql`${activityLog.payload}->>'from' = ${stage}`,
-        ),
-      )
-      .orderBy(desc(activityLog.createdAt))
-      .limit(1);
+    let row = await lastDepartureFrom(issueId, stage);
     if (!row) return null;
+    let to = departureTarget(row);
 
-    const to = (row.payload as { to?: string } | null)?.to;
+    // cm:guard code/fix flip the issue to `in_progress` at forge_step_start, so the departure FROM the trigger status is ALWAYS the in-flight hop, never the bounce — without following that hop the guard silently never fires for the two most expensive stages (ISS-85 sid-desk looped 7 times past a guard that could not see the bounce)
+    const inFlight = WORKING_STATUS_BY_STATUS[stage];
+    if (inFlight && to === inFlight) {
+      const hop = await lastDepartureFrom(issueId, inFlight, row.createdAt);
+      if (!hop) return null;
+      row = hop;
+      to = departureTarget(hop);
+    }
+
     if (!to || !isBounce(to)) return null;
 
     if (await hasInputSince(issueId, row.createdAt)) return null;
@@ -66,6 +65,33 @@ export async function findUnansweredBounce(
     logger.warn({ err, issueId, stage }, 'bounce-guard: check failed, allowing dispatch');
     return null;
   }
+}
+
+type Departure = { payload: unknown; createdAt: Date };
+
+const departureTarget = (row: Departure): string | undefined =>
+  (row.payload as { to?: string } | null)?.to;
+
+/** Most recent status departure FROM `status`, optionally constrained to after `after`. */
+async function lastDepartureFrom(
+  issueId: string,
+  status: string,
+  after?: Date,
+): Promise<Departure | undefined> {
+  const [row] = await db
+    .select({ payload: activityLog.payload, createdAt: activityLog.createdAt })
+    .from(activityLog)
+    .where(
+      and(
+        eq(activityLog.issueId, issueId),
+        eq(activityLog.action, 'issue.statusChanged'),
+        sql`${activityLog.payload}->>'from' = ${status}`,
+        ...(after ? [gt(activityLog.createdAt, after)] : []),
+      ),
+    )
+    .orderBy(desc(activityLog.createdAt))
+    .limit(1);
+  return row;
 }
 
 // cm:why a comment OR any activity counts — the guard's job is to catch true silence, so anything a human or another step recorded since the bounce must release it
