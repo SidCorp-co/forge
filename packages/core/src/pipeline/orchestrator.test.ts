@@ -113,9 +113,17 @@ vi.mock('./ci-fix-pattern-query.js', () => ({
 // insert. Stub it so orchestrator unit tests assert orchestration intent
 // (guard fired / device + status used) without modeling the comment insert.
 const postEmptyReopenCommentMock = vi.fn(async () => undefined);
+// Default: no unexplained reopen, so the pre-existing cases keep their old
+// path. The dedicated suite in `empty-reopen-guard.test.ts` covers detection;
+// here we only assert the orchestration branch it drives.
+const findUnexplainedReopenMock = vi.fn(async (): Promise<unknown> => null);
+const postUnexplainedReopenCommentMock = vi.fn(async () => undefined);
 vi.mock('./empty-reopen-guard.js', () => ({
   buildEmptyReopenCommentBody: () => 'body',
+  buildUnexplainedReopenCommentBody: () => 'body',
   postEmptyReopenComment: (...a: unknown[]) => postEmptyReopenCommentMock(...(a as [])),
+  findUnexplainedReopen: (...a: unknown[]) => findUnexplainedReopenMock(...(a as [])),
+  postUnexplainedReopenComment: (...a: unknown[]) => postUnexplainedReopenCommentMock(...(a as [])),
 }));
 
 // ISS-108 — orchestrator resolves skillName from the DB via
@@ -298,6 +306,9 @@ beforeEach(() => {
   pauseMissingSkillMock.mockResolvedValue({ paused: true, alreadyPaused: false });
   postMissingSkillCommentMock.mockReset();
   postEmptyReopenCommentMock.mockReset();
+  findUnexplainedReopenMock.mockReset();
+  findUnexplainedReopenMock.mockResolvedValue(null);
+  postUnexplainedReopenCommentMock.mockReset();
   appendSkipChainEntryMock.mockReset();
   appendSkipChainEntryMock.mockResolvedValue(undefined);
   postSkipChainCappedCommentMock.mockReset();
@@ -832,6 +843,48 @@ describe('pipeline/orchestrator', () => {
     expect(postEmptyReopenCommentMock).not.toHaveBeenCalled();
     expect(dbInsert).toHaveBeenCalledTimes(1);
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'fix-job' }));
+  });
+
+  // ceo-dashboard + finance-automation ×2 — an issue that already shipped is
+  // reopened by hand with no comment saying what regressed. The ISS-635 guard
+  // above misses it (a prior code job DOES exist), so forge-fix dispatched with
+  // nothing to scope against and could only bounce to needs_info by hand.
+  it('routes a reopen with no rationale since it shipped to needs_info instead of dispatching fix', async () => {
+    cfgResolved({ enabled: true, autoFix: true });
+    liveIssue('reopen');
+    nextSelect.mockResolvedValueOnce([{ id: 'prior-code-job' }]); // shipped once
+    findUnexplainedReopenMock.mockResolvedValueOnce({
+      from: 'released',
+      since: new Date('2026-08-01T10:00:00Z'),
+    });
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'released', to: 'reopen' }) as never);
+
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+    expect(applyTransitionMock.mock.calls[0]?.[0]).toMatchObject({ id: 'iss-1', status: 'reopen' });
+    expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
+    expect(postUnexplainedReopenCommentMock).toHaveBeenCalledWith(
+      expect.objectContaining({ issueId: 'iss-1', from: 'released' }),
+    );
+    expect(resolverResolve).not.toHaveBeenCalled();
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the guard must never touch a stage other than fix — a released→reopen shape can only reach forge-fix, but the branch is cheap to mis-scope
+  it('never consults the unexplained-reopen guard for a non-fix stage', async () => {
+    cfgResolved({ enabled: true, autoCode: true });
+    liveIssue('approved');
+    skillRegistered('forge-code', 'code', 'autoCode');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'code-job' }]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
+
+    expect(findUnexplainedReopenMock).not.toHaveBeenCalled();
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
   });
 });
 

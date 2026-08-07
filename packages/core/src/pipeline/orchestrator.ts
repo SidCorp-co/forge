@@ -18,7 +18,11 @@ import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
 import { findUnansweredBounce } from './bounce-replay-guard.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
-import { postEmptyReopenComment } from './empty-reopen-guard.js';
+import {
+  findUnexplainedReopen,
+  postEmptyReopenComment,
+  postUnexplainedReopenComment,
+} from './empty-reopen-guard.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
 import { fetchHandoffPromptInputs } from './handoff-prefetch.js';
 import type { HookPayloads, HooksBus } from './hooks.js';
@@ -463,6 +467,39 @@ async function considerEnqueue(args: {
       'orchestrator: empty-reopen guard — no prior code/fix job, routed to needs_info',
     );
     return;
+  }
+
+  // A reopen straight out of `released`/`closed` with nobody saying why leaves
+  // forge-fix nothing to scope against — it can only re-derive "already
+  // shipped, no feedback" and bounce. Sibling of the guard above: there the
+  // issue never had an implementation, here it shipped one and the reopen
+  // carries no rejection. Runs second because the cheap job-existence check
+  // above already covers the never-implemented case.
+  if (jobMap.type === 'fix') {
+    const unexplained = await findUnexplainedReopen(args.issueId);
+    if (unexplained) {
+      const device = resolveSkipDevice(args.actor, projectCreatedBy);
+      if (device) {
+        try {
+          await applyStatusTransition(liveIssue, 'needs_info', device);
+        } catch (err) {
+          logger.warn(
+            { err, issueId: args.issueId },
+            'orchestrator: unexplained-reopen guard failed to route to needs_info',
+          );
+        }
+      }
+      await postUnexplainedReopenComment({
+        issueId: args.issueId,
+        authorId: projectCreatedBy,
+        from: unexplained.from,
+      });
+      logger.info(
+        { issueId: args.issueId, from: unexplained.from, since: unexplained.since },
+        'orchestrator: unexplained-reopen guard — no rationale since the issue shipped, routed to needs_info',
+      );
+      return;
+    }
   }
 
   // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — checked AFTER the live-status re-verify (so we know the issue really is at this stage) and BEFORE skill resolution, since resolving a skill for a step we are about to refuse is wasted work
