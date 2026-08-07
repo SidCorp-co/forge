@@ -1020,6 +1020,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           );
         }
 
+        if (input.data.detectorKey !== undefined && !isValidDetectorKey(input.data.detectorKey)) {
+          throw new Error(
+            `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${input.data.detectorKey}')`,
+          );
+        }
+
         // Shared whitelist (issues/patch-fields.ts) — same plain columns as
         // REST PATCH plus the MCP-only agent-facing fields.
         const updates = collectIssueFieldUpdates(input.data as Record<string, unknown>, [
