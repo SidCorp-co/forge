@@ -58,13 +58,18 @@ git fetch origin
 git branch --list 'ISS-*' | grep <issue-number>
 ```
 
-After fixing and committing, push ISS-*. In **deploy mode** (Coolify or staging URL), merge the fix into `baseBranch` (staging) for **every** complexity, then deploy — same as the code step, so the re-verify environment has the fix:
+After fixing and committing, push ISS-*. What happens next is the topology split from `SKILL.md` Step 6 — read `baseBranch` and `productionBranch` from `forge_config → get`; this file must never say "merge" unconditionally:
+
+**deploy · distinct-branch** (`baseBranch !== productionBranch`) — all complexities: merge the fix into `baseBranch` (a non-production integration branch), then deploy, so the re-verify environment has the fix:
 ```bash
 git push origin ISS-XX-short-title
 git checkout <baseBranch> && git merge ISS-XX-short-title && git push origin <baseBranch>
 git checkout ISS-XX-short-title
 ```
-In **local-only mode**, push the ISS-* branch only — no merge, no deploy. (Decompose child/parent target the integration branch, not `baseBranch` — see decompose-execution.md.)
+
+**deploy · same-branch** (`baseBranch === productionBranch`) — push the ISS-* branch only; no merge, no deploy. Merging here IS shipping to prod ahead of the re-review and QA this reopen exists for; forge-release lands it after they pass.
+
+**local-only mode** — push the ISS-* branch only; no merge, no deploy. (Decompose child/parent target the integration branch, not `baseBranch` — see decompose-execution.md.)
 
 ## Fix Strategy
 
