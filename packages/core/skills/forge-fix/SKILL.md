@@ -106,7 +106,7 @@ Separate fix commit — don't amend or squash into the original.
 
 Push the ISS-* branch.
 
-**Deploy mode detection:** Call `forge_config → get` and `forge_coolify_deploy → list`. If `previewDeploy` is null/missing AND Coolify list is empty → **local-only mode**. Otherwise → **deploy mode**.
+**Deploy mode detection:** Call `forge_config → get` and `forge_coolify_deploy → list`. If `previewDeploy` is null/missing AND Coolify list is empty → **local-only mode**. Otherwise → **deploy mode**, which splits by **topology** — read `baseBranch` and `productionBranch` off that same `forge_config → get` (never assume which one is safe to merge to). Mirrors forge-code's push matrix; keep the two in step.
 
 **Local-only mode** (no Coolify, no preview URL):
 ```bash
@@ -114,19 +114,28 @@ git push origin ISS-XX-short-title
 ```
 No baseBranch merge. No Coolify deploy. Stop here for push.
 
-**Deploy mode — all complexities** (push the fix, merge into `baseBranch` = staging, then deploy in Step 7 — same as the code step, so the re-verify environment has the fix):
+**Deploy mode · distinct-branch** (`baseBranch !== productionBranch`) — all complexities (push the fix, merge into `baseBranch` = a non-production integration branch, then deploy in Step 7 — same as the code step, so the re-verify environment has the fix):
 ```bash
 git push origin ISS-XX-short-title
 git checkout <baseBranch> && git merge ISS-XX-short-title && git push origin <baseBranch>
 git checkout ISS-XX-short-title
 ```
+
+**Deploy mode · same-branch** (`baseBranch === productionBranch`) — push the ISS-* branch ONLY, for any complexity:
+```bash
+git push origin ISS-XX-short-title
+```
+`baseBranch` IS the production branch here, so merging would ship the fix to prod before the re-review and QA that were the whole reason this issue reopened. No merge, no deploy (skip Step 7); forge-release lands it after those pass. Say so in the Step 8 comment.
+
 (Decompose child/parent target the integration branch instead of `baseBranch` — see `.claude/skills/forge-plan/references/decompose-execution.md`.)
 
 ### Step 7: Deploy
 
 **Local-only mode** — skip this step entirely. No environment to deploy to.
 
-**Deploy mode** — trigger Coolify deployment after push so the environment is updated before the pipeline advances:
+**Deploy mode · same-branch** — skip this step entirely. Nothing was merged, so there is nothing to deploy; deploying would ship the unreviewed fix to prod.
+
+**Deploy mode · distinct-branch** — trigger Coolify deployment after push so the environment is updated before the pipeline advances:
 
 ```
 forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
@@ -150,9 +159,11 @@ forge_comments → create → {
 
 Set status — **never `deploying`** (retired; from `reopen` the valid exits are `developed`, `testing`, `in_progress`). Mirror the code step so the fix is re-verified the same way the original change was:
 
-**Deploy mode:**
+**Deploy mode · distinct-branch:**
 - **`xs` / `s`** → `testing` (set staging `previewUrl`/`previewApiUrl`) — re-QA the fix directly on the deployed staging build; the inline self-review covered it.
 - **`m` / `l` / `xl`** → `developed` — the independent forge-review re-checks the fix, then it advances to testing.
+
+**Deploy mode · same-branch** — `developed` for all complexities (incl. `xs`/`s`): the fix is not deployed anywhere yet, so there is no build to fast-path QA onto; independent review runs first and forge-release lands it.
 
 **Local-only mode** — `developed` for all complexities (human re-checks at `developed`, closes manually).
 

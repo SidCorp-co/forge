@@ -11,6 +11,8 @@ Automated QA agent that tests the issue's actual output against the preview or s
 
 This is NOT a test runner (vitest/playwright). It's a manual QA replacement that uses live URLs to verify the change works end-to-end.
 
+**QA is read-only on git and on deploys.** You observe and report — you never `merge`, `push` to a shared branch, `revert`, `reset --hard`, or trigger/roll back a deploy, for any reason. If the environment is broken, or `baseBranch` is missing code an earlier step said it merged, that IS your finding: report it with evidence and set `waiting` (Step 9). Do not merge the branch yourself to give yourself something to test, and never revert to "restore" an environment — from here you cannot tell your own change from an outage that predates it.
+
 ## Usage
 
 ```

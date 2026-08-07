@@ -303,6 +303,36 @@ describe('pipeline-rules — branch discipline defers to worktree isolation', ()
 });
 
 /**
+ * 2026-08-07, finance-automation ISS-37: the test step found `main` missing the
+ * branch its own skill told it forge-code had merged, merged it itself, deployed
+ * — then read a 3-hour-old API outage as its own breakage and `git revert`ed the
+ * reviewed merge off `main` (== productionBranch there) to "restore production".
+ * Both halves were improvised: no skill mentions revert. The skill-layer topology
+ * guard removes the motive; this rule removes the action, on every step.
+ */
+describe('pipeline-rules — no step rescues an environment with git', () => {
+  const text = renderFact('pipeline-rules') ?? '';
+
+  it('forbids revert / reset --hard / force-push on a shared branch', () => {
+    for (const op of ['git revert', 'reset --hard', 'force-push']) {
+      expect(text, `missing prohibition: ${op}`).toContain(op);
+    }
+  });
+
+  it('reserves the base/production merge for the one step that owns it', () => {
+    expect(text).toMatch(/no other step may merge there/);
+  });
+
+  it('names the report-and-park exit instead of a git rescue', () => {
+    expect(text).toMatch(/post the evidence as a comment and set `waiting`/);
+  });
+
+  it('says why a single step cannot attribute an outage to itself', () => {
+    expect(text).toMatch(/pre-existing outage/);
+  });
+});
+
+/**
  * Third copy of the note/plan affordance rules (guide registry and the runner's
  * orientation template are the other two). It drifted the moment the first two
  * were fixed — the same copy-paste failure the skill layer has, one level up.
