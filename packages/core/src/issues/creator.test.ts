@@ -12,8 +12,13 @@ vi.mock('../db/client.js', () => ({
   db: { select: dbSelect },
 }));
 
-const { isAgentChannel, hydrateCreatorsForIssues, buildCreatedByCondition, FORGE_AGENT_LABEL } =
-  await import('./creator.js');
+const {
+  isAgentChannel,
+  hydrateCreatorsForIssues,
+  buildCreatedByCondition,
+  buildOriginCondition,
+  FORGE_AGENT_LABEL,
+} = await import('./creator.js');
 
 describe('isAgentChannel', () => {
   it('NULL (legacy row) is human', () => {
@@ -88,5 +93,34 @@ describe('buildCreatedByCondition', () => {
     expect(agentCond).toBeDefined();
     expect(personCond).toBeDefined();
     expect(agentCond).not.toBe(personCond);
+  });
+});
+
+/** Column names referenced anywhere in a drizzle SQL tree. */
+function columnsOf(node: unknown, acc = new Set<string>()): Set<string> {
+  const n = node as { queryChunks?: unknown[]; name?: string };
+  if (n && typeof n.name === 'string' && !n.queryChunks) acc.add(n.name);
+  if (n?.queryChunks) for (const chunk of n.queryChunks) columnsOf(chunk, acc);
+  return acc;
+}
+
+describe('buildOriginCondition', () => {
+  // The bug this guards: keying the lane on created_via alone. A scheduled
+  // sweep that writes through MCP records `mcp`, so its findings landed in the
+  // human Backlog lane — on forge-dev that was every single one of them.
+  it('detector keys off detector_key, not just created_via', () => {
+    const cols = columnsOf(buildOriginCondition('detector'));
+    expect(cols).toContain('detector_key');
+    expect(cols).toContain('created_via');
+  });
+
+  it('human excludes anything carrying a detector_key', () => {
+    const cols = columnsOf(buildOriginCondition('human'));
+    expect(cols).toContain('detector_key');
+    expect(cols).toContain('created_via');
+  });
+
+  it('the two lanes are complementary — neither is a subset of the other', () => {
+    expect(buildOriginCondition('detector')).not.toEqual(buildOriginCondition('human'));
   });
 });

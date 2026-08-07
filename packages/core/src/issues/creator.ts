@@ -1,4 +1,4 @@
-import { type SQL, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { type SQL, and, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 
@@ -10,13 +10,18 @@ export function isAgentChannel(createdVia: string | null): boolean {
 }
 
 /**
- * Channels whose rows are unreviewed DETECTOR output rather than work anyone
- * decided to do — a scheduled sweep's finding (`schedule`) or a server-side
- * sweep's notice (`system`). `mcp` and `pipeline` are excluded on purpose:
- * both carry human intent (an operator's CLI session, a decompose child).
+ * `detector_key` is the PRIMARY signal for detector output: a row carrying one
+ * was written by a sweep, by construction.
+ *
+ * `created_via` alone is NOT sufficient and must never be the only test. A
+ * scheduled agent that creates through MCP records `mcp`, identical to an
+ * operator's own CLI session — measured on forge-dev 2026-08-07, every one of
+ * its scheduled-sweep drafts was `mcp` or NULL and not a single one was
+ * `schedule`. These channels stay in the predicate only to catch server-side
+ * writers that never pass a key.
  */
-// cm:guard the ONLY origins hidden from the default Backlog lane. Adding a channel here
-// silently removes rows from every user's issue list — change the UI copy in the same commit.
+// cm:guard both halves must stay complementary — a row matching neither (or both) vanishes
+// from the UI or shows twice. Change buildOriginCondition's two branches together.
 export const DETECTOR_CHANNELS = ['system', 'schedule'] as const;
 
 export function isDetectorChannel(createdVia: string | null): boolean {
@@ -26,9 +31,15 @@ export function isDetectorChannel(createdVia: string | null): boolean {
 // cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — the Backlog/Findings split mirrors this predicate
 export function buildOriginCondition(origin: 'detector' | 'human'): SQL {
   const channels = [...DETECTOR_CHANNELS];
-  if (origin === 'detector') return inArray(issues.createdVia, channels);
+  const viaDetectorChannel = inArray(issues.createdVia, channels);
+  if (origin === 'detector') {
+    return or(isNotNull(issues.detectorKey), viaDetectorChannel) as SQL;
+  }
   // Legacy rows predate created_via and are human backlog, so NULL lands here.
-  return or(isNull(issues.createdVia), notInArray(issues.createdVia, channels)) as SQL;
+  return and(
+    isNull(issues.detectorKey),
+    or(isNull(issues.createdVia), notInArray(issues.createdVia, channels)),
+  ) as SQL;
 }
 
 export interface IssueCreator {
