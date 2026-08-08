@@ -409,7 +409,7 @@ export const forgeSkillsSyncStatusTool: ContextScopedMcpToolFactory = (ctx) => (
 export const forgeSkillsPushTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.push',
   description:
-    "Push (sync) the project's skills to its device-bound runners. Sends a `skill.sync` command over WebSocket to each targeted device room; the device pulls its effective manifest and reports installed hashes back — bodies are NOT sent in this call. Omit deviceId to signal every device-bound runner of the project, or pass one deviceId to target a single device. skillNames is an optional hint. Returns the deviceIds signalled (empty if the project has no device-bound runner). Requires owner/admin. This is the only programmatic way to trigger a device sync — there is no background auto-sync.",
+    "Push (sync) the project's skills to its device-bound runners. Sends a `skill.sync` command over WebSocket to each targeted device room; the device pulls its effective manifest and reports installed hashes back — bodies are NOT sent in this call. Omit deviceId to signal every device-bound runner of the project, or pass one deviceId to target a single device. skillNames is an optional hint. Returns the deviceIds signalled (empty if the project has no device-bound runner). Requires owner/admin. This is the explicit operator-driven sync path; a background poller also runs on each device when `[skills] auto_pull` is enabled (on by default — see daemon/skill_pull.rs).",
   inputSchema: zodToMcpSchema(pushInputSchema),
   handler: async (args) => {
     const input = pushInputSchema.parse(args);

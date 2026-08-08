@@ -1,11 +1,13 @@
 //! Server-driven skill seeding (Skill Studio 4, ISS-278).
 //!
 //! The server is the source of truth for skills; the device is a read-only
-//! artifact. Before a job runs, the runner pulls the project's effective skill
-//! manifest, downloads only the skills whose hash changed (diffed against a
-//! local cache under `~/.config/forge-runner/skills-cache/<project>/<skill>/`),
-//! seeds the full `.claude/skills/<name>/` tree into the working dir, then
-//! reports the installed hashes back so the server can mark the device synced.
+//! artifact. The runner pulls the project's effective skill manifest via the
+//! background poller (`daemon/skill_pull.rs`) or an explicit `skill.sync` push
+//! — NOT on each job dispatch. It downloads only the skills whose hash changed
+//! (diffed against a local cache under
+//! `~/.config/forge-runner/skills-cache/<project>/<skill>/`), seeds the full
+//! `.claude/skills/<name>/` tree into the working dir, then reports the
+//! installed hashes back so the server can mark the device synced.
 //!
 //! The runner never recomputes `hashSkillBody` — it echoes the server's
 //! `effective_hash` back as `installed_hash`, so there is no TS↔Rust hashing
