@@ -3308,3 +3308,33 @@ export const downloadTickets = pgTable(
     expiresIdx: index('download_tickets_expires_at_idx').on(t.expiresAt),
   }),
 );
+
+// ─── Divergence Charter ──────────────────────────────────────────────────────
+// ISS-800 / Update Pipeline §5 — per-project machine-readable record of
+// intentional deviations from the default pipeline template. ONE row per
+// project; `entries` is an append-friendly jsonb array (each entry: a
+// human-authored statement with difference/reason/incidentRefs/revertable).
+// Item 7 in the Master agent's 12-item bundle (ISS-795 §4).
+// cm:guard Charter mutations MUST emit `charter.changed` into `skill_activity_events` in the same transaction (invariant §9.11).
+
+export const divergenceCharters = pgTable(
+  'divergence_charters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .unique()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // cm:why jsonb array — each element is a DivergenceCharterEntry (see contracts/divergence-charters.ts); append-only in practice, agent never deletes individual entries.
+    entries: jsonb('entries').notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectUq: uniqueIndex('divergence_charters_project_uq').on(t.projectId),
+  }),
+);
+
+export const divergenceChartersRelations = relations(divergenceCharters, ({ one }) => ({
+  project: one(projects, { fields: [divergenceCharters.projectId], references: [projects.id] }),
+}));

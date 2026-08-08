@@ -88,6 +88,7 @@ import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
+import { forgeDivergenceChartersTool } from './tools/forge-divergence-charters.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
 import type { McpContext } from './tools/lib.js';
@@ -256,6 +257,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeProjectPmTool(ctx),
     forgePmSetDependencyTool(ctx),
     forgeHealthTool(ctx.device),
+    forgeDivergenceChartersTool(ctx),
     // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),
   ];
