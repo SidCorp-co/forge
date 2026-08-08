@@ -656,6 +656,7 @@ describe('db/schema — jobs', () => {
         'retry_after_at',
         'retry_of',
         'runner_id',
+        'skills_ran_with',
         'status',
         'system_prompt_hash',
         'type',
