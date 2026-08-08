@@ -137,12 +137,17 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     // ── record_vote ───────────────────────────────────────────────────────────
     if (input.action === 'record_vote') {
-      // Verifier agent — principal may be admin or system; no role check here
-      // (the run's own status guards prevent double-voting in the wrong state).
+      // Verifier agents are project members — enforce membership + IDOR guard.
+      await assertPrincipalIsMember(ctx.principal, projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=record_vote');
       if (!input.jobId) throw new Error('BAD_REQUEST: jobId is required for action=record_vote');
       if (!input.vote) throw new Error('BAD_REQUEST: vote is required for action=record_vote');
       if (!input.reason) throw new Error('BAD_REQUEST: reason is required for action=record_vote');
+
+      // IDOR guard: verify run belongs to the asserted project before mutating
+      const voteRun = await getReconcileRun(input.runId);
+      if (!voteRun || voteRun.projectId !== projectId)
+        throw new Error('NOT_FOUND: reconcile run not found');
 
       await recordVerifierVote({
         runId: input.runId,

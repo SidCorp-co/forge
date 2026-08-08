@@ -589,18 +589,27 @@ export interface RecordVerdictInput {
  * cm:guard Call only when the job is in `running` state.
  */
 export async function recordReconcileVerdict(input: RecordVerdictInput): Promise<void> {
-  const [runRow] = await db
-    .select()
-    .from(reconcileRuns)
-    .where(eq(reconcileRuns.id, input.runId))
-    .limit(1);
+  await db.transaction(async (tx) => {
+    // SELECT FOR UPDATE — serialize concurrent verdict calls for the same run
+    const [runRow] = await tx
+      .select()
+      .from(reconcileRuns)
+      .where(eq(reconcileRuns.id, input.runId))
+      .for('update')
+      .limit(1);
 
-  if (!runRow) throw new Error(`reconcile run not found: ${input.runId}`);
+    if (!runRow) throw new Error(`reconcile run not found: ${input.runId}`);
+    if (runRow.status !== 'running') {
+      logger.warn(
+        { runId: input.runId, status: runRow.status },
+        'recordReconcileVerdict called for non-running run — skipping',
+      );
+      return;
+    }
 
-  const gate = classifyGate(runRow.bundle?.change ?? '', input.verdict);
+    const gate = classifyGate(runRow.bundle?.change ?? '', input.verdict);
 
-  if (input.verdict === 'escalate' || input.verdict === 'no-op') {
-    await db.transaction(async (tx) => {
+    if (input.verdict === 'escalate' || input.verdict === 'no-op') {
       const nextStatus: ReconcileRunStatus = input.verdict === 'escalate' ? 'escalated' : 'applied';
       await tx
         .update(reconcileRuns)
@@ -612,7 +621,7 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
           decidedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(reconcileRuns.id, input.runId));
+        .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'running')));
 
       const eventType = input.verdict === 'escalate' ? 'reconcile.escalated' : 'reconcile.decided';
       await logActivity(tx, {
@@ -624,15 +633,13 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         packetId: runRow.packetId,
         reason: input.rationale.slice(0, 500),
       });
-    });
-    return;
-  }
+      return;
+    }
 
-  // apply / apply-with-adaptation: compute candidate hash + transition to verifying
-  const candidateBody = input.candidateBody ?? '';
-  const candidateHash = hashSkillBody(candidateBody, null);
+    // apply / apply-with-adaptation: compute candidate hash + transition to verifying
+    const candidateBody = input.candidateBody ?? '';
+    const candidateHash = hashSkillBody(candidateBody, null);
 
-  await db.transaction(async (tx) => {
     await tx
       .update(reconcileRuns)
       .set({
@@ -644,7 +651,7 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         rationale: input.rationale,
         updatedAt: new Date(),
       })
-      .where(eq(reconcileRuns.id, input.runId));
+      .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'running')));
 
     await logActivity(tx, {
       eventType: 'reconcile.decided',
@@ -705,6 +712,25 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     if (existingVotes.some((v) => v.jobId === input.jobId)) {
       logger.warn({ runId: input.runId, jobId: input.jobId }, 'duplicate verifier vote — skipping');
       return;
+    }
+
+    // Validate jobId: only accept votes from genuinely dispatched verify_skill jobs
+    // bound to this run — fabricated jobIds must not reach the majority tally.
+    const [verifierJob] = await tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.id, input.jobId),
+          eq(jobs.type, 'verify_skill'),
+          eq(sql`${jobs.payload}->>'reconcileRunId'`, runRow.id),
+        ),
+      )
+      .limit(1);
+    if (!verifierJob) {
+      throw new Error(
+        `BAD_REQUEST: jobId ${input.jobId} is not a dispatched verify_skill job for run ${input.runId}`,
+      );
     }
 
     const newVote: ReconcileVerifierVote = {
