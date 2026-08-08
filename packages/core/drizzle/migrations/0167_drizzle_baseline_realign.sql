@@ -1,0 +1,15 @@
+-- No-op by design. This entry carries NO DDL.
+--
+-- Its only purpose is to advance the drizzle-kit SNAPSHOT baseline
+-- (meta/0167_snapshot.json) so it matches the schema that migrations
+-- 0164-0166 already applied.
+--
+-- Why it was needed: 0164_reconcile_runs, 0165 and 0166 were hand-authored
+-- (drizzle-kit generate was blocked at the time by the snapshot-chain
+-- collision fixed in 0024/0027). Hand-authored SQL updates the database but
+-- never updates the snapshot, so the baseline still described a schema with
+-- no `reconcile_runs` table. The next `pnpm db:generate` therefore emitted a
+-- CREATE TABLE for a table that already exists, which would fail on apply.
+--
+-- Rule this encodes: a hand-authored migration MUST be followed by a
+-- snapshot realign, or the next generated migration is wrong.
