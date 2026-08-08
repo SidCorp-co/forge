@@ -34,7 +34,7 @@ import {
 import { enqueueReconcileJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
-import { openOneShotRun } from '../pipeline/runs.js';
+import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
 import { hashSkillBody } from './hash.js';
@@ -85,6 +85,10 @@ async function logActivity(
 
 // These patterns in the change diff force the human gate regardless of verdict.
 // Source: ISS-795 §6, ISS-373 evidence (auth exposure), ISS-354/365 (merge target).
+// cm:guard This list is a DENY list — it is not exhaustive. The gate MUST fail
+// safe: if none of ADDITIVE_PATTERNS positively identify the change as additive,
+// the default is 'human'. Do not expand HUMAN_GATE_PATTERNS as the primary safety
+// mechanism; the fail-safe default is the primary mechanism.
 const HUMAN_GATE_PATTERNS: RegExp[] = [
   /\bmerge.?target\b/i,
   /\bterminal.?transition\b/i,
@@ -94,11 +98,26 @@ const HUMAN_GATE_PATTERNS: RegExp[] = [
   /\bremov(e|ing|al).{0,30}(gate|guard|step)\b/i,
   /\brelax.{0,30}(gate|guard|bar)\b/i,
   /\bdisabl(e|ing).{0,30}(gate|guard|check)\b/i,
+  /\bwiden.{0,30}(who|access|scope)\b/i,
+  /\bskip.{0,30}(step|gate|guard|check|approval)\b/i,
+  /\bloosen.{0,30}(requirement|check|bar|gate)\b/i,
+];
+
+// These patterns positively identify additive-only changes (new guard/step, no relaxation).
+// A change must match at least one of these (and none of HUMAN_GATE_PATTERNS) to auto-apply.
+const ADDITIVE_PATTERNS: RegExp[] = [
+  /\badd(ing|ed|s)?\b.{0,40}(step|guard|check|gate|validation|requirement|rule|clause)/i,
+  /\bstrengthen(ing|ed|s)?\b/i,
+  /\btighten(ing|ed|s)?\b/i,
+  /\bexpand(ing|ed|s)?\b/i,
+  /\bimprove(s|d|ing)?\b/i,
+  /\bincreas(e|ing|es|ed)\b.{0,40}(check|validation|requirement|strictness|coverage)/i,
 ];
 
 /**
  * Classify whether the change may be auto-applied or requires human review.
- * Additive-only changes (add a guard/step, relax NO bar) may be auto-applied.
+ * Fail-safe: defaults to 'human' unless the change is positively identified
+ * as additive (matches ADDITIVE_PATTERNS) AND does not match any HUMAN_GATE_PATTERNS.
  * Any change that removes/relaxes a gate, alters auth/permission, or touches
  * merge targets or terminal transitions → human gate (ISS-795 §6).
  */
@@ -107,7 +126,12 @@ export function classifyGate(change: string, verdict: ReconcileVerdict): Reconci
   for (const pattern of HUMAN_GATE_PATTERNS) {
     if (pattern.test(change)) return 'human';
   }
-  return 'auto';
+  for (const pattern of ADDITIVE_PATTERNS) {
+    if (pattern.test(change)) return 'auto';
+  }
+  // cm:why Fail safe: unrecognised change text routes to human review.
+  // A leaky deny-list is worse than a false-positive on the human gate.
+  return 'human';
 }
 
 // ── C1–C5 bundle validator ───────────────────────────────────────────────────
@@ -523,6 +547,10 @@ export async function spawnReconcileRun(input: {
     runId = result.runId;
     jobId = result.jobId;
   } catch (err) {
+    // Close the orphaned pipeline_run so it doesn't block the runner cap
+    await closeRun(pipelineRun.id, 'failed').catch((closeErr) =>
+      logger.error({ closeErr, runId: pipelineRun.id }, 'reconcile.spawn.closeOrphanedRun.error'),
+    );
     if (isUniqueViolation(err)) {
       return {
         ok: false,
@@ -646,53 +674,68 @@ export interface RecordVerifierVoteInput {
  *
  * Multi-vote: at least 2 verifier jobs must agree on 'pass' for auto-publish.
  * Called by the verifier agent via the `forge_reconcile` MCP tool.
+ *
+ * Concurrency: SELECT FOR UPDATE inside the transaction serializes concurrent
+ * vote calls for the same run. Duplicate votes from the same jobId are ignored.
+ * The publish transition is additionally guarded by WHERE status='verifying' to
+ * remain idempotent if somehow two transactions reach the publish branch.
  */
 export async function recordVerifierVote(input: RecordVerifierVoteInput): Promise<void> {
-  const [runRow] = await db
-    .select()
-    .from(reconcileRuns)
-    .where(eq(reconcileRuns.id, input.runId))
-    .limit(1);
-
-  if (!runRow) throw new Error(`reconcile run not found: ${input.runId}`);
-  if (runRow.status !== 'verifying') {
-    logger.warn(
-      { runId: input.runId, status: runRow.status },
-      'verifier vote received for non-verifying run',
-    );
-    return;
-  }
-
-  const newVote: ReconcileVerifierVote = {
-    jobId: input.jobId,
-    vote: input.vote,
-    reason: input.reason,
-    decidedAt: new Date().toISOString(),
-  };
-
-  const existingVotes = (runRow.verifierVotes as ReconcileVerifierVote[]) ?? [];
-  const allVotes = [...existingVotes, newVote];
-
-  // Count pass vs fail
-  const passCount = allVotes.filter((v) => v.vote === 'pass').length;
-  const failCount = allVotes.filter((v) => v.vote === 'fail').length;
-
-  // We spawn VERIFIER_VOTE_COUNT verifiers; majority = ceil(VERIFIER_VOTE_COUNT / 2)
-  const VERIFIER_VOTE_COUNT = 3;
-  const MAJORITY = Math.ceil(VERIFIER_VOTE_COUNT / 2); // 2
-
-  const majorityPass = passCount >= MAJORITY;
-  const majorityFail = failCount >= MAJORITY;
-  const allVoted = allVotes.length >= VERIFIER_VOTE_COUNT;
-
   await db.transaction(async (tx) => {
+    // SELECT FOR UPDATE — serializes concurrent votes for the same run
+    const [runRow] = await tx
+      .select()
+      .from(reconcileRuns)
+      .where(eq(reconcileRuns.id, input.runId))
+      .for('update')
+      .limit(1);
+
+    if (!runRow) throw new Error(`reconcile run not found: ${input.runId}`);
+    if (runRow.status !== 'verifying') {
+      logger.warn(
+        { runId: input.runId, status: runRow.status },
+        'verifier vote received for non-verifying run',
+      );
+      return;
+    }
+
+    const existingVotes = (runRow.verifierVotes as ReconcileVerifierVote[]) ?? [];
+
+    // Idempotency: ignore duplicate votes from the same verifier job
+    if (existingVotes.some((v) => v.jobId === input.jobId)) {
+      logger.warn({ runId: input.runId, jobId: input.jobId }, 'duplicate verifier vote — skipping');
+      return;
+    }
+
+    const newVote: ReconcileVerifierVote = {
+      jobId: input.jobId,
+      vote: input.vote,
+      reason: input.reason,
+      decidedAt: new Date().toISOString(),
+    };
+
+    const allVotes = [...existingVotes, newVote];
+
+    // Count pass vs fail from the DB-authoritative (locked) array
+    const passCount = allVotes.filter((v) => v.vote === 'pass').length;
+    const failCount = allVotes.filter((v) => v.vote === 'fail').length;
+
+    // We spawn VERIFIER_VOTE_COUNT verifiers; majority = ceil(VERIFIER_VOTE_COUNT / 2)
+    const VERIFIER_VOTE_COUNT = 3;
+    const MAJORITY = Math.ceil(VERIFIER_VOTE_COUNT / 2); // 2
+
+    const majorityPass = passCount >= MAJORITY;
+    const majorityFail = failCount >= MAJORITY;
+    const allVoted = allVotes.length >= VERIFIER_VOTE_COUNT;
+
+    // Persist updated votes array first (status may be further updated below)
     await tx
       .update(reconcileRuns)
       .set({ verifierVotes: allVotes, updatedAt: new Date() })
-      .where(eq(reconcileRuns.id, input.runId));
+      .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
 
     if (!allVoted && !majorityFail) {
-      // Still collecting votes
+      // Still collecting votes — no further action this turn
       return;
     }
 
@@ -701,7 +744,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       await tx
         .update(reconcileRuns)
         .set({ status: 'escalated', updatedAt: new Date() })
-        .where(eq(reconcileRuns.id, input.runId));
+        .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
 
       await logActivity(tx, {
         eventType: 'verify.failed',
@@ -723,7 +766,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         await tx
           .update(reconcileRuns)
           .set({ status: 'decided', decidedAt: new Date(), updatedAt: new Date() })
-          .where(eq(reconcileRuns.id, input.runId));
+          .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
 
         await logActivity(tx, {
           eventType: 'reconcile.decided',
@@ -747,7 +790,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
             error: 'skillId is null, cannot auto-publish',
             updatedAt: new Date(),
           })
-          .where(eq(reconcileRuns.id, input.runId));
+          .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
         return;
       }
 
@@ -769,7 +812,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       await tx
         .update(reconcileRuns)
         .set({ status: 'applied', decidedAt: new Date(), updatedAt: new Date() })
-        .where(eq(reconcileRuns.id, input.runId));
+        .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
 
       await logActivity(tx, {
         eventType: 'skill.body.changed',

@@ -3419,8 +3419,8 @@ export const reconcileRuns = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    // Nullable FK to update_packets — text id, not uuid, matches update_packets.id type
-    packetId: text('packet_id'),
+    // Nullable FK to update_packets — preserves referential integrity; set null on packet deletion
+    packetId: uuid('packet_id').references(() => updatePackets.id, { onDelete: 'set null' }),
     // The skill being reconciled (nullable — a delete/rename might remove the row)
     skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'set null' }),
     status: text('status', { enum: reconcileRunStatuses }).notNull().default('pending'),

@@ -51,6 +51,22 @@ describe('classifyGate', () => {
       'auto',
     );
   });
+
+  it('returns human (fail-safe) for unrecognised change text not matching additive patterns', () => {
+    expect(classifyGate('Reorganize the skill sections for readability', 'apply')).toBe('human');
+  });
+
+  it('returns human (fail-safe) for empty change text', () => {
+    expect(classifyGate('', 'apply')).toBe('human');
+  });
+
+  it('returns human when change mentions skipping approval', () => {
+    expect(classifyGate('Skip the approval step for fast PRs', 'apply')).toBe('human');
+  });
+
+  it('returns human when change mentions loosening a requirement', () => {
+    expect(classifyGate('Loosen the requirement for code review sign-off', 'apply')).toBe('human');
+  });
 });
 
 describe('validateC1C5', () => {
