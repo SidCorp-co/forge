@@ -15,6 +15,10 @@ vi.mock('../../knowledge/service.js', () => ({
 }));
 vi.mock('../../logger.js', () => ({ logger: { warn: vi.fn() } }));
 
+// cm:why imported at module scope, AFTER the vi.mock calls above — a dynamic import inside
+// it() charges module-graph loading to the 5s test budget, which is what made this file flake
+const { renderStageFactsText } = await import('./resolve.js');
+
 // A realistic projectFacts fixture: two on-demand guides + one always-inject rule.
 const FIXTURE_FACTS: Record<string, string> = {
   'build-test-commands': 'pnpm build && pnpm test',
@@ -51,7 +55,6 @@ const BASE_INPUTS = {
 
 describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   it('flag-OFF output (agentConfig source) matches flag-ON output (knowledge_entries source)', async () => {
-    const { renderStageFactsText } = await import('./resolve.js');
 
     const flagOff = renderStageFactsText(
       {
@@ -77,7 +80,6 @@ describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   });
 
   it('both branches use forge_knowledge pointer (not forge_config)', async () => {
-    const { renderStageFactsText } = await import('./resolve.js');
 
     for (const [alwaysInjectFacts, projectFactKeys, label] of [
       [alwaysInjectFromConfig, onDemandKeysFromConfig, 'flag-OFF'] as const,
@@ -98,7 +100,6 @@ describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   });
 
   it('always-inject fact is inlined verbatim in both branches', async () => {
-    const { renderStageFactsText } = await import('./resolve.js');
     const RULE = FIXTURE_FACTS['contracts-rule'];
 
     for (const [alwaysInjectFacts, projectFactKeys, label] of [
@@ -118,7 +119,6 @@ describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   });
 
   it('on-demand keys appear in fetch index, not inlined', async () => {
-    const { renderStageFactsText } = await import('./resolve.js');
 
     for (const [alwaysInjectFacts, projectFactKeys, label] of [
       [alwaysInjectFromConfig, onDemandKeysFromConfig, 'flag-OFF'] as const,
