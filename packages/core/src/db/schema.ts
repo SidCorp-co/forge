@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   bigint,
   boolean,
+  check,
   customType,
   foreignKey,
   index,
@@ -1038,12 +1039,7 @@ export const issues = pgTable(
     reportedBy: text('reported_by'),
     // cm:guard never expose as client-settable on issueCreateSchema or the MCP create input
     createdVia: text('created_via', { enum: issueCreationChannels }),
-    // Stable identity of the DETECTOR that produced this row (e.g.
-    // `doc-drift/architecture`). At most one non-closed issue may carry a given
-    // key per project — a repeat finding comments on the live one instead of
-    // opening a duplicate. NULL for everything a human authored.
-    // cm:guard enforced by the partial unique index `issues_detector_key_live_uq` (migration 0158);
-    // claimDetectorKey() is the graceful path — the index is the backstop, do not drop it
+    // cm:guard at most one non-closed issue may carry a given detector key per project — enforced by partial unique index `issues_detector_key_live_uq` (migration 0158); claimDetectorKey() is the graceful path, the index is the backstop, do not drop it
     detectorKey: text('detector_key'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
@@ -1544,6 +1540,34 @@ export const skillActivityEvents = pgTable(
     packetIdx: index('skill_activity_events_packet_idx').on(t.packetId, t.occurredAt),
     skillIdx: index('skill_activity_events_skill_idx').on(t.projectId, t.skillId, t.occurredAt),
     deviceIdx: index('skill_activity_events_device_idx').on(t.deviceId, t.occurredAt),
+  }),
+);
+
+export const updatePacketIntentClasses = ['invariant', 'procedure', 'enhancement'] as const;
+export type UpdatePacketIntentClass = (typeof updatePacketIntentClasses)[number];
+
+export interface UpdatePacketProvenance {
+  commit?: string | undefined;
+  version?: string | undefined;
+  author?: string | undefined;
+}
+
+export const updatePackets = pgTable(
+  'update_packets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    change: text('change').notNull(),
+    // cm:guard a packet with no story must never be issued (Update Pipeline §3) — enforce in createUpdatePacket() too, this CHECK is only the last-resort backstop
+    story: text('story').notNull(),
+    intentClass: text('intent_class', { enum: updatePacketIntentClasses }).notNull(),
+    // cm:why no FK — a packet's target may be a global skill name with no per-project row
+    appliesTo: text('applies_to').notNull(),
+    provenance: jsonb('provenance').notNull().default({}).$type<UpdatePacketProvenance>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    storyNotEmpty: check('update_packets_story_not_empty', sql`length(trim(${t.story})) > 0`),
+    createdAtIdx: index('update_packets_created_at_idx').on(t.createdAt),
   }),
 );
 
