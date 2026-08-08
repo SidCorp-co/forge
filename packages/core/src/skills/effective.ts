@@ -318,7 +318,21 @@ export async function resolveManagedMetaPrompts(
   }));
 }
 
-export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing';
+// ISS-798 (stage ④): observation-aware status values.
+//
+// Status ladder:
+//   missing  — no install row at all.
+//   outdated — installed_hash differs from effective_hash (server-side check,
+//              kept for backwards compatibility with pre-observation data).
+//   unknown  — runner is too old to report observation (observed_sha is null,
+//              no shadow detected). Cannot confirm the right body runs.
+//   shadowed — runner detected a user-level ~/.claude/skills/<name>/ that
+//              takes precedence over the project copy.
+//   stale    — observed_sha is present but differs from installed_hash,
+//              implying the on-disk content was overwritten outside of sync.
+//   synced   — observed_sha matches installed_hash: the pushed body is what
+//              Claude Code will actually execute.
+export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing' | 'unknown' | 'shadowed' | 'stale';
 
 export interface DeviceSkillStatusEntry {
   skillId: string;
@@ -327,6 +341,8 @@ export interface DeviceSkillStatusEntry {
   installedHash: string | null;
   installedVersion: number | null;
   syncedAt: string | null;
+  observedSha: string | null;
+  shadowedBy: string | null;
   status: DeviceSkillStatusValue;
 }
 
@@ -335,12 +351,17 @@ interface InstalledRow {
   installedHash: string;
   installedVersion: number | null;
   syncedAt: Date | string | null;
+  // ISS-798: null for pre-0.7.0 runners that never sent observation fields.
+  observedSha: string | null;
+  shadowedBy: string | null;
 }
 
 /**
- * Per-skill freshness for one device: `missing` (no install row), `outdated`
- * (installed hash differs from effective hash), or `synced` (equal). Pure so
- * the status logic is unit-testable without a DB.
+ * Per-skill freshness for one device. Observation-aware (ISS-798): when the
+ * runner sends `observed_sha`, that field (not just the echoed installed_hash)
+ * determines the status — so a shadow copy can be surfaced as `shadowed`
+ * instead of silently appearing `synced`. Pure so the status logic is
+ * unit-testable without a DB.
  */
 export function computeDeviceSkillStatus(
   effective: EffectiveSkill[],
@@ -350,9 +371,28 @@ export function computeDeviceSkillStatus(
   return effective.map((e) => {
     const row = byId.get(e.skillId);
     let status: DeviceSkillStatusValue;
-    if (!row) status = 'missing';
-    else if (row.installedHash !== e.effectiveHash) status = 'outdated';
-    else status = 'synced';
+    if (!row) {
+      status = 'missing';
+    } else if (row.installedHash !== e.effectiveHash) {
+      // installed_hash already wrong before checking observation.
+      status = 'outdated';
+    } else if (row.shadowedBy !== null) {
+      // A user-level copy at ~/.claude/skills/<name>/ shadows the project
+      // copy; Claude Code will run the shadow regardless of installedHash.
+      // Checked before the null-observed branch: a shadow without a .hash
+      // marker (observed_sha=null) must be 'shadowed', not 'unknown' (ISS-798).
+      status = 'shadowed';
+    } else if (row.observedSha === null) {
+      // Runner pre-dates observation support (minimum version 0.7.0).
+      // Cannot distinguish synced from shadowed — report unknown.
+      status = 'unknown';
+    } else if (row.observedSha !== row.installedHash) {
+      // observed_sha differs from the hash we wrote — content on disk was
+      // replaced outside of sync.
+      status = 'stale';
+    } else {
+      status = 'synced';
+    }
 
     const syncedAt = row?.syncedAt ?? null;
     return {
@@ -362,6 +402,8 @@ export function computeDeviceSkillStatus(
       installedHash: row?.installedHash ?? null,
       installedVersion: row?.installedVersion ?? null,
       syncedAt: syncedAt instanceof Date ? syncedAt.toISOString() : syncedAt,
+      observedSha: row?.observedSha ?? null,
+      shadowedBy: row?.shadowedBy ?? null,
       status,
     };
   });
@@ -379,6 +421,8 @@ export async function loadDeviceSkillStatus(
       installedHash: deviceSkills.installedHash,
       installedVersion: deviceSkills.installedVersion,
       syncedAt: deviceSkills.syncedAt,
+      observedSha: deviceSkills.observedSha,
+      shadowedBy: deviceSkills.shadowedBy,
     })
     .from(deviceSkills)
     .where(
@@ -510,6 +554,8 @@ export async function loadProjectSkillSyncStatus(
       installedHash: deviceSkills.installedHash,
       installedVersion: deviceSkills.installedVersion,
       syncedAt: deviceSkills.syncedAt,
+      observedSha: deviceSkills.observedSha,
+      shadowedBy: deviceSkills.shadowedBy,
     })
     .from(deviceSkills)
     .where(eq(deviceSkills.projectId, projectId))) as Array<InstalledRow & { deviceId: string }>;

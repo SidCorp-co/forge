@@ -69,6 +69,13 @@ const reportBodySchema = z
             skillId: z.uuid(),
             installedHash: z.string().min(1).max(128),
             installedVersion: z.number().int().nonnegative().optional(),
+            // ISS-798: observation fields from the runner. observedSha is the
+            // hash of what Claude Code will actually execute (differs from
+            // installedHash when a user-level shadow exists). shadowedBy is
+            // the filesystem path of the shadow dir. Both absent on pre-0.7.0
+            // runners — server treats null observedSha as `unknown` status.
+            observedSha: z.string().min(1).max(128).optional(),
+            shadowedBy: z.string().max(1024).optional(),
           })
           .strict(),
       )
@@ -187,6 +194,8 @@ deviceSkillRoutes.post(
           installedHash: s.installedHash,
           installedVersion: s.installedVersion ?? null,
           syncedAt: now,
+          observedSha: s.observedSha ?? null,
+          shadowedBy: s.shadowedBy ?? null,
         })
         .onConflictDoUpdate({
           target: [deviceSkills.deviceId, deviceSkills.projectId, deviceSkills.skillId],
@@ -194,6 +203,8 @@ deviceSkillRoutes.post(
             installedHash: s.installedHash,
             installedVersion: s.installedVersion ?? null,
             syncedAt: now,
+            observedSha: s.observedSha ?? null,
+            shadowedBy: s.shadowedBy ?? null,
           },
         });
     }

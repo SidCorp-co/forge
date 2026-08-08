@@ -38,6 +38,15 @@ const conflict = (message: string, code: string) =>
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
+// ISS-798: ACK body carries the skill hashes the job will actually run with,
+// keyed by skill name, read from on-disk .hash markers at ACK time. Optional
+// — absent for pre-0.7.0 runners and jobs with no skills seeded.
+const ackBodySchema = z
+  .object({
+    skillsRanWith: z.record(z.string(), z.string().max(128)).optional(),
+  })
+  .passthrough();
+
 const completeBodySchema = z
   .object({
     exitCode: z.number().int(),
@@ -88,8 +97,12 @@ jobLifecycleDeviceRoutes.post(
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('json', ackBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
     const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
     const device = c.get('device');
 
     const job = await loadJob(id);
@@ -105,9 +118,10 @@ jobLifecycleDeviceRoutes.post(
     }
 
     const now = new Date();
+    const skillsRanWith = body.skillsRanWith ?? null;
     const [updated] = await db
       .update(jobs)
-      .set({ ackedAt: now })
+      .set({ ackedAt: now, ...(skillsRanWith !== null ? { skillsRanWith } : {}) })
       .where(
         and(eq(jobs.id, id), isNull(jobs.ackedAt), inArray(jobs.status, ['dispatched', 'running'])),
       )

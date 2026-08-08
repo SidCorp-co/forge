@@ -6,9 +6,22 @@ use crate::error::{Error, Result};
 /// Acknowledge a claimed job (ISS-449, Decision B). Sent right after preflight
 /// passes and before the runner starts. Best-effort on the caller side — the
 /// server falls back to treating the first job_event as the ack.
-pub async fn ack(client: &CoreClient, job_id: &str) -> Result<()> {
+///
+/// ISS-798: `skills_ran_with` carries the on-disk `.hash` marker values for
+/// each seeded skill (keyed by skill name), read right before the job starts.
+/// `None` when no skills were seeded or the runner cannot determine them.
+pub async fn ack(
+    client: &CoreClient,
+    job_id: &str,
+    skills_ran_with: Option<serde_json::Value>,
+) -> Result<()> {
     let url = client.url(&format!("/api/jobs/{job_id}/ack"));
-    send(client, &url, serde_json::json!({})).await
+    let body = if let Some(srw) = skills_ran_with {
+        serde_json::json!({ "skillsRanWith": srw })
+    } else {
+        serde_json::json!({})
+    };
+    send(client, &url, body).await
 }
 
 /// Complete a job. `exit_code` 0 = done, -1 = cancelled, else failed (core maps).

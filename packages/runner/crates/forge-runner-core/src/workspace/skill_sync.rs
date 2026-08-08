@@ -255,8 +255,28 @@ fn sync_one_skill_locked(
     })
 }
 
+/// Detect whether a user-level skill shadow exists at
+/// `~/.claude/skills/<name>/` (the path Claude Code checks before the
+/// project-level `.claude/skills/<name>/`). Returns the shadow dir path and
+/// its `.hash` marker (if present) so the caller can populate `observed_sha`
+/// and `shadowed_by` in the report without re-hashing the skill body in Rust.
+///
+/// ISS-798 (stage ④): the shadow detection is best-effort — if the home dir
+/// is unavailable, we fall back to `None` (unknown status) rather than
+/// claiming `synced` falsely.
+fn detect_user_shadow(name: &str) -> Option<(PathBuf, Option<String>)> {
+    let shadow = dirs_next::home_dir()?.join(".claude").join("skills").join(name);
+    if shadow.join("SKILL.md").exists() {
+        let marker = read_hash_marker(&shadow);
+        Some((shadow, marker))
+    } else {
+        None
+    }
+}
+
 /// Pull the manifest, refresh the local cache for changed skills, seed every
-/// skill into `<worktree>/.claude/skills/<name>/`, and report installed hashes.
+/// skill into `<worktree>/.claude/skills/<name>/`, and report installed hashes
+/// plus observation fields (ISS-798).
 ///
 /// Best-effort by contract: callers log and continue on `Err` so a transient
 /// server failure (or an old server without the endpoint) never blocks a job.
@@ -301,10 +321,30 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
             .map_err(|e| Error::Other(format!("skill sync task join error: {e}")))??;
         }
 
+        // ISS-798 (stage ④): detect user-level shadow and populate observation
+        // fields so the server can set the correct status (`shadowed`, `synced`,
+        // or `unknown`). When a shadow exists, `observed_sha` is the hash of
+        // the shadow's content (from its `.hash` marker), not the project hash.
+        let (observed_sha, shadowed_by) = match detect_user_shadow(&entry.name) {
+            Some((shadow_path, shadow_hash)) => {
+                // A shadow exists. Use the shadow's hash marker (if present)
+                // as observed_sha so the server knows exactly what body runs.
+                let shadow_str = shadow_path.to_string_lossy().into_owned();
+                (shadow_hash, Some(shadow_str))
+            }
+            None => {
+                // No shadow: what's in dest IS what runs. The `.hash` marker
+                // written by sync_one_skill_locked equals effective_hash.
+                (Some(entry.effective_hash.clone()), None)
+            }
+        };
+
         report.push(SkillReportEntry {
             skill_id: entry.skill_id.clone(),
             installed_hash: entry.effective_hash.clone(),
             installed_version: entry.version,
+            observed_sha,
+            shadowed_by,
         });
     }
 

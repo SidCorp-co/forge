@@ -115,16 +115,30 @@ export interface DeviceSkillContent {
 }
 
 // Body for `POST /api/devices/me/skills/report?projectId=` — the runner reports
-// the hash it actually installed for each seeded skill.
+// the hash it actually installed for each seeded skill, plus observation fields
+// (ISS-798, minimum runner version 0.7.0).
 export interface DeviceSkillReportBody {
   skills: Array<{
     skillId: string;
     installedHash: string;
     installedVersion?: number;
+    // ISS-798: hash of what Claude Code will actually execute. Equals
+    // installedHash when no shadow exists; differs (or null) when a user-level
+    // ~/.claude/skills/<name>/ shadows the project copy.
+    observedSha?: string;
+    // Path to the user-level shadow dir, when one is detected.
+    shadowedBy?: string;
   }>;
 }
 
-export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing';
+// ISS-798 (stage ④): observation-aware status values.
+// - missing  — no install row
+// - outdated — installed_hash !== effective_hash (pre-observation check)
+// - unknown  — runner pre-dates observation (< 0.7.0); cannot confirm right body runs
+// - shadowed — user-level ~/.claude/skills/<name>/ shadows the project copy
+// - stale    — observed_sha present but != installed_hash (overwritten outside sync)
+// - synced   — observed_sha === installed_hash; pushed body is what runs
+export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing' | 'unknown' | 'shadowed' | 'stale';
 
 // One row of the per-device skill freshness from
 // `GET /api/projects/:projectId/devices/:deviceId/skills` (user-token auth,
@@ -136,6 +150,8 @@ export interface DeviceSkillStatusEntry {
   installedHash: string | null;
   installedVersion: number | null;
   syncedAt: string | null;
+  observedSha: string | null;
+  shadowedBy: string | null;
   status: DeviceSkillStatusValue;
 }
 
