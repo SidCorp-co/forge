@@ -13,6 +13,7 @@
 //   3. At most one active (pending/running/verifying) run per project at any
 //      time, enforced by the partial unique index `reconcile_runs_active_project_uq`.
 
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -395,10 +396,172 @@ export async function assembleBundle(
   };
 }
 
-// cm:why mirrors buildSmokeCanaryPrompt (smoke-verify.ts) — reconcile jobs are issueId=null
-// one-shot 'system' jobs, so buildJobPromptString (issue-scoped) does not apply.
+// cm:why self-contained prompt (mirrors buildReleaseBatchPrompt) NOT a bare `/<skill>` invocation — forge-reconcile is user_invocable:false so the harness never registers it as a slash command (BLOCKER R, ISS-801 review).
 function buildReconcilePrompt(runId: string): string {
-  return `/forge-reconcile ${runId}`;
+  return [
+    '## Update Pipeline — Reconcile (Master agent)',
+    '',
+    `runId: ${runId}`,
+    '',
+    'Read `.claude/skills/forge-reconcile/SKILL.md` under the repository root and follow it exactly — ' +
+      'it is your full instructions for this stage (loading the 12-item bundle, reasoning, choosing a ' +
+      'verdict, and recording it via `forge_reconcile`).',
+    '',
+    `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the bundle for this run.`,
+    'You MUST call `forge_reconcile action=record_verdict` before this job ends — leaving the run without a verdict permanently stalls it.',
+  ].join('\n');
+}
+
+// cm:why same rationale as buildReconcilePrompt — forge-verify-skill is also user_invocable:false.
+function buildVerifierPrompt(runId: string, jobId: string): string {
+  return [
+    '## Update Pipeline — Verify Skill (adversarial verifier)',
+    '',
+    `runId: ${runId}`,
+    `jobId: ${jobId}`,
+    '',
+    'Read `.claude/skills/forge-verify-skill/SKILL.md` under the repository root and follow it exactly — ' +
+      'it is your full instructions for this stage (loading the run, verifying adversarially, and ' +
+      'recording your vote via `forge_reconcile`).',
+    '',
+    `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the run for this verification.`,
+    `When you record your vote, pass jobId=${jobId} — this is YOUR job's own ID, not the Master agent's.`,
+    'You MUST call `forge_reconcile action=record_vote` before this job ends — leaving your vote unrecorded permanently stalls the run.',
+  ].join('\n');
+}
+
+// cm:why must equal the number of verify_skill jobs spawnVerifierJobs dispatches — recordVerifierVote's majority tally never resolves if fewer jobs exist than it waits for.
+const VERIFIER_VOTE_COUNT = 3;
+
+/**
+ * Shared terminal-fail transition for an active `reconcile_runs` row (BLOCKER M,
+ * ISS-801 review). No-op when the run is not found or has already left the
+ * active set (pending/running/verifying) — a verdict/vote/apply/reject that
+ * already landed always wins over a late terminal-path call.
+ */
+async function failActiveReconcileRun(runId: string, reason: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    // cm:why FOR UPDATE row-locks this run, so a concurrent verdict/vote write cannot race the fail-transition below.
+    const [runRow] = await tx
+      .select()
+      .from(reconcileRuns)
+      .where(eq(reconcileRuns.id, runId))
+      .for('update')
+      .limit(1);
+    if (!runRow) return;
+    if (!['pending', 'running', 'verifying'].includes(runRow.status)) return;
+
+    await tx
+      .update(reconcileRuns)
+      .set({ status: 'failed', error: reason.slice(0, 500), updatedAt: new Date() })
+      .where(
+        and(
+          eq(reconcileRuns.id, runId),
+          inArray(reconcileRuns.status, ['pending', 'running', 'verifying']),
+        ),
+      );
+
+    await logActivity(tx, {
+      eventType: 'reconcile.failed',
+      actor: 'system:dispatcher',
+      trigger: 'manual',
+      projectId: runRow.projectId,
+      skillId: runRow.skillId,
+      packetId: runRow.packetId,
+      reason: reason.slice(0, 500),
+    });
+  });
+}
+
+/**
+ * Dispatch VERIFIER_VOTE_COUNT independent `verify_skill` jobs for a run that
+ * just transitioned to 'verifying' (BLOCKER M path 1, ISS-801 review).
+ * Without this, no job is ever created to vote — `recordVerifierVote`
+ * correctly rejects any jobId with no matching dispatched `verify_skill` row,
+ * so 'verifying' was terminal in practice. Any dispatch failure fails the
+ * whole run rather than stranding it on an unreachable majority.
+ */
+async function spawnVerifierJobs(runId: string, projectId: string): Promise<void> {
+  const [runnerRow] = await db
+    .select({ id: runners.id })
+    .from(runners)
+    .where(and(eq(runners.projectId, projectId), eq(runners.status, 'online')))
+    .limit(1);
+  if (!runnerRow) {
+    logger.error({ runId, projectId }, 'reconcile.verify.noRunner');
+    await failActiveReconcileRun(
+      runId,
+      'no online runner bound to this project — cannot dispatch verifiers',
+    );
+    return;
+  }
+
+  // cm:why projects.createdBy is a valid FK stand-in for a system-initiated dispatch —
+  // same convention as finalize-failure.ts's reconcileIssueStatusAfterFailure.
+  const [projectRow] = await db
+    .select({ createdBy: projects.createdBy })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!projectRow) {
+    await failActiveReconcileRun(runId, `project not found: ${projectId}`);
+    return;
+  }
+
+  // cm:guard each verifier needs its OWN one-shot 'system' pipeline_run — closeRunIfOneShot (pipeline/runs.ts) cascade-cancels every still-active sibling job on a shared run the instant any one job on it goes terminal.
+  const openedRunIds: string[] = [];
+  const jobIds: string[] = [];
+  for (let i = 0; i < VERIFIER_VOTE_COUNT; i++) {
+    let pipelineRun: { id: string };
+    try {
+      pipelineRun = await openOneShotRun({ projectId, kind: 'system' });
+    } catch (err) {
+      logger.error({ err, runId, projectId, i }, 'reconcile.verify.openRun.error');
+      await Promise.all(
+        openedRunIds.map((id) =>
+          closeRun(id, 'failed').catch((closeErr) =>
+            logger.error({ closeErr, runId: id }, 'reconcile.verify.closeOrphanedRun.error'),
+          ),
+        ),
+      );
+      await failActiveReconcileRun(runId, `failed to open verifier pipeline run: ${String(err)}`);
+      return;
+    }
+    openedRunIds.push(pipelineRun.id);
+
+    const jobId = randomUUID();
+    try {
+      await db.insert(jobs).values({
+        id: jobId,
+        projectId,
+        issueId: null,
+        pipelineRunId: pipelineRun.id,
+        createdBy: projectRow.createdBy,
+        type: 'verify_skill',
+        payload: {
+          reconcileRunId: runId,
+          skillName: 'forge-verify-skill',
+          promptString: buildVerifierPrompt(runId, jobId),
+        },
+        status: 'queued',
+      });
+      await enqueueReconcileJob(jobId);
+    } catch (err) {
+      logger.error({ err, runId, projectId, i }, 'reconcile.verify.dispatch.error');
+      await Promise.all(
+        openedRunIds.map((id) =>
+          closeRun(id, 'failed').catch((closeErr) =>
+            logger.error({ closeErr, runId: id }, 'reconcile.verify.closeOrphanedRun.error'),
+          ),
+        ),
+      );
+      await failActiveReconcileRun(runId, `failed to dispatch verifier job: ${String(err)}`);
+      return;
+    }
+    jobIds.push(jobId);
+  }
+
+  logger.info({ runId, projectId, jobIds }, 'reconcile.verify.spawned');
 }
 
 export type SpawnReconcileResult =
@@ -593,7 +756,7 @@ export interface RecordVerdictInput {
 // cm:guard call only when the run is 'pending' or 'running' — nothing else ever writes 'running',
 // so 'pending' must stay a valid pre-verdict status here (BLOCKER F, ISS-801 review).
 export async function recordReconcileVerdict(input: RecordVerdictInput): Promise<void> {
-  await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     // cm:why FOR UPDATE row-locks this run, serializing concurrent verdict calls.
     const [runRow] = await tx
       .select()
@@ -608,7 +771,7 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         { runId: input.runId, status: runRow.status },
         'recordReconcileVerdict called for a run not pending/running — skipping',
       );
-      return;
+      return { toVerifying: false, projectId: runRow.projectId };
     }
 
     const gate = classifyGate(runRow.bundle?.change ?? '', input.verdict);
@@ -642,7 +805,7 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         packetId: runRow.packetId,
         reason: input.rationale.slice(0, 500),
       });
-      return;
+      return { toVerifying: false, projectId: runRow.projectId };
     }
 
     const candidateBody = input.candidateBody ?? '';
@@ -675,7 +838,15 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
       packetId: runRow.packetId,
       reason: `verdict=${input.verdict} gate=${gate}`,
     });
+    return { toVerifying: true, projectId: runRow.projectId };
   });
+
+  // cm:why dispatched AFTER commit, mirroring spawnReconcileRun's enqueue-after-tx pattern — dispatching inside the tx above risks jobs for a run it then rolls back (BLOCKER M path 1, ISS-801 review).
+  if (result.toVerifying) {
+    await spawnVerifierJobs(input.runId, result.projectId).catch((err) =>
+      logger.error({ err, runId: input.runId }, 'reconcile.verify.spawn.error'),
+    );
+  }
 }
 
 export interface RecordVerifierVoteInput {
@@ -755,8 +926,8 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     const passCount = allVotes.filter((v) => v.vote === 'pass').length;
     const failCount = allVotes.filter((v) => v.vote === 'fail').length;
 
-    // cm:why VERIFIER_VOTE_COUNT=3 (odd, no ties); 2-of-3 pass auto-publishes (ISS-795 design).
-    const VERIFIER_VOTE_COUNT = 3;
+    // cm:why VERIFIER_VOTE_COUNT (module-level, shared with spawnVerifierJobs) is 3 (odd, no ties);
+    // 2-of-3 pass auto-publishes (ISS-795 design).
     const MAJORITY = Math.ceil(VERIFIER_VOTE_COUNT / 2);
 
     const majorityPass = passCount >= MAJORITY;
@@ -974,41 +1145,52 @@ export async function failReconcileRunForFailedJob(job: {
   const runId = (job.payload as { reconcileRunId?: unknown } | null)?.reconcileRunId;
   if (typeof runId !== 'string') return;
 
-  await db.transaction(async (tx) => {
-    // cm:why FOR UPDATE row-locks this run, so a concurrent verdict/vote write cannot race the fail-transition below.
-    const [runRow] = await tx
-      .select()
-      .from(reconcileRuns)
-      .where(eq(reconcileRuns.id, runId))
-      .for('update')
-      .limit(1);
-    if (!runRow) return;
-    if (!['pending', 'running', 'verifying'].includes(runRow.status)) return;
+  await failActiveReconcileRun(runId, `${job.type} job failed without recording a verdict`);
+}
 
-    await tx
-      .update(reconcileRuns)
-      .set({
-        status: 'failed',
-        error: `${job.type} job failed without recording a verdict`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(reconcileRuns.id, runId),
-          inArray(reconcileRuns.status, ['pending', 'running', 'verifying']),
-        ),
-      );
+/**
+ * Terminal-path hook for a `reconcile`/`verify_skill` job that ended `done` or
+ * `cancelled` WITHOUT ever recording the write its termination protocol
+ * requires (BLOCKER M — half 2, ISS-801 review). Three cases this closes:
+ *   1. A `reconcile` job ends without ever calling `record_verdict` — the run
+ *      is still stuck at `pending`/`running` (SKILL.md non-compliance, or the
+ *      false-BLOCKER-R prompt never invoking the agent at all).
+ *   2. A `verify_skill` job ends without this job's own vote landing in
+ *      `verifierVotes` — the run is still `verifying`, and since
+ *      `recordVerifierVote`'s majority tally always waits for
+ *      `VERIFIER_VOTE_COUNT` votes, a missing one leaves it stuck forever.
+ *   3. Called from `cascadeCancelChildJobs` for the same two job types
+ *      (BLOCKER M path 3) — a pipeline_run closing out from under an
+ *      in-flight reconcile/verifier job cancels the child without it ever
+ *      getting a chance to record anything.
+ * No-op for any other job type, when the run has already left the active set
+ * (its own verdict/vote/apply/reject already landed), or — for `verify_skill`
+ * — when this job's vote is already recorded (the normal case: the job did
+ * its job and ended `done`, and the run may legitimately still be
+ * `verifying` awaiting the other voters).
+ */
+export async function failReconcileRunIfNoVerdictRecorded(job: {
+  id: string;
+  type: string;
+  payload: unknown;
+}): Promise<void> {
+  if (job.type !== 'reconcile' && job.type !== 'verify_skill') return;
+  const runId = (job.payload as { reconcileRunId?: unknown } | null)?.reconcileRunId;
+  if (typeof runId !== 'string') return;
 
-    await logActivity(tx, {
-      eventType: 'reconcile.failed',
-      actor: 'system:dispatcher',
-      trigger: 'manual',
-      projectId: runRow.projectId,
-      skillId: runRow.skillId,
-      packetId: runRow.packetId,
-      reason: `${job.type} job failed without recording a verdict`,
-    });
-  });
+  const runRow = await getReconcileRun(runId);
+  if (!runRow) return;
+
+  if (job.type === 'reconcile') {
+    if (runRow.status !== 'pending' && runRow.status !== 'running') return;
+    await failActiveReconcileRun(runId, 'reconcile job ended without recording a verdict');
+    return;
+  }
+
+  if (runRow.status !== 'verifying') return;
+  const votes = (runRow.verifierVotes as ReconcileVerifierVote[]) ?? [];
+  if (votes.some((v) => v.jobId === job.id)) return;
+  await failActiveReconcileRun(runId, 'verify_skill job ended without recording a vote');
 }
 
 export async function getReconcileRun(runId: string) {

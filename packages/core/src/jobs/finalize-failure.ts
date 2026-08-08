@@ -243,12 +243,15 @@ export async function finalizeFailedJob(
 
   // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — reconcile/verify_skill
   // jobs carry issueId=null (skipped above) but still need a terminal path on failure (BLOCKER M, ISS-801 review).
-  await failReconcileRunForFailedJob(updated).catch((err) =>
-    logger.warn(
-      { err, jobId: updated.id, type: updated.type },
-      'finalize-failure: failReconcileRunForFailedJob failed',
-    ),
-  );
+  // cm:why skipped when a retry is scheduled (MINOR S, ISS-801 review) — the retry clone is about to re-run the whole Master/verifier agent, so failing the run here would discard that in-flight attempt.
+  if (!retry.scheduled) {
+    await failReconcileRunForFailedJob(updated).catch((err) =>
+      logger.warn(
+        { err, jobId: updated.id, type: updated.type },
+        'finalize-failure: failReconcileRunForFailedJob failed',
+      ),
+    );
+  }
 
   // Mirror lifecycle to the linked agent_session row. ISS-101 — pass
   // retryPending so we leave the parent pipeline_run open when a retry has

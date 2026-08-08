@@ -49,7 +49,7 @@ import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { verifyRecovery } from '../pipeline/recovery-verifier.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
-import { enqueueJob } from './enqueue.js';
+import { enqueueJob, enqueueReconcileJob } from './enqueue.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -359,10 +359,15 @@ export async function scheduleAutoRetryWithVerify(
 
   const startAfterSeconds = Math.max(0, Math.ceil((retryAfterAt.getTime() - Date.now()) / 1000));
   try {
-    await enqueueJob(
-      { jobId: created.id, issueId: job.issueId, type: job.type },
-      { startAfterSeconds },
-    );
+    // cm:why reconcile/verify_skill retries must stay on RECONCILE_QUEUE_NAME — enqueueJob would land the clone on the coder queue, defeating the lane isolation it exists for (MINOR T, ISS-801 review).
+    if (job.type === 'reconcile' || job.type === 'verify_skill') {
+      await enqueueReconcileJob(created.id, { startAfterSeconds });
+    } else {
+      await enqueueJob(
+        { jobId: created.id, issueId: job.issueId, type: job.type },
+        { startAfterSeconds },
+      );
+    }
   } catch (err) {
     logger.error({ err, jobId: created.id }, 'retry: enqueue failed; row persisted');
   }
