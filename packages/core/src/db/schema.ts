@@ -595,12 +595,7 @@ export const jobTypes = [
   'smoke',
   // cm:edge naming -> packages/core/src/release-batch/service.ts — a release_batch job's run has metadata.source==='release-batch', not type-checked
   'release_batch',
-  // ISS-801 — Update Pipeline stage ② (Reconcile). Per-project Master agent
-  // run: assembles the 12-item bundle, emits a verdict, writes candidate body.
   'reconcile',
-  // ISS-801 — adversarial verifier: independent context, judges the candidate
-  // body; multi-vote (N per reconcile run). Publication is blocked until a
-  // majority passes.
   'verify_skill',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
@@ -1495,6 +1490,7 @@ export const skillActivityEventTypes = [
   'policy.landed',
   'reconcile.started',
   'reconcile.decided',
+  'reconcile.failed',
   'skill.body.changed',
   'verify.failed',
   'reconcile.escalated',
@@ -3346,56 +3342,40 @@ export const divergenceChartersRelations = relations(divergenceCharters, ({ one 
   project: one(projects, { fields: [divergenceCharters.projectId], references: [projects.id] }),
 }));
 
-// ── Reconcile runs (Update Pipeline stage ②, ISS-801) ───────────────────────
-//
-// One row per per-project reconcile attempt. The partial unique index on
-// (project_id) WHERE status IN ('pending','running','verifying') enforces the
-// serialize-per-project invariant: a second trigger for the same project is
-// rejected at the DB level rather than queueing behind the active run.
-
 export const reconcileVerdicts = ['no-op', 'apply', 'apply-with-adaptation', 'escalate'] as const;
 export type ReconcileVerdict = (typeof reconcileVerdicts)[number];
 
 export const reconcileRunStatuses = [
-  'pending',    // created, job not yet dispatched
-  'running',    // reconcile job in flight
-  'verifying',  // verifier jobs in flight (multi-vote)
-  'decided',    // verifier passed — waiting for publish (auto) or human (human gate)
-  'applied',    // skill body written
-  'escalated',  // human escalation required
-  'failed',     // unexpected error; last-good body preserved
+  'pending',
+  'running',
+  'verifying',
+  'decided',
+  'applied',
+  'escalated',
+  'failed',
 ] as const;
 export type ReconcileRunStatus = (typeof reconcileRunStatuses)[number];
 
 export const reconcileGates = ['auto', 'human'] as const;
 export type ReconcileGate = (typeof reconcileGates)[number];
 
+// cm:why field order mirrors the 12-item Master agent bundle (ISS-795 §4); `sources` labels each key's provenance per C3.
 export interface ReconcileBundleSnapshot {
-  // C2 stamp — frozen at trigger time
   readAt: string;
-  // 1–5: Update Packet fields
   change: string;
   story: string;
   intentClass: string;
   appliesTo: string;
   provenance: Record<string, unknown>;
-  // 6: real running body (observed_sha, not intended)
   runningBody: string;
   runningHash: string;
-  // 7: divergence charter (null when none exists)
   charter: unknown | null;
-  // 8: projectFacts + pipelineConfig
   projectFacts: Record<string, unknown>;
   pipelineConfig: Record<string, unknown>;
-  // 9: recent run evidence for the stage
   recentRunEvidence: unknown[];
-  // 10: prior reconcile history for this skill
   priorReconcileHistory: unknown[];
-  // 11: currently-effective invariant set (stage ① output)
   invariantSet: Record<string, unknown>;
-  // 12: must-not-break assertions from past incidents
   mustNotBreak: string[];
-  // C3 label map: each bundle key → provenance category
   sources: Record<string, 'human' | 'from-code' | 'observed-from-run' | 'agent-assertion'>;
 }
 
@@ -3406,11 +3386,8 @@ export interface ReconcileVerifierVote {
   decidedAt: string;
 }
 
-// cm:guard Any update to reconcile_runs.status MUST emit the corresponding event
-// into skill_activity_events in the same transaction (ISS-795 §9.11 / §9.7).
-// cm:guard The partial unique index `reconcile_runs_active_project_uq` is the
-// serialization lock; insert a new run only via insertReconcileRun() which
-// surfaces the unique-violation as a structured 'already-active' result.
+// cm:guard any update to reconcile_runs.status must emit the matching event into skill_activity_events in the same transaction (ISS-795 §9.11/§9.7).
+// cm:guard reconcile_runs_active_project_uq serializes per-project — insert only via spawnReconcileRun, which turns the unique-violation into 'already-active'.
 
 export const reconcileRuns = pgTable(
   'reconcile_runs',
@@ -3419,26 +3396,18 @@ export const reconcileRuns = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    // Nullable FK to update_packets — preserves referential integrity; set null on packet deletion
     packetId: uuid('packet_id').references(() => updatePackets.id, { onDelete: 'set null' }),
-    // The skill being reconciled (nullable — a delete/rename might remove the row)
     skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'set null' }),
     status: text('status', { enum: reconcileRunStatuses }).notNull().default('pending'),
     verdict: text('verdict', { enum: reconcileVerdicts }),
     gate: text('gate', { enum: reconcileGates }),
-    // C5 input-determinism: bundle frozen at trigger time
     bundle: jsonb('bundle').notNull().default({}).$type<ReconcileBundleSnapshot>(),
-    // Candidate body written by the reconcile agent (before verifier)
     candidateBody: text('candidate_body'),
     candidateHash: text('candidate_hash'),
-    // Last-good body captured at trigger time — preserved on any failure path
     lastGoodBody: text('last_good_body'),
     lastGoodHash: text('last_good_hash'),
-    // Verifier votes (multi-vote, N per run)
     verifierVotes: jsonb('verifier_votes').notNull().default([]).$type<ReconcileVerifierVote[]>(),
-    // Reconcile agent rationale (explicit reconciliation: story→how; charter→how; invariants→still satisfied)
     rationale: text('rationale'),
-    // C1 refusal: set when any required input is missing
     refusalReason: text('refusal_reason'),
     error: text('error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -3446,10 +3415,10 @@ export const reconcileRuns = pgTable(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
   },
   (t) => ({
-    // cm:guard Partial unique index — enforces at most one active run per project
+    // cm:guard partial unique index — enforces at most one active run per project; includes 'decided' so a run awaiting the human gate also blocks a new trigger (MINOR G, ISS-801 review).
     activeProjectUq: uniqueIndex('reconcile_runs_active_project_uq')
       .on(t.projectId)
-      .where(sql`status IN ('pending','running','verifying')`),
+      .where(sql`status IN ('pending','running','verifying','decided')`),
     projectCreatedIdx: index('reconcile_runs_project_created_idx').on(t.projectId, t.createdAt),
     packetIdx: index('reconcile_runs_packet_idx').on(t.packetId),
   }),

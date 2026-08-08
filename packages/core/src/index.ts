@@ -46,8 +46,6 @@ import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-rou
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
-import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subscriber.js';
-import { releaseBatchRoutes } from './release-batch/routes.js';
 import { registerFeedbackNormalizer } from './feedback/normalizer.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
@@ -78,8 +76,10 @@ import { registerDesktopPairingCleanup } from './jobs/desktop-pairing-cleanup.js
 import {
   registerDispatcher,
   registerPmDispatcher,
+  registerReconcileDispatcher,
   unregisterDispatcher,
   unregisterPmDispatcher,
+  unregisterReconcileDispatcher,
 } from './jobs/dispatcher.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
@@ -163,6 +163,8 @@ import { projectRoutes } from './projects/routes.js';
 import { uxContractProjectRoutes, uxContractRuleRoutes } from './projects/ux-contract-routes.js';
 import { promptRoutes } from './prompt/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subscriber.js';
+import { releaseBatchRoutes } from './release-batch/routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
 import { registerRunnerStaleDetector } from './runners/stale-detector.js';
@@ -170,14 +172,14 @@ import { scheduleRoutes } from './schedules/routes.js';
 import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import { skillActivityRoutes } from './skills/activity-routes.js';
-import { updatePacketRoutes } from './update-packets/routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
-import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { reconcileRoutes } from './skills/reconcile-routes.js';
+import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { skillSmokeVerifyRoutes } from './skills/smoke-verify-routes.js';
 import { skillStudioRoutes } from './skills/studio-routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
+import { updatePacketRoutes } from './update-packets/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
@@ -267,6 +269,7 @@ export async function runShutdown(
     await stopRocketChatManager();
     await unregisterDispatcher();
     await unregisterPmDispatcher();
+    await unregisterReconcileDispatcher();
     await unregisterScheduleTicker();
     await unregisterPmCadenceTicker();
     await unregisterAgentCronTicker();
@@ -523,6 +526,7 @@ if (isMain) {
   bootstrapRunnerAdapters();
   await registerDispatcher();
   await registerPmDispatcher();
+  await registerReconcileDispatcher();
   await registerStaleDetector();
   await registerIntegrationsHealthSweep();
   await registerDeviceStaleDetector();

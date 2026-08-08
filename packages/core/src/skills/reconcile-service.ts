@@ -13,7 +13,7 @@
 //   3. At most one active (pending/running/verifying) run per project at any
 //      time, enforced by the partial unique index `reconcile_runs_active_project_uq`.
 
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type ReconcileBundleSnapshot,
@@ -39,8 +39,7 @@ import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './act
 import { recordSkillActivityEvent } from './activity.js';
 import { hashSkillBody } from './hash.js';
 
-// Wrapper that omits undefined values so exactOptionalPropertyTypes is
-// satisfied when building RecordSkillActivityEventInput from nullable DB cols.
+// cm:why omits undefined keys — exactOptionalPropertyTypes rejects `{ x: undefined }`, so nullable DB columns must be filtered before forwarding to RecordSkillActivityEventInput.
 async function logActivity(
   executor: SkillActivityExecutor,
   params: Omit<
@@ -81,14 +80,8 @@ async function logActivity(
   await recordSkillActivityEvent(executor, clean);
 }
 
-// ── Gate classifier (§6) ────────────────────────────────────────────────────
-
-// These patterns in the change diff force the human gate regardless of verdict.
-// Source: ISS-795 §6, ISS-373 evidence (auth exposure), ISS-354/365 (merge target).
-// cm:guard This list is a DENY list — it is not exhaustive. The gate MUST fail
-// safe: if none of ADDITIVE_PATTERNS positively identify the change as additive,
-// the default is 'human'. Do not expand HUMAN_GATE_PATTERNS as the primary safety
-// mechanism; the fail-safe default is the primary mechanism.
+// cm:guard HUMAN_GATE_PATTERNS is a deny list, not exhaustive (ISS-795 §6; ISS-373 auth exposure; ISS-354/365 merge target).
+// The fail-safe default ('human' unless ADDITIVE_PATTERNS positively matches) is the real safety mechanism, not this list.
 const HUMAN_GATE_PATTERNS: RegExp[] = [
   /\bmerge.?target\b/i,
   /\bterminal.?transition\b/i,
@@ -103,8 +96,7 @@ const HUMAN_GATE_PATTERNS: RegExp[] = [
   /\bloosen.{0,30}(requirement|check|bar|gate)\b/i,
 ];
 
-// These patterns positively identify additive-only changes (new guard/step, no relaxation).
-// A change must match at least one of these (and none of HUMAN_GATE_PATTERNS) to auto-apply.
+// cm:why must positively match (and hit no HUMAN_GATE_PATTERNS) before classifyGate returns 'auto'.
 const ADDITIVE_PATTERNS: RegExp[] = [
   /\badd(ing|ed|s)?\b.{0,40}(step|guard|check|gate|validation|requirement|rule|clause)/i,
   /\bstrengthen(ing|ed|s)?\b/i,
@@ -134,8 +126,6 @@ export function classifyGate(change: string, verdict: ReconcileVerdict): Reconci
   return 'human';
 }
 
-// ── C1–C5 bundle validator ───────────────────────────────────────────────────
-
 const REQUIRED_BUNDLE_KEYS: (keyof ReconcileBundleSnapshot)[] = [
   'change',
   'story',
@@ -158,27 +148,23 @@ const REQUIRED_BUNDLE_KEYS: (keyof ReconcileBundleSnapshot)[] = [
  * C5 — Input-determinism: guaranteed by snapshotting at trigger time (structural).
  */
 export function validateC1C5(bundle: Partial<ReconcileBundleSnapshot>): string | null {
-  // C1: sufficient
   for (const key of REQUIRED_BUNDLE_KEYS) {
     const val = bundle[key];
     if (val === undefined || val === null || val === '') {
       return `C1: missing required bundle input: ${key}`;
     }
   }
-  // C2: fresh — readAt present and recent (within 10 minutes of now)
   const readAt = new Date(bundle.readAt!).getTime();
   if (Number.isNaN(readAt)) return 'C2: bundle.readAt is not a valid ISO timestamp';
   const ageMs = Date.now() - readAt;
   if (ageMs > 10 * 60 * 1000) {
     return `C2: bundle is stale (readAt=${bundle.readAt}; age=${Math.round(ageMs / 1000)}s > 600s)`;
   }
-  // C3: sourced — sources map must have at least the core fields
   const sources = bundle.sources ?? {};
   const sourceKeys = Object.keys(sources);
   if (sourceKeys.length === 0) {
     return 'C3: sources map is empty — every bundle fact must carry a provenance label';
   }
-  // C4: no-fabrication — story must be labelled 'human', running body 'observed-from-run'
   if (sources.story && sources.story !== 'human') {
     return `C4: bundle.story is labelled '${sources.story}' — story must be human-authored`;
   }
@@ -187,8 +173,6 @@ export function validateC1C5(bundle: Partial<ReconcileBundleSnapshot>): string |
   }
   return null;
 }
-
-// ── Bundle assembly ──────────────────────────────────────────────────────────
 
 export interface AssembleBundleInput {
   projectId: string;
@@ -227,7 +211,7 @@ export async function assembleBundle(
 ): Promise<AssembleBundleResult | AssembleBundleRefused> {
   const readAt = new Date().toISOString();
 
-  // Fetch all 12 items in parallel (C2: read at decision time, not from snapshot)
+  // cm:why fetched at call time (not from a stored snapshot) to satisfy C2 freshness.
   const [
     packetRow,
     projectRow,
@@ -237,19 +221,12 @@ export async function assembleBundle(
     priorReconcileRows,
     lastPolicyEvent,
   ] = await Promise.all([
-    // 1–5: Update Packet
-    db
-      .select()
-      .from(updatePackets)
-      .where(eq(updatePackets.id, input.packetId))
-      .limit(1),
-    // 8: projectFacts + pipelineConfig — both live inside agentConfig jsonb blob
+    db.select().from(updatePackets).where(eq(updatePackets.id, input.packetId)).limit(1),
     db
       .select({ agentConfig: projects.agentConfig })
       .from(projects)
       .where(eq(projects.id, input.projectId))
       .limit(1),
-    // 6: running body via device_skills observed_sha
     db
       .select({
         id: skills.id,
@@ -266,13 +243,11 @@ export async function assembleBundle(
       .where(eq(skills.id, input.skillId))
       .orderBy(desc(deviceSkills.syncedAt))
       .limit(1),
-    // 7: divergence charter
     db
       .select()
       .from(divergenceCharters)
       .where(eq(divergenceCharters.projectId, input.projectId))
       .limit(1),
-    // 9: recent run evidence — last 5 reconcile runs for this skill/project
     db
       .select({
         status: reconcileRuns.status,
@@ -285,7 +260,6 @@ export async function assembleBundle(
       )
       .orderBy(desc(reconcileRuns.createdAt))
       .limit(5),
-    // 10: prior reconcile history
     db
       .select({
         verdict: reconcileRuns.verdict,
@@ -298,7 +272,7 @@ export async function assembleBundle(
       )
       .orderBy(desc(reconcileRuns.createdAt))
       .limit(10),
-    // 11: latest policy.landed event (stage ① output = invariant set)
+    // cm:guard scoped to this project — an unscoped policy.landed read would leak another project's reason/deltaSummary into this bundle (MINOR K, ISS-801 review).
     db
       .select({
         reason: skillActivityEvents.reason,
@@ -306,7 +280,12 @@ export async function assembleBundle(
         occurredAt: skillActivityEvents.occurredAt,
       })
       .from(skillActivityEvents)
-      .where(eq(skillActivityEvents.eventType, 'policy.landed'))
+      .where(
+        and(
+          eq(skillActivityEvents.eventType, 'policy.landed'),
+          eq(skillActivityEvents.projectId, input.projectId),
+        ),
+      )
       .orderBy(desc(skillActivityEvents.occurredAt))
       .limit(1),
   ]);
@@ -352,18 +331,14 @@ export async function assembleBundle(
 
   const bundle: ReconcileBundleSnapshot = {
     readAt,
-    // 1–5: Update Packet
     change: packet.change,
     story: packet.story,
     intentClass: packet.intentClass,
     appliesTo: packet.appliesTo,
     provenance: (packet.provenance as Record<string, unknown>) ?? {},
-    // 6: running body (observed when available — ISS-783 / ISS-795 §4 note on item 6)
     runningBody,
     runningHash,
-    // 7: divergence charter
     charter: charter ? { entries: charter.entries } : null,
-    // 8: projectFacts + pipelineConfig — extracted from agentConfig sub-keys
     projectFacts:
       ((project.agentConfig as Record<string, unknown> | null)?.projectFacts as Record<
         string,
@@ -374,11 +349,8 @@ export async function assembleBundle(
         string,
         unknown
       >) ?? {},
-    // 9: recent run evidence
     recentRunEvidence: recentRunRows,
-    // 10: prior reconcile history
     priorReconcileHistory: priorReconcileRows,
-    // 11: currently-effective platform invariant set (stage ① output)
     invariantSet: policyEvent
       ? {
           reason: policyEvent.reason,
@@ -386,13 +358,11 @@ export async function assembleBundle(
           occurredAt: policyEvent.occurredAt,
         }
       : {},
-    // 12: must-not-break assertions — populated from charter's non-revertable entries
     mustNotBreak: charter
       ? ((charter.entries as Array<{ revertable: boolean; difference: string }>) ?? [])
           .filter((e) => !e.revertable)
           .map((e) => e.difference)
       : [],
-    // C3 source labels
     sources: {
       change: 'from-code',
       story: 'human',
@@ -424,8 +394,6 @@ export async function assembleBundle(
     lastGoodHash: runningHash || null,
   };
 }
-
-// ── Spawn / lifecycle ────────────────────────────────────────────────────────
 
 export type SpawnReconcileResult =
   | { ok: true; runId: string }
@@ -463,8 +431,7 @@ export async function spawnReconcileRun(input: {
   });
 
   if (!assembled.ok) {
-    // C1–C5 refusal: no run row is created, so there is no state change to describe.
-    // Log only — do NOT call recordSkillActivityEvent here (cm:guard requires tx).
+    // cm:guard no reconcile_runs row exists yet for a C1–C5 refusal — do NOT call recordSkillActivityEvent (needs a run-scoped tx); log only.
     logger.info(
       { projectId: input.projectId, packetId: input.packetId, reason: assembled.refusalReason },
       'reconcile.refused.c1c5',
@@ -474,7 +441,6 @@ export async function spawnReconcileRun(input: {
 
   const { bundle, lastGoodBody, lastGoodHash } = assembled;
 
-  // Find an online runner for this project — the dispatcher matches capabilities later.
   const [runnerRow] = await db
     .select({ id: runners.id })
     .from(runners)
@@ -485,7 +451,7 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'no-runner', detail: 'no online runner bound to this project' };
   }
 
-  // Open the pipeline_run first (openOneShotRun uses module-level db — cannot participate in tx)
+  // cm:why opened before the tx below — openOneShotRun uses module-level db and cannot join a transaction.
   let pipelineRun: { id: string };
   try {
     pipelineRun = await openOneShotRun({ projectId: input.projectId, kind: 'system' });
@@ -494,13 +460,11 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'error', detail: String(err) };
   }
 
-  // Insert reconcile_run + job + activity event atomically
   let runId: string;
   let jobId: string;
 
   try {
     const result = await db.transaction(async (tx) => {
-      // Insert the reconcile_run row (unique index enforces serialization)
       const [run] = await tx
         .insert(reconcileRuns)
         .values({
@@ -515,7 +479,6 @@ export async function spawnReconcileRun(input: {
         .returning({ id: reconcileRuns.id });
       if (!run) throw new Error('reconcile_runs insert returned no row');
 
-      // Insert the reconcile job
       const [job] = await tx
         .insert(jobs)
         .values({
@@ -530,7 +493,6 @@ export async function spawnReconcileRun(input: {
         .returning({ id: jobs.id });
       if (!job) throw new Error('reconcile job insert returned no row');
 
-      // Emit reconcile.started in same transaction (§9.11)
       await logActivity(tx, {
         eventType: 'reconcile.started',
         actor: `human:${input.actorUserId}`,
@@ -547,7 +509,6 @@ export async function spawnReconcileRun(input: {
     runId = result.runId;
     jobId = result.jobId;
   } catch (err) {
-    // Close the orphaned pipeline_run so it doesn't block the runner cap
     await closeRun(pipelineRun.id, 'failed').catch((closeErr) =>
       logger.error({ closeErr, runId: pipelineRun.id }, 'reconcile.spawn.closeOrphanedRun.error'),
     );
@@ -562,14 +523,46 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'error', detail: String(err) };
   }
 
-  // Enqueue outside the transaction (pg-boss write must be after commit)
-  await enqueueReconcileJob(jobId);
+  // cm:why pg-boss send() must happen after commit — enqueueing inside the tx above risks a job
+  // message for a run the tx then rolls back.
+  try {
+    await enqueueReconcileJob(jobId);
+  } catch (err) {
+    // cm:guard a send() failure here must not strand reconcile_runs at 'pending' forever — nothing
+    // else can terminate it, and reconcile_runs_active_project_uq would then block every future run.
+    logger.error(
+      { err, projectId: input.projectId, runId, jobId },
+      'reconcile.spawn.enqueue.error',
+    );
+    await db
+      .transaction(async (tx) => {
+        await tx
+          .update(reconcileRuns)
+          .set({ status: 'failed', error: String(err), updatedAt: new Date() })
+          .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, 'pending')));
+        await logActivity(tx, {
+          eventType: 'reconcile.failed',
+          actor: 'system:dispatcher',
+          trigger: 'manual',
+          projectId: input.projectId,
+          skillId: input.skillId,
+          packetId: input.packetId,
+          reason: `enqueue failed: ${String(err)}`.slice(0, 500),
+        });
+      })
+      .catch((txErr) =>
+        logger.error({ txErr, runId, jobId }, 'reconcile.spawn.enqueue.containment.error'),
+      );
+    // cm:why closeRun cascades the still-queued job to 'cancelled' via cascadeCancelChildJobs.
+    await closeRun(pipelineRun.id, 'failed').catch((closeErr) =>
+      logger.error({ closeErr, runId: pipelineRun.id }, 'reconcile.spawn.closeOrphanedRun.error'),
+    );
+    return { ok: false, reason: 'error', detail: `enqueue failed: ${String(err)}` };
+  }
 
   logger.info({ projectId: input.projectId, runId, jobId }, 'reconcile.spawned');
   return { ok: true, runId };
 }
-
-// ── Verdict application ──────────────────────────────────────────────────────
 
 export interface RecordVerdictInput {
   runId: string;
@@ -582,15 +575,16 @@ export interface RecordVerdictInput {
 
 /**
  * Record the reconcile agent's verdict and candidate body.
- * Transitions: running → verifying (when a candidate body is present and verdict is not escalate)
- *              running → escalated (verdict = escalate)
+ * Transitions: pending|running → verifying (candidate body present, verdict not escalate)
+ *              pending|running → escalated (verdict = escalate)
  *
  * Called by the reconcile agent via the `forge_reconcile` MCP tool.
- * cm:guard Call only when the job is in `running` state.
  */
+// cm:guard call only when the run is 'pending' or 'running' — nothing else ever writes 'running',
+// so 'pending' must stay a valid pre-verdict status here (BLOCKER F, ISS-801 review).
 export async function recordReconcileVerdict(input: RecordVerdictInput): Promise<void> {
   await db.transaction(async (tx) => {
-    // SELECT FOR UPDATE — serialize concurrent verdict calls for the same run
+    // cm:why FOR UPDATE row-locks this run, serializing concurrent verdict calls.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -599,10 +593,10 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
       .limit(1);
 
     if (!runRow) throw new Error(`reconcile run not found: ${input.runId}`);
-    if (runRow.status !== 'running') {
+    if (runRow.status !== 'pending' && runRow.status !== 'running') {
       logger.warn(
         { runId: input.runId, status: runRow.status },
-        'recordReconcileVerdict called for non-running run — skipping',
+        'recordReconcileVerdict called for a run not pending/running — skipping',
       );
       return;
     }
@@ -621,7 +615,12 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
           decidedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'running')));
+        .where(
+          and(
+            eq(reconcileRuns.id, input.runId),
+            inArray(reconcileRuns.status, ['pending', 'running']),
+          ),
+        );
 
       const eventType = input.verdict === 'escalate' ? 'reconcile.escalated' : 'reconcile.decided';
       await logActivity(tx, {
@@ -636,7 +635,6 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
       return;
     }
 
-    // apply / apply-with-adaptation: compute candidate hash + transition to verifying
     const candidateBody = input.candidateBody ?? '';
     const candidateHash = hashSkillBody(candidateBody, null);
 
@@ -651,7 +649,12 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         rationale: input.rationale,
         updatedAt: new Date(),
       })
-      .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'running')));
+      .where(
+        and(
+          eq(reconcileRuns.id, input.runId),
+          inArray(reconcileRuns.status, ['pending', 'running']),
+        ),
+      );
 
     await logActivity(tx, {
       eventType: 'reconcile.decided',
@@ -664,8 +667,6 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
     });
   });
 }
-
-// ── Verifier vote recording ──────────────────────────────────────────────────
 
 export interface RecordVerifierVoteInput {
   runId: string;
@@ -689,7 +690,7 @@ export interface RecordVerifierVoteInput {
  */
 export async function recordVerifierVote(input: RecordVerifierVoteInput): Promise<void> {
   await db.transaction(async (tx) => {
-    // SELECT FOR UPDATE — serializes concurrent votes for the same run
+    // cm:why FOR UPDATE row-locks this run, serializing concurrent votes.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -708,14 +709,13 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
 
     const existingVotes = (runRow.verifierVotes as ReconcileVerifierVote[]) ?? [];
 
-    // Idempotency: ignore duplicate votes from the same verifier job
     if (existingVotes.some((v) => v.jobId === input.jobId)) {
       logger.warn({ runId: input.runId, jobId: input.jobId }, 'duplicate verifier vote — skipping');
       return;
     }
 
-    // Validate jobId: only accept votes from genuinely dispatched verify_skill jobs
-    // bound to this run — fabricated jobIds must not reach the majority tally.
+    // cm:guard jobId must resolve to a real dispatched verify_skill job bound to this run —
+    // a fabricated jobId must never reach the majority tally (BLOCKER C, ISS-801 review).
     const [verifierJob] = await tx
       .select({ id: jobs.id })
       .from(jobs)
@@ -742,31 +742,27 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
 
     const allVotes = [...existingVotes, newVote];
 
-    // Count pass vs fail from the DB-authoritative (locked) array
     const passCount = allVotes.filter((v) => v.vote === 'pass').length;
     const failCount = allVotes.filter((v) => v.vote === 'fail').length;
 
-    // We spawn VERIFIER_VOTE_COUNT verifiers; majority = ceil(VERIFIER_VOTE_COUNT / 2)
+    // cm:why VERIFIER_VOTE_COUNT=3 (odd, no ties); 2-of-3 pass auto-publishes (ISS-795 design).
     const VERIFIER_VOTE_COUNT = 3;
-    const MAJORITY = Math.ceil(VERIFIER_VOTE_COUNT / 2); // 2
+    const MAJORITY = Math.ceil(VERIFIER_VOTE_COUNT / 2);
 
     const majorityPass = passCount >= MAJORITY;
     const majorityFail = failCount >= MAJORITY;
     const allVoted = allVotes.length >= VERIFIER_VOTE_COUNT;
 
-    // Persist updated votes array first (status may be further updated below)
     await tx
       .update(reconcileRuns)
       .set({ verifierVotes: allVotes, updatedAt: new Date() })
       .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
 
     if (!allVoted && !majorityFail) {
-      // Still collecting votes — no further action this turn
       return;
     }
 
     if (majorityFail || (!majorityPass && allVoted)) {
-      // Verifier blocked publication
       await tx
         .update(reconcileRuns)
         .set({ status: 'escalated', updatedAt: new Date() })
@@ -785,10 +781,8 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     }
 
     if (majorityPass) {
-      // Gate check: auto or human?
       const gate = (runRow.gate as ReconcileGate) ?? 'human';
       if (gate === 'human') {
-        // Majority pass but human gate → move to 'decided' for human review
         await tx
           .update(reconcileRuns)
           .set({ status: 'decided', decidedAt: new Date(), updatedAt: new Date() })
@@ -806,7 +800,6 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         return;
       }
 
-      // Auto gate + verifier pass → publish the candidate body
       if (!runRow.skillId) {
         logger.error({ runId: input.runId }, 'reconcile: cannot auto-publish, skillId is null');
         await tx
@@ -855,15 +848,13 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
   });
 }
 
-// ── Manual human-gate publish / reject ──────────────────────────────────────
-
 /**
  * Human approves a 'decided' (human-gate) run and publishes the candidate body.
  * MUST be called by a project admin (caller must verify authorization).
  */
 export async function applyReconcileRun(runId: string, actorUserId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    // SELECT FOR UPDATE — serialize concurrent apply/reject calls on the same run
+    // cm:why FOR UPDATE row-locks this run, serializing concurrent apply/reject calls.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -922,7 +913,7 @@ export async function rejectReconcileRun(
   reason: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    // SELECT FOR UPDATE — serialize concurrent apply/reject calls on the same run
+    // cm:why FOR UPDATE row-locks this run, serializing concurrent apply/reject calls.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -951,8 +942,6 @@ export async function rejectReconcileRun(
     });
   });
 }
-
-// ── Query helpers ────────────────────────────────────────────────────────────
 
 export async function getReconcileRun(runId: string) {
   const [row] = await db.select().from(reconcileRuns).where(eq(reconcileRuns.id, runId)).limit(1);

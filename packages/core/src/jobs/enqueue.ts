@@ -25,10 +25,7 @@ export interface EnqueueJobInput {
  * back to `${jobId}:${jobType}` — still per-message-unique. The DB-layer
  * `jobs_active_unique` index (migration 0009) is the final guard.
  */
-export async function enqueueJob(
-  input: EnqueueJobInput,
-  opts: EnqueueOptions = {},
-): Promise<void> {
+export async function enqueueJob(input: EnqueueJobInput, opts: EnqueueOptions = {}): Promise<void> {
   const singletonKey = input.issueId
     ? `${input.issueId}:${input.type}`
     : `${input.jobId}:${input.type}`;

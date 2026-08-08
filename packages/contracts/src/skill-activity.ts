@@ -12,6 +12,7 @@ export const SKILL_ACTIVITY_EVENT_TYPES = [
   'policy.landed',
   'reconcile.started',
   'reconcile.decided',
+  'reconcile.failed',
   'skill.body.changed',
   'verify.failed',
   'reconcile.escalated',
