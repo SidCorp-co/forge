@@ -159,6 +159,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Projects can now use an interactive chat skill to guide users through onboarding and Forge project setup
 - Shared skills now deploy automatically to all projects instead of requiring manual fan-out pushes
 - Chat now immediately switches to a selected runner and recalculates repository paths, with improved cold-start rehydration and runner health signals.
+- Projects can now record a Divergence Charter documenting intentional deviations from the standard pipeline template.
 
 ## [0.3.0] - 2026-06-11
 
