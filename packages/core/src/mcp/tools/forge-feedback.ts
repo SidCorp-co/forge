@@ -167,7 +167,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
     'When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. ' +
     'Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. ' +
     'Curators (e.g. forge-memory-curator, or anyone triaging feedback into an issue) SHOULD pass linkedIssueId so the loop closes. ' +
-    'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope}. linkedIssueId is not supported on the bulk signalKey path.',
+    'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope,linkedIssueId}. linkedIssueId IS supported on the bulk path: N duplicate reports of one Forge defect fold into ONE issue in a single call. A report is feedback ABOUT FORGE — its projectId records where the defect was OBSERVED, not who owns the fix — so linkedIssueId may name an issue in ANY project you can see (normally the Forge project), not just the one the report was filed from. reviewed:false clears reviewedAt AND linkedIssueId.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -322,14 +322,45 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'review': {
         const reviewed = input.reviewed ?? true;
 
+        // A feedback report is a report about FORGE. Its `projectId` records
+        // WHERE the defect was observed, not who owns the fix — which almost
+        // always lands in the Forge project itself. So `linkedIssueId` resolves
+        // against every project the caller can see, NOT the report's project:
+        // requiring same-project made the field unusable for exactly the
+        // reports it exists to close. Authorization stays real — caller
+        // visibility bounds the lookup.
+        const resolveLinkedIssue = async (linkedIssueId: string): Promise<string> => {
+          const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
+          if (visibleIds.length === 0) {
+            throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
+          }
+          const [issueRow] = await db
+            .select({ id: issues.id })
+            .from(issues)
+            .where(and(eq(issues.id, linkedIssueId), inArray(issues.projectId, visibleIds)))
+            .limit(1);
+          if (!issueRow) {
+            throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
+          }
+          return issueRow.id;
+        };
+        // cm:why bulk and single share this so a signalKey fold and a one-off fold can never drift on what a valid link is
+        const linkPatch = async (): Promise<{ linkedIssueId?: string | null }> => {
+          if (!reviewed) return { linkedIssueId: null };
+          if (!input.linkedIssueId) return {};
+          return { linkedIssueId: await resolveLinkedIssue(input.linkedIssueId) };
+        };
+
         if (input.signalKey) {
           // Bulk stamp: every report carrying this signalKey, within scope.
           if (input.scope === 'all') {
             const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-            if (visibleIds.length === 0) return { ok: true, count: 0, scope: 'all' };
+            if (visibleIds.length === 0) {
+              return { ok: true, count: 0, scope: 'all', linkedIssueId: null };
+            }
             const updated = await db
               .update(feedbackReports)
-              .set({ reviewedAt: reviewed ? new Date() : null })
+              .set({ reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) })
               .where(
                 and(
                   inArray(feedbackReports.projectId, visibleIds),
@@ -337,14 +368,19 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
                 ),
               )
               .returning({ id: feedbackReports.id });
-            return { ok: true, count: updated.length, scope: 'all' };
+            return {
+              ok: true,
+              count: updated.length,
+              scope: 'all',
+              linkedIssueId: reviewed ? (input.linkedIssueId ?? null) : null,
+            };
           }
 
           const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
           await assertPrincipalIsMember(principal, projectId);
           const updated = await db
             .update(feedbackReports)
-            .set({ reviewedAt: reviewed ? new Date() : null })
+            .set({ reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) })
             .where(
               and(
                 eq(feedbackReports.projectId, projectId),
@@ -352,7 +388,12 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
               ),
             )
             .returning({ id: feedbackReports.id });
-          return { ok: true, count: updated.length, scope: 'project' };
+          return {
+            ok: true,
+            count: updated.length,
+            scope: 'project',
+            linkedIssueId: reviewed ? (input.linkedIssueId ?? null) : null,
+          };
         }
 
         if (input.scope === 'all') {
@@ -366,33 +407,16 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, projectId);
         if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
 
-        // linkedIssueId must belong to the SAME project as the report — this
-        // is the explicit-link path (ISS-712); no heuristic auto-stamping.
-        let validatedLinkedIssueId: string | undefined;
-        if (reviewed && input.linkedIssueId) {
-          const [issueRow] = await db
-            .select({ id: issues.id })
-            .from(issues)
-            .where(and(eq(issues.id, input.linkedIssueId), eq(issues.projectId, projectId)))
-            .limit(1);
-          if (!issueRow) {
-            throw new Error('NOT_FOUND: linkedIssueId not found in this project');
-          }
-          validatedLinkedIssueId = issueRow.id;
-        }
+        // Explicit-link path (ISS-712); no heuristic auto-stamping.
+        const patch = await linkPatch();
 
         const [updated] = await db
           .update(feedbackReports)
           .set({
             reviewedAt: reviewed ? new Date() : null,
             // Omitting linkedIssueId on a reviewed:true call leaves any
-            // existing link untouched (back-compat) — only include the key
-            // when we're clearing it (reviewed:false) or setting it.
-            ...(!reviewed
-              ? { linkedIssueId: null }
-              : validatedLinkedIssueId !== undefined
-                ? { linkedIssueId: validatedLinkedIssueId }
-                : {}),
+            // existing link untouched (back-compat); reviewed:false clears it.
+            ...patch,
           })
           .where(
             and(eq(feedbackReports.id, input.reportId), eq(feedbackReports.projectId, projectId)),

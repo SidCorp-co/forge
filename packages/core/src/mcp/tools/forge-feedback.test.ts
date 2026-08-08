@@ -548,7 +548,8 @@ describe('forge_feedback review', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveEffectiveProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // assertPrincipalIsMember
-    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // linkedIssueId same-project lookup
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // resolveLinkedIssue visibility fence
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // linkedIssueId lookup
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt, linkedIssueId: LINKED_ISSUE_ID },
     ]);
@@ -571,16 +572,66 @@ describe('forge_feedback review', () => {
     });
   });
 
-  it('linkedIssueId in a different project throws NOT_FOUND and stamps nothing', async () => {
+  // A report is feedback ABOUT FORGE, filed from wherever the defect was seen —
+  // so the issue that fixes it normally lives in the Forge project, NOT the
+  // reporting one. Same-project made the field unusable for exactly the reports
+  // it exists to close (45 coolify-fanout reports across 4 projects, one fix).
+  it('links a report to an issue in ANOTHER visible project (the Forge project)', async () => {
     const tool = forgeFeedbackTool(makeCtx());
-    const OTHER_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const reviewedAt = new Date('2026-07-20T00:00:00Z');
+    const FORGE_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([]); // no issue found for this project
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
+    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // lives in PROJECT_ID_2
+    updateReturning.mockResolvedValueOnce([
+      { id: REPORT_ID, reviewedAt, linkedIssueId: FORGE_ISSUE_ID },
+    ]);
+
+    const result = await tool.handler({
+      action: 'review',
+      reportId: REPORT_ID,
+      linkedIssueId: FORGE_ISSUE_ID,
+    });
+
+    expect(result).toMatchObject({ ok: true, linkedIssueId: FORGE_ISSUE_ID });
+    expect(updateSet).toHaveBeenCalledWith({
+      reviewedAt: expect.any(Date),
+      linkedIssueId: FORGE_ISSUE_ID,
+    });
+  });
+
+  // cm:guard visibility is still the fence — relaxing same-project must not let a caller
+  // link to an issue in a project they cannot see.
+  it('refuses a linkedIssueId in a project the caller cannot see, and stamps nothing', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    const HIDDEN_ISSUE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    mockVisibleProjects([PROJECT_ID]);
+    selectLimit.mockResolvedValueOnce([]); // not among visible projects
 
     await expect(
-      tool.handler({ action: 'review', reportId: REPORT_ID, linkedIssueId: OTHER_ISSUE_ID }),
+      tool.handler({ action: 'review', reportId: REPORT_ID, linkedIssueId: HIDDEN_ISSUE_ID }),
+    ).rejects.toThrow(/NOT_FOUND/);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('refuses a link when the caller can see no project at all', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    mockVisibleProjects([]);
+
+    await expect(
+      tool.handler({
+        action: 'review',
+        reportId: REPORT_ID,
+        linkedIssueId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      }),
     ).rejects.toThrow(/NOT_FOUND/);
     expect(updateSet).not.toHaveBeenCalled();
   });
@@ -618,7 +669,7 @@ describe('forge_feedback review', () => {
       signalKey: 'self_report:skill:my-skill:friction',
     });
 
-    expect(result).toEqual({ ok: true, count: 3, scope: 'project' });
+    expect(result).toEqual({ ok: true, count: 3, scope: 'project', linkedIssueId: null });
   });
 
   it('signalKey + scope=all bulk-stamps only across visible projects', async () => {
@@ -633,7 +684,55 @@ describe('forge_feedback review', () => {
       signalKey: 'self_report:skill:my-skill:friction',
     });
 
-    expect(result).toEqual({ ok: true, count: 2, scope: 'all' });
+    expect(result).toEqual({ ok: true, count: 2, scope: 'all', linkedIssueId: null });
+  });
+
+  // The workflow the field exists for: one Forge defect reported N times from N
+  // projects (coolify fan-out was 45 reports / 4 projects) folds into ONE issue
+  // in a single call. Before this, bulk could not carry a link at all.
+  it('signalKey + scope=all folds every duplicate into ONE cross-project issue', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    const FORGE_ISSUE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // scope=all fence
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // resolveLinkedIssue fence
+    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]);
+    updateReturning.mockResolvedValueOnce([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
+
+    const result = await tool.handler({
+      action: 'review',
+      scope: 'all',
+      signalKey: 'self_report:tool:forge_coolify_deploy.deploy:bug',
+      linkedIssueId: FORGE_ISSUE_ID,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      count: 3,
+      scope: 'all',
+      linkedIssueId: FORGE_ISSUE_ID,
+    });
+    expect(updateSet).toHaveBeenCalledWith({
+      reviewedAt: expect.any(Date),
+      linkedIssueId: FORGE_ISSUE_ID,
+    });
+  });
+
+  // cm:guard reviewed:false must clear the link too, or an un-reviewed report keeps pointing at an issue that no longer covers it
+  it('reviewed:false on the bulk path clears reviewedAt AND the link', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([{ id: 'r1' }]);
+
+    await tool.handler({
+      action: 'review',
+      reviewed: false,
+      signalKey: 'self_report:tool:x:bug',
+    });
+
+    expect(updateSet).toHaveBeenCalledWith({ reviewedAt: null, linkedIssueId: null });
   });
 
   it('signalKey + scope=all with no visible projects returns count:0', async () => {
@@ -647,7 +746,7 @@ describe('forge_feedback review', () => {
       signalKey: 'self_report:skill:my-skill:friction',
     });
 
-    expect(result).toEqual({ ok: true, count: 0, scope: 'all' });
+    expect(result).toEqual({ ok: true, count: 0, scope: 'all', linkedIssueId: null });
     expect(updateSet).not.toHaveBeenCalled();
   });
 

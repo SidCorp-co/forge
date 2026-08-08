@@ -84,6 +84,7 @@ function buildApp() {
 }
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
+const OTHER_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REPORT_ID = '44444444-4444-4444-8444-444444444444';
 
@@ -340,7 +341,8 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
-    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // same-project issue lookup
+    mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]); // resolveLinkedIssue fence
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // issue lookup
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: LINKED_ISSUE_ID },
     ]);
@@ -359,17 +361,47 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     expect(body.linkedIssueId).toBe(LINKED_ISSUE_ID);
   });
 
-  it('linkedIssueId in a different project returns 404 and stamps nothing', async () => {
-    const OTHER_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  // A report is feedback ABOUT FORGE; the issue that fixes it normally lives in
+  // the Forge project, not the one the report was filed from. Must mirror the
+  // MCP `review` action exactly — see the cm:edge on the route.
+  it('links to an issue in ANOTHER visible project (the Forge project)', async () => {
+    const FORGE_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
-    selectLimit.mockResolvedValueOnce([]); // no issue found for this project
+    mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]);
+    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // lives in OTHER_PROJECT_ID
+    updateReturning.mockResolvedValueOnce([
+      { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: FORGE_ISSUE_ID },
+    ]);
 
     const app = buildApp();
     const res = await app.request(`/api/feedback-reports/${REPORT_ID}/reviewed`, {
       method: 'POST',
-      body: JSON.stringify({ reviewed: true, linkedIssueId: OTHER_ISSUE_ID }),
+      body: JSON.stringify({ reviewed: true, linkedIssueId: FORGE_ISSUE_ID }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await token()}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { linkedIssueId: string | null };
+    expect(body.linkedIssueId).toBe(FORGE_ISSUE_ID);
+  });
+
+  // cm:guard visibility remains the fence — relaxing same-project must not open a link to a project the caller cannot see
+  it('returns 404 for an issue in a project the caller cannot see, and stamps nothing', async () => {
+    const HIDDEN_ISSUE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ role: 'member' });
+    mockVisibleProjectIds([PROJECT_ID]);
+    selectLimit.mockResolvedValueOnce([]); // not among visible projects
+
+    const app = buildApp();
+    const res = await app.request(`/api/feedback-reports/${REPORT_ID}/reviewed`, {
+      method: 'POST',
+      body: JSON.stringify({ reviewed: true, linkedIssueId: HIDDEN_ISSUE_ID }),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${await token()}`,
