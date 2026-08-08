@@ -1,7 +1,7 @@
 # PM Lane Live-Data Audit — ISS-796
 
 **Audited:** 2026-08-08  
-**Auditor:** forge-code pipeline (ISS-796)  
+**Auditor:** forge-code pipeline (ISS-796), re-audited by forge-fix  
 **Parent:** ISS-795 — Update Pipeline (canonical design)  
 **Blocks:** ISS-795 step 5 (Master agent)
 
@@ -10,14 +10,18 @@
 ## Executive summary
 
 The PM lane (`packages/core/src/pm/`) has **never produced a successful session** on this
-project. Three PM jobs were queued in May 2026; all three failed at the runner layer.
-The infrastructure layer (spawner guards, rate-limit, auto-disable, subscribers) works
-correctly and has good test coverage. The runner does not support `type=pm` jobs (issueId
-is null; the production claude-code runner rejects this). Auto-disable fired following the
-three failures. pmConfig has been disabled since. The escalation-sweeper has nothing to
-sweep. `pmDecisions` is empty (0 rows surfaced across any live query).
+project. Three PM jobs were queued in May 2026; all three failed. The infrastructure layer
+(spawner guards, rate-limit, auto-disable, subscribers) works correctly and has good test
+coverage. Auto-disable fired following the three failures; pmConfig has been disabled since.
 
-**Decision: (c) Hybrid** — keep the infrastructure layer, rebuild the execution path.
+**Corrected root cause:** The execution path (`handlePmDispatch` → `dispatchViaRunner(pm:true)`
+→ runner) is **complete and functional** in current code. The failure is a **runner capability
+gap**: `dispatchViaRunner` requires `{ pm: true }` in the runner's `capabilities` JSONB, but
+production runners are initialized with `{}` by default — only dev-mode auto-grants `pm: true`.
+No eligible runner existed, so `selectRunnerForJob` returned `null` on every attempt, the
+dispatcher returned `'skipped'`, and the loop monitor eventually failed the queued jobs.
+
+**Decision: (a) Repair** — grant `pm: true` to the production runner; no rebuild required.
 
 ---
 
@@ -72,9 +76,26 @@ Step-durations (90-day window): rows = 0
 ```
 
 **Finding:** 3 PM jobs, all failed, all on 2026-05-07. Nothing since. No PM job has ever
-reached `done` (step-duration rows = 0). Attempt 3 was dispatched to a runner (device
-`85644100`) and created an agent session (`cf47e694`), which immediately failed because
-the runner rejects PM jobs.
+reached `done` (step-duration rows = 0).
+
+**Failure mode analysis (corrected vs. original):**
+
+- **Jobs 1 & 2** (`"queued without dispatch (likely pg-boss desync after core restart)"`):
+  The `"pg-boss desync"` wording is the loop monitor's default interpretation of a job that
+  was never dispatched (no `dispatchedAt`). The actual cause: `handlePmDispatch` called
+  `dispatchViaRunner(job, { pm: true }, ['claude-code'])`, which passed `requiredCapabilities
+  = { pm: true }` to `selectRunnerForJob`. The SQL gate `AND capabilities @> '{"pm":true}'::jsonb`
+  (`runners/select.ts:355`) found no matching runner (production runners default to `{}`),
+  so the dispatcher returned `'skipped'` and the job stayed queued until the loop monitor
+  reaped it. Not a pg-boss infrastructure failure.
+
+- **Job 3** (`"unsupported job type or missing issueId (type=pm)"`): This error string does
+  **not exist as a production emitter in current code** — it appears only in
+  `packages/tests/web/features/pipeline/job-failure.test.ts` (for `type=test`). The
+  presence of `dispatchedAt` and `agentSessionId` suggests a runner with `pm: true` was
+  available at that moment (possibly a dev-mode runner or one manually configured), and the
+  failure came from an older runner binary that explicitly rejected PM — a code path removed
+  in current HEAD. This is a historical artifact, not a current failure mode.
 
 ---
 
@@ -124,8 +145,9 @@ on the third failure.
 
 **Finding:** Auto-disable **fired on 2026-05-07 at ~07:38 UTC** after 3 consecutive PM job
 failures within 24 minutes. It set `pmConfig.enabled=false`, `cadenceCron=null`, and
-notified the project creator. This is the expected three-strikes behavior. The trigger
-was correct: PM jobs had been structurally failing (runner rejection).
+notified the project creator. This is the expected three-strikes behavior. The underlying
+cause was the runner capability gap (no runner with `pm: true` in production), not a
+structural defect in the PM path itself.
 
 ---
 
@@ -169,15 +191,42 @@ short-circuits before either guard.
 
 ## Root cause analysis
 
-The single point of failure is the **execution path**: the production claude-code runner
-(`forge-runner`) rejects PM jobs with `failureReason: "unsupported job type or missing issueId (type=pm)"`.
+The PM execution path is **complete and working** in current code. The three independent
+verifications:
 
-PM jobs are created with `issueId: null` — this is by design (PM is project-scoped, not
-issue-scoped). The runner's dispatch logic requires an issueId for routing (it's how
-the runner knows which issue branch to work in, which skills to load, etc.).
+1. **PM is exempt from the runner type gate.** `dispatcher.ts:449`:
+   ```ts
+   if (job.type !== 'pm' && !runnerSupportsJobType(runner.type, job.type)) { … }
+   ```
+   PM jobs can never fail the `runner_unsupported_type` gate.
 
-The mismatch: the spawner correctly creates a null-issueId PM job; the runner's existing
-architecture is built around issue-scoped work and cannot accept null-issueId jobs.
+2. **`handlePmDispatch` is a live pg-boss worker.** Registered at `dispatcher.ts:807`
+   (`PM_QUEUE_NAME`), it calls `dispatchViaRunner(job, { pm: true }, ['claude-code'])`
+   (`dispatcher.ts:239`). The function is reachable and wired.
+
+3. **The runner accepts null `issueId`.** `frames.rs:21` declares `issue_id: Option<String>`
+   with `#[serde(default)]`. `dispatch.rs` creates a worktree only when `worktreeBranch`
+   is present in the payload; a PM job (no worktreeBranch) runs in the repo root. There is
+   no runner-side issueId validation.
+
+**The real failure point is runner capability registration.** `dispatchViaRunner` passes
+`forcedCapabilities = { pm: true }` to `selectRunnerForJob`. The selector queries:
+
+```sql
+AND capabilities @> '{"pm":true}'::jsonb
+```
+
+(`runners/select.ts:355`). Production runners are initialized with `capabilities = {}`
+by default — `pm: true` is only auto-granted in dev-mode (`NODE_ENV !== 'production'`,
+`select.ts:34-38`). No production runner has ever been explicitly configured with
+`pm: true` on this project. Result: `selectRunnerForJob` returns `null`, the dispatcher
+returns `'skipped'`, the job stays queued, and the loop monitor eventually fails it with the
+generic "queued without dispatch" message.
+
+The `pm: true` gate is an **intentional security design** (`dispatcher.ts:195-198`):
+PM agents run project-scoped with broader authority than issue-scoped agents, so the
+operator must opt-in per runner. The dev-mode auto-grant is convenience only. The
+production opt-in step was never performed for this project's runner.
 
 **Infrastructure layer (working, tested):**
 - `spawnPmSession`: 4-guard chain (enabled → trigger-mask → rate-limit → dedup)
@@ -187,24 +236,22 @@ architecture is built around issue-scoped work and cannot accept null-issueId jo
 - `subscribers.ts`: correctly wired to hooks bus
 - `escalation-sweeper.ts`: correctly registered on cron, correct SQL logic
 
-**Execution layer (broken):**
-- Runner does not accept `type=pm` jobs (issueId=null)
-- The PM agent prompt string is never delivered to a running agent
-- No `pmDecisions` rows are ever written
+**Execution layer (working in code, blocked by configuration):**
+- `handlePmDispatch` → `dispatchViaRunner(pm:true)` → runner (all wired correctly)
+- Runner accepts null issueId, runs in repo root (no Rust changes needed)
+- Gap: no production runner has `capabilities.pm = true`
 
 ---
 
-## Decision: (c) Hybrid
+## Decision: (a) Repair
 
 ### Rationale
 
-**Why not (a) repair (fix the runner to accept pm jobs)?**  
-The runner is a Rust binary (`packages/runner/`) with a versioned release process. Adding
-`pm` job type support requires Rust changes + a tagged release + rollout. The infrastructure
-layer (spawner, auto-disable, etc.) already works correctly — fixing the runner would mean
-shipping a new runner version just to make PM run, with all the coordination that entails
-(ISS-740/743 pattern). The runner's existing architecture is deeply issue-scoped; making
-PM work cleanly there is non-trivial.
+**The execution path does not need rebuilding.** The original audit dismissed option (a)
+as requiring "Rust changes + a tagged release" — that was based on the incorrect premise
+that the runner rejects PM jobs. In reality, `handlePmDispatch` already dispatches to
+`claude-code` runners (`dispatch.ts:239`), and the runner's Rust code already accepts
+null `issueId` and runs PM jobs in the repo root. No Rust change is required.
 
 **Why not (b) full rebuild (discard packages/core/src/pm/)?**  
 The infrastructure layer has good unit test coverage and correct semantics. `spawnPmSession`,
@@ -212,19 +259,26 @@ The infrastructure layer has good unit test coverage and correct semantics. `spa
 code. Discarding them means rebuilding guards that already work and retesting coverage that
 already exists. Full rebuild is wasteful.
 
-**Why (c) hybrid?**  
-Keep everything that works: the spawner guards, auto-disable, rate-limit, subscribers,
-escalation-sweeper, cadence ticker, pmConfig/pmDecisions schema. Rebuild only the execution
-path — how a PM job actually executes — so that PM sessions run without routing through
-the issue-scoped runner. The natural execution point is **core-side**: after a PM job is
-enqueued, execute the PM session in-process within core (using the same agent SDK that
-drives other sessions), bypassing the runner's issueId requirement.
+**Why not (c) hybrid (keep infra, rebuild execution)?**  
+The execution path already exists and is correct. Building an in-process core-side execution
+path would duplicate the existing `handlePmDispatch` → runner path, adding complexity and
+bypassing the intentional `capabilities.pm` security gate without good reason.
 
-This satisfies all §9 invariants:
-- **serialize-per-project**: the existing unique index (`jobs_pm_per_project_unique_idx`)
-  already enforces one active PM job per project
+**Why (a) repair (grant capability)?**  
+The only missing piece is `capabilities.pm = true` on the production runner. The fix is
+a runner capability configuration change, available via `PATCH /api/runners/:id`. This
+unblocks PM immediately with no code changes. The operator opt-in requirement is correct
+(PM agents are project-scoped with broad authority); the gap was simply that it was never
+performed.
+
+ISS-795 step 5 should include: re-enable pmConfig and grant `pm: true` to the project's
+bound runner before the Master agent is deployed. Optionally, the PM enable UI could
+auto-prompt the operator to grant the capability when enabling PM.
+
+This satisfies all §9 invariants unchanged:
+- **serialize-per-project**: `jobs_pm_per_project_unique_idx` unchanged
 - **rate-limit**: guard #3 in `spawnPmSession` unchanged
-- **auto-disable**: three-strikes in `auto-disable.ts` unchanged (counts `jobs.status='failed'`)
+- **auto-disable**: three-strikes in `auto-disable.ts` unchanged
 - **escalation**: sweeper unchanged (queries pmDecisions)
 - **decision record**: PM agent writes via `forge_project_pm write_decision` unchanged
 
@@ -232,15 +286,20 @@ This satisfies all §9 invariants:
 
 ## Implications for step 5 (Master agent)
 
-The Master agent (ISS-795 step 5) **must not assume PM sessions execute via the runner**.
-Its design should:
+The Master agent (ISS-795 step 5) **should use the existing runner dispatch path**, not
+build a new in-process execution path. Specifically:
 
-1. Build on the hybrid foundation: the spawner/guards remain the entry point, but execution
-   is core-side.
-2. Keep `pmDecisions` as the decision audit log — write_decision API unchanged.
-3. Not depend on the runner's claude-code skill loading mechanism (skills are issue-scoped).
-4. Treat the PM session as a stateless in-process function: given `{ cause, eventRef,
-   pmConfig }`, produce `{ summary, actions, confidence }` and write to pmDecisions.
+1. The spawner/guards remain the entry point — no changes needed.
+2. Before activating PM, ensure the bound runner has `capabilities.pm = true` (PATCH
+   `/api/runners/:id`). Consider adding a preflight check or a UI prompt when enabling
+   pmConfig to surface this requirement to the operator.
+3. The PM agent session runs on the runner in the repo root (no worktreeBranch), using
+   `promptString` from the job payload. The Master agent skill should be designed for this
+   execution context: no worktree, project-level scope, `forge_project_pm` MCP tool for
+   writing decisions.
+4. Keep `pmDecisions` as the decision audit log — `write_decision` API unchanged.
+5. Skills sync via `project_id` (not issue_id) — the PM agent can load PM-specific skills
+   if they are registered on the project.
 
 ---
 
@@ -252,6 +311,11 @@ Its design should:
 - `packages/core/src/pm/queue-pressure.ts` — backlog threshold sweep
 - `packages/core/src/pm/subscribers.ts` — hooks bus wiring
 - `packages/core/src/pm/escalation-sweeper.ts` — timeout fallback
-- `packages/core/src/db/schema.ts:2378` — `pmDecisions` table
-- `packages/core/src/db/schema.ts:2409` — `pmConfig` table
+- `packages/core/src/jobs/dispatcher.ts:200` — `handlePmDispatch` (live pg-boss worker)
+- `packages/core/src/jobs/dispatcher.ts:449` — PM type-gate exemption
+- `packages/core/src/runners/select.ts:34` — `defaultRunnerCapabilities` (dev-mode auto-grant)
+- `packages/core/src/runners/select.ts:355` — JSONB capability containment filter
+- `packages/runner/crates/forge-runner-core/src/transport/frames.rs:21` — `issue_id: Option<String>`
+- `packages/core/src/db/schema.ts:2395` — `pmDecisions` table
+- `packages/core/src/db/schema.ts:2426` — `pmConfig` table
 - ISS-795 — parent issue (canonical pipeline design)
