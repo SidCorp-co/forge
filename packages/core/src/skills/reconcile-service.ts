@@ -434,6 +434,34 @@ export function buildVerifierPrompt(runId: string, jobId: string): string {
 // cm:why must equal the number of verify_skill jobs spawnVerifierJobs dispatches — recordVerifierVote's majority tally never resolves if fewer jobs exist than it waits for.
 const VERIFIER_VOTE_COUNT = 3;
 
+// cm:why bounds the retryOf walk below; independent of jobs/retry.ts's RETRY_MAX_ROUNDS (importing
+// it would cycle retry.ts -> reconcile-service.ts -> retry.ts) but serves the same purpose.
+const MAX_RETRY_CHAIN_DEPTH = 10;
+
+/**
+ * Walks a verify_skill job's `retryOf` chain (this job, its parent, grandparent, ...)
+ * so a vote from a retry clone can supersede its dead ancestor's vote instead of
+ * being tallied as a second, independent verifier (MINOR AC, ISS-801 review round 5).
+ */
+async function resolveRetryChainIds(
+  tx: Pick<typeof db, 'select'>,
+  jobId: string,
+): Promise<Set<string>> {
+  const chain = new Set<string>([jobId]);
+  let current = jobId;
+  for (let hop = 0; hop < MAX_RETRY_CHAIN_DEPTH; hop++) {
+    const [row] = await tx
+      .select({ retryOf: jobs.retryOf })
+      .from(jobs)
+      .where(eq(jobs.id, current))
+      .limit(1);
+    if (!row?.retryOf || chain.has(row.retryOf)) break;
+    chain.add(row.retryOf);
+    current = row.retryOf;
+  }
+  return chain;
+}
+
 /**
  * Shared terminal-fail transition for an active `reconcile_runs` row (BLOCKER M,
  * ISS-801 review). No-op when the run is not found or has already left the
@@ -873,7 +901,9 @@ export interface RecordVerifierVoteInput {
  * Called by the verifier agent via the `forge_reconcile` MCP tool.
  *
  * Concurrency: SELECT FOR UPDATE inside the transaction serializes concurrent
- * vote calls for the same run. Duplicate votes from the same jobId are ignored.
+ * vote calls for the same run. Duplicate votes from the same jobId are ignored;
+ * a vote from a retry clone (see `resolveRetryChainIds`) supersedes its dead
+ * ancestor's vote rather than adding a second one for the same verifier slot.
  * The publish transition is additionally guarded by WHERE status='verifying' to
  * remain idempotent if somehow two transactions reach the publish branch.
  */
@@ -929,7 +959,10 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       decidedAt: new Date().toISOString(),
     };
 
-    const allVotes = [...existingVotes, newVote];
+    // cm:why a retry clone votes under its OWN jobId (MINOR V) — supersede the dead ancestor's vote instead of tallying both (MINOR AC).
+    const retryChainIds = await resolveRetryChainIds(tx, input.jobId);
+    const votesWithoutChainAncestor = existingVotes.filter((v) => !retryChainIds.has(v.jobId));
+    const allVotes = [...votesWithoutChainAncestor, newVote];
 
     const passCount = allVotes.filter((v) => v.vote === 'pass').length;
     const failCount = allVotes.filter((v) => v.vote === 'fail').length;
