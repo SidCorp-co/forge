@@ -84,6 +84,8 @@ export type ActivityLog = typeof schema.activityLog.$inferSelect;
 
 export type SkillActivityEventRow = typeof schema.skillActivityEvents.$inferSelect;
 
+export type UpdatePacketRow = typeof schema.updatePackets.$inferSelect;
+
 // ISS-564 — Knowledge subsystem P0. Foundation row type only; no reader/writer yet.
 export type KnowledgeEntry = typeof schema.knowledgeEntries.$inferSelect;
 
