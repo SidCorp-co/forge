@@ -9,5 +9,6 @@ export * from './pipeline-registry.js';
 export * from './skill-facts.js';
 export * from './skill-activity.js';
 export * from './update-packets.js';
+export * from './divergence-charters.js';
 export * from './issues.js';
 export * from './ssh-keys.js';

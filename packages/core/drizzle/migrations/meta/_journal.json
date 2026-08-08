@@ -1121,6 +1121,13 @@
       "when": 1787446800000,
       "tag": "0161_update_packets",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1787529600000,
+      "tag": "0162_divergence_charters",
+      "breakpoints": true
     }
   ]
 }
