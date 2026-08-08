@@ -119,9 +119,10 @@ export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map
 // `runner_unsupported_type`.
 
 // cm:why release_batch has no PIPELINE_STEPS entry (dispatched explicitly via the batch-release REST endpoint, not a trigger status) but still needs a RUNNER_CAPABILITIES entry or the dispatcher fails it runner_unsupported_type
+// cm:why reconcile / verify_skill have no PIPELINE_STEPS entry — dispatched by the reconcile service directly, not by a trigger status (ISS-801).
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke', 'release_batch'],
-  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke', 'release_batch'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke', 'release_batch', 'reconcile', 'verify_skill'],
+  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'staging', 'release', 'clarify', 'smoke', 'release_batch', 'reconcile', 'verify_skill'],
 };
 
 export interface JobTypeMapping {

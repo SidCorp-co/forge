@@ -58,6 +58,9 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   // smoke canaries (ISS-455) are issue-less; there is no status to advance.
   smoke: [],
   release_batch: [],
+  // reconcile/verify_skill jobs are issue-less (system pipeline_runs); no status to advance.
+  reconcile: [],
+  verify_skill: [],
 };
 
 /** Statuses the issue has nothing left to do on; any failed job lands here as

@@ -224,6 +224,8 @@ describe('GET /api/pipeline/registry', () => {
       'clarify',
       'smoke',
       'release_batch',
+      'reconcile',
+      'verify_skill',
     ]);
   });
 });
