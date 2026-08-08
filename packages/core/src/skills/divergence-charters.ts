@@ -5,8 +5,9 @@
 // The public contract type DivergenceCharterEntry lives in
 // @forge/contracts/divergence-charters (kept in sync by parity test).
 
-import { eq } from 'drizzle-orm';
 import type { DivergenceCharterEntry } from '@forge/contracts';
+import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import type { Db } from '../db/client.js';
 import { divergenceCharters } from '../db/schema.js';
 import { recordSkillActivityEvent } from './activity.js';
@@ -16,11 +17,27 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 /** A drizzle executor: the base `db` or a transaction handle. */
 export type CharterExecutor = Db | Tx;
 
+// cm:edge contract -> packages/contracts/src/divergence-charters.ts — divergenceCharterEntrySchema mirrors this; kept in sync by divergence-charters.test.ts
+export const divergenceCharterEntrySchema = z.object({
+  id: z.string().min(1),
+  skill: z.string().min(1),
+  difference: z.string().min(1),
+  reason: z.string().min(1),
+  incidentRefs: z.array(z.string()),
+  revertable: z.boolean(),
+});
+
 /** Return the charter for a project, or null when no charter exists. */
 export async function getCharterByProject(
   executor: CharterExecutor,
   projectId: string,
-): Promise<{ id: string; projectId: string; entries: DivergenceCharterEntry[]; createdAt: Date; updatedAt: Date } | null> {
+): Promise<{
+  id: string;
+  projectId: string;
+  entries: DivergenceCharterEntry[];
+  createdAt: Date;
+  updatedAt: Date;
+} | null> {
   const [row] = await executor
     .select()
     .from(divergenceCharters)
@@ -55,7 +72,13 @@ export interface UpsertCharterInput {
 export async function upsertCharter(
   tx: Tx,
   input: UpsertCharterInput,
-): Promise<{ id: string; projectId: string; entries: DivergenceCharterEntry[]; createdAt: Date; updatedAt: Date }> {
+): Promise<{
+  id: string;
+  projectId: string;
+  entries: DivergenceCharterEntry[];
+  createdAt: Date;
+  updatedAt: Date;
+}> {
   const [existing] = await tx
     .select({ id: divergenceCharters.id })
     .from(divergenceCharters)

@@ -1,7 +1,10 @@
 import { z } from 'zod';
-import { divergenceCharterEntrySchema } from '@forge/contracts';
 import { db } from '../../db/client.js';
-import { getCharterByProject, upsertCharter } from '../../skills/divergence-charters.js';
+import {
+  divergenceCharterEntrySchema,
+  getCharterByProject,
+  upsertCharter,
+} from '../../skills/divergence-charters.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
@@ -25,7 +28,7 @@ const inputSchema = z
 export const forgeDivergenceChartersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_divergence_charters',
   description:
-    'Read or write a project\'s Divergence Charter — the machine-readable record of intentional deviations from the default pipeline template (Update Pipeline §5, ISS-795). One charter per project; entries are owner-authored statements (difference/reason/incidentRefs/revertable). Action `get` (member-gated) returns the charter or null. Action `upsert` (admin-gated) creates or fully replaces the charter\'s entries and emits `charter.changed` into the skill activity log in the same transaction (invariant §9.11). The charter is item 7 in the Master agent\'s 12-item bundle — never edit the entries a reconcile agent authored without explicit owner intent.',
+    "Read or write a project's Divergence Charter — the machine-readable record of intentional deviations from the default pipeline template (Update Pipeline §5, ISS-795). One charter per project; entries are owner-authored statements (difference/reason/incidentRefs/revertable). Action `get` (member-gated) returns the charter or null. Action `upsert` (admin-gated) creates or fully replaces the charter's entries and emits `charter.changed` into the skill activity log in the same transaction (invariant §9.11). The charter is item 7 in the Master agent's 12-item bundle — never edit the entries a reconcile agent authored without explicit owner intent.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -37,7 +40,6 @@ export const forgeDivergenceChartersTool: ContextScopedMcpToolFactory = (ctx) =>
       return { charter };
     }
 
-    // upsert
     await assertPrincipalIsAdmin(ctx.principal, projectId);
 
     if (!input.entries) {
