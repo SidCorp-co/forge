@@ -80,6 +80,8 @@ pub struct SkillReportEntry {
 #[derive(Debug, Clone, Serialize)]
 struct SkillReportBody {
     skills: Vec<SkillReportEntry>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pruned: Vec<String>,
 }
 
 fn map_status(label: &str, status: reqwest::StatusCode) -> Error {
@@ -137,14 +139,16 @@ pub async fn pull_content(
         .map_err(|e| Error::Other(format!("skill content decode: {e}")))
 }
 
-/// Report the hashes the runner installed for each seeded skill. No-op when
-/// `entries` is empty.
+/// Report the hashes the runner installed for each seeded skill, plus the
+/// names of any skills pruned from disk (ISS-802 converge-on-delete). No-op
+/// when there is nothing to report.
 pub async fn report_installed(
     client: &CoreClient,
     project_id: &str,
     entries: &[SkillReportEntry],
+    pruned: &[String],
 ) -> Result<()> {
-    if entries.is_empty() {
+    if entries.is_empty() && pruned.is_empty() {
         return Ok(());
     }
     let url = client.url(&format!(
@@ -152,6 +156,7 @@ pub async fn report_installed(
     ));
     let body = SkillReportBody {
         skills: entries.to_vec(),
+        pruned: pruned.to_vec(),
     };
     let resp = client
         .http()

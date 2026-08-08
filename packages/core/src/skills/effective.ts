@@ -58,6 +58,14 @@ export interface EffectiveSkill {
   templateVersion: number | null;
   behindTemplate: boolean;
   /**
+   * ISS-802: intentional, permanent divergence from the template. Distinct
+   * from `behindTemplate` — a pinned row NEVER reports `behindTemplate=true`
+   * regardless of version lag (invariant 10, ISS-795 §10). Globals and
+   * unshadowed rows carry `false`/`null`.
+   */
+  pinned: boolean;
+  pinnedReason: string | null;
+  /**
    * True when this project skill is force-synced to runners without a pipeline
    * stage binding (manual / user-invocable utility). It enters the device
    * manifest but is never auto-dispatched. See `resolveRegisteredEffectiveSkills`.
@@ -77,6 +85,9 @@ export interface SkillBodyRow {
   installOnly: boolean;
   /** ISS-605 lineage; optional so pure helpers accept legacy fixtures. */
   basedOnGlobalVersion?: number | null;
+  /** ISS-802; optional so pure helpers accept legacy fixtures. */
+  pinned?: boolean;
+  pinnedReason?: string | null;
 }
 
 /**
@@ -123,6 +134,8 @@ export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
     basedOnGlobalVersion: null,
     templateVersion: null,
     behindTemplate: false,
+    pinned: skill.pinned ?? false,
+    pinnedReason: skill.pinnedReason ?? null,
     installOnly: skill.installOnly,
   };
 }
@@ -137,6 +150,8 @@ const skillBodyProjection = {
   files: skills.files,
   installOnly: skills.installOnly,
   basedOnGlobalVersion: skills.basedOnGlobalVersion,
+  pinned: skills.pinned,
+  pinnedReason: skills.pinnedReason,
 } as const;
 
 /**
@@ -166,7 +181,11 @@ export function dedupEffectiveSkills(rows: SkillBodyRow[]): EffectiveSkill[] {
     // the template's current version ⇒ behind.
     eff.basedOnGlobalVersion = r.basedOnGlobalVersion ?? null;
     eff.templateVersion = shadowed?.version ?? null;
+    eff.pinned = r.pinned ?? false;
+    eff.pinnedReason = r.pinnedReason ?? null;
+    // cm:guard a pinned row NEVER reports behindTemplate=true, regardless of version lag (ISS-795 §10 / invariant 10 — drift-as-noise gets muted)
     eff.behindTemplate =
+      !eff.pinned &&
       shadowed != null &&
       (r.basedOnGlobalVersion == null || r.basedOnGlobalVersion < shadowed.version);
     result.push(eff);
@@ -318,21 +337,14 @@ export async function resolveManagedMetaPrompts(
   }));
 }
 
-// ISS-798 (stage ④): observation-aware status values.
-//
-// Status ladder:
-//   missing  — no install row at all.
-//   outdated — installed_hash differs from effective_hash (server-side check,
-//              kept for backwards compatibility with pre-observation data).
-//   unknown  — runner is too old to report observation (observed_sha is null,
-//              no shadow detected). Cannot confirm the right body runs.
-//   shadowed — runner detected a user-level ~/.claude/skills/<name>/ that
-//              takes precedence over the project copy.
-//   stale    — observed_sha is present but differs from installed_hash,
-//              implying the on-disk content was overwritten outside of sync.
-//   synced   — observed_sha matches installed_hash: the pushed body is what
-//              Claude Code will actually execute.
-export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing' | 'unknown' | 'shadowed' | 'stale';
+// cm:guard `unknown` (not `synced`) whenever observedSha is null — a runner that never reported observation must never be reported synced
+export type DeviceSkillStatusValue =
+  | 'synced'
+  | 'outdated'
+  | 'missing'
+  | 'unknown'
+  | 'shadowed'
+  | 'stale';
 
 export interface DeviceSkillStatusEntry {
   skillId: string;
@@ -351,7 +363,7 @@ interface InstalledRow {
   installedHash: string;
   installedVersion: number | null;
   syncedAt: Date | string | null;
-  // ISS-798: null for pre-0.7.0 runners that never sent observation fields.
+  // cm:why null for pre-0.7.0 runners that never sent observation fields
   observedSha: string | null;
   shadowedBy: string | null;
 }
@@ -374,21 +386,13 @@ export function computeDeviceSkillStatus(
     if (!row) {
       status = 'missing';
     } else if (row.installedHash !== e.effectiveHash) {
-      // installed_hash already wrong before checking observation.
       status = 'outdated';
     } else if (row.shadowedBy !== null) {
-      // A user-level copy at ~/.claude/skills/<name>/ shadows the project
-      // copy; Claude Code will run the shadow regardless of installedHash.
-      // Checked before the null-observed branch: a shadow without a .hash
-      // marker (observed_sha=null) must be 'shadowed', not 'unknown' (ISS-798).
+      // cm:guard checked before the null-observedSha branch — a shadow with no .hash marker must be 'shadowed', not 'unknown'
       status = 'shadowed';
     } else if (row.observedSha === null) {
-      // Runner pre-dates observation support (minimum version 0.7.0).
-      // Cannot distinguish synced from shadowed — report unknown.
       status = 'unknown';
     } else if (row.observedSha !== row.installedHash) {
-      // observed_sha differs from the hash we wrote — content on disk was
-      // replaced outside of sync.
       status = 'stale';
     } else {
       status = 'synced';

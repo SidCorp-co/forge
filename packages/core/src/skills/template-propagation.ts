@@ -48,6 +48,7 @@ export async function sweepTemplateDrift(bump: TemplateBump): Promise<TemplateDr
       and(
         eq(skills.scope, 'project'),
         eq(skills.basedOnGlobalSkillId, bump.globalSkillId),
+        eq(skills.pinned, false),
         or(isNull(skills.basedOnGlobalVersion), lt(skills.basedOnGlobalVersion, bump.newVersion)),
       ),
     );

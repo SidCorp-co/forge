@@ -13,6 +13,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { PIPELINE_STEPS } from '../pipeline/registry.js';
 import { SkillContentBlockedError } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';
+import { recordSkillActivityEvent } from './activity.js';
 import { hashSkillBody } from './hash.js';
 import { MetaSkillReservedError, isMetaSkillName } from './meta-skills.js';
 
@@ -65,6 +66,11 @@ export type SkillRow = {
   /** ISS-605 template lineage (null = not adopted from a template / pre-tracking). */
   basedOnGlobalSkillId?: string | null;
   basedOnGlobalVersion?: number | null;
+  /** ISS-802 — intentional, permanent divergence; see forge_skills.pin. */
+  pinned?: boolean;
+  pinnedReason?: string | null;
+  pinnedBy?: string | null;
+  pinnedAt?: Date | string | null;
 };
 
 const skillProjection = {
@@ -87,6 +93,10 @@ const skillProjection = {
   installOnly: skills.installOnly,
   basedOnGlobalSkillId: skills.basedOnGlobalSkillId,
   basedOnGlobalVersion: skills.basedOnGlobalVersion,
+  pinned: skills.pinned,
+  pinnedReason: skills.pinnedReason,
+  pinnedBy: skills.pinnedBy,
+  pinnedAt: skills.pinnedAt,
 } as const;
 
 /**
@@ -489,6 +499,54 @@ export async function updateProjectSkill(
 
 export async function deleteProjectSkill(skillId: string): Promise<void> {
   await db.delete(skills).where(eq(skills.id, skillId));
+}
+
+export interface SetSkillPinnedInput {
+  projectId: string;
+  skillId: string;
+  pinned: boolean;
+  /** Required when pinning; ignored when unpinning. */
+  reason?: string | undefined;
+  actorUserId: string;
+}
+
+/**
+ * Mark (or clear) a project skill as `pinned` — intentional, permanent
+ * divergence from its template that must never surface as `behindTemplate`
+ * or drift-sweep noise (ISS-795 §10 / invariant 10). Writes the column and the
+ * `skill.pinned` activity event in the SAME transaction (§9.11).
+ */
+export async function setSkillPinned(input: SetSkillPinnedInput): Promise<SkillRow> {
+  if (input.pinned && !input.reason?.trim()) {
+    throw new Error('BAD_REQUEST: reason is required to pin a skill');
+  }
+  const updated = await db.transaction(async (tx) => {
+    const [row] = (await tx
+      .update(skills)
+      .set({
+        pinned: input.pinned,
+        pinnedReason: input.pinned ? (input.reason?.trim() ?? null) : null,
+        pinnedBy: input.pinned ? input.actorUserId : null,
+        pinnedAt: input.pinned ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(skills.id, input.skillId), eq(skills.projectId, input.projectId)))
+      .returning(skillProjection)) as SkillRow[];
+    if (!row) throw new Error('NOT_FOUND: skill not found');
+
+    const reason = input.pinned ? (input.reason?.trim() ?? '') : 'unpinned';
+    await recordSkillActivityEvent(tx, {
+      eventType: 'skill.pinned',
+      actor: `human:${input.actorUserId}`,
+      trigger: 'manual',
+      projectId: input.projectId,
+      skillId: input.skillId,
+      reason,
+      outcome: 'ok',
+    });
+    return row;
+  });
+  return updated;
 }
 
 /**

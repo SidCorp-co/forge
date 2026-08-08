@@ -4,10 +4,11 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { deviceSkills, runners } from '../db/schema.js';
+import { deviceSkills, runners, skills } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { recordSkillActivityEvent } from '../skills/activity.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
@@ -69,17 +70,15 @@ const reportBodySchema = z
             skillId: z.uuid(),
             installedHash: z.string().min(1).max(128),
             installedVersion: z.number().int().nonnegative().optional(),
-            // ISS-798: observation fields from the runner. observedSha is the
-            // hash of what Claude Code will actually execute (differs from
-            // installedHash when a user-level shadow exists). shadowedBy is
-            // the filesystem path of the shadow dir. Both absent on pre-0.7.0
-            // runners — server treats null observedSha as `unknown` status.
+            // cm:why both absent on pre-0.7.0 runners — server treats a null observedSha as `unknown`, never `synced`
             observedSha: z.string().min(1).max(128).optional(),
             shadowedBy: z.string().max(1024).optional(),
           })
           .strict(),
       )
       .max(500),
+    // cm:why NAMES, not ids — the runner has no id for a manifest entry that no longer exists
+    pruned: z.array(z.string().min(1).max(128)).max(500).optional(),
   })
   .strict();
 
@@ -180,11 +179,11 @@ deviceSkillRoutes.post(
     const device = c.get('device');
     if (device.status === 'revoked') throw unauth();
     const { projectId } = c.req.valid('query');
-    const { skills } = c.req.valid('json');
+    const { skills: reported, pruned } = c.req.valid('json');
     await assertDeviceBoundToProject(device.id, projectId);
 
     const now = new Date();
-    for (const s of skills) {
+    for (const s of reported) {
       await db
         .insert(deviceSkills)
         .values({
@@ -209,9 +208,63 @@ deviceSkillRoutes.post(
         });
     }
 
-    return c.json({ upserted: skills.length });
+    for (const name of pruned ?? []) {
+      await recordPrunedSkill({ projectId, deviceId: device.id, name });
+    }
+
+    return c.json({ upserted: reported.length, pruned: pruned?.length ?? 0 });
   },
 );
+
+/**
+ * A pruned skill is reported by NAME (the runner has no id for a manifest
+ * entry that no longer exists) — resolve it to the project's skill row so the
+ * activity event and the stale device_skills row are keyed correctly. Removes
+ * the device_skills row (it no longer reflects disk) and the event, in the
+ * SAME transaction (§9.11). Best-effort: an unresolvable name (skill deleted
+ * entirely, not just unregistered) still gets an event with a null skillId.
+ */
+async function recordPrunedSkill(input: {
+  projectId: string;
+  deviceId: string;
+  name: string;
+}): Promise<void> {
+  const [skill] = await db
+    .select({ id: skills.id })
+    .from(skills)
+    .where(
+      and(
+        eq(skills.scope, 'project'),
+        eq(skills.projectId, input.projectId),
+        eq(skills.name, input.name),
+      ),
+    )
+    .limit(1);
+
+  await db.transaction(async (tx) => {
+    if (skill) {
+      await tx
+        .delete(deviceSkills)
+        .where(
+          and(
+            eq(deviceSkills.deviceId, input.deviceId),
+            eq(deviceSkills.projectId, input.projectId),
+            eq(deviceSkills.skillId, skill.id),
+          ),
+        );
+    }
+    await recordSkillActivityEvent(tx, {
+      eventType: 'device.skill.pruned',
+      actor: `runner:${input.deviceId}`,
+      trigger: 'poll',
+      projectId: input.projectId,
+      ...(skill ? { skillId: skill.id } : {}),
+      deviceId: input.deviceId,
+      deltaSummary: input.name,
+      outcome: 'ok',
+    });
+  });
+}
 
 // ── User-token route (mounted under /api/projects) ──────────────────────────
 // GET /api/projects/:projectId/devices/:deviceId/skills
