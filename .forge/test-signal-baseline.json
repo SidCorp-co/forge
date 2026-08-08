@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-08-08T22:47:06.781Z",
+  "generatedAt": "2026-08-08T22:53:12.910Z",
   "files": {
     "packages/core/src/db/schema.test.ts": {
-      "declaration": 246,
+      "declaration": 94,
       "mock": 0
     },
     "packages/core/src/integrations/rocketchat/agent-chat-bridge.test.ts": {
