@@ -1,6 +1,7 @@
 //! Handle one `job.assigned`: resolve the repo, run it via the runner, and map
 //! the normalized [`RunnerEvent`] stream onto core's job-event + lifecycle API.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,6 +70,40 @@ const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 /// (`PIPELINE_HEARTBEAT_TIMEOUT_MS`, min 30s) and matches desktop parity
 /// (`packages/dev/src/hooks/use-web-socket.ts`). See ISS-285.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+
+/// Read the on-disk `.hash` markers from `<repo>/.claude/skills/*/` to build
+/// the `skillsRanWith` map sent to the server at ACK time (ISS-798).
+///
+/// The map is keyed by skill name (directory name under `.claude/skills/`) and
+/// valued by the hash stored in `<dir>/.hash`. Skills missing a `.hash` marker
+/// are skipped (rather than emitting a null, which would be ambiguous).
+///
+/// Returns `None` when the skills directory doesn't exist (no skills seeded)
+/// or on any I/O error — the ACK is best-effort, so callers never fail a job
+/// over a missing `skillsRanWith`.
+fn read_skills_ran_with(repo_path: &Path) -> Option<serde_json::Value> {
+    let skills_dir = repo_path.join(".claude").join("skills");
+    let read_dir = std::fs::read_dir(&skills_dir).ok()?;
+    let mut map = serde_json::Map::new();
+    for entry in read_dir.flatten() {
+        if !entry.file_type().map_or(false, |ft| ft.is_dir()) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let hash_path = entry.path().join(".hash");
+        if let Ok(hash) = std::fs::read_to_string(&hash_path) {
+            let hash = hash.trim().to_string();
+            if !hash.is_empty() {
+                map.insert(name, serde_json::Value::String(hash));
+            }
+        }
+    }
+    if map.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(map))
+    }
+}
 
 /// Handle a server-pushed `skill.sync` command: resolve the project's repo on
 /// this device and seed `<repo>/.claude/skills/<name>/` from the effective
@@ -161,7 +196,12 @@ pub async fn handle(
     // ISS-449 (Decision B): explicit claim ack once preflight passes.
     // Best-effort — the server falls back to treating the first job_event as
     // the ack, so an ack failure must never abort the job.
-    if let Err(e) = lifecycle::ack(client, &job_id).await {
+    //
+    // ISS-798: read .hash markers from <repo>/.claude/skills/*/ to populate
+    // skills_ran_with — the actual skill hashes this job will execute with,
+    // accounting for user-level shadows already detected during sync.
+    let skills_ran_with = read_skills_ran_with(&resolved.repo_path);
+    if let Err(e) = lifecycle::ack(client, &job_id, skills_ran_with).await {
         tracing::warn!("[job {job_id}] ack: {e}");
     }
 

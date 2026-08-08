@@ -60,12 +60,21 @@ pub struct SkillContent {
 }
 
 /// One reported install. `installed_hash` is the `effective_hash` echoed back.
+/// ISS-798: `observed_sha` is the hash of what Claude Code will actually
+/// execute (differs from `installed_hash` when a user-level shadow exists at
+/// `~/.claude/skills/<name>/`). `shadowed_by` is the path of the shadow dir.
+/// Both are `None` for skills where observation could not be determined — the
+/// server treats a missing `observed_sha` as `unknown` status (not `synced`).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillReportEntry {
     pub skill_id: String,
     pub installed_hash: String,
     pub installed_version: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_sha: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shadowed_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

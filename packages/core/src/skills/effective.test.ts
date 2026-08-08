@@ -143,19 +143,65 @@ describe('computeDeviceSkillStatus', () => {
     },
   ];
 
-  it('classifies synced / outdated / missing', () => {
+  it('classifies synced / outdated / missing (no observation fields)', () => {
     const syncedAt = new Date('2026-05-30T00:00:00.000Z');
     const status = computeDeviceSkillStatus(eff, [
-      { skillId: 's-1', installedHash: 'h1', installedVersion: 1, syncedAt },
-      { skillId: 's-2', installedHash: 'STALE', installedVersion: 1, syncedAt },
+      // observedSha null → unknown (pre-0.7.0 runner, installed_hash matches
+      // but we can't confirm the right body actually runs).
+      { skillId: 's-1', installedHash: 'h1', installedVersion: 1, syncedAt, observedSha: null, shadowedBy: null },
+      { skillId: 's-2', installedHash: 'STALE', installedVersion: 1, syncedAt, observedSha: null, shadowedBy: null },
       // s-3 absent → missing
     ]);
     const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
-    expect(byId['s-1']?.status).toBe('synced');
+    expect(byId['s-1']?.status).toBe('unknown');
     expect(byId['s-2']?.status).toBe('outdated');
     expect(byId['s-3']?.status).toBe('missing');
     expect(byId['s-1']?.syncedAt).toBe(syncedAt.toISOString());
     expect(byId['s-3']?.installedHash).toBeNull();
+  });
+
+  it('classifies synced when observedSha matches installedHash', () => {
+    const syncedAt = new Date('2026-05-30T00:00:00.000Z');
+    const status = computeDeviceSkillStatus(eff, [
+      { skillId: 's-1', installedHash: 'h1', installedVersion: 1, syncedAt, observedSha: 'h1', shadowedBy: null },
+    ]);
+    const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
+    expect(byId['s-1']?.status).toBe('synced');
+    expect(byId['s-1']?.observedSha).toBe('h1');
+    expect(byId['s-1']?.shadowedBy).toBeNull();
+  });
+
+  it('classifies shadowed when shadowedBy is set', () => {
+    const syncedAt = new Date('2026-05-30T00:00:00.000Z');
+    const status = computeDeviceSkillStatus(eff, [
+      {
+        skillId: 's-1',
+        installedHash: 'h1',
+        installedVersion: 1,
+        syncedAt,
+        observedSha: 'shadow-hash',
+        shadowedBy: '/home/user/.claude/skills/a',
+      },
+    ]);
+    const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
+    expect(byId['s-1']?.status).toBe('shadowed');
+    expect(byId['s-1']?.shadowedBy).toBe('/home/user/.claude/skills/a');
+  });
+
+  it('classifies stale when observedSha differs from installedHash without a shadow', () => {
+    const syncedAt = new Date('2026-05-30T00:00:00.000Z');
+    const status = computeDeviceSkillStatus(eff, [
+      {
+        skillId: 's-1',
+        installedHash: 'h1',
+        installedVersion: 1,
+        syncedAt,
+        observedSha: 'different-hash',
+        shadowedBy: null,
+      },
+    ]);
+    const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
+    expect(byId['s-1']?.status).toBe('stale');
   });
 });
 
@@ -193,12 +239,12 @@ describe('pivotProjectSkillSyncStatus', () => {
 
   it('pivots into a skill-major shape with per-device synced/outdated/missing', () => {
     const installedByDevice = new Map([
-      // d-1: s-1 synced, s-2 outdated
+      // d-1: s-1 synced (observedSha matches), s-2 outdated (hash mismatch)
       [
         'd-1',
         [
-          { skillId: 's-1', installedHash: 'h1', installedVersion: 5, syncedAt: null },
-          { skillId: 's-2', installedHash: 'OLD', installedVersion: 1, syncedAt: null },
+          { skillId: 's-1', installedHash: 'h1', installedVersion: 5, syncedAt: null, observedSha: 'h1', shadowedBy: null },
+          { skillId: 's-2', installedHash: 'OLD', installedVersion: 1, syncedAt: null, observedSha: null, shadowedBy: null },
         ],
       ],
       // d-2: no install rows → everything missing

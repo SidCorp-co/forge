@@ -725,6 +725,10 @@ export const jobs = pgTable(
     modelUsed: text('model_used'),
     promptBlocks: jsonb('prompt_blocks'),
     archivePath: text('archive_path'),
+    // ISS-798: actual skill hashes the job ran with, keyed by skill name.
+    // Written by the runner at ACK time from the on-disk .hash markers.
+    // Null for pre-0.7.0 runners or jobs with no skills seeded.
+    skillsRanWith: jsonb('skills_ran_with'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -1442,6 +1446,14 @@ export const skillRegistrations = pgTable(
 // reported after seeding `.claude/skills/<name>/` onto disk. `outdated` is
 // derived by comparing `installedHash` against the project's effective hash
 // (`hashSkillBody(effectiveMd, files)`) — never stored, always recomputed.
+//
+// ISS-798 (stage ④): `observed_sha` is the hash of what Claude Code will
+// actually execute (differs from `installed_hash` when a user-level
+// `~/.claude/skills/<name>/` shadows the project copy). `shadowed_by` is the
+// filesystem path of the shadow dir when one is detected. Both are null for
+// runners that pre-date observation support (minimum runner version for
+// observation: 0.7.0). Status is `synced` only when `observed_sha` equals
+// `installed_hash`; otherwise `shadowed`, `stale`, or `unknown`.
 export const deviceSkills = pgTable(
   'device_skills',
   {
@@ -1458,6 +1470,9 @@ export const deviceSkills = pgTable(
     installedHash: text('installed_hash').notNull(),
     installedVersion: integer('installed_version'),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull(),
+    // ISS-798: runner observation fields — null for pre-0.7.0 runners.
+    observedSha: text('observed_sha'),
+    shadowedBy: text('shadowed_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
