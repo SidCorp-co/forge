@@ -78,6 +78,14 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
 /// valued by the hash stored in `<dir>/.hash`. Skills missing a `.hash` marker
 /// are skipped (rather than emitting a null, which would be ambiguous).
 ///
+/// **Limitation (shadow case):** this reads the *project-level* `.hash` markers
+/// under `<repo>/.claude/skills/`, not the user-level shadow at
+/// `~/.claude/skills/<name>/`. When a user shadow is active, `skillsRanWith`
+/// records the project hash rather than the shadow body's hash. The
+/// authoritative shadow signal for an individual device is `device_skills.shadowed_by`
+/// (populated by `skill_sync.rs`); `skills_ran_with` is accurate only for the
+/// common (no-shadow) path.
+///
 /// Returns `None` when the skills directory doesn't exist (no skills seeded)
 /// or on any I/O error — the ACK is best-effort, so callers never fail a job
 /// over a missing `skillsRanWith`.

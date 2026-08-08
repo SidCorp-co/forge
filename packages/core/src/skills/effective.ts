@@ -376,14 +376,16 @@ export function computeDeviceSkillStatus(
     } else if (row.installedHash !== e.effectiveHash) {
       // installed_hash already wrong before checking observation.
       status = 'outdated';
+    } else if (row.shadowedBy !== null) {
+      // A user-level copy at ~/.claude/skills/<name>/ shadows the project
+      // copy; Claude Code will run the shadow regardless of installedHash.
+      // Checked before the null-observed branch: a shadow without a .hash
+      // marker (observed_sha=null) must be 'shadowed', not 'unknown' (ISS-798).
+      status = 'shadowed';
     } else if (row.observedSha === null) {
       // Runner pre-dates observation support (minimum version 0.7.0).
       // Cannot distinguish synced from shadowed — report unknown.
       status = 'unknown';
-    } else if (row.shadowedBy !== null) {
-      // A user-level copy at ~/.claude/skills/<name>/ shadows the project
-      // copy; Claude Code will run the shadow regardless of installedHash.
-      status = 'shadowed';
     } else if (row.observedSha !== row.installedHash) {
       // observed_sha differs from the hash we wrote — content on disk was
       // replaced outside of sync.

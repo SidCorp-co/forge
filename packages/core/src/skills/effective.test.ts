@@ -115,6 +115,9 @@ describe('computeDeviceSkillStatus', () => {
       scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
+      basedOnGlobalVersion: null,
+      templateVersion: null,
+      behindTemplate: false,
       installOnly: false,
     },
     {
@@ -127,6 +130,9 @@ describe('computeDeviceSkillStatus', () => {
       scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
+      basedOnGlobalVersion: null,
+      templateVersion: null,
+      behindTemplate: false,
       installOnly: false,
     },
     {
@@ -139,6 +145,9 @@ describe('computeDeviceSkillStatus', () => {
       scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
+      basedOnGlobalVersion: null,
+      templateVersion: null,
+      behindTemplate: false,
       installOnly: false,
     },
   ];
@@ -188,6 +197,24 @@ describe('computeDeviceSkillStatus', () => {
     expect(byId['s-1']?.shadowedBy).toBe('/home/user/.claude/skills/a');
   });
 
+  it('classifies shadowed when shadowedBy is set even if observedSha is null (ISS-783 scenario: no .hash marker in shadow dir)', () => {
+    const syncedAt = new Date('2026-05-30T00:00:00.000Z');
+    const status = computeDeviceSkillStatus(eff, [
+      {
+        skillId: 's-1',
+        installedHash: 'h1',
+        installedVersion: 1,
+        syncedAt,
+        observedSha: null,
+        shadowedBy: '/home/user/.claude/skills/a',
+      },
+    ]);
+    const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
+    expect(byId['s-1']?.status).toBe('shadowed');
+    expect(byId['s-1']?.shadowedBy).toBe('/home/user/.claude/skills/a');
+    expect(byId['s-1']?.observedSha).toBeNull();
+  });
+
   it('classifies stale when observedSha differs from installedHash without a shadow', () => {
     const syncedAt = new Date('2026-05-30T00:00:00.000Z');
     const status = computeDeviceSkillStatus(eff, [
@@ -217,6 +244,9 @@ describe('pivotProjectSkillSyncStatus', () => {
       scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
+      basedOnGlobalVersion: null,
+      templateVersion: null,
+      behindTemplate: false,
       installOnly: false,
     },
     {
@@ -229,6 +259,9 @@ describe('pivotProjectSkillSyncStatus', () => {
       scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
+      basedOnGlobalVersion: null,
+      templateVersion: null,
+      behindTemplate: false,
       installOnly: false,
     },
   ];
