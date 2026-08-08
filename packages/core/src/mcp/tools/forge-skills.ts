@@ -18,6 +18,7 @@ import {
   listSkillRegistrations,
   registerSkillForProject,
   requestSkillSync,
+  setSkillPinned,
   updateProjectSkill,
 } from '../../skills/service.js';
 import {
@@ -77,6 +78,14 @@ const updateInputSchema = z
 
 const effectiveInputSchema = z.object({ projectId: z.uuid() }).strict();
 const adoptInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() }).strict();
+const pinInputSchema = z
+  .object({
+    projectId: z.uuid(),
+    skillId: z.uuid(),
+    pinned: z.boolean(),
+    reason: z.string().trim().min(1).max(2000).optional(),
+  })
+  .strict();
 const pushInputSchema = z
   .object({
     projectId: z.uuid(),
@@ -93,6 +102,15 @@ type SkillListRow = SkillRow & {
   templateVersion: number | null;
   behindTemplate: boolean;
 };
+
+/** ISS-802: pinned rows never carry behindTemplate=true (invariant 10, ISS-795 §10). */
+function computeBehindTemplate(row: SkillRow, shadowed: SkillRow | undefined): boolean {
+  return (
+    !row.pinned &&
+    shadowed != null &&
+    (row.basedOnGlobalVersion == null || row.basedOnGlobalVersion < shadowed.version)
+  );
+}
 
 /**
  * Dedup the project-visible skills by NAME: a project-scoped skill shadows the
@@ -117,9 +135,7 @@ function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
       shadowedGlobalSkillId: shadowed?.id ?? null,
       // ISS-605 drift hints (project rows only).
       templateVersion: shadowed?.version ?? null,
-      behindTemplate:
-        shadowed != null &&
-        (r.basedOnGlobalVersion == null || r.basedOnGlobalVersion < shadowed.version),
+      behindTemplate: computeBehindTemplate(r, shadowed),
     });
   }
   for (const r of rows) {
@@ -159,6 +175,8 @@ function toSkillListRow(row: SkillListRow): Record<string, unknown> {
     basedOnGlobalVersion: row.basedOnGlobalVersion ?? null,
     templateVersion: row.templateVersion,
     behindTemplate: row.behindTemplate,
+    pinned: row.pinned ?? false,
+    pinnedReason: row.pinnedReason ?? null,
   };
 }
 
@@ -353,6 +371,25 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
       throw err;
     }
+  },
+});
+
+export const forgeSkillsPinTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_skills.pin',
+  description:
+    'Mark (pinned:true) or clear (pinned:false) a project skill as an intentional, PERMANENT divergence from its template. A pinned skill NEVER reports behindTemplate, is excluded from the template-propagation drift sweep, and is never nagged — distinct from an ordinary behindTemplate lag, which a markRebased (forge_skills.update) or a template adopt can still clear. Pinning requires `reason` (recorded on the row and emitted as a `skill.pinned` activity event); unpinning clears pinnedReason/pinnedBy/pinnedAt. Requires owner/admin on the project. Global skills cannot be pinned (only project-scoped copies diverge).',
+  inputSchema: zodToMcpSchema(pinInputSchema),
+  handler: async (args) => {
+    const { projectId, skillId, pinned, reason } = pinInputSchema.parse(args);
+    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    const skill = await setSkillPinned({
+      projectId,
+      skillId,
+      pinned,
+      reason,
+      actorUserId: principalUserId(ctx.principal),
+    });
+    return { skill };
   },
 });
 

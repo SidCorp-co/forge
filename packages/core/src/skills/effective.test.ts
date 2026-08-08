@@ -118,6 +118,8 @@ describe('computeDeviceSkillStatus', () => {
       basedOnGlobalVersion: null,
       templateVersion: null,
       behindTemplate: false,
+      pinned: false,
+      pinnedReason: null,
       installOnly: false,
     },
     {
@@ -133,6 +135,8 @@ describe('computeDeviceSkillStatus', () => {
       basedOnGlobalVersion: null,
       templateVersion: null,
       behindTemplate: false,
+      pinned: false,
+      pinnedReason: null,
       installOnly: false,
     },
     {
@@ -148,6 +152,8 @@ describe('computeDeviceSkillStatus', () => {
       basedOnGlobalVersion: null,
       templateVersion: null,
       behindTemplate: false,
+      pinned: false,
+      pinnedReason: null,
       installOnly: false,
     },
   ];
@@ -157,8 +163,22 @@ describe('computeDeviceSkillStatus', () => {
     const status = computeDeviceSkillStatus(eff, [
       // observedSha null → unknown (pre-0.7.0 runner, installed_hash matches
       // but we can't confirm the right body actually runs).
-      { skillId: 's-1', installedHash: 'h1', installedVersion: 1, syncedAt, observedSha: null, shadowedBy: null },
-      { skillId: 's-2', installedHash: 'STALE', installedVersion: 1, syncedAt, observedSha: null, shadowedBy: null },
+      {
+        skillId: 's-1',
+        installedHash: 'h1',
+        installedVersion: 1,
+        syncedAt,
+        observedSha: null,
+        shadowedBy: null,
+      },
+      {
+        skillId: 's-2',
+        installedHash: 'STALE',
+        installedVersion: 1,
+        syncedAt,
+        observedSha: null,
+        shadowedBy: null,
+      },
       // s-3 absent → missing
     ]);
     const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
@@ -172,7 +192,14 @@ describe('computeDeviceSkillStatus', () => {
   it('classifies synced when observedSha matches installedHash', () => {
     const syncedAt = new Date('2026-05-30T00:00:00.000Z');
     const status = computeDeviceSkillStatus(eff, [
-      { skillId: 's-1', installedHash: 'h1', installedVersion: 1, syncedAt, observedSha: 'h1', shadowedBy: null },
+      {
+        skillId: 's-1',
+        installedHash: 'h1',
+        installedVersion: 1,
+        syncedAt,
+        observedSha: 'h1',
+        shadowedBy: null,
+      },
     ]);
     const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
     expect(byId['s-1']?.status).toBe('synced');
@@ -247,6 +274,8 @@ describe('pivotProjectSkillSyncStatus', () => {
       basedOnGlobalVersion: null,
       templateVersion: null,
       behindTemplate: false,
+      pinned: false,
+      pinnedReason: null,
       installOnly: false,
     },
     {
@@ -262,6 +291,8 @@ describe('pivotProjectSkillSyncStatus', () => {
       basedOnGlobalVersion: null,
       templateVersion: null,
       behindTemplate: false,
+      pinned: false,
+      pinnedReason: null,
       installOnly: false,
     },
   ];
@@ -276,8 +307,22 @@ describe('pivotProjectSkillSyncStatus', () => {
       [
         'd-1',
         [
-          { skillId: 's-1', installedHash: 'h1', installedVersion: 5, syncedAt: null, observedSha: 'h1', shadowedBy: null },
-          { skillId: 's-2', installedHash: 'OLD', installedVersion: 1, syncedAt: null, observedSha: null, shadowedBy: null },
+          {
+            skillId: 's-1',
+            installedHash: 'h1',
+            installedVersion: 5,
+            syncedAt: null,
+            observedSha: 'h1',
+            shadowedBy: null,
+          },
+          {
+            skillId: 's-2',
+            installedHash: 'OLD',
+            installedVersion: 1,
+            syncedAt: null,
+            observedSha: null,
+            shadowedBy: null,
+          },
         ],
       ],
       // d-2: no install rows → everything missing
