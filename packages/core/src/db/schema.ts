@@ -1470,6 +1470,68 @@ export const deviceSkills = pgTable(
   }),
 );
 
+// cm:guard append-only, distinct from `activity_log` above: a poller confirming a hash is unchanged must NOT insert a row here — touch a `last_verified_at` column on the owning skill/device_skills row instead (Update Pipeline §7 principle 1, epic ISS-795).
+// cm:why packetId is a plain string with no FK — it correlates one row across all five stages of an Update Packet, whose own table is owned by ISS-799 (not yet built).
+export const skillActivityEventTypes = [
+  'packet.published',
+  'policy.landed',
+  'reconcile.started',
+  'reconcile.decided',
+  'skill.body.changed',
+  'verify.failed',
+  'reconcile.escalated',
+  'manifest.changed',
+  'device.skill.applied',
+  'device.skill.pruned',
+  'device.sync.failed',
+  'device.skill.observed',
+  'device.skill.shadowed',
+  'job.ran.with',
+  'skill.pinned',
+  'charter.changed',
+  'body.reverted',
+] as const;
+export type SkillActivityEventType = (typeof skillActivityEventTypes)[number];
+
+export const skillActivityTriggers = [
+  'push',
+  'poll',
+  'cli',
+  'provision',
+  'deploy',
+  'manual',
+] as const;
+export type SkillActivityTrigger = (typeof skillActivityTriggers)[number];
+
+export const skillActivityOutcomes = ['ok', 'failed', 'skipped'] as const;
+export type SkillActivityOutcome = (typeof skillActivityOutcomes)[number];
+
+export const skillActivityEvents = pgTable(
+  'skill_activity_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    packetId: text('packet_id'),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'cascade' }),
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'cascade' }),
+    eventType: text('event_type', { enum: skillActivityEventTypes }).notNull(),
+    // cm:why free text, not an enum: `human:<user>` | `agent:master` | `system:seeder` | `runner:<device>`.
+    actor: text('actor').notNull(),
+    trigger: text('trigger', { enum: skillActivityTriggers }).notNull(),
+    beforeHash: text('before_hash'),
+    afterHash: text('after_hash'),
+    deltaSummary: text('delta_summary'),
+    reason: text('reason'),
+    outcome: text('outcome', { enum: skillActivityOutcomes }).notNull().default('ok'),
+  },
+  (t) => ({
+    packetIdx: index('skill_activity_events_packet_idx').on(t.packetId, t.occurredAt),
+    skillIdx: index('skill_activity_events_skill_idx').on(t.projectId, t.skillId, t.occurredAt),
+    deviceIdx: index('skill_activity_events_device_idx').on(t.deviceId, t.occurredAt),
+  }),
+);
+
 export const memorySources = [
   'issue',
   'comment',

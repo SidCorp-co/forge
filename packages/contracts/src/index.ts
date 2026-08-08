@@ -7,5 +7,6 @@ export * from './memory.js';
 export * from './notifications.js';
 export * from './pipeline-registry.js';
 export * from './skill-facts.js';
+export * from './skill-activity.js';
 export * from './issues.js';
 export * from './ssh-keys.js';
