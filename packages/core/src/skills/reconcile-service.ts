@@ -1058,15 +1058,25 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       }
 
       const candidateBody = runRow.candidateBody ?? '';
-      const candidateHash = runRow.candidateHash ?? hashSkillBody(candidateBody, null);
       const lastGoodHash = runRow.lastGoodHash;
+
+      // cm:why fetch existing files before update — reconcile only changes skillMd; files stay.
+      // effectiveHash = hashSkillBody(md, files) matches what the runner echoes as installedHash,
+      // enabling resolvePacketIdForHash to link device.skill.* events to this packet (ISS-798 BLOCKER C).
+      const [skillRow] = await tx
+        .select({ files: skills.files })
+        .from(skills)
+        .where(eq(skills.id, runRow.skillId))
+        .limit(1);
+      const existingFiles = Array.isArray(skillRow?.files) ? skillRow.files : [];
+      const effectiveHash = hashSkillBody(candidateBody, existingFiles);
 
       await tx
         .update(skills)
         .set({
           skillMd: candidateBody,
           prompt: candidateBody,
-          contentHash: candidateHash,
+          contentHash: effectiveHash,
           version: sql`version + 1`,
           updatedAt: new Date(),
         })
@@ -1085,7 +1095,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         skillId: runRow.skillId,
         packetId: runRow.packetId,
         beforeHash: lastGoodHash,
-        afterHash: candidateHash,
+        afterHash: effectiveHash,
         reason: `auto-applied; verifier pass ${passCount}/${allVotes.length}; packet=${runRow.packetId}`,
       });
     }
@@ -1115,19 +1125,30 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
     }
 
     const candidateBody = runRow.candidateBody ?? '';
-    const candidateHash = runRow.candidateHash ?? hashSkillBody(candidateBody, null);
     const lastGoodHash = runRow.lastGoodHash;
+
+    // cm:why fetch existing files before update — reconcile only changes skillMd; files stay.
+    // effectiveHash = hashSkillBody(md, files) matches what the runner echoes as installedHash,
+    // enabling resolvePacketIdForHash to link device.skill.* events to this packet (ISS-798 BLOCKER C).
+    const skillIdForPublish = runRow.skillId; // narrowed — guard above throws on null
+    const [skillRow] = await tx
+      .select({ files: skills.files })
+      .from(skills)
+      .where(eq(skills.id, skillIdForPublish))
+      .limit(1);
+    const existingFiles = Array.isArray(skillRow?.files) ? skillRow.files : [];
+    const effectiveHash = hashSkillBody(candidateBody, existingFiles);
 
     await tx
       .update(skills)
       .set({
         skillMd: candidateBody,
         prompt: candidateBody,
-        contentHash: candidateHash,
+        contentHash: effectiveHash,
         version: sql`version + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(skills.id, runRow.skillId!));
+      .where(eq(skills.id, skillIdForPublish));
 
     await tx
       .update(reconcileRuns)
@@ -1142,7 +1163,7 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
       skillId: runRow.skillId,
       packetId: runRow.packetId,
       beforeHash: lastGoodHash,
-      afterHash: candidateHash,
+      afterHash: effectiveHash,
       reason: `human approved; packet=${runRow.packetId}`,
     });
   });

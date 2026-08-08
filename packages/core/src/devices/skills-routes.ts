@@ -323,11 +323,15 @@ async function applyReportedSkill(input: {
         },
       });
 
-    // cm:why installedHash is the project-canonical value a distribution packet writes — resolving against it (not observedSha) is what lets an unshadowed device's activity rows carry the packet that produced them; a shadowed device's observed content is user-authored and honestly has none.
-    const packetId =
-      nextShadowedBy === null
-        ? await resolvePacketIdForHash(tx, projectId, entry.skillId, entry.installedHash)
-        : undefined;
+    // cm:why resolve packetId unconditionally from installedHash — device.skill.applied describes
+    // installing the project-canonical body, which comes from a packet regardless of shadow state.
+    // device.skill.shadowed still withholds packetId because the shadow body is user-authored (ISS-798 BLOCKER D).
+    const appliedPacketId = await resolvePacketIdForHash(
+      tx,
+      projectId,
+      entry.skillId,
+      entry.installedHash,
+    );
 
     if (hashChanged) {
       await recordSkillActivityEvent(tx, {
@@ -337,7 +341,7 @@ async function applyReportedSkill(input: {
         projectId,
         skillId: entry.skillId,
         deviceId,
-        ...(packetId ? { packetId } : {}),
+        ...(appliedPacketId ? { packetId: appliedPacketId } : {}),
         ...(existing?.installedHash !== undefined ? { beforeHash: existing.installedHash } : {}),
         afterHash: entry.installedHash,
         outcome: 'ok',
@@ -367,7 +371,7 @@ async function applyReportedSkill(input: {
         projectId,
         skillId: entry.skillId,
         deviceId,
-        ...(packetId ? { packetId } : {}),
+        ...(appliedPacketId ? { packetId: appliedPacketId } : {}),
         ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
         ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
         outcome: 'ok',

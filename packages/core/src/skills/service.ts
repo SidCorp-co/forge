@@ -223,14 +223,16 @@ export async function registerSkillForProject(
         .where(
           and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
         );
-      await recordSkillActivityEvent(tx, {
-        eventType: 'manifest.changed',
-        actor: `human:${actorUserId}`,
-        trigger: 'manual',
-        projectId,
-        skillId,
-        deltaSummary: `unregistered from ${reg?.stage ?? 'unknown stage'}`,
-      });
+      if (reg) {
+        await recordSkillActivityEvent(tx, {
+          eventType: 'manifest.changed',
+          actor: `human:${actorUserId}`,
+          trigger: 'manual',
+          projectId,
+          skillId,
+          deltaSummary: `unregistered from ${reg.stage}`,
+        });
+      }
     });
     await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage: null });
     return { projectId, skillId, stage: null };

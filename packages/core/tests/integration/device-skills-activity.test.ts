@@ -275,7 +275,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     expect(observed).toMatchObject({ packetId: 'packet-1' });
   });
 
-  it('a shadowed report never stamps packetId, even if the hash matches a packet', async () => {
+  it('a shadowed device: applied stamps packetId (packet reached), shadowed withholds it (shadow body is user-authored)', async () => {
     const { project, device, skill, deviceToken } = await seedBoundDevice();
 
     await harness.db.insert(schema.skillActivityEvents).values({
@@ -302,7 +302,11 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     expect(res.status).toBe(200);
 
     const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const applied = events.find((e) => e.eventType === 'device.skill.applied');
+    // applied always carries packetId — the packet DID reach the device (BLOCKER D)
+    expect(applied?.packetId).toBe('packet-1');
     const shadowed = events.find((e) => e.eventType === 'device.skill.shadowed');
+    // shadowed withholds packetId — the shadow body is user-authored, not from the packet
     expect(shadowed?.packetId).toBeNull();
   });
 });
