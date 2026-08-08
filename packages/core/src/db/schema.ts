@@ -728,9 +728,7 @@ export const jobs = pgTable(
     modelUsed: text('model_used'),
     promptBlocks: jsonb('prompt_blocks'),
     archivePath: text('archive_path'),
-    // ISS-798: actual skill hashes the job ran with, keyed by skill name.
-    // Written by the runner at ACK time from the on-disk .hash markers.
-    // Null for pre-0.7.0 runners or jobs with no skills seeded.
+    // cm:why runner-observed hashes at ACK time (job.ran.with), not intended — null for pre-0.7.0 runners or unseeded jobs
     skillsRanWith: jsonb('skills_ran_with'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1398,6 +1396,11 @@ export const skills = pgTable(
     // must not cascade into project copies.
     basedOnGlobalSkillId: uuid('based_on_global_skill_id'),
     basedOnGlobalVersion: integer('based_on_global_version'),
+    // cm:why permanent, queryable divergence — distinct from the version-lag signal behindTemplate; must suppress drift everywhere behindTemplate is computed (invariant 10, ISS-795 §10)
+    pinned: boolean('pinned').notNull().default(false),
+    pinnedReason: text('pinned_reason'),
+    pinnedBy: text('pinned_by'),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
     // When true, a project-scoped skill is synced to device runners (enters the
     // device manifest) even though it is NOT registered to any pipeline stage.
     // Lets a manual / user-invocable utility skill (e.g. forge-product-map) live
@@ -1438,20 +1441,8 @@ export const skillRegistrations = pgTable(
   }),
 );
 
-// Skill Studio 4 (ISS-278) — tracks which skill version each device holds for
-// each project. The server is the source of truth (`skills` + overrides +
-// registrations); a row here records the `installedHash` the runner last
-// reported after seeding `.claude/skills/<name>/` onto disk. `outdated` is
-// derived by comparing `installedHash` against the project's effective hash
-// (`hashSkillBody(effectiveMd, files)`) — never stored, always recomputed.
-//
-// ISS-798 (stage ④): `observed_sha` is the hash of what Claude Code will
-// actually execute (differs from `installed_hash` when a user-level
-// `~/.claude/skills/<name>/` shadows the project copy). `shadowed_by` is the
-// filesystem path of the shadow dir when one is detected. Both are null for
-// runners that pre-date observation support (minimum runner version for
-// observation: 0.7.0). Status is `synced` only when `observed_sha` equals
-// `installed_hash`; otherwise `shadowed`, `stale`, or `unknown`.
+// cm:guard `outdated` is derived by comparing installedHash against the project's effective hash (hashSkillBody) — never stored, always recomputed
+// cm:guard status is `synced` only when observed_sha equals installed_hash; otherwise shadowed/stale/unknown — never derive synced from installed_hash alone
 export const deviceSkills = pgTable(
   'device_skills',
   {
@@ -1468,7 +1459,7 @@ export const deviceSkills = pgTable(
     installedHash: text('installed_hash').notNull(),
     installedVersion: integer('installed_version'),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull(),
-    // ISS-798: runner observation fields — null for pre-0.7.0 runners.
+    // cm:why null for pre-0.7.0 runners predating observation support
     observedSha: text('observed_sha'),
     shadowedBy: text('shadowed_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

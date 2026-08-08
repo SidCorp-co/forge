@@ -114,30 +114,20 @@ export interface DeviceSkillContent {
   files: SkillFile[];
 }
 
-// Body for `POST /api/devices/me/skills/report?projectId=` — the runner reports
-// the hash it actually installed for each seeded skill, plus observation fields
-// (ISS-798, minimum runner version 0.7.0).
 export interface DeviceSkillReportBody {
   skills: Array<{
     skillId: string;
     installedHash: string;
     installedVersion?: number;
-    // ISS-798: hash of what Claude Code will actually execute. Equals
-    // installedHash when no shadow exists; differs (or null) when a user-level
-    // ~/.claude/skills/<name>/ shadows the project copy.
+    // cm:why differs from installedHash (or absent) when a user-level ~/.claude/skills/<name>/ shadows the project copy
     observedSha?: string;
-    // Path to the user-level shadow dir, when one is detected.
     shadowedBy?: string;
   }>;
+  // cm:why NAMES, not ids — a manifest that dropped a skill gives the runner no id to report it by
+  pruned?: string[];
 }
 
-// ISS-798 (stage ④): observation-aware status values.
-// - missing  — no install row
-// - outdated — installed_hash !== effective_hash (pre-observation check)
-// - unknown  — runner pre-dates observation (< 0.7.0); cannot confirm right body runs
-// - shadowed — user-level ~/.claude/skills/<name>/ shadows the project copy
-// - stale    — observed_sha present but != installed_hash (overwritten outside sync)
-// - synced   — observed_sha === installed_hash; pushed body is what runs
+// cm:guard status is `synced` only when observedSha === installedHash; a runner pre-dating observation (<0.7.0) must report `unknown`, never `synced`
 export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing' | 'unknown' | 'shadowed' | 'stale';
 
 // One row of the per-device skill freshness from

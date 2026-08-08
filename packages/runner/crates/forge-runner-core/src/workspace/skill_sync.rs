@@ -1,11 +1,13 @@
 //! Server-driven skill seeding (Skill Studio 4, ISS-278).
 //!
 //! The server is the source of truth for skills; the device is a read-only
-//! artifact. Before a job runs, the runner pulls the project's effective skill
-//! manifest, downloads only the skills whose hash changed (diffed against a
-//! local cache under `~/.config/forge-runner/skills-cache/<project>/<skill>/`),
-//! seeds the full `.claude/skills/<name>/` tree into the working dir, then
-//! reports the installed hashes back so the server can mark the device synced.
+//! artifact. The runner pulls the project's effective skill manifest via the
+//! background poller (`daemon/skill_pull.rs`) or an explicit `skill.sync` push
+//! — NOT on each job dispatch. It downloads only the skills whose hash changed
+//! (diffed against a local cache under
+//! `~/.config/forge-runner/skills-cache/<project>/<skill>/`), seeds the full
+//! `.claude/skills/<name>/` tree into the working dir, then reports the
+//! installed hashes back so the server can mark the device synced.
 //!
 //! The runner never recomputes `hashSkillBody` — it echoes the server's
 //! `effective_hash` back as `installed_hash`, so there is no TS↔Rust hashing
@@ -274,19 +276,60 @@ fn detect_user_shadow(name: &str) -> Option<(PathBuf, Option<String>)> {
     }
 }
 
+/// Directory names under `skills_root` that Forge manages (carry the internal
+/// `.hash` marker written by [`write_skill_tree`]/[`seed_dest`]) but are no
+/// longer in `keep` — the converge-on-delete set (ISS-802 stage ③ prune). A
+/// dir with no `.hash` marker is left alone: it was never seeded by Forge (a
+/// user-created folder under `.claude/skills/`), so pruning must not touch it.
+fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(skills_root) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.path())
+        .filter(|dir| {
+            let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            !keep.contains(name) && read_hash_marker(dir).is_some()
+        })
+        .collect()
+}
+
 /// Pull the manifest, refresh the local cache for changed skills, seed every
-/// skill into `<worktree>/.claude/skills/<name>/`, and report installed hashes
-/// plus observation fields (ISS-798).
+/// skill into `<worktree>/.claude/skills/<name>/`, PRUNE any Forge-managed
+/// skill dir no longer in the manifest (ISS-802 converge-on-delete), and
+/// report installed hashes, observation fields (ISS-798), and pruned names.
 ///
 /// Best-effort by contract: callers log and continue on `Err` so a transient
 /// server failure (or an old server without the endpoint) never blocks a job.
 pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path) -> Result<usize> {
     let manifest = skills::pull_manifest(client, project_id).await?;
+
+    let skills_root = worktree.join(".claude").join("skills");
+
+    let keep: std::collections::HashSet<&str> =
+        manifest.iter().map(|e| e.name.as_str()).collect();
+    let mut pruned: Vec<String> = Vec::new();
+    for dir in find_prunable(&skills_root, &keep) {
+        if let Some(name) = dir.file_name().and_then(|n| n.to_str()) {
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => {
+                    tracing::info!("[skills] pruned {name} (not in manifest)");
+                    pruned.push(name.to_string());
+                }
+                Err(e) => tracing::warn!("[skills] failed to prune {}: {e}", dir.display()),
+            }
+        }
+    }
+
     if manifest.is_empty() {
+        if !pruned.is_empty() {
+            skills::report_installed(client, project_id, &[], &pruned).await?;
+        }
         return Ok(0);
     }
 
-    let skills_root = worktree.join(".claude").join("skills");
     let mut report: Vec<SkillReportEntry> = Vec::with_capacity(manifest.len());
 
     for entry in &manifest {
@@ -348,7 +391,7 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
         });
     }
 
-    skills::report_installed(client, project_id, &report).await?;
+    skills::report_installed(client, project_id, &report, &pruned).await?;
     Ok(report.len())
 }
 
@@ -414,6 +457,36 @@ mod tests {
         );
         assert_eq!(read_hash_marker(&tmp).as_deref(), Some("hash-1"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// ISS-802 — converge-on-delete: a Forge-managed dir absent from the
+    /// manifest is prunable; a same-level dir with no `.hash` marker (never
+    /// seeded by Forge — a user's own folder under `.claude/skills/`) must
+    /// never be touched, and a dir still in the manifest must be kept.
+    #[test]
+    fn find_prunable_only_targets_unmanaged_dropped_dirs() {
+        let root = tmp_root("prune");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        // Forge-managed, dropped from the manifest -> prunable.
+        write_skill_tree(&root.join("dropped-skill"), &content("# x", vec![]), "h1").unwrap();
+        // Forge-managed, still in the manifest -> kept.
+        write_skill_tree(&root.join("kept-skill"), &content("# y", vec![]), "h2").unwrap();
+        // No `.hash` marker (not Forge-managed) -> never touched, even though
+        // it's not in the manifest either.
+        std::fs::create_dir_all(root.join("user-folder")).unwrap();
+        std::fs::write(root.join("user-folder").join("README.md"), "mine").unwrap();
+
+        let keep: std::collections::HashSet<&str> = ["kept-skill"].into_iter().collect();
+        let prunable = find_prunable(&root, &keep);
+
+        assert_eq!(prunable.len(), 1);
+        assert_eq!(
+            prunable[0].file_name().and_then(|n| n.to_str()),
+            Some("dropped-skill")
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
