@@ -597,7 +597,7 @@ export type SpawnReconcileResult =
   | { ok: true; runId: string }
   | {
       ok: false;
-      reason: 'already-active' | 'c1-c5-refused' | 'no-runner' | 'error';
+      reason: 'already-active' | 'c1-c5-refused' | 'no-runner' | 'pinned' | 'error';
       detail: string;
     };
 
@@ -622,6 +622,28 @@ export async function spawnReconcileRun(input: {
   skillId: string;
   actorUserId: string;
 }): Promise<SpawnReconcileResult> {
+  // cm:guard refuse a `pinned` skill BEFORE assembling a bundle or opening a run — no reconcile may ever rewrite a deliberately divergent body (ISS-795 §9.6)
+  // cm:why anhome's forge-release dropped the production merge after 148484a0 broke prod for 10 days; an agent "helpfully" restoring it would recreate that outage
+  const [pinnedRow] = await db
+    .select({ pinned: skills.pinned, pinnedReason: skills.pinnedReason })
+    .from(skills)
+    .where(eq(skills.id, input.skillId))
+    .limit(1);
+
+  if (pinnedRow?.pinned) {
+    logger.info(
+      { projectId: input.projectId, skillId: input.skillId, packetId: input.packetId },
+      'reconcile.refused.pinned',
+    );
+    return {
+      ok: false,
+      reason: 'pinned',
+      detail: pinnedRow.pinnedReason
+        ? `skill is pinned: ${pinnedRow.pinnedReason}`
+        : 'skill is pinned (intentional divergence)',
+    };
+  }
+
   const assembled = await assembleBundle({
     projectId: input.projectId,
     packetId: input.packetId,

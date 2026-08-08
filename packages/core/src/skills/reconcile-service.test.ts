@@ -2,7 +2,14 @@ import { RECONCILE_GATES, RECONCILE_RUN_STATUSES, RECONCILE_VERDICTS } from '@fo
 import { describe, expect, it, vi } from 'vitest';
 
 // Mock DB client so these unit tests run without Postgres (same pattern as service.test.ts)
-vi.mock('../db/client.js', () => ({ db: {} }));
+const dbStub = vi.hoisted(() => ({ rows: [] as unknown[] }));
+vi.mock('../db/client.js', () => ({
+  db: {
+    select: () => ({
+      from: () => ({ where: () => ({ limit: () => dbStub.rows }) }),
+    }),
+  },
+}));
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
