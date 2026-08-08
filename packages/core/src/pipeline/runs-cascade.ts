@@ -93,6 +93,27 @@ export async function cascadeCancelChildJobs(
     if (j.agentSessionId && j.deviceId) deviceBySession.set(j.agentSessionId, j.deviceId);
   }
 
+  // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — a reconcile/verify_skill job cancelled here never routes through finalizeFailedJob, so it still needs the same terminal path (BLOCKER M path 3, ISS-801 review); only the genuine-cancel branch, since a `pipeline_completed` close flips these to 'done' instead.
+  // cm:why dynamic import avoids a runs-cascade -> reconcile-service -> pipeline/runs -> runs-cascade cycle (reconcile-service imports closeRun/openOneShotRun from pipeline/runs.js, which imports this module).
+  if (!completedSuccess) {
+    const reconcileJobs = cancelledJobs.filter(
+      (j) => j.type === 'reconcile' || j.type === 'verify_skill',
+    );
+    if (reconcileJobs.length > 0) {
+      const { failReconcileRunForFailedJob } = await import('../skills/reconcile-service.js');
+      await Promise.all(
+        reconcileJobs.map((j) =>
+          failReconcileRunForFailedJob(j).catch((err) =>
+            logger.error(
+              { err, jobId: j.id, type: j.type },
+              'cascadeCancelChildJobs: failReconcileRunForFailedJob failed',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   if (abortedSessionIds.length > 0) {
     // ISS-352 — a run that closed as `pipeline_completed` did NOT fail. The
     // terminal pipeline step (forge-test → released, forge-release → closed)

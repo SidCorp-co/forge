@@ -619,6 +619,8 @@ describe('db/schema — jobs', () => {
       'pm',
       'smoke',
       'release_batch',
+      'reconcile',
+      'verify_skill',
     ]);
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });

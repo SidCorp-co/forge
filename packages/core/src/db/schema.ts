@@ -595,6 +595,8 @@ export const jobTypes = [
   'smoke',
   // cm:edge naming -> packages/core/src/release-batch/service.ts — a release_batch job's run has metadata.source==='release-batch', not type-checked
   'release_batch',
+  'reconcile',
+  'verify_skill',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 
@@ -1479,6 +1481,7 @@ export const skillActivityEventTypes = [
   'policy.landed',
   'reconcile.started',
   'reconcile.decided',
+  'reconcile.failed',
   'skill.body.changed',
   'verify.failed',
   'reconcile.escalated',
@@ -3328,4 +3331,91 @@ export const divergenceCharters = pgTable(
 
 export const divergenceChartersRelations = relations(divergenceCharters, ({ one }) => ({
   project: one(projects, { fields: [divergenceCharters.projectId], references: [projects.id] }),
+}));
+
+export const reconcileVerdicts = ['no-op', 'apply', 'apply-with-adaptation', 'escalate'] as const;
+export type ReconcileVerdict = (typeof reconcileVerdicts)[number];
+
+export const reconcileRunStatuses = [
+  'pending',
+  'running',
+  'verifying',
+  'decided',
+  'applied',
+  'escalated',
+  'failed',
+] as const;
+export type ReconcileRunStatus = (typeof reconcileRunStatuses)[number];
+
+export const reconcileGates = ['auto', 'human'] as const;
+export type ReconcileGate = (typeof reconcileGates)[number];
+
+// cm:why field order mirrors the 12-item Master agent bundle (ISS-795 §4); `sources` labels each key's provenance per C3.
+export interface ReconcileBundleSnapshot {
+  readAt: string;
+  change: string;
+  story: string;
+  intentClass: string;
+  appliesTo: string;
+  provenance: Record<string, unknown>;
+  runningBody: string;
+  runningHash: string;
+  charter: unknown | null;
+  projectFacts: Record<string, unknown>;
+  pipelineConfig: Record<string, unknown>;
+  recentRunEvidence: unknown[];
+  priorReconcileHistory: unknown[];
+  invariantSet: Record<string, unknown>;
+  mustNotBreak: string[];
+  sources: Record<string, 'human' | 'from-code' | 'observed-from-run' | 'agent-assertion'>;
+}
+
+export interface ReconcileVerifierVote {
+  jobId: string;
+  vote: 'pass' | 'fail';
+  reason: string;
+  decidedAt: string;
+}
+
+// cm:guard any update to reconcile_runs.status must emit the matching event into skill_activity_events in the same transaction (ISS-795 §9.11/§9.7).
+// cm:guard reconcile_runs_active_project_uq serializes per-project — insert only via spawnReconcileRun, which turns the unique-violation into 'already-active'.
+
+export const reconcileRuns = pgTable(
+  'reconcile_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    packetId: uuid('packet_id').references(() => updatePackets.id, { onDelete: 'set null' }),
+    skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'set null' }),
+    status: text('status', { enum: reconcileRunStatuses }).notNull().default('pending'),
+    verdict: text('verdict', { enum: reconcileVerdicts }),
+    gate: text('gate', { enum: reconcileGates }),
+    bundle: jsonb('bundle').notNull().default({}).$type<ReconcileBundleSnapshot>(),
+    candidateBody: text('candidate_body'),
+    candidateHash: text('candidate_hash'),
+    lastGoodBody: text('last_good_body'),
+    lastGoodHash: text('last_good_hash'),
+    verifierVotes: jsonb('verifier_votes').notNull().default([]).$type<ReconcileVerifierVote[]>(),
+    rationale: text('rationale'),
+    refusalReason: text('refusal_reason'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => ({
+    // cm:guard partial unique index — enforces at most one active run per project; includes 'decided' so a run awaiting the human gate also blocks a new trigger (MINOR G, ISS-801 review).
+    activeProjectUq: uniqueIndex('reconcile_runs_active_project_uq')
+      .on(t.projectId)
+      .where(sql`status IN ('pending','running','verifying','decided')`),
+    projectCreatedIdx: index('reconcile_runs_project_created_idx').on(t.projectId, t.createdAt),
+    packetIdx: index('reconcile_runs_packet_idx').on(t.packetId),
+  }),
+);
+
+export const reconcileRunsRelations = relations(reconcileRuns, ({ one }) => ({
+  project: one(projects, { fields: [reconcileRuns.projectId], references: [projects.id] }),
+  skill: one(skills, { fields: [reconcileRuns.skillId], references: [skills.id] }),
 }));

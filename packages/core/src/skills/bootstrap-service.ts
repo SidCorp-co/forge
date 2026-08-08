@@ -7,19 +7,10 @@ import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
 import { readAgentConfig, writeAgentConfig } from '../projects/agent-config.js';
 import { resolveOrAdoptProjectSkill } from './service.js';
 
-// ISS-737 — the seed-list of shared skills every project must carry as
-// `install_only` (no stage binding), regardless of whether it registers any
-// stage-mapped skills. Adding a name here is the ENTIRE change needed to make
-// a builtin skill fan out to every project (new + backfill) — no per-skill
-// function, no new call site.
-//
-// ISS-742 — EMPTY by design. The one former entry, `forge-onboard`, was a
-// transitional disk bridge; it is a META skill and now ships via the device
-// plugin channel (`META_SKILL_NAMES`, marketplace `SidCorp-co/forge-pipeline-
-// skills`) — non-overridable, one device install serves every project. Only
-// add a name here for a genuinely PER-PROJECT shared utility (disk-synced,
-// project-shadowable), NEVER a meta skill.
-const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = [];
+// cm:why ISS-737: adding a name here is the entire change needed to fan a builtin skill out to every project (new + backfill) as install_only, no stage binding.
+// cm:why forge-onboard (META, ISS-742) moved to the device plugin channel — only genuinely PER-PROJECT shared utilities belong in this list, never a meta skill.
+// cm:why forge-reconcile/forge-verify-skill run as one-shot system jobs (never stage-registered), so install_only fan-out is their only path to a runner's .claude/skills disk mirror (BLOCKER U, ISS-801 review round 4).
+const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = ['forge-reconcile', 'forge-verify-skill'];
 
 /**
  * Idempotent: for each seed-list entry, adopt the project's own copy

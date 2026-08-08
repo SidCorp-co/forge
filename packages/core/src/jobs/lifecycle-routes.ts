@@ -13,6 +13,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
+import { failReconcileRunIfNoVerdictRecorded } from '../skills/reconcile-service.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -38,9 +39,7 @@ const conflict = (message: string, code: string) =>
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
-// ISS-798: ACK body carries the skill hashes the job will actually run with,
-// keyed by skill name, read from on-disk .hash markers at ACK time. Optional
-// — absent for pre-0.7.0 runners and jobs with no skills seeded.
+// cm:why skillsRanWith is optional — absent for pre-0.7.0 runners and jobs with no skills seeded (ISS-798).
 const ackBodySchema = z
   .object({
     skillsRanWith: z.record(z.string(), z.string().max(128)).optional(),
@@ -320,6 +319,14 @@ jobLifecycleDeviceRoutes.post(
     // done / cancelled — mirror lifecycle to the linked agent_session row so
     // /pipeline + issue detail tab reflect completion. Best-effort.
     await syncAgentSessionLifecycle(updated, status);
+
+    // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — a reconcile/verify_skill job self-reporting done/cancelled without recording its verdict/vote needs a terminal path too (BLOCKER M half 2, ISS-801 review) — finalizeFailedJob only covers the runner-reported `failed` branch above.
+    await failReconcileRunIfNoVerdictRecorded(updated).catch((err) =>
+      logger.warn(
+        { err, jobId: updated.id, type: updated.type },
+        'lifecycle: failReconcileRunIfNoVerdictRecorded failed',
+      ),
+    );
 
     roomManager.publish(projectRoom(updated.projectId), {
       event: status === 'done' ? 'job.completed' : 'job.cancelled',

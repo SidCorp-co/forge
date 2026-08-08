@@ -44,6 +44,9 @@ export const REGISTRY_JOB_TYPES = [
   // ISS-455 — skill smoke-verify canary (issue-less, one-shot 'system' run).
   'smoke',
   'release_batch',
+  // ISS-801 — Update Pipeline stage ② (Reconcile). Master agent + verifier.
+  'reconcile',
+  'verify_skill',
 ] as const;
 
 export const REGISTRY_RUNNER_TYPES = ['claude-code', 'antigravity'] as const;

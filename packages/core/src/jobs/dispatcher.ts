@@ -29,14 +29,14 @@ import {
 } from './dispatch-gates.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
-import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
+import { JOB_QUEUE_NAME, PM_QUEUE_NAME, RECONCILE_QUEUE_NAME } from './queue-name.js';
+import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
 import { readAutoRetryPayload } from './retry.js';
 import {
   estimateGroupContextTokens,
   findPriorSessionInGroup,
   loadResumeBounds,
 } from './session-resume.js';
-import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
 import {
   SKILL_MAINTENANCE_LABEL,
   type StageOverrides,
@@ -51,6 +51,7 @@ interface DispatchMessage {
 
 let workerId: string | null = null;
 let pmWorkerId: string | null = null;
+let reconcileWorkerId: string | null = null;
 
 /**
  * Flatten stage overrides into the WS payload/job.payload shape consumed by
@@ -330,10 +331,14 @@ async function dispatchViaRunner(
         .limit(1);
       reopenCount = issueRow?.reopenCount ?? 0;
     } catch (err) {
-      logger.warn({ err, jobId: job.id, issueId: job.issueId }, 'dispatcher: failed to read reopenCount, treating as 0');
+      logger.warn(
+        { err, jobId: job.id, issueId: job.issueId },
+        'dispatcher: failed to read reopenCount, treating as 0',
+      );
     }
     const overTokens = bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens;
-    const overCycles = bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
+    const overCycles =
+      bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
     if (overTokens || overCycles) {
       const reason = overTokens ? ('tokens' as const) : ('reopen_cycles' as const);
       logger.info(
@@ -843,4 +848,38 @@ export async function unregisterPmDispatcher(): Promise<void> {
 
 export function isPmDispatcherRegistered(): boolean {
   return pmWorkerId !== null;
+}
+
+// cm:edge contract -> packages/core/src/jobs/enqueue.ts#enqueueReconcileJob — separate queue so a reconcile backlog never stalls coder dispatch (ISS-801, BLOCKER E).
+export async function registerReconcileDispatcher(): Promise<void> {
+  if (reconcileWorkerId) return;
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
+  await (boss as any).createQueue(RECONCILE_QUEUE_NAME);
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (handler receives an array) is stable.
+  const id = (await (boss as any).work(RECONCILE_QUEUE_NAME, { batchSize: 1 }, async (arg: any) => {
+    const entries = Array.isArray(arg) ? arg : [arg];
+    for (const entry of entries) {
+      const data = entry?.data as DispatchMessage | undefined;
+      if (!data || typeof data.jobId !== 'string') continue;
+      try {
+        await handleDispatch(data);
+      } catch (err) {
+        logger.error({ err, jobId: data.jobId }, 'reconcile-dispatcher: handler threw');
+        throw err;
+      }
+    }
+  })) as string;
+  reconcileWorkerId = id;
+}
+
+export async function unregisterReconcileDispatcher(): Promise<void> {
+  if (!reconcileWorkerId) return;
+  const id = reconcileWorkerId;
+  reconcileWorkerId = null;
+  // biome-ignore lint/suspicious/noExplicitAny: see registerDispatcher above.
+  await (boss as any).offWork(id);
+}
+
+export function isReconcileDispatcherRegistered(): boolean {
+  return reconcileWorkerId !== null;
 }

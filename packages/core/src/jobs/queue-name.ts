@@ -9,3 +9,7 @@ export const PM_QUEUE_NAME = 'forge.pm-jobs';
 // Coolify deploys (and future Sentry / Human-Task calls) survive transient
 // API blips without manual intervention.
 export const INTEGRATIONS_QUEUE_NAME = 'forge.integrations';
+
+// ISS-801 — Reconcile workload (Master agent + verifier jobs) runs on a
+// separate queue so a reconcile backlog never stalls coder dispatch.
+export const RECONCILE_QUEUE_NAME = 'forge.reconcile-jobs';

@@ -120,6 +120,8 @@ const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
   pm: [],
   smoke: [],
   release_batch: [],
+  reconcile: [],
+  verify_skill: [],
 };
 
 interface SessionFieldPolicy {
@@ -150,6 +152,8 @@ const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
   pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   smoke: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   release_batch: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  reconcile: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  verify_skill: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
 };
 
 function truncate(text: string, cap: number, strategy: 'paragraph-boundary' | 'byte-cut'): string {

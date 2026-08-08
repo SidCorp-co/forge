@@ -4,7 +4,7 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import { boss } from '../queue/boss.js';
-import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
+import { JOB_QUEUE_NAME, PM_QUEUE_NAME, RECONCILE_QUEUE_NAME } from './queue-name.js';
 
 export interface EnqueueOptions {
   startAfterSeconds?: number;
@@ -25,10 +25,7 @@ export interface EnqueueJobInput {
  * back to `${jobId}:${jobType}` — still per-message-unique. The DB-layer
  * `jobs_active_unique` index (migration 0009) is the final guard.
  */
-export async function enqueueJob(
-  input: EnqueueJobInput,
-  opts: EnqueueOptions = {},
-): Promise<void> {
+export async function enqueueJob(input: EnqueueJobInput, opts: EnqueueOptions = {}): Promise<void> {
   const singletonKey = input.issueId
     ? `${input.issueId}:${input.type}`
     : `${input.jobId}:${input.type}`;
@@ -53,6 +50,18 @@ export async function enqueuePmJob(pmJobId: string, opts: EnqueueOptions = {}): 
     { jobId: pmJobId },
     {
       singletonKey: pmJobId,
+      ...(opts.startAfterSeconds !== undefined ? { startAfter: opts.startAfterSeconds } : {}),
+    },
+  );
+}
+
+/** Route a reconcile or verify_skill job to the reconcile queue. */
+export async function enqueueReconcileJob(jobId: string, opts: EnqueueOptions = {}): Promise<void> {
+  await boss.send(
+    RECONCILE_QUEUE_NAME,
+    { jobId },
+    {
+      singletonKey: jobId,
       ...(opts.startAfterSeconds !== undefined ? { startAfter: opts.startAfterSeconds } : {}),
     },
   );

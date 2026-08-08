@@ -42,6 +42,7 @@ import { JOB_TYPE_ENTRY_STATUS, classifyVerdict } from '../pipeline/recovery-ver
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
+import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
@@ -239,6 +240,18 @@ export async function finalizeFailedJob(
   // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
   // (retry path) or park at `waiting` + reap the run (no-retry path).
   await reconcileIssueStatusAfterFailure(updated, retry, recoveredViaVerify);
+
+  // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — reconcile/verify_skill
+  // jobs carry issueId=null (skipped above) but still need a terminal path on failure (BLOCKER M, ISS-801 review).
+  // cm:why skipped when a retry is scheduled (MINOR S, ISS-801 review) — the retry clone is about to re-run the whole Master/verifier agent, so failing the run here would discard that in-flight attempt.
+  if (!retry.scheduled) {
+    await failReconcileRunForFailedJob(updated).catch((err) =>
+      logger.warn(
+        { err, jobId: updated.id, type: updated.type },
+        'finalize-failure: failReconcileRunForFailedJob failed',
+      ),
+    );
+  }
 
   // Mirror lifecycle to the linked agent_session row. ISS-101 — pass
   // retryPending so we leave the parent pipeline_run open when a retry has

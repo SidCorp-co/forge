@@ -24,6 +24,12 @@ vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...args),
 }));
 
+// cm:edge contract -> packages/core/src/skills/reconcile-service.ts — its static import chain reaches queue/boss.ts, whose top-level env import throws without DB env (BLOCKER AA).
+const failReconcileRunMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../skills/reconcile-service.js', () => ({
+  failReconcileRunForFailedJob: (...args: unknown[]) => failReconcileRunMock(...args),
+}));
+
 // db.select().from().innerJoin().where().limit() → issue+owner row.
 const issueRowMock = vi.fn<() => unknown[]>(() => [
   { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
