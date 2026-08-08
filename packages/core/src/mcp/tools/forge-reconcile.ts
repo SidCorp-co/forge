@@ -120,6 +120,11 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
         );
       }
 
+      // IDOR guard: verify run belongs to the asserted project before mutating
+      const verdictRun = await getReconcileRun(input.runId);
+      if (!verdictRun || verdictRun.projectId !== projectId)
+        throw new Error('NOT_FOUND: reconcile run not found');
+
       await recordReconcileVerdict({
         runId: input.runId,
         verdict: input.verdict,
@@ -153,6 +158,11 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
       await assertPrincipalIsAdmin(ctx.principal, projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=apply');
 
+      // IDOR guard: verify run belongs to the asserted project before mutating
+      const applyRun = await getReconcileRun(input.runId);
+      if (!applyRun || applyRun.projectId !== projectId)
+        throw new Error('NOT_FOUND: reconcile run not found');
+
       try {
         await applyReconcileRun(input.runId, actorUserId);
       } catch (err: unknown) {
@@ -169,6 +179,11 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=reject');
       if (!input.rejectReason)
         throw new Error('BAD_REQUEST: rejectReason is required for action=reject');
+
+      // IDOR guard: verify run belongs to the asserted project before mutating
+      const rejectRun = await getReconcileRun(input.runId);
+      if (!rejectRun || rejectRun.projectId !== projectId)
+        throw new Error('NOT_FOUND: reconcile run not found');
 
       try {
         await rejectReconcileRun(input.runId, actorUserId, input.rejectReason);

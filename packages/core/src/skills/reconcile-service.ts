@@ -836,24 +836,27 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
  * MUST be called by a project admin (caller must verify authorization).
  */
 export async function applyReconcileRun(runId: string, actorUserId: string): Promise<void> {
-  const [runRow] = await db
-    .select()
-    .from(reconcileRuns)
-    .where(eq(reconcileRuns.id, runId))
-    .limit(1);
-  if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
-  if (runRow.status !== 'decided') {
-    throw new Error(`BAD_REQUEST: run is in status '${runRow.status}', expected 'decided'`);
-  }
-  if (!runRow.skillId) {
-    throw new Error('BAD_REQUEST: run has no skillId — cannot publish');
-  }
-
-  const candidateBody = runRow.candidateBody ?? '';
-  const candidateHash = runRow.candidateHash ?? hashSkillBody(candidateBody, null);
-  const lastGoodHash = runRow.lastGoodHash;
-
   await db.transaction(async (tx) => {
+    // SELECT FOR UPDATE — serialize concurrent apply/reject calls on the same run
+    const [runRow] = await tx
+      .select()
+      .from(reconcileRuns)
+      .where(eq(reconcileRuns.id, runId))
+      .for('update')
+      .limit(1);
+
+    if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
+    if (runRow.status !== 'decided') {
+      throw new Error(`BAD_REQUEST: run is in status '${runRow.status}', expected 'decided'`);
+    }
+    if (!runRow.skillId) {
+      throw new Error('BAD_REQUEST: run has no skillId — cannot publish');
+    }
+
+    const candidateBody = runRow.candidateBody ?? '';
+    const candidateHash = runRow.candidateHash ?? hashSkillBody(candidateBody, null);
+    const lastGoodHash = runRow.lastGoodHash;
+
     await tx
       .update(skills)
       .set({
@@ -868,7 +871,7 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
     await tx
       .update(reconcileRuns)
       .set({ status: 'applied', decidedAt: new Date(), updatedAt: new Date() })
-      .where(eq(reconcileRuns.id, runId));
+      .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, 'decided')));
 
     await logActivity(tx, {
       eventType: 'skill.body.changed',
@@ -892,21 +895,24 @@ export async function rejectReconcileRun(
   actorUserId: string,
   reason: string,
 ): Promise<void> {
-  const [runRow] = await db
-    .select()
-    .from(reconcileRuns)
-    .where(eq(reconcileRuns.id, runId))
-    .limit(1);
-  if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
-  if (runRow.status !== 'decided') {
-    throw new Error(`BAD_REQUEST: run is in status '${runRow.status}', expected 'decided'`);
-  }
-
   await db.transaction(async (tx) => {
+    // SELECT FOR UPDATE — serialize concurrent apply/reject calls on the same run
+    const [runRow] = await tx
+      .select()
+      .from(reconcileRuns)
+      .where(eq(reconcileRuns.id, runId))
+      .for('update')
+      .limit(1);
+
+    if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
+    if (runRow.status !== 'decided') {
+      throw new Error(`BAD_REQUEST: run is in status '${runRow.status}', expected 'decided'`);
+    }
+
     await tx
       .update(reconcileRuns)
       .set({ status: 'escalated', updatedAt: new Date() })
-      .where(eq(reconcileRuns.id, runId));
+      .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, 'decided')));
 
     await logActivity(tx, {
       eventType: 'reconcile.escalated',
