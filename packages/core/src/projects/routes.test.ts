@@ -1233,10 +1233,8 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       ['approved', 'clarified', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
     );
 
-    // The Balanced preset write went through update().set(...).where(...).
-    // ISS-742 retired the forge-onboard install_only flip (meta skills ship via
-    // the plugin channel now), so bootstrap makes just the one preset update.
-    expect(updateSet).toHaveBeenCalledTimes(1);
+    // cm:why 1 = pipelineConfig preset write, 2 = SHARED_INSTALL_ONLY_SKILLS install_only flip (forge-reconcile, forge-verify-skill).
+    expect(updateSet).toHaveBeenCalledTimes(3);
     const setArg = updateSet.mock.calls[0]?.[0] as {
       agentConfig: { pipelineConfig: Record<string, unknown> };
     };
@@ -1341,11 +1339,8 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { pipelineEnabled: boolean };
     expect(body.pipelineEnabled).toBe(false);
-    // ISS-108 — preset write is skipped (enabled=false is the user's choice),
-    // but states still gets backfilled. ISS-742 retired the forge-onboard
-    // install_only flip (meta skills ship via the plugin channel now), so that
-    // states backfill is the only update.
-    expect(updateSet).toHaveBeenCalledTimes(1);
+    // cm:why 1 = states backfill (preset write skipped, enabled=false wins), 2 = install_only flip (forge-reconcile, forge-verify-skill).
+    expect(updateSet).toHaveBeenCalledTimes(3);
     const updateCalls = updateSet.mock.calls as unknown as Array<
       [{ agentConfig: { pipelineConfig: { enabled: boolean; states: Record<string, unknown> } } }]
     >;

@@ -34,6 +34,7 @@
  * reverted away from this step, so retrying would be wasted spend).
  */
 
+import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { publishSessionRecoveryChanged } from '../agent-sessions/recovery-publish.js';
 import {
@@ -49,6 +50,7 @@ import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { verifyRecovery } from '../pipeline/recovery-verifier.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
+import { buildVerifierPrompt } from '../skills/reconcile-service.js';
 import { enqueueJob, enqueueReconcileJob } from './enqueue.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -326,9 +328,17 @@ export async function scheduleAutoRetryWithVerify(
     [AUTO_RETRY_PAYLOAD_KEY]: next,
   };
 
+  // cm:why the original promptString embeds the DEAD parent job's id as the vote key — reusing it verbatim means the clone's own vote never matches jobs.id and failReconcileRunIfNoVerdictRecorded fails the run despite a successful vote (MINOR V, ISS-801 review round 4).
+  let newJobId: string | undefined;
+  if (job.type === 'verify_skill' && typeof basePayload.reconcileRunId === 'string') {
+    newJobId = randomUUID();
+    nextPayload.promptString = buildVerifierPrompt(basePayload.reconcileRunId, newJobId);
+  }
+
   const [created] = await db
     .insert(jobs)
     .values({
+      ...(newJobId ? { id: newJobId } : {}),
       projectId: job.projectId,
       issueId: job.issueId,
       pipelineRunId: job.pipelineRunId,

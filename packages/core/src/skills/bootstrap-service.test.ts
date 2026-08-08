@@ -35,10 +35,7 @@ import {
   fanOutSharedInstallOnlySkills,
 } from './bootstrap-service.js';
 
-// The production seed-list is EMPTY (ISS-742 — meta skills ship via the plugin
-// channel, not this per-project disk bridge). The mechanism is retained for a
-// genuinely per-project shared utility, so these tests drive it with an
-// explicit representative seed rather than the const.
+// cm:why most tests drive the mechanism with this representative seed rather than SHARED_INSTALL_ONLY_SKILLS itself, except where the production default is under test (see below).
 const SEED = ['shared-utility'];
 
 describe('ensureSharedInstallOnlySkills', () => {
@@ -47,10 +44,14 @@ describe('ensureSharedInstallOnlySkills', () => {
     updateSetMock.mockClear();
   });
 
-  it('production default seed-list is empty — no adoption (ISS-742)', async () => {
+  it('production default seed-list adopts forge-reconcile + forge-verify-skill (ISS-801)', async () => {
+    resolveOrAdoptProjectSkillMock.mockResolvedValue('skill-1');
+
     await ensureSharedInstallOnlySkills('proj-1');
-    expect(resolveOrAdoptProjectSkillMock).not.toHaveBeenCalled();
-    expect(updateSetMock).not.toHaveBeenCalled();
+
+    expect(resolveOrAdoptProjectSkillMock).toHaveBeenCalledTimes(2);
+    expect(resolveOrAdoptProjectSkillMock).toHaveBeenCalledWith('proj-1', 'forge-reconcile');
+    expect(resolveOrAdoptProjectSkillMock).toHaveBeenCalledWith('proj-1', 'forge-verify-skill');
   });
 
   it('adopts each seed skill and flips it install_only', async () => {

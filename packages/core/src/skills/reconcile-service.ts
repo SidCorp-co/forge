@@ -413,7 +413,8 @@ function buildReconcilePrompt(runId: string): string {
 }
 
 // cm:why same rationale as buildReconcilePrompt — forge-verify-skill is also user_invocable:false.
-function buildVerifierPrompt(runId: string, jobId: string): string {
+// cm:edge naming -> packages/core/src/jobs/retry.ts — exported so a verify_skill retry clone can rebuild promptString with ITS OWN job id instead of reusing the dead original's (MINOR V, ISS-801 review round 4).
+export function buildVerifierPrompt(runId: string, jobId: string): string {
   return [
     '## Update Pipeline — Verify Skill (adversarial verifier)',
     '',
@@ -842,10 +843,17 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
   });
 
   // cm:why dispatched AFTER commit, mirroring spawnReconcileRun's enqueue-after-tx pattern — dispatching inside the tx above risks jobs for a run it then rolls back (BLOCKER M path 1, ISS-801 review).
+  // cm:why spawnVerifierJobs' OWN try/catch covers the run-open/job-insert/enqueue steps; this outer catch is the backstop for the runners/projects selects and failActiveReconcileRun itself throwing past it — without it a DB blip there leaves the run at 'verifying' with zero verifiers (MINOR W, ISS-801 review round 4).
   if (result.toVerifying) {
-    await spawnVerifierJobs(input.runId, result.projectId).catch((err) =>
-      logger.error({ err, runId: input.runId }, 'reconcile.verify.spawn.error'),
-    );
+    await spawnVerifierJobs(input.runId, result.projectId).catch((err) => {
+      logger.error({ err, runId: input.runId }, 'reconcile.verify.spawn.error');
+      return failActiveReconcileRun(
+        input.runId,
+        `failed to spawn verifier jobs: ${String(err)}`,
+      ).catch((failErr) =>
+        logger.error({ failErr, runId: input.runId }, 'reconcile.verify.spawn.failFallback.error'),
+      );
+    });
   }
 }
 
