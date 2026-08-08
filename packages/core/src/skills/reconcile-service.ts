@@ -395,6 +395,12 @@ export async function assembleBundle(
   };
 }
 
+// cm:why mirrors buildSmokeCanaryPrompt (smoke-verify.ts) — reconcile jobs are issueId=null
+// one-shot 'system' jobs, so buildJobPromptString (issue-scoped) does not apply.
+function buildReconcilePrompt(runId: string): string {
+  return `/forge-reconcile ${runId}`;
+}
+
 export type SpawnReconcileResult =
   | { ok: true; runId: string }
   | {
@@ -487,7 +493,11 @@ export async function spawnReconcileRun(input: {
           pipelineRunId: pipelineRun.id,
           createdBy: input.actorUserId,
           type: 'reconcile',
-          payload: { reconcileRunId: run.id },
+          payload: {
+            reconcileRunId: run.id,
+            skillName: 'forge-reconcile',
+            promptString: buildReconcilePrompt(run.id),
+          },
           status: 'queued',
         })
         .returning({ id: jobs.id });
@@ -939,6 +949,64 @@ export async function rejectReconcileRun(
       skillId: runRow.skillId,
       packetId: runRow.packetId,
       reason: reason || 'human rejected',
+    });
+  });
+}
+
+/**
+ * Terminal-path hook for a `reconcile`/`verify_skill` job that just went
+ * `failed` (BLOCKER M, ISS-801 review). Without this, a job failure (adapter
+ * error, timeout, budget exhaustion, reaper) left `reconcile_runs` stuck at
+ * `pending`/`running`/`verifying` forever — `reconcile_runs_active_project_uq`
+ * then blocks every future run for the project, needing SQL surgery to clear.
+ * No-op for any other job type, and for a run already past the active set
+ * (a verdict/vote already landed before the job's failure was observed).
+ *
+ * Called from `finalizeFailedJob` (jobs/finalize-failure.ts) unconditionally
+ * (reconcile jobs carry `issueId: null`, so the issue-status reconcile path
+ * there does not apply).
+ */
+export async function failReconcileRunForFailedJob(job: {
+  type: string;
+  payload: unknown;
+}): Promise<void> {
+  if (job.type !== 'reconcile' && job.type !== 'verify_skill') return;
+  const runId = (job.payload as { reconcileRunId?: unknown } | null)?.reconcileRunId;
+  if (typeof runId !== 'string') return;
+
+  await db.transaction(async (tx) => {
+    // cm:why FOR UPDATE row-locks this run, so a concurrent verdict/vote write cannot race the fail-transition below.
+    const [runRow] = await tx
+      .select()
+      .from(reconcileRuns)
+      .where(eq(reconcileRuns.id, runId))
+      .for('update')
+      .limit(1);
+    if (!runRow) return;
+    if (!['pending', 'running', 'verifying'].includes(runRow.status)) return;
+
+    await tx
+      .update(reconcileRuns)
+      .set({
+        status: 'failed',
+        error: `${job.type} job failed without recording a verdict`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(reconcileRuns.id, runId),
+          inArray(reconcileRuns.status, ['pending', 'running', 'verifying']),
+        ),
+      );
+
+    await logActivity(tx, {
+      eventType: 'reconcile.failed',
+      actor: 'system:dispatcher',
+      trigger: 'manual',
+      projectId: runRow.projectId,
+      skillId: runRow.skillId,
+      packetId: runRow.packetId,
+      reason: `${job.type} job failed without recording a verdict`,
     });
   });
 }
