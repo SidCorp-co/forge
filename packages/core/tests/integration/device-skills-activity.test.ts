@@ -191,4 +191,118 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
       reason: 'manifest pull failed: network timeout',
     });
   });
+
+  it('a repeat sync-failed with the SAME reason emits nothing (dedup)', async () => {
+    const { project, device, deviceToken } = await seedBoundDevice();
+    const body = JSON.stringify({ error: 'manifest pull failed: network timeout' });
+    const post = () =>
+      app.request(`/api/devices/me/skills/sync-failed?projectId=${project.id}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${deviceToken}` },
+        body,
+      });
+
+    expect((await post()).status).toBe(200);
+    expect((await post()).status).toBe(200);
+
+    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    expect(events.filter((e) => e.eventType === 'device.sync.failed')).toHaveLength(1);
+  });
+
+  it('a sync-failed with a DIFFERENT reason after a repeat still records', async () => {
+    const { project, device, deviceToken } = await seedBoundDevice();
+    const fail = (error: string) =>
+      app.request(`/api/devices/me/skills/sync-failed?projectId=${project.id}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${deviceToken}` },
+        body: JSON.stringify({ error }),
+      });
+
+    await fail('manifest pull failed: network timeout');
+    await fail('manifest pull failed: network timeout');
+    await fail('manifest pull failed: 500 from core');
+
+    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    expect(events.filter((e) => e.eventType === 'device.sync.failed')).toHaveLength(2);
+  });
+
+  it('clearing a shadow (shadowedBy -> null) with an unchanged observedSha still emits device.skill.observed', async () => {
+    const { project, device, skill, deviceToken } = await seedBoundDevice();
+    await report(project.id, deviceToken, {
+      skills: [
+        {
+          skillId: skill.id,
+          installedHash: 'h1',
+          observedSha: 'shadow-hash',
+          shadowedBy: '/home/user/.claude/skills/forge-release',
+        },
+      ],
+    });
+
+    const res = await report(project.id, deviceToken, {
+      skills: [{ skillId: skill.id, installedHash: 'h1', observedSha: 'shadow-hash' }],
+    });
+    expect(res.status).toBe(200);
+
+    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const observed = events.filter((e) => e.eventType === 'device.skill.observed');
+    expect(observed).toHaveLength(1);
+  });
+
+  it('an applied event stamps packetId when installedHash matches a skill.body.changed packet', async () => {
+    const { project, device, skill, deviceToken } = await seedBoundDevice();
+
+    await harness.db.insert(schema.skillActivityEvents).values({
+      eventType: 'skill.body.changed',
+      actor: 'agent:master',
+      trigger: 'manual',
+      projectId: project.id,
+      skillId: skill.id,
+      packetId: 'packet-1',
+      beforeHash: 'h0',
+      afterHash: 'h1',
+    });
+
+    const res = await report(project.id, deviceToken, {
+      skills: [{ skillId: skill.id, installedHash: 'h1', observedSha: 'h1' }],
+    });
+    expect(res.status).toBe(200);
+
+    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const applied = events.find((e) => e.eventType === 'device.skill.applied');
+    expect(applied).toMatchObject({ packetId: 'packet-1' });
+    const observed = events.find((e) => e.eventType === 'device.skill.observed');
+    expect(observed).toMatchObject({ packetId: 'packet-1' });
+  });
+
+  it('a shadowed report never stamps packetId, even if the hash matches a packet', async () => {
+    const { project, device, skill, deviceToken } = await seedBoundDevice();
+
+    await harness.db.insert(schema.skillActivityEvents).values({
+      eventType: 'skill.body.changed',
+      actor: 'agent:master',
+      trigger: 'manual',
+      projectId: project.id,
+      skillId: skill.id,
+      packetId: 'packet-1',
+      beforeHash: 'h0',
+      afterHash: 'h1',
+    });
+
+    const res = await report(project.id, deviceToken, {
+      skills: [
+        {
+          skillId: skill.id,
+          installedHash: 'h1',
+          observedSha: 'shadow-hash',
+          shadowedBy: '/home/user/.claude/skills/forge-release',
+        },
+      ],
+    });
+    expect(res.status).toBe(200);
+
+    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const shadowed = events.find((e) => e.eventType === 'device.skill.shadowed');
+    expect(shadowed?.packetId).toBeNull();
+  });
 });

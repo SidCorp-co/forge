@@ -1,3 +1,4 @@
+import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import {
   type SkillActivityEventType,
@@ -25,6 +26,35 @@ export interface RecordSkillActivityEventInput {
   deltaSummary?: string;
   reason?: string;
   outcome?: SkillActivityOutcome;
+}
+
+/**
+ * Best-effort lookup of the `skill.body.changed` packet that produced `hash`
+ * for `skillId` — lets device.skill.* / job.ran.with events stamp `packetId`
+ * without the report/ack protocol carrying one explicitly (ISS-798 review
+ * BLOCKER B). Returns `undefined` (never a lie) when the hash never
+ * originated from a tracked packet — e.g. a user-authored shadow body.
+ */
+export async function resolvePacketIdForHash(
+  executor: SkillActivityExecutor,
+  projectId: string,
+  skillId: string,
+  hash: string,
+): Promise<string | undefined> {
+  const [row] = await executor
+    .select({ packetId: skillActivityEvents.packetId })
+    .from(skillActivityEvents)
+    .where(
+      and(
+        eq(skillActivityEvents.projectId, projectId),
+        eq(skillActivityEvents.skillId, skillId),
+        eq(skillActivityEvents.eventType, 'skill.body.changed'),
+        eq(skillActivityEvents.afterHash, hash),
+      ),
+    )
+    .orderBy(desc(skillActivityEvents.occurredAt))
+    .limit(1);
+  return row?.packetId ?? undefined;
 }
 
 /** Append one row to the skill-update activity log (Update Pipeline §7 / §9.11). */

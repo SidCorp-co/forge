@@ -42,7 +42,8 @@ vi.mock('../auth/deviceToken.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
+const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
@@ -147,14 +148,17 @@ beforeEach(() => {
   vi.clearAllMocks();
   scheduleRetryMock.mockResolvedValue({ scheduled: false });
   selectLimit.mockReset();
+  selectOrderBy.mockImplementation(() => ({ limit: selectLimit }));
   updateReturning.mockReset();
   txUpdateReturning.mockReset();
   txExecute.mockResolvedValue([{ max_seq: 0 }]);
 });
 
 describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
-  it('records job.ran.with when the runner ACKs with a non-empty skillsRanWith map', async () => {
+  it('records job.ran.with with the resolved skillId + packetId when the runner ACKs with a non-empty skillsRanWith map', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
+    selectLimit.mockResolvedValueOnce([{ id: 'skill-1' }]);
+    selectLimit.mockResolvedValueOnce([{ packetId: 'packet-1' }]);
     txUpdateReturning.mockResolvedValueOnce([
       { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
     ]);
@@ -177,9 +181,36 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
         actor: 'runner:dev-1',
         projectId: 'p1',
         deviceId: 'dev-1',
-        deltaSummary: JSON.stringify({ 'forge-code': 'hash-abc' }),
+        skillId: 'skill-1',
+        packetId: 'packet-1',
+        afterHash: 'hash-abc',
+        reason: `jobId=${validJobId}`,
+        deltaSummary: 'forge-code',
       }),
     );
+  });
+
+  it('records job.ran.with with no skillId/packetId when the name does not resolve to a registered skill', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
+    selectLimit.mockResolvedValueOnce([]);
+    txUpdateReturning.mockResolvedValueOnce([
+      { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ skillsRanWith: { 'unregistered-skill': 'hash-xyz' } }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(txInsertValues).toHaveBeenCalledTimes(1);
+    const [call] = txInsertValues.mock.calls[0] as [Record<string, unknown>];
+    expect(call.skillId).toBeNull();
+    expect(call.packetId).toBeNull();
+    expect(call.afterHash).toBe('hash-xyz');
   });
 
   it('records nothing when skillsRanWith is absent (pre-0.7.0 runner)', async () => {

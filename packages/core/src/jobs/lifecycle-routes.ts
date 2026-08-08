@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
+import { jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -13,7 +13,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
-import { recordSkillActivityEvent } from '../skills/activity.js';
+import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { failReconcileRunIfNoVerdictRecorded } from '../skills/reconcile-service.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -119,6 +119,29 @@ jobLifecycleDeviceRoutes.post(
 
     const now = new Date();
     const skillsRanWith = body.skillsRanWith ?? null;
+    // cm:why read outside the tx (mirrors recordPrunedSkill) — the UPDATE's isNull(ackedAt) WHERE is what prevents a double-emit, not this read.
+    const skillLookups =
+      skillsRanWith && Object.keys(skillsRanWith).length > 0
+        ? await Promise.all(
+            Object.entries(skillsRanWith).map(async ([name, hash]) => {
+              const [skill] = await db
+                .select({ id: skills.id })
+                .from(skills)
+                .where(
+                  and(
+                    eq(skills.scope, 'project'),
+                    eq(skills.projectId, job.projectId),
+                    eq(skills.name, name),
+                  ),
+                )
+                .limit(1);
+              const packetId = skill
+                ? await resolvePacketIdForHash(db, job.projectId, skill.id, hash)
+                : undefined;
+              return { name, hash, skillId: skill?.id, packetId };
+            }),
+          )
+        : [];
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(jobs)
@@ -131,16 +154,22 @@ jobLifecycleDeviceRoutes.post(
           ),
         )
         .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
-      if (row && skillsRanWith !== null && Object.keys(skillsRanWith).length > 0) {
-        await recordSkillActivityEvent(tx, {
-          eventType: 'job.ran.with',
-          actor: `runner:${device.id}`,
-          trigger: 'push',
-          projectId: job.projectId,
-          deviceId: device.id,
-          deltaSummary: JSON.stringify(skillsRanWith),
-          outcome: 'ok',
-        });
+      if (row) {
+        for (const lookup of skillLookups) {
+          await recordSkillActivityEvent(tx, {
+            eventType: 'job.ran.with',
+            actor: `runner:${device.id}`,
+            trigger: 'push',
+            projectId: job.projectId,
+            deviceId: device.id,
+            ...(lookup.skillId ? { skillId: lookup.skillId } : {}),
+            ...(lookup.packetId ? { packetId: lookup.packetId } : {}),
+            afterHash: lookup.hash,
+            reason: `jobId=${id}`,
+            deltaSummary: lookup.name,
+            outcome: 'ok',
+          });
+        }
       }
       return row;
     });

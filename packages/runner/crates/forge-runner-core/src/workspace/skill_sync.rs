@@ -250,7 +250,10 @@ fn sync_one_skill_locked(
 /// is unavailable, we fall back to `None` (unknown status) rather than
 /// claiming `synced` falsely.
 fn detect_user_shadow(name: &str) -> Option<(PathBuf, Option<String>)> {
-    let shadow = dirs_next::home_dir()?.join(".claude").join("skills").join(name);
+    let shadow = dirs_next::home_dir()?
+        .join(".claude")
+        .join("skills")
+        .join(name);
     if shadow.join("SKILL.md").exists() {
         let marker = read_hash_marker(&shadow);
         Some((shadow, marker))
@@ -291,8 +294,7 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
 
     let skills_root = worktree.join(".claude").join("skills");
 
-    let keep: std::collections::HashSet<&str> =
-        manifest.iter().map(|e| e.name.as_str()).collect();
+    let keep: std::collections::HashSet<&str> = manifest.iter().map(|e| e.name.as_str()).collect();
     let mut pruned: Vec<String> = Vec::new();
     for dir in find_prunable(&skills_root, &keep) {
         if let Some(name) = dir.file_name().and_then(|n| n.to_str()) {

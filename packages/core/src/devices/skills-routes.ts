@@ -1,14 +1,14 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { deviceSkills, runners, skills } from '../db/schema.js';
+import { deviceSkills, runners, skillActivityEvents, skills } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { recordSkillActivityEvent } from '../skills/activity.js';
+import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
@@ -214,14 +214,31 @@ deviceSkillRoutes.post(
     const { error } = c.req.valid('json');
     await assertDeviceBoundToProject(device.id, projectId);
 
-    await recordSkillActivityEvent(db, {
-      eventType: 'device.sync.failed',
-      actor: `runner:${device.id}`,
-      trigger: 'poll',
-      projectId,
-      deviceId: device.id,
-      reason: error,
-      outcome: 'failed',
+    await db.transaction(async (tx) => {
+      // cm:why suppress a repeat of the SAME failure reason — a persistently broken project would otherwise emit one row per poll (~96/device/day at the 15-min auto_pull default), flooding the log with no new information (§7 principle 1).
+      const [last] = await tx
+        .select({ reason: skillActivityEvents.reason })
+        .from(skillActivityEvents)
+        .where(
+          and(
+            eq(skillActivityEvents.eventType, 'device.sync.failed'),
+            eq(skillActivityEvents.projectId, projectId),
+            eq(skillActivityEvents.deviceId, device.id),
+          ),
+        )
+        .orderBy(desc(skillActivityEvents.occurredAt))
+        .limit(1);
+      if (last?.reason === error) return;
+
+      await recordSkillActivityEvent(tx, {
+        eventType: 'device.sync.failed',
+        actor: `runner:${device.id}`,
+        trigger: 'poll',
+        projectId,
+        deviceId: device.id,
+        reason: error,
+        outcome: 'failed',
+      });
     });
 
     return c.json({ ok: true });
@@ -230,11 +247,16 @@ deviceSkillRoutes.post(
 
 /**
  * Upsert one device_skills row and emit the state-transition events it
- * causes, all in one transaction (§9.11). A no-op poll (nothing changed vs
- * the prior row) emits nothing — §7 principle 1: log transitions, not
- * checks. `shadowedBy` set is treated as the alert case (`device.skill.shadowed`);
+ * causes, all in one transaction (§9.11). `existing` is read with `FOR
+ * UPDATE` inside the same transaction so two concurrent `/report` calls for
+ * the same (device, project, skill) serialize instead of both reading the
+ * stale row and double-emitting. A no-op poll (nothing changed vs the prior
+ * row) emits nothing — §7 principle 1: log transitions, not checks.
+ * `shadowedBy` set is treated as the alert case (`device.skill.shadowed`);
  * `device.skill.observed` only fires for the normal unshadowed path, so the
- * two never double-fire for the same report.
+ * two never double-fire for the same report — including the shadow-cleared
+ * transition (shadowedBy X -> null), which now counts as an observed change
+ * even when observedSha itself didn't move.
  */
 async function applyReportedSkill(input: {
   projectId: string;
@@ -252,29 +274,32 @@ async function applyReportedSkill(input: {
   const nextObservedSha = entry.observedSha ?? null;
   const nextShadowedBy = entry.shadowedBy ?? null;
 
-  const [existing] = await db
-    .select({
-      installedHash: deviceSkills.installedHash,
-      observedSha: deviceSkills.observedSha,
-      shadowedBy: deviceSkills.shadowedBy,
-    })
-    .from(deviceSkills)
-    .where(
-      and(
-        eq(deviceSkills.deviceId, deviceId),
-        eq(deviceSkills.projectId, projectId),
-        eq(deviceSkills.skillId, entry.skillId),
-      ),
-    )
-    .limit(1);
-
-  const hashChanged = !existing || existing.installedHash !== entry.installedHash;
-  const observedChanged = existing
-    ? existing.observedSha !== nextObservedSha
-    : nextObservedSha !== null;
-  const shadowChanged = existing ? existing.shadowedBy !== nextShadowedBy : nextShadowedBy !== null;
-
   await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({
+        installedHash: deviceSkills.installedHash,
+        observedSha: deviceSkills.observedSha,
+        shadowedBy: deviceSkills.shadowedBy,
+      })
+      .from(deviceSkills)
+      .where(
+        and(
+          eq(deviceSkills.deviceId, deviceId),
+          eq(deviceSkills.projectId, projectId),
+          eq(deviceSkills.skillId, entry.skillId),
+        ),
+      )
+      .for('update')
+      .limit(1);
+
+    const hashChanged = !existing || existing.installedHash !== entry.installedHash;
+    const observedChanged = existing
+      ? existing.observedSha !== nextObservedSha
+      : nextObservedSha !== null;
+    const shadowChanged = existing
+      ? existing.shadowedBy !== nextShadowedBy
+      : nextShadowedBy !== null;
+
     await tx
       .insert(deviceSkills)
       .values({
@@ -298,6 +323,12 @@ async function applyReportedSkill(input: {
         },
       });
 
+    // cm:why installedHash is the project-canonical value a distribution packet writes — resolving against it (not observedSha) is what lets an unshadowed device's activity rows carry the packet that produced them; a shadowed device's observed content is user-authored and honestly has none.
+    const packetId =
+      nextShadowedBy === null
+        ? await resolvePacketIdForHash(tx, projectId, entry.skillId, entry.installedHash)
+        : undefined;
+
     if (hashChanged) {
       await recordSkillActivityEvent(tx, {
         eventType: 'device.skill.applied',
@@ -306,6 +337,7 @@ async function applyReportedSkill(input: {
         projectId,
         skillId: entry.skillId,
         deviceId,
+        ...(packetId ? { packetId } : {}),
         ...(existing?.installedHash !== undefined ? { beforeHash: existing.installedHash } : {}),
         afterHash: entry.installedHash,
         outcome: 'ok',
@@ -327,7 +359,7 @@ async function applyReportedSkill(input: {
           outcome: 'ok',
         });
       }
-    } else if (observedChanged) {
+    } else if (observedChanged || shadowChanged) {
       await recordSkillActivityEvent(tx, {
         eventType: 'device.skill.observed',
         actor: `runner:${deviceId}`,
@@ -335,6 +367,7 @@ async function applyReportedSkill(input: {
         projectId,
         skillId: entry.skillId,
         deviceId,
+        ...(packetId ? { packetId } : {}),
         ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
         ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
         outcome: 'ok',
