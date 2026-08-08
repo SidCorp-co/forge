@@ -43,12 +43,17 @@ const dbInsert = vi.fn(() => ({
   },
 }));
 
+const dbTransaction = vi.fn(async (cb: (tx: unknown) => unknown) =>
+  cb({ select: () => buildSelectChain(), delete: dbDelete, insert: dbInsert, update: dbUpdate }),
+);
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => buildSelectChain(),
     delete: dbDelete,
     insert: dbInsert,
     update: dbUpdate,
+    transaction: dbTransaction,
   },
 }));
 

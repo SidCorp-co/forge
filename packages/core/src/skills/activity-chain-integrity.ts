@@ -25,7 +25,8 @@ export interface DeviceHashMismatch {
   installedHash: string;
 }
 
-const HASH_CHAIN_EVENT_TYPES = sql`('skill.body.changed', 'body.reverted')`;
+// cm:why single member now — 'body.reverted' was removed from the enum (no revert action emits it yet); kept as a tuple so a future revert event slots back in here.
+const HASH_CHAIN_EVENT_TYPES = sql`('skill.body.changed')`;
 
 /**
  * §7 self-check, part 1: for each (project, skill), every hash-mutating event

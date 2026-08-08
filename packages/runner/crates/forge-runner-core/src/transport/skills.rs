@@ -84,6 +84,11 @@ struct SkillReportBody {
     pruned: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct SyncFailedBody<'a> {
+    error: &'a str,
+}
+
 fn map_status(label: &str, status: reqwest::StatusCode) -> Error {
     if status.as_u16() == 401 {
         Error::Other("UNAUTHORIZED".into())
@@ -170,4 +175,24 @@ pub async fn report_installed(
         return Err(map_status("skills report", resp.status()));
     }
     Ok(())
+}
+
+/// Best-effort notification that a sync attempt failed before any skill could
+/// be installed (manifest/content pull error). Never returns an error itself
+/// — a dead reporting endpoint (or an old server without it) must not mask
+/// the original sync failure at the call site.
+pub async fn report_sync_failed(client: &CoreClient, project_id: &str, error: &str) {
+    let url = client.url(&format!(
+        "/api/devices/me/skills/sync-failed?projectId={project_id}"
+    ));
+    if let Err(e) = client
+        .http()
+        .post(&url)
+        .bearer_auth(client.device_token())
+        .json(&SyncFailedBody { error })
+        .send()
+        .await
+    {
+        tracing::debug!("[skills] report_sync_failed request itself failed: {e}");
+    }
 }

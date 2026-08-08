@@ -13,6 +13,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
+import { recordSkillActivityEvent } from '../skills/activity.js';
 import { failReconcileRunIfNoVerdictRecorded } from '../skills/reconcile-service.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -118,13 +119,31 @@ jobLifecycleDeviceRoutes.post(
 
     const now = new Date();
     const skillsRanWith = body.skillsRanWith ?? null;
-    const [updated] = await db
-      .update(jobs)
-      .set({ ackedAt: now, ...(skillsRanWith !== null ? { skillsRanWith } : {}) })
-      .where(
-        and(eq(jobs.id, id), isNull(jobs.ackedAt), inArray(jobs.status, ['dispatched', 'running'])),
-      )
-      .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(jobs)
+        .set({ ackedAt: now, ...(skillsRanWith !== null ? { skillsRanWith } : {}) })
+        .where(
+          and(
+            eq(jobs.id, id),
+            isNull(jobs.ackedAt),
+            inArray(jobs.status, ['dispatched', 'running']),
+          ),
+        )
+        .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
+      if (row && skillsRanWith !== null && Object.keys(skillsRanWith).length > 0) {
+        await recordSkillActivityEvent(tx, {
+          eventType: 'job.ran.with',
+          actor: `runner:${device.id}`,
+          trigger: 'push',
+          projectId: job.projectId,
+          deviceId: device.id,
+          deltaSummary: JSON.stringify(skillsRanWith),
+          outcome: 'ok',
+        });
+      }
+      return row;
+    });
     if (!updated) {
       // Terminal or concurrently acked — idempotent OK, report current state.
       const fresh = await loadJob(id);

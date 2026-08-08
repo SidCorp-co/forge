@@ -152,6 +152,73 @@ beforeEach(() => {
   txExecute.mockResolvedValue([{ max_seq: 0 }]);
 });
 
+describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
+  it('records job.ran.with when the runner ACKs with a non-empty skillsRanWith map', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
+    txUpdateReturning.mockResolvedValueOnce([
+      { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ skillsRanWith: { 'forge-code': 'hash-abc' } }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    const json = (await r.json()) as { acked: boolean };
+    expect(json.acked).toBe(true);
+    expect(txInsertValues).toHaveBeenCalledTimes(1);
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'job.ran.with',
+        actor: 'runner:dev-1',
+        projectId: 'p1',
+        deviceId: 'dev-1',
+        deltaSummary: JSON.stringify({ 'forge-code': 'hash-abc' }),
+      }),
+    );
+  });
+
+  it('records nothing when skillsRanWith is absent (pre-0.7.0 runner)', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
+    txUpdateReturning.mockResolvedValueOnce([
+      { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(txInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('records nothing when skillsRanWith is an empty map', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
+    txUpdateReturning.mockResolvedValueOnce([
+      { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ skillsRanWith: {} }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(txInsertValues).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /:id/complete (device)', () => {
   it('transitions to done on exitCode=0 and does NOT schedule retry', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]); // loadJob

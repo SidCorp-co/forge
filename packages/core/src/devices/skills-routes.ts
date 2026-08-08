@@ -184,28 +184,7 @@ deviceSkillRoutes.post(
 
     const now = new Date();
     for (const s of reported) {
-      await db
-        .insert(deviceSkills)
-        .values({
-          deviceId: device.id,
-          projectId,
-          skillId: s.skillId,
-          installedHash: s.installedHash,
-          installedVersion: s.installedVersion ?? null,
-          syncedAt: now,
-          observedSha: s.observedSha ?? null,
-          shadowedBy: s.shadowedBy ?? null,
-        })
-        .onConflictDoUpdate({
-          target: [deviceSkills.deviceId, deviceSkills.projectId, deviceSkills.skillId],
-          set: {
-            installedHash: s.installedHash,
-            installedVersion: s.installedVersion ?? null,
-            syncedAt: now,
-            observedSha: s.observedSha ?? null,
-            shadowedBy: s.shadowedBy ?? null,
-          },
-        });
+      await applyReportedSkill({ projectId, deviceId: device.id, syncedAt: now, entry: s });
     }
 
     for (const name of pruned ?? []) {
@@ -215,6 +194,154 @@ deviceSkillRoutes.post(
     return c.json({ upserted: reported.length, pruned: pruned?.length ?? 0 });
   },
 );
+
+const syncFailedBodySchema = z.object({ error: z.string().min(1).max(2000) }).strict();
+
+// cm:why separate from /report — a manifest/content pull failure has no installed skills to report, so the success schema doesn't fit.
+deviceSkillRoutes.post(
+  '/me/skills/sync-failed',
+  requireDevice(),
+  zValidator('query', contentQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', syncFailedBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const device = c.get('device');
+    if (device.status === 'revoked') throw unauth();
+    const { projectId } = c.req.valid('query');
+    const { error } = c.req.valid('json');
+    await assertDeviceBoundToProject(device.id, projectId);
+
+    await recordSkillActivityEvent(db, {
+      eventType: 'device.sync.failed',
+      actor: `runner:${device.id}`,
+      trigger: 'poll',
+      projectId,
+      deviceId: device.id,
+      reason: error,
+      outcome: 'failed',
+    });
+
+    return c.json({ ok: true });
+  },
+);
+
+/**
+ * Upsert one device_skills row and emit the state-transition events it
+ * causes, all in one transaction (§9.11). A no-op poll (nothing changed vs
+ * the prior row) emits nothing — §7 principle 1: log transitions, not
+ * checks. `shadowedBy` set is treated as the alert case (`device.skill.shadowed`);
+ * `device.skill.observed` only fires for the normal unshadowed path, so the
+ * two never double-fire for the same report.
+ */
+async function applyReportedSkill(input: {
+  projectId: string;
+  deviceId: string;
+  syncedAt: Date;
+  entry: {
+    skillId: string;
+    installedHash: string;
+    installedVersion?: number | undefined;
+    observedSha?: string | undefined;
+    shadowedBy?: string | undefined;
+  };
+}): Promise<void> {
+  const { projectId, deviceId, syncedAt, entry } = input;
+  const nextObservedSha = entry.observedSha ?? null;
+  const nextShadowedBy = entry.shadowedBy ?? null;
+
+  const [existing] = await db
+    .select({
+      installedHash: deviceSkills.installedHash,
+      observedSha: deviceSkills.observedSha,
+      shadowedBy: deviceSkills.shadowedBy,
+    })
+    .from(deviceSkills)
+    .where(
+      and(
+        eq(deviceSkills.deviceId, deviceId),
+        eq(deviceSkills.projectId, projectId),
+        eq(deviceSkills.skillId, entry.skillId),
+      ),
+    )
+    .limit(1);
+
+  const hashChanged = !existing || existing.installedHash !== entry.installedHash;
+  const observedChanged = existing
+    ? existing.observedSha !== nextObservedSha
+    : nextObservedSha !== null;
+  const shadowChanged = existing ? existing.shadowedBy !== nextShadowedBy : nextShadowedBy !== null;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(deviceSkills)
+      .values({
+        deviceId,
+        projectId,
+        skillId: entry.skillId,
+        installedHash: entry.installedHash,
+        installedVersion: entry.installedVersion ?? null,
+        syncedAt,
+        observedSha: nextObservedSha,
+        shadowedBy: nextShadowedBy,
+      })
+      .onConflictDoUpdate({
+        target: [deviceSkills.deviceId, deviceSkills.projectId, deviceSkills.skillId],
+        set: {
+          installedHash: entry.installedHash,
+          installedVersion: entry.installedVersion ?? null,
+          syncedAt,
+          observedSha: nextObservedSha,
+          shadowedBy: nextShadowedBy,
+        },
+      });
+
+    if (hashChanged) {
+      await recordSkillActivityEvent(tx, {
+        eventType: 'device.skill.applied',
+        actor: `runner:${deviceId}`,
+        trigger: 'poll',
+        projectId,
+        skillId: entry.skillId,
+        deviceId,
+        ...(existing?.installedHash !== undefined ? { beforeHash: existing.installedHash } : {}),
+        afterHash: entry.installedHash,
+        outcome: 'ok',
+      });
+    }
+
+    if (nextShadowedBy !== null) {
+      if (shadowChanged || observedChanged) {
+        await recordSkillActivityEvent(tx, {
+          eventType: 'device.skill.shadowed',
+          actor: `runner:${deviceId}`,
+          trigger: 'poll',
+          projectId,
+          skillId: entry.skillId,
+          deviceId,
+          ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
+          ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
+          deltaSummary: nextShadowedBy,
+          outcome: 'ok',
+        });
+      }
+    } else if (observedChanged) {
+      await recordSkillActivityEvent(tx, {
+        eventType: 'device.skill.observed',
+        actor: `runner:${deviceId}`,
+        trigger: 'poll',
+        projectId,
+        skillId: entry.skillId,
+        deviceId,
+        ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
+        ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
+        outcome: 'ok',
+      });
+    }
+  });
+}
 
 /**
  * A pruned skill is reported by NAME (the runner has no id for a manifest

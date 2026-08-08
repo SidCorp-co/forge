@@ -13,26 +13,9 @@
 //! `effective_hash` back as `installed_hash`, so there is no TS↔Rust hashing
 //! drift.
 //!
-//! ## Concurrency (ISS-743)
-//!
-//! Two independent hazards existed before this revision, both only masked by
-//! `auto_pull=false`:
-//! - the destination copy (`<worktree>/.claude/skills/<name>/`) ran
-//!   unconditionally every poll via non-atomic per-file `std::fs::copy`, so a
-//!   concurrent job reading `SKILL.md` mid-copy could see a torn file;
-//! - the shared cache dir (keyed only by `project_id`+`skill_id`, not by
-//!   runner instance) was rebuilt with `remove_dir_all` + repopulate, so two
-//!   runner instances on the same host/project could race a cache read
-//!   against a cache rebuild.
-//!
-//! Both are fixed by: (1) publishing every directory (cache AND destination)
-//! via a staged-temp-dir + atomic `rename` swap (readers only ever see a
-//! complete old or new tree, never a partial one); (2) gating the destination
-//! copy on a `.hash` marker written *inside* the destination, so unchanged
-//! content is a true no-op; (3) serializing the per-skill critical section
-//! across runner instances with an exclusive `std::fs::File::lock` (std,
-//! stable since 1.89) on a lock file that lives alongside — not inside — the
-//! cache dir, so it survives the cache dir being swapped.
+//! Concurrency safety (staged-temp-dir + atomic rename, per-skill file lock)
+//! is documented in `docs/architecture/skill-delivery.md` ("Concurrency in
+//! `sync_skills`", ISS-743) — not restated here.
 
 use std::path::{Path, PathBuf};
 
@@ -393,6 +376,14 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
 
     skills::report_installed(client, project_id, &report, &pruned).await?;
     Ok(report.len())
+}
+
+/// Notify the server that a sync attempt for this project failed entirely, so
+/// the skill-activity log records `device.sync.failed` instead of going quiet
+/// (ISS-798 fix review). Call from the `Err` arm at each `sync_skills` call
+/// site; never blocks on or surfaces its own outcome.
+pub async fn report_sync_failure(client: &CoreClient, project_id: &str, error: &Error) {
+    skills::report_sync_failed(client, project_id, &error.to_string()).await;
 }
 
 #[cfg(test)]

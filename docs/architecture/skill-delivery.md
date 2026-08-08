@@ -65,6 +65,15 @@ flowchart LR
 - **Device pull (4, all call `sync_skills`):** job provision (`workspace/provision.rs`) · `skill.sync` event (`daemon/dispatch.rs`) · background auto-pull, ISS-736 (`daemon/skill_pull.rs`, `[skills] auto_pull` default **on**) · CLI `forge-runner sync`, ISS-740 (`cmd/sync.rs`).
 - **Transports:** WS+REST (`/api/devices/me/skills*`) for CLI/desktop runners; deterministic ZIP (`runners/skills-zip.ts`) for `host='remote'`.
 
+## Concurrency in `sync_skills` (ISS-743)
+
+Two hazards existed before this revision, both only masked by `auto_pull=false`:
+
+- the destination copy (`<worktree>/.claude/skills/<name>/`) ran unconditionally every poll via non-atomic per-file `std::fs::copy`, so a concurrent job reading `SKILL.md` mid-copy could see a torn file;
+- the shared cache dir (keyed only by `project_id`+`skill_id`, not by runner instance) was rebuilt with `remove_dir_all` + repopulate, so two runner instances on the same host/project could race a cache read against a cache rebuild.
+
+Fix: (1) publish every directory (cache AND destination) via a staged-temp-dir + atomic `rename` swap (readers only ever see a complete old or new tree, never a partial one); (2) gate the destination copy on a `.hash` marker written *inside* the destination, so unchanged content is a true no-op; (3) serialize the per-skill critical section across runner instances with an exclusive `std::fs::File::lock` (std, stable since 1.89) on a lock file that lives alongside — not inside — the cache dir, so it survives the cache dir being swapped.
+
 ## Load-bearing — do NOT "clean" without a migration
 
 Verified against the forge-beta DB (2026-07-24) — these LOOK like dead legacy code but are not:

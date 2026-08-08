@@ -1494,8 +1494,8 @@ export const skillActivityEventTypes = [
   'job.ran.with',
   'skill.pinned',
   'charter.changed',
-  'body.reverted',
 ] as const;
+// cm:why 'body.reverted' removed — no revert action exists to emit it; re-add when one ships.
 export type SkillActivityEventType = (typeof skillActivityEventTypes)[number];
 
 export const skillActivityTriggers = [

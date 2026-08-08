@@ -25,7 +25,6 @@ export const SKILL_ACTIVITY_EVENT_TYPES = [
   'job.ran.with',
   'skill.pinned',
   'charter.changed',
-  'body.reverted',
 ] as const;
 export type SkillActivityEventType = (typeof SKILL_ACTIVITY_EVENT_TYPES)[number];
 
