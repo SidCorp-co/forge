@@ -60,6 +60,10 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/check-source-language.mjs --all
+      # Test-signal guard: fails only when a test file gets MORE
+      # declaration-restating or mock-only assertions than its frozen baseline
+      # (.forge/test-signal-baseline.json). Same contract as the codemap baseline.
+      - run: node scripts/check-test-signal.mjs --all
 
   # codemap/1 declared-edge layer (.forge/codemap.json + .forge/codemap-baseline.json).
   # Always-on and ungated by paths-filter: a cm:edge target can be left dangling by

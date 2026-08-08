@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-08-08T22:47:06.781Z",
+  "files": {
+    "packages/core/src/db/schema.test.ts": {
+      "declaration": 246,
+      "mock": 0
+    },
+    "packages/core/src/integrations/rocketchat/agent-chat-bridge.test.ts": {
+      "declaration": 0,
+      "mock": 24
+    },
+    "packages/core/src/jobs/finalize-failure.test.ts": {
+      "declaration": 0,
+      "mock": 26
+    },
+    "packages/core/src/pipeline/orchestrator.test.ts": {
+      "declaration": 0,
+      "mock": 118
+    }
+  }
+}

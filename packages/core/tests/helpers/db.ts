@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { type PostgresJsDatabase, drizzle } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
 import { startPostgresContainer } from './container.js';
@@ -36,6 +37,9 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
   const mode = resolveMode();
 
   const workerId = process.env.VITEST_POOL_ID ?? '0';
+
+  const cloned = await cloneFromTemplate(workerId);
+  if (cloned) return cloned;
 
   let url: string;
   let teardown: () => Promise<void>;
@@ -79,6 +83,52 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
         await client.end({ timeout: 5 });
       } finally {
         await teardown();
+      }
+    },
+  };
+}
+
+/**
+ * Fast path: clone the already-migrated template built once by
+ * `tests/helpers/global-setup.ts`. Postgres copies the template at the file
+ * level, so this replaces a per-file container boot AND a full migration
+ * replay with a single `CREATE DATABASE`.
+ *
+ * Returns null when global setup did not run (e.g. a test invoked through a
+ * config without `globalSetup`), so the original container/schema paths stay
+ * as the fallback.
+ */
+// cm:edge contract -> packages/core/tests/helpers/global-setup.ts — reads the two env names that file exports; rename one there and every worker silently falls back to the slow per-file container path
+async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null> {
+  const adminUrl = process.env.TEST_PG_ADMIN_URL;
+  const template = process.env.TEST_PG_TEMPLATE;
+  if (!adminUrl || !template) return null;
+
+  const dbName = `test_w${workerId}_${randomBytes(4).toString('hex')}`;
+
+  const admin = postgres(adminUrl, { max: 1 });
+  try {
+    await admin.unsafe(`CREATE DATABASE "${dbName}" TEMPLATE "${template}"`);
+  } finally {
+    await admin.end({ timeout: 5 });
+  }
+
+  const url = new URL(adminUrl);
+  url.pathname = `/${dbName}`;
+  const client = postgres(url.toString(), { max: 4, onnotice: () => {} });
+
+  return {
+    db: drizzle(client, {}),
+    mode: 'container',
+    client,
+    url: url.toString(),
+    cleanup: async () => {
+      await client.end({ timeout: 5 }).catch(() => {});
+      const dropper = postgres(adminUrl, { max: 1 });
+      try {
+        await dropper.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+      } finally {
+        await dropper.end({ timeout: 5 });
       }
     },
   };

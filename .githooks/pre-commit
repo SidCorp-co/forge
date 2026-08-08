@@ -36,3 +36,12 @@ if ! node "$repo_root/scripts/check-source-language.mjs" --staged; then
   echo "[pre-commit] To bypass (use sparingly): SKIP_LANG_CHECK=1 git commit ..."
   exit 1
 fi
+
+if [ -f "$repo_root/scripts/check-test-signal.mjs" ]; then
+  if ! node "$repo_root/scripts/check-test-signal.mjs" --staged; then
+    echo ""
+    echo "[pre-commit] FAIL: a staged test file asserts mostly declarations or mock calls (see above)."
+    echo "[pre-commit] Assert on behaviour, or re-freeze: node scripts/check-test-signal.mjs --update-baseline"
+    exit 1
+  fi
+fi
