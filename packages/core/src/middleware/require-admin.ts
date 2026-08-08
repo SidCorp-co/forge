@@ -16,6 +16,33 @@ function parseAdminList(): string[] {
 }
 
 /**
+ * Throws 401/403 unless `userId` is on the ADMIN_EMAILS allow-list. The
+ * standalone check behind `requireAdmin()`, also usable inline inside a
+ * handler that only needs the admin gate on one branch (e.g. a query-param
+ * dependent view) rather than the whole route.
+ */
+export async function assertPlatformAdmin(userId: string): Promise<void> {
+  const [user] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!user) {
+    throw new HTTPException(401, {
+      message: 'user not found',
+      cause: { code: 'UNAUTHENTICATED' },
+    });
+  }
+  const allowed = parseAdminList();
+  if (!allowed.includes(user.email.toLowerCase())) {
+    throw new HTTPException(403, {
+      message: 'admin access required',
+      cause: { code: 'ADMIN_ONLY' },
+    });
+  }
+}
+
+/**
  * Gate a route behind the ADMIN_EMAILS allow-list. Assumes `requireAuth()`
  * + `assertEmailVerified()` already ran upstream. Returns 403 ADMIN_ONLY
  * when the authenticated user's email is not in the list (including the
@@ -23,25 +50,7 @@ function parseAdminList(): string[] {
  */
 export function requireAdmin(): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
-    const userId = c.get('userId');
-    const [user] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    if (!user) {
-      throw new HTTPException(401, {
-        message: 'user not found',
-        cause: { code: 'UNAUTHENTICATED' },
-      });
-    }
-    const allowed = parseAdminList();
-    if (!allowed.includes(user.email.toLowerCase())) {
-      throw new HTTPException(403, {
-        message: 'admin access required',
-        cause: { code: 'ADMIN_ONLY' },
-      });
-    }
+    await assertPlatformAdmin(c.get('userId'));
     await next();
   };
 }
