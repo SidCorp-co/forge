@@ -1,8 +1,16 @@
 # RFC 0001 — Skill delta-override composition
 
-- Status: **Draft**
+- Status: **Partially superseded by ISS-795**
 - Author: owner + agent session 2026-07-02
-- Tracking: prerequisite work in ISS-605 (lineage stamp + rebase lane)
+- Tracking: prerequisite work in ISS-605 (lineage stamp)
+
+> **ISS-795 supersedure note (2026-08-08):** The delta-render **mechanism** proposed
+> here (delta-compose at write time, `@append`/`@replace` operators) was **not
+> adopted** — the owner chose direct-body writes by the Master agent instead. The
+> **last-good-on-conflict** idea (flag `delta-conflict`, keep last-good body) is
+> **retained** as a general resilience principle. The rebase-lane described below
+> (drafting a `skill-rebase` issue on conflict) was **removed** (commit `e21f127c`,
+> 2026-08-06); do not reintroduce it. See ISS-795 for the current canonical design.
 
 ## Summary
 
@@ -28,7 +36,7 @@ pnpm turbo build --filter=api...
 Merge to `develop`, never `main` (gitflow).
 ```
 
-Materialization: `effective = render(template_vN, delta)`. When the template bumps to vN+1, delta-only skills re-render automatically (behind the ISS-605 visibility sweep + explicit sync — no silent device push). A delta that no longer applies (anchor section gone) fails render → the skill is flagged `delta-conflict` and falls back to the last-good materialized body; a rebase issue is drafted, same lane as ISS-605.
+Materialization: `effective = render(template_vN, delta)`. When the template bumps to vN+1, delta-only skills re-render automatically (behind the ISS-605 visibility sweep + explicit sync — no silent device push). A delta that no longer applies (anchor section gone) fails render → the skill is flagged `delta-conflict` and falls back to the last-good materialized body.
 
 Full copy (today's model) remains valid: skills without `extends` behave exactly as now.
 
