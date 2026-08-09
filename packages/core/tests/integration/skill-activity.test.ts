@@ -22,6 +22,7 @@ describe('skill-activity log integration (ISS-797)', () => {
   let harness: TestDatabase;
   let schema: typeof import('../../src/db/schema.js');
   let recordSkillActivityEvent: RecordEventFn;
+  let applyReconcileRun: (runId: string, actorUserId: string) => Promise<void>;
   let checkSkillActivityChainIntegrity: CheckChainIntegrityFn;
   let listBySkill: ListBySkillFn;
   let listByDevice: ListByDeviceFn;
@@ -44,6 +45,7 @@ describe('skill-activity log integration (ISS-797)', () => {
 
     schema = await import('../../src/db/schema.js');
     ({ recordSkillActivityEvent } = await import('../../src/skills/activity.js'));
+    ({ applyReconcileRun } = await import('../../src/skills/reconcile-service.js'));
     ({ checkSkillActivityChainIntegrity } = await import(
       '../../src/skills/activity-chain-integrity.js'
     ));
@@ -253,5 +255,52 @@ describe('skill-activity log integration (ISS-797)', () => {
       loggedHash: 'hash-logged-mismatch',
       installedHash: 'hash-installed',
     });
+  });
+
+  it('applyReconcileRun emits skill.body.changed with afterHash = hashSkillBody(body, files) — real hash path (ISS-798 BLOCKER C)', async () => {
+    // cm:why exercises the REAL reconcile->publish path with a skill that has files.
+    // Prior fix hand-seeded skill.body.changed with an arbitrary hash, masking the formula mismatch.
+    const { hashSkillBody } = await import('../../src/skills/hash.js');
+
+    const { user, project, skill } = await seedProjectSkill('old-hash');
+    const files = [{ path: 'GUIDE.md', content: '# Guide\nReference content.' }];
+    // give the skill reference files (the pattern that caused BLOCKER C)
+    await harness.db.update(schema.skills).set({ files }).where(eq(schema.skills.id, skill.id));
+
+    const candidateBody = 'updated skill body v2';
+    const expectedHash = hashSkillBody(candidateBody, files);
+    // a files-less hash would differ — assert the test would catch the wrong formula
+    const filesLessHash = hashSkillBody(candidateBody, null);
+    expect(expectedHash).not.toBe(filesLessHash);
+
+    // seed a decided reconcile run for the skill
+    const [run] = await harness.db
+      .insert(schema.reconcileRuns)
+      .values({
+        projectId: project.id,
+        skillId: skill.id,
+        status: 'decided',
+        verdict: 'apply',
+        gate: 'human',
+        candidateBody,
+        lastGoodHash: 'old-hash',
+        // bundle has a DB default of {} — omit to let the default apply
+      })
+      .returning();
+    if (!run) throw new Error('reconcileRuns insert returned no row');
+
+    await applyReconcileRun(run.id, user.id);
+
+    const events = await listBySkill({ projectId: project.id, skillId: skill.id });
+    const changed = events.find((e: { eventType: string }) => e.eventType === 'skill.body.changed');
+    expect(changed).toBeDefined();
+    expect(changed?.afterHash).toBe(expectedHash);
+
+    // verify contentHash on the skills row was also updated correctly
+    const [updatedSkill] = await harness.db
+      .select({ contentHash: schema.skills.contentHash })
+      .from(schema.skills)
+      .where(eq(schema.skills.id, skill.id));
+    expect(updatedSkill?.contentHash).toBe(expectedHash);
   });
 });

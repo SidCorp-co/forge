@@ -129,9 +129,14 @@ pub async fn sync_bound_projects(
             }
         };
 
-        let outcome = skill_sync::sync_skills(client, &project_id, &resolved.repo_path)
-            .await
-            .map_err(|e| e.to_string());
+        let outcome = match skill_sync::sync_skills(client, &project_id, &resolved.repo_path).await
+        {
+            Ok(n) => Ok(n),
+            Err(e) => {
+                skill_sync::report_sync_failure(client, &project_id, &e).await;
+                Err(e.to_string())
+            }
+        };
         results.push(ProjectSyncResult {
             project_id,
             slug: resolved.slug,

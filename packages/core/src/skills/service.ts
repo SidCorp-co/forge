@@ -217,11 +217,23 @@ export async function registerSkillForProject(
       }
     }
 
-    await db
-      .delete(skillRegistrations)
-      .where(
-        and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
-      );
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(skillRegistrations)
+        .where(
+          and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
+        );
+      if (reg) {
+        await recordSkillActivityEvent(tx, {
+          eventType: 'manifest.changed',
+          actor: `human:${actorUserId}`,
+          trigger: 'manual',
+          projectId,
+          skillId,
+          deltaSummary: `unregistered from ${reg.stage}`,
+        });
+      }
+    });
     await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage: null });
     return { projectId, skillId, stage: null };
   }
@@ -255,6 +267,14 @@ export async function registerSkillForProject(
           ne(skillRegistrations.stage, stage),
         ),
       );
+    await recordSkillActivityEvent(tx, {
+      eventType: 'manifest.changed',
+      actor: `human:${actorUserId}`,
+      trigger: 'manual',
+      projectId,
+      skillId,
+      deltaSummary: `registered at stage ${stage}`,
+    });
   });
 
   await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage });

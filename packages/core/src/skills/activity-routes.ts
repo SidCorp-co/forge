@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
+import { checkSkillActivityChainIntegrity } from './activity-chain-integrity.js';
 import { listByDevice, listByPacket, listBySkill, summarizeByEventType } from './activity-views.js';
 
 const badRequest = (details: unknown) =>
@@ -58,4 +59,11 @@ skillActivityRoutes.get('/', async (c) => {
 
   const events = await listBySkill(skillId ? { projectId, skillId } : { projectId });
   return c.json({ view: 'by-skill', projectId, skillId: skillId ?? null, events });
+});
+
+// cm:why the §7 self-check (activity-chain-integrity.ts) had no operational surface before this — only an integration test called it, so a broken chain in production went undetected (ISS-798 fix review).
+skillActivityRoutes.get('/chain-integrity', async (c) => {
+  await assertPlatformAdmin(c.get('userId'));
+  const report = await checkSkillActivityChainIntegrity();
+  return c.json(report);
 });

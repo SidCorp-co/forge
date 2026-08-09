@@ -482,6 +482,28 @@ describe('F2 skill routes integration', () => {
     });
   });
 
+  it('register: records a manifest.changed activity event (ISS-798 fix)', async () => {
+    const { user, project } = await seedProjectWith('admin');
+    const skillId = await seedSkill(project.id);
+    const token = await signUserToken(user.id);
+
+    const res = await app.request(`/api/projects/${project.id}/skills/${skillId}/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ stage: 'approved' }),
+    });
+    expect(res.status).toBe(200);
+
+    const rows = await harness.db.execute<{ event_type: string; delta_summary: string | null }>(
+      sql`SELECT event_type, delta_summary FROM skill_activity_events WHERE project_id = ${project.id} AND skill_id = ${skillId}`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      event_type: 'manifest.changed',
+      delta_summary: 'registered at stage approved',
+    });
+  });
+
   it('register: stage=null clears the registration', async () => {
     const { user, project } = await seedProjectWith('admin');
     const skillId = await seedSkill(project.id);
