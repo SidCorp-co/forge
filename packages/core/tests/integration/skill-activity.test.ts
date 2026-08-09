@@ -265,10 +265,7 @@ describe('skill-activity log integration (ISS-797)', () => {
     const { user, project, skill } = await seedProjectSkill('old-hash');
     const files = [{ path: 'GUIDE.md', content: '# Guide\nReference content.' }];
     // give the skill reference files (the pattern that caused BLOCKER C)
-    await harness.db
-      .update(schema.skills)
-      .set({ files })
-      .where(eq(schema.skills.id, skill.id));
+    await harness.db.update(schema.skills).set({ files }).where(eq(schema.skills.id, skill.id));
 
     const candidateBody = 'updated skill body v2';
     const expectedHash = hashSkillBody(candidateBody, files);
