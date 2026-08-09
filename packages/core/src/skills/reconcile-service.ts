@@ -38,8 +38,8 @@ import { logger } from '../logger.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
-import { ensurePolicyLandedFor } from './policy-landed.js';
 import { hashSkillBody } from './hash.js';
+import { ensurePolicyLandedFor } from './policy-landed.js';
 
 // cm:why omits undefined keys — exactOptionalPropertyTypes rejects `{ x: undefined }`, so nullable DB columns must be filtered before forwarding to RecordSkillActivityEventInput.
 async function logActivity(
@@ -632,17 +632,24 @@ export async function spawnReconcileRun(input: {
     .limit(1);
 
   if (pinnedRow?.pinned) {
+    const detail = pinnedRow.pinnedReason
+      ? `skill is pinned: ${pinnedRow.pinnedReason}`
+      : 'skill is pinned (intentional divergence)';
     logger.info(
       { projectId: input.projectId, skillId: input.skillId, packetId: input.packetId },
       'reconcile.refused.pinned',
     );
-    return {
-      ok: false,
-      reason: 'pinned',
-      detail: pinnedRow.pinnedReason
-        ? `skill is pinned: ${pinnedRow.pinnedReason}`
-        : 'skill is pinned (intentional divergence)',
-    };
+    await logActivity(db, {
+      eventType: 'reconcile.failed',
+      actor: `human:${input.actorUserId}`,
+      trigger: 'manual',
+      projectId: input.projectId,
+      skillId: input.skillId,
+      packetId: input.packetId,
+      reason: detail,
+      outcome: 'skipped',
+    });
+    return { ok: false, reason: 'pinned', detail };
   }
 
   // cm:why self-heal before assembling — the boot sweep only sees projects that existed at boot,
@@ -658,11 +665,20 @@ export async function spawnReconcileRun(input: {
   });
 
   if (!assembled.ok) {
-    // cm:guard no reconcile_runs row exists yet for a C1–C5 refusal — do NOT call recordSkillActivityEvent (needs a run-scoped tx); log only.
     logger.info(
       { projectId: input.projectId, packetId: input.packetId, reason: assembled.refusalReason },
       'reconcile.refused.c1c5',
     );
+    await logActivity(db, {
+      eventType: 'reconcile.failed',
+      actor: `human:${input.actorUserId}`,
+      trigger: 'manual',
+      projectId: input.projectId,
+      skillId: input.skillId,
+      packetId: input.packetId,
+      reason: assembled.refusalReason,
+      outcome: 'skipped',
+    });
     return { ok: false, reason: 'c1-c5-refused', detail: assembled.refusalReason };
   }
 
@@ -675,6 +691,16 @@ export async function spawnReconcileRun(input: {
     .limit(1);
 
   if (!runnerRow) {
+    await logActivity(db, {
+      eventType: 'reconcile.failed',
+      actor: `human:${input.actorUserId}`,
+      trigger: 'manual',
+      projectId: input.projectId,
+      skillId: input.skillId,
+      packetId: input.packetId,
+      reason: 'no online runner bound to this project',
+      outcome: 'skipped',
+    });
     return { ok: false, reason: 'no-runner', detail: 'no online runner bound to this project' };
   }
 

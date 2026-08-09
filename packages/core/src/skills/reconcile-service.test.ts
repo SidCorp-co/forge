@@ -3,21 +3,32 @@ import { describe, expect, it, vi } from 'vitest';
 
 // Mock DB client so these unit tests run without Postgres (same pattern as service.test.ts)
 const dbStub = vi.hoisted(() => ({ rows: [] as unknown[] }));
-vi.mock('../db/client.js', () => ({
-  db: {
-    select: () => ({
-      from: () => ({ where: () => ({ limit: () => dbStub.rows }) }),
-    }),
-  },
-}));
+vi.mock('../db/client.js', () => {
+  const build = (): unknown => ({
+    from: () => build(),
+    where: () => build(),
+    limit: () => Promise.resolve(dbStub.rows),
+    leftJoin: () => build(),
+    orderBy: () => build(),
+    groupBy: () => build(),
+  });
+  return { db: { select: () => build() } };
+});
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../pipeline/runs.js', () => ({ openOneShotRun: vi.fn() }));
 vi.mock('../jobs/enqueue.js', () => ({ enqueueReconcileJob: vi.fn() }));
+const activityMock = vi.hoisted(() => ({ recordSkillActivityEvent: vi.fn() }));
+vi.mock('./activity.js', () => ({
+  recordSkillActivityEvent: activityMock.recordSkillActivityEvent,
+}));
+vi.mock('./policy-landed.js', () => ({
+  ensurePolicyLandedFor: vi.fn().mockResolvedValue(false),
+}));
 
 import { reconcileGates, reconcileRunStatuses, reconcileVerdicts } from '../db/schema.js';
-import { classifyGate, validateC1C5 } from './reconcile-service.js';
+import { classifyGate, spawnReconcileRun, validateC1C5 } from './reconcile-service.js';
 
 // Parity: contracts/reconcile.ts tuples must mirror db/schema.ts
 describe('reconcile contract parity', () => {
@@ -147,5 +158,44 @@ describe('validateC1C5', () => {
       sources: { ...validBundle.sources, runningBody: 'agent-assertion' },
     });
     expect(reason).toMatch(/C4.*runningBody/);
+  });
+});
+
+describe('spawnReconcileRun — refusal events', () => {
+  const input = {
+    projectId: 'proj-1',
+    packetId: 'pkt-1',
+    skillId: 'skill-1',
+    actorUserId: 'user-1',
+  };
+
+  it('pinned: emits reconcile.failed/skipped event', async () => {
+    dbStub.rows = [{ pinned: true, pinnedReason: 'intentional divergence' }];
+    activityMock.recordSkillActivityEvent.mockClear();
+    const result = await spawnReconcileRun(input);
+    expect(result).toMatchObject({ ok: false, reason: 'pinned' });
+    expect(activityMock.recordSkillActivityEvent).toHaveBeenCalledOnce();
+    expect(activityMock.recordSkillActivityEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: 'reconcile.failed',
+        outcome: 'skipped',
+        projectId: input.projectId,
+        skillId: input.skillId,
+        packetId: input.packetId,
+      }),
+    );
+  });
+
+  it('c1-c5-refused: emits reconcile.failed/skipped event with refusal reason', async () => {
+    dbStub.rows = [];
+    activityMock.recordSkillActivityEvent.mockClear();
+    const result = await spawnReconcileRun(input);
+    expect(result).toMatchObject({ ok: false, reason: 'c1-c5-refused' });
+    expect(activityMock.recordSkillActivityEvent).toHaveBeenCalledOnce();
+    const call = activityMock.recordSkillActivityEvent.mock.calls[0][1];
+    expect(call.eventType).toBe('reconcile.failed');
+    expect(call.outcome).toBe('skipped');
+    expect(call.reason).toMatch(/C1/);
   });
 });
