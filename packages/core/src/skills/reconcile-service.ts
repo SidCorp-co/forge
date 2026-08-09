@@ -38,6 +38,7 @@ import { logger } from '../logger.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
+import { ensurePolicyLandedFor } from './policy-landed.js';
 import { hashSkillBody } from './hash.js';
 
 // cm:why omits undefined keys — exactOptionalPropertyTypes rejects `{ x: undefined }`, so nullable DB columns must be filtered before forwarding to RecordSkillActivityEventInput.
@@ -643,6 +644,12 @@ export async function spawnReconcileRun(input: {
         : 'skill is pinned (intentional divergence)',
     };
   }
+
+  // cm:why self-heal before assembling — the boot sweep only sees projects that existed at boot,
+  // so a project created since would otherwise carry an empty bundle item 11 (ISS-795 stage ①)
+  await ensurePolicyLandedFor(input.projectId).catch((err) =>
+    logger.warn({ err, projectId: input.projectId }, 'reconcile.policyLanded.ensure.failed'),
+  );
 
   const assembled = await assembleBundle({
     projectId: input.projectId,

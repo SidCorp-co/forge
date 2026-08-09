@@ -173,6 +173,7 @@ import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/ru
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import { skillActivityRoutes } from './skills/activity-routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
+import { sweepPolicyLanded } from './skills/policy-landed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
 import { reconcileRoutes } from './skills/reconcile-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
@@ -519,6 +520,8 @@ if (isMain) {
       contentHash: change.contentHash,
     });
   }
+  // cm:why here, beside the skill seed — the platform invariant set lives in code, so a deploy is exactly when it can change (ISS-795 stage ①)
+  await sweepPolicyLanded();
   await seedDomainTemplates(db);
   if (isEnabled('chatProvider')) {
     bootstrapChatProviders();
