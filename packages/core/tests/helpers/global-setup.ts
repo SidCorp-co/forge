@@ -43,7 +43,7 @@ async function buildTemplate(adminUrl: string): Promise<void> {
 
 export async function setup(_project: TestProject): Promise<void> {
   // cm:why an operator-supplied Postgres wins over a container — it skips the 6.2s boot entirely
-  let adminUrl = process.env['TEST_DATABASE_URL'];
+  let adminUrl = process.env.TEST_DATABASE_URL;
 
   if (!adminUrl) {
     const { startPostgresContainer } = await import('./container.js');
@@ -55,8 +55,8 @@ export async function setup(_project: TestProject): Promise<void> {
   await buildTemplate(adminUrl);
 
   // cm:edge contract -> packages/core/tests/helpers/db.ts — these two env names are the whole handshake; renaming one here silently reverts every worker to the slow per-file container path
-  process.env['TEST_PG_ADMIN_URL'] = adminUrl;
-  process.env['TEST_PG_TEMPLATE'] = TEMPLATE_DB;
+  process.env.TEST_PG_ADMIN_URL = adminUrl;
+  process.env.TEST_PG_TEMPLATE = TEMPLATE_DB;
 }
 
 export async function teardown(): Promise<void> {

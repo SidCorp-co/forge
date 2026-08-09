@@ -55,7 +55,6 @@ const BASE_INPUTS = {
 
 describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   it('flag-OFF output (agentConfig source) matches flag-ON output (knowledge_entries source)', async () => {
-
     const flagOff = renderStageFactsText(
       {
         ...BASE_INPUTS,
@@ -80,7 +79,6 @@ describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   });
 
   it('both branches use forge_knowledge pointer (not forge_config)', async () => {
-
     for (const [alwaysInjectFacts, projectFactKeys, label] of [
       [alwaysInjectFromConfig, onDemandKeysFromConfig, 'flag-OFF'] as const,
       [alwaysInjectFromKnowledge, onDemandKeysFromKnowledge, 'flag-ON'] as const,
@@ -119,7 +117,6 @@ describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   });
 
   it('on-demand keys appear in fetch index, not inlined', async () => {
-
     for (const [alwaysInjectFacts, projectFactKeys, label] of [
       [alwaysInjectFromConfig, onDemandKeysFromConfig, 'flag-OFF'] as const,
       [alwaysInjectFromKnowledge, onDemandKeysFromKnowledge, 'flag-ON'] as const,
