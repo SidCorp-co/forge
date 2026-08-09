@@ -363,7 +363,7 @@ interface InstalledRow {
   installedHash: string;
   installedVersion: number | null;
   syncedAt: Date | string | null;
-  // cm:why null for pre-0.7.0 runners that never sent observation fields
+  // cm:why null below runner 0.7.1 — 0.7.0 shipped before observation, so the version string alone cannot discriminate; absence of the field is the signal
   observedSha: string | null;
   shadowedBy: string | null;
 }

@@ -70,7 +70,7 @@ const reportBodySchema = z
             skillId: z.uuid(),
             installedHash: z.string().min(1).max(128),
             installedVersion: z.number().int().nonnegative().optional(),
-            // cm:why both absent on pre-0.7.0 runners — server treats a null observedSha as `unknown`, never `synced`
+            // cm:why both absent below runner 0.7.1 — server treats a null observedSha as `unknown`, never `synced`. NOT 0.7.0: that version shipped BEFORE observation, so two different 0.7.0 builds exist and the version string alone cannot discriminate — the presence of the fields is the only reliable signal
             observedSha: z.string().min(1).max(128).optional(),
             shadowedBy: z.string().max(1024).optional(),
           })
