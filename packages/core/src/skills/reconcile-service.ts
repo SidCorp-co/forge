@@ -38,8 +38,8 @@ import { logger } from '../logger.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
-import { ensurePolicyLandedFor } from './policy-landed.js';
 import { hashSkillBody } from './hash.js';
+import { ensurePolicyLandedFor } from './policy-landed.js';
 
 // cm:why omits undefined keys — exactOptionalPropertyTypes rejects `{ x: undefined }`, so nullable DB columns must be filtered before forwarding to RecordSkillActivityEventInput.
 async function logActivity(
@@ -630,19 +630,28 @@ export async function spawnReconcileRun(input: {
     .from(skills)
     .where(eq(skills.id, input.skillId))
     .limit(1);
+  // cm:guard skill_activity_events.skill_id FKs to skills(id) — only forward input.skillId to logActivity below when this query proved the row exists, else the insert 23503s (ISS-801 review BLOCKER AD).
+  const skillRowExists = pinnedRow !== undefined;
 
   if (pinnedRow?.pinned) {
+    const detail = pinnedRow.pinnedReason
+      ? `skill is pinned: ${pinnedRow.pinnedReason}`
+      : 'skill is pinned (intentional divergence)';
     logger.info(
       { projectId: input.projectId, skillId: input.skillId, packetId: input.packetId },
       'reconcile.refused.pinned',
     );
-    return {
-      ok: false,
-      reason: 'pinned',
-      detail: pinnedRow.pinnedReason
-        ? `skill is pinned: ${pinnedRow.pinnedReason}`
-        : 'skill is pinned (intentional divergence)',
-    };
+    await logActivity(db, {
+      eventType: 'reconcile.failed',
+      actor: `human:${input.actorUserId}`,
+      trigger: 'manual',
+      projectId: input.projectId,
+      skillId: input.skillId,
+      packetId: input.packetId,
+      reason: detail,
+      outcome: 'skipped',
+    });
+    return { ok: false, reason: 'pinned', detail };
   }
 
   // cm:why self-heal before assembling — the boot sweep only sees projects that existed at boot,
@@ -658,11 +667,20 @@ export async function spawnReconcileRun(input: {
   });
 
   if (!assembled.ok) {
-    // cm:guard no reconcile_runs row exists yet for a C1–C5 refusal — do NOT call recordSkillActivityEvent (needs a run-scoped tx); log only.
     logger.info(
       { projectId: input.projectId, packetId: input.packetId, reason: assembled.refusalReason },
       'reconcile.refused.c1c5',
     );
+    await logActivity(db, {
+      eventType: 'reconcile.failed',
+      actor: `human:${input.actorUserId}`,
+      trigger: 'manual',
+      projectId: input.projectId,
+      skillId: skillRowExists ? input.skillId : null,
+      packetId: input.packetId,
+      reason: assembled.refusalReason,
+      outcome: 'skipped',
+    });
     return { ok: false, reason: 'c1-c5-refused', detail: assembled.refusalReason };
   }
 
@@ -675,6 +693,16 @@ export async function spawnReconcileRun(input: {
     .limit(1);
 
   if (!runnerRow) {
+    await logActivity(db, {
+      eventType: 'reconcile.failed',
+      actor: `human:${input.actorUserId}`,
+      trigger: 'manual',
+      projectId: input.projectId,
+      skillId: input.skillId,
+      packetId: input.packetId,
+      reason: 'no online runner bound to this project',
+      outcome: 'skipped',
+    });
     return { ok: false, reason: 'no-runner', detail: 'no online runner bound to this project' };
   }
 
@@ -1067,9 +1095,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       const candidateBody = runRow.candidateBody ?? '';
       const lastGoodHash = runRow.lastGoodHash;
 
-      // cm:why fetch existing files before update — reconcile only changes skillMd; files stay.
-      // effectiveHash = hashSkillBody(md, files) matches what the runner echoes as installedHash,
-      // enabling resolvePacketIdForHash to link device.skill.* events to this packet (ISS-798 BLOCKER C).
+      // cm:why fetch existing files before update (reconcile only changes skillMd) so effectiveHash matches what the runner echoes as installedHash, letting resolvePacketIdForHash link device.skill.* events (ISS-798 BLOCKER C).
       const [skillRow] = await tx
         .select({ files: skills.files })
         .from(skills)
@@ -1134,10 +1160,8 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
     const candidateBody = runRow.candidateBody ?? '';
     const lastGoodHash = runRow.lastGoodHash;
 
-    // cm:why fetch existing files before update — reconcile only changes skillMd; files stay.
-    // effectiveHash = hashSkillBody(md, files) matches what the runner echoes as installedHash,
-    // enabling resolvePacketIdForHash to link device.skill.* events to this packet (ISS-798 BLOCKER C).
-    const skillIdForPublish = runRow.skillId; // narrowed — guard above throws on null
+    // cm:why fetch existing files before update (reconcile only changes skillMd) so effectiveHash matches what the runner echoes as installedHash, letting resolvePacketIdForHash link device.skill.* events (ISS-798 BLOCKER C).
+    const skillIdForPublish = runRow.skillId;
     const [skillRow] = await tx
       .select({ files: skills.files })
       .from(skills)

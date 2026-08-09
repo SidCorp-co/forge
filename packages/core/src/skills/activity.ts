@@ -58,7 +58,7 @@ export async function resolvePacketIdForHash(
 }
 
 /** Append one row to the skill-update activity log (Update Pipeline §7 / §9.11). */
-// cm:guard Call ONLY inside the same db.transaction as the state change it describes (pass `tx`, never bare `db`) — no swallow-errors wrapper exists on purpose, per invariant §9.11.
+// cm:guard pass `tx` (never bare `db`) when the event accompanies a state change, so it commits atomically with it (§9.11); a pre-run refusal that changes no state may pass bare `db`, but the caller must then tolerate this write itself failing — no swallow-errors wrapper exists on purpose.
 export async function recordSkillActivityEvent(
   executor: SkillActivityExecutor,
   input: RecordSkillActivityEventInput,
