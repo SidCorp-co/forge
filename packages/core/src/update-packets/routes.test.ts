@@ -125,7 +125,7 @@ describe('POST /api/update-packets', () => {
       body: JSON.stringify(VALID_BODY),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = (await res.json()) as { id: string };
     expect(body.id).toBe('packet-uuid-1');
     expect(createUpdatePacket).toHaveBeenCalledWith(
       expect.anything(),

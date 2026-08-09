@@ -1,13 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { checkSkillActivityChainIntegrity as CheckChainIntegrityFn } from '../../src/skills/activity-chain-integrity.js';
-import type {
-  listByDevice as ListByDeviceFn,
-  listByPacket as ListByPacketFn,
-  listBySkill as ListBySkillFn,
-  summarizeByEventType as SummarizeByEventTypeFn,
-} from '../../src/skills/activity-views.js';
-import type { recordSkillActivityEvent as RecordEventFn } from '../../src/skills/activity.js';
+import type { SkillActivityExecutor } from '../../src/skills/activity.js';
 import {
   type TestDatabase,
   createTestDevice,
@@ -21,13 +14,13 @@ import {
 describe('skill-activity log integration (ISS-797)', () => {
   let harness: TestDatabase;
   let schema: typeof import('../../src/db/schema.js');
-  let recordSkillActivityEvent: RecordEventFn;
+  let recordSkillActivityEvent: typeof import('../../src/skills/activity.js').recordSkillActivityEvent;
   let applyReconcileRun: (runId: string, actorUserId: string) => Promise<void>;
-  let checkSkillActivityChainIntegrity: CheckChainIntegrityFn;
-  let listBySkill: ListBySkillFn;
-  let listByDevice: ListByDeviceFn;
-  let listByPacket: ListByPacketFn;
-  let summarizeByEventType: SummarizeByEventTypeFn;
+  let checkSkillActivityChainIntegrity: typeof import('../../src/skills/activity-chain-integrity.js').checkSkillActivityChainIntegrity;
+  let listBySkill: typeof import('../../src/skills/activity-views.js').listBySkill;
+  let listByDevice: typeof import('../../src/skills/activity-views.js').listByDevice;
+  let listByPacket: typeof import('../../src/skills/activity-views.js').listByPacket;
+  let summarizeByEventType: typeof import('../../src/skills/activity-views.js').summarizeByEventType;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -90,7 +83,7 @@ describe('skill-activity log integration (ISS-797)', () => {
           .update(schema.skills)
           .set({ contentHash: 'hash-v2' })
           .where(eq(schema.skills.id, skill.id));
-        await recordSkillActivityEvent(tx, {
+        await recordSkillActivityEvent(tx as unknown as SkillActivityExecutor, {
           eventType: 'skill.body.changed',
           actor: 'agent:master',
           trigger: 'poll',
@@ -123,7 +116,7 @@ describe('skill-activity log integration (ISS-797)', () => {
         .update(schema.skills)
         .set({ contentHash: 'hash-v2' })
         .where(eq(schema.skills.id, skill.id));
-      await recordSkillActivityEvent(tx, {
+      await recordSkillActivityEvent(tx as unknown as SkillActivityExecutor, {
         eventType: 'skill.body.changed',
         actor: 'agent:master',
         trigger: 'poll',
@@ -169,7 +162,7 @@ describe('skill-activity log integration (ISS-797)', () => {
         installedHash: 'hash-v1',
         syncedAt: new Date(),
       });
-      await recordSkillActivityEvent(tx, {
+      await recordSkillActivityEvent(tx as unknown as SkillActivityExecutor, {
         eventType: 'device.skill.applied',
         actor: `runner:${device.id}`,
         trigger: 'poll',

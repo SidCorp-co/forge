@@ -50,7 +50,7 @@ const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 
 function buildApp() {
-  const app = new Hono();
+  const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
   app.route('/api/projects', skillSyncRoutes);
   app.onError(errorHandler);
