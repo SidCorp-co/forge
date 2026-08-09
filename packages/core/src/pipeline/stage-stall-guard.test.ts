@@ -11,6 +11,7 @@ const chain: any = {};
 chain.from = () => chain;
 chain.innerJoin = () => chain;
 chain.where = () => chain;
+chain.orderBy = () => chain;
 chain.limit = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
 // biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await — the mock must be thenable
@@ -66,7 +67,7 @@ describe('checkStageStallAndPause (ISS-631 — stage-genericity regression guard
     'pauses the run at STAGE_STALL_CAP done jobs for $status -> $jobType',
     async ({ status, jobType }) => {
       pushRunningRun();
-      queue.push([{ n: STAGE_STALL_CAP }]); // done-count query
+      queue.push(Array.from({ length: STAGE_STALL_CAP }, () => ({ type: jobType })));
       queue.push([{ createdBy: 'owner-1' }]); // postStageStalledComment lookup
 
       const result = await checkStageStallAndPause({
@@ -93,23 +94,56 @@ describe('checkStageStallAndPause (ISS-631 — stage-genericity regression guard
     },
   );
 
-  it.each([{ status: 'confirmed' as const }, { status: 'clarified' as const }])(
-    'does not pause below STAGE_STALL_CAP for $status',
-    async ({ status }) => {
-      pushRunningRun();
-      queue.push([{ n: STAGE_STALL_CAP - 1 }]);
+  it.each([
+    { status: 'confirmed' as const, jobType: 'clarify' },
+    { status: 'clarified' as const, jobType: 'plan' },
+  ])('does not pause below STAGE_STALL_CAP for $status', async ({ status, jobType }) => {
+    pushRunningRun();
+    queue.push(Array.from({ length: STAGE_STALL_CAP - 1 }, () => ({ type: jobType })));
 
-      const result = await checkStageStallAndPause({
-        projectId: PROJECT_ID,
-        issueId: ISSUE_ID,
-        status,
-      });
+    const result = await checkStageStallAndPause({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status,
+    });
 
-      expect(result).toEqual({ stalled: false });
-      expect(pauseRunMock).not.toHaveBeenCalled();
-      expect(insertValues).not.toHaveBeenCalled();
-    },
-  );
+    expect(result).toEqual({ stalled: false });
+    expect(pauseRunMock).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  // cm:why the ISS-801 wedge — `reopen` maps to `fix`, so a lifetime count made every issue that took >= 3 review->fix rounds impossible to reopen; a `test` job at the tail proves the stage advanced
+  it('does not pause a reopened issue whose run already completed many fix rounds', async () => {
+    pushRunningRun();
+    queue.push([{ type: 'test' }, { type: 'review' }, { type: 'fix' }]);
+
+    const result = await checkStageStallAndPause({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'reopen',
+    });
+
+    expect(result).toEqual({ stalled: false });
+    expect(pauseRunMock).not.toHaveBeenCalled();
+  });
+
+  it('still pauses a genuine no-op loop on reopen (3 consecutive fix jobs, nothing between)', async () => {
+    pushRunningRun();
+    queue.push([{ type: 'fix' }, { type: 'fix' }, { type: 'fix' }]);
+    queue.push([{ createdBy: 'owner-1' }]);
+
+    const result = await checkStageStallAndPause({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'reopen',
+    });
+
+    expect(result).toEqual({ stalled: true });
+    expect(pauseRunMock).toHaveBeenCalledWith({
+      runId: RUN_ID,
+      pauseReason: buildStageStalledReason('reopen'),
+    });
+  });
 
   it('returns stalled:false for a human-gated status without querying the db', async () => {
     const result = await checkStageStallAndPause({

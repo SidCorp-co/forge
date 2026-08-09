@@ -14,8 +14,8 @@
  * which keys on a missing `skill_registrations` row, never fires) the only
  * observable signal is the pathology itself: the SAME stage completes `done`
  * repeatedly under one run without ever advancing the issue past it. This
- * guard caps that: after `STAGE_STALL_CAP` done jobs of the stage's job type
- * in the open run, it PAUSES the run (typed reason) + posts an operator-facing
+ * guard caps that: after `STAGE_STALL_CAP` CONSECUTIVE done jobs of the stage's
+ * job type, it PAUSES the run (typed reason) + posts an operator-facing
  * comment instead of letting the reconciler re-enqueue a (K+1)th no-op.
  *
  * The true root fix (treat num_turns=0 / "Unknown command" as a runner-side
@@ -25,7 +25,7 @@
  * advances status).
  */
 
-import { and, count, eq, sql } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, comments, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -76,8 +76,9 @@ export interface StageStallCheckInput {
  *
  * Returns `{ stalled: true }` when the caller must SKIP re-enqueue:
  *  - the open run is already paused with a `stage_stalled:` reason, or
- *  - the stage's job type has completed `done` >= STAGE_STALL_CAP times in the
- *    open run (in which case this call effectively pauses the run + comments).
+ *  - the stage's job type has completed `done` >= STAGE_STALL_CAP times in a
+ *    row, with no other stage's job done in between (in which case this call
+ *    effectively pauses the run + comments).
  *
  * Returns `{ stalled: false }` for the normal rescue path (genuine crash-mid-
  * dispatch has zero done jobs of the type → count 0 → not stalled).
@@ -142,18 +143,22 @@ async function checkStageStallAndPauseInner(
     };
   }
 
-  const [row] = await db
-    .select({ n: count() })
+  // cm:guard count only the CONSECUTIVE tail of this stage's done jobs — a done job of another type in between is proof the issue advanced, which ends the no-op run this cap exists to bound
+  // cm:why a lifetime count wedges `reopen` forever — it maps to `fix`, so any run that legitimately took >= 3 review->fix rounds trips the cap the instant it is reopened and every resume re-pauses within seconds (ISS-801, run ac5b4ad0: 9 healthy fix jobs)
+  const recent = await db
+    .select({ type: jobs.type })
     .from(jobs)
     .where(
-      and(
-        eq(jobs.issueId, input.issueId),
-        eq(jobs.type, jobMap.type),
-        eq(jobs.status, 'done'),
-        eq(jobs.pipelineRunId, run.id),
-      ),
-    );
-  const doneCount = row?.n ?? 0;
+      and(eq(jobs.issueId, input.issueId), eq(jobs.status, 'done'), eq(jobs.pipelineRunId, run.id)),
+    )
+    .orderBy(desc(jobs.createdAt))
+    .limit(STAGE_STALL_CAP);
+
+  let doneCount = 0;
+  for (const job of recent) {
+    if (job.type !== jobMap.type) break;
+    doneCount += 1;
+  }
   if (doneCount < STAGE_STALL_CAP) return { stalled: false };
 
   // Effective pause via the shared pause writer (idempotent CAS on
