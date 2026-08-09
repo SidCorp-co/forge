@@ -1,16 +1,19 @@
 import { RECONCILE_GATES, RECONCILE_RUN_STATUSES, RECONCILE_VERDICTS } from '@forge/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
-// Mock DB client so these unit tests run without Postgres (same pattern as service.test.ts)
-const dbStub = vi.hoisted(() => ({ rows: [] as unknown[] }));
+// cm:why `tables`, when set, routes `.limit()` by the real table object passed to `.from()` so one query (e.g. runners) can resolve different rows than another (e.g. skills) in the same test; unset keeps every query resolving to `rows`.
+const dbStub = vi.hoisted(() => ({
+  rows: [] as unknown[],
+  tables: null as Map<unknown, unknown[]> | null,
+}));
 vi.mock('../db/client.js', () => {
-  const build = (): unknown => ({
-    from: () => build(),
-    where: () => build(),
-    limit: () => Promise.resolve(dbStub.rows),
-    leftJoin: () => build(),
-    orderBy: () => build(),
-    groupBy: () => build(),
+  const build = (table?: unknown): unknown => ({
+    from: (t: unknown) => build(t),
+    where: () => build(table),
+    limit: () => Promise.resolve(dbStub.tables ? (dbStub.tables.get(table) ?? []) : dbStub.rows),
+    leftJoin: () => build(table),
+    orderBy: () => build(table),
+    groupBy: () => build(table),
   });
   return { db: { select: () => build() } };
 });
@@ -27,10 +30,21 @@ vi.mock('./policy-landed.js', () => ({
   ensurePolicyLandedFor: vi.fn().mockResolvedValue(false),
 }));
 
-import { reconcileGates, reconcileRunStatuses, reconcileVerdicts } from '../db/schema.js';
+import {
+  divergenceCharters,
+  projects,
+  reconcileGates,
+  reconcileRunStatuses,
+  reconcileRuns,
+  reconcileVerdicts,
+  runners,
+  skillActivityEvents,
+  skills,
+  updatePackets,
+} from '../db/schema.js';
 import { classifyGate, spawnReconcileRun, validateC1C5 } from './reconcile-service.js';
 
-// Parity: contracts/reconcile.ts tuples must mirror db/schema.ts
+// cm:why contracts/reconcile.ts tuples must mirror db/schema.ts
 describe('reconcile contract parity', () => {
   it('RECONCILE_VERDICTS matches schema', () => {
     expect([...RECONCILE_VERDICTS].sort()).toEqual([...reconcileVerdicts].sort());
@@ -170,6 +184,7 @@ describe('spawnReconcileRun — refusal events', () => {
   };
 
   it('pinned: emits reconcile.failed/skipped event', async () => {
+    dbStub.tables = null;
     dbStub.rows = [{ pinned: true, pinnedReason: 'intentional divergence' }];
     activityMock.recordSkillActivityEvent.mockClear();
     const result = await spawnReconcileRun(input);
@@ -187,7 +202,8 @@ describe('spawnReconcileRun — refusal events', () => {
     );
   });
 
-  it('c1-c5-refused: emits reconcile.failed/skipped event with refusal reason', async () => {
+  it('c1-c5-refused: emits reconcile.failed/skipped event with refusal reason, omitting skillId for a nonexistent skill', async () => {
+    dbStub.tables = null;
     dbStub.rows = [];
     activityMock.recordSkillActivityEvent.mockClear();
     const result = await spawnReconcileRun(input);
@@ -197,5 +213,59 @@ describe('spawnReconcileRun — refusal events', () => {
     expect(call.eventType).toBe('reconcile.failed');
     expect(call.outcome).toBe('skipped');
     expect(call.reason).toMatch(/C1/);
+    // cm:why guards BLOCKER AD — forwarding skillId for a nonexistent skill would 23503 against skill_activity_events_skill_id_skills_id_fk.
+    expect(call.skillId).toBeUndefined();
+  });
+
+  it('no-runner: emits reconcile.failed/skipped event when bundle is valid but no runner is online', async () => {
+    dbStub.tables = new Map([
+      [
+        skills,
+        [
+          {
+            pinned: false,
+            pinnedReason: null,
+            id: input.skillId,
+            skillMd: 'running body',
+            prompt: 'running body',
+            contentHash: 'hash-1',
+            observedSha: 'sha-1',
+          },
+        ],
+      ],
+      [
+        updatePackets,
+        [
+          {
+            id: input.packetId,
+            change: 'Add a clarification step',
+            story: 'Users need clearer requirements',
+            intentClass: 'procedure',
+            appliesTo: 'forge-code',
+            provenance: {},
+          },
+        ],
+      ],
+      [projects, [{ agentConfig: {} }]],
+      [divergenceCharters, []],
+      [reconcileRuns, []],
+      [skillActivityEvents, []],
+      [runners, []],
+    ]);
+    activityMock.recordSkillActivityEvent.mockClear();
+    const result = await spawnReconcileRun(input);
+    expect(result).toMatchObject({ ok: false, reason: 'no-runner' });
+    expect(activityMock.recordSkillActivityEvent).toHaveBeenCalledOnce();
+    expect(activityMock.recordSkillActivityEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: 'reconcile.failed',
+        outcome: 'skipped',
+        projectId: input.projectId,
+        skillId: input.skillId,
+        packetId: input.packetId,
+        reason: 'no online runner bound to this project',
+      }),
+    );
   });
 });

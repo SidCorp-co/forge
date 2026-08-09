@@ -630,6 +630,8 @@ export async function spawnReconcileRun(input: {
     .from(skills)
     .where(eq(skills.id, input.skillId))
     .limit(1);
+  // cm:guard skill_activity_events.skill_id FKs to skills(id) — only forward input.skillId to logActivity below when this query proved the row exists, else the insert 23503s (ISS-801 review BLOCKER AD).
+  const skillRowExists = pinnedRow !== undefined;
 
   if (pinnedRow?.pinned) {
     const detail = pinnedRow.pinnedReason
@@ -674,7 +676,7 @@ export async function spawnReconcileRun(input: {
       actor: `human:${input.actorUserId}`,
       trigger: 'manual',
       projectId: input.projectId,
-      skillId: input.skillId,
+      skillId: skillRowExists ? input.skillId : null,
       packetId: input.packetId,
       reason: assembled.refusalReason,
       outcome: 'skipped',
@@ -1093,9 +1095,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       const candidateBody = runRow.candidateBody ?? '';
       const lastGoodHash = runRow.lastGoodHash;
 
-      // cm:why fetch existing files before update — reconcile only changes skillMd; files stay.
-      // effectiveHash = hashSkillBody(md, files) matches what the runner echoes as installedHash,
-      // enabling resolvePacketIdForHash to link device.skill.* events to this packet (ISS-798 BLOCKER C).
+      // cm:why fetch existing files before update (reconcile only changes skillMd) so effectiveHash matches what the runner echoes as installedHash, letting resolvePacketIdForHash link device.skill.* events (ISS-798 BLOCKER C).
       const [skillRow] = await tx
         .select({ files: skills.files })
         .from(skills)
@@ -1160,10 +1160,8 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
     const candidateBody = runRow.candidateBody ?? '';
     const lastGoodHash = runRow.lastGoodHash;
 
-    // cm:why fetch existing files before update — reconcile only changes skillMd; files stay.
-    // effectiveHash = hashSkillBody(md, files) matches what the runner echoes as installedHash,
-    // enabling resolvePacketIdForHash to link device.skill.* events to this packet (ISS-798 BLOCKER C).
-    const skillIdForPublish = runRow.skillId; // narrowed — guard above throws on null
+    // cm:why fetch existing files before update (reconcile only changes skillMd) so effectiveHash matches what the runner echoes as installedHash, letting resolvePacketIdForHash link device.skill.* events (ISS-798 BLOCKER C).
+    const skillIdForPublish = runRow.skillId;
     const [skillRow] = await tx
       .select({ files: skills.files })
       .from(skills)
