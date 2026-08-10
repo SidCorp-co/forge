@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectLimitMock = vi.fn();
-const updateSetMock = vi.fn();
+const updateSetMock = vi.fn((_set?: unknown) => undefined);
 const updateWhereMock = vi.fn();
 vi.mock('../db/client.js', () => ({
   db: {
@@ -97,7 +97,7 @@ describe('runMemoryFeedback', () => {
     const r = await runMemoryFeedback({ ...base, verdict: 'confirmed' });
     expect(r).toEqual({ found: true, action: 'verified' });
     expect(updateSetMock).toHaveBeenCalledTimes(1);
-    const set = updateSetMock.mock.calls[0][0] as Record<string, unknown>;
+    const set = updateSetMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(Object.keys(set)).toEqual(['lastVerifiedAt']);
   });
 
@@ -138,7 +138,7 @@ describe('runMemoryFeedback', () => {
     });
     expect(r).toEqual({ found: true, action: 'archived' });
 
-    const set = updateSetMock.mock.calls[0][0] as {
+    const set = updateSetMock.mock.calls[0]?.[0] as {
       archivedAt: unknown;
       metadata: { keep: boolean; feedback: Array<{ evidence: string }> };
     };

@@ -74,7 +74,7 @@ vi.mock('./broadcast.js', () => ({
   broadcastSession: vi.fn(),
   broadcastTurnAppended: vi.fn(),
 }));
-const applyAutoTitleAsyncSpy = vi.fn(async () => undefined);
+const applyAutoTitleAsyncSpy = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./auto-title.js', () => ({
   applyAutoTitleAsync: (...args: unknown[]) => applyAutoTitleAsyncSpy(...args),
 }));

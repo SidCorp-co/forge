@@ -46,14 +46,15 @@ const projectResolver = (key: string): string | undefined => {
     integrations:
       '## Project integrations\nConnected integrations and how to use them:\n- **coolify** [staging] (health: ok) — Deploy via `forge_coolify_deploy`.',
   };
-  return integrations[key] ?? FIXTURE_FACTS[key];
+  const facts: Record<string, string | undefined> = FIXTURE_FACTS;
+  return integrations[key] ?? facts[key];
 };
 
 const BASE_INPUTS = {
   ladder: ['open', 'confirmed', 'approved', 'developed', 'testing', 'released', 'closed'] as const,
   branches: { baseBranch: 'main', productionBranch: 'main' },
   project: projectResolver,
-} as Parameters<typeof import('./resolve.js').renderStageFactsText>[0];
+} as unknown as Parameters<typeof import('./resolve.js').renderStageFactsText>[0];
 
 describe('AC5 parity: flag-OFF === flag-ON (byte-identical output)', () => {
   it('flag-OFF output (agentConfig source) matches flag-ON output (knowledge_entries source)', async () => {

@@ -44,7 +44,7 @@ vi.mock('./rest-client.js', () => ({
   postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
 }));
 
-const rocketChatPersona = vi.fn(() => 'PERSONA');
+const rocketChatPersona = vi.fn((..._args: unknown[]) => 'PERSONA');
 vi.mock('./connection-manager.js', () => ({
   rocketChatPersona: (...args: unknown[]) => rocketChatPersona(...args),
   webBaseUrl: 'https://forge.example.co',
@@ -55,12 +55,12 @@ vi.mock('../../chat/external-chat.js', () => ({
   runExternalChatTurn: (...args: unknown[]) => runExternalChatTurn(...args),
 }));
 
-const buildProjectToolset = vi.fn(() => ({ TOOLSET: true }));
+const buildProjectToolset = vi.fn((..._args: unknown[]) => ({ TOOLSET: true }));
 vi.mock('../../chat/tools/registry.js', () => ({
   buildProjectToolset: (...args: unknown[]) => buildProjectToolset(...args),
 }));
 
-const buildChatToolContext = vi.fn(() => ({ CTX: true }));
+const buildChatToolContext = vi.fn((..._args: unknown[]) => ({ CTX: true }));
 vi.mock('../../chat/tools/principal.js', () => ({
   buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
 }));

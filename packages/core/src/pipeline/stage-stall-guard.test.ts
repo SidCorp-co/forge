@@ -22,7 +22,7 @@ chain.then = (resolve: any, reject: any) => {
 };
 
 const selectSpy = vi.fn(() => chain);
-const insertValues = vi.fn(async () => undefined);
+const insertValues = vi.fn(async (_values?: unknown) => undefined);
 const insertSpy = vi.fn(() => ({ values: insertValues }));
 
 vi.mock('../db/client.js', () => ({

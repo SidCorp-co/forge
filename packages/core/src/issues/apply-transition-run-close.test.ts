@@ -35,8 +35,8 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
 
-const closeOpenRunForIssueMock = vi.fn(async () => undefined);
-const setCurrentStepForOpenIssueRunMock = vi.fn(async () => undefined);
+const closeOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => undefined);
+const setCurrentStepForOpenIssueRunMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: (...args: unknown[]) => closeOpenRunForIssueMock(...args),
   setCurrentStepForOpenIssueRun: (...args: unknown[]) =>

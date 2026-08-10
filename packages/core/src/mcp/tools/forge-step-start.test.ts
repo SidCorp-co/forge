@@ -28,7 +28,7 @@ vi.mock('../../db/client.js', () => ({
 const loadIssue = vi.fn();
 // Default heavyFieldChars returns 0 so all tests use the full-body path
 // unless overridden per-test.
-const heavyFieldChars = vi.fn(() => 0);
+const heavyFieldChars = vi.fn((..._args: unknown[]) => 0);
 vi.mock('./forge-issues.js', () => ({
   loadIssue: (...args: unknown[]) => loadIssue(...args),
   heavyFieldChars: (...args: unknown[]) => heavyFieldChars(...args),

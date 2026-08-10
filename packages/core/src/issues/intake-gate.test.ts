@@ -40,7 +40,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const emitNotificationMock = vi.fn();
+const emitNotificationMock = vi.fn<(payload?: unknown) => Promise<unknown>>();
 vi.mock('../notifications/emit.js', () => ({
   emitNotification: (input: unknown) => emitNotificationMock(input),
 }));
@@ -105,7 +105,7 @@ describe('finalizeIntake', () => {
     expect(issueLabelInsertMock).toHaveBeenCalledWith(
       expect.objectContaining({ issueId: 'i-1', labelId: 'label-1' }),
     );
-    const n = emitNotificationMock.mock.calls[0][0] as Record<string, unknown>;
+    const n = emitNotificationMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(n.userId).toBe('owner-1');
     expect(n.type).toBe('intake_pending');
     expect(n.issueId).toBe('i-1');

@@ -40,6 +40,7 @@ describe('builtin seed skills: status transition literals', () => {
       const relPath = path.relative(SKILLS_ROOT, file);
       for (const match of content.matchAll(STATUS_LITERAL_RE)) {
         const token = match[1];
+        if (token === undefined) continue;
         scanned += 1;
         if (!validStatuses.has(token)) {
           offenders.push(`${relPath}: "${token}"`);
