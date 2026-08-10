@@ -18,10 +18,11 @@ export const skillUpdatesApi = {
       method: "POST",
     }),
 
+  // cm:edge contract -> packages/core/src/skills/reconcile-routes.ts — the REST body key is `reason`; the forge_reconcile MCP tool calls the same field `rejectReason`, and sending that name here 400s
   /** Rejects the candidate; the running body is left untouched. Admin only. */
-  reject: (projectId: string, runId: string, rejectReason: string) =>
+  reject: (projectId: string, runId: string, reason: string) =>
     apiClient<{ ok: true }>(`/projects/${projectId}/reconcile-runs/${runId}/reject`, {
       method: "POST",
-      body: JSON.stringify({ rejectReason }),
+      body: JSON.stringify({ reason }),
     }),
 };
