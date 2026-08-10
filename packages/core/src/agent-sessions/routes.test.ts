@@ -36,7 +36,7 @@ const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((_set: unknown) => ({ where: updateWhere }));
 const deleteWhere = vi.fn(() => Promise.resolve());
 // The list route's last-message-preview rollup (ISS-698) is a raw
 // `db.execute(sql\`DISTINCT ON …\`)`, not a chained select — stub it separately

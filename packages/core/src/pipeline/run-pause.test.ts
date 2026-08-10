@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // db.update(pipelineRuns).set(...).where(...).returning() — scripted rows.
 const updateReturning = vi.fn(async () => [] as unknown[]);
-const updateSet = vi.fn(() => ({ where: () => ({ returning: updateReturning }) }));
+const updateSet = vi.fn((_set: unknown) => ({ where: () => ({ returning: updateReturning }) }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 vi.mock('../db/client.js', () => ({ db: { update: dbUpdate } }));
 

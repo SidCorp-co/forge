@@ -5,8 +5,8 @@ import { HooksBus } from '../pipeline/hooks.js';
 // Supports .select().from().where().limit() pattern used by both
 // the feedbackReports query and the memoryCandidates lookup.
 
-const selectMock = vi.fn<[], Promise<unknown[]>>();
-const updateSetMock = vi.fn<[unknown], Promise<void>>();
+const selectMock = vi.fn<() => Promise<unknown[]>>();
+const updateSetMock = vi.fn<(set: unknown) => Promise<void>>();
 
 const dbMock = {
   select: (_cols?: unknown) => ({
@@ -35,7 +35,7 @@ vi.mock('../db/schema.js', () => ({
   },
 }));
 
-const upsertMock = vi.fn<[string, unknown], Promise<void>>();
+const upsertMock = vi.fn<(key: string, value: unknown) => Promise<void>>();
 vi.mock('../memory/candidates-accrual.js', () => ({ upsertCandidate: upsertMock }));
 
 vi.mock('../logger.js', () => ({

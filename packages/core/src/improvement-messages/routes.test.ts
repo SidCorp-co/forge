@@ -90,10 +90,10 @@ describe('GET /api/improvement-messages', () => {
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json<Array<{ key: string; enablement: unknown }>>();
+    const body = (await res.json()) as Array<{ key: string; enablement: unknown }>;
     expect(body).toHaveLength(1);
-    expect(body[0].key).toBe('test-message');
-    expect(body[0].enablement).toBeNull();
+    expect(body[0]?.key).toBe('test-message');
+    expect(body[0]?.enablement).toBeNull();
   });
 
   it('annotates catalog with enablement when projectId provided', async () => {
@@ -117,13 +117,14 @@ describe('GET /api/improvement-messages', () => {
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json<
-      Array<{ key: string; enablement: { scheduleId: string; enabled: boolean } | null }>
-    >();
+    const body = (await res.json()) as Array<{
+      key: string;
+      enablement: { scheduleId: string; enabled: boolean } | null;
+    }>;
     expect(body).toHaveLength(1);
-    expect(body[0].enablement).not.toBeNull();
-    expect(body[0].enablement?.scheduleId).toBe(SCHEDULE_ID);
-    expect(body[0].enablement?.enabled).toBe(true);
+    expect(body[0]?.enablement).not.toBeNull();
+    expect(body[0]?.enablement?.scheduleId).toBe(SCHEDULE_ID);
+    expect(body[0]?.enablement?.enabled).toBe(true);
   });
 
   it('returns null enablement for messages not in schedules', async () => {
@@ -139,8 +140,8 @@ describe('GET /api/improvement-messages', () => {
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json<Array<{ enablement: null }>>();
-    expect(body[0].enablement).toBeNull();
+    const body = (await res.json()) as Array<{ enablement: null }>;
+    expect(body[0]?.enablement).toBeNull();
   });
 
   it('rejects invalid projectId', async () => {

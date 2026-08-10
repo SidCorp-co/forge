@@ -20,6 +20,9 @@ describe('drizzle migration journal', () => {
     for (let i = 1; i < entries.length; i++) {
       const prev = entries[i - 1];
       const cur = entries[i];
+      // Both indices are in range by the loop bounds; the guard is only here to
+      // narrow away `undefined` under noUncheckedIndexedAccess.
+      if (!prev || !cur) continue;
       if (cur.when <= prev.when && !GRANDFATHERED_IDX.has(cur.idx)) {
         outOfOrder.push(`${cur.tag} (when=${cur.when}) <= ${prev.tag} (when=${prev.when})`);
       }
