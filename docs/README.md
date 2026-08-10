@@ -33,6 +33,7 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 | Read planned but unshipped features | [proposals/](proposals/) |
 | Connect Forge to an external platform | [integrations/](integrations/) |
 | Follow a how-to for a specific task | [guides/](guides/) |
+| Understand the auth/permission model or threat surface | [security/](security/) |
 
 ## Folder purpose
 
@@ -44,6 +45,7 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 | `modules/` | How does feature Z work? Where does its data come from? | When feature changes |
 | `proposals/` | What will we build next? | Move to `modules/` when shipped |
 | `rfcs/` | Proposals through Final Comment Period | One per major change |
+| `security/` | Who can reach what, and how is it attacked? | When an auth surface or entry door changes |
 
 ## Conventions
 

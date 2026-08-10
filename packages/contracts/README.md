@@ -48,6 +48,11 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 | [`src/skill-facts.ts`](./src/skill-facts.ts) | Skill-facts types |
 | [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry response — the one runtime Zod schema (`pipelineRegistryResponseSchema`, `pipelineStepSchema`) plus enum tuples |
 | [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from core |
+| [`src/ssh-keys.ts`](./src/ssh-keys.ts) | Org Private Keys pool + per-project git-credential types |
+| [`src/divergence-charters.ts`](./src/divergence-charters.ts) | Divergence Charter — a project's recorded, intentional deviations from the template (ISS-800) |
+| [`src/reconcile.ts`](./src/reconcile.ts) | Reconcile run / verdict / verifier-vote types (ISS-795 update pipeline) |
+| [`src/update-packets.ts`](./src/update-packets.ts) | Update Packet artifact + its mandatory `story` field (ISS-799) |
+| [`src/skill-activity.ts`](./src/skill-activity.ts) | Skill-update activity-log event types (ISS-797) |
 | [`src/index.ts`](./src/index.ts) | Aggregated barrel |
 
 ## Why "type-only"

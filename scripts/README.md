@@ -26,3 +26,26 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 ### Bypass
 
 `SKIP_LANG_CHECK=1 git commit ...` skips the pre-commit hook locally. CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
+
+## check-test-signal.mjs — low-signal test guard
+
+The test-side counterpart to codemap's comment rule: flags a test FILE that is mostly
+declaration-shape assertions (`.columnType` / `.notNull` / `.hasDefault` / `.primary` /
+`.isUnique` / `.dataType`) — assertions that restate what the declaration already says and
+so can only fail on an intended change. FK `.onDelete` is deliberately not flagged.
+Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the codemap
+baseline. Wired into the commit path.
+
+## upload-image.sh — attach images from a runner
+
+Uploads screenshots/images to a Forge issue or comment over REST. Exists because the MCP
+runner and CI hold a PAT or device token but **no user JWT**, which the browser upload path
+assumes.
+
+```bash
+upload-image.sh --issue   <issueId>   <file> [<file>...]
+upload-image.sh --comment <commentId> <file> [<file>...]
+```
+
+Requires `FORGE_API_URL` plus a token in the environment — see the script's own header for
+the exact variable names.

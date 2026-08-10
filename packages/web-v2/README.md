@@ -46,9 +46,16 @@ src/
 │  ├─ patterns/             # PipelineTracker, KanbanCard, NavRail, TopBar,
 │  │                        #   CommandPalette, NotificationsMenu
 │  └─ index.ts              # barrel — import from "@/design"
+├─ features/                # ← every screen lives here, one module per domain
+│                          #   (api.ts + types.ts + components/ + hooks/);
+│                          #   `ls -d src/features/*/` is the inventory
 ├─ lib/utils/cn.ts
 └─ providers/               # theme, query
 ```
+
+The `primitives/` and `patterns/` lists above are illustrative, not exhaustive —
+`/kit` renders the real, current set. Prefer opening the gallery over trusting
+this tree.
 
 ## Run
 

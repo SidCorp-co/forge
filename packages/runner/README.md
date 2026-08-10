@@ -20,9 +20,40 @@ fallback), WebSocket connect/subscribe/reconnect, 30s heartbeat, job dispatch
 cancel/abort, `doctor`, `bind`, `status`, `runners`, `service install`
 (systemd). Release binary ≈ 3.7 MB.
 
-Deferred: browser-approve login (C1, core-side) + `install.sh`/binary release
-(C2); Windows/WSL spawn; `status --watch` TUI; auto-clone; reporting
+Deferred: Windows/WSL spawn; `status --watch` TUI; auto-clone; reporting
 `claudeSessionId` to `agent_sessions` for resume.
+
+(Browser-approve login and `install.sh`/binary release have both SHIPPED —
+`login` is the OAuth device flow, and this same README pipes `install.sh` 60
+lines below. They were listed here as deferred long after they landed.)
+
+## Subcommands
+
+`forge-runner --help` is authoritative; the set today is:
+
+| Command | What |
+|---|---|
+| `login` | Pair this device via browser approval (OAuth device flow) |
+| `bind` | Bind a project slug to a local repo path |
+| `start` | Run the daemon — connect, register, accept jobs |
+| `status` | Connection + runner status |
+| `logs` | Tail the runner log |
+| `config` | Inspect or edit local config |
+| `doctor` | Diagnose the environment (claude CLI, git, cred store, core reachability) |
+| `service` | Install/uninstall the OS service (systemd/launchd) |
+| `runners` | List runners registered for this device |
+| `sync` | Pull the latest skills for bound projects now (one-shot) |
+| `update` | Self-update from the release manifest |
+
+### Skill delivery
+
+Skills reach a runner without a manual step: `[skills] auto_pull` is **on by
+default**, so a bound project's skills are pulled in the background as they are
+published or updated. `forge-runner sync` forces that now. Device-wide shared
+skills can also arrive over the Claude Code plugin-marketplace channel. What a
+runner actually ended up executing is reported back — see `observed_sha` /
+`shadowed_by` on the device-skill row, which is what makes a green sync status
+mean the pushed body is the body that runs.
 
 ```bash
 cargo build --release
