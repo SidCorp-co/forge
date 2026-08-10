@@ -14,6 +14,7 @@ const db = drizzle(sql);
 
 try {
   console.log('[migrate] applying migrations from', migrationsFolder);
+  // cm:guard a migration's `when` in meta/_journal.json must exceed every already-recorded created_at or it's silently skipped forever, not an error (ISS-807)
   await migrate(db, { migrationsFolder });
   console.log('[migrate] done');
 } catch (err) {
