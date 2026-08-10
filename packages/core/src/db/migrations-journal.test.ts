@@ -6,10 +6,7 @@ const journalPath = fileURLToPath(
   new URL('../../drizzle/migrations/meta/_journal.json', import.meta.url)
 );
 
-// Pre-existing violations from long-applied migrations, grandfathered like
-// .forge/codemap-baseline.json — every environment already recorded these
-// `when` values years ago, so rewriting them would not change any live
-// database's applied set. New entries must not add to this list.
+// cm:why idx 21/36 predate ISS-807; a `when` may only be rewritten if its migration's DDL is idempotent or proven applied nowhere — neither holds for these, so they stay frozen
 const GRANDFATHERED_IDX = new Set([21, 36]);
 
 describe('drizzle migration journal', () => {
@@ -19,6 +16,7 @@ describe('drizzle migration journal', () => {
     };
     const entries = [...journal.entries].sort((a, b) => a.idx - b.idx);
     const outOfOrder: string[] = [];
+    // cm:edge contract -> packages/core/src/db/migrate.ts — mirrors the migrator's own comparison so a `when` that doesn't clear its predecessor is caught here instead of silently skipped at deploy
     for (let i = 1; i < entries.length; i++) {
       const prev = entries[i - 1];
       const cur = entries[i];
@@ -26,10 +24,6 @@ describe('drizzle migration journal', () => {
         outOfOrder.push(`${cur.tag} (when=${cur.when}) <= ${prev.tag} (when=${prev.when})`);
       }
     }
-    // cm:guard the postgres-js migrator applies a migration only when its
-    // `when` exceeds the max `created_at` already recorded in
-    // drizzle.__drizzle_migrations — a non-increasing `when` is silently
-    // skipped forever, not an error (ISS-807 live 500 on beta)
     expect(outOfOrder).toEqual([]);
   });
 });
