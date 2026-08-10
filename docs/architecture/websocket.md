@@ -50,7 +50,7 @@ Event names dot-cased (`issue.updated`, not `issue:updated`). Categories and roo
 | `notification.*`, `user.preferencesChanged` | `user:<id>` | broadcast-subscribers |
 | `job.*` (incl. `job.event` with `seq`) | `project:<id>` (and `device:<id>` for assignment) | `jobs/lifecycle-routes.ts`, `jobs/events-routes.ts`, `jobs/finalize-done.ts`, `jobs/finalize-failure.ts`, `jobs/cancel-job.ts`, `runners/adapters/claude-code.ts` (`job.assigned`) |
 | `runner.*`, `device.status`, `pipeline.*` | `project:<id>` / `device:<id>` / `runner:<id>` | `runners/`, `devices/` |
-| `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `agent-sessions/routes.ts`, `agent-sessions/chat-turn.ts`, `pipeline/runs-cascade.ts` (`runners/adapters/claude-code.ts` publishes `job.assigned`) |
+| `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `agent-sessions/routes.ts`, `agent-sessions/lifecycle-routes.ts`, `agent-sessions/turns-routes.ts`, `agent-sessions/chat-turn.ts`, `agent-sessions/session-failure.ts`, `pipeline/runs-cascade.ts` (`runners/adapters/claude-code.ts` publishes `job.assigned`) |
 
 - Authoritative list: grep `roomManager.publish` in `packages/core/src/`.
 - Payloads typed by publishing module — read the call site, don't derive from this doc.

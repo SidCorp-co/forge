@@ -5,7 +5,7 @@ Canonical map of how Forge is laid out: control plane vs runtime, the device-run
 ## Two planes
 
 - **Control plane** — `packages/core` (Hono + Drizzle): REST, WebSocket, MCP. Holds project/issue state, queues jobs (pg-boss), embeddings (pgvector), streams events. **Never holds Claude credentials.**
-- **Runtime plane** — device agents on users' machines. Shared Rust `agent-core`; two form factors: `dev` (Tauri GUI), `forge-runner` (CLI daemon). Pair into the account, receive jobs over WS, spawn `claude` CLI in a git worktree, stream JobEvents back.
+- **Runtime plane** — device agents on users' machines. Shared Rust `forge-runner-core` crate; two form factors: `dev` (Tauri GUI), `forge-runner` (CLI daemon). Pair into the account, receive jobs over WS, spawn `claude` CLI in a git worktree, stream JobEvents back.
 
 Two principals, one shared policy layer: **user** (JWT) and **device** (long-lived revocable token).
 
@@ -24,14 +24,14 @@ control plane — packages/core (Hono)
    ▼
 runtime plane — your machine(s)
    dev (Tauri GUI) OR forge-runner (CLI)
-   └─ agent-core (Rust): pair / ws / keychain / git / job_runner
+   └─ forge-runner-core (Rust): pair / ws / keychain / git / job_runner
    └─ spawns `claude` CLI in git worktree  (Claude creds in OS keychain, here)
 ```
 
 ## Why this shape
 
 - **Control plane ≠ runtime.** HTTP requests live ms; Claude jobs run minutes–hours. Pushing execution to paired devices keeps core a thin coordinator and keeps Claude credentials in the user's keychain, off the server's attack surface.
-- **One Rust core, two wrappers.** `agent-core` does pairing/WS/dispatch/keychain/spawn; `dev` adds a GUI, `forge-runner` is headless (CI, dev boxes).
+- **One Rust core, two wrappers.** `forge-runner-core` does pairing/WS/dispatch/keychain/spawn; `dev` adds a GUI, `forge-runner` is headless (CI, dev boxes).
 - **Dual-principal auth.** User (JWT, 7-day TTL, refresh rotation): read/write own/member projects, enqueue jobs, revoke devices. Device (revocable token): accept jobs for pooled projects, submit JobEvents, heartbeat — **cannot** read user PII or enumerate projects outside its pool. One policy module (`assertUserIsProjectMember`, `assertUserIsProjectOwner`) gates REST + WS + MCP; no path bypasses it.
 - **Room-scoped WS.** Sockets are subscribed to rooms at auth (`user:<id>`, `project:<id>`, `device:<id>`); clients can't pick rooms. See [websocket.md](websocket.md).
 - **MCP on the same data layer.** Tools wrap REST controllers (same validation/policy/audit). User MCP tokens are account-wide (call must include `projectId`); device tokens are device-scoped.
@@ -45,7 +45,7 @@ runtime plane — your machine(s)
 
 1. Webhook → `POST /api/webhooks/in/<project-slug>` → issue created `open`.
 2. Pipeline enqueues `forge-triage` (if `autoTriage`): job row `{project, issue, type, queued}` → dispatcher picks an eligible runner → `job.assigned` to device room.
-3. Device: `agent-core` spawns `claude` in the git worktree with skill prompt + issue context; streams stdout/tool-calls back over WS.
+3. Device: `forge-runner-core` spawns `claude` in the git worktree with skill prompt + issue context; streams stdout/tool-calls back over WS.
 4. Per chunk: device batches `POST /api/jobs/:id/events` → core persists + broadcasts on project room → dashboard renders live.
 5. Done: `POST /api/jobs/:id/complete` (exit + summary) → status `done`/`failed` → next auto-enabled stage enqueues, else waits for human.
 

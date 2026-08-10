@@ -13,9 +13,13 @@ Today one `project_integrations` row gloms together three concerns: the **creden
 - **A professional UX** — a connection that is rotated/reauthed in one place, with a clear
   state machine, and a delivery log — not N copies of the same key.
 
-Forge intentionally has **no org layer** today (OWNER/MEMBER per project; the RBAC proposal
-was superseded). So we make the owner a generic *principal* now and promote to org later
-without a data migration.
+The generic *principal* owner modelled below was designed when Forge had no org
+layer, so that org ownership could arrive later without a data migration. That
+promotion has since happened: Forge **has** organizations (org admin/member,
+org-owned connections with `ownerType 'user'|'org'`), and project roles are
+**admin/member/viewer** — not the OWNER/MEMBER pair this document originally
+assumed. See [`docs/security/forge-user-permissions.md`](../security/forge-user-permissions.md)
+for the current model; the principal design below is what made that migration-free.
 
 ## Model
 

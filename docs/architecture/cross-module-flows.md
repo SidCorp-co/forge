@@ -50,7 +50,7 @@ Trigger: issue advances to a stage with a registered custom skill.
 5. JobEvents stream back; pipeline advances normally.
 
 Cross-cutting:
-- Skill sync is hash/report-based (no pinning column) via `GET /api/projects/:projectId/skill-sync-status` ([`devices/skills-routes.ts`](../../packages/core/src/devices/skills-routes.ts)).
+- Skill sync is hash/report-based (no pinning column). The `GET /api/projects/:projectId/skill-sync-status` REST wrapper was **dropped in `8081a742`** (2026-07-24); the underlying function survives for MCP (`forge_skills_sync_status`) and smoke-verify. Do not link the REST path — it 404s.
 - Skill install/update propagates via WebSocket `skill.updated` (and `skill.sync` to push a pull to targeted devices) — see [`ws/broadcast-subscribers.ts`](../../packages/core/src/ws/broadcast-subscribers.ts).
 
 ## Flow: Device revocation

@@ -103,7 +103,7 @@ with branches:
 
 | Command/Job | Description |
 |-------------|-------------|
-| `stale-job-detector` (cron) | Reaps jobs stuck in `dispatched`/`running` past a 60-minute threshold (bumped 5→60 min per ISS-258 — legit merges run >5 min between events). Slow backstop; the ~1-min fast path is `reconcileOrphanedJobs` |
+| `stale-job-detector` (cron) | **Alarm-only** — it reports jobs stuck in `dispatched`/`running` past a 60-minute threshold (bumped 5→60 min per ISS-258 — legit merges run >5 min between events); it does not reap. The primary reaper is `runLoopMonitor` (`jobs/loop-monitor.ts`). `reconcileOrphanedJobs` no longer exists — its ISS-280 semantics moved to `reapSessionLostJobs` |
 | `reopen-limit-check` | Part of transition logic — blocks reopen >5 cycles |
 
 ## Documentation

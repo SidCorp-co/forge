@@ -68,7 +68,7 @@ Binds one skill to a pipeline stage **per project**; same skill can map to diffe
 | `id` | Canonical UUID |
 | `projectId` | FK to `projects.id` |
 | `skillId` | FK to `skills.id` |
-| `stage` | Pipeline transition key (e.g. `open→confirmed`, `confirmed→clarified`) |
+| `stage` | A single issue status — the register endpoint validates `z.enum(issueStatuses)` (`skills/routes.ts`), e.g. `open`, `confirmed`, `clarified`. NOT a transition arrow |
 | `registeredBy` | User who registered (FK to `users.id`, SET NULL on delete) |
 | `createdAt` | Registration timestamp |
 

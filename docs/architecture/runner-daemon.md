@@ -88,7 +88,7 @@ Resume is core-driven: the daemon passes through `claudeSessionId` and reports a
 | Command | Purpose |
 |---|---|
 | `login` | Pair this device (browser-approve, or `--code` paste-code). Stores token, saves core URL + device id. |
-| `bind <slug> --path <dir>` | Bind a project slug (must already be assigned server-side) to a local checkout; caches locally and pushes the path to the server via `PATCH /me/runners`. |
+| `bind <slug> --path <dir>` | Bind a project slug (must already be assigned server-side) to a local checkout; caches locally and pushes the path to the server via `PATCH /api/devices/me/runners/:runnerId`. |
 | `start` | Run the daemon: connect, subscribe, heartbeat, accept jobs. |
 | `status` | Show connection + runner status. |
 | `logs` | Tail the runner log. |
