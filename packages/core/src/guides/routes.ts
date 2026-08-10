@@ -127,7 +127,11 @@ guideRoutes.get('/guides', (c) => {
 // cm:guard emit every URL relative to THIS request's own mount prefix — the router is mounted at both `/` and `/api` and the hosted edge forwards only `/api/*`, so a hardcoded prefix publishes links that 404 for half the audience
 // cm:why the /llms.txt convention is the entry point this surface lacked — /guides has been public since ISS-746, but a reader had to already know a slug, so nothing was discoverable from a bare hostname
 guideRoutes.get('/llms.txt', (c) => {
-  const base = c.req.url.replace(/\/llms\.txt(\?.*)?$/, '');
+  // cm:guard honour x-forwarded-proto — the edge terminates TLS and forwards plain http, so c.req.url alone publishes http:// links for an https-only host
+  const url = new URL(c.req.url);
+  const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
+  if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
+  const base = `${url.origin}${url.pathname.replace(/\/llms\.txt$/, '')}`;
   const lines = [
     '# Forge',
     '',
