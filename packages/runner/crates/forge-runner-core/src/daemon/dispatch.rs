@@ -62,9 +62,11 @@ pub(crate) fn resolve_repo(
     }
 }
 
-/// ISS-808: git preflight only applies to pipeline lane jobs that push branches.
-/// `reconcile`/`verify_skill` edit skill bodies via MCP and never touch git.
-pub(crate) fn requires_preflight(job_type: &str) -> bool {
+/// `reconcile`/`verify_skill` jobs edit a skill body via MCP and never touch
+/// git, so the pipeline-lane git preflight (work tree / origin remote /
+/// reachability) does not apply to them — e.g. a storefront project has no
+/// repo by design (ISS-808).
+fn requires_preflight(job_type: &str) -> bool {
     !matches!(job_type, "reconcile" | "verify_skill")
 }
 
@@ -200,12 +202,11 @@ pub async fn handle(
 
     // ISS-451 (ISS-442 C5, invariant I6): fail fast BEFORE claiming the job
     // when the repo / push credentials / hooks are broken, instead of a
-    // 40-minute mid-run discovery. The `preflight_failed` prefix is
-    // load-bearing — core's classifier maps it to failureKind=infra for fast
-    // device failover.
-    // ISS-808: reconcile/verify_skill jobs edit skill bodies via MCP and never
-    // push branches, so git assertions are inapplicable for those job types.
-    if requires_preflight(ja.job_type.as_str()) {
+    // 40-minute mid-run discovery. The `preflight_failed` prefix and its
+    // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
+    // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
+    // pattern-matches on this exact string to pick failureKind (ISS-808).
+    if requires_preflight(&ja.job_type) {
         if let Err(err) = preflight::preflight(&resolved.repo_path).await {
             let msg = format!("preflight_failed: {err}");
             tracing::error!("[job {job_id}] {msg}");
@@ -395,18 +396,6 @@ mod tests {
     use super::*;
     use crate::config::Binding;
 
-    #[test]
-    fn requires_preflight_gates_reconcile_types() {
-        assert!(!requires_preflight("reconcile"), "reconcile must skip preflight");
-        assert!(!requires_preflight("verify_skill"), "verify_skill must skip preflight");
-        assert!(requires_preflight("triage"), "triage must run preflight");
-        assert!(requires_preflight("plan"), "plan must run preflight");
-        assert!(requires_preflight("code"), "code must run preflight");
-        assert!(requires_preflight("fix"), "fix must run preflight");
-        assert!(requires_preflight("review"), "review must run preflight");
-        assert!(requires_preflight("custom"), "custom must run preflight");
-    }
-
     fn me(project_id: &str, slug: &str, repo_path: Option<&str>) -> MeRunner {
         MeRunner {
             project_id: project_id.into(),
@@ -463,5 +452,18 @@ mod tests {
         let cfg = Config::default();
         let err = resolve_repo(&server, &cfg, "p-1").unwrap_err();
         assert_eq!(err, "app");
+    }
+
+    #[test]
+    fn preflight_skipped_for_reconcile_and_verify_skill() {
+        assert!(!requires_preflight("reconcile"));
+        assert!(!requires_preflight("verify_skill"));
+    }
+
+    #[test]
+    fn preflight_required_for_pipeline_job_types() {
+        for job_type in ["triage", "plan", "code", "fix", "review"] {
+            assert!(requires_preflight(job_type), "{job_type} should preflight");
+        }
     }
 }

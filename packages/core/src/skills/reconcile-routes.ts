@@ -34,8 +34,6 @@ const conflict = (msg: string) =>
 export const reconcileRoutes = new Hono<{ Variables: AuthVars }>();
 reconcileRoutes.use('/:projectId/reconcile-runs*', requireAuth(), assertEmailVerified());
 
-// POST /api/projects/:projectId/reconcile-runs
-// Trigger a reconcile run for a skill within the project.
 reconcileRoutes.post(
   '/:projectId/reconcile-runs',
   zValidator('param', projectParamSchema, (r) => {
@@ -75,8 +73,6 @@ reconcileRoutes.post(
   },
 );
 
-// GET /api/projects/:projectId/reconcile-runs
-// List recent reconcile runs for the project.
 reconcileRoutes.get(
   '/:projectId/reconcile-runs',
   zValidator('param', projectParamSchema, (r) => {
@@ -94,7 +90,6 @@ reconcileRoutes.get(
   },
 );
 
-// GET /api/projects/:projectId/reconcile-runs/:runId
 reconcileRoutes.get(
   '/:projectId/reconcile-runs/:runId',
   zValidator('param', runParamSchema, (r) => {
@@ -114,8 +109,6 @@ reconcileRoutes.get(
   },
 );
 
-// POST /api/projects/:projectId/reconcile-runs/:runId/apply
-// Human approves a 'decided' run at the human gate.
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/apply',
   zValidator('param', runParamSchema, (r) => {
@@ -134,6 +127,7 @@ reconcileRoutes.post(
     try {
       await applyReconcileRun(runId, userId);
     } catch (err: unknown) {
+      // cm:why ISS-808 — String(err) on an Error prepends "Error: ", so the BAD_REQUEST/NOT_FOUND prefix match below never fired and every guard rejection fell through to a 500
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
       if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
@@ -144,8 +138,6 @@ reconcileRoutes.post(
   },
 );
 
-// POST /api/projects/:projectId/reconcile-runs/:runId/reject
-// Human rejects a 'decided' run at the human gate.
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/reject',
   zValidator('param', runParamSchema, (r) => {
@@ -168,6 +160,7 @@ reconcileRoutes.post(
     try {
       await rejectReconcileRun(runId, userId, reason);
     } catch (err: unknown) {
+      // cm:why ISS-808 — String(err) on an Error prepends "Error: ", so the BAD_REQUEST/NOT_FOUND prefix match below never fired and every guard rejection fell through to a 500
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
       if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);

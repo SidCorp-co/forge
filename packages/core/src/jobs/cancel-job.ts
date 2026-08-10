@@ -3,12 +3,12 @@ import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
+import { logger } from '../logger.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
-import { logger } from '../logger.js';
 
 /** Job statuses from which a single-job cancel is permitted. */
 export const ACTIVE_STATUSES = new Set(['queued', 'dispatched', 'running']);
@@ -98,11 +98,12 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
 
     await syncAgentSessionLifecycle(updated, 'cancelled');
 
-    // ISS-808: close the associated reconcile_runs row (if any) so the
-    // unique-active-per-project slot is freed immediately. Safe no-op for
-    // non-reconcile jobs and for runs already out of the active set.
-    await failReconcileRunForFailedJob({ type: updated.type, payload: updated.payload }).catch(
-      (err) => logger.error({ err, jobId: updated.id }, 'cancelJob: failReconcileRunForFailedJob failed'),
+    // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — mirrors the finalize-failure.ts:248 hook so a cancelled reconcile/verify_skill job never leaves reconcile_runs stuck at pending (ISS-808)
+    await failReconcileRunForFailedJob(updated).catch((err) =>
+      logger.warn(
+        { err, jobId: updated.id, type: updated.type },
+        'cancelJob: failReconcileRunForFailedJob failed',
+      ),
     );
 
     roomManager.publish(projectRoom(updated.projectId), {
