@@ -7,10 +7,15 @@
  * "meta" per project policy `skill-taxonomy-meta-vs-per-project`).
  *
  * A name here is reserved: a user cannot create/adopt/rename a per-project
- * skill to shadow it. Mirrors the data-driven `SHARED_INSTALL_ONLY_SKILLS`
- * pattern in `./bootstrap-service.ts` — adding a name is the entire change.
+ * skill to shadow it. Adding a name is the entire change.
  */
-export const META_SKILL_NAMES: ReadonlyArray<string> = ['forge-onboard'];
+// cm:guard forge-reconcile / forge-verify-skill are Forge-OWNED GOVERNING agents: reserving them here is what stops a project owning an editable fork of the agent that polices its own updates (owner decision 2026-08-10)
+// cm:why reserving the name is the enforcement — createProjectSkill, the rename path and stage registration all funnel through isMetaSkillName, so one entry closes adopt, create and shadow at once; the prompt-inlining in reconcile-service only stops Forge READING a fork, not a project creating one
+export const META_SKILL_NAMES: ReadonlyArray<string> = [
+  'forge-onboard',
+  'forge-reconcile',
+  'forge-verify-skill',
+];
 
 export function isMetaSkillName(name: string): boolean {
   return META_SKILL_NAMES.includes(name);

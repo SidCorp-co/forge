@@ -10,7 +10,7 @@ by this work:
 
 | # | Channel | Scope | Mechanism |
 |---|---------|-------|-----------|
-| 1 | Disk, per-project | Per-project shadow/override skills | `workspace/skill_sync.rs` — server pushes the effective manifest, the runner seeds `.claude/skills/<name>/` into the job's worktree on every job (ISS-278). Also carries `install_only` fan-out (ISS-737) for shared skills that a project hasn't customized. |
+| 1 | Disk, per-project | Per-project shadow/override skills | `workspace/skill_sync.rs` — server pushes the effective manifest, the runner seeds `.claude/skills/<name>/` into the job's worktree on every job (ISS-278). The `install_only` fan-out (ISS-737) was REMOVED 2026-08-10 along with its seed-list and admin sweep. |
 | 2 | MCP-served | Meta, read-only prompts | Served live over the project's `/mcp` connection — no on-disk copy. |
 | **3** | **Plugin marketplace** | **Shared/global skills** | **This doc.** Installed once per device via `claude plugin`; every job on that device inherits it for free. |
 
@@ -185,13 +185,14 @@ Enable on one device first (`forge-runner config` or hand-edit
 `~/.config/forge-runner/config.toml`, then restart), confirm the plugin's
 skills load in a real job, then widen.
 
-## Deferred: retiring `install_only` (OQ2)
+## Retired: `install_only` fan-out (OQ2 — closed 2026-08-10)
 
-ISS-737's per-project `install_only` disk fan-out (channel 1) is **not**
-removed by this issue. Per owner direction, both channels run in parallel
-until the plugin channel is proven in production. A `relates` follow-up
-(filed as `draft`, linked to ISS-737) will scope the actual rip-out for
-skills that migrate to shared/global-via-plugin. Until that follow-up lands,
+ISS-737's per-project `install_only` disk fan-out is **gone**: the seed-list,
+`ensureSharedInstallOnlySkills`, `fanOutSharedInstallOnlySkills` and
+`POST /api/admin/skills/fan-out` were deleted once its last two entries
+(`forge-reconcile`, `forge-verify-skill`) moved to prompt-inlining. The
+`installOnly` COLUMN stays — it is still live for per-project utilities set
+through the skills API. Historical note, for the paragraph below:
 a skill can legitimately be delivered by both channel 1 (as a per-project
 override) and channel 3 (as the shared default) — channel 1 always wins for
 a project that has an explicit shadow copy, since it's seeded directly into

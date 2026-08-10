@@ -85,7 +85,7 @@ Verified against the forge-beta DB (2026-07-24) — these LOOK like dead legacy 
 
 - **Override/fork** (`projectSkillOverrides` table, `override-routes.ts`, `override_set/delete`) — ISS-388; shadow-by-name only.
 - **Meta disk-install path** (`syncManagedSkills`, `resolveInstallableSkills`) — replaced by channels 2+3.
-- **install_only bridge for meta skills** (`SHARED_INSTALL_ONLY_SKILLS` held `forge-onboard`) — ISS-742; the seed-list is empty and is only for a genuinely per-project shared utility. Meta ships via the plugin.
+- **install_only bridge for meta skills** (`SHARED_INSTALL_ONLY_SKILLS`) — REMOVED 2026-08-10. `forge-onboard` had already moved to the plugin channel (ISS-742); `forge-reconcile` / `forge-verify-skill` now have their instructions inlined into the job prompt from the global row, so the seed-list, `ensureSharedInstallOnlySkills`, `fanOutSharedInstallOnlySkills` and `POST /api/admin/skills/fan-out` are all gone.
 
 ## Status / history
 

@@ -38,6 +38,7 @@ import { logger } from '../logger.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
+import { globalEffectiveMd } from './effective.js';
 import { hashSkillBody } from './hash.js';
 import { ensurePolicyLandedFor } from './policy-landed.js';
 
@@ -81,9 +82,6 @@ async function logActivity(
   };
   await recordSkillActivityEvent(executor, clean);
 }
-
-// cm:guard the gate is DECLARED by the reconcile agent and adversarially checked by the verifiers — no server-side pattern may override or second-guess it (owner decision 2026-08-10)
-// cm:why the regex classifier it replaced read the human-written `change` prose, not the diff, so it was wrong in both directions: a purely additive edit routed to `human` because its wording missed the allow-list, while "add a step that merges to production" would have matched it and taken the auto lane
 
 const REQUIRED_BUNDLE_KEYS: (keyof ReconcileBundleSnapshot)[] = [
   'change',
@@ -358,51 +356,65 @@ export async function assembleBundle(
 // cm:why the disk-path form forced adoption + install_only fan-out, which handed each project an editable copy of its own governor and made the run depend on the sync path that already fails in the wild (device.sync.failed 502, portal-lighthuman 2026-08-09)
 async function loadAgentInstructions(name: string): Promise<string> {
   const [row] = await db
-    .select({ skillMd: skills.skillMd })
+    .select({ skillMd: skills.skillMd, prompt: skills.prompt })
     .from(skills)
     .where(and(eq(skills.name, name), eq(skills.scope, 'global')))
     .limit(1);
-  if (!row?.skillMd) {
+  const body = row ? globalEffectiveMd(row) : '';
+  if (!body) {
     throw new Error(`reconcile: global agent skill '${name}' is missing — cannot build its prompt`);
   }
-  return row.skillMd;
+  return body;
 }
 
-async function buildReconcilePrompt(runId: string): Promise<string> {
+function withAgentInstructions(header: string[], instructions: string): string {
   return [
-    '## Update Pipeline — Reconcile (Master agent)',
-    '',
-    `runId: ${runId}`,
-    '',
-    `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the bundle for this run.`,
-    'You MUST call `forge_reconcile action=record_verdict` before this job ends — leaving the run without a verdict permanently stalls it.',
+    ...header,
     '',
     'Your full instructions for this stage follow. Do not look for them on disk — this is the authoritative copy.',
     '',
     '---',
     '',
-    await loadAgentInstructions('forge-reconcile'),
+    instructions,
   ].join('\n');
+}
+
+function buildReconcilePrompt(runId: string, instructions: string): string {
+  return withAgentInstructions(
+    [
+      '## Update Pipeline — Reconcile (Master agent)',
+      '',
+      `runId: ${runId}`,
+      '',
+      `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the bundle for this run.`,
+      'You MUST call `forge_reconcile action=record_verdict` before this job ends — leaving the run without a verdict permanently stalls it.',
+    ],
+    instructions,
+  );
+}
+
+export function buildVerifierPromptWith(
+  runId: string,
+  jobId: string,
+  instructions: string,
+): string {
+  return withAgentInstructions(
+    [
+      '## Update Pipeline — Verify Skill (adversarial verifier)',
+      '',
+      `runId: ${runId}`,
+      `jobId: ${jobId}`,
+      `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the run for this verification.`,
+      `When you record your vote, pass jobId=${jobId} — this is YOUR job's own ID, not the Master agent's.`,
+      'You MUST call `forge_reconcile action=record_vote` before this job ends — leaving your vote unrecorded permanently stalls the run.',
+    ],
+    instructions,
+  );
 }
 
 // cm:edge naming -> packages/core/src/jobs/retry.ts — exported so a verify_skill retry clone can rebuild promptString with ITS OWN job id instead of reusing the dead original's (MINOR V, ISS-801 review round 4).
 export async function buildVerifierPrompt(runId: string, jobId: string): Promise<string> {
-  return [
-    '## Update Pipeline — Verify Skill (adversarial verifier)',
-    '',
-    `runId: ${runId}`,
-    `jobId: ${jobId}`,
-    '',
-    `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the run for this verification.`,
-    `When you record your vote, pass jobId=${jobId} — this is YOUR job's own ID, not the Master agent's.`,
-    'You MUST call `forge_reconcile action=record_vote` before this job ends — leaving your vote unrecorded permanently stalls the run.',
-    '',
-    'Your full instructions for this stage follow. Do not look for them on disk — this is the authoritative copy.',
-    '',
-    '---',
-    '',
-    await loadAgentInstructions('forge-verify-skill'),
-  ].join('\n');
+  return buildVerifierPromptWith(runId, jobId, await loadAgentInstructions('forge-verify-skill'));
 }
 
 // cm:why must equal the number of verify_skill jobs spawnVerifierJobs dispatches — recordVerifierVote's majority tally never resolves if fewer jobs exist than it waits for.
@@ -511,6 +523,9 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
     return;
   }
 
+  // cm:why loaded once for all VERIFIER_VOTE_COUNT verifiers — the body is identical per run, so doing it inside the loop was three byte-identical selects of a multi-KB TOASTed column.
+  const verifierInstructions = await loadAgentInstructions('forge-verify-skill');
+
   // cm:guard each verifier needs its OWN one-shot 'system' pipeline_run — closeRunIfOneShot (pipeline/runs.ts) cascade-cancels every still-active sibling job on a shared run the instant any one job on it goes terminal.
   const openedRunIds: string[] = [];
   const jobIds: string[] = [];
@@ -544,7 +559,7 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
         payload: {
           reconcileRunId: runId,
           skillName: 'forge-verify-skill',
-          promptString: await buildVerifierPrompt(runId, jobId),
+          promptString: buildVerifierPromptWith(runId, jobId, verifierInstructions),
         },
         status: 'queued',
       });
@@ -691,6 +706,9 @@ export async function spawnReconcileRun(input: {
   let runId: string;
   let jobId: string;
 
+  // cm:guard load the agent body BEFORE opening the transaction — querying the module-level `db` inside `db.transaction` borrows a SECOND pool connection while the write tx holds the first, and stretches the tx by a full round trip.
+  const reconcileInstructions = await loadAgentInstructions('forge-reconcile');
+
   try {
     const result = await db.transaction(async (tx) => {
       const [run] = await tx
@@ -718,7 +736,7 @@ export async function spawnReconcileRun(input: {
           payload: {
             reconcileRunId: run.id,
             skillName: 'forge-reconcile',
-            promptString: await buildReconcilePrompt(run.id),
+            promptString: buildReconcilePrompt(run.id, reconcileInstructions),
           },
           status: 'queued',
         })
@@ -801,6 +819,7 @@ export interface RecordVerdictInput {
   verdict: ReconcileVerdict;
   candidateBody: string | null;
   rationale: string;
+  // cm:guard the gate is DECLARED by the reconcile agent and re-judged adversarially by the verifiers — no server-side rule may override or second-guess it, including for `escalate` (owner decision 2026-08-10)
   /**
    * Which gate this change must clear, as judged by the reconcile agent — the
    * only party that has read the actual diff between running and candidate body.
@@ -1038,7 +1057,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     }
 
     if (majorityPass) {
-      const gate = (runRow.gate as ReconcileGate) ?? 'human';
+      const gate = runRow.gate ?? 'human';
       if (gate === 'human') {
         await tx
           .update(reconcileRuns)
