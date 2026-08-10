@@ -220,12 +220,14 @@ jobs:
       - run: pnpm --filter @forge/core lint
         continue-on-error: true
       - run: pnpm --filter @forge/core test
-      # `typecheck` uses base tsconfig that includes test files; weakly-typed
-      # mock accesses (publishSpy.mock.calls[0]) fail tsc. Build uses
-      # tsconfig.build.json which excludes tests, so prod compile is clean.
-      # Same cleanup ISS as the lint debt.
+      # BLOCKING since 2026-08-10. `typecheck` uses the base tsconfig, which
+      # includes test files (build uses tsconfig.build.json and excludes them).
+      # It carried 84 pre-existing errors — weakly-typed mock access
+      # (`spy.mock.calls[0][0]` on a 0-arg `vi.fn()`), `res.json<T>()` after
+      # Hono dropped the type arg, and noUncheckedIndexedAccess — and ran
+      # non-blocking for months, so it drifted. Cleared to 0; gated so it stays
+      # there. A new failure here is a real type error, not legacy noise.
       - run: pnpm --filter @forge/core typecheck
-        continue-on-error: true
       - run: pnpm --filter @forge/core build
       # Integration tests run in the separate, NON-BLOCKING `core-integration`
       # job below (not this gated one) — see its comment.
