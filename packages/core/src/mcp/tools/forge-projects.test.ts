@@ -105,9 +105,7 @@ function mockSelect(rows: unknown[]) {
  * returning [{ orgId, memberRole, orgRole }]. Pass `null` to simulate a
  * missing project (empty result).
  */
-function mockAccess(
-  access: { memberRole: string | null; orgRole: string | null } | null,
-) {
+function mockAccess(access: { memberRole: string | null; orgRole: string | null } | null) {
   mockSelect(access === null ? [] : [{ orgId: ORG_ID, ...access }]);
 }
 
@@ -297,9 +295,9 @@ describe('forge_projects.create', () => {
     // loadOrgRole → no row
     mockSelect([]);
     const tool = forgeProjectsCreateTool(deviceCtx());
-    await expect(
-      tool.handler({ slug: 'org-proj', name: 'X', orgId: ORG_ID }),
-    ).rejects.toThrow(/NOT_FOUND: org not found or not accessible/);
+    await expect(tool.handler({ slug: 'org-proj', name: 'X', orgId: ORG_ID })).rejects.toThrow(
+      /NOT_FOUND: org not found or not accessible/,
+    );
     expect(transactionImpl).not.toHaveBeenCalled();
   });
 
@@ -399,9 +397,7 @@ describe('forge_projects.create', () => {
       throw collision;
     });
     const tool = forgeProjectsCreateTool(deviceCtx());
-    await expect(
-      tool.handler({ slug: 'unique-slug', name: 'taken-name' }),
-    ).rejects.toBe(collision);
+    await expect(tool.handler({ slug: 'unique-slug', name: 'taken-name' })).rejects.toBe(collision);
   });
 
   it('rejects invalid slug formats at the schema layer', async () => {
@@ -448,7 +444,13 @@ describe('forge_projects.update', () => {
     expect(res.project.repoPath).toBe('/srv/a');
     // Sensitive REST-only fields must NOT appear in the response shape so a
     // future .returning() refactor that selects them can't ship silently.
-    for (const k of ['apiKey', 'webhookSecret', 'agentConfig', 'previewDeploy', 'defaultDeviceId']) {
+    for (const k of [
+      'apiKey',
+      'webhookSecret',
+      'agentConfig',
+      'previewDeploy',
+      'defaultDeviceId',
+    ]) {
       expect(res.project).not.toHaveProperty(k);
     }
     // exactly one select — the single org-aware authz query.
@@ -480,27 +482,27 @@ describe('forge_projects.update', () => {
     // mutate project settings — only org owner/admin can.
     mockAccess({ memberRole: 'admin', orgRole: null });
     const tool = forgeProjectsUpdateTool(deviceCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/FORBIDDEN: requires org admin \(project admin role is insufficient\)/);
+    await expect(tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } })).rejects.toThrow(
+      /FORBIDDEN: requires org admin \(project admin role is insufficient\)/,
+    );
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
   it('member role is refused with FORBIDDEN', async () => {
     mockAccess({ memberRole: 'member', orgRole: 'member' });
     const tool = forgeProjectsUpdateTool(deviceCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/FORBIDDEN: requires org admin/);
+    await expect(tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } })).rejects.toThrow(
+      /FORBIDDEN: requires org admin/,
+    );
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
   it('non-member device principal is refused with NOT_FOUND (no existence leak)', async () => {
     mockAccess({ memberRole: null, orgRole: null });
     const tool = forgeProjectsUpdateTool(deviceCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/NOT_FOUND/);
+    await expect(tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
@@ -515,17 +517,17 @@ describe('forge_projects.update', () => {
     // PAT path (also expects NOT_FOUND, not FORBIDDEN)
     mockAccess(null);
     const patTool = forgeProjectsUpdateTool(patCtx({ scopes: ['read', 'write'] }));
-    await expect(
-      patTool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/NOT_FOUND/);
+    await expect(patTool.handler({ projectId: PROJECT_A, patch: { name: 'no' } })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
   it('PAT without write scope is refused before any DB lookup', async () => {
     const tool = forgeProjectsUpdateTool(patCtx({ scopes: ['read'] }));
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/FORBIDDEN_SCOPE: requires write scope/);
+    await expect(tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } })).rejects.toThrow(
+      /FORBIDDEN_SCOPE: requires write scope/,
+    );
     expect(selectImpl).not.toHaveBeenCalled();
     expect(updateImpl).not.toHaveBeenCalled();
   });
@@ -534,9 +536,9 @@ describe('forge_projects.update', () => {
     const tool = forgeProjectsUpdateTool(
       patCtx({ scopes: ['read', 'write'], projectIds: [PROJECT_B] }),
     );
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/NOT_FOUND/);
+    await expect(tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
     // Short-circuit invariant: a probing PAT must not see the latency of a
     // DB lookup leak project existence outside its allowlist.
     expect(selectImpl).not.toHaveBeenCalled();
@@ -549,9 +551,9 @@ describe('forge_projects.update', () => {
     // error from set({}). If a future refactor breaks the refine, the
     // empty-updates SQL bug would re-emerge and this exact message would
     // disappear.
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: {} }),
-    ).rejects.toThrow(/patch must have at least one defined field/);
+    await expect(tool.handler({ projectId: PROJECT_A, patch: {} })).rejects.toThrow(
+      /patch must have at least one defined field/,
+    );
     expect(selectImpl).not.toHaveBeenCalled();
   });
 
@@ -672,9 +674,7 @@ describe('forge_projects.get', () => {
   it('non-existent project returns NOT_FOUND', async () => {
     mockProjectSelect(null);
     const tool = forgeProjectsGetTool(deviceCtx());
-    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
-      /NOT_FOUND/,
-    );
+    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('PAT without read scope is refused with FORBIDDEN_SCOPE before any DB lookup', async () => {
@@ -686,12 +686,8 @@ describe('forge_projects.get', () => {
   });
 
   it('PAT with allowlist miss returns NOT_FOUND without touching DB', async () => {
-    const tool = forgeProjectsGetTool(
-      patCtx({ scopes: ['read'], projectIds: [PROJECT_B] }),
-    );
-    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
-      /NOT_FOUND/,
-    );
+    const tool = forgeProjectsGetTool(patCtx({ scopes: ['read'], projectIds: [PROJECT_B] }));
+    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(/NOT_FOUND/);
     expect(selectImpl).not.toHaveBeenCalled();
   });
 
@@ -770,25 +766,25 @@ describe('forge_projects.archive', () => {
 
   it('without confirm:true throws BAD_REQUEST', async () => {
     const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, confirm: false }),
-    ).rejects.toThrow(/BAD_REQUEST: archive requires confirm/);
+    await expect(tool.handler({ projectId: PROJECT_A, confirm: false })).rejects.toThrow(
+      /BAD_REQUEST: archive requires confirm/,
+    );
   });
 
   it('a read-only PAT is refused with FORBIDDEN_SCOPE (parity with create/update)', async () => {
     const tool = forgeProjectsArchiveTool(patCtx({ scopes: ['read'] }));
-    await expect(
-      tool.handler({ projectId: PROJECT_A, confirm: true }),
-    ).rejects.toThrow(/FORBIDDEN_SCOPE: requires write scope/);
+    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
+      /FORBIDDEN_SCOPE: requires write scope/,
+    );
     // refused before any DB access
     expect(selectImpl).not.toHaveBeenCalled();
   });
 
   it('a PAT lacking the admin scope is refused with FORBIDDEN', async () => {
     const tool = forgeProjectsArchiveTool(patCtx({ scopes: ['read', 'write'] }));
-    await expect(
-      tool.handler({ projectId: PROJECT_A, confirm: true }),
-    ).rejects.toThrow(/FORBIDDEN: this token lacks the admin scope/);
+    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
+      /FORBIDDEN: this token lacks the admin scope/,
+    );
     // the scope gate fires before the role lookup
     expect(selectImpl).not.toHaveBeenCalled();
     expect(deleteImpl).not.toHaveBeenCalled();
@@ -798,9 +794,9 @@ describe('forge_projects.archive', () => {
     // member-but-not-admin → assertPrincipalIsAdmin throws before any delete.
     mockAccess({ memberRole: 'member', orgRole: null });
     const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, confirm: true }),
-    ).rejects.toThrow(/FORBIDDEN: requires project admin access/);
+    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
+      /FORBIDDEN: requires project admin access/,
+    );
     expect(deleteImpl).not.toHaveBeenCalled();
   });
 
@@ -808,9 +804,9 @@ describe('forge_projects.archive', () => {
     mockAccess({ memberRole: 'admin', orgRole: null }); // passes effective-admin gate
     mockAccess({ memberRole: 'admin', orgRole: null }); // fails org gate
     const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, confirm: true }),
-    ).rejects.toThrow(/FORBIDDEN: requires org admin on the project/);
+    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
+      /FORBIDDEN: requires org admin on the project/,
+    );
     expect(deleteImpl).not.toHaveBeenCalled();
   });
 
@@ -819,9 +815,9 @@ describe('forge_projects.archive', () => {
     mockAccess({ memberRole: null, orgRole: 'owner' }); // org gate
     mockSelect([{ active: 2 }]);
     const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, confirm: true }),
-    ).rejects.toThrow(/PROJECT_BUSY/);
+    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
+      /PROJECT_BUSY/,
+    );
   });
 
   it('happy path deletes and returns archived:true', async () => {

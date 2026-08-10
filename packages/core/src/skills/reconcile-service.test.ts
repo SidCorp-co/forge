@@ -42,7 +42,7 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
-import { classifyGate, spawnReconcileRun, validateC1C5 } from './reconcile-service.js';
+import { spawnReconcileRun, validateC1C5 } from './reconcile-service.js';
 
 // cm:why contracts/reconcile.ts tuples must mirror db/schema.ts
 describe('reconcile contract parity', () => {
@@ -54,50 +54,6 @@ describe('reconcile contract parity', () => {
   });
   it('RECONCILE_GATES matches schema', () => {
     expect([...RECONCILE_GATES].sort()).toEqual([...reconcileGates].sort());
-  });
-});
-
-describe('classifyGate', () => {
-  it('returns human when verdict is escalate', () => {
-    expect(classifyGate('anything', 'escalate')).toBe('human');
-  });
-
-  it('returns human when change mentions merge target', () => {
-    expect(classifyGate('Update merge-target from main to release', 'apply')).toBe('human');
-  });
-
-  it('returns human when change mentions auth', () => {
-    expect(classifyGate('Remove auth check before dispatch', 'apply')).toBe('human');
-  });
-
-  it('returns human when change removes a gate', () => {
-    expect(classifyGate('Remove the gate for auto-release', 'apply')).toBe('human');
-  });
-
-  it('returns auto for an additive, non-sensitive change', () => {
-    expect(classifyGate('Add a clarification step before coding', 'apply')).toBe('auto');
-  });
-
-  it('returns auto for enhancement verdict with harmless change', () => {
-    expect(classifyGate('Expand the plan description format', 'apply-with-adaptation')).toBe(
-      'auto',
-    );
-  });
-
-  it('returns human (fail-safe) for unrecognised change text not matching additive patterns', () => {
-    expect(classifyGate('Reorganize the skill sections for readability', 'apply')).toBe('human');
-  });
-
-  it('returns human (fail-safe) for empty change text', () => {
-    expect(classifyGate('', 'apply')).toBe('human');
-  });
-
-  it('returns human when change mentions skipping approval', () => {
-    expect(classifyGate('Skip the approval step for fast PRs', 'apply')).toBe('human');
-  });
-
-  it('returns human when change mentions loosening a requirement', () => {
-    expect(classifyGate('Loosen the requirement for code review sign-off', 'apply')).toBe('human');
   });
 });
 

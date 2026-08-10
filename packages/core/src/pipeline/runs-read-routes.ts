@@ -21,8 +21,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
 
@@ -96,10 +96,7 @@ pipelineRunProjectRoutes.get(
     if (q.issueId) conds.push(eq(pipelineRuns.issueId, q.issueId));
     const where = conds.length === 1 ? conds[0] : and(...conds);
 
-    const [{ n } = { n: 0 }] = await db
-      .select({ n: count() })
-      .from(pipelineRuns)
-      .where(where);
+    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(pipelineRuns).where(where);
 
     const rows = await db
       .select()

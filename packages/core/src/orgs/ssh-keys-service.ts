@@ -1,3 +1,5 @@
+import type { SshConnTestResult, SshKeyCreateInput, WorkspaceSshKeyView } from '@forge/contracts';
+import { and, eq, inArray } from 'drizzle-orm';
 /**
  * Org-scoped Private Keys pool (ISS-628) — the shared service layer behind
  * `orgs/ssh-keys-routes.ts`. Kept as a standalone module (not inlined in the
@@ -13,20 +15,18 @@
  * (`devices/routes.ts`).
  */
 import { HTTPException } from 'hono/http-exception';
-import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
+  type ProjectGitCredentialSource,
   projectGitCredentials,
   projects,
   workspaceSshKeys,
-  type ProjectGitCredentialSource,
 } from '../db/schema.js';
-import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
 import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
+import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
 import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
-import type { SshConnTestResult, SshKeyCreateInput, WorkspaceSshKeyView } from '@forge/contracts';
 
 const vaultUnavailable = () =>
   new HTTPException(503, {
@@ -50,7 +50,9 @@ type KeyRow = {
 };
 
 /** Every project (id/slug/name) currently referencing the given pool keys. */
-async function usedByForKeys(keyIds: string[]): Promise<Map<string, WorkspaceSshKeyView['usedByProjects']>> {
+async function usedByForKeys(
+  keyIds: string[],
+): Promise<Map<string, WorkspaceSshKeyView['usedByProjects']>> {
   const usedBy = new Map<string, WorkspaceSshKeyView['usedByProjects']>();
   if (keyIds.length === 0) return usedBy;
   const rows = await db
@@ -71,7 +73,10 @@ async function usedByForKeys(keyIds: string[]): Promise<Map<string, WorkspaceSsh
   return usedBy;
 }
 
-function toView(row: KeyRow, usedByProjects: WorkspaceSshKeyView['usedByProjects']): WorkspaceSshKeyView {
+function toView(
+  row: KeyRow,
+  usedByProjects: WorkspaceSshKeyView['usedByProjects'],
+): WorkspaceSshKeyView {
   return {
     id: row.id,
     orgId: row.orgId,
@@ -109,7 +114,10 @@ export async function listOrgSshKeys(orgId: string): Promise<WorkspaceSshKeyView
 }
 
 /** Fetch one pool key's non-secret view, or null. */
-export async function getOrgSshKey(orgId: string, keyId: string): Promise<WorkspaceSshKeyView | null> {
+export async function getOrgSshKey(
+  orgId: string,
+  keyId: string,
+): Promise<WorkspaceSshKeyView | null> {
   const [row] = await db
     .select(NON_SECRET_COLUMNS)
     .from(workspaceSshKeys)
@@ -133,7 +141,13 @@ export async function createOrgSshKey(
 ): Promise<WorkspaceSshKeyView> {
   if (!isVaultConfigured()) throw vaultUnavailable();
 
-  const comment = `forge-${input.name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 40) || 'key'}`;
+  const comment = `forge-${
+    input.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .slice(0, 40) || 'key'
+  }`;
   let keypair: { publicKey: string; privateKey: string; fingerprint: string | null };
   let source: ProjectGitCredentialSource;
   try {

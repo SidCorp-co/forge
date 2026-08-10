@@ -32,10 +32,9 @@ vi.mock('../../memory/indexer.js', () => ({
 }));
 
 vi.mock('../../memory/write-service.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../memory/write-service.js')>(
-      '../../memory/write-service.js',
-    );
+  const actual = await vi.importActual<typeof import('../../memory/write-service.js')>(
+    '../../memory/write-service.js',
+  );
   return {
     ...actual,
     runMemoryWrite: (input: unknown) => runMemoryWriteMock(input),
@@ -50,22 +49,17 @@ vi.mock('../../memory/search-service.js', () => ({
 }));
 
 vi.mock('../../memory/get-service.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../memory/get-service.js')>(
-      '../../memory/get-service.js',
-    );
+  const actual = await vi.importActual<typeof import('../../memory/get-service.js')>(
+    '../../memory/get-service.js',
+  );
   return {
     ...actual,
     runMemoryGet: (input: unknown) => runMemoryGetMock(input),
   };
 });
 
-const {
-  forgeMemoryWriteTool,
-  forgeMemorySearchTool,
-  forgeMemoryGetTool,
-  forgeMemoryDeleteTool,
-} = await import('./forge-memory.js');
+const { forgeMemoryWriteTool, forgeMemorySearchTool, forgeMemoryGetTool, forgeMemoryDeleteTool } =
+  await import('./forge-memory.js');
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -136,9 +130,7 @@ describe('forge_memory.write tool', () => {
 
   it('rejects with FORBIDDEN when device owner is neither owner nor member', async () => {
     // owner mismatch + no membership row.
-    limit
-      .mockResolvedValueOnce([{ ownerId: 'other-owner' }])
-      .mockResolvedValueOnce([]);
+    limit.mockResolvedValueOnce([{ ownerId: 'other-owner' }]).mockResolvedValueOnce([]);
 
     const tool = forgeMemoryWriteTool(fakeDevice);
     await expect(
@@ -218,14 +210,10 @@ describe('forge_memory.get tool', () => {
   });
 
   it('rejects non-member device with FORBIDDEN', async () => {
-    limit
-      .mockResolvedValueOnce([{ ownerId: 'other-owner' }])
-      .mockResolvedValueOnce([]);
+    limit.mockResolvedValueOnce([{ ownerId: 'other-owner' }]).mockResolvedValueOnce([]);
 
     const tool = forgeMemoryGetTool(fakeDevice);
-    await expect(
-      tool.handler({ projectId: PROJECT_ID }),
-    ).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
     expect(runMemoryGetMock).not.toHaveBeenCalled();
   });
 });
@@ -243,11 +231,7 @@ describe('forge_memory.delete tool', () => {
     });
 
     expect(r).toEqual({ deleted: true });
-    expect(deleteMemoryMock).toHaveBeenCalledWith(
-      PROJECT_ID,
-      'note',
-      'run:1/step:plan/attempt:1',
-    );
+    expect(deleteMemoryMock).toHaveBeenCalledWith(PROJECT_ID, 'note', 'run:1/step:plan/attempt:1');
   });
 
   it('returns {deleted:false} when no row matched (idempotent)', async () => {

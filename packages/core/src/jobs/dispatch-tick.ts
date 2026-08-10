@@ -20,10 +20,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  publishPipelineHealthChanged,
-  recordTickAt,
-} from '../issues/pipeline-health.js';
+import { publishPipelineHealthChanged, recordTickAt } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -90,10 +87,7 @@ export function dispatchTickForProject(
   return next;
 }
 
-async function runTickInner(
-  projectId: string,
-  triggerBlockerIssueId?: string,
-): Promise<void> {
+async function runTickInner(projectId: string, triggerBlockerIssueId?: string): Promise<void> {
   // ISS-164 — record per-project dispatcher heartbeat for pipelineHealth.lastTickAt.
   recordTickAt(projectId);
 
@@ -117,10 +111,7 @@ async function runTickInner(
     `);
     for (const r of rows) if (r.issue_id) affectedIssueIds.add(r.issue_id);
   } catch (err) {
-    logger.warn(
-      { err, projectId },
-      'dispatch-tick: queued-issue pre-snapshot failed',
-    );
+    logger.warn({ err, projectId }, 'dispatch-tick: queued-issue pre-snapshot failed');
   }
 
   try {

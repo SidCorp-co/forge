@@ -29,12 +29,7 @@ import {
 export const pmSnapshotInputSchema = z.object({ projectId: z.uuid() }).strict();
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
-const ACTIVE_PIPELINE_STATUSES = [
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-] as const;
+const ACTIVE_PIPELINE_STATUSES = ['approved', 'in_progress', 'developed', 'testing'] as const;
 
 const FAILURE_REASON_TRUNC = 200;
 
@@ -68,12 +63,7 @@ export async function pmSnapshotHandler(
       queuedAt: jobs.queuedAt,
     })
     .from(jobs)
-    .where(
-      and(
-        eq(jobs.projectId, input.projectId),
-        inArray(jobs.status, [...ACTIVE_JOB_STATUSES]),
-      ),
-    )
+    .where(and(eq(jobs.projectId, input.projectId), inArray(jobs.status, [...ACTIVE_JOB_STATUSES])))
     .orderBy(desc(jobs.queuedAt))
     .limit(20);
 

@@ -91,10 +91,11 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
 }));
 
 vi.mock('../middleware/auth.js', () => ({
-  requireAuth: () => async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
-    c.set('userId', 'u-1');
-    await next();
-  },
+  requireAuth:
+    () => async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
+      c.set('userId', 'u-1');
+      await next();
+    },
   assertEmailVerified: () => async (_c: unknown, next: () => Promise<void>) => {
     await next();
   },
@@ -515,9 +516,7 @@ describe('DELETE /api/devices/:id (soft revoke + pool cleanup)', () => {
   it('403 FORBIDDEN when caller is not device owner', async () => {
     selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else', status: 'online' }]);
     const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
-    );
+    const res = await app.fetch(req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }));
     expect(res.status).toBe(403);
     expect(dbTransaction).not.toHaveBeenCalled();
   });
@@ -526,9 +525,7 @@ describe('DELETE /api/devices/:id (soft revoke + pool cleanup)', () => {
     selectLimit.mockResolvedValueOnce([{ ownerId: 'u-1', status: 'online' }]);
 
     const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
-    );
+    const res = await app.fetch(req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }));
     expect(res.status).toBe(204);
     expect(dbTransaction).toHaveBeenCalledOnce();
     expect(txUpdateSet).toHaveBeenCalledWith({ status: 'revoked' });
@@ -538,9 +535,7 @@ describe('DELETE /api/devices/:id (soft revoke + pool cleanup)', () => {
   it('404 NOT_FOUND when device missing', async () => {
     selectLimit.mockResolvedValueOnce([]);
     const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
-    );
+    const res = await app.fetch(req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }));
     expect(res.status).toBe(404);
   });
 
@@ -553,9 +548,7 @@ describe('DELETE /api/devices/:id (soft revoke + pool cleanup)', () => {
       });
     });
     const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
-    );
+    const res = await app.fetch(req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }));
     expect(res.status).toBe(403);
     expect(dbTransaction).not.toHaveBeenCalled();
   });

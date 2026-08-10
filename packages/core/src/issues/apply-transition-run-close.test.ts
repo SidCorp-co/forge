@@ -39,8 +39,7 @@ const closeOpenRunForIssueMock = vi.fn(async () => undefined);
 const setCurrentStepForOpenIssueRunMock = vi.fn(async () => undefined);
 vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: (...args: unknown[]) => closeOpenRunForIssueMock(...args),
-  setCurrentStepForOpenIssueRun: (...args: unknown[]) =>
-    setCurrentStepForOpenIssueRunMock(...args),
+  setCurrentStepForOpenIssueRun: (...args: unknown[]) => setCurrentStepForOpenIssueRunMock(...args),
 }));
 
 const { transitionIssueStatus, TERMINAL_FOR_DISPATCH, RUN_CLOSING_STATUSES } = await import(

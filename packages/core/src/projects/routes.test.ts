@@ -1233,8 +1233,8 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       ['approved', 'clarified', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
     );
 
-    // cm:why 1 = pipelineConfig preset write, 2 = SHARED_INSTALL_ONLY_SKILLS install_only flip (forge-reconcile, forge-verify-skill).
-    expect(updateSet).toHaveBeenCalledTimes(3);
+    // cm:why the pipelineConfig preset write is now the ONLY update — the two install_only flips went away with the Forge-owned agents leaving the seed-list (owner decision 2026-08-10).
+    expect(updateSet).toHaveBeenCalledTimes(1);
     const setArg = updateSet.mock.calls[0]?.[0] as {
       agentConfig: { pipelineConfig: Record<string, unknown> };
     };
@@ -1339,8 +1339,8 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { pipelineEnabled: boolean };
     expect(body.pipelineEnabled).toBe(false);
-    // cm:why 1 = states backfill (preset write skipped, enabled=false wins), 2 = install_only flip (forge-reconcile, forge-verify-skill).
-    expect(updateSet).toHaveBeenCalledTimes(3);
+    // cm:why only the states backfill remains (preset write skipped, enabled=false wins); the install_only flips left with the seed-list.
+    expect(updateSet).toHaveBeenCalledTimes(1);
     const updateCalls = updateSet.mock.calls as unknown as Array<
       [{ agentConfig: { pipelineConfig: { enabled: boolean; states: Record<string, unknown> } } }]
     >;

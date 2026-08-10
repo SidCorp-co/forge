@@ -83,10 +83,9 @@ const CANDIDATE_ROW = { id: 'cand-1' };
 
 // ── module under test ─────────────────────────────────────────────────────────
 
-const {
-  registerFeedbackNormalizer,
-  resetFeedbackNormalizerForTest,
-} = await import('./normalizer.js');
+const { registerFeedbackNormalizer, resetFeedbackNormalizerForTest } = await import(
+  './normalizer.js'
+);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -111,7 +110,7 @@ async function emitAndFlush(
 describe('jobCompleted — one report → one candidate', () => {
   it('upserts candidate with signal_type=agent_self_report and back-sets candidate_id', async () => {
     selectMock
-      .mockResolvedValueOnce([makeReport()])  // feedbackReports query
+      .mockResolvedValueOnce([makeReport()]) // feedbackReports query
       .mockResolvedValueOnce([CANDIDATE_ROW]); // memoryCandidates lookup
 
     const bus = new HooksBus();
@@ -154,9 +153,7 @@ describe('jobCompleted — no reports', () => {
 
 describe('jobFailed — outcome recorded as failed', () => {
   it('sets outcome=failed and includes failureKind in evidence', async () => {
-    selectMock
-      .mockResolvedValueOnce([makeReport()])
-      .mockResolvedValueOnce([CANDIDATE_ROW]);
+    selectMock.mockResolvedValueOnce([makeReport()]).mockResolvedValueOnce([CANDIDATE_ROW]);
 
     const bus = new HooksBus();
     await emitAndFlush(bus, 'jobFailed', {

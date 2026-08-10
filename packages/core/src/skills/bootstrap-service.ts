@@ -9,8 +9,8 @@ import { resolveOrAdoptProjectSkill } from './service.js';
 
 // cm:why ISS-737: adding a name here is the entire change needed to fan a builtin skill out to every project (new + backfill) as install_only, no stage binding.
 // cm:why forge-onboard (META, ISS-742) moved to the device plugin channel — only genuinely PER-PROJECT shared utilities belong in this list, never a meta skill.
-// cm:why forge-reconcile/forge-verify-skill run as one-shot system jobs (never stage-registered), so install_only fan-out is their only path to a runner's .claude/skills disk mirror (BLOCKER U, ISS-801 review round 4).
-const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = ['forge-reconcile', 'forge-verify-skill'];
+// cm:guard never list a Forge-owned governing agent here (forge-reconcile, forge-verify-skill) — adoption hands the project an editable fork of the very agent that polices its updates; their instructions are inlined into the job prompt from the global row instead (owner decision 2026-08-10)
+const SHARED_INSTALL_ONLY_SKILLS: ReadonlyArray<string> = [];
 
 /**
  * Idempotent: for each seed-list entry, adopt the project's own copy

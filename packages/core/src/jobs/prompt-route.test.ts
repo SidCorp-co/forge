@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  extractPayloadExtras,
-  extractResolvedFlags,
-  redactMcpSecrets,
-} from './prompt-route.js';
+import { extractPayloadExtras, extractResolvedFlags, redactMcpSecrets } from './prompt-route.js';
 
 describe('redactMcpSecrets', () => {
   it('redacts Authorization header with length marker', () => {
@@ -107,9 +103,7 @@ describe('extractPayloadExtras', () => {
   });
 
   it('returns {} when payload contains only stripped keys', () => {
-    expect(
-      extractPayloadExtras({ promptString: 'x', skillName: 'y', mcpServers: [] }),
-    ).toEqual({});
+    expect(extractPayloadExtras({ promptString: 'x', skillName: 'y', mcpServers: [] })).toEqual({});
   });
 
   it('strips dispatcher-stamped resolvedFlags keys so they do not double-render', () => {
@@ -164,10 +158,7 @@ describe('extractResolvedFlags', () => {
   });
 
   it('rejects unknown permissionMode strings', () => {
-    const r = extractResolvedFlags(
-      { permissionMode: 'foo' },
-      { skillName: null, modelUsed: null },
-    );
+    const r = extractResolvedFlags({ permissionMode: 'foo' }, { skillName: null, modelUsed: null });
     expect(r.permissionMode).toBeNull();
   });
 

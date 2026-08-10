@@ -25,15 +25,15 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { issueOrRotateDeviceTokenByMachine } from '../auth/deviceToken.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { deviceLoginCodes, users } from '../db/schema.js';
-import { logger } from '../logger.js';
-import { rateLimit } from '../middleware/rate-limit.js';
-import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { Sentry } from '../observability/sentry.js';
-import { issueOrRotateDeviceTokenByMachine } from '../auth/deviceToken.js';
 import { provisionGitCredential } from '../git/provision-credential.js';
+import { logger } from '../logger.js';
+import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rate-limit.js';
+import { Sentry } from '../observability/sentry.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
 

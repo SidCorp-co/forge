@@ -39,6 +39,8 @@ const inputSchema = z
     candidateBody: z.string().optional(),
     /** Required for action=record_verdict: explicit rationale (story→how; charter→how; invariants→still satisfied). */
     rationale: z.string().max(5000).optional(),
+    /** Required for action=record_verdict: which gate this change must clear, as judged by the agent that read the diff. */
+    gate: z.enum(['auto', 'human']).optional(),
     // record_vote fields
     /** Required for action=record_vote: the verifier job ID (this job). */
     jobId: z.string().uuid().optional(),
@@ -58,7 +60,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
   - trigger: Start a reconcile run for a skill × packet pair (admin-only). Enforces C1–C5 contract. Returns runId or a structured refusal.
   - get: Fetch a single reconcile run by runId (member-gated). Returns run status, verdict, gate, bundle snapshot, verifier votes.
   - list: List recent reconcile runs for the project (member-gated).
-  - record_verdict: Master agent records its verdict + candidate body for an in-flight run (admin-only). Verdicts: no-op | apply | apply-with-adaptation | escalate. For apply/apply-with-adaptation, candidateBody and rationale are required.
+  - record_verdict: Master agent records its verdict + candidate body for an in-flight run (admin-only). Verdicts: no-op | apply | apply-with-adaptation | escalate. For apply/apply-with-adaptation, candidateBody and rationale are required. The 'gate' field is required on every verdict and is YOUR judgement, not a server rule: 'auto' publishes on a passing verifier majority, 'human' parks the run for an owner. Nothing downstream re-checks it.
   - record_vote: Verifier agent records its pass/fail vote for a run in 'verifying' status. jobId (this verifier's job ID), vote ('pass'|'fail'), and reason are required.
   - apply: Human approves a 'decided' run at the human gate and publishes the candidate body (admin-only).
   - reject: Human rejects a 'decided' run with a reason (admin-only). Sets status to 'escalated'.`,
@@ -111,6 +113,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error('BAD_REQUEST: verdict is required for action=record_verdict');
       if (!input.rationale)
         throw new Error('BAD_REQUEST: rationale is required for action=record_verdict');
+      if (!input.gate) throw new Error('BAD_REQUEST: gate is required for action=record_verdict');
       if (
         (input.verdict === 'apply' || input.verdict === 'apply-with-adaptation') &&
         !input.candidateBody
@@ -130,6 +133,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
         verdict: input.verdict,
         candidateBody: input.candidateBody ?? null,
         rationale: input.rationale,
+        gate: input.gate,
         actor: 'agent:master',
       });
       return { ok: true };

@@ -255,9 +255,7 @@ describe('jobs/events-routes POST /:id/events', () => {
     jobRow.agentSessionId = 'session-1';
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
-    insertReturning.mockResolvedValueOnce([
-      { seq: 1, kind: 'stdout', ts: new Date(), data: {} },
-    ]);
+    insertReturning.mockResolvedValueOnce([{ seq: 1, kind: 'stdout', ts: new Date(), data: {} }]);
     // CAS UPDATE returns the flipped row.
     updateReturning.mockResolvedValueOnce([
       { id: 'session-1', projectId: 'proj-1', deviceId: 'dev-1' },
@@ -302,9 +300,7 @@ describe('jobs/events-routes POST /:id/events', () => {
     jobRow.agentSessionId = 'session-1';
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
-    insertReturning.mockResolvedValueOnce([
-      { seq: 1, kind: 'stdout', ts: new Date(), data: {} },
-    ]);
+    insertReturning.mockResolvedValueOnce([{ seq: 1, kind: 'stdout', ts: new Date(), data: {} }]);
     // CAS UPDATE returns no row (status was not 'queued').
     updateReturning.mockResolvedValueOnce([]);
 
@@ -339,9 +335,7 @@ describe('jobs/events-routes POST /:id/events', () => {
     jobRow.agentSessionId = null;
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
-    insertReturning.mockResolvedValueOnce([
-      { seq: 1, kind: 'stdout', ts: new Date(), data: {} },
-    ]);
+    insertReturning.mockResolvedValueOnce([{ seq: 1, kind: 'stdout', ts: new Date(), data: {} }]);
 
     const app = buildApp();
     const r = await app.fetch(

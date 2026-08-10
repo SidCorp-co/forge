@@ -82,51 +82,8 @@ async function logActivity(
   await recordSkillActivityEvent(executor, clean);
 }
 
-// cm:guard HUMAN_GATE_PATTERNS is a deny list, not exhaustive (ISS-795 §6; ISS-373 auth exposure; ISS-354/365 merge target).
-// The fail-safe default ('human' unless ADDITIVE_PATTERNS positively matches) is the real safety mechanism, not this list.
-const HUMAN_GATE_PATTERNS: RegExp[] = [
-  /\bmerge.?target\b/i,
-  /\bterminal.?transition\b/i,
-  /\bauth\b/i,
-  /\bpermission\b/i,
-  /\bdata.?exposure\b/i,
-  /\bremov(e|ing|al).{0,30}(gate|guard|step)\b/i,
-  /\brelax.{0,30}(gate|guard|bar)\b/i,
-  /\bdisabl(e|ing).{0,30}(gate|guard|check)\b/i,
-  /\bwiden.{0,30}(who|access|scope)\b/i,
-  /\bskip.{0,30}(step|gate|guard|check|approval)\b/i,
-  /\bloosen.{0,30}(requirement|check|bar|gate)\b/i,
-];
-
-// cm:why must positively match (and hit no HUMAN_GATE_PATTERNS) before classifyGate returns 'auto'.
-const ADDITIVE_PATTERNS: RegExp[] = [
-  /\badd(ing|ed|s)?\b.{0,40}(step|guard|check|gate|validation|requirement|rule|clause)/i,
-  /\bstrengthen(ing|ed|s)?\b/i,
-  /\btighten(ing|ed|s)?\b/i,
-  /\bexpand(ing|ed|s)?\b/i,
-  /\bimprove(s|d|ing)?\b/i,
-  /\bincreas(e|ing|es|ed)\b.{0,40}(check|validation|requirement|strictness|coverage)/i,
-];
-
-/**
- * Classify whether the change may be auto-applied or requires human review.
- * Fail-safe: defaults to 'human' unless the change is positively identified
- * as additive (matches ADDITIVE_PATTERNS) AND does not match any HUMAN_GATE_PATTERNS.
- * Any change that removes/relaxes a gate, alters auth/permission, or touches
- * merge targets or terminal transitions → human gate (ISS-795 §6).
- */
-export function classifyGate(change: string, verdict: ReconcileVerdict): ReconcileGate {
-  if (verdict === 'escalate') return 'human';
-  for (const pattern of HUMAN_GATE_PATTERNS) {
-    if (pattern.test(change)) return 'human';
-  }
-  for (const pattern of ADDITIVE_PATTERNS) {
-    if (pattern.test(change)) return 'auto';
-  }
-  // cm:why Fail safe: unrecognised change text routes to human review.
-  // A leaky deny-list is worse than a false-positive on the human gate.
-  return 'human';
-}
+// cm:guard the gate is DECLARED by the reconcile agent and adversarially checked by the verifiers — no server-side pattern may override or second-guess it (owner decision 2026-08-10)
+// cm:why the regex classifier it replaced read the human-written `change` prose, not the diff, so it was wrong in both directions: a purely additive edit routed to `human` because its wording missed the allow-list, while "add a step that merges to production" would have matched it and taken the auto lane
 
 const REQUIRED_BUNDLE_KEYS: (keyof ReconcileBundleSnapshot)[] = [
   'change',
@@ -397,38 +354,54 @@ export async function assembleBundle(
   };
 }
 
-// cm:why self-contained prompt (mirrors buildReleaseBatchPrompt) NOT a bare `/<skill>` invocation — forge-reconcile is user_invocable:false so the harness never registers it as a slash command (BLOCKER R, ISS-801 review).
-function buildReconcilePrompt(runId: string): string {
+// cm:guard serve these two agents' instructions from the global skill row, NEVER from the device's disk — Forge alone owns the agent that governs every project's updates, so no project may adopt, edit or fork it (owner decision 2026-08-10)
+// cm:why the disk-path form forced adoption + install_only fan-out, which handed each project an editable copy of its own governor and made the run depend on the sync path that already fails in the wild (device.sync.failed 502, portal-lighthuman 2026-08-09)
+async function loadAgentInstructions(name: string): Promise<string> {
+  const [row] = await db
+    .select({ skillMd: skills.skillMd })
+    .from(skills)
+    .where(and(eq(skills.name, name), eq(skills.scope, 'global')))
+    .limit(1);
+  if (!row?.skillMd) {
+    throw new Error(`reconcile: global agent skill '${name}' is missing — cannot build its prompt`);
+  }
+  return row.skillMd;
+}
+
+async function buildReconcilePrompt(runId: string): Promise<string> {
   return [
     '## Update Pipeline — Reconcile (Master agent)',
     '',
     `runId: ${runId}`,
     '',
-    'Read `.claude/skills/forge-reconcile/SKILL.md` under the repository root and follow it exactly — ' +
-      'it is your full instructions for this stage (loading the 12-item bundle, reasoning, choosing a ' +
-      'verdict, and recording it via `forge_reconcile`).',
-    '',
     `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the bundle for this run.`,
     'You MUST call `forge_reconcile action=record_verdict` before this job ends — leaving the run without a verdict permanently stalls it.',
+    '',
+    'Your full instructions for this stage follow. Do not look for them on disk — this is the authoritative copy.',
+    '',
+    '---',
+    '',
+    await loadAgentInstructions('forge-reconcile'),
   ].join('\n');
 }
 
-// cm:why same rationale as buildReconcilePrompt — forge-verify-skill is also user_invocable:false.
 // cm:edge naming -> packages/core/src/jobs/retry.ts — exported so a verify_skill retry clone can rebuild promptString with ITS OWN job id instead of reusing the dead original's (MINOR V, ISS-801 review round 4).
-export function buildVerifierPrompt(runId: string, jobId: string): string {
+export async function buildVerifierPrompt(runId: string, jobId: string): Promise<string> {
   return [
     '## Update Pipeline — Verify Skill (adversarial verifier)',
     '',
     `runId: ${runId}`,
     `jobId: ${jobId}`,
     '',
-    'Read `.claude/skills/forge-verify-skill/SKILL.md` under the repository root and follow it exactly — ' +
-      'it is your full instructions for this stage (loading the run, verifying adversarially, and ' +
-      'recording your vote via `forge_reconcile`).',
-    '',
     `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the run for this verification.`,
     `When you record your vote, pass jobId=${jobId} — this is YOUR job's own ID, not the Master agent's.`,
     'You MUST call `forge_reconcile action=record_vote` before this job ends — leaving your vote unrecorded permanently stalls the run.',
+    '',
+    'Your full instructions for this stage follow. Do not look for them on disk — this is the authoritative copy.',
+    '',
+    '---',
+    '',
+    await loadAgentInstructions('forge-verify-skill'),
   ].join('\n');
 }
 
@@ -571,7 +544,7 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
         payload: {
           reconcileRunId: runId,
           skillName: 'forge-verify-skill',
-          promptString: buildVerifierPrompt(runId, jobId),
+          promptString: await buildVerifierPrompt(runId, jobId),
         },
         status: 'queued',
       });
@@ -745,7 +718,7 @@ export async function spawnReconcileRun(input: {
           payload: {
             reconcileRunId: run.id,
             skillName: 'forge-reconcile',
-            promptString: buildReconcilePrompt(run.id),
+            promptString: await buildReconcilePrompt(run.id),
           },
           status: 'queued',
         })
@@ -828,6 +801,11 @@ export interface RecordVerdictInput {
   verdict: ReconcileVerdict;
   candidateBody: string | null;
   rationale: string;
+  /**
+   * Which gate this change must clear, as judged by the reconcile agent — the
+   * only party that has read the actual diff between running and candidate body.
+   */
+  gate: ReconcileGate;
   /** Actor that produced the verdict (e.g. 'agent:master'). */
   actor: string;
 }
@@ -860,7 +838,7 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
       return { toVerifying: false, projectId: runRow.projectId };
     }
 
-    const gate = classifyGate(runRow.bundle?.change ?? '', input.verdict);
+    const gate = input.gate;
 
     if (input.verdict === 'escalate' || input.verdict === 'no-op') {
       const nextStatus: ReconcileRunStatus = input.verdict === 'escalate' ? 'escalated' : 'applied';

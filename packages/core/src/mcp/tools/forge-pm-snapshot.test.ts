@@ -19,8 +19,7 @@ chain.limit = () => chain;
 chain.groupBy = () => chain;
 chain.leftJoin = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge for await
-chain.then = (resolve: any, reject: any) =>
-  Promise.resolve(queue.shift()).then(resolve, reject);
+chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 
 vi.mock('../../db/client.js', () => ({
   db: {

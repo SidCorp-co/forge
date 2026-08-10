@@ -24,9 +24,9 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
+  type IssueStatus,
   agentSessions,
   issueDependencies,
-  type IssueStatus,
   issues,
   jobs,
   runners,
@@ -135,7 +135,19 @@ export interface ClassifyInput {
  * this for every requested issue id.
  */
 export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHealth {
-  const { issue, sessions, jobs: issueJobs, deps, decompChildren, runningIssueIds, runningIssueCount, cap, baseStampable, runnerInFlight, lastTickAt } = input;
+  const {
+    issue,
+    sessions,
+    jobs: issueJobs,
+    deps,
+    decompChildren,
+    runningIssueIds,
+    runningIssueCount,
+    cap,
+    baseStampable,
+    runnerInFlight,
+    lastTickAt,
+  } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
   const activeJobs = issueJobs.filter((j) => j.status !== 'queued');
@@ -153,17 +165,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
 
   if (queuedJobs.length === 0) return out;
 
-  const candidate = [...queuedJobs].sort(
-    (a, b) => a.queuedAt.getTime() - b.queuedAt.getTime(),
-  )[0];
+  const candidate = [...queuedJobs].sort((a, b) => a.queuedAt.getTime() - b.queuedAt.getTime())[0];
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
   out.queuedAt = sinceIso;
 
   const blockingSession = sessions.find(
-    (s) =>
-      (s.status === 'running' || s.status === 'queued') &&
-      s.id !== candidate.agentSessionId,
+    (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
   );
   const blockingJob = activeJobs.find((j) => j.id !== candidate.id);
   if (blockingSession || blockingJob) {
@@ -214,9 +222,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   // for every child to land. (The old inverse rule — child release waiting on
   // its parent — was removed from the gate; it deadlocked umbrella epics.)
   if (['code', 'review', 'test', 'fix'].includes(candidate.type)) {
-    const pendingChildren = decompChildren.filter(
-      (c) => !depSatisfied(c.status, c.mergedAt),
-    );
+    const pendingChildren = decompChildren.filter((c) => !depSatisfied(c.status, c.mergedAt));
     if (pendingChildren.length > 0) {
       out.waitingOn = {
         reason: 'waiting_on_decomp_children',
@@ -524,9 +530,6 @@ export async function publishPipelineHealthChanged(
       });
     }
   } catch (err) {
-    logger.warn(
-      { err, projectId, issueCount: issueIds.length },
-      'pipeline-health: publish failed',
-    );
+    logger.warn({ err, projectId, issueCount: issueIds.length }, 'pipeline-health: publish failed');
   }
 }

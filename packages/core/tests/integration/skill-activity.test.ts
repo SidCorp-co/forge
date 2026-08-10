@@ -14,13 +14,19 @@ import {
 describe('skill-activity log integration (ISS-797)', () => {
   let harness: TestDatabase;
   let schema: typeof import('../../src/db/schema.js');
-  let recordSkillActivityEvent: typeof import('../../src/skills/activity.js').recordSkillActivityEvent;
+  let recordSkillActivityEvent: typeof import(
+    '../../src/skills/activity.js',
+  ).recordSkillActivityEvent;
   let applyReconcileRun: (runId: string, actorUserId: string) => Promise<void>;
-  let checkSkillActivityChainIntegrity: typeof import('../../src/skills/activity-chain-integrity.js').checkSkillActivityChainIntegrity;
+  let checkSkillActivityChainIntegrity: typeof import(
+    '../../src/skills/activity-chain-integrity.js',
+  ).checkSkillActivityChainIntegrity;
   let listBySkill: typeof import('../../src/skills/activity-views.js').listBySkill;
   let listByDevice: typeof import('../../src/skills/activity-views.js').listByDevice;
   let listByPacket: typeof import('../../src/skills/activity-views.js').listByPacket;
-  let summarizeByEventType: typeof import('../../src/skills/activity-views.js').summarizeByEventType;
+  let summarizeByEventType: typeof import(
+    '../../src/skills/activity-views.js',
+  ).summarizeByEventType;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();

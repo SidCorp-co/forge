@@ -39,10 +39,7 @@ describe('deprecationFor', () => {
 
 describe('formatDeprecationHeader', () => {
   it('joins notices in stable alphabetical order', () => {
-    const header = formatDeprecationHeader([
-      'forge_pm.snapshot',
-      'forge_pipeline_runs.list',
-    ]);
+    const header = formatDeprecationHeader(['forge_pm.snapshot', 'forge_pipeline_runs.list']);
     expect(header).toBe(
       'forge_pipeline_runs.list=forge_project_pipeline_runs (action=list), forge_pm.snapshot=forge_project_pm (action=snapshot)',
     );

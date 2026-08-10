@@ -44,14 +44,13 @@ describe('ensureSharedInstallOnlySkills', () => {
     updateSetMock.mockClear();
   });
 
-  it('production default seed-list adopts forge-reconcile + forge-verify-skill (ISS-801)', async () => {
+  // cm:why the production seed-list used to carry forge-reconcile + forge-verify-skill; adopting them handed every project an editable fork of the agent policing its own updates, so their instructions are inlined into the job prompt from the global row instead (owner decision 2026-08-10)
+  it('never adopts a Forge-owned governing agent into a project', async () => {
     resolveOrAdoptProjectSkillMock.mockResolvedValue('skill-1');
 
     await ensureSharedInstallOnlySkills('proj-1');
 
-    expect(resolveOrAdoptProjectSkillMock).toHaveBeenCalledTimes(2);
-    expect(resolveOrAdoptProjectSkillMock).toHaveBeenCalledWith('proj-1', 'forge-reconcile');
-    expect(resolveOrAdoptProjectSkillMock).toHaveBeenCalledWith('proj-1', 'forge-verify-skill');
+    expect(resolveOrAdoptProjectSkillMock).not.toHaveBeenCalled();
   });
 
   it('adopts each seed skill and flips it install_only', async () => {

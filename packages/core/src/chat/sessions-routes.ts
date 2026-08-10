@@ -148,7 +148,11 @@ chatSessionRoutes.patch(
     const userId = c.get('userId');
 
     const [existing] = await db
-      .select({ id: chatSessions.id, userId: chatSessions.userId, projectId: chatSessions.projectId })
+      .select({
+        id: chatSessions.id,
+        userId: chatSessions.userId,
+        projectId: chatSessions.projectId,
+      })
       .from(chatSessions)
       .where(eq(chatSessions.id, id))
       .limit(1);

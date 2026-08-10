@@ -332,7 +332,7 @@ export async function scheduleAutoRetryWithVerify(
   let newJobId: string | undefined;
   if (job.type === 'verify_skill' && typeof basePayload.reconcileRunId === 'string') {
     newJobId = randomUUID();
-    nextPayload.promptString = buildVerifierPrompt(basePayload.reconcileRunId, newJobId);
+    nextPayload.promptString = await buildVerifierPrompt(basePayload.reconcileRunId, newJobId);
   }
 
   const [created] = await db

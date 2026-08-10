@@ -29,8 +29,7 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => {
   const thenable: PromiseLike<unknown> & { returning: typeof updateReturning } = {
     returning: updateReturning,
-    then: (resolve, reject) =>
-      Promise.resolve(undefined).then(resolve as never, reject as never),
+    then: (resolve, reject) => Promise.resolve(undefined).then(resolve as never, reject as never),
   };
   return thenable;
 });
@@ -63,9 +62,7 @@ const txProxy = {
   execute: txExecute,
   select: txSelect,
 };
-const transactionMock = vi.fn(
-  async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy),
-);
+const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
 // Backwards-compat aliases for the older manual-hold / plain-patch test
 // assertions that named these explicitly. They now point at the same chain
 // the status UPDATE uses, so `txUpdate` calls === `updateMock` calls.
@@ -246,9 +243,36 @@ describe('PATCH /api/issues/batch', () => {
   it('updates priority on 3 issues — emits issueUpdated 3×', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
-      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
-      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
-      { id: ISS3, issSeq: 3, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
+      {
+        id: ISS1,
+        issSeq: 1,
+        projectId: PROJECT_A,
+        status: 'open',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
+      {
+        id: ISS2,
+        issSeq: 2,
+        projectId: PROJECT_A,
+        status: 'open',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
+      {
+        id: ISS3,
+        issSeq: 3,
+        projectId: PROJECT_A,
+        status: 'open',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_A,
@@ -266,7 +290,11 @@ describe('PATCH /api/issues/batch', () => {
       }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { updated: unknown[]; skipped: unknown[]; failed: unknown[] };
+    const body = (await res.json()) as {
+      updated: unknown[];
+      skipped: unknown[];
+      failed: unknown[];
+    };
     expect(body.updated).toHaveLength(3);
     expect(body.skipped).toHaveLength(0);
     expect(body.failed).toHaveLength(0);
@@ -284,9 +312,27 @@ describe('PATCH /api/issues/batch', () => {
     selectAwait.mockResolvedValueOnce([
       // ISS1 in `draft` cannot skip mid-pipeline to `in_progress` (drafts may
       // only be promoted to open or discarded to closed)
-      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'draft', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
+      {
+        id: ISS1,
+        issSeq: 1,
+        projectId: PROJECT_A,
+        status: 'draft',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
       // ISS2 in `approved` can transition to `in_progress`
-      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'approved', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
+      {
+        id: ISS2,
+        issSeq: 2,
+        projectId: PROJECT_A,
+        status: 'approved',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_A,
@@ -340,8 +386,26 @@ describe('PATCH /api/issues/batch', () => {
   it('id in a project the caller cannot access ends up skipped:forbidden', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
-      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
-      { id: ISS2, issSeq: 2, projectId: PROJECT_B, status: 'open', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
+      {
+        id: ISS1,
+        issSeq: 1,
+        projectId: PROJECT_A,
+        status: 'open',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
+      {
+        id: ISS2,
+        issSeq: 2,
+        projectId: PROJECT_B,
+        status: 'open',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
     ]);
     projectAccess.mockImplementation(async (projectId: string) => {
       if (projectId === PROJECT_A) {
@@ -371,8 +435,26 @@ describe('PATCH /api/issues/batch', () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
       // Two issues in PROJECT_A, both at `tested` → `released` (terminal).
-      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'tested', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
-      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'tested', priority: 'medium', category: null, complexity: null, reopenCount: 0 },
+      {
+        id: ISS1,
+        issSeq: 1,
+        projectId: PROJECT_A,
+        status: 'tested',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
+      {
+        id: ISS2,
+        issSeq: 2,
+        projectId: PROJECT_A,
+        status: 'tested',
+        priority: 'medium',
+        category: null,
+        complexity: null,
+        reopenCount: 0,
+      },
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_A,

@@ -10,11 +10,7 @@ type ExecCall = { cmd: string; args: readonly string[]; opts: { cwd?: string } }
 
 const execCalls: ExecCall[] = [];
 type ExecReturn = { stdout: string; stderr: string };
-let execImpl: (
-  cmd: string,
-  args: readonly string[],
-  opts: { cwd?: string },
-) => Promise<ExecReturn>;
+let execImpl: (cmd: string, args: readonly string[], opts: { cwd?: string }) => Promise<ExecReturn>;
 
 // promisify(execFile) returns `{stdout, stderr}` via util.promisify.custom.
 // Mirror that here so the production code's `await pExecFile(...)` sees the

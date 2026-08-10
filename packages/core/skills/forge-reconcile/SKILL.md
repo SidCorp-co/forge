@@ -67,12 +67,26 @@ Produce the FULL skill body (not a diff). The candidate body:
 
 Do NOT hallucinate information not present in the bundle. Do NOT invent invariants. Every claim in your rationale must trace back to a bundle item.
 
+## Step 4.5 — Declare the gate
+
+You also decide whether this change may publish automatically or must wait for a human. There is no server-side rule behind you: no pattern match, no keyword list, no fail-safe default. Whatever you declare is what happens.
+
+You are the only party who has read the actual diff between `runningBody` and your `candidateBody`. The packet's `change` text is the author's *description* of the change — judge the diff, not the description.
+
+| Declare | When |
+|---|---|
+| `auto` | The diff only ADDS — a new step, guard, check, clause or clarification — and relaxes nothing. Publishes as soon as a majority of verifiers pass. |
+| `human` | Anything else. In particular: it removes or weakens an existing bar, changes a merge target or terminal transition, touches auth / permissions / who-can-see-what, or you are simply not certain. |
+
+Two things worth holding on to. First, `escalate` is a verdict, not a gate — if you escalate, declare `human`. Second, an `auto` you get wrong publishes straight to every runner on the project, and **there is no automatic revert**: the only recovery is one manual step back to `lastGoodBody`. `human` costs someone a few minutes. Declare `human` when unsure.
+
 ## Step 5 — Record your verdict
 
 Call `forge_reconcile action=record_verdict` with:
 - `runId`: from your job payload
 - `verdict`: one of `no-op | apply | apply-with-adaptation | escalate`
+- `gate`: `auto` or `human`, per Step 4.5 (required on every verdict)
 - `candidateBody`: the full candidate body (required for apply/apply-with-adaptation; omit for no-op/escalate)
-- `rationale`: your written reasoning from Step 2 (required for all verdicts)
+- `rationale`: your written reasoning from Step 2, plus one line naming why you chose that gate (required for all verdicts)
 
 After recording, your job is done. Do NOT attempt to write the skill body yourself — `record_verdict` hands off to the verifier pipeline.

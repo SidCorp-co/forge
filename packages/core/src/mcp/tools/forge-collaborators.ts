@@ -20,7 +20,7 @@ const inputSchema = z
 export const forgeCollaboratorsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_collaborators',
   description:
-    "List the collaborators across your projects (projects you own or are a member of) with a membership matrix scoped to those projects. Read-only. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]` limited to your visible projects. Never returns passwordHash or any auth secret.",
+    'List the collaborators across your projects (projects you own or are a member of) with a membership matrix scoped to those projects. Read-only. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]` limited to your visible projects. Never returns passwordHash or any auth secret.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -50,10 +50,7 @@ export const forgeCollaboratorsTool: ContextScopedMcpToolFactory = (ctx) => ({
       ? and(inArray(users.id, candidateIds), searchClause)
       : inArray(users.id, candidateIds);
 
-    const [totalRow] = await db
-      .select({ total: count() })
-      .from(users)
-      .where(whereClause);
+    const [totalRow] = await db.select({ total: count() }).from(users).where(whereClause);
     const total = Number(totalRow?.total ?? 0);
 
     const userRows = await db

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   clearRunnerAdaptersForTest,
@@ -39,7 +39,11 @@ describe('runners/registry', () => {
   it('listRunnerTypes returns all registered adapters', () => {
     registerRunnerAdapter(makeAdapter('one'));
     registerRunnerAdapter(makeAdapter('two'));
-    expect(listRunnerTypes().map((a) => a.type).sort()).toEqual(['one', 'two']);
+    expect(
+      listRunnerTypes()
+        .map((a) => a.type)
+        .sort(),
+    ).toEqual(['one', 'two']);
   });
 
   it('getRunnerAdapter returns undefined for unknown type', () => {

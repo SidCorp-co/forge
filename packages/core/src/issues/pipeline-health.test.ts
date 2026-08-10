@@ -22,12 +22,8 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(), execute: vi.fn() },
 }));
 
-const {
-  classifyPipelineHealthForIssue,
-  recordTickAt,
-  getLastTickAt,
-  resetLastTickAtForTest,
-} = await import('./pipeline-health.js');
+const { classifyPipelineHealthForIssue, recordTickAt, getLastTickAt, resetLastTickAtForTest } =
+  await import('./pipeline-health.js');
 type ClassifyInput = import('./pipeline-health.js').ClassifyInput;
 
 const QUEUED_AT = new Date('2026-05-17T08:00:00.000Z');
@@ -50,14 +46,16 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
   };
 }
 
-function job(over: Partial<{
-  id: string;
-  type: string;
-  status: string;
-  queuedAt: Date;
-  runnerId: string | null;
-  agentSessionId: string | null;
-}> = {}) {
+function job(
+  over: Partial<{
+    id: string;
+    type: string;
+    status: string;
+    queuedAt: Date;
+    runnerId: string | null;
+    agentSessionId: string | null;
+  }> = {},
+) {
   return {
     id: over.id ?? 'job-1',
     type: over.type ?? 'plan',
@@ -234,9 +232,7 @@ describe('classifyPipelineHealthForIssue', () => {
       baseInput({
         cap: 5,
         jobs: [job({ runnerId: 'rnr-1', type: 'plan' })],
-        runnerInFlight: new Map([
-          ['rnr-1', { type: 'claude-code', cap: 1, inFlight: 1 }],
-        ]),
+        runnerInFlight: new Map([['rnr-1', { type: 'claude-code', cap: 1, inFlight: 1 }]]),
       }),
     );
     expect(out.waitingOn?.reason).toBe('runner_full');

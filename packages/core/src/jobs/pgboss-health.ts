@@ -84,10 +84,7 @@ function fireAlert(now: number, lastTickAtMs: number | null, gapMs: number): boo
     data: { lastTickAt, gapSeconds },
   });
 
-  logger.warn(
-    { lastTickAt, gapSeconds },
-    'pgboss-health: pipeline-sweeper backstop tick missing',
-  );
+  logger.warn({ lastTickAt, gapSeconds }, 'pgboss-health: pipeline-sweeper backstop tick missing');
 
   lastAlertAt = now;
   return true;

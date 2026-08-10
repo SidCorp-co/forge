@@ -44,10 +44,7 @@ export const pmSetDependencyInputSchema = z
     validUntil: z.iso.datetime().optional(),
     // ISS-138 (PR-D) — opt-in to/out of integration-branch auto-creation
     // when `kind === 'decomposes'`. Ignored for other kinds.
-    decomposeOpts: z
-      .object({ useIntegrationBranch: z.boolean().optional() })
-      .strict()
-      .optional(),
+    decomposeOpts: z.object({ useIntegrationBranch: z.boolean().optional() }).strict().optional(),
   })
   .strict();
 

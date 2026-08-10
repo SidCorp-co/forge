@@ -44,6 +44,13 @@ Does the candidate body introduce claims, steps, or invariants not grounded in t
 ### F. Continuity
 Is the candidate body a legitimate evolution of `bundle.runningBody`? Does it lose important sections that are unrelated to the change? Unrelated regressions → vote `fail`.
 
+### G. Gate honesty
+The Master agent declared a `gate` (`auto` or `human`) alongside its verdict. **Nothing on the server checks that declaration — you are the check.**
+
+Diff `candidateBody` against `runningBody` yourself and judge which gate it deserves, ignoring what the rationale claims. `auto` is only defensible when the diff purely ADDS and relaxes nothing. If it removes or weakens a bar, changes a merge target or terminal transition, or touches auth / permissions / data exposure, the gate must be `human`.
+
+Declared `auto` on a diff that deserves `human` → vote `fail`, and name the specific line that does not merely add. This is the failure mode with the least margin: an `auto` publishes to every runner on the project the moment a majority passes, and there is no automatic revert. Declaring `human` when `auto` would have done is not a defect — do not fail a run for excess caution.
+
 ## Step 3 — Vote
 
 Call `forge_reconcile action=record_vote` with:

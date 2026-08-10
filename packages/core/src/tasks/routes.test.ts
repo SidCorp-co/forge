@@ -117,7 +117,12 @@ describe('POST /api/issues/:id/tasks', () => {
   it('403 when not a project member', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: null,
+      orgRole: null,
+    });
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/tasks`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -129,11 +134,23 @@ describe('POST /api/issues/:id/tasks', () => {
   it('201 inserts and emits taskCreated', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     // sortOrder default lookup (no input.sortOrder) — empty issue
     selectLimit.mockResolvedValueOnce([{ max: null }]);
     insertReturning.mockResolvedValueOnce([
-      { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID, title: 'do thing', status: 'backlog', sortOrder: 0 },
+      {
+        id: TASK_ID,
+        issueId: ISSUE_ID,
+        projectId: PROJECT_ID,
+        title: 'do thing',
+        status: 'backlog',
+        sortOrder: 0,
+      },
     ]);
 
     let emitted: unknown = null;
@@ -157,7 +174,12 @@ describe('POST /api/issues/:id/tasks', () => {
   it('defaults sortOrder to max+1 when other tasks exist', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     selectLimit.mockResolvedValueOnce([{ max: 4 }]);
     insertReturning.mockResolvedValueOnce([
       { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID, title: 't', sortOrder: 5 },
@@ -177,7 +199,12 @@ describe('GET /api/issues/:id/tasks', () => {
   it('returns tasks ordered by createdAt asc', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     selectOrderBy.mockResolvedValueOnce([
       { id: TASK_ID, title: 'first', issueId: ISSUE_ID, projectId: PROJECT_ID },
     ]);
@@ -197,7 +224,12 @@ describe('PATCH /api/tasks/:taskId', () => {
     selectLimit.mockResolvedValueOnce([
       { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID, status: 'backlog' },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     updateReturning.mockResolvedValueOnce([
       { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress' },
     ]);
@@ -220,10 +252,13 @@ describe('PATCH /api/tasks/:taskId', () => {
 describe('DELETE /api/tasks/:taskId', () => {
   it('403 for non-member', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID },
-    ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
+    selectLimit.mockResolvedValueOnce([{ id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: null,
+      orgRole: null,
+    });
     const res = await buildApp().request(`/api/tasks/${TASK_ID}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${await token()}` },
@@ -233,10 +268,13 @@ describe('DELETE /api/tasks/:taskId', () => {
 
   it('204 for non-owner member + emits taskDeleted', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID },
-    ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    selectLimit.mockResolvedValueOnce([{ id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     deleteWhere.mockResolvedValueOnce(undefined);
 
     let emitted: unknown = null;
@@ -262,7 +300,12 @@ describe('POST /api/issues/:id/tasks/reorder', () => {
   it('403 when not a project member', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: null,
+      orgRole: null,
+    });
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/tasks/reorder`, {
       method: 'POST',
@@ -275,7 +318,12 @@ describe('POST /api/issues/:id/tasks/reorder', () => {
   it('400 when taskIds count differs from existing', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     selectOrderBy.mockResolvedValueOnce([
       { id: T1, sortOrder: 0 },
       { id: T2, sortOrder: 1 },
@@ -292,7 +340,12 @@ describe('POST /api/issues/:id/tasks/reorder', () => {
   it('400 when taskIds contains foreign id', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     selectOrderBy.mockResolvedValueOnce([
       { id: T1, sortOrder: 0 },
       { id: T2, sortOrder: 1 },
@@ -309,7 +362,12 @@ describe('POST /api/issues/:id/tasks/reorder', () => {
   it('204 reorders and emits taskUpdated for changed rows only', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     selectOrderBy.mockResolvedValueOnce([
       { id: T1, sortOrder: 0 },
       { id: T2, sortOrder: 1 },

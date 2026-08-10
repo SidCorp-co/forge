@@ -59,9 +59,7 @@ function makeTx(cancelledJobRows: Array<Record<string, unknown>>) {
         where() {
           return {
             returning: async () =>
-              isJobs
-                ? cancelledJobRows
-                : cancelledJobRows.map((r) => ({ id: r.agentSessionId })),
+              isJobs ? cancelledJobRows : cancelledJobRows.map((r) => ({ id: r.agentSessionId })),
           };
         },
       };

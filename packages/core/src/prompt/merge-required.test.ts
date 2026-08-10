@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildJobPromptString } from './user.js';
 import { buildMergeRequiredBlock } from './merge-required.js';
+import { buildJobPromptString } from './user.js';
 
 const TRUNK_MERGE = { baseBranch: 'released', productionBranch: 'released' } as const;
 const SPLIT_MERGE = { baseBranch: 'tested', productionBranch: 'released' } as const;

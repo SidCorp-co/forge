@@ -81,7 +81,12 @@ describe('POST /api/usage-records', () => {
 
   it('201 inserts record with computed cost', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
     insertReturning.mockResolvedValueOnce([
       { id: RECORD_ID, model: 'claude-sonnet-4', estimatedCost: 0.1 },
     ]);
@@ -109,7 +114,12 @@ describe('POST /api/usage-records', () => {
 describe('POST /api/usage-records/bulk', () => {
   it('inserts batch + returns count', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     insertReturning.mockResolvedValueOnce([{ id: RECORD_ID }, { id: 'r2' }]);
 
     const res = await buildApp().request('/api/usage-records/bulk', {

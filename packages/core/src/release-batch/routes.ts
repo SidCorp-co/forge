@@ -7,7 +7,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadProjectAccess, assertProjectRole } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   BatchInFlightError,
@@ -69,10 +69,16 @@ releaseBatchRoutes.post(
         throw serviceUnavailable('NO_RUNNER_ONLINE', 'No runner is online for this project');
       }
       if (err instanceof ClaimConflictError) {
-        throw conflict('CLAIM_CONFLICT', 'One or more issues could not be claimed (wrong status or already in a batch)');
+        throw conflict(
+          'CLAIM_CONFLICT',
+          'One or more issues could not be claimed (wrong status or already in a batch)',
+        );
       }
       if (err instanceof BatchInFlightError) {
-        throw conflict('BATCH_IN_FLIGHT', 'A batch release is already in progress for this project');
+        throw conflict(
+          'BATCH_IN_FLIGHT',
+          'A batch release is already in progress for this project',
+        );
       }
       throw err;
     }

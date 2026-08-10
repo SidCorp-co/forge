@@ -7,7 +7,7 @@
  * wrap it once per issuer.
  */
 
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { type JWTPayload, createRemoteJWKSet, jwtVerify } from 'jose';
 
 interface DiscoveryDoc {
   issuer: string;

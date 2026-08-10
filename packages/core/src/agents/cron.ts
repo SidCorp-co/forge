@@ -66,19 +66,15 @@ export async function registerAgentCronTicker(): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(AGENT_CRON_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: see schedules/runner.ts
-  const id = (await (boss as any).work(
-    AGENT_CRON_QUEUE,
-    { batchSize: 1 },
-    async () => {
-      try {
-        const fired = await runAgentCronTickOnce();
-        if (fired.length > 0) logger.info({ agentIds: fired }, 'agent.cron: fired');
-      } catch (err) {
-        logger.error({ err }, 'agent.cron: tick threw');
-        throw err;
-      }
-    },
-  )) as string;
+  const id = (await (boss as any).work(AGENT_CRON_QUEUE, { batchSize: 1 }, async () => {
+    try {
+      const fired = await runAgentCronTickOnce();
+      if (fired.length > 0) logger.info({ agentIds: fired }, 'agent.cron: fired');
+    } catch (err) {
+      logger.error({ err }, 'agent.cron: tick threw');
+      throw err;
+    }
+  })) as string;
   workerId = id;
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).schedule(AGENT_CRON_QUEUE, AGENT_CRON_CRON, {});

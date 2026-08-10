@@ -7,23 +7,18 @@
 
 import { and, eq } from 'drizzle-orm';
 import type { Context } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { getCookie } from 'hono/cookie';
+import { HTTPException } from 'hono/http-exception';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { ensurePersonalOrg } from '../../orgs/service.js';
 import { oauthAccounts, users } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { ensurePersonalOrg } from '../../orgs/service.js';
 import { setAuthCookie } from '../cookie.js';
 import { signUserToken } from '../jwt.js';
 import { githubProvider } from './github.js';
 import { googleProvider, oidcProvider } from './oidc-provider.js';
-import {
-  type ProviderConfig,
-  type ProviderId,
-  getCallbackUrl,
-  getProvider,
-} from './providers.js';
+import { type ProviderConfig, type ProviderId, getCallbackUrl, getProvider } from './providers.js';
 import {
   STATE_COOKIE_NAME,
   clearStateCookie,
@@ -66,11 +61,7 @@ export interface StartOptions {
   uid?: string;
 }
 
-export async function handleStart(
-  c: Context,
-  providerId: ProviderId,
-  options: StartOptions = {},
-) {
+export async function handleStart(c: Context, providerId: ProviderId, options: StartOptions = {}) {
   const cfg = getProvider(providerId);
   if (!cfg) {
     throw new HTTPException(404, {
@@ -231,7 +222,14 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
   const appBase = env.APP_BASE_URL.replace(/\/+$/, '');
 
   if (payload.mode === 'reauth') {
-    return handleReauthCallback(c, providerId, payload.uid, identity.providerAccountId, payload.r, appBase);
+    return handleReauthCallback(
+      c,
+      providerId,
+      payload.uid,
+      identity.providerAccountId,
+      payload.r,
+      appBase,
+    );
   }
 
   let userId: string;
@@ -300,10 +298,7 @@ async function handleReauthCallback(
     return mismatch();
   }
 
-  await db
-    .update(users)
-    .set({ lastFreshAuthAt: new Date() })
-    .where(eq(users.id, uid));
+  await db.update(users).set({ lastFreshAuthAt: new Date() }).where(eq(users.id, uid));
 
   // Important: do NOT setAuthCookie() here — the user is already logged in.
   // A successful reauth must not escalate to a new session.

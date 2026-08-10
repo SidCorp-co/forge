@@ -78,17 +78,13 @@ sshKeyRoutes.post(
   },
 );
 
-sshKeyRoutes.delete(
-  '/:orgId/ssh-keys/:keyId',
-  zValidator('param', keyParamSchema),
-  async (c) => {
-    const { orgId, keyId } = c.req.valid('param');
-    const userId = c.get('userId');
-    await assertOrgAccess(orgId, userId, 'admin');
-    await deleteOrgSshKey(orgId, keyId);
-    return c.body(null, 204);
-  },
-);
+sshKeyRoutes.delete('/:orgId/ssh-keys/:keyId', zValidator('param', keyParamSchema), async (c) => {
+  const { orgId, keyId } = c.req.valid('param');
+  const userId = c.get('userId');
+  await assertOrgAccess(orgId, userId, 'admin');
+  await deleteOrgSshKey(orgId, keyId);
+  return c.body(null, 204);
+});
 
 sshKeyRoutes.post(
   '/:orgId/ssh-keys/:keyId/test',

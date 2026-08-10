@@ -30,8 +30,7 @@ chain.limit = () => chain;
 chain.groupBy = () => chain;
 chain.leftJoin = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
-chain.then = (resolve: any, reject: any) =>
-  Promise.resolve(queue.shift()).then(resolve, reject);
+chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => chain) },
@@ -97,9 +96,9 @@ describe('forge_project_pm (action=snapshot)', () => {
   it('re-applies project-member auth — non-member is rejected with FORBIDDEN', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
     queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // project lookup + no member row
-    await expect(
-      tool.handler({ action: 'snapshot', projectId: PROJECT_ID }),
-    ).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ action: 'snapshot', projectId: PROJECT_ID })).rejects.toThrow(
+      /FORBIDDEN/,
+    );
   });
 });
 
@@ -243,8 +242,8 @@ describe('forge_project_pm — action-level auth (cross-tenant)', () => {
       projectSlug: null,
     });
     queue.push([{ ownerId: 'other-owner' }], []); // project + no member row
-    await expect(
-      tool.handler({ action: 'snapshot', projectId: PROJECT_ID }),
-    ).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ action: 'snapshot', projectId: PROJECT_ID })).rejects.toThrow(
+      /FORBIDDEN/,
+    );
   });
 });

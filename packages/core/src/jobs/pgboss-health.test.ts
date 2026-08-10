@@ -17,11 +17,9 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const {
-  checkBackstop,
-  recordPipelineSweeperTick,
-  resetPgBossHealthProbeForTest,
-} = await import('./pgboss-health.js');
+const { checkBackstop, recordPipelineSweeperTick, resetPgBossHealthProbeForTest } = await import(
+  './pgboss-health.js'
+);
 
 beforeEach(() => {
   vi.clearAllMocks();

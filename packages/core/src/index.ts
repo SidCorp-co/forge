@@ -173,8 +173,8 @@ import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/ru
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import { skillActivityRoutes } from './skills/activity-routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
-import { sweepPolicyLanded } from './skills/policy-landed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
+import { sweepPolicyLanded } from './skills/policy-landed.js';
 import { reconcileRoutes } from './skills/reconcile-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { skillSmokeVerifyRoutes } from './skills/smoke-verify-routes.js';

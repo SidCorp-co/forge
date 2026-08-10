@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const findDecompositionChildren = vi.fn();
 const findDecompositionParent = vi.fn();
 vi.mock('./decomposition.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('./decomposition.js')>('./decomposition.js');
+  const actual = await vi.importActual<typeof import('./decomposition.js')>('./decomposition.js');
   return {
     ...actual,
     findDecompositionChildren,

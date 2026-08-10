@@ -5,8 +5,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentApprovalModes, agentSchedules, agents } from '../db/schema.js';
-import { setTotalCount } from '../lib/pagination.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -6,13 +6,9 @@ vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-const {
-  generateNonce,
-  generatePkceVerifier,
-  pkceChallenge,
-  signState,
-  verifyState,
-} = await import('./state.js');
+const { generateNonce, generatePkceVerifier, pkceChallenge, signState, verifyState } = await import(
+  './state.js'
+);
 
 describe('oauth state', () => {
   it('generates URL-safe random nonces of expected length', () => {

@@ -27,7 +27,9 @@ import {
 } from '../helpers/index.js';
 
 type Mods = {
-  issueDependencyRoutes: typeof import('../../src/issues/dependency-routes.js').issueDependencyRoutes;
+  issueDependencyRoutes: typeof import(
+    '../../src/issues/dependency-routes.js',
+  ).issueDependencyRoutes;
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   errorHandler: typeof import('../../src/middleware/error.js').errorHandler;
 };

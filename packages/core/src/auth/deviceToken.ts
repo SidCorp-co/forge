@@ -34,9 +34,7 @@ export interface IssueDeviceTokenInput {
  * must be reproducible for equality lookups, unlike the salted token hash.
  */
 export function hashMachineId(raw: string): string {
-  return createHash('sha256')
-    .update(`${raw}:${env.DEVICE_TOKEN_PEPPER}`)
-    .digest('hex');
+  return createHash('sha256').update(`${raw}:${env.DEVICE_TOKEN_PEPPER}`).digest('hex');
 }
 
 export interface IssuedDeviceToken {

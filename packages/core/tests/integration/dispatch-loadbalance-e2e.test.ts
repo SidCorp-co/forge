@@ -216,7 +216,12 @@ describe('load-balanced dispatch E2E', () => {
       const { owner, project: p } = await project(2);
       const r = await runner(p.id, await device(owner.id));
       const j = await queuedJob(p.id);
-      const res = await mods.claimRunnerSlot({ jobId: j, runnerId: r, deviceId: null, dispatchedAt: new Date() });
+      const res = await mods.claimRunnerSlot({
+        jobId: j,
+        runnerId: r,
+        deviceId: null,
+        dispatchedAt: new Date(),
+      });
       expect(res).toBe('claimed');
       expect(await mods.countInFlightForRunner(r)).toBe(1);
     });
@@ -226,7 +231,12 @@ describe('load-balanced dispatch E2E', () => {
       const r = await runner(p.id, await device(owner.id));
       await busyJobOn(p.id, r); // 1 in-flight = cap
       const j = await queuedJob(p.id);
-      const res = await mods.claimRunnerSlot({ jobId: j, runnerId: r, deviceId: null, dispatchedAt: new Date() });
+      const res = await mods.claimRunnerSlot({
+        jobId: j,
+        runnerId: r,
+        deviceId: null,
+        dispatchedAt: new Date(),
+      });
       expect(res).toBe('runner_full');
     });
 
@@ -236,7 +246,12 @@ describe('load-balanced dispatch E2E', () => {
       const j = await busyJobOn(p.id, r); // already running, not queued
       // free the slot conceptually by claiming on a DIFFERENT fresh runner
       const r2 = await runner(p.id, await device(owner.id));
-      const res = await mods.claimRunnerSlot({ jobId: j, runnerId: r2, deviceId: null, dispatchedAt: new Date() });
+      const res = await mods.claimRunnerSlot({
+        jobId: j,
+        runnerId: r2,
+        deviceId: null,
+        dispatchedAt: new Date(),
+      });
       expect(res).toBe('lost');
     });
 

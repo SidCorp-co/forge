@@ -91,7 +91,12 @@ describe('notify-transitions', () => {
   });
 
   it('sets error severity + a status resolution key on reopen', async () => {
-    queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 11, title: 'Regressed' });
+    queueIssue({
+      assigneeId: ASSIGNEE_ID,
+      createdById: CREATOR_ID,
+      issSeq: 11,
+      title: 'Regressed',
+    });
     const bus = makeBus();
     await bus.emit('transition', transition('reopen') as never);
     expect(createNotification).toHaveBeenCalledWith(

@@ -139,16 +139,11 @@ describe('GET /api/pipeline/throughput', () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     visibleIds.mockResolvedValueOnce(['p-1', 'p-2']);
-    selectOrderBy.mockResolvedValueOnce([
-      { projectId: 'p-1', date: '2026-04-27', count: 7 },
-    ]);
+    selectOrderBy.mockResolvedValueOnce([{ projectId: 'p-1', date: '2026-04-27', count: 7 }]);
 
     const app = buildApp();
     const res = await app.fetch(
-      req(
-        '/api/pipeline/throughput?projectId=11111111-1111-4111-8111-111111111111',
-        { token },
-      ),
+      req('/api/pipeline/throughput?projectId=11111111-1111-4111-8111-111111111111', { token }),
     );
     expect(res.status).toBe(200);
   });
@@ -160,10 +155,7 @@ describe('GET /api/pipeline/throughput', () => {
 
     const app = buildApp();
     const res = await app.fetch(
-      req(
-        '/api/pipeline/throughput?projectId=22222222-2222-4222-8222-222222222222',
-        { token },
-      ),
+      req('/api/pipeline/throughput?projectId=22222222-2222-4222-8222-222222222222', { token }),
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
@@ -469,12 +461,10 @@ describe('GET /api/projects/:id/analytics/cost-trend', () => {
   it('200 surfaces activity_log annotations with pipeline_config.updated kind', async () => {
     const token = await signUserToken('u-1');
     mockMembership({ ownerId: 'u-1' });
-    dbExecute
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        { ts: '2026-05-20T12:34:56Z', message: 'autoCode toggled' },
-        { ts: '2026-05-21T08:00:00Z', message: 'pipeline config updated' },
-      ]);
+    dbExecute.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { ts: '2026-05-20T12:34:56Z', message: 'autoCode toggled' },
+      { ts: '2026-05-21T08:00:00Z', message: 'pipeline config updated' },
+    ]);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -515,9 +505,7 @@ describe('GET /api/projects/:id/analytics/outliers', () => {
     const token = await signUserToken('u-1');
     mockMembership({ ownerId: 'other-owner', memberOf: false });
     const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/projects/${PROJECT_UUID}/analytics/outliers`, { token }),
-    );
+    const res = await app.fetch(req(`/api/projects/${PROJECT_UUID}/analytics/outliers`, { token }));
     expect(res.status).toBe(403);
   });
 
@@ -578,9 +566,7 @@ describe('GET /api/projects/:id/analytics/outliers', () => {
     dbExecute.mockResolvedValueOnce([]);
 
     const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/projects/${PROJECT_UUID}/analytics/outliers`, { token }),
-    );
+    const res = await app.fetch(req(`/api/projects/${PROJECT_UUID}/analytics/outliers`, { token }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ threshold: 0, runs: [] });
   });

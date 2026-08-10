@@ -47,9 +47,7 @@ interface CandidateRow {
   currentStep: string | null;
 }
 
-export async function backfillMissingSkillPauses(
-  projectId?: string,
-): Promise<BackfillResult> {
+export async function backfillMissingSkillPauses(projectId?: string): Promise<BackfillResult> {
   const autoStatuses = PIPELINE_STEPS.map((s) => s.status);
 
   // 1. Find issues currently parked at an auto-dispatch stage with NO skill

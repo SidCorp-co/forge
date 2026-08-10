@@ -44,11 +44,7 @@ function listSourceFiles(dir: string): string[] {
     const st = statSync(full);
     if (st.isDirectory()) {
       out.push(...listSourceFiles(full));
-    } else if (
-      entry.endsWith('.ts') &&
-      !entry.endsWith('.test.ts') &&
-      !entry.endsWith('.d.ts')
-    ) {
+    } else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts') && !entry.endsWith('.d.ts')) {
       out.push(full);
     }
   }
@@ -92,7 +88,10 @@ function findViolations(path: string, rawBody: string): string[] {
   }
 
   for (const [table, terminals] of Object.entries(RAW_TABLES)) {
-    const re = new RegExp(`UPDATE\\s+"?${table}"?\\b[\\s\\S]{0,400}?status\\s*=\\s*'([a-z_]+)'`, 'gi');
+    const re = new RegExp(
+      `UPDATE\\s+"?${table}"?\\b[\\s\\S]{0,400}?status\\s*=\\s*'([a-z_]+)'`,
+      'gi',
+    );
     let m: RegExpExecArray | null = re.exec(body);
     while (m !== null) {
       const term = m[1];

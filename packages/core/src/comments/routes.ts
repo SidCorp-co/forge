@@ -7,17 +7,17 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { type ActorRef, actorKey, resolveActors } from '../issues/actor-resolution.js';
+import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { getStorage, isEnoent } from '../storage/index.js';
-import { pgConstraintName, pgErrorCode } from './error-mapping.js';
-import { type ActorRef, actorKey, resolveActors } from '../issues/actor-resolution.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import {
   type CommentAttachmentLite,
@@ -473,7 +473,8 @@ commentRoutes.post(
     },
   }),
   zValidator('param', commentIdParamSchema, (r) => {
-    if (!r.success) throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success)
+      throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', z.flattenError(r.error));
   }),
   async (c) => {
     const { commentId } = c.req.valid('param');
@@ -519,7 +520,8 @@ commentRoutes.get(
   '/attachments/:id',
   requireAnyAuth(),
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw attachmentBadRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success)
+      throw attachmentBadRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
