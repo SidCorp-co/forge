@@ -1,6 +1,6 @@
 // Divergence Charter service (Update Pipeline §5, ISS-800).
 // Storage + read path for per-project intentional-difference records.
-// Item 7 in the Master agent's 12-item bundle (ISS-795 §4).
+// Item 7 in the Master agent's context bundle (ISS-795 §4).
 //
 // The public contract type DivergenceCharterEntry lives in
 // @forge/contracts/divergence-charters (kept in sync by parity test).

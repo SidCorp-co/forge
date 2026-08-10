@@ -199,6 +199,138 @@ For anything beyond a tiny snippet, use the \`forge_uploads\` presigned-URL patt
 3. Upload the file directly to the returned URL.
 4. Later, any reader (including a different agent) calls \`action=fetch\` on that attachment to see its actual content — never assume a filename or mime type tells you enough; fetch it when the content matters to the task.`,
   },
+  {
+    slug: 'agent-setup',
+    title: 'Working in a Forge-managed repo',
+    summary:
+      'Start here: what Forge owns, the recall-first rule, draft vs open, and the red flags that waste a runner slot.',
+    version: 1,
+    body: `## Working in a Forge-managed repo
+
+If a repo has a \`.forge/\` directory or an \`mcp.json\` naming a \`forge\` server, its issues, pipeline
+and durable memory live in Forge, not in the repo. Read this before your first write.
+
+### The one rule that saves the most time
+**Recall before you design.** Project memory is NOT loaded into your context automatically —
+\`forge_memory_search({ projectId, query, topK: 5 })\` is a call you have to make. Skipping it is how
+agents rediscover settled decisions, or contradict them. Treat every hit as point-in-time: verify it
+against live code or git before you rely on it.
+
+### What Forge owns, and the tool for each
+| You need | Call |
+|---|---|
+| Issues, status, tasks | \`forge_issues\`, \`forge_comments\` |
+| Ordering between issues | \`forge_project_pm action=set_dependency\` (\`from\` = the blocker) |
+| Repo path, branches, preview URLs, test credentials | \`forge_projects.get\` |
+| Pipeline gates, \`projectFacts\` | \`forge_config\` |
+| A decision, learning or convention worth keeping | \`forge_memory_write\` |
+| Deeper per-package detail | \`forge_knowledge\` (list/get/search) |
+| How a Forge feature actually works | \`forge_guide\` — or fetch these same bytes at \`/api/guides/<slug>.md\` |
+
+### draft vs open — the costly one
+\`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. \`draft\` never
+dispatches. So:
+- Work you want an agent to pick up now → \`open\`.
+- Work for later, or a follow-up you just want recorded → \`draft\`.
+- A note, learning or decision → **not an issue at all**; write it to memory. Nobody browses the
+  issue list for notes.
+
+### Red flags
+- **prose-deps** — describing an ordering in text instead of setting a \`blocks\` edge. Only the edge
+  gates dispatch; prose gates nothing.
+- **open-as-note** / **draft-as-note** — filing a note as an issue.
+- **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. Those are written by the
+  clarify and plan steps; filling them deletes those steps' reason to exist.
+- **wholesale-config-clobber** — patching a nested map (\`pipelineConfig.states\`, \`projectFacts\`)
+  without reading it first. These are replace-not-merge; send a complete entry.
+- **skip-recall** — see above.
+- **fix-by-hand-and-forget** — fixing something outside the pipeline and leaving no status move and
+  no recorded learning.
+
+### Writing an issue
+Fill \`title\`, \`description\`, \`priority\`, \`category\`. Keep the description a **requirements
+contract** — outcome, business rules, invariants, what is out of scope. Not an implementation script
+naming files and endpoints: those claims go stale and, in practice, outrank live exploration.`,
+  },
+  {
+    slug: 'update-pipeline-reconcile',
+    title: 'Update Pipeline — reconcile bundle reference',
+    summary:
+      'Every field the Master agent and verifiers receive, what each one is worth trusting, and the refusal contract that runs before either agent starts.',
+    version: 1,
+    body: `## Update Pipeline — reconcile bundle reference
+
+Reference for Update Pipeline stage ② (Reconcile). The decision rules live in the agents' own
+instructions; this is the data dictionary and the surrounding contract. Read it when you need the
+meaning of a field, not to decide a verdict.
+
+### How a reconcile run happens
+\`\`\`
+⓪ AUTHOR    a human writes an Update Packet { change · story · intent_class · applies_to }
+① ENFORCE   whatever is expressible as platform policy ships as CODE → every project at once,
+            and emits the currently-effective invariant set
+② RECONCILE per project: Master agent reads the bundle → verdict + gate
+            → 3 independent verifiers vote → publish, park for a human, or escalate
+③ CONVERGE  new hash → manifest → runner pulls (including deletes)
+④ OBSERVE   runner reports what is ACTUALLY on disk; each job records the hash it ran with
+⑤ AUDIT     every state change writes an event in the same transaction
+\`\`\`
+
+### The bundle
+\`ReconcileBundleSnapshot\` — read fresh at trigger time, never from an older snapshot.
+
+| Field | What it is | Trust |
+|---|---|---|
+| \`change\` | the diff description | authored |
+| \`story\` | **why** this change exists and what it must not break | human, mandatory |
+| \`intentClass\` | \`invariant\` / \`procedure\` / \`enhancement\` | sets adaptation latitude |
+| \`appliesTo\` | which skill the packet targets | authored |
+| \`provenance\` | commit, author, version | derived |
+| \`runningBody\` | the body **observed on the project's device** — not the copy Forge stores | observed |
+| \`runningHash\` | hash of that observed body | observed |
+| \`charter\` | the project's Divergence Charter: differences the owner declared intentional. \`null\` when none exists | human |
+| \`projectFacts\` | facts injected into every agent on this project | project config |
+| \`pipelineConfig\` | the project's pipeline configuration | project config |
+| \`recentRunEvidence\` | recent runs of the stage this skill serves | observed |
+| \`priorReconcileHistory\` | earlier reconcile runs for this same skill | observed |
+| \`invariantSet\` | the platform invariants in force right now (stage ① output) | hard constraint |
+| \`mustNotBreak\` | assertions derived from non-revertable charter entries | absolute |
+| \`sources\` | per-field provenance label: \`human\` / \`from-code\` / \`observed-from-run\` / \`agent-assertion\` | — |
+| \`readAt\` | when the bundle was assembled | freshness stamp |
+
+Two fields are easy to misread. \`runningBody\` is what a device reported, so it may differ from what
+Forge pushed — that difference is the whole point of having it. \`mustNotBreak\` is not advisory; an
+entry there came from an incident.
+
+### The refusal contract (C1–C5)
+The server validates these **before** either agent runs. A missing input is a refusal, not a
+degraded run — there is no best-effort mode.
+
+| | Guarantee | Born from |
+|---|---|---|
+| C1 | **Sufficient** — every decision-relevant input present | agents coding against \`plan: null\` |
+| C2 | **Fresh** — read at decision time, with a \`readAt\` stamp | a stale session context reopened a passing issue |
+| C3 | **Sourced** — every fact carries a provenance label | an agent wrote its own guess into a verified-ground-truth field |
+| C4 | **No fabrication** — \`story\` must be human, \`runningBody\` must be observed | same incident |
+| C5 | **Deterministic** — same packet + same project state ⇒ same bundle | so a differing outcome is a model problem, not an input problem |
+
+A refusal is recorded with the specific missing input. If you triggered a run and got one, the
+message names exactly what to fix.
+
+### Verdicts and the gate
+The Master agent returns one of \`no-op\` / \`apply\` / \`apply-with-adaptation\` / \`escalate\`, and
+**declares the gate itself** — \`auto\` (publishes once a majority of verifiers pass) or \`human\`
+(parks for the owner). No server-side rule overrides that declaration; the verifiers re-judge it
+adversarially instead.
+
+There is **no automatic revert.** A wrong \`auto\` reaches every runner on the project, and the only
+recovery is a manual step back to the run's \`lastGoodBody\`. That asymmetry is why the instructions
+tell both agents to prefer \`human\` when uncertain.
+
+### Failure containment
+A failure at any stage keeps the last-good body running. The skill is never left empty and never
+silently changed, and the run records why it stopped.`,
+  },
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

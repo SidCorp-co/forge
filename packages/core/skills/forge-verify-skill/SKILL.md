@@ -15,7 +15,7 @@ You are one of multiple verifiers (typically 3). A majority of `pass` votes caus
 Call `forge_reconcile action=get` with the `runId` from your job payload (`jobs.payload.reconcileRunId`).
 
 Extract from the returned run:
-- `bundle` — the 12-item context contract (same items as the Master agent saw)
+- `bundle` — the same context bundle the Master agent saw (field reference: `forge_guide get update-pipeline-reconcile`)
 - `candidateBody` — the body the Master agent proposes
 - `verdict` — the Master agent's verdict (`apply` or `apply-with-adaptation`)
 - `rationale` — the Master agent's stated reasoning
@@ -45,11 +45,12 @@ Does the candidate body introduce claims, steps, or invariants not grounded in t
 Is the candidate body a legitimate evolution of `bundle.runningBody`? Does it lose important sections that are unrelated to the change? Unrelated regressions → vote `fail`.
 
 ### G. Gate honesty
-The Master agent declared a `gate` (`auto` or `human`) alongside its verdict. **Nothing on the server checks that declaration — you are the check.**
-
-Diff `candidateBody` against `runningBody` yourself and judge which gate it deserves, ignoring what the rationale claims. `auto` is only defensible when the diff purely ADDS and relaxes nothing. If it removes or weakens a bar, changes a merge target or terminal transition, or touches auth / permissions / data exposure, the gate must be `human`.
-
-Declared `auto` on a diff that deserves `human` → vote `fail`, and name the specific line that does not merely add. This is the failure mode with the least margin: an `auto` publishes to every runner on the project the moment a majority passes, and there is no automatic revert. Declaring `human` when `auto` would have done is not a defect — do not fail a run for excess caution.
+The Master agent declared a `gate` (`auto` or `human`). **Nothing on the server checks it — you are
+the check.** Diff `candidateBody` against `runningBody` yourself; ignore what the rationale claims.
+`auto` is defensible only when the diff purely ADDS. Declared `auto` on a diff that removes or
+weakens a bar, changes a merge target or terminal transition, or touches auth → vote `fail` and name
+the line. A wrong `auto` publishes to every runner with no automatic revert. Excess caution
+(`human` where `auto` would do) is not a defect — never fail a run for it.
 
 ## Step 3 — Vote
 

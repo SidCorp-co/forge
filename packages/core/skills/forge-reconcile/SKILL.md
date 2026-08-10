@@ -1,6 +1,6 @@
 ---
 name: forge-reconcile
-description: "Master agent for Update Pipeline stage ② (Reconcile). Reads the 12-item bundle from a reconcile_run row, reasons over the change, produces one of four verdicts (no-op | apply | apply-with-adaptation | escalate), writes the candidate body, and records the verdict via forge_reconcile. Used by the internal reconcile pipeline — not user-invocable."
+description: "Master agent for Update Pipeline stage ② (Reconcile). Reads the context bundle from a reconcile_run row, reasons over the change, produces one of four verdicts (no-op | apply | apply-with-adaptation | escalate), writes the candidate body, and records the verdict via forge_reconcile. Used by the internal reconcile pipeline — not user-invocable."
 user_invocable: false
 ---
 
@@ -10,7 +10,7 @@ Update Pipeline stage ② (Reconcile). You are the Master agent responsible for 
 
 ## Your one job
 
-Read the 12-item bundle from the reconcile_run row (via `forge_reconcile action=get`), reason carefully, and call `forge_reconcile action=record_verdict` with exactly ONE of the four verdicts below.
+Read the context bundle from the reconcile_run row (via `forge_reconcile action=get`), reason carefully, and call `forge_reconcile action=record_verdict` with exactly ONE of the four verdicts below.
 
 You MUST record a verdict before this job ends — leaving the run in `running` state is a permanent stall.
 
@@ -18,20 +18,15 @@ You MUST record a verdict before this job ends — leaving the run in `running` 
 
 Call `forge_reconcile action=get` with the `runId` from your job payload (`jobs.payload.reconcileRunId`).
 
-The `bundle` field contains the 12-item context contract:
+The `bundle` field is self-describing — read the keys. Three things you could NOT infer from them:
 
-1. **change** — the human-authored diff description (what the packet changes)
-2. **story** — the human-authored story (WHY this change matters; labelled `human` in sources)
-3. **intentClass** — `invariant` | `procedure` | `enhancement` — the change's intent class
-4. **appliesTo** — which skill(s) this packet targets
-5. **provenance** — metadata (commit, author, version)
-6. **runningBody** — the skill body currently running on the project's device (observed sha when available, else stored body)
-7. **runningHash** — hash of the running body
-8. **charter** — the project's Divergence Charter (intentional differences the project owner declared). NULL when none exists.
-9. **projectFacts** — project-specific facts injected into every agent's context
-10. **pipelineConfig** — the project's pipeline configuration
-11. **invariantSet** — the currently-effective platform invariant set (stage ① output). Hard constraints the candidate body MUST satisfy.
-12. **mustNotBreak** — assertions derived from non-revertable charter entries. These are absolute — your candidate body must preserve them.
+- **`runningBody`** is the body *observed on the project's device*, not the copy Forge stores. If the
+  two differ, the observed one is what actually runs.
+- **`mustNotBreak`** is absolute. Every entry came from an incident.
+- **`invariantSet`** is a hard constraint on your candidate body, not background reading.
+
+Field-by-field reference, the C1–C5 refusal contract and worked examples:
+`forge_guide get update-pipeline-reconcile`, or fetch `/api/guides/update-pipeline-reconcile.md`.
 
 ## Step 2 — Reason (do this IN WRITING, in your rationale)
 
@@ -69,16 +64,18 @@ Do NOT hallucinate information not present in the bundle. Do NOT invent invarian
 
 ## Step 4.5 — Declare the gate
 
-You also decide whether this change may publish automatically or must wait for a human. There is no server-side rule behind you: no pattern match, no keyword list, no fail-safe default. Whatever you declare is what happens.
+You also declare whether this change may publish automatically. No server rule stands behind you —
+no pattern match, no fail-safe default. What you declare is what happens.
 
-You are the only party who has read the actual diff between `runningBody` and your `candidateBody`. The packet's `change` text is the author's *description* of the change — judge the diff, not the description.
+Judge the **diff** between `runningBody` and your `candidateBody`, not the packet's description of it.
 
-| Declare | When |
-|---|---|
-| `auto` | The diff only ADDS — a new step, guard, check, clause or clarification — and relaxes nothing. Publishes as soon as a majority of verifiers pass. |
-| `human` | Anything else. In particular: it removes or weakens an existing bar, changes a merge target or terminal transition, touches auth / permissions / who-can-see-what, or you are simply not certain. |
+- **`auto`** — the diff only ADDS, and relaxes nothing. Publishes on a passing verifier majority.
+- **`human`** — anything else: it removes or weakens a bar, changes a merge target or terminal
+  transition, touches auth or permissions, or you are simply not certain.
 
-Two things worth holding on to. First, `escalate` is a verdict, not a gate — if you escalate, declare `human`. Second, an `auto` you get wrong publishes straight to every runner on the project, and **there is no automatic revert**: the only recovery is one manual step back to `lastGoodBody`. `human` costs someone a few minutes. Declare `human` when unsure.
+`escalate` is a verdict, not a gate; escalating still means `human`. And there is **no automatic
+revert** — a wrong `auto` reaches every runner, recoverable only by a manual step back to
+`lastGoodBody`. `human` costs someone a few minutes. When unsure, declare `human`.
 
 ## Step 5 — Record your verdict
 

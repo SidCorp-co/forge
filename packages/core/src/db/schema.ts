@@ -3308,7 +3308,7 @@ export const downloadTickets = pgTable(
 // intentional deviations from the default pipeline template. ONE row per
 // project; `entries` is an append-friendly jsonb array (each entry: a
 // human-authored statement with difference/reason/incidentRefs/revertable).
-// Item 7 in the Master agent's 12-item bundle (ISS-795 §4).
+// Item 7 in the Master agent's context bundle (ISS-795 §4).
 // cm:guard Charter mutations MUST emit `charter.changed` into `skill_activity_events` in the same transaction (invariant §9.11).
 
 export const divergenceCharters = pgTable(
@@ -3350,7 +3350,8 @@ export type ReconcileRunStatus = (typeof reconcileRunStatuses)[number];
 export const reconcileGates = ['auto', 'human'] as const;
 export type ReconcileGate = (typeof reconcileGates)[number];
 
-// cm:why field order mirrors the 12-item Master agent bundle (ISS-795 §4); `sources` labels each key's provenance per C3.
+// cm:edge contract -> packages/core/src/guides/registry.ts#update-pipeline-reconcile — that guide is the field-by-field reference the reconcile agents are pointed at; adding or renaming a key here without updating it teaches them about a field that does not exist, or hides one that does
+// cm:why `sources` labels each key's provenance per C3.
 export interface ReconcileBundleSnapshot {
   readAt: string;
   change: string;

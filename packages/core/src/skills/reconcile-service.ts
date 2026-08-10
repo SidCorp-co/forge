@@ -1,6 +1,6 @@
 // Update Pipeline stage ② (Reconcile), ISS-801.
 //
-// The Master agent per-project reconcile service. Assembles the 12-item
+// The Master agent per-project reconcile service. Assembles the
 // context bundle (C1–C5 enforced), serializes per-project, dispatches the
 // reconcile job and subsequent verifier jobs, and applies/escalates based on
 // the majority verifier vote.
@@ -154,7 +154,7 @@ export interface AssembleBundleRefused {
 }
 
 /**
- * Assemble the 12-item context bundle (ISS-795 §4) and validate C1–C5.
+ * Assemble the context bundle (ISS-795 §4) and validate C1–C5.
  * All reads are transactional and timestamped (C2 fresh, C5 determinism).
  * Returns a structured refusal when any required input is missing or stale.
  *

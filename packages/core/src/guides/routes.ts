@@ -124,6 +124,31 @@ guideRoutes.get('/guides', (c) => {
   return c.json({ guides: listGuides() });
 });
 
+// cm:guard emit every URL relative to THIS request's own mount prefix — the router is mounted at both `/` and `/api` and the hosted edge forwards only `/api/*`, so a hardcoded prefix publishes links that 404 for half the audience
+// cm:why the /llms.txt convention is the entry point this surface lacked — /guides has been public since ISS-746, but a reader had to already know a slug, so nothing was discoverable from a bare hostname
+guideRoutes.get('/llms.txt', (c) => {
+  const base = c.req.url.replace(/\/llms\.txt(\?.*)?$/, '');
+  const lines = [
+    '# Forge',
+    '',
+    '> Open-source control plane for Claude Code: full-stack project management plus an agent',
+    '> pipeline that drives Claude end to end (triage → clarify → plan → code → review → test →',
+    '> release). These guides are the same bytes the `forge_guide` MCP tool serves. Every URL below',
+    '> is unauthenticated and returns raw markdown — fetch what you need, when you need it.',
+    '',
+    '## Guides',
+    '',
+    ...listGuides().map((g) => `- [${g.title}](${base}/guides/${g.slug}.md): ${g.summary}`),
+    '',
+    '## Index',
+    '',
+    `- [Guide index (JSON)](${base}/guides): slug, title, summary and version for every guide.`,
+    '',
+  ];
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.body(lines.join('\n'), 200, { 'content-type': 'text/plain; charset=utf-8' });
+});
+
 // Hono routes `:slug` as a literal path segment — it will NOT split
 // `deploy-safety.md` into a separate `.md` route. Strip the suffix inside
 // this one handler instead and switch the response shape/content-type.
