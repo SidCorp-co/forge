@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure } from './failure-classifier.js';
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(5);
+    expect(CLASSIFIER_VERSION).toBe(6);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -304,6 +304,43 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
         meta: { headers: { 'retry-after': 'not-a-date' } },
       });
       expect(r.retryAfter).toBeNull();
+    });
+  });
+
+  describe('ISS-808 — structural preflight sub-variants → code (no retry)', () => {
+    it('origin_remote sub-variant classifies as code (no git remote by design)', () => {
+      const r = classifyFailure({
+        error: "preflight_failed: origin_remote: no 'origin' remote configured",
+      });
+      expect(r.kind).toBe('code');
+    });
+
+    it('work_tree sub-variant classifies as code (not a git working tree)', () => {
+      const r = classifyFailure({
+        error: 'preflight_failed: work_tree: not a git working tree',
+      });
+      expect(r.kind).toBe('code');
+    });
+
+    it('repo_path sub-variant classifies as code (path is not a directory)', () => {
+      const r = classifyFailure({
+        error: 'preflight_failed: repo_path: /srv/app is not a directory',
+      });
+      expect(r.kind).toBe('code');
+    });
+
+    it('generic preflight_failed (push_credentials) still classifies as infra', () => {
+      const r = classifyFailure({
+        error: 'preflight_failed: push_credentials: ls-remote timed out',
+      });
+      expect(r.kind).toBe('infra');
+    });
+
+    it('generic preflight_failed (hooks_path) still classifies as infra', () => {
+      const r = classifyFailure({
+        error: 'preflight_failed: hooks_path: /repo/.git/hooks not found',
+      });
+      expect(r.kind).toBe('infra');
     });
   });
 });

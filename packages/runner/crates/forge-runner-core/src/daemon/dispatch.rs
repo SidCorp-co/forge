@@ -62,6 +62,12 @@ pub(crate) fn resolve_repo(
     }
 }
 
+/// ISS-808: git preflight only applies to pipeline lane jobs that push branches.
+/// `reconcile`/`verify_skill` edit skill bodies via MCP and never touch git.
+pub(crate) fn requires_preflight(job_type: &str) -> bool {
+    !matches!(job_type, "reconcile" | "verify_skill")
+}
+
 const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 /// Cadence for the per-job session heartbeat. A `POST /api/jobs/:id/events`
 /// bumps `agent_sessions.lastHeartbeatAt` server-side, so emitting a tiny
@@ -197,11 +203,15 @@ pub async fn handle(
     // 40-minute mid-run discovery. The `preflight_failed` prefix is
     // load-bearing — core's classifier maps it to failureKind=infra for fast
     // device failover.
-    if let Err(err) = preflight::preflight(&resolved.repo_path).await {
-        let msg = format!("preflight_failed: {err}");
-        tracing::error!("[job {job_id}] {msg}");
-        let _ = lifecycle::fail(client, &job_id, &msg).await;
-        return Ok(());
+    // ISS-808: reconcile/verify_skill jobs edit skill bodies via MCP and never
+    // push branches, so git assertions are inapplicable for those job types.
+    if requires_preflight(ja.job_type.as_str()) {
+        if let Err(err) = preflight::preflight(&resolved.repo_path).await {
+            let msg = format!("preflight_failed: {err}");
+            tracing::error!("[job {job_id}] {msg}");
+            let _ = lifecycle::fail(client, &job_id, &msg).await;
+            return Ok(());
+        }
     }
 
     // ISS-449 (Decision B): explicit claim ack once preflight passes.
@@ -384,6 +394,18 @@ fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {
 mod tests {
     use super::*;
     use crate::config::Binding;
+
+    #[test]
+    fn requires_preflight_gates_reconcile_types() {
+        assert!(!requires_preflight("reconcile"), "reconcile must skip preflight");
+        assert!(!requires_preflight("verify_skill"), "verify_skill must skip preflight");
+        assert!(requires_preflight("triage"), "triage must run preflight");
+        assert!(requires_preflight("plan"), "plan must run preflight");
+        assert!(requires_preflight("code"), "code must run preflight");
+        assert!(requires_preflight("fix"), "fix must run preflight");
+        assert!(requires_preflight("review"), "review must run preflight");
+        assert!(requires_preflight("custom"), "custom must run preflight");
+    }
 
     fn me(project_id: &str, slug: &str, repo_path: Option<&str>) -> MeRunner {
         MeRunner {

@@ -134,7 +134,7 @@ reconcileRoutes.post(
     try {
       await applyReconcileRun(runId, userId);
     } catch (err: unknown) {
-      const msg = String(err);
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
       if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;
@@ -168,7 +168,7 @@ reconcileRoutes.post(
     try {
       await rejectReconcileRun(runId, userId, reason);
     } catch (err: unknown) {
-      const msg = String(err);
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
       if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;

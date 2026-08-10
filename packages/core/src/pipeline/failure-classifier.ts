@@ -63,6 +63,12 @@
  *     whose account is not limited. Detection reuses `isUsageLimitError` from
  *     `runners/limit-detect.ts`. Checked after the explicit runner token (so
  *     [MCP_INIT_FAILED]/[SIGNAL_KILLED] still win) but before cc-startup.
+ *   v6 — ISS-808 structural preflight sub-variants → code (no retry). The
+ *     sub-variants `origin_remote:`, `work_tree:`, and `repo_path:` are
+ *     structural project properties — no number of retries can add a git remote
+ *     that was never supposed to exist. These specific patterns precede the
+ *     generic `preflight_failed` catch-all (which stays `infra` for fixable env
+ *     failures like `push_credentials:` / `hooks_path:`).
  */
 
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
@@ -70,7 +76,7 @@ import { isUsageLimitError } from '../runners/limit-detect.js';
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
 // cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
-export const CLASSIFIER_VERSION = 5;
+export const CLASSIFIER_VERSION = 6;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -107,6 +113,14 @@ const PERMANENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bbilling[ _-]?(error|required)\b/i,
   /\bmissing_prompt_string\b/i,
   /\brunner_unsupported_type\b/i,
+  // ISS-808: structural preflight sub-variants → code (no retry). These are
+  // project properties (no git origin, not a work tree, no repo dir) that no
+  // number of retries can fix. Precede the generic preflight_failed catch-all
+  // in TRANSIENT_PATTERNS so these specific forms win (permanent match order
+  // runs before transient — see classifyFailure()).
+  /\bpreflight[ _-]?failed:\s*origin_remote\b/i,
+  /\bpreflight[ _-]?failed:\s*work_tree\b/i,
+  /\bpreflight[ _-]?failed:\s*repo_path\b/i,
 ];
 
 const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [

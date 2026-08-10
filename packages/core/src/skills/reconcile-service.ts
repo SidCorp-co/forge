@@ -1218,8 +1218,14 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
   });
 }
 
+/** ISS-808: terminal run statuses — a run already in one of these states cannot be rejected again. */
+const RECONCILE_TERMINAL_STATUSES = ['applied', 'escalated', 'failed'] as const;
+
 /**
- * Human rejects a 'decided' run — escalates, preserving the last-good body.
+ * Human rejects any non-terminal run — escalates from any active state
+ * (pending/running/verifying/decided). A run stuck at pending/running/verifying
+ * has no candidateBody to preserve; escalating is safe from any active state
+ * since the run is FOR-UPDATE locked.
  */
 export async function rejectReconcileRun(
   runId: string,
@@ -1236,14 +1242,16 @@ export async function rejectReconcileRun(
       .limit(1);
 
     if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
-    if (runRow.status !== 'decided') {
-      throw new Error(`BAD_REQUEST: run is in status '${runRow.status}', expected 'decided'`);
+    if ((RECONCILE_TERMINAL_STATUSES as readonly string[]).includes(runRow.status)) {
+      throw new Error(
+        `BAD_REQUEST: run is already in terminal status '${runRow.status}', nothing to reject`,
+      );
     }
 
     await tx
       .update(reconcileRuns)
       .set({ status: 'escalated', updatedAt: new Date() })
-      .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, 'decided')));
+      .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, runRow.status)));
 
     await logActivity(tx, {
       eventType: 'reconcile.escalated',
