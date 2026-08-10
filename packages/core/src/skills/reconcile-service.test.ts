@@ -1,10 +1,13 @@
 import { RECONCILE_GATES, RECONCILE_RUN_STATUSES, RECONCILE_VERDICTS } from '@forge/contracts';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // cm:why `tables`, when set, routes `.limit()` by the real table object passed to `.from()` so one query (e.g. runners) can resolve different rows than another (e.g. skills) in the same test; unset keeps every query resolving to `rows`.
+// cm:why `txSelect`/`txReturning` are the transaction-scoped analogues — keyed by table, consulted only inside `db.transaction`'s callback, so a run's FOR-UPDATE select and a guarded UPDATE...returning() on the SAME table can resolve independently.
 const dbStub = vi.hoisted(() => ({
   rows: [] as unknown[],
   tables: null as Map<unknown, unknown[]> | null,
+  txSelect: null as Map<unknown, unknown[]> | null,
+  txReturning: null as Map<unknown, unknown[]> | null,
 }));
 vi.mock('../db/client.js', () => {
   const build = (table?: unknown): unknown => ({
@@ -21,7 +24,26 @@ vi.mock('../db/client.js', () => {
     orderBy: () => build(table),
     groupBy: () => build(table),
   });
-  return { db: { select: () => build() } };
+  const buildTx = (table?: unknown): unknown => ({
+    from: (t: unknown) => buildTx(t),
+    where: () => buildTx(table),
+    for: () => buildTx(table),
+    set: () => buildTx(table),
+    limit: () => Promise.resolve(dbStub.txSelect?.get(table) ?? []),
+    returning: () => Promise.resolve(dbStub.txReturning?.get(table) ?? []),
+    then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+      Promise.resolve(dbStub.txSelect?.get(table) ?? []).then(res, rej),
+  });
+  const tx = {
+    select: () => buildTx(),
+    update: (table: unknown) => buildTx(table),
+  };
+  return {
+    db: {
+      select: () => build(),
+      transaction: (fn: (t: unknown) => unknown) => Promise.resolve(fn(tx)),
+    },
+  };
 });
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -35,10 +57,21 @@ vi.mock('./activity.js', () => ({
 vi.mock('./policy-landed.js', () => ({
   ensurePolicyLandedFor: vi.fn().mockResolvedValue(false),
 }));
+const notifyMock = vi.hoisted(() => ({
+  emitNotification: vi.fn().mockResolvedValue({ id: 'n-1' }),
+}));
+vi.mock('../notifications/emit.js', () => ({ emitNotification: notifyMock.emitNotification }));
+const resolveMock = vi.hoisted(() => ({ resolveNotifications: vi.fn().mockResolvedValue(0) }));
+vi.mock('../notifications/auto-resolve.js', () => ({
+  resolveNotifications: resolveMock.resolveNotifications,
+}));
 
 import {
   deviceSkills,
   divergenceCharters,
+  jobs,
+  organizationMembers,
+  projectMembers,
   projects,
   reconcileGates,
   reconcileRunStatuses,
@@ -49,7 +82,16 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
-import { isRunningBodyObserved, spawnReconcileRun, validateC1C5 } from './reconcile-service.js';
+import {
+  acknowledgeReconcileRun,
+  applyReconcileRun,
+  isRunningBodyObserved,
+  recordReconcileVerdict,
+  recordVerifierVote,
+  rejectReconcileRun,
+  spawnReconcileRun,
+  validateC1C5,
+} from './reconcile-service.js';
 
 // cm:why contracts/reconcile.ts tuples must mirror db/schema.ts
 describe('reconcile contract parity', () => {
@@ -271,5 +313,228 @@ describe('spawnReconcileRun — refusal events', () => {
         reason: 'no online runner bound to this project',
       }),
     );
+  });
+});
+
+describe('reconcile gate notifications (ISS-807)', () => {
+  const adminRows = new Map<unknown, unknown[]>([
+    [projects, [{ id: 'proj-1', orgId: 'org-1', name: 'Acme' }]],
+    [projectMembers, [{ userId: 'admin-1' }]],
+    [organizationMembers, [{ userId: 'org-admin-1' }]],
+  ]);
+
+  beforeEach(() => {
+    dbStub.tables = adminRows;
+    dbStub.txSelect = null;
+    dbStub.txReturning = null;
+    notifyMock.emitNotification.mockClear();
+    resolveMock.resolveNotifications.mockClear();
+    activityMock.recordSkillActivityEvent.mockClear();
+  });
+
+  it('recordReconcileVerdict: verdict=escalate notifies every effective admin once', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [
+        reconcileRuns,
+        [
+          {
+            id: 'run-1',
+            projectId: 'proj-1',
+            status: 'running',
+            skillId: 'skill-1',
+            packetId: 'pkt-1',
+          },
+        ],
+      ],
+    ]);
+    dbStub.txReturning = new Map<unknown, unknown[]>([[reconcileRuns, [{ id: 'run-1' }]]]);
+
+    await recordReconcileVerdict({
+      runId: 'run-1',
+      verdict: 'escalate',
+      candidateBody: null,
+      rationale: 'too risky to decide alone',
+      gate: 'human',
+      actor: 'agent:master',
+    });
+
+    expect(notifyMock.emitNotification).toHaveBeenCalledTimes(2);
+    const userIds = notifyMock.emitNotification.mock.calls.map((c) => c[0].userId).sort();
+    expect(userIds).toEqual(['admin-1', 'org-admin-1']);
+    expect(notifyMock.emitNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'reconcile_gate_pending',
+        resolutionKey: 'reconcile_run:run-1:gate',
+      }),
+    );
+  });
+
+  it('recordReconcileVerdict: a duplicate transition (guarded UPDATE matches zero rows) emits nothing', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [
+        reconcileRuns,
+        [
+          {
+            id: 'run-1',
+            projectId: 'proj-1',
+            status: 'running',
+            skillId: 'skill-1',
+            packetId: 'pkt-1',
+          },
+        ],
+      ],
+    ]);
+    dbStub.txReturning = new Map<unknown, unknown[]>([[reconcileRuns, []]]);
+
+    await recordReconcileVerdict({
+      runId: 'run-1',
+      verdict: 'escalate',
+      candidateBody: null,
+      rationale: 'too risky to decide alone',
+      gate: 'human',
+      actor: 'agent:master',
+    });
+
+    expect(notifyMock.emitNotification).not.toHaveBeenCalled();
+  });
+
+  it('recordVerifierVote: the vote completing a human-gate majority pass notifies every admin', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [
+        reconcileRuns,
+        [
+          {
+            id: 'run-1',
+            projectId: 'proj-1',
+            status: 'verifying',
+            gate: 'human',
+            skillId: 'skill-1',
+            packetId: 'pkt-1',
+            verifierVotes: [
+              { jobId: 'job-1', vote: 'pass', reason: 'ok', decidedAt: new Date().toISOString() },
+              { jobId: 'job-3', vote: 'pass', reason: 'ok', decidedAt: new Date().toISOString() },
+            ],
+          },
+        ],
+      ],
+      [jobs, [{ id: 'job-2', retryOf: null }]],
+    ]);
+    dbStub.txReturning = new Map<unknown, unknown[]>([[reconcileRuns, [{ id: 'run-1' }]]]);
+
+    await recordVerifierVote({
+      runId: 'run-1',
+      jobId: 'job-2',
+      vote: 'pass',
+      reason: 'looks fine',
+    });
+
+    expect(notifyMock.emitNotification).toHaveBeenCalledTimes(2);
+    expect(notifyMock.emitNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'reconcile_gate_pending',
+        resolutionKey: 'reconcile_run:run-1:gate',
+      }),
+    );
+  });
+
+  it('applyReconcileRun: auto-resolves the gate notification for every admin after commit', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [
+        reconcileRuns,
+        [
+          {
+            id: 'run-1',
+            projectId: 'proj-1',
+            status: 'decided',
+            skillId: 'skill-1',
+            packetId: 'pkt-1',
+            candidateBody: 'new body',
+            lastGoodHash: 'hash-0',
+          },
+        ],
+      ],
+      [skills, [{ files: [] }]],
+    ]);
+
+    await applyReconcileRun('run-1', 'admin-1');
+
+    expect(resolveMock.resolveNotifications).toHaveBeenCalledWith('reconcile_run:run-1:gate');
+  });
+
+  it('rejectReconcileRun: auto-resolves the gate notification for every admin after commit', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [
+        reconcileRuns,
+        [
+          {
+            id: 'run-1',
+            projectId: 'proj-1',
+            status: 'decided',
+            skillId: 'skill-1',
+            packetId: 'pkt-1',
+          },
+        ],
+      ],
+    ]);
+
+    await rejectReconcileRun('run-1', 'admin-1', 'not convinced');
+
+    expect(resolveMock.resolveNotifications).toHaveBeenCalledWith('reconcile_run:run-1:gate');
+  });
+
+  it('acknowledgeReconcileRun: rejects a run that is not escalated/verdict=escalate', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [reconcileRuns, [{ id: 'run-1', status: 'decided', verdict: 'apply', acknowledgedAt: null }]],
+    ]);
+
+    await expect(acknowledgeReconcileRun('run-1', 'admin-1')).rejects.toThrow(/^BAD_REQUEST:/);
+    expect(activityMock.recordSkillActivityEvent).not.toHaveBeenCalled();
+  });
+
+  it('acknowledgeReconcileRun: is idempotent on an already-acknowledged run', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [
+        reconcileRuns,
+        [
+          {
+            id: 'run-1',
+            status: 'escalated',
+            verdict: 'escalate',
+            acknowledgedAt: new Date().toISOString(),
+          },
+        ],
+      ],
+    ]);
+
+    await acknowledgeReconcileRun('run-1', 'admin-1');
+
+    expect(activityMock.recordSkillActivityEvent).not.toHaveBeenCalled();
+  });
+
+  it('acknowledgeReconcileRun: clears the gate notification and logs the event', async () => {
+    dbStub.txSelect = new Map<unknown, unknown[]>([
+      [
+        reconcileRuns,
+        [
+          {
+            id: 'run-1',
+            projectId: 'proj-1',
+            status: 'escalated',
+            verdict: 'escalate',
+            skillId: 'skill-1',
+            packetId: 'pkt-1',
+            acknowledgedAt: null,
+          },
+        ],
+      ],
+    ]);
+
+    await acknowledgeReconcileRun('run-1', 'admin-1');
+
+    expect(activityMock.recordSkillActivityEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: 'reconcile.acknowledged' }),
+    );
+    expect(resolveMock.resolveNotifications).toHaveBeenCalledWith('reconcile_run:run-1:gate');
   });
 });

@@ -20,6 +20,8 @@ function typeLabel(type: string): string {
       return "AGENT";
     case "invitation_received":
       return "INVITE";
+    case "reconcile_gate_pending":
+      return "SKILL";
     default:
       return "EVENT";
   }

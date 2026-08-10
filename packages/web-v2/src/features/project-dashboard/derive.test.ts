@@ -129,6 +129,7 @@ describe("projectAttention", () => {
     awaitingInput: [{ kind: "awaiting_input", title: "Needs info", link: "/a", since: "x", projectSlug: "p2" }],
     mentions: [],
     failedJobs: [{ kind: "failed_job", title: "code failed", link: "/f", since: "x", projectSlug: "p1", issueRef: "ISS-2" }],
+    pendingSkillUpdates: [],
     offlineRunners: [],
     total: 3,
   };

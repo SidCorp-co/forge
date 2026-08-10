@@ -1,0 +1,4 @@
+ALTER TABLE "reconcile_runs" ADD COLUMN "acknowledged_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "reconcile_runs" ADD COLUMN "acknowledged_by" uuid;--> statement-breakpoint
+ALTER TABLE "reconcile_runs" ADD CONSTRAINT "reconcile_runs_acknowledged_by_users_id_fk" FOREIGN KEY ("acknowledged_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "reconcile_runs_pending_gate_idx" ON "reconcile_runs" USING btree ("project_id") WHERE (status = 'decided' AND gate = 'human') OR (status = 'escalated' AND verdict = 'escalate' AND acknowledged_at IS NULL);
