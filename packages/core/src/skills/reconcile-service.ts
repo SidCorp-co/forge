@@ -131,6 +131,24 @@ export function validateC1C5(bundle: Partial<ReconcileBundleSnapshot>): string |
   return null;
 }
 
+/**
+ * Whether the stored body is provably the one running on every device that has
+ * reported. Pure — no DB access — so the rule is unit-testable in isolation.
+ */
+// cm:guard `observed-from-run` may only be claimed when the STORED body IS what runs — Forge keeps no content-addressed copy of an observed body, so a mismatch cannot be resolved by fetching the real bytes; the only honest move is to stop claiming observation and let C4 refuse
+// cm:why the label used to depend on merely HAVING an observedSha, so a stale or shadowed device still yielded a bundle labelled `observed-from-run` while handing the agent the server's copy — C4 exists to stop exactly that, and was passing on it
+export function isRunningBodyObserved(
+  storedHash: string | null,
+  observations: ReadonlyArray<{ observedSha: string | null; shadowedBy: string | null }>,
+): boolean {
+  if (!storedHash) return false;
+  const reported = observations.filter((d) => d.observedSha != null);
+  return (
+    reported.length > 0 &&
+    reported.every((d) => d.shadowedBy == null && d.observedSha === storedHash)
+  );
+}
+
 export interface AssembleBundleInput {
   projectId: string;
   packetId: string;
@@ -173,6 +191,7 @@ export async function assembleBundle(
     packetRow,
     projectRow,
     skillRow,
+    deviceObservations,
     charterRow,
     recentRunRows,
     priorReconcileRows,
@@ -190,16 +209,16 @@ export async function assembleBundle(
         skillMd: skills.skillMd,
         prompt: skills.prompt,
         contentHash: skills.contentHash,
-        observedSha: deviceSkills.observedSha,
       })
       .from(skills)
-      .leftJoin(
-        deviceSkills,
-        and(eq(deviceSkills.skillId, skills.id), eq(deviceSkills.projectId, input.projectId)),
-      )
       .where(eq(skills.id, input.skillId))
-      .orderBy(desc(deviceSkills.syncedAt))
       .limit(1),
+    db
+      .select({ observedSha: deviceSkills.observedSha, shadowedBy: deviceSkills.shadowedBy })
+      .from(deviceSkills)
+      .where(
+        and(eq(deviceSkills.skillId, input.skillId), eq(deviceSkills.projectId, input.projectId)),
+      ),
     db
       .select()
       .from(divergenceCharters)
@@ -281,7 +300,9 @@ export async function assembleBundle(
   }
 
   const runningBody = skill.skillMd ?? skill.prompt ?? '';
-  const runningHash = skill.observedSha ?? skill.contentHash ?? '';
+
+  const runningIsObserved = isRunningBodyObserved(skill.contentHash, deviceObservations);
+  const runningHash = skill.contentHash ?? '';
 
   const charter = charterRow[0] ?? null;
   const policyEvent = lastPolicyEvent[0] ?? null;
@@ -326,8 +347,8 @@ export async function assembleBundle(
       intentClass: 'human',
       appliesTo: 'from-code',
       provenance: 'from-code',
-      runningBody: skill.observedSha ? 'observed-from-run' : 'from-code',
-      runningHash: skill.observedSha ? 'observed-from-run' : 'from-code',
+      runningBody: runningIsObserved ? 'observed-from-run' : 'from-code',
+      runningHash: runningIsObserved ? 'observed-from-run' : 'from-code',
       charter: 'human',
       projectFacts: 'human',
       pipelineConfig: 'human',

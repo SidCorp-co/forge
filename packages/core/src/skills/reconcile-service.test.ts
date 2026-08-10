@@ -11,6 +11,12 @@ vi.mock('../db/client.js', () => {
     from: (t: unknown) => build(t),
     where: () => build(table),
     limit: () => Promise.resolve(dbStub.tables ? (dbStub.tables.get(table) ?? []) : dbStub.rows),
+    // cm:why a query with no .limit() (the device-observation read) still has to resolve — without this the chain object itself is awaited and reaches the caller as a non-array
+    then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+      Promise.resolve(dbStub.tables ? (dbStub.tables.get(table) ?? []) : dbStub.rows).then(
+        res,
+        rej,
+      ),
     leftJoin: () => build(table),
     orderBy: () => build(table),
     groupBy: () => build(table),
@@ -31,6 +37,7 @@ vi.mock('./policy-landed.js', () => ({
 }));
 
 import {
+  deviceSkills,
   divergenceCharters,
   projects,
   reconcileGates,
@@ -42,7 +49,7 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
-import { spawnReconcileRun, validateC1C5 } from './reconcile-service.js';
+import { isRunningBodyObserved, spawnReconcileRun, validateC1C5 } from './reconcile-service.js';
 
 // cm:why contracts/reconcile.ts tuples must mirror db/schema.ts
 describe('reconcile contract parity', () => {
@@ -54,6 +61,46 @@ describe('reconcile contract parity', () => {
   });
   it('RECONCILE_GATES matches schema', () => {
     expect([...RECONCILE_GATES].sort()).toEqual([...reconcileGates].sort());
+  });
+});
+
+describe('isRunningBodyObserved', () => {
+  const H = 'a'.repeat(64);
+  const OTHER = 'b'.repeat(64);
+
+  it('is false with no observation at all — nothing proves what runs', () => {
+    expect(isRunningBodyObserved(H, [])).toBe(false);
+    expect(isRunningBodyObserved(H, [{ observedSha: null, shadowedBy: null }])).toBe(false);
+  });
+
+  it('is true when every reporting device observed exactly the stored body', () => {
+    expect(
+      isRunningBodyObserved(H, [
+        { observedSha: H, shadowedBy: null },
+        { observedSha: H, shadowedBy: null },
+      ]),
+    ).toBe(true);
+  });
+
+  // A device still on the previous body means the stored copy is NOT what runs there,
+  // so the bundle must not claim observation — C4 then refuses the run.
+  it('is false when any device observed a different body', () => {
+    expect(
+      isRunningBodyObserved(H, [
+        { observedSha: H, shadowedBy: null },
+        { observedSha: OTHER, shadowedBy: null },
+      ]),
+    ).toBe(false);
+  });
+
+  it('is false when a device reports the right hash but a shadowing copy (ISS-783)', () => {
+    expect(isRunningBodyObserved(H, [{ observedSha: H, shadowedBy: '~/.claude/skills' }])).toBe(
+      false,
+    );
+  });
+
+  it('is false when the skill has no stored hash to compare against', () => {
+    expect(isRunningBodyObserved(null, [{ observedSha: H, shadowedBy: null }])).toBe(false);
   });
 });
 
@@ -185,7 +232,6 @@ describe('spawnReconcileRun — refusal events', () => {
             skillMd: 'running body',
             prompt: 'running body',
             contentHash: 'hash-1',
-            observedSha: 'sha-1',
           },
         ],
       ],
@@ -203,6 +249,8 @@ describe('spawnReconcileRun — refusal events', () => {
         ],
       ],
       [projects, [{ agentConfig: {} }]],
+      // cm:why must AGREE with contentHash — a device observing a different sha is the stale case, which now labels runningBody `from-code` and makes C4 refuse before the runner check this test targets
+      [deviceSkills, [{ observedSha: 'hash-1', shadowedBy: null }]],
       [divergenceCharters, []],
       [reconcileRuns, []],
       [skillActivityEvents, []],
