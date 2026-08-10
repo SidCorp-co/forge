@@ -97,7 +97,7 @@ curl -X POST http://localhost:8080/api/webhooks/in/<project-slug> \
 
 Issue appears in the Kanban. Click **Run triage** → a `forge-triage` job queues. Within seconds the device picks it up, spawns `claude` locally with the triage skill, streams output to the dashboard.
 
-On triage complete the issue advances to `confirmed`. Continue through the pipeline (plan → code → review → release) — each stage auto-runs or waits for your click per project config.
+On triage complete the issue advances to `confirmed`. Continue through the pipeline (clarify → plan → code → review → test → release) — each stage auto-runs or waits for your click per project config. Note the two stages that are easy to miss: **clarify** reproduces the bug or validates the UX before any plan is written, and **test** is where a project may park at `tested` as a human gate before `released` (whether it does is per-project `pipelineConfig`, not a global rule).
 
 ## What's next
 

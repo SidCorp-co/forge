@@ -31,6 +31,7 @@ Legacy "project owner" gates (settings PATCH, DELETE, archive, pipeline-config) 
 | Web / Mobile | `forge_auth` cookie (JWT) | full per-role access |
 | Desktop (Forge Dev) | Device token | acts as the user (no scopes) |
 | Script / AI tool | PAT (`/settings`) | user rights ∩ `projectIds` allowlist ∩ **scopes** |
+| Runner callback (no session) | HMAC signature / capability URL | `POST /api/runners/:id/events` is signed with `x-forge-signature` + `x-forge-timestamp` against the integration's `callbackSecret` (replay-windowed); `GET /api/runners/skills-zip/:hash` is gated purely by the unguessable content hash. Neither carries a user identity — they are machine doors, and they must NOT sit behind `requireAuth`. See `runners/routes.ts` (`runnerCallbackRoutes`) and the mount-order guard in `index.ts` |
 
 **PAT scopes** (`read` / `write` / `admin`): admin-grade MCP mutations (`forge_skills` update/push, `forge_projects.update/.archive`, `forge_config`…) require `admin` (`assertPrincipalIsAdmin`). Pre-0106 PATs were grandfathered `admin`; new PATs default `read,write`. Threat analysis: [mcp-threat-model.md](mcp-threat-model.md).
 
@@ -40,6 +41,13 @@ Legacy "project owner" gates (settings PATCH, DELETE, archive, pipeline-config) 
 - `POST /api/projects` + `forge_projects.create` — optional `orgId` (defaults to personal org); creator gets project role `admin`.
 - MCP `forge_orgs.list` / `forge_orgs.members` — read-only discovery.
 - Integration connections: `ownerType 'user'|'org'`. Org connections: create/rotate/delete needs org admin; org members see them in lists; bindable only to projects **in the same org** (by a project admin).
+- **Private Keys pool** (`workspace_ssh_keys`, org-scoped) — minting and deleting are split from attaching, deliberately:
+  - `GET /api/orgs/:orgId/ssh-keys` — org **member**. Non-secret list + `usedByProjects`. Never returns the private key.
+  - `POST /api/orgs/:orgId/ssh-keys` — org **admin**. `generate` mints an ed25519 pair; `provide` stores a pasted key.
+  - `DELETE /api/orgs/:orgId/ssh-keys/:keyId` — org **admin**. Safe-delete: 409 + the referencing-project list when in use, enforced server-side and backed by `ON DELETE RESTRICT`.
+  - `PUT /api/projects/:projectId/git-credential` — **project admin**. Picks one key from the project's own org pool (`project_git_credentials`, 1:1 with the project); a cross-org key is rejected 400 `WRONG_ORG`. `DELETE` detaches without deleting the pool key.
+
+  So an org admin controls what key material exists; a project admin controls which project uses which key. Neither role can read a private key back out.
 
 ## 5. New-user setup
 
