@@ -71,6 +71,7 @@ describe('GET /api/me/attention', () => {
     queryQueue.push([]); // awaitingInput
     queryQueue.push([]); // mentions
     queryQueue.push([]); // failedJobs
+    queryQueue.push([]); // pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -82,11 +83,12 @@ describe('GET /api/me/attention', () => {
       awaitingInput: [],
       mentions: [],
       failedJobs: [],
+      pendingSkillUpdates: [],
       total: 0,
     });
   });
 
-  it('200 with all 4 buckets populated, total = sum of items', async () => {
+  it('200 with all 5 buckets populated, total = sum of items', async () => {
     authVerified();
     const updatedAt = new Date('2026-04-26T10:00:00Z');
     const mentionedAt = new Date('2026-04-26T11:00:00Z');
@@ -138,6 +140,18 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]); // failedJobs
+    const decidedAt = new Date('2026-04-26T13:00:00Z');
+    queryQueue.push([
+      {
+        id: 'run-1',
+        status: 'decided',
+        verdict: 'apply',
+        createdAt: new Date('2026-04-26T09:00:00Z'),
+        decidedAt,
+        projectSlug: 'alpha',
+        projectName: 'Alpha',
+      },
+    ]); // pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -149,10 +163,17 @@ describe('GET /api/me/attention', () => {
       awaitingInput: Array<{ kind: string; status: string }>;
       mentions: Array<{ kind: string; issueRef: string; title: string }>;
       failedJobs: Array<{ kind: string; title: string; status: string; issueRef?: string }>;
+      pendingSkillUpdates: Array<{ kind: string; title: string; link: string; since: string }>;
       total: number;
     };
 
-    expect(body.total).toBe(4);
+    expect(body.total).toBe(5);
+    expect(body.pendingSkillUpdates[0]).toMatchObject({
+      kind: 'pending_skill_update',
+      title: 'Skill update pending',
+      link: '/projects/alpha/library?tab=updates',
+      since: decidedAt.toISOString(),
+    });
     expect(body.needsReview[0]).toMatchObject({
       kind: 'needs_review',
       issueRef: 'ISS-42',
@@ -194,6 +215,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
+    queryQueue.push([]); // pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -237,6 +259,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
+    queryQueue.push([]); // pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -268,6 +291,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
+    queryQueue.push([]); // pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -277,5 +301,47 @@ describe('GET /api/me/attention', () => {
     const body = (await res.json()) as { failedJobs: Array<{ title: string }>; total: number };
     expect(body.total).toBe(1);
     expect(body.failedJobs[0]?.title).toContain('still failing');
+  });
+
+  // ISS-807 — mirrors the disclaimer above: the mock resolves whatever is
+  // queued regardless of the WHERE clause, so this exercises the row→response
+  // mapping (decided/human OR escalated/escalate/unacknowledged → one item,
+  // `since` from decidedAt falling back to createdAt) and the `total` roll-up,
+  // not the admin-scoping or state-predicate SQL itself.
+  it('pendingSkillUpdates: an escalated run with no decidedAt falls back to createdAt for `since`', async () => {
+    authVerified();
+    queryQueue.push([]); // needsReview
+    queryQueue.push([]); // awaitingInput
+    queryQueue.push([]); // mentions
+    queryQueue.push([]); // failedJobs
+    const createdAt = new Date('2026-04-26T08:00:00Z');
+    queryQueue.push([
+      {
+        id: 'run-2',
+        status: 'escalated',
+        verdict: 'escalate',
+        createdAt,
+        decidedAt: null,
+        projectSlug: 'beta',
+        projectName: 'Beta',
+      },
+    ]); // pendingSkillUpdates
+
+    const res = await buildApp().request('/api/me/attention', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      pendingSkillUpdates: Array<{ kind: string; link: string; since: string; status: string }>;
+      total: number;
+    };
+    expect(body.total).toBe(1);
+    expect(body.pendingSkillUpdates[0]).toMatchObject({
+      kind: 'pending_skill_update',
+      link: '/projects/beta/library?tab=updates',
+      since: createdAt.toISOString(),
+      status: 'escalated',
+    });
   });
 });

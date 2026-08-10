@@ -1494,6 +1494,7 @@ export const skillActivityEventTypes = [
   'job.ran.with',
   'skill.pinned',
   'charter.changed',
+  'reconcile.acknowledged',
 ] as const;
 // cm:why 'body.reverted' removed — no revert action exists to emit it; re-add when one ships.
 export type SkillActivityEventType = (typeof skillActivityEventTypes)[number];
@@ -2012,6 +2013,7 @@ export const notificationTypes = [
   // ISS-618 — a script-kind schedule's ctx.notify() payload delivered to the
   // owner (report/API-check results with no LLM involved).
   'schedule_report',
+  'reconcile_gate_pending',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 
@@ -3303,12 +3305,7 @@ export const downloadTickets = pgTable(
   }),
 );
 
-// ─── Divergence Charter ──────────────────────────────────────────────────────
-// ISS-800 / Update Pipeline §5 — per-project machine-readable record of
-// intentional deviations from the default pipeline template. ONE row per
-// project; `entries` is an append-friendly jsonb array (each entry: a
-// human-authored statement with difference/reason/incidentRefs/revertable).
-// Item 7 in the Master agent's context bundle (ISS-795 §4).
+// cm:why divergence_charters is item 7 in the Master agent's context bundle (ISS-795 §4 / Update Pipeline §5).
 // cm:guard Charter mutations MUST emit `charter.changed` into `skill_activity_events` in the same transaction (invariant §9.11).
 
 export const divergenceCharters = pgTable(
@@ -3405,6 +3402,9 @@ export const reconcileRuns = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
+    // cm:why acknowledgedAt/By (ISS-807) resolve an escalated run's attention item — orthogonal to `status`, which stays the run's terminal state.
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+    acknowledgedBy: uuid('acknowledged_by').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => ({
     // cm:guard partial unique index — enforces at most one active run per project; includes 'decided' so a run awaiting the human gate also blocks a new trigger (MINOR G, ISS-801 review).
@@ -3413,6 +3413,12 @@ export const reconcileRuns = pgTable(
       .where(sql`status IN ('pending','running','verifying','decided')`),
     projectCreatedIdx: index('reconcile_runs_project_created_idx').on(t.projectId, t.createdAt),
     packetIdx: index('reconcile_runs_packet_idx').on(t.packetId),
+    // cm:edge contract -> packages/core/src/me/attention-routes.ts — the pendingSkillUpdates bucket's escalated-run clause mirrors this predicate; keep both in sync.
+    pendingGateIdx: index('reconcile_runs_pending_gate_idx')
+      .on(t.projectId)
+      .where(
+        sql`(status = 'decided' AND gate = 'human') OR (status = 'escalated' AND verdict = 'escalate' AND acknowledged_at IS NULL)`,
+      ),
   }),
 );
 

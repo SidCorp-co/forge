@@ -34,6 +34,7 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   awaiting_input: "attention",
   mention: "neutral",
   failed_job: "failure",
+  pending_skill_update: "attention",
   runner_offline: "infra",
 };
 
@@ -42,6 +43,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   awaiting_input: { label: "Awaiting input", icon: "clock", ...tone("awaiting_input") },
   mention: { label: "Mention", icon: "mail", ...tone("mention") },
   failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
+  pending_skill_update: { label: "Skill update", icon: "clock", ...tone("pending_skill_update") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
 };
 
@@ -132,6 +134,7 @@ export function AttentionScreen() {
     awaitingInput: view.awaitingInput.filter(keep),
     mentions: view.mentions.filter(keep),
     failedJobs: view.failedJobs.filter(keep),
+    pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
   const total =
@@ -139,6 +142,7 @@ export function AttentionScreen() {
     scoped.awaitingInput.length +
     scoped.mentions.length +
     scoped.failedJobs.length +
+    scoped.pendingSkillUpdates.length +
     scoped.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
@@ -184,6 +188,7 @@ export function AttentionScreen() {
           <Group title="Awaiting input" items={scoped.awaitingInput} onOpen={open} />
           <Group title="Mentions" items={scoped.mentions} onOpen={open} />
           <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
+          <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />
           <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
         </div>
       )}

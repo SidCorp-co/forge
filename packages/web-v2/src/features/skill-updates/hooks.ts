@@ -5,6 +5,7 @@
 // A run at `decided` + `gate: 'human'` is waiting on a person, and until this
 // screen existed the only way to act on one was an MCP call or a raw POST — so
 // a waiting run was invisible to the owner it was waiting for.
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -28,9 +29,11 @@ export function useReconcileRun(projectId: string, runId: string | null) {
   });
 }
 
-/** A run is waiting on a person exactly when it is `decided` at the human gate. */
+/** A run is waiting on a person when it is `decided` at the human gate, or when
+ *  it was escalated by the agent (`verdict: 'escalate'`) and not yet acknowledged. */
 export function awaitsHuman(run: ReconcileRunSummary): boolean {
-  return run.status === "decided" && run.gate === "human";
+  if (run.status === "decided" && run.gate === "human") return true;
+  return run.status === "escalated" && run.verdict === "escalate" && !run.acknowledgedAt;
 }
 
 export function useApplyReconcileRun(projectId: string) {
@@ -67,5 +70,21 @@ export function useRejectReconcileRun(projectId: string) {
     },
     onError: (err) =>
       toast({ title: "Reject failed", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+export function useAcknowledgeReconcileRun(projectId: string) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ runId, reason }: { runId: string; reason?: string }) =>
+      skillUpdatesApi.acknowledge(projectId, runId, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reconcile-runs", projectId] });
+      qc.invalidateQueries({ queryKey: ["attention"] });
+      toast({ title: "Acknowledged", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Acknowledge failed", description: formatApiError(err), tone: "error" }),
   });
 }

@@ -2,11 +2,17 @@
 
 // Review pane for one reconcile run: what the agent proposes, why, what three
 // independent verifiers made of it, and the exact diff — then approve or reject.
+
 import { useMemo, useState } from "react";
 import { Badge, Button, ErrorState, Field, Skeleton, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { diffLines, diffStat, withContext } from "../diff";
-import { useApplyReconcileRun, useReconcileRun, useRejectReconcileRun } from "../hooks";
+import {
+  useAcknowledgeReconcileRun,
+  useApplyReconcileRun,
+  useReconcileRun,
+  useRejectReconcileRun,
+} from "../hooks";
 
 export interface RunReviewProps {
   projectId: string;
@@ -18,7 +24,8 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
   const { data: run, isLoading, isError, error, refetch } = useReconcileRun(projectId, runId);
   const apply = useApplyReconcileRun(projectId);
   const reject = useRejectReconcileRun(projectId);
-  const [confirming, setConfirming] = useState<"apply" | "reject" | null>(null);
+  const acknowledge = useAcknowledgeReconcileRun(projectId);
+  const [confirming, setConfirming] = useState<"apply" | "reject" | "acknowledge" | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
   const lines = useMemo(
@@ -46,9 +53,11 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
   }
 
   const waiting = run.status === "decided" && run.gate === "human";
+  const escalatedNeedsAck =
+    run.status === "escalated" && run.verdict === "escalate" && !run.acknowledgedAt;
   const votes = run.verifierVotes ?? [];
   const passes = votes.filter((v) => v.vote === "pass").length;
-  const busy = apply.isPending || reject.isPending;
+  const busy = apply.isPending || reject.isPending || acknowledge.isPending;
 
   return (
     <div className="flex min-h-0 flex-col gap-4 p-4">
@@ -192,6 +201,46 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
           <footer className="border-line border-t pt-3">
             <p className="text-muted text-sm">
               Waiting on a project admin — you have read access to this review.
+            </p>
+          </footer>
+        )
+      ) : escalatedNeedsAck ? (
+        canManage ? (
+          <footer className="border-line space-y-3 border-t pt-3">
+            {confirming === "acknowledge" ? (
+              <div className="space-y-2">
+                <p className="text-sm">
+                  This clears the attention item without changing the skill body — use it once
+                  you've handled the escalation some other way.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="primary"
+                    loading={acknowledge.isPending}
+                    onClick={() =>
+                      acknowledge.mutate(
+                        { runId },
+                        { onSuccess: () => setConfirming(null) },
+                      )
+                    }
+                  >
+                    Acknowledge
+                  </Button>
+                  <Button variant="ghost" onClick={() => setConfirming(null)} disabled={busy}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="primary" onClick={() => setConfirming("acknowledge")}>
+                Acknowledge
+              </Button>
+            )}
+          </footer>
+        ) : (
+          <footer className="border-line border-t pt-3">
+            <p className="text-muted text-sm">
+              Escalated — waiting on a project admin to acknowledge.
             </p>
           </footer>
         )

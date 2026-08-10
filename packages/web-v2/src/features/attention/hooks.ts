@@ -48,17 +48,20 @@ export function useAttention() {
     const awaitingInput = base?.awaitingInput ?? [];
     const mentions = base?.mentions ?? [];
     const failedJobs = base?.failedJobs ?? [];
+    const pendingSkillUpdates = base?.pendingSkillUpdates ?? [];
     return {
       needsReview,
       awaitingInput,
       mentions,
       failedJobs,
+      pendingSkillUpdates,
       offlineRunners,
       total:
         needsReview.length +
         awaitingInput.length +
         mentions.length +
         failedJobs.length +
+        pendingSkillUpdates.length +
         offlineRunners.length,
     };
   }, [attentionQ.data, offlineRunners]);

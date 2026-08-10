@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
+  acknowledgeReconcileRun,
   applyReconcileRun,
   getReconcileRun,
   listReconcileRunsForProject,
@@ -34,8 +35,6 @@ const conflict = (msg: string) =>
 export const reconcileRoutes = new Hono<{ Variables: AuthVars }>();
 reconcileRoutes.use('/:projectId/reconcile-runs*', requireAuth(), assertEmailVerified());
 
-// POST /api/projects/:projectId/reconcile-runs
-// Trigger a reconcile run for a skill within the project.
 reconcileRoutes.post(
   '/:projectId/reconcile-runs',
   zValidator('param', projectParamSchema, (r) => {
@@ -75,8 +74,6 @@ reconcileRoutes.post(
   },
 );
 
-// GET /api/projects/:projectId/reconcile-runs
-// List recent reconcile runs for the project.
 reconcileRoutes.get(
   '/:projectId/reconcile-runs',
   zValidator('param', projectParamSchema, (r) => {
@@ -94,7 +91,6 @@ reconcileRoutes.get(
   },
 );
 
-// GET /api/projects/:projectId/reconcile-runs/:runId
 reconcileRoutes.get(
   '/:projectId/reconcile-runs/:runId',
   zValidator('param', runParamSchema, (r) => {
@@ -114,8 +110,6 @@ reconcileRoutes.get(
   },
 );
 
-// POST /api/projects/:projectId/reconcile-runs/:runId/apply
-// Human approves a 'decided' run at the human gate.
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/apply',
   zValidator('param', runParamSchema, (r) => {
@@ -144,8 +138,6 @@ reconcileRoutes.post(
   },
 );
 
-// POST /api/projects/:projectId/reconcile-runs/:runId/reject
-// Human rejects a 'decided' run at the human gate.
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/reject',
   zValidator('param', runParamSchema, (r) => {
@@ -167,6 +159,38 @@ reconcileRoutes.post(
 
     try {
       await rejectReconcileRun(runId, userId, reason);
+    } catch (err: unknown) {
+      const msg = String(err);
+      if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
+      if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
+      throw err;
+    }
+
+    return c.json({ ok: true });
+  },
+);
+
+reconcileRoutes.post(
+  '/:projectId/reconcile-runs/:runId/acknowledge',
+  zValidator('param', runParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', z.object({ reason: z.string().max(1000).optional() }).strict(), (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'only a project admin can acknowledge a reconcile run');
+
+    const run = await getReconcileRun(runId);
+    if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
+
+    try {
+      await acknowledgeReconcileRun(runId, userId, reason);
     } catch (err: unknown) {
       const msg = String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);

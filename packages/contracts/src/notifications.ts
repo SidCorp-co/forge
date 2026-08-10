@@ -21,6 +21,7 @@ export const NOTIFICATION_TYPES = [
   'invitation_received',
   'intake_pending',
   'schedule_report',
+  'reconcile_gate_pending',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -49,6 +50,7 @@ export const NOTIFICATION_CONTRACT: Record<NotificationType, NotificationTypeCon
   invitation_received: { severity: 'warning', channels: ['bell', 'toast'] },
   intake_pending: { severity: 'info', channels: ['bell', 'toast'] },
   schedule_report: { severity: 'info', channels: ['bell', 'toast'] },
+  reconcile_gate_pending: { severity: 'warning', channels: ['bell', 'toast'] },
 };
 
 /** Channels a type targets; defaults to bell-only for an unknown/legacy type. */

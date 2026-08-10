@@ -11,6 +11,7 @@ export type AttentionKind =
   | "awaiting_input"
   | "mention"
   | "failed_job"
+  | "pending_skill_update"
   | "runner_offline";
 
 /** One actionable row. `link` is a basePath-relative href (router.push handles
@@ -34,6 +35,7 @@ export interface AttentionResponse {
   awaitingInput: AttentionItem[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
+  pendingSkillUpdates: AttentionItem[];
   total: number;
 }
 
