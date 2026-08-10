@@ -17,6 +17,7 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   failed_job: 'failure',
   needs_review: 'active',
   awaiting_input: 'attention',
+  pending_skill_update: 'attention',
   runner_offline: 'infra',
   mention: 'neutral',
 };
@@ -25,6 +26,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   failed_job: { label: 'Failed', icon: 'alert', ...toneColors('failed_job') },
   needs_review: { label: 'Review', icon: 'check', ...toneColors('needs_review') },
   awaiting_input: { label: 'Awaiting', icon: 'clock', ...toneColors('awaiting_input') },
+  pending_skill_update: { label: 'Skill update', icon: 'clock', ...toneColors('pending_skill_update') },
   runner_offline: { label: 'Offline', icon: 'server', ...toneColors('runner_offline') },
   mention: { label: 'Mention', icon: 'mail', ...toneColors('mention') },
 };
@@ -42,6 +44,7 @@ function prioritized(view: AttentionView): AttentionItem[] {
     ...view.failedJobs,
     ...view.needsReview,
     ...view.awaitingInput,
+    ...view.pendingSkillUpdates,
     ...view.offlineRunners,
     ...view.mentions,
   ];

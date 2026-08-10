@@ -96,18 +96,21 @@ export function OverviewScreen() {
     const awaitingInput = v.awaitingInput.filter(keep);
     const mentions = v.mentions.filter(keep);
     const failedJobs = v.failedJobs.filter(keep);
+    const pendingSkillUpdates = v.pendingSkillUpdates.filter(keep);
     const offlineRunners = v.offlineRunners;
     return {
       needsReview,
       awaitingInput,
       mentions,
       failedJobs,
+      pendingSkillUpdates,
       offlineRunners,
       total:
         needsReview.length +
         awaitingInput.length +
         mentions.length +
         failedJobs.length +
+        pendingSkillUpdates.length +
         offlineRunners.length,
     };
   }, [attention.view, scopedSlugs]);

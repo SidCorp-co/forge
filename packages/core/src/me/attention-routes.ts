@@ -1,18 +1,37 @@
-import { and, desc, eq, inArray, isNull, notExists, notInArray, or, sql } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  notExists,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import {
-  comments,
   commentMentions,
+  comments,
   issues,
   jobs,
   notifications,
+  organizationMembers,
+  projectMembers,
   projects,
+  reconcileRuns,
 } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
-type AttentionKind = 'needs_review' | 'awaiting_input' | 'mention' | 'failed_job';
+type AttentionKind =
+  | 'needs_review'
+  | 'awaiting_input'
+  | 'mention'
+  | 'failed_job'
+  | 'pending_skill_update';
 
 interface AttentionItem {
   kind: AttentionKind;
@@ -30,6 +49,7 @@ interface AttentionResponse {
   awaitingInput: AttentionItem[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
+  pendingSkillUpdates: AttentionItem[];
   total: number;
 }
 
@@ -57,11 +77,19 @@ interface AttentionResponse {
  *        (`closed`, `released`) — the problem was resolved by hand even
  *        though the job row itself stays `failed`. Jobs with no linked issue
  *        (PM/system/deploy jobs) are NOT excluded by this rule.
+ * - `pendingSkillUpdates` — reconcile runs at the human decision gate for
+ *   projects the caller admins (explicit `project_members` admin OR org
+ *   owner/admin — mirrors `effectiveProjectRole`, ISS-807): `status='decided'
+ *   AND gate='human'`, OR `status='escalated' AND verdict='escalate' AND
+ *   acknowledged_at IS NULL`. Derived ENTIRELY from live `reconcile_runs`
+ *   state — never from notification read status (invariant 10: a read/unread
+ *   flag became a mute switch once already, the 75-draft incident).
  */
 const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
 const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info', 'on_hold'] as const;
 const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'released'] as const;
 const PER_BUCKET = 5;
+const PENDING_SKILL_UPDATES_CAP = 20;
 
 // Self-join alias for the retry-chain exclusion (a job and its retry are both
 // rows in `jobs`; drizzle requires an alias to reference the table twice).
@@ -73,119 +101,167 @@ meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 meAttentionRoutes.get('/attention', async (c) => {
   const userId = c.get('userId');
 
-  const [needsReviewRows, awaitingInputRows, mentionRows, failedJobRows] = await Promise.all([
-    db
-      .select({
-        id: issues.id,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        status: issues.status,
-        updatedAt: issues.updatedAt,
-        projectSlug: projects.slug,
-        projectName: projects.name,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(
-        and(
-          eq(issues.assigneeId, userId),
-          inArray(issues.status, [...NEEDS_REVIEW_STATUSES]),
-        ),
-      )
-      .orderBy(desc(issues.updatedAt))
-      .limit(PER_BUCKET),
+  const [needsReviewRows, awaitingInputRows, mentionRows, failedJobRows, pendingSkillUpdateRows] =
+    await Promise.all([
+      db
+        .select({
+          id: issues.id,
+          issSeq: issues.issSeq,
+          title: issues.title,
+          status: issues.status,
+          updatedAt: issues.updatedAt,
+          projectSlug: projects.slug,
+          projectName: projects.name,
+        })
+        .from(issues)
+        .innerJoin(projects, eq(projects.id, issues.projectId))
+        .where(
+          and(eq(issues.assigneeId, userId), inArray(issues.status, [...NEEDS_REVIEW_STATUSES])),
+        )
+        .orderBy(desc(issues.updatedAt))
+        .limit(PER_BUCKET),
 
-    db
-      .select({
-        id: issues.id,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        status: issues.status,
-        updatedAt: issues.updatedAt,
-        projectSlug: projects.slug,
-        projectName: projects.name,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(
-        and(
-          eq(issues.assigneeId, userId),
-          inArray(issues.status, [...AWAITING_INPUT_STATUSES]),
-        ),
-      )
-      .orderBy(desc(issues.updatedAt))
-      .limit(PER_BUCKET),
+      db
+        .select({
+          id: issues.id,
+          issSeq: issues.issSeq,
+          title: issues.title,
+          status: issues.status,
+          updatedAt: issues.updatedAt,
+          projectSlug: projects.slug,
+          projectName: projects.name,
+        })
+        .from(issues)
+        .innerJoin(projects, eq(projects.id, issues.projectId))
+        .where(
+          and(eq(issues.assigneeId, userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])),
+        )
+        .orderBy(desc(issues.updatedAt))
+        .limit(PER_BUCKET),
 
-    db
-      .select({
-        notificationId: notifications.id,
-        notificationTitle: notifications.title,
-        mentionedAt: commentMentions.createdAt,
-        issueDocId: issues.id,
-        issSeq: issues.issSeq,
-        projectSlug: projects.slug,
-        projectName: projects.name,
-      })
-      .from(commentMentions)
-      .innerJoin(comments, eq(comments.id, commentMentions.commentId))
-      .innerJoin(issues, eq(issues.id, comments.issueId))
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .leftJoin(
-        notifications,
-        and(
-          eq(notifications.userId, commentMentions.userId),
-          eq(notifications.type, 'mention'),
-          eq(notifications.issueId, comments.issueId),
-        ),
-      )
-      .where(
-        and(
-          eq(commentMentions.userId, userId),
-          // Surface only mentions whose corresponding notification is unread,
-          // OR mentions with no notification row (older comments before the
-          // notify-mentions subscriber landed).
-          sql`(${notifications.read} IS NULL OR ${notifications.read} = false)`,
-        ),
-      )
-      .orderBy(desc(commentMentions.createdAt))
-      .limit(PER_BUCKET),
-
-    db
-      .select({
-        id: jobs.id,
-        type: jobs.type,
-        finishedAt: jobs.finishedAt,
-        createdAt: jobs.createdAt,
-        error: jobs.error,
-        issueDocId: issues.id,
-        issSeq: issues.issSeq,
-        projectSlug: projects.slug,
-        projectName: projects.name,
-      })
-      .from(jobs)
-      .innerJoin(projects, eq(projects.id, jobs.projectId))
-      .leftJoin(issues, eq(issues.id, jobs.issueId))
-      .where(
-        and(
-          eq(jobs.createdBy, userId),
-          eq(jobs.status, 'failed'),
-          sql`${jobs.createdAt} >= now() - interval '7 days'`,
-          // Exclusion 1: drop every superseded attempt in a retry chain — see
-          // the criteria doc above.
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(retryJobs)
-              .where(eq(retryJobs.retryOf, jobs.id)),
+      db
+        .select({
+          notificationId: notifications.id,
+          notificationTitle: notifications.title,
+          mentionedAt: commentMentions.createdAt,
+          issueDocId: issues.id,
+          issSeq: issues.issSeq,
+          projectSlug: projects.slug,
+          projectName: projects.name,
+        })
+        .from(commentMentions)
+        .innerJoin(comments, eq(comments.id, commentMentions.commentId))
+        .innerJoin(issues, eq(issues.id, comments.issueId))
+        .innerJoin(projects, eq(projects.id, issues.projectId))
+        .leftJoin(
+          notifications,
+          and(
+            eq(notifications.userId, commentMentions.userId),
+            eq(notifications.type, 'mention'),
+            eq(notifications.issueId, comments.issueId),
           ),
-          // Exclusion 2: drop failures whose linked issue already moved on;
-          // null-issue jobs (no `jobs.issueId`) are kept.
-          or(isNull(issues.id), notInArray(issues.status, [...FAILED_JOB_RESOLVED_ISSUE_STATUSES])),
-        ),
-      )
-      .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
-      .limit(PER_BUCKET),
-  ]);
+        )
+        .where(
+          and(
+            eq(commentMentions.userId, userId),
+            // Surface only mentions whose corresponding notification is unread,
+            // OR mentions with no notification row (older comments before the
+            // notify-mentions subscriber landed).
+            sql`(${notifications.read} IS NULL OR ${notifications.read} = false)`,
+          ),
+        )
+        .orderBy(desc(commentMentions.createdAt))
+        .limit(PER_BUCKET),
+
+      db
+        .select({
+          id: jobs.id,
+          type: jobs.type,
+          finishedAt: jobs.finishedAt,
+          createdAt: jobs.createdAt,
+          error: jobs.error,
+          issueDocId: issues.id,
+          issSeq: issues.issSeq,
+          projectSlug: projects.slug,
+          projectName: projects.name,
+        })
+        .from(jobs)
+        .innerJoin(projects, eq(projects.id, jobs.projectId))
+        .leftJoin(issues, eq(issues.id, jobs.issueId))
+        .where(
+          and(
+            eq(jobs.createdBy, userId),
+            eq(jobs.status, 'failed'),
+            sql`${jobs.createdAt} >= now() - interval '7 days'`,
+            // Exclusion 1: drop every superseded attempt in a retry chain — see
+            // the criteria doc above.
+            notExists(
+              db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id)),
+            ),
+            // Exclusion 2: drop failures whose linked issue already moved on;
+            // null-issue jobs (no `jobs.issueId`) are kept.
+            or(
+              isNull(issues.id),
+              notInArray(issues.status, [...FAILED_JOB_RESOLVED_ISSUE_STATUSES]),
+            ),
+          ),
+        )
+        .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
+        .limit(PER_BUCKET),
+
+      db
+        .select({
+          id: reconcileRuns.id,
+          status: reconcileRuns.status,
+          verdict: reconcileRuns.verdict,
+          createdAt: reconcileRuns.createdAt,
+          decidedAt: reconcileRuns.decidedAt,
+          projectSlug: projects.slug,
+          projectName: projects.name,
+        })
+        .from(reconcileRuns)
+        .innerJoin(projects, eq(projects.id, reconcileRuns.projectId))
+        .where(
+          and(
+            or(
+              exists(
+                db
+                  .select({ one: sql`1` })
+                  .from(projectMembers)
+                  .where(
+                    and(
+                      eq(projectMembers.projectId, projects.id),
+                      eq(projectMembers.userId, userId),
+                      eq(projectMembers.role, 'admin'),
+                    ),
+                  ),
+              ),
+              exists(
+                db
+                  .select({ one: sql`1` })
+                  .from(organizationMembers)
+                  .where(
+                    and(
+                      eq(organizationMembers.orgId, projects.orgId),
+                      eq(organizationMembers.userId, userId),
+                      inArray(organizationMembers.role, ['owner', 'admin']),
+                    ),
+                  ),
+              ),
+            ),
+            or(
+              and(eq(reconcileRuns.status, 'decided'), eq(reconcileRuns.gate, 'human')),
+              and(
+                eq(reconcileRuns.status, 'escalated'),
+                eq(reconcileRuns.verdict, 'escalate'),
+                isNull(reconcileRuns.acknowledgedAt),
+              ),
+            ),
+          ),
+        )
+        .orderBy(desc(sql`coalesce(${reconcileRuns.decidedAt}, ${reconcileRuns.createdAt})`))
+        .limit(PENDING_SKILL_UPDATES_CAP),
+    ]);
 
   const issueLink = (slug: string, docId: string) => `/projects/${slug}/issues/${docId}`;
 
@@ -235,12 +311,28 @@ meAttentionRoutes.get('/attention', async (c) => {
     return item;
   });
 
+  const pendingSkillUpdates: AttentionItem[] = pendingSkillUpdateRows.map((r) => ({
+    kind: 'pending_skill_update',
+    title: 'Skill update pending',
+    link: `/projects/${r.projectSlug}/library?tab=updates`,
+    since: (r.decidedAt ?? r.createdAt).toISOString(),
+    status: r.status,
+    projectSlug: r.projectSlug,
+    projectName: r.projectName,
+  }));
+
   const response: AttentionResponse = {
     needsReview,
     awaitingInput,
     mentions,
     failedJobs,
-    total: needsReview.length + awaitingInput.length + mentions.length + failedJobs.length,
+    pendingSkillUpdates,
+    total:
+      needsReview.length +
+      awaitingInput.length +
+      mentions.length +
+      failedJobs.length +
+      pendingSkillUpdates.length,
   };
 
   return c.json(response);

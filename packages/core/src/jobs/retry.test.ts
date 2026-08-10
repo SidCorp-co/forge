@@ -28,6 +28,10 @@ vi.mock('../db/client.js', () => ({
   db: { insert: dbInsert, update: dbUpdate, select: () => dbSelect() },
 }));
 
+// cm:why reconcile-service.js (imported below for buildVerifierPrompt) pulls in notifications/emit.js -> notifications/routes.js -> middleware/auth.js -> config/env.js, which validates real env vars at import time — mock both notification entry points so this file never walks that chain.
+vi.mock('../notifications/emit.js', () => ({ emitNotification: vi.fn() }));
+vi.mock('../notifications/auto-resolve.js', () => ({ resolveNotifications: vi.fn() }));
+
 const enqueueMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('./enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueMock(...args),
@@ -39,7 +43,11 @@ vi.mock('../pipeline/recovery-verifier.js', () => ({
 }));
 
 // Round-robin candidate set. Default: a healthy 3-device project.
-const onlineDevicesMock = vi.fn(async (..._args: unknown[]) => ['device-A', 'device-B', 'device-C']);
+const onlineDevicesMock = vi.fn(async (..._args: unknown[]) => [
+  'device-A',
+  'device-B',
+  'device-C',
+]);
 vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: (...a: unknown[]) => onlineDevicesMock(...(a as [never])),
 }));

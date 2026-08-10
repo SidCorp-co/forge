@@ -25,6 +25,8 @@ import {
   deviceSkills,
   divergenceCharters,
   jobs,
+  organizationMembers,
+  projectMembers,
   projects,
   reconcileRuns,
   runners,
@@ -35,6 +37,8 @@ import {
 import { enqueueReconcileJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
+import { emitNotification } from '../notifications/emit.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
@@ -81,6 +85,75 @@ async function logActivity(
     ...(params.outcome != null ? { outcome: params.outcome } : {}),
   };
   await recordSkillActivityEvent(executor, clean);
+}
+
+// cm:why mirrors effectiveProjectRole's admin rule (lib/authz.ts) — explicit project_members admin UNION org owner/admin — so the gate notification reaches exactly the people who can act on it via apply/reject/acknowledge.
+async function projectAdminUserIds(projectId: string): Promise<string[]> {
+  const [project] = await db
+    .select({ orgId: projects.orgId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) return [];
+
+  const [explicitAdmins, orgAdmins] = await Promise.all([
+    db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.role, 'admin'))),
+    db
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.orgId, project.orgId),
+          inArray(organizationMembers.role, ['owner', 'admin']),
+        ),
+      ),
+  ]);
+
+  return [...new Set([...explicitAdmins.map((r) => r.userId), ...orgAdmins.map((r) => r.userId)])];
+}
+
+/**
+ * Fan out a `reconcile_gate_pending` notification to every effective project
+ * admin. Call AFTER the transaction that produced the transition commits —
+ * see the `notify` result field on `recordReconcileVerdict`/`recordVerifierVote`.
+ */
+async function notifyGatePending(
+  runId: string,
+  projectId: string,
+  kind: 'decided' | 'escalated',
+): Promise<void> {
+  const [project] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const projectName = project?.name ?? 'this project';
+  const adminIds = await projectAdminUserIds(projectId);
+
+  const title =
+    kind === 'decided'
+      ? `Skill update needs your review — ${projectName}`
+      : `Skill update escalated — ${projectName}`;
+  const body =
+    kind === 'decided'
+      ? `A skill update passed verification and is waiting for your decision in ${projectName}.`
+      : `A skill update was escalated for your review in ${projectName}.`;
+
+  await Promise.all(
+    adminIds.map((userId) =>
+      emitNotification({
+        userId,
+        projectId,
+        type: 'reconcile_gate_pending',
+        title,
+        body,
+        resolutionKey: `reconcile_run:${runId}:gate`,
+      }),
+    ),
+  );
 }
 
 const REQUIRED_BUNDLE_KEYS: (keyof ReconcileBundleSnapshot)[] = [
@@ -850,6 +923,13 @@ export interface RecordVerdictInput {
   actor: string;
 }
 
+interface VerdictTxResult {
+  toVerifying: boolean;
+  projectId: string;
+  /** Set only when this call is the one that transitioned the run to `escalated`/`verdict=escalate`. */
+  notify: 'escalated' | null;
+}
+
 /**
  * Record the reconcile agent's verdict and candidate body.
  * Transitions: pending|running → verifying (candidate body present, verdict not escalate)
@@ -860,7 +940,7 @@ export interface RecordVerdictInput {
 // cm:guard call only when the run is 'pending' or 'running' — nothing else ever writes 'running',
 // so 'pending' must stay a valid pre-verdict status here (BLOCKER F, ISS-801 review).
 export async function recordReconcileVerdict(input: RecordVerdictInput): Promise<void> {
-  const result = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<VerdictTxResult> => {
     // cm:why FOR UPDATE row-locks this run, serializing concurrent verdict calls.
     const [runRow] = await tx
       .select()
@@ -875,14 +955,14 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         { runId: input.runId, status: runRow.status },
         'recordReconcileVerdict called for a run not pending/running — skipping',
       );
-      return { toVerifying: false, projectId: runRow.projectId };
+      return { toVerifying: false, projectId: runRow.projectId, notify: null };
     }
 
     const gate = input.gate;
 
     if (input.verdict === 'escalate' || input.verdict === 'no-op') {
       const nextStatus: ReconcileRunStatus = input.verdict === 'escalate' ? 'escalated' : 'applied';
-      await tx
+      const updated = await tx
         .update(reconcileRuns)
         .set({
           status: nextStatus,
@@ -897,7 +977,8 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
             eq(reconcileRuns.id, input.runId),
             inArray(reconcileRuns.status, ['pending', 'running']),
           ),
-        );
+        )
+        .returning({ id: reconcileRuns.id });
 
       const eventType = input.verdict === 'escalate' ? 'reconcile.escalated' : 'reconcile.decided';
       await logActivity(tx, {
@@ -909,7 +990,11 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         packetId: runRow.packetId,
         reason: input.rationale.slice(0, 500),
       });
-      return { toVerifying: false, projectId: runRow.projectId };
+      return {
+        toVerifying: false,
+        projectId: runRow.projectId,
+        notify: input.verdict === 'escalate' && updated.length > 0 ? 'escalated' : null,
+      };
     }
 
     const candidateBody = input.candidateBody ?? '';
@@ -942,7 +1027,7 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
       packetId: runRow.packetId,
       reason: `verdict=${input.verdict} gate=${gate}`,
     });
-    return { toVerifying: true, projectId: runRow.projectId };
+    return { toVerifying: true, projectId: runRow.projectId, notify: null };
   });
 
   // cm:why dispatched AFTER commit, mirroring spawnReconcileRun's enqueue-after-tx pattern — dispatching inside the tx above risks jobs for a run it then rolls back (BLOCKER M path 1, ISS-801 review).
@@ -957,6 +1042,12 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
         logger.error({ failErr, runId: input.runId }, 'reconcile.verify.spawn.failFallback.error'),
       );
     });
+  }
+
+  if (result.notify) {
+    await notifyGatePending(input.runId, result.projectId, result.notify).catch((err) =>
+      logger.error({ err, runId: input.runId }, 'reconcile.notify.gatePending.error'),
+    );
   }
 }
 
@@ -982,8 +1073,14 @@ export interface RecordVerifierVoteInput {
  * The publish transition is additionally guarded by WHERE status='verifying' to
  * remain idempotent if somehow two transactions reach the publish branch.
  */
+interface VerifierVoteTxResult {
+  /** Set only when this call is the one that transitioned the run to `decided`/human-gate. */
+  notify: 'decided' | null;
+  projectId: string;
+}
+
 export async function recordVerifierVote(input: RecordVerifierVoteInput): Promise<void> {
-  await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<VerifierVoteTxResult> => {
     // cm:why FOR UPDATE row-locks this run, serializing concurrent votes.
     const [runRow] = await tx
       .select()
@@ -998,14 +1095,14 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         { runId: input.runId, status: runRow.status },
         'verifier vote received for non-verifying run',
       );
-      return;
+      return { notify: null, projectId: runRow.projectId };
     }
 
     const existingVotes = (runRow.verifierVotes as ReconcileVerifierVote[]) ?? [];
 
     if (existingVotes.some((v) => v.jobId === input.jobId)) {
       logger.warn({ runId: input.runId, jobId: input.jobId }, 'duplicate verifier vote — skipping');
-      return;
+      return { notify: null, projectId: runRow.projectId };
     }
 
     // cm:guard jobId must resolve to a real dispatched verify_skill job bound to this run —
@@ -1056,7 +1153,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
 
     if (!allVoted && !majorityFail) {
-      return;
+      return { notify: null, projectId: runRow.projectId };
     }
 
     if (majorityFail || (!majorityPass && allVoted)) {
@@ -1074,16 +1171,18 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         packetId: runRow.packetId,
         reason: `verifier majority fail: ${failCount}/${allVotes.length}`,
       });
-      return;
+      // cm:why verifier-fail escalation leaves `verdict` at its pre-verifying value (never 'escalate') — the pendingSkillUpdates bucket's escalated clause requires verdict='escalate', so this path is intentionally excluded from the gate notification.
+      return { notify: null, projectId: runRow.projectId };
     }
 
     if (majorityPass) {
       const gate = runRow.gate ?? 'human';
       if (gate === 'human') {
-        await tx
+        const updated = await tx
           .update(reconcileRuns)
           .set({ status: 'decided', decidedAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
+          .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')))
+          .returning({ id: reconcileRuns.id });
 
         await logActivity(tx, {
           eventType: 'reconcile.decided',
@@ -1094,7 +1193,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
           packetId: runRow.packetId,
           reason: `verifier pass (${passCount}/${allVotes.length}), awaiting human gate`,
         });
-        return;
+        return { notify: updated.length > 0 ? 'decided' : null, projectId: runRow.projectId };
       }
 
       if (!runRow.skillId) {
@@ -1107,7 +1206,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
             updatedAt: new Date(),
           })
           .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
-        return;
+        return { notify: null, projectId: runRow.projectId };
       }
 
       const candidateBody = runRow.candidateBody ?? '';
@@ -1150,7 +1249,15 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         reason: `auto-applied; verifier pass ${passCount}/${allVotes.length}; packet=${runRow.packetId}`,
       });
     }
+
+    return { notify: null, projectId: runRow.projectId };
   });
+
+  if (result.notify) {
+    await notifyGatePending(input.runId, result.projectId, result.notify).catch((err) =>
+      logger.error({ err, runId: input.runId }, 'reconcile.notify.gatePending.error'),
+    );
+  }
 }
 
 /**
@@ -1216,6 +1323,9 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
       reason: `human approved; packet=${runRow.packetId}`,
     });
   });
+
+  // cm:why after commit — resolveNotifications is itself best-effort (catches + logs internally).
+  await resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 
 // cm:guard reconcileRuns terminal states — keep this set in sync with any new reconcileRuns.status value
@@ -1266,6 +1376,57 @@ export async function rejectReconcileRun(
       reason: reason || 'human rejected',
     });
   });
+
+  // cm:why after commit — resolveNotifications is itself best-effort (catches + logs internally). A reject also produces the resolution: no further action is owed on this run.
+  await resolveNotifications(`reconcile_run:${runId}:gate`);
+}
+
+/**
+ * Human acknowledges an `escalated`/`verdict=escalate` run — clears its
+ * attention item without touching `status`, which stays the run's true
+ * terminal state. Idempotent: a second call on an already-acknowledged run
+ * is a no-op, not an error.
+ */
+export async function acknowledgeReconcileRun(
+  runId: string,
+  actorUserId: string,
+  reason?: string,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    // cm:why FOR UPDATE row-locks this run, serializing concurrent acknowledge calls.
+    const [runRow] = await tx
+      .select()
+      .from(reconcileRuns)
+      .where(eq(reconcileRuns.id, runId))
+      .for('update')
+      .limit(1);
+
+    if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
+    if (runRow.status !== 'escalated' || runRow.verdict !== 'escalate') {
+      throw new Error(
+        `BAD_REQUEST: run is in status '${runRow.status}' verdict '${runRow.verdict}', expected 'escalated'/'escalate'`,
+      );
+    }
+    if (runRow.acknowledgedAt) return;
+
+    await tx
+      .update(reconcileRuns)
+      .set({ acknowledgedAt: new Date(), acknowledgedBy: actorUserId, updatedAt: new Date() })
+      .where(and(eq(reconcileRuns.id, runId), sql`acknowledged_at IS NULL`));
+
+    await logActivity(tx, {
+      eventType: 'reconcile.acknowledged',
+      actor: `human:${actorUserId}`,
+      trigger: 'manual',
+      projectId: runRow.projectId,
+      skillId: runRow.skillId,
+      packetId: runRow.packetId,
+      reason: reason || 'human acknowledged escalated run',
+    });
+  });
+
+  // cm:why after commit — resolveNotifications is itself best-effort (catches + logs internally).
+  await resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 
 /**

@@ -154,9 +154,15 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
       const row = notificationRows.find((n) => n.id === id);
       if (row && !row.read) markRead.mutate(id);
       onClose();
-      if (!row?.issueId || !row.projectId) return; // mark-read only, no dead-end
+      if (!row?.projectId) return; // mark-read only, no dead-end
       const target = projects?.find((p) => p.id === row.projectId);
-      if (target) router.push(`/projects/${target.slug}/issues/${row.issueId}`);
+      if (!target) return;
+      if (row.type === "reconcile_gate_pending") {
+        router.push(`/projects/${target.slug}/library?tab=updates`);
+        return;
+      }
+      if (!row.issueId) return;
+      router.push(`/projects/${target.slug}/issues/${row.issueId}`);
     },
     [notificationRows, markRead, projects, router, onClose],
   );
@@ -168,9 +174,15 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
   const onDeliveryNavigate = useCallback(
     (n: DeliveryNotification) => {
       markRead.mutate(n.notificationId);
-      if (!n.issueId || !n.projectId) return;
+      if (!n.projectId) return;
       const target = projects?.find((p) => p.id === n.projectId);
-      if (target) router.push(`/projects/${target.slug}/issues/${n.issueId}`);
+      if (!target) return;
+      if (n.type === "reconcile_gate_pending") {
+        router.push(`/projects/${target.slug}/library?tab=updates`);
+        return;
+      }
+      if (!n.issueId) return;
+      router.push(`/projects/${target.slug}/issues/${n.issueId}`);
     },
     [markRead, projects, router],
   );

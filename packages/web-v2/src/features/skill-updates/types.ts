@@ -31,6 +31,7 @@ export interface ReconcileRunSummary {
   gate: ReconcileGate | null;
   createdAt: string;
   decidedAt: string | null;
+  acknowledgedAt: string | null;
 }
 
 export interface ReconcileRunDetail extends ReconcileRunSummary {

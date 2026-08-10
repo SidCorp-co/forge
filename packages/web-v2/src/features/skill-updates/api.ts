@@ -1,5 +1,6 @@
-// web-v2 feature module: skill updates — REST surface. Endpoints already exist
-// (packages/core/src/skills/reconcile-routes.ts); nothing was added core-side.
+// web-v2 feature module: skill updates — REST surface over
+// packages/core/src/skills/reconcile-routes.ts.
+
 import { apiClient } from "@/lib/api/client";
 import type { ReconcileRunDetail, ReconcileRunSummary } from "./types";
 
@@ -22,6 +23,13 @@ export const skillUpdatesApi = {
   /** Rejects the candidate; the running body is left untouched. Admin only. */
   reject: (projectId: string, runId: string, reason: string) =>
     apiClient<{ ok: true }>(`/projects/${projectId}/reconcile-runs/${runId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  /** Clears an escalated run's attention item without touching its status. Admin only. */
+  acknowledge: (projectId: string, runId: string, reason?: string) =>
+    apiClient<{ ok: true }>(`/projects/${projectId}/reconcile-runs/${runId}/acknowledge`, {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),

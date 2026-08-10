@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
+  acknowledgeReconcileRun,
   applyReconcileRun,
   getReconcileRun,
   listReconcileRunsForProject,
@@ -162,6 +163,38 @@ reconcileRoutes.post(
     } catch (err: unknown) {
       // cm:why ISS-808 — String(err) on an Error prepends "Error: ", so the BAD_REQUEST/NOT_FOUND prefix match below never fired and every guard rejection fell through to a 500
       const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
+      if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
+      throw err;
+    }
+
+    return c.json({ ok: true });
+  },
+);
+
+reconcileRoutes.post(
+  '/:projectId/reconcile-runs/:runId/acknowledge',
+  zValidator('param', runParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', z.object({ reason: z.string().max(1000).optional() }).strict(), (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'only a project admin can acknowledge a reconcile run');
+
+    const run = await getReconcileRun(runId);
+    if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
+
+    try {
+      await acknowledgeReconcileRun(runId, userId, reason);
+    } catch (err: unknown) {
+      const msg = String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
       if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;
