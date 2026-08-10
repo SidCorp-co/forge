@@ -9,7 +9,9 @@ vi.mock('../config/env.js', () => ({
 
 const selectLimit = vi.fn();
 const selectWhereLimit = vi.fn(() => ({ limit: selectLimit }));
-const innerJoin2Where = vi.fn(() => ({ limit: selectLimit }));
+const innerJoin2Where = vi.fn<(...args: unknown[]) => unknown>(() => ({
+  limit: selectLimit,
+}));
 const innerJoin2 = vi.fn(() => ({ where: innerJoin2Where }));
 const innerJoin1 = vi.fn(() => ({ innerJoin: innerJoin2 }));
 const selectFrom = vi.fn(() => ({
@@ -202,9 +204,9 @@ describe('invitationRoutes — GET /pending', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ kind: string; token: string; name: string }>;
     expect(body).toHaveLength(1);
-    expect(body[0].kind).toBe('project');
-    expect(body[0].token).toBe('proj-token-abc');
-    expect(body[0].name).toBe('My Project');
+    expect(body[0]?.kind).toBe('project');
+    expect(body[0]?.token).toBe('proj-token-abc');
+    expect(body[0]?.name).toBe('My Project');
   });
 
   it('200 returns empty array when no pending invitations', async () => {

@@ -1381,7 +1381,9 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview — epodsystem m
     };
     const res = await previewEpod([labeledPair]);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { servers: { serverName: string }[] };
+    const body = (await res.json()) as {
+      servers: { serverName: string; provider?: string }[];
+    };
     const epod = body.servers.find((s) => s.provider === 'epodsystem');
     expect(epod?.serverName).toBe('epodsystem_partner_abc');
   });

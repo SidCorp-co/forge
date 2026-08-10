@@ -83,10 +83,9 @@ const CANDIDATE_ROW = { id: 'cand-1' };
 
 // ── module under test ─────────────────────────────────────────────────────────
 
-const {
-  registerFeedbackNormalizer,
-  resetFeedbackNormalizerForTest,
-} = await import('./normalizer.js');
+const { registerFeedbackNormalizer, resetFeedbackNormalizerForTest } = await import(
+  './normalizer.js'
+);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -102,7 +101,9 @@ async function emitAndFlush(
   payload: Record<string, unknown>,
 ) {
   registerFeedbackNormalizer(bus);
-  await bus.emit(event as 'jobCompleted', payload as Parameters<typeof bus.emit>[1]);
+  // The helper forwards an arbitrary fixture record; go through a widened
+  // signature rather than pretending it matches one overload's payload type.
+  await (bus.emit as unknown as (e: string, p: unknown) => Promise<void>)(event, payload);
   await new Promise((r) => setTimeout(r, 0));
 }
 
@@ -111,7 +112,7 @@ async function emitAndFlush(
 describe('jobCompleted — one report → one candidate', () => {
   it('upserts candidate with signal_type=agent_self_report and back-sets candidate_id', async () => {
     selectMock
-      .mockResolvedValueOnce([makeReport()])  // feedbackReports query
+      .mockResolvedValueOnce([makeReport()]) // feedbackReports query
       .mockResolvedValueOnce([CANDIDATE_ROW]); // memoryCandidates lookup
 
     const bus = new HooksBus();
@@ -154,9 +155,7 @@ describe('jobCompleted — no reports', () => {
 
 describe('jobFailed — outcome recorded as failed', () => {
   it('sets outcome=failed and includes failureKind in evidence', async () => {
-    selectMock
-      .mockResolvedValueOnce([makeReport()])
-      .mockResolvedValueOnce([CANDIDATE_ROW]);
+    selectMock.mockResolvedValueOnce([makeReport()]).mockResolvedValueOnce([CANDIDATE_ROW]);
 
     const bus = new HooksBus();
     await emitAndFlush(bus, 'jobFailed', {

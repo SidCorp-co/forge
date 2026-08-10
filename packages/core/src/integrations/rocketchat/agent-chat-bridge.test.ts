@@ -35,9 +35,7 @@ vi.mock('./escalation-bridge.js', () => ({
   extractFinalAssistantText: (...args: unknown[]) => extractFinalAssistantText(...args),
 }));
 
-const AGENT_CHAT_FALLBACK_REPLY = vi.fn(
-  (botName: string, ..._rest: unknown[]) => `FALLBACK(${botName})`,
-);
+const AGENT_CHAT_FALLBACK_REPLY = vi.fn((...args: unknown[]) => `FALLBACK(${String(args[0])})`);
 const redispatchAgentChatSessionOnFailover = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 vi.mock('./agent-chat.js', () => ({
   AGENT_CHAT_FALLBACK_REPLY: (...args: unknown[]) => AGENT_CHAT_FALLBACK_REPLY(...args),

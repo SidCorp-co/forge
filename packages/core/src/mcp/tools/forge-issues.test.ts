@@ -51,7 +51,7 @@ const txUpdateWhere = vi.fn(() => {
 });
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
-const txInsertValues = vi.fn(async () => undefined);
+const txInsertValues = vi.fn(async (_values?: unknown) => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
 // ISS-633 — label replace-set delete (issueLabels) inside the update tx.
 const txDeleteWhere = vi.fn(async () => undefined);

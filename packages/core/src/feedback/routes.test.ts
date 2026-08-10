@@ -58,11 +58,11 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
   return {
     ...actual,
-    isNull: (...args: [unknown]) => {
+    isNull: (...args: Parameters<typeof actual.isNull>) => {
       isNullSpy(...args);
       return actual.isNull(...args);
     },
-    isNotNull: (...args: [unknown]) => {
+    isNotNull: (...args: Parameters<typeof actual.isNotNull>) => {
       isNotNullSpy(...args);
       return actual.isNotNull(...args);
     },

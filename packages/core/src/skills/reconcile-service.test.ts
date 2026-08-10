@@ -50,7 +50,9 @@ vi.mock('../logger.js', () => ({
 }));
 vi.mock('../pipeline/runs.js', () => ({ openOneShotRun: vi.fn() }));
 vi.mock('../jobs/enqueue.js', () => ({ enqueueReconcileJob: vi.fn() }));
-const activityMock = vi.hoisted(() => ({ recordSkillActivityEvent: vi.fn() }));
+const activityMock = vi.hoisted(() => ({
+  recordSkillActivityEvent: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+}));
 vi.mock('./activity.js', () => ({
   recordSkillActivityEvent: activityMock.recordSkillActivityEvent,
 }));
@@ -82,6 +84,7 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
+import type { ReconcileBundleSnapshot } from '../db/schema.js';
 import {
   acknowledgeReconcileRun,
   applyReconcileRun,
@@ -147,7 +150,7 @@ describe('isRunningBodyObserved', () => {
 });
 
 describe('validateC1C5', () => {
-  const validBundle = {
+  const validBundle: ReconcileBundleSnapshot = {
     readAt: new Date().toISOString(),
     change: 'Add a clarification step',
     story: 'Users need clearer requirements',
@@ -254,7 +257,10 @@ describe('spawnReconcileRun — refusal events', () => {
     const result = await spawnReconcileRun(input);
     expect(result).toMatchObject({ ok: false, reason: 'c1-c5-refused' });
     expect(activityMock.recordSkillActivityEvent).toHaveBeenCalledOnce();
-    const call = activityMock.recordSkillActivityEvent.mock.calls[0][1];
+    const call = activityMock.recordSkillActivityEvent.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
     expect(call.eventType).toBe('reconcile.failed');
     expect(call.outcome).toBe('skipped');
     expect(call.reason).toMatch(/C1/);
@@ -263,7 +269,7 @@ describe('spawnReconcileRun — refusal events', () => {
   });
 
   it('no-runner: emits reconcile.failed/skipped event when bundle is valid but no runner is online', async () => {
-    dbStub.tables = new Map([
+    dbStub.tables = new Map<unknown, unknown[]>([
       [
         skills,
         [
