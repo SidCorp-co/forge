@@ -101,8 +101,7 @@ async function emitAndFlush(
   payload: Record<string, unknown>,
 ) {
   registerFeedbackNormalizer(bus);
-  // The helper forwards an arbitrary fixture record; go through a widened
-  // signature rather than pretending it matches one overload's payload type.
+  // cm:why the helper forwards an arbitrary fixture record, so widen the signature rather than pretend it matches one overload's payload type
   await (bus.emit as unknown as (e: string, p: unknown) => Promise<void>)(event, payload);
   await new Promise((r) => setTimeout(r, 0));
 }

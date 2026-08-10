@@ -5,6 +5,13 @@
     { "pattern": "^http://127\\.0\\.0\\.1" },
     { "pattern": "^https?://github\\.com/SidCorp-co/forge" }
   ],
+  "replacementPatterns": [
+    {
+      "comment": "In-app help articles (packages/web-v2/content/help) link each other by bare route slug, e.g. [Pair a runner](pair-a-runner) — correct for the renderer, which routes by slug, but not a filesystem path. Append .md so the checker still VERIFIES the target exists instead of muting it: a genuinely dead slug keeps failing.",
+      "pattern": "^([a-z0-9][a-z0-9-]*)$",
+      "replacement": "$1.md"
+    }
+  ],
   "timeout": "10s",
   "retryOn429": true,
   "retryCount": 2,
