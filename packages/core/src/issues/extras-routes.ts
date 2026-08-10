@@ -1,24 +1,24 @@
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
-  type IssueStatus,
   activityLog,
+  type IssueStatus,
   issuePriorities,
   issueStatuses,
   issues,
   jobs,
   usageRecords,
 } from '../db/schema.js';
+import { sql } from 'drizzle-orm';
 import { enqueueJob } from '../jobs/enqueue.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../logger.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { openIssueRun } from '../pipeline/runs.js';
@@ -36,8 +36,19 @@ import { triggerTerminalDispatch } from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
-const stageEnum = z.enum(['triage', 'plan', 'code', 'review', 'test', 'fix', 'release', 'clarify']);
-const runPipelineStepBodySchema = z.object({ stage: stageEnum.optional() }).strict();
+const stageEnum = z.enum([
+  'triage',
+  'plan',
+  'code',
+  'review',
+  'test',
+  'fix',
+  'release',
+  'clarify',
+]);
+const runPipelineStepBodySchema = z
+  .object({ stage: stageEnum.optional() })
+  .strict();
 
 // `complexity` is intentionally omitted: BulkActionBar does not expose a
 // complexity selector, so accepting it server-side would create a client/
@@ -492,9 +503,9 @@ issueExtrasRoutes.get(
       samples.sort((a, b) => a - b);
       const sum = samples.reduce((s, v) => s + v, 0);
       const avg = samples.length === 0 ? 0 : sum / samples.length;
-      const median = samples.length === 0 ? 0 : (samples[Math.floor(samples.length / 2)] ?? 0);
+      const median = samples.length === 0 ? 0 : samples[Math.floor(samples.length / 2)] ?? 0;
       const p90Index = Math.min(samples.length - 1, Math.floor(samples.length * 0.9));
-      const p90 = samples.length === 0 ? 0 : (samples[p90Index] ?? 0);
+      const p90 = samples.length === 0 ? 0 : samples[p90Index] ?? 0;
       return {
         status,
         sampleCount: samples.length,

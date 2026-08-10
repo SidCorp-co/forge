@@ -46,11 +46,7 @@ beforeEach(() => {
 describe('setRunnerStatus (change-gated audit)', () => {
   it('writes an event when the status changes', async () => {
     selectRows = [{ status: 'offline', projectId: 'p1' }];
-    const res = await setRunnerStatus({
-      runnerId: 'r1',
-      newStatus: 'online',
-      reason: 'operator_patch',
-    });
+    const res = await setRunnerStatus({ runnerId: 'r1', newStatus: 'online', reason: 'operator_patch' });
     expect(res).toEqual({ found: true, changed: true, oldStatus: 'offline' });
     expect(insertFn).toHaveBeenCalledTimes(1);
     expect(insertValues).toHaveBeenCalledWith(
@@ -66,22 +62,14 @@ describe('setRunnerStatus (change-gated audit)', () => {
 
   it('does NOT write an event when the status is unchanged', async () => {
     selectRows = [{ status: 'online', projectId: 'p1' }];
-    const res = await setRunnerStatus({
-      runnerId: 'r1',
-      newStatus: 'online',
-      reason: 'device_heartbeat',
-    });
+    const res = await setRunnerStatus({ runnerId: 'r1', newStatus: 'online', reason: 'device_heartbeat' });
     expect(res).toEqual({ found: true, changed: false, oldStatus: 'online' });
     expect(insertFn).not.toHaveBeenCalled();
   });
 
   it('reports not-found for a missing runner without writing an event', async () => {
     selectRows = [];
-    const res = await setRunnerStatus({
-      runnerId: 'gone',
-      newStatus: 'disabled',
-      reason: 'operator_exclude',
-    });
+    const res = await setRunnerStatus({ runnerId: 'gone', newStatus: 'disabled', reason: 'operator_exclude' });
     expect(res).toEqual({ found: false, changed: false, oldStatus: null });
     expect(insertFn).not.toHaveBeenCalled();
   });
@@ -98,12 +86,7 @@ describe('insertRunnerEvent', () => {
       reason: 'bind',
     });
     expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        runnerId: 'r1',
-        oldStatus: null,
-        newStatus: 'online',
-        reason: 'bind',
-      }),
+      expect.objectContaining({ runnerId: 'r1', oldStatus: null, newStatus: 'online', reason: 'bind' }),
     );
   });
 });

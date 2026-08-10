@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { type SQL, and, count, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -298,10 +298,7 @@ usageRecordRoutes.post(
       recordedAt: r.recordedAt,
     }));
 
-    const inserted = await db
-      .insert(usageRecords)
-      .values(values)
-      .returning({ id: usageRecords.id });
+    const inserted = await db.insert(usageRecords).values(values).returning({ id: usageRecords.id });
     return c.json({ count: inserted.length });
   },
 );
@@ -347,10 +344,7 @@ usageRecordRoutes.post(
       recordedAt: r.recordedAt,
     }));
 
-    const inserted = await db
-      .insert(usageRecords)
-      .values(values)
-      .returning({ id: usageRecords.id });
+    const inserted = await db.insert(usageRecords).values(values).returning({ id: usageRecords.id });
     return c.json({ ingested: inserted.length, scanned: records.length });
   },
 );

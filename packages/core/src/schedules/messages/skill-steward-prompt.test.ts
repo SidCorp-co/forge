@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   STEWARD_RUN_REPORT_SENTINEL,
-  type StewardRunReport,
   buildSkillStewardPrompt,
   extractStewardReportFromMessages,
   parseStewardRunReport,
+  type StewardRunReport,
 } from './skill-steward-prompt.js';
 
 // ── Prompt builder ────────────────────────────────────────────────────────────
@@ -173,7 +173,9 @@ describe('extractStewardReportFromMessages', () => {
   });
 
   it('skips non-assistant messages', () => {
-    const messages = [{ role: 'user', content: buildReportText(SAMPLE_REPORT) }];
+    const messages = [
+      { role: 'user', content: buildReportText(SAMPLE_REPORT) },
+    ];
     expect(extractStewardReportFromMessages(messages)).toBeNull();
   });
 

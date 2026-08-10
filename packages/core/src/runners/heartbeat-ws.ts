@@ -5,8 +5,8 @@ import { db } from '../db/client.js';
 import { runnerTypes, runners } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { logger } from '../logger.js';
-import { projectRoom, runnerRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { projectRoom, runnerRoom } from '../ws/rooms.js';
 import { defaultRunnerCapabilities } from './select.js';
 
 type DevicePrincipal = { type: 'device'; deviceId: string; ownerId: string };

@@ -51,7 +51,10 @@ describe('jobs/enqueue', () => {
   });
 
   it('passes startAfter when provided', async () => {
-    await enqueueJob({ jobId: 'job-3', issueId: 'iss-1', type: 'fix' }, { startAfterSeconds: 60 });
+    await enqueueJob(
+      { jobId: 'job-3', issueId: 'iss-1', type: 'fix' },
+      { startAfterSeconds: 60 },
+    );
     expect(sendMock).toHaveBeenCalledWith(
       JOB_QUEUE_NAME,
       { jobId: 'job-3' },

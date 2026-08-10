@@ -155,7 +155,9 @@ meRoutes.patch(
           ...(patch.lastSeenWhatsNew !== undefined
             ? { lastSeenWhatsNew: patch.lastSeenWhatsNew }
             : {}),
-          ...(patch.activeOrgId !== undefined ? { activeOrgId: patch.activeOrgId } : {}),
+          ...(patch.activeOrgId !== undefined
+            ? { activeOrgId: patch.activeOrgId }
+            : {}),
           updatedAt: new Date(),
         },
       })

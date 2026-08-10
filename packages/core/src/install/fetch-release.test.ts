@@ -4,12 +4,7 @@ import { cmpVersion, pickLatestRunnerTag, tagToVersion } from './fetch-release.j
 
 // Minimal Release-shaped fixtures — only the fields pickLatestRunnerTag reads.
 function rel(tag: string, opts: { draft?: boolean; prerelease?: boolean } = {}) {
-  return {
-    tag_name: tag,
-    draft: opts.draft ?? false,
-    prerelease: opts.prerelease ?? false,
-    assets: [],
-  };
+  return { tag_name: tag, draft: opts.draft ?? false, prerelease: opts.prerelease ?? false, assets: [] };
 }
 
 describe('tagToVersion', () => {

@@ -30,11 +30,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const registerSkillForProjectMock = vi.fn(async () => ({
-  projectId: '',
-  skillId: '',
-  stage: null,
-}));
+const registerSkillForProjectMock = vi.fn(async () => ({ projectId: '', skillId: '', stage: null }));
 const resolveOrAdoptProjectSkillMock = vi.fn(
   async (_projectId: string, _skillName: string): Promise<string | null> => null,
 );

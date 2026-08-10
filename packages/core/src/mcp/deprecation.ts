@@ -26,10 +26,7 @@ const NOTICES = new Map<string, DeprecationNotice>([
   ],
   [
     'forge_pipeline_runs.pause',
-    {
-      tool: 'forge_pipeline_runs.pause',
-      replacement: 'forge_project_pipeline_runs (action=pause)',
-    },
+    { tool: 'forge_pipeline_runs.pause', replacement: 'forge_project_pipeline_runs (action=pause)' },
   ],
   [
     'forge_pipeline_runs.resume',

@@ -160,7 +160,7 @@ export const improvementMessages: ImprovementMessage[] = [
       'The skill steward observes accumulated quality signals across pipeline runs ' +
       '(reopen rates, step durations, forge_feedback reports, domain weaknesses) ' +
       'and uses a per-skill memory namespace to propose or apply targeted improvements ' +
-      "to this project's skills. Each run absorbs the forge-skill-audit rubric and " +
+      'to this project\'s skills. Each run absorbs the forge-skill-audit rubric and ' +
       'playbook, curates per-skill memory to ≤2k tokens, and emits a structured run ' +
       'report tracking which domains improved over time.',
     rationale:
@@ -203,7 +203,7 @@ export const improvementMessages: ImprovementMessage[] = [
     key: 'product-map-refresh',
     title: 'Standing product-map refresh — keep user-journey & module diagrams current',
     message:
-      "The product-map refresh agent reads the project's curated product knowledge " +
+      'The product-map refresh agent reads the project\'s curated product knowledge ' +
       '(overview mindmap, scenario flowcharts, workflow state-diagrams, per-module ' +
       'overviews) and the issues shipped since each entry was last updated, then ' +
       'upserts the entries that changed and adds scenarios for newly-shipped user ' +

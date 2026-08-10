@@ -67,11 +67,7 @@ beforeEach(() => {
 
 describe('forge_config tool (ISS-135 PR-A)', () => {
   it('omits branchConfig from the response when no issueId is supplied (backward-compat)', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     // assertDeviceOwnerIsMember: ownerId match short-circuits the membership query.
     selectLimit
@@ -102,30 +98,24 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('returns null branches (no fallback to main) when project columns are unset — surfaces misconfig instead of silently merging to main', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
-    selectLimit.mockResolvedValueOnce([memberAccessRow]).mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'my-proj',
-        name: 'My Project',
-        repoPath: null,
-        baseBranch: null,
-        productionBranch: null,
-        agentConfig: null,
-      },
-    ]);
+    selectLimit
+      .mockResolvedValueOnce([memberAccessRow])
+      .mockResolvedValueOnce([
+        {
+          id: PROJECT_ID,
+          slug: 'my-proj',
+          name: 'My Project',
+          repoPath: null,
+          baseBranch: null,
+          productionBranch: null,
+          agentConfig: null,
+        },
+      ]);
 
     const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
-      config: {
-        baseBranch: string | null;
-        productionBranch: string | null;
-        repoPath: string | null;
-      };
+      config: { baseBranch: string | null; productionBranch: string | null; repoPath: string | null };
     };
 
     expect(result.config.repoPath).toBeNull();
@@ -134,11 +124,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
       .mockResolvedValueOnce([memberAccessRow]) // membership lookup
@@ -158,9 +144,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       action: 'get',
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
-    })) as {
-      config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } };
-    };
+    })) as { config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } } };
 
     expect(result.config.branchConfig).toEqual({
       baseBranch: 'develop',
@@ -170,11 +154,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('layers sessionContext.branchConfig override on top of project defaults', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
       .mockResolvedValueOnce([memberAccessRow])
@@ -199,9 +179,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       action: 'get',
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
-    })) as {
-      config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } };
-    };
+    })) as { config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } } };
 
     expect(result.config.branchConfig).toEqual({
       baseBranch: 'feat/x',
@@ -211,26 +189,24 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('action=get exposes stateContext on the config response', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
-    selectLimit.mockResolvedValueOnce([memberAccessRow]).mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'my-proj',
-        name: 'My Project',
-        baseBranch: 'develop',
-        productionBranch: 'release',
-        agentConfig: {
-          stateContext: {
-            code: { budget: { perRunUsd: 2, perMonthUsd: 100, action: 'pause' } },
+    selectLimit
+      .mockResolvedValueOnce([memberAccessRow])
+      .mockResolvedValueOnce([
+        {
+          id: PROJECT_ID,
+          slug: 'my-proj',
+          name: 'My Project',
+          baseBranch: 'develop',
+          productionBranch: 'release',
+          agentConfig: {
+            stateContext: {
+              code: { budget: { perRunUsd: 2, perMonthUsd: 100, action: 'pause' } },
+            },
           },
         },
-      },
-    ]);
+      ]);
 
     const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
       config: { stateContext: Record<string, unknown> | null };
@@ -242,11 +218,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('action=update merges a stateContext patch (preserves untouched states)', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
       .mockResolvedValueOnce([adminAccessRow]) // assertPrincipalIsAdmin: effective-role lookup
@@ -299,11 +271,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('action=update rejects an invalid budget (negative perRunUsd)', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     await expect(
       tool.handler({
@@ -318,11 +286,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('throws NOT_FOUND when issueId refers to an issue outside the project', async () => {
-    const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
       .mockResolvedValueOnce([memberAccessRow])

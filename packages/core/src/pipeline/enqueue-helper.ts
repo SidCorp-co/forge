@@ -46,7 +46,9 @@ interface InsertAndEnqueueArgs {
  * pg-boss enqueue failures are logged but NOT thrown — the jobs row is
  * persisted and a subsequent dispatchTickForProject will pick it up.
  */
-export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{ jobId: string }> {
+export async function insertAndEnqueueJob(
+  args: InsertAndEnqueueArgs,
+): Promise<{ jobId: string }> {
   let insertedId: string | null = null;
   try {
     const [inserted] = await db

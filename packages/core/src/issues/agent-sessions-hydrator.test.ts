@@ -16,7 +16,10 @@ vi.mock('../db/client.js', () => ({
 const { deriveAgentStatus } = await import('./agent-sessions-hydrator.js');
 type HydratedAgentSession = import('./agent-sessions-hydrator.js').HydratedAgentSession;
 
-function s(status: HydratedAgentSession['status'], updatedAt = new Date()): HydratedAgentSession {
+function s(
+  status: HydratedAgentSession['status'],
+  updatedAt = new Date(),
+): HydratedAgentSession {
   return {
     id: crypto.randomUUID(),
     status,
@@ -39,9 +42,9 @@ describe('deriveAgentStatus', () => {
   });
 
   it('prefers running over any other state', () => {
-    expect(deriveAgentStatus([s('completed'), s('queued'), s('running'), s('failed')])).toBe(
-      'running',
-    );
+    expect(
+      deriveAgentStatus([s('completed'), s('queued'), s('running'), s('failed')]),
+    ).toBe('running');
   });
 
   it('falls back to queued when no running session exists', () => {

@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { type SQL, and, count, desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -110,12 +110,7 @@ chatLogRoutes.get(
         return c.json([]);
       }
 
-      conditions.push(
-        inArray(
-          chatLogs.projectSlug,
-          visible.map((v) => v.slug),
-        ),
-      );
+      conditions.push(inArray(chatLogs.projectSlug, visible.map((v) => v.slug)));
     }
 
     if (intent) conditions.push(eq(chatLogs.queryIntent, intent));
@@ -187,7 +182,10 @@ chatLogRoutes.get(
       .select()
       .from(chatLogs)
       .where(
-        and(eq(chatLogs.projectSlug, projectSlug), inArray(chatLogs.qaRating, ['bad', 'flagged'])),
+        and(
+          eq(chatLogs.projectSlug, projectSlug),
+          inArray(chatLogs.qaRating, ['bad', 'flagged']),
+        ),
       )
       .orderBy(desc(chatLogs.createdAt))
       .limit(limit);
@@ -239,9 +237,14 @@ chatLogRoutes.patch(
     if (patch.qaRating !== undefined) updates.qaRating = patch.qaRating;
     if (patch.qaNotes !== undefined) updates.qaNotes = patch.qaNotes;
 
-    const [updated] = await db.update(chatLogs).set(updates).where(eq(chatLogs.id, id)).returning();
+    const [updated] = await db
+      .update(chatLogs)
+      .set(updates)
+      .where(eq(chatLogs.id, id))
+      .returning();
     if (!updated) throw notFound('chat log not found');
 
     return c.json(updated);
   },
 );
+

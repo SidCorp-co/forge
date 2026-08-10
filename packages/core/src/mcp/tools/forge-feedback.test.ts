@@ -106,11 +106,7 @@ function makeCtx(projectSlug = PROJECT_SLUG) {
 beforeEach(() => {
   vi.resetAllMocks();
   // Re-initialize chain mock implementations after reset (resetAllMocks clears them).
-  selectFrom.mockImplementation(() => ({
-    where: selectWhere,
-    leftJoin: selectLeftJoin,
-    innerJoin: selectInnerJoin,
-  }));
+  selectFrom.mockImplementation(() => ({ where: selectWhere, leftJoin: selectLeftJoin, innerJoin: selectInnerJoin }));
   selectWhere.mockImplementation(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
   selectOrderBy.mockImplementation(() => ({ limit: selectLimit }));
   selectLeftJoin.mockImplementation(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
@@ -146,10 +142,7 @@ describe('forge_feedback submit', () => {
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     // insert returning
     insertReturning.mockResolvedValueOnce([
-      {
-        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        signalKey: 'self_report:skill:plan-skill:friction',
-      },
+      { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', signalKey: 'self_report:skill:plan-skill:friction' },
     ]);
 
     const result = await tool.handler({
@@ -216,10 +209,7 @@ describe('forge_feedback submit', () => {
     // No job context resolution (principal.kind !== 'device')
     // No count check (no jobId)
     insertReturning.mockResolvedValueOnce([
-      {
-        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        signalKey: 'self_report:pipeline:-:unclear_step',
-      },
+      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', signalKey: 'self_report:pipeline:-:unclear_step' },
     ]);
 
     const result = await tool.handler({
@@ -383,12 +373,7 @@ describe('forge_feedback list', () => {
     // membership is fenced by loadVisibleProjectIdsForPrincipal itself.
     selectLimit.mockResolvedValueOnce([
       { ...baseReport, projectId: PROJECT_ID, projectSlug: PROJECT_SLUG },
-      {
-        ...baseReport,
-        id: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrr2',
-        projectId: PROJECT_ID_2,
-        projectSlug: 'other-project',
-      },
+      { ...baseReport, id: 'rrrrrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrr2', projectId: PROJECT_ID_2, projectSlug: 'other-project' },
     ]);
 
     const result = (await tool.handler({ action: 'list', scope: 'all' })) as {
@@ -415,9 +400,7 @@ describe('forge_feedback list', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([
-      { ...baseReport, reviewedAt: new Date('2026-02-01T00:00:00Z') },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ ...baseReport, reviewedAt: new Date('2026-02-01T00:00:00Z') }]);
 
     const result = (await tool.handler({
       action: 'list',
@@ -486,7 +469,9 @@ describe('forge_feedback get', () => {
     const tool = forgeFeedbackTool(makeCtx());
     selectLimit.mockResolvedValueOnce([]);
 
-    await expect(tool.handler({ action: 'get', reportId: REPORT_ID })).rejects.toThrow(/NOT_FOUND/);
+    await expect(
+      tool.handler({ action: 'get', reportId: REPORT_ID }),
+    ).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('throws BAD_REQUEST when reportId is missing', async () => {
@@ -495,14 +480,16 @@ describe('forge_feedback get', () => {
     await expect(tool.handler({ action: 'get' })).rejects.toThrow(/BAD_REQUEST/);
   });
 
-  it("checks membership against the row's own project, not the caller context", async () => {
+  it('checks membership against the row\'s own project, not the caller context', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     selectLimit.mockResolvedValueOnce([{ ...baseReport, projectId: PROJECT_ID_2 }]);
     // effectiveProjectRole for PROJECT_ID_2 finds no membership row
     selectLimit.mockResolvedValueOnce([]);
 
-    await expect(tool.handler({ action: 'get', reportId: REPORT_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(
+      tool.handler({ action: 'get', reportId: REPORT_ID }),
+    ).rejects.toThrow(/FORBIDDEN/);
   });
 });
 
@@ -656,9 +643,9 @@ describe('forge_feedback review', () => {
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     updateReturning.mockResolvedValueOnce([]);
 
-    await expect(tool.handler({ action: 'review', reportId: REPORT_ID })).rejects.toThrow(
-      /NOT_FOUND/,
-    );
+    await expect(
+      tool.handler({ action: 'review', reportId: REPORT_ID }),
+    ).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('throws BAD_REQUEST when reportId is missing', async () => {

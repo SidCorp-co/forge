@@ -7,7 +7,8 @@ vi.mock('./spawner.js', () => ({
 
 const autoDisableMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./auto-disable.js', () => ({
-  handlePmJobFailedAutoDisable: (...args: unknown[]) => autoDisableMock(...(args as [unknown])),
+  handlePmJobFailedAutoDisable: (...args: unknown[]) =>
+    autoDisableMock(...(args as [unknown])),
 }));
 
 const { HooksBus } = await import('../pipeline/hooks.js');

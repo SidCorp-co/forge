@@ -376,20 +376,14 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(0);
     loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
     queueHappyPath();
-    const fullResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
-      string,
-      unknown
-    >;
+    const fullResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<string, unknown>;
     const fullSize = JSON.stringify(fullResult.issue).length;
 
     // Large issue: heavyFieldChars returns 5500 → serializeManifestWithAttachments
     heavyFieldChars.mockReturnValue(5500);
     loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
     queueHappyPath();
-    const leanResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
-      string,
-      unknown
-    >;
+    const leanResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<string, unknown>;
     const leanSize = JSON.stringify(leanResult.issue).length;
 
     expect(leanSize).toBeLessThan(fullSize);

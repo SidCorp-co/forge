@@ -400,7 +400,10 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
-  const [costMap, issueRefs] = await Promise.all([loadCostByRunIds(ids), loadIssueRefs(issueIds)]);
+  const [costMap, issueRefs] = await Promise.all([
+    loadCostByRunIds(ids),
+    loadIssueRefs(issueIds),
+  ]);
   return rows.map((r) => {
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
     return {

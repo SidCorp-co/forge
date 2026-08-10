@@ -45,11 +45,7 @@ describe('normalizeAntigravityEvent', () => {
   });
 
   it('preserves the raw wire envelope (type+timestamp only) for forensics', () => {
-    const wire = {
-      type: 'tool_started',
-      data: { tool: 'Bash' },
-      timestamp: '2026-04-26T00:00:00Z',
-    };
+    const wire = { type: 'tool_started', data: { tool: 'Bash' }, timestamp: '2026-04-26T00:00:00Z' };
     const out = normalizeAntigravityEvent(wire);
     expect((out[0]?.data as Record<string, unknown>)['_raw']).toEqual({
       type: 'tool_started',

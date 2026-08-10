@@ -216,10 +216,7 @@ describe('extractReportFromMessages', () => {
 
   it('ignores non-assistant messages', () => {
     const messages = [
-      {
-        role: 'user',
-        content: `${SKILL_IMPROVE_REPORT_SENTINEL}\n{"key":"k","version":1,"status":"applied"}`,
-      },
+      { role: 'user', content: `${SKILL_IMPROVE_REPORT_SENTINEL}\n{"key":"k","version":1,"status":"applied"}` },
     ];
     expect(extractReportFromMessages(messages)).toBeNull();
   });
@@ -289,8 +286,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `I evaluated release-conflict-2tier against this 2-branch project.\n` +
+        content: `I evaluated release-conflict-2tier against this 2-branch project.\n` +
           `baseBranch=main, productionBranch=release — condition met.\n` +
           `Created draft issue ISS-999.\n` +
           `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
@@ -305,8 +301,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `Evaluated release-conflict-2tier.\n` +
+        content: `Evaluated release-conflict-2tier.\n` +
           `baseBranch=main === productionBranch=main — single-branch, condition not met.\n` +
           `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
           `{"key":"release-conflict-2tier","version":1,"status":"skipped","reason":"baseBranch equals productionBranch — single-branch project"}`,
@@ -321,8 +316,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `Project has web app. Condition met.\n` +
+        content: `Project has web app. Condition met.\n` +
           `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
           `{"key":"qa-quality-bar","version":1,"status":"proposed"}`,
       },
@@ -336,8 +330,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `No frontend surface found. Condition not met.\n` +
+        content: `No frontend surface found. Condition not met.\n` +
           `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
           `{"key":"qa-quality-bar","version":1,"status":"skipped","reason":"project has no frontend/UI surface — backend-only service"}`,
       },

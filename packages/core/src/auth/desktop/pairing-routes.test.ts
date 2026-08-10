@@ -98,7 +98,9 @@ function postApprove(body: unknown, bearer: string, ip = '10.0.0.2') {
 }
 
 function getPoll(code: string) {
-  return buildApp().request(`/api/auth/desktop/poll?pairing_code=${encodeURIComponent(code)}`);
+  return buildApp().request(
+    `/api/auth/desktop/poll?pairing_code=${encodeURIComponent(code)}`,
+  );
 }
 
 // =====================================================================

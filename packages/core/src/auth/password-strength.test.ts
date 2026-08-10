@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_PASSWORD_SCORE, evaluatePasswordStrength } from './password-strength.js';
+import {
+  MIN_PASSWORD_SCORE,
+  evaluatePasswordStrength,
+} from './password-strength.js';
 
 describe('password-strength', () => {
   it('rejects an obvious dictionary password', () => {

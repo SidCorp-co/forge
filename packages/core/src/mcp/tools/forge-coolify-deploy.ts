@@ -394,12 +394,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
             throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
           }
           if (rows.length === 0) {
-            return {
-              integrationId: null,
-              resourceUuid: null,
-              logs: null,
-              reason: 'no-integration',
-            };
+            return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
           }
           throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
         }

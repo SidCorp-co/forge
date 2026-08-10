@@ -10,7 +10,7 @@ import { type TestDatabase, setupTestDatabase, truncateAll } from '../helpers/in
 // Imported dynamically in beforeAll: builtin-seed.js transitively reaches
 // src/db/client.ts, which validates env at import time — a static import
 // fails collection before any hook can set DATABASE_URL & friends.
-let seedBuiltinSkills: typeof import('../../src/skills/builtin-seed.js')['seedBuiltinSkills'];
+let seedBuiltinSkills: (typeof import('../../src/skills/builtin-seed.js'))['seedBuiltinSkills'];
 
 const SKILL_A = `---
 name: forge-sample-a

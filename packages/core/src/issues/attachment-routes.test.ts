@@ -146,12 +146,7 @@ describe('POST /api/issues/:id/attachments', () => {
 
   it('403 when not a project member', async () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },

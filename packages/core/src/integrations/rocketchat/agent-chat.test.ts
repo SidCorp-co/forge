@@ -339,9 +339,7 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     createChatSessionRow.mockResolvedValue({
       id: 'session-2',
       status: 'idle',
-      metadata: {
-        agentChat: { connectionId: 'conn-1', rid: 'room-1', botName: 'Babo', deliveredAt: null },
-      },
+      metadata: { agentChat: { connectionId: 'conn-1', rid: 'room-1', botName: 'Babo', deliveredAt: null } },
     });
     dispatchChatTurn.mockRejectedValue(new Error('ws publish failed'));
     applyKernelTransition.mockResolvedValue([{ id: 'session-2', status: 'failed' }]);
@@ -426,18 +424,14 @@ describe('scheduleDelayedAck', () => {
   });
 
   it('does not post before the delay elapses', async () => {
-    selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
-    ]);
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS - 1000);
     expect(postRoomMessage).not.toHaveBeenCalled();
   });
 
   it('posts the interim ack when the turn is still running and undelivered after the delay', async () => {
-    selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
-    ]);
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
     expect(postRoomMessage).toHaveBeenCalledWith(
@@ -449,9 +443,7 @@ describe('scheduleDelayedAck', () => {
   });
 
   it('posts the interim ack to the thread when a tmid is set', async () => {
-    selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
-    ]);
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
     scheduleDelayedAck({ ...ACK_ARGS, tmid: 'thread-1' });
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
     expect(postRoomMessage).toHaveBeenCalledWith(
@@ -463,9 +455,7 @@ describe('scheduleDelayedAck', () => {
   });
 
   it('does NOT post when the turn already finished (fast case — answer landed first)', async () => {
-    selectLimit.mockResolvedValue([
-      { status: 'completed', metadata: { agentChat: { deliveredAt: null } } },
-    ]);
+    selectLimit.mockResolvedValue([{ status: 'completed', metadata: { agentChat: { deliveredAt: null } } }]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
     expect(postRoomMessage).not.toHaveBeenCalled();
@@ -489,9 +479,7 @@ describe('scheduleDelayedAck', () => {
   });
 
   it('swallows a missing-connection resolve (no throw, no post)', async () => {
-    selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
-    ]);
+    selectLimit.mockResolvedValue([{ status: 'running', metadata: { agentChat: { deliveredAt: null } } }]);
     resolveRoomPostAuth.mockResolvedValue(null);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);

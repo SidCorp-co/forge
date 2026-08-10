@@ -68,7 +68,9 @@ const TUESDAY_2026_05_05 = new Date('2026-05-05T00:00:00Z');
 
 describe('runAgentCronTickOnce', () => {
   it('weekly + enabled agent fires on Monday', async () => {
-    queueAgents([{ id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' }]);
+    queueAgents([
+      { id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' },
+    ]);
     const fired = await runAgentCronTickOnce(MONDAY_2026_05_04);
     expect(fired).toEqual(['agent-1']);
     expect(spawnMock).toHaveBeenCalledWith({
@@ -79,14 +81,18 @@ describe('runAgentCronTickOnce', () => {
   });
 
   it('weekly agent does not fire on Tuesday', async () => {
-    queueAgents([{ id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' }]);
+    queueAgents([
+      { id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' },
+    ]);
     const fired = await runAgentCronTickOnce(TUESDAY_2026_05_05);
     expect(fired).toEqual([]);
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
   it('does not include agents where spawn returns ok:false (e.g. already-active)', async () => {
-    queueAgents([{ id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' }]);
+    queueAgents([
+      { id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' },
+    ]);
     spawnMock.mockResolvedValueOnce({ ok: false, reason: 'already-active' } as never);
     const fired = await runAgentCronTickOnce(MONDAY_2026_05_04);
     expect(fired).toEqual([]);
@@ -134,12 +140,16 @@ describe('runAgentCronTickOnce', () => {
     // jobs_pm_per_project_unique_idx forces spawnPmSession to return
     // {ok:false, reason:'already-active'}. The cron must propagate that as a
     // no-op (no duplicate fired entry) without throwing.
-    queueAgents([{ id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' }]);
+    queueAgents([
+      { id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' },
+    ]);
     const first = await runAgentCronTickOnce(MONDAY_2026_05_04);
     expect(first).toEqual(['agent-1']);
     expect(spawnMock).toHaveBeenCalledTimes(1);
 
-    queueAgents([{ id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' }]);
+    queueAgents([
+      { id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' },
+    ]);
     spawnMock.mockResolvedValueOnce({ ok: false, reason: 'already-active' } as never);
     const second = await runAgentCronTickOnce(MONDAY_2026_05_04);
     expect(second).toEqual([]);

@@ -41,7 +41,9 @@ vi.mock('../../schedules/service.js', () => ({
   runScheduleNow: (...a: unknown[]) => runScheduleNowMock(...a),
 }));
 
-const fakeMessages = [{ key: 'test-key', title: 'Test message', message: 'prompt', version: 1 }];
+const fakeMessages = [
+  { key: 'test-key', title: 'Test message', message: 'prompt', version: 1 },
+];
 vi.mock('../../schedules/messages/registry.js', () => ({
   listImprovementMessages: () => fakeMessages,
 }));
@@ -409,8 +411,8 @@ describe('forge_schedules action=catalog', () => {
     mockMemberRole(null);
 
     const tool = forgeSchedulesTool(buildDeviceCtx());
-    await expect(tool.handler({ action: 'catalog', projectId: PROJECT_ID })).rejects.toThrow(
-      /FORBIDDEN/,
-    );
+    await expect(
+      tool.handler({ action: 'catalog', projectId: PROJECT_ID }),
+    ).rejects.toThrow(/FORBIDDEN/);
   });
 });

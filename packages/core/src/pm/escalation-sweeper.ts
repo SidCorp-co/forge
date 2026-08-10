@@ -30,8 +30,8 @@ import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
-import { Sentry } from '../observability/sentry.js';
 import { openIssueRun } from '../pipeline/runs.js';
+import { Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 
 export const PM_ESCALATION_SWEEPER_QUEUE = 'pm.escalation-sweeper';

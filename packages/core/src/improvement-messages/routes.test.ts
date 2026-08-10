@@ -117,10 +117,9 @@ describe('GET /api/improvement-messages', () => {
     });
 
     expect(res.status).toBe(200);
-    const body =
-      await res.json<
-        Array<{ key: string; enablement: { scheduleId: string; enabled: boolean } | null }>
-      >();
+    const body = await res.json<
+      Array<{ key: string; enablement: { scheduleId: string; enabled: boolean } | null }>
+    >();
     expect(body).toHaveLength(1);
     expect(body[0].enablement).not.toBeNull();
     expect(body[0].enablement?.scheduleId).toBe(SCHEDULE_ID);

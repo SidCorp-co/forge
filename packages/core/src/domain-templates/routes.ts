@@ -7,7 +7,11 @@ import { db } from '../db/client.js';
 import { domainTemplates } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { TemplateInvalidManifestError, TemplateNotFoundError, applyTemplate } from './apply.js';
+import {
+  TemplateInvalidManifestError,
+  TemplateNotFoundError,
+  applyTemplate,
+} from './apply.js';
 
 const keyParamSchema = z.object({ key: z.string().trim().min(1).max(200) });
 

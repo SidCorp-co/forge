@@ -236,13 +236,7 @@ describe('PATCH /api/auth/me/preferences', () => {
   it('upserts the lastSeenWhatsNew marker', async () => {
     const token = await signUserToken('00000000-0000-0000-0000-000000000003');
     insertReturning.mockResolvedValueOnce([
-      {
-        theme: 'system',
-        language: 'en',
-        notifyOnMention: true,
-        lastSeenWhatsNew: '0.2.14',
-        updatedAt: null,
-      },
+      { theme: 'system', language: 'en', notifyOnMention: true, lastSeenWhatsNew: '0.2.14', updatedAt: null },
     ]);
     const res = await buildApp().request('/api/auth/me/preferences', {
       method: 'PATCH',
@@ -291,14 +285,7 @@ describe('PATCH /api/auth/me/preferences', () => {
   it('sets activeOrgId when the caller is a member of the org', async () => {
     const token = await signUserToken('00000000-0000-0000-0000-000000000003');
     insertReturning.mockResolvedValueOnce([
-      {
-        theme: 'system',
-        language: 'en',
-        notifyOnMention: true,
-        lastSeenWhatsNew: null,
-        activeOrgId: ORG,
-        updatedAt: null,
-      },
+      { theme: 'system', language: 'en', notifyOnMention: true, lastSeenWhatsNew: null, activeOrgId: ORG, updatedAt: null },
     ]);
     const res = await buildApp().request('/api/auth/me/preferences', {
       method: 'PATCH',
@@ -308,21 +295,14 @@ describe('PATCH /api/auth/me/preferences', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.activeOrgId).toBe(ORG);
-    expect(assertOrgAccess).toHaveBeenCalledWith(
-      ORG,
-      '00000000-0000-0000-0000-000000000003',
-      'member',
-    );
+    expect(assertOrgAccess).toHaveBeenCalledWith(ORG, '00000000-0000-0000-0000-000000000003', 'member');
     expect(dbInsert).toHaveBeenCalledTimes(1);
   });
 
   it('rejects setting activeOrgId to an org the caller is not a member of (403)', async () => {
     const token = await signUserToken('00000000-0000-0000-0000-000000000003');
     assertOrgAccess.mockRejectedValueOnce(
-      new HTTPException(403, {
-        message: 'requires org member access',
-        cause: { code: 'FORBIDDEN' },
-      }),
+      new HTTPException(403, { message: 'requires org member access', cause: { code: 'FORBIDDEN' } }),
     );
     const res = await buildApp().request('/api/auth/me/preferences', {
       method: 'PATCH',
@@ -350,14 +330,7 @@ describe('PATCH /api/auth/me/preferences', () => {
   it('clears activeOrgId on null without a membership check', async () => {
     const token = await signUserToken('00000000-0000-0000-0000-000000000003');
     insertReturning.mockResolvedValueOnce([
-      {
-        theme: 'system',
-        language: 'en',
-        notifyOnMention: true,
-        lastSeenWhatsNew: null,
-        activeOrgId: null,
-        updatedAt: null,
-      },
+      { theme: 'system', language: 'en', notifyOnMention: true, lastSeenWhatsNew: null, activeOrgId: null, updatedAt: null },
     ]);
     const res = await buildApp().request('/api/auth/me/preferences', {
       method: 'PATCH',

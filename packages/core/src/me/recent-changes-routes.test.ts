@@ -126,7 +126,7 @@ describe('GET /api/me/recent-changes', () => {
     expect(res.status).toBe(400);
   });
 
-  it("accepts the overview screen client's over-fetch limit (RECENT_CHANGES_LIMIT * 5 = 60)", async () => {
+  it('accepts the overview screen client\'s over-fetch limit (RECENT_CHANGES_LIMIT * 5 = 60)', async () => {
     authVerified();
     visibleIdsMock.mockResolvedValue([PROJECT_ID]);
     queryQueue.push([]);

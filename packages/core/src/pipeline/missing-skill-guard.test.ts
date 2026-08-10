@@ -10,9 +10,11 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-const { PAUSE_REASON_PREFIX, buildMissingSkillCommentBody, buildMissingSkillReason } = await import(
-  './missing-skill-guard.js'
-);
+const {
+  PAUSE_REASON_PREFIX,
+  buildMissingSkillCommentBody,
+  buildMissingSkillReason,
+} = await import('./missing-skill-guard.js');
 
 describe('pipeline/missing-skill-guard', () => {
   it('builds the pauseReason with the expected prefix', () => {

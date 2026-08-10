@@ -30,8 +30,8 @@ import {
   WORKING_STATUS_BY_JOB_TYPE,
   getPipelineRegistry,
 } from './registry.js';
-import { STATUS_TO_JOB_TYPE as MAPPING_RE_EXPORT } from './skill-mapping.js';
 import { transitions } from './state-machine.js';
+import { STATUS_TO_JOB_TYPE as MAPPING_RE_EXPORT } from './skill-mapping.js';
 
 describe('PIPELINE_STEPS literal sanity', () => {
   it('skillName always follows the forge-${jobType} convention', () => {

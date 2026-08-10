@@ -152,7 +152,13 @@ describe('forge_jobs.list', () => {
     expect(keys).toContain('type');
     expect(keys).toContain('status');
     expect(keys).toContain('issueId');
-    for (const heavy of ['payload', 'promptBlocks', 'failureMeta', 'userPromptSnapshot', 'error']) {
+    for (const heavy of [
+      'payload',
+      'promptBlocks',
+      'failureMeta',
+      'userPromptSnapshot',
+      'error',
+    ]) {
       expect(keys).not.toContain(heavy);
     }
   });

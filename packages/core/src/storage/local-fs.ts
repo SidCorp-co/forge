@@ -1,6 +1,6 @@
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { type StorageAdapter, isEnoent } from './types.js';
+import { isEnoent, type StorageAdapter } from './types.js';
 
 export class LocalFsStorage implements StorageAdapter {
   constructor(private readonly root: string) {}

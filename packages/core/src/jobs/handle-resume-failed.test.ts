@@ -16,7 +16,9 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { isResumeFailedError, handleResumeFailed } = await import('./handle-resume-failed.js');
+const { isResumeFailedError, handleResumeFailed } = await import(
+  './handle-resume-failed.js'
+);
 
 beforeEach(() => {
   limitResults.length = 0;
@@ -64,7 +66,9 @@ describe('handleResumeFailed', () => {
   });
 
   it('returns "abort" when project sets onResumeFail=abort', async () => {
-    limitResults.push([{ agentConfig: { pipelineConfig: { onResumeFail: 'abort' } } }]);
+    limitResults.push([
+      { agentConfig: { pipelineConfig: { onResumeFail: 'abort' } } },
+    ]);
     execute.mockResolvedValueOnce([]); // no priors to invalidate
     const r = await handleResumeFailed({
       id: 'j-1',

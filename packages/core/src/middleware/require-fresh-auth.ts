@@ -13,7 +13,9 @@ import type { AuthVars } from './auth.js';
 // Default window is 5 minutes — short enough that a stale tab can't fire
 // off destructive calls long after the user walked away, generous enough
 // to chain a couple of sensitive actions without prompting twice.
-export function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: AuthVars }> {
+export function requireFreshAuth(
+  minutes = 5,
+): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
     const userId = c.get('userId');
 

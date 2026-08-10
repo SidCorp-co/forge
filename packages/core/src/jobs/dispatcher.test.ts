@@ -164,9 +164,7 @@ const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
 const { applyPostmanMcpServers } = await import('../integrations/postman/resolver.js');
 const { applyEpodsystemMcpServers } = await import('../integrations/epodsystem/resolver.js');
 const { applySentryMcpServers } = await import('../integrations/sentry/resolver.js');
-const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import(
-  './session-resume.js'
-);
+const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import('./session-resume.js');
 const { recordResumeBoundFresh } = await import('../observability/hold-metrics.js');
 
 type Row = Record<string, unknown>;
@@ -360,8 +358,7 @@ describe('jobs/dispatcher', () => {
     expect(Array.isArray(args.blocks)).toBe(true);
 
     // Ordering: snapshot fires before adapter.dispatch.
-    const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock
-      .invocationCallOrder[0];
+    const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     const adapterInvocation = dispatchSpy.mock.invocationCallOrder[0];
     expect(snapInvocation).toBeLessThan(adapterInvocation ?? Number.NEGATIVE_INFINITY);
   });
@@ -680,18 +677,16 @@ describe('jobs/dispatcher', () => {
   };
 
   it('ISS-580: resumes normally when both bounds are under threshold (regression guard)', async () => {
-    mockSelectOnce([
-      {
-        id: 'j-resume',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'iss-1',
-        type: 'code',
-        payload: { stageStatus: 'approved' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-resume',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-1',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
-    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
     // Prior session exists (below bound).
     (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -713,18 +708,16 @@ describe('jobs/dispatcher', () => {
   });
 
   it('ISS-580: drops resume when estimated tokens exceed maxResumeTokens', async () => {
-    mockSelectOnce([
-      {
-        id: 'j-over-tokens',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'iss-2',
-        type: 'code',
-        payload: { stageStatus: 'approved' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-over-tokens',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-2',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
-    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
     (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       claudeSessionId: 'cli-huge',
@@ -746,18 +739,16 @@ describe('jobs/dispatcher', () => {
   });
 
   it('ISS-580: drops resume when reopenCount exceeds maxResumeReopenCycles', async () => {
-    mockSelectOnce([
-      {
-        id: 'j-over-cycles',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'iss-3',
-        type: 'code',
-        payload: { stageStatus: 'approved' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-over-cycles',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-3',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
-    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
     (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       claudeSessionId: 'cli-stale',
@@ -777,18 +768,16 @@ describe('jobs/dispatcher', () => {
   });
 
   it('ISS-580: gate disabled (maxResumeTokens=0) skips token check', async () => {
-    mockSelectOnce([
-      {
-        id: 'j-gate-off',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'iss-4',
-        type: 'code',
-        payload: { stageStatus: 'approved' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-gate-off',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-4',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // budget-check loadStageMap
-    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: null }]);                  // fallback chain
     mockSelectOnce([{ agentConfig: agentConfigWithGroup }]); // preDispatch loadStageMap
     (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       claudeSessionId: 'cli-ok',
@@ -813,16 +802,14 @@ describe('jobs/dispatcher', () => {
 
   it('ISS-580: no sessionGroup → bound check is a no-op (no prior session lookup)', async () => {
     // Job without stageStatus → resolveStageOverrides returns EMPTY (sessionGroup=null).
-    mockSelectOnce([
-      {
-        id: 'j-no-group',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'iss-5',
-        type: 'code',
-        payload: { foo: 'bar' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-no-group',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'iss-5',
+      type: 'code',
+      payload: { foo: 'bar' },
+    }]);
     mockSelectOnce([{ agentConfig: null }]); // fallback chain (no stageStatus → no budget-check loadStageMap)
     const dispatchSpy = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-no-group' }]);
@@ -854,33 +841,21 @@ describe('jobs/dispatcher', () => {
         states: {
           approved: {
             mcpServers: {
-              playwright: {
-                type: 'stdio',
-                command: 'npx',
-                args: ['@playwright/mcp@latest'],
-                env: {},
-              },
-              'chrome-devtools-mcp': {
-                type: 'stdio',
-                command: 'npx',
-                args: ['chrome-devtools-mcp@latest'],
-                env: {},
-              },
+              playwright: { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest'], env: {} },
+              'chrome-devtools-mcp': { type: 'stdio', command: 'npx', args: ['chrome-devtools-mcp@latest'], env: {} },
             },
           },
         },
       },
     };
-    mockSelectOnce([
-      {
-        id: 'j-dedup',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'i1',
-        type: 'code',
-        payload: { stageStatus: 'approved' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-dedup',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'i1',
+      type: 'code',
+      payload: { stageStatus: 'approved' },
+    }]);
     mockSelectOnce([{ agentConfig: agentConfigBothBrowsers }]); // budget-check loadStageMap
     mockSelectOnce([{ agentConfig: null }]); // fallback chain
     mockSelectOnce([{ agentConfig: agentConfigBothBrowsers }]); // preDispatch loadStageMap
@@ -900,16 +875,14 @@ describe('jobs/dispatcher', () => {
   it('ISS-581: active sentry integration is NOT injected when stage has no sentry sentinel', async () => {
     // Override: applySentryMcpServers behaves as opt-in (sentinel absent → no inject).
     // Default mock already passes current through unchanged, which is the correct behavior.
-    mockSelectOnce([
-      {
-        id: 'j-no-sentry',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'i1',
-        type: 'test',
-        payload: { stageStatus: 'testing' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-no-sentry',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'i1',
+      type: 'test',
+      payload: { stageStatus: 'testing' },
+    }]);
     mockSelectOnce([{ agentConfig: null }]); // budget-check
     mockSelectOnce([{ agentConfig: null }]); // fallback chain
     mockSelectOnce([{ agentConfig: null }]); // preDispatch loadStageMap
@@ -943,16 +916,14 @@ describe('jobs/dispatcher', () => {
         },
       },
     };
-    mockSelectOnce([
-      {
-        id: 'j-sweep',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'i1',
-        type: 'test',
-        payload: { stageStatus: 'testing' },
-      },
-    ]);
+    mockSelectOnce([{
+      id: 'j-sweep',
+      status: 'queued',
+      projectId: 'p1',
+      issueId: 'i1',
+      type: 'test',
+      payload: { stageStatus: 'testing' },
+    }]);
     mockSelectOnce([{ agentConfig: agentConfigWithSentinel }]); // budget-check
     mockSelectOnce([{ agentConfig: null }]); // fallback chain
     mockSelectOnce([{ agentConfig: agentConfigWithSentinel }]); // preDispatch loadStageMap
@@ -976,9 +947,7 @@ describe('jobs/dispatcher', () => {
         postman: { type: 'http', url: 'https://mcp.postman.com/minimal', enabled: true },
       }),
     );
-    mockSelectOnce([
-      { id: 'j-pm-on', status: 'queued', projectId: 'p1', type: 'plan', payload: {} },
-    ]);
+    mockSelectOnce([{ id: 'j-pm-on', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
     mockSelectOnce([{ agentConfig: null }]);
     const spyWith = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-pm-on' }]);
@@ -988,9 +957,7 @@ describe('jobs/dispatcher', () => {
 
     // Dispatch 2 — project p2 has NO Postman integration. The default resolver
     // mock returns the override unchanged (i.e. resolvePostmanMcpEntry → null).
-    mockSelectOnce([
-      { id: 'j-pm-off', status: 'queued', projectId: 'p2', type: 'plan', payload: {} },
-    ]);
+    mockSelectOnce([{ id: 'j-pm-off', status: 'queued', projectId: 'p2', type: 'plan', payload: {} }]);
     mockSelectOnce([{ agentConfig: null }]);
     const spyWithout = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-pm-off' }]);
@@ -998,9 +965,8 @@ describe('jobs/dispatcher', () => {
 
     expect(await handleDispatch({ jobId: 'j-pm-off' })).toBe('dispatched');
 
-    const payloadWith = (
-      spyWith.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } }
-    ).job.payload;
+    const payloadWith = (spyWith.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } })
+      .job.payload;
     const payloadWithout = (
       spyWithout.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } }
     ).job.payload;
@@ -1061,8 +1027,7 @@ describe('jobs/dispatcher PM path', () => {
     expect(snapArgs).toMatchObject({ jobId: 'pm-1', userPrompt: '' });
     expect(typeof snapArgs.systemPrompt).toBe('string');
     expect(Array.isArray(snapArgs.blocks)).toBe(true);
-    const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock
-      .invocationCallOrder[0];
+    const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     const adapterInvocation = dispatchSpy.mock.invocationCallOrder[0];
     expect(snapInvocation).toBeLessThan(adapterInvocation ?? Number.NEGATIVE_INFINITY);
   });
@@ -1124,14 +1089,7 @@ describe('jobs/dispatcher PM path', () => {
 
   it('ISS-115: fails the job permanently when the runner does not support its job type', async () => {
     mockSelectOnce([
-      {
-        id: 'rel-1',
-        status: 'queued',
-        projectId: 'p1',
-        type: 'release',
-        payload: {},
-        issueId: 'iss-1',
-      },
+      { id: 'rel-1', status: 'queued', projectId: 'p1', type: 'release', payload: {}, issueId: 'iss-1' },
     ]);
     (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       id: 'r1',

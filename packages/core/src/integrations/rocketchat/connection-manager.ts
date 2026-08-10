@@ -15,10 +15,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
 import { ESCALATE_TOOL_NAME, buildEscalationToolset } from '../../chat/tools/escalate.js';
-import {
-  type ExternalMcpToolsets,
-  buildExternalMcpToolsets,
-} from '../../chat/tools/external-mcp.js';
+import { type ExternalMcpToolsets, buildExternalMcpToolsets } from '../../chat/tools/external-mcp.js';
 import { mergeToolsets } from '../../chat/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../chat/tools/principal.js';
 import { buildProjectToolset } from '../../chat/tools/registry.js';
@@ -415,10 +412,7 @@ class RocketChatConnectionManager {
     ac.refreshTimer = setInterval(() => {
       const cur = this.conns.get(connectionId);
       if (!cur || cur.closing) return;
-      logger.info(
-        { connectionId },
-        'rocketchat: periodic DDP refresh (fresh login + subscription)',
-      );
+      logger.info({ connectionId }, 'rocketchat: periodic DDP refresh (fresh login + subscription)');
       void this.dial(connectionId);
     }, DDP_REFRESH_INTERVAL_MS);
     ac.refreshTimer.unref?.();

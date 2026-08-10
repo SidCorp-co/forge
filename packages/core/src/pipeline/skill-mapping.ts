@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { IssueStatus, JobType } from '../db/schema.js';
-import { type JobTypeMapping, STATUS_TO_JOB_TYPE } from './registry.js';
+import { STATUS_TO_JOB_TYPE, type JobTypeMapping } from './registry.js';
 
 export type { JobTypeMapping } from './registry.js';
 export { STATUS_TO_JOB_TYPE } from './registry.js';

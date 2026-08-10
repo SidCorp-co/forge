@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { type SQL, and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -152,3 +152,4 @@ knowledgeEdgeRoutes.delete(
     return c.body(null, 204);
   },
 );
+

@@ -653,7 +653,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Do NOT re-get an issue whose full body you already loaded this session. ' +
     'On create, fill title/description/priority/category — `plan` and ' +
     '`acceptanceCriteria` are written by the clarify/plan steps; pre-filling them ' +
-    "deletes the plan step's reason to exist (red flag: plan-by-hand). Keep the " +
+    'deletes the plan step\'s reason to exist (red flag: plan-by-hand). Keep the ' +
     'description a requirements contract (outcome, business rules, invariants, ' +
     'out-of-scope) — not an implementation script naming files, endpoints or ' +
     '"follow the pattern at <path>"; those claims go stale and outrank live ' +

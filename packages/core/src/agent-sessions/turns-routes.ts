@@ -401,7 +401,9 @@ agentSessionTurnsRoutes.post(
         .where(eq(projects.id, inserted.projectId))
         .limit(1);
       // cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — a rerun must resolve MCP servers through the same chain as a normal turn, or the re-spawned `claude` sees a different toolset than the session it reruns
-      const { mcpServers: mcpServersOverride } = await resolveSessionMcpServers(inserted.projectId);
+      const { mcpServers: mcpServersOverride } = await resolveSessionMcpServers(
+        inserted.projectId,
+      );
       roomManager.publish(deviceRoom(targetDeviceId), {
         event: 'agent:start',
         data: {

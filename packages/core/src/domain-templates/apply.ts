@@ -123,8 +123,7 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
     if (defaults.chatProviderId !== undefined)
       appConfigValues.chatProviderId = defaults.chatProviderId;
     if (defaults.chatModel !== undefined) appConfigValues.chatModel = defaults.chatModel;
-    if (defaults.retrievalTopK !== undefined)
-      appConfigValues.retrievalTopK = defaults.retrievalTopK;
+    if (defaults.retrievalTopK !== undefined) appConfigValues.retrievalTopK = defaults.retrievalTopK;
     if (defaults.retrievalMinScore !== undefined)
       appConfigValues.retrievalMinScore = defaults.retrievalMinScore;
     if (defaults.enabledChannels !== undefined)

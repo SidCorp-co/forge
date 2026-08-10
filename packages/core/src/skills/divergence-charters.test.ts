@@ -25,7 +25,9 @@ describe('divergence-charter schema parity', () => {
   });
 
   it('DivergenceCharterEntry rejects missing required fields', () => {
-    expect(() => divergenceCharterEntrySchema.parse({ id: 'x', skill: 'y' })).toThrow();
+    expect(() =>
+      divergenceCharterEntrySchema.parse({ id: 'x', skill: 'y' }),
+    ).toThrow();
   });
 
   it('DivergenceCharter schema validates a charter with entries array', () => {

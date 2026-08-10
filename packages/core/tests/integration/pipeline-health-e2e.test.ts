@@ -21,13 +21,9 @@ import {
 } from '../helpers/index.js';
 
 type Mods = {
-  hydratePipelineHealthForIssues: typeof import(
-    '../../src/issues/pipeline-health.js',
-  ).hydratePipelineHealthForIssues;
+  hydratePipelineHealthForIssues: typeof import('../../src/issues/pipeline-health.js').hydratePipelineHealthForIssues;
   recordTickAt: typeof import('../../src/issues/pipeline-health.js').recordTickAt;
-  resetLastTickAtForTest: typeof import(
-    '../../src/issues/pipeline-health.js',
-  ).resetLastTickAtForTest;
+  resetLastTickAtForTest: typeof import('../../src/issues/pipeline-health.js').resetLastTickAtForTest;
 };
 
 describe('ISS-164 pipelineHealth E2E', () => {

@@ -9,10 +9,7 @@ function selectJoinChainOnce(rows: unknown[]): void {
   dbSelect.mockImplementationOnce(() => ({
     from: () => ({
       innerJoin: () => ({
-        where: () => ({
-          limit: async () => rows,
-          then: (cb: (v: unknown) => unknown) => Promise.resolve(rows).then(cb),
-        }),
+        where: () => ({ limit: async () => rows, then: (cb: (v: unknown) => unknown) => Promise.resolve(rows).then(cb) }),
       }),
     }),
   }));
@@ -74,7 +71,11 @@ describe('allChildrenReady', () => {
 
   it('returns false when any sibling is mid-pipeline', () => {
     expect(
-      allChildrenReady([{ status: 'tested' }, { status: 'tested' }, { status: 'in_progress' }]),
+      allChildrenReady([
+        { status: 'tested' },
+        { status: 'tested' },
+        { status: 'in_progress' },
+      ]),
     ).toBe(false);
   });
 
@@ -103,7 +104,9 @@ describe('findDecompositionChildren', () => {
 
 describe('findDecompositionParent', () => {
   it('returns the first parent row including issSeq for messaging', async () => {
-    selectJoinChainOnce([{ id: 'parent-1', status: 'approved', projectId: 'p-1', issSeq: 42 }]);
+    selectJoinChainOnce([
+      { id: 'parent-1', status: 'approved', projectId: 'p-1', issSeq: 42 },
+    ]);
     const parent = await findDecompositionParent('child-1');
     expect(parent).toMatchObject({ id: 'parent-1', status: 'approved', issSeq: 42 });
   });

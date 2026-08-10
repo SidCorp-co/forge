@@ -68,7 +68,9 @@ describe('org tier — invitations, direct-add, move, redaction', () => {
 
   async function verifiedUser(): Promise<TestUser> {
     const user = await createTestUser(harness.db);
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
+    await harness.db.execute(
+      sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`,
+    );
     return user;
   }
 
@@ -118,9 +120,11 @@ describe('org tier — invitations, direct-add, move, redaction', () => {
     await harness.db.execute(
       sql`UPDATE users SET email_verified_at = now() WHERE id = ${newcomer.id}`,
     );
-    const accept = await req(`/api/org-invitations/${invitedBody.token}/accept`, newcomer.id, {
-      method: 'POST',
-    });
+    const accept = await req(
+      `/api/org-invitations/${invitedBody.token}/accept`,
+      newcomer.id,
+      { method: 'POST' },
+    );
     expect(accept.status).toBe(200);
     expect(await accept.json()).toMatchObject({ orgId: org.id, role: 'member' });
 
@@ -129,9 +133,11 @@ describe('org tier — invitations, direct-add, move, redaction', () => {
     expect(memberRows.map((m) => m.userId)).toContain(newcomer.id);
 
     // Second accept → 410 ALREADY_ACCEPTED
-    const again = await req(`/api/org-invitations/${invitedBody.token}/accept`, newcomer.id, {
-      method: 'POST',
-    });
+    const again = await req(
+      `/api/org-invitations/${invitedBody.token}/accept`,
+      newcomer.id,
+      { method: 'POST' },
+    );
     expect(again.status).toBe(410);
   });
 

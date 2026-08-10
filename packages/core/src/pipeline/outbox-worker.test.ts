@@ -59,8 +59,9 @@ const txExecute = vi.fn(async (q: unknown) => {
   return [];
 });
 
-const transactionMock = vi.fn(async (cb: (tx: { execute: typeof txExecute }) => Promise<unknown>) =>
-  cb({ execute: txExecute }),
+const transactionMock = vi.fn(
+  async (cb: (tx: { execute: typeof txExecute }) => Promise<unknown>) =>
+    cb({ execute: txExecute }),
 );
 
 vi.mock('../db/client.js', () => ({
@@ -127,7 +128,9 @@ describe('outbox-worker', () => {
         actor: expect.objectContaining({ type: 'user', id: 'u-1' }),
       }),
     );
-    expect(updateCalls).toEqual([expect.objectContaining({ kind: 'processed' })]);
+    expect(updateCalls).toEqual([
+      expect.objectContaining({ kind: 'processed' }),
+    ]);
   });
 
   it('on subscriber failure, leaves row unprocessed and records last_error', async () => {
@@ -139,7 +142,9 @@ describe('outbox-worker', () => {
 
     expect(result.processed).toBe(0);
     expect(result.failed).toBe(1);
-    expect(updateCalls).toEqual([expect.objectContaining({ kind: 'failed' })]);
+    expect(updateCalls).toEqual([
+      expect.objectContaining({ kind: 'failed' }),
+    ]);
   });
 
   it('processes a batch of rows in a single tx', async () => {

@@ -10,19 +10,19 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, comments, issues, pipelineRuns, projects } from '../db/schema.js';
 import {
-  type TransitionActor,
   TransitionError,
+  type TransitionActor,
   transitionIssueStatus,
 } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
-import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import {
-  PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
   pipelineConfigSchema,
+  PIPELINE_CONFIG_DEFAULTS,
 } from '../pipeline/pipeline-config-schema.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { selectRunnerForJob } from '../runners/select.js';
+import { insertAndEnqueueJob, ActiveJobConflictError } from '../pipeline/enqueue-helper.js';
 import { resolveReleaseGateStatus } from './gate.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
@@ -147,7 +147,9 @@ export async function createReleaseBatch(
 
   if (claimed.length !== issueIds.length) {
     await closeRunIfOneShot(run.id, 'cancelled');
-    throw new ClaimConflictError(issueIds.filter((id) => !claimed.some((r) => r.id === id)));
+    throw new ClaimConflictError(
+      issueIds.filter((id) => !claimed.some((r) => r.id === id)),
+    );
   }
 
   const issueRows = await db
@@ -278,12 +280,7 @@ export async function finishReleaseBatch(
   actor: TransitionActor,
 ): Promise<FinishReleaseBatchResult> {
   const claimed = await db
-    .select({
-      id: issues.id,
-      status: issues.status,
-      reopenCount: issues.reopenCount,
-      projectId: issues.projectId,
-    })
+    .select({ id: issues.id, status: issues.status, reopenCount: issues.reopenCount, projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.releaseBatchRunId, runId));
 
@@ -293,12 +290,7 @@ export async function finishReleaseBatch(
   for (const issue of claimed) {
     try {
       await transitionIssueStatus(
-        {
-          id: issue.id,
-          projectId: issue.projectId,
-          status: issue.status,
-          reopenCount: issue.reopenCount,
-        },
+        { id: issue.id, projectId: issue.projectId, status: issue.status, reopenCount: issue.reopenCount },
         'closed',
         actor,
       );
@@ -400,7 +392,6 @@ export async function getActiveReleaseBatch(
   return {
     runId: run.id,
     issueIds: claimedIssues.map((r) => r.id),
-    startedAt:
-      run.started_at instanceof Date ? run.started_at.toISOString() : String(run.started_at),
+    startedAt: run.started_at instanceof Date ? run.started_at.toISOString() : String(run.started_at),
   };
 }

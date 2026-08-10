@@ -84,10 +84,7 @@ describe('resolveJobMcpServers (ISS-683)', () => {
       stageMcpServers: { 'chrome-devtools-mcp': true },
       stageDeclaredNames: ['chrome-devtools-mcp'],
     });
-    expect(withStage.mcpServers?.['chrome-devtools-mcp']).toMatchObject({
-      type: 'stdio',
-      command: 'npx',
-    });
+    expect(withStage.mcpServers?.['chrome-devtools-mcp']).toMatchObject({ type: 'stdio', command: 'npx' });
     expect(withStage.droppedNames).toEqual([]);
 
     // And a stage that declares nothing gets nothing back — top-level `{}`

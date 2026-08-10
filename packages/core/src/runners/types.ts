@@ -104,9 +104,7 @@ export interface RunnerAdapter {
   type: RunnerType | string;
   /** Returns a Zod schema describing the `config` jsonb shape. */
   configSchema: z.ZodType;
-  validateConfig(
-    config: unknown,
-  ): { ok: true; config: Record<string, unknown> } | { ok: false; error: string };
+  validateConfig(config: unknown): { ok: true; config: Record<string, unknown> } | { ok: false; error: string };
   dispatch(input: DispatchInput): Promise<DispatchResult>;
   health(input: HealthInput): Promise<HealthResult>;
   refreshQuota?(input: HealthInput): Promise<QuotaResult>;

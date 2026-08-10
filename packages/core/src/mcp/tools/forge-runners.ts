@@ -84,7 +84,7 @@ function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
 export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_runners',
   description:
-    'Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).',
+    "Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -115,7 +115,9 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
           ),
         )
         .groupBy(jobs.runnerId);
-      const inFlightMap = new Map(inFlightRows.map((r) => [r.runnerId ?? '', Number(r.n ?? 0)]));
+      const inFlightMap = new Map(
+        inFlightRows.map((r) => [r.runnerId ?? '', Number(r.n ?? 0)]),
+      );
       return {
         runners: rows.map((r) => ({
           ...publicRunnerRow(r),

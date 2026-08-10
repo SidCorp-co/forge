@@ -106,12 +106,7 @@ describe('GET /api/issues/:id/activity', () => {
   it('403 when non-member', async () => {
     auth();
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // issue lookup
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/activity`, {
       headers: { authorization: `Bearer ${await token()}` },
@@ -204,12 +199,7 @@ describe('GET /api/projects/:id/activity', () => {
 
   it('403 when non-member', async () => {
     auth();
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/activity`, {
       headers: { authorization: `Bearer ${await token()}` },
     });

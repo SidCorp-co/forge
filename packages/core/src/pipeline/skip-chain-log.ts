@@ -8,7 +8,12 @@
 
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues, projects } from '../db/schema.js';
+import {
+  type IssueStatus,
+  comments,
+  issues,
+  projects,
+} from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { SkipReason } from './state-machine.js';
 
@@ -26,7 +31,10 @@ export interface SkipChainEntry {
  * each hop is its own UPDATE. `pipeline_runs.metadata` is jsonb so no
  * migration is required.
  */
-export async function appendSkipChainEntry(runId: string, entry: SkipChainEntry): Promise<void> {
+export async function appendSkipChainEntry(
+  runId: string,
+  entry: SkipChainEntry,
+): Promise<void> {
   const payload = JSON.stringify([entry]);
   await db.execute(sql`
     UPDATE pipeline_runs
@@ -47,7 +55,10 @@ export async function appendSkipChainEntry(runId: string, entry: SkipChainEntry)
  * project rule. Mirrors the missing-skill-guard tone — surfaces the
  * misconfiguration and the corrective action.
  */
-export function buildSkipChainCappedCommentBody(from: IssueStatus, visited: IssueStatus[]): string {
+export function buildSkipChainCappedCommentBody(
+  from: IssueStatus,
+  visited: IssueStatus[],
+): string {
   const trail = visited.length > 0 ? visited.join(' → ') : '(none)';
   return [
     `🛑 **Auto-skip chain capped at stage \`${from}\`**`,
@@ -97,3 +108,4 @@ export async function postSkipChainCappedComment(args: {
     );
   }
 }
+

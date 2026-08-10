@@ -17,7 +17,7 @@ type DeviceRow = {
   platform: 'macos' | 'linux' | 'windows';
   tokenHash: string | null;
   tokenPrefix: string | null;
-  disabledAt: null;
+  disabledAt: null,
   status: 'online' | 'offline' | 'revoked';
   createdAt: Date;
 };

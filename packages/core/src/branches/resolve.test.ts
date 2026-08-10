@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { type IssueLike, type ProjectLike, resolveIssueBranches } from './resolve.js';
+import {
+  type IssueLike,
+  type ProjectLike,
+  resolveIssueBranches,
+} from './resolve.js';
 
 describe('resolveIssueBranches', () => {
   const cases: Array<{

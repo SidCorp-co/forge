@@ -727,10 +727,7 @@ describe('ISS-580 estimateGroupContextTokens — real-PG SQL verification', () =
   });
 
   it('returns 0 when no usage_records exist for the group', async () => {
-    const tokens = await estimateGroupContextTokens({
-      issueId: randomUUID(),
-      sessionGroup: 'impl',
-    });
+    const tokens = await estimateGroupContextTokens({ issueId: randomUUID(), sessionGroup: 'impl' });
     expect(tokens).toBe(0);
   });
 

@@ -129,7 +129,8 @@ const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const USER_ID = '44444444-4444-4444-8444-444444444444';
 const ATT_ID = '55555555-5555-4555-8555-555555555555';
 
-const PAT_TOKEN = 'forge_pat_dev_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const PAT_TOKEN =
+  'forge_pat_dev_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const DEVICE_TOKEN = 'device_token_opaque_value';
 
 beforeEach(() => {
@@ -153,19 +154,12 @@ function makeFile(content: string, name = 'pic.png', type = 'image/png'): FormDa
 }
 
 function memberAccess() {
-  return {
-    projectId: PROJECT_ID,
-    orgId: 'org-1',
-    role: 'admin' as const,
-    orgRole: 'owner' as const,
-  };
+  return { projectId: PROJECT_ID, orgId: 'org-1', role: 'admin' as const, orgRole: 'owner' as const };
 }
 
 describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
   it('200 with bytes via user JWT', async () => {
-    queueResult([
-      { id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID },
-    ]);
+    queueResult([{ id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce(memberAccess());
     storageGet.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
 
@@ -180,9 +174,7 @@ describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
     verifyPatMock.mockResolvedValueOnce({
       row: { id: 'pat-1', userId: USER_ID, scopes: [], projectIds: null, rateLimitMax: null },
     });
-    queueResult([
-      { id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID },
-    ]);
+    queueResult([{ id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce(memberAccess());
     storageGet.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
 
@@ -195,9 +187,7 @@ describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
 
   it('200 with bytes via device token', async () => {
     verifyDeviceTokenMock.mockResolvedValueOnce({ id: 'device-1', ownerId: USER_ID });
-    queueResult([
-      { id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID },
-    ]);
+    queueResult([{ id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce(memberAccess());
     storageGet.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
 
@@ -212,13 +202,7 @@ describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
 describe('GET /api/comments/attachments/:id — inert serving for svg/html (AC-B)', () => {
   it('image/svg+xml downloads as attachment with CSP sandbox + nosniff', async () => {
     queueResult([
-      {
-        id: ATT_ID,
-        path: '/tmp/x.svg',
-        mime: 'image/svg+xml',
-        name: 'mock.svg',
-        projectId: PROJECT_ID,
-      },
+      { id: ATT_ID, path: '/tmp/x.svg', mime: 'image/svg+xml', name: 'mock.svg', projectId: PROJECT_ID },
     ]);
     projectAccess.mockResolvedValueOnce(memberAccess());
     storageGet.mockResolvedValueOnce(Buffer.from('<svg><script>alert(1)</script></svg>'));
@@ -234,13 +218,7 @@ describe('GET /api/comments/attachments/:id — inert serving for svg/html (AC-B
 
   it('text/html downloads as attachment with CSP sandbox + nosniff', async () => {
     queueResult([
-      {
-        id: ATT_ID,
-        path: '/tmp/x.html',
-        mime: 'text/html',
-        name: 'mock.html',
-        projectId: PROJECT_ID,
-      },
+      { id: ATT_ID, path: '/tmp/x.html', mime: 'text/html', name: 'mock.html', projectId: PROJECT_ID },
     ]);
     projectAccess.mockResolvedValueOnce(memberAccess());
     storageGet.mockResolvedValueOnce(Buffer.from('<script>alert(1)</script>'));
@@ -352,12 +330,7 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
 
   it('403 when not a project member', async () => {
     queueResult([{ id: COMMENT_ID, issueId: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },
@@ -407,9 +380,7 @@ describe('Comment CRUD auth is NOT widened by the merge (AC-A bullet 2)', () => 
   it('GET /:id/replies 200s a valid user JWT (auth still works for the real case)', async () => {
     // assertEmailVerified() runs first on this route and does its own db lookup.
     queueResult([{ emailVerifiedAt: new Date('2026-01-01') }]);
-    queueResult([
-      { id: COMMENT_ID, issueId: ISSUE_ID, authorId: USER_ID, body: 'x', projectId: PROJECT_ID },
-    ]);
+    queueResult([{ id: COMMENT_ID, issueId: ISSUE_ID, authorId: USER_ID, body: 'x', projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce(memberAccess());
     queueResult([{ n: 0 }]);
     queueResult([]);

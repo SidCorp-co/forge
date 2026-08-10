@@ -226,12 +226,8 @@ describe('ISS-40 dispatch-tick E2E', () => {
       const blockedIssue = await insertIssue(project.id);
       const readyIssue = await insertIssue(project.id);
       // Pick order: make the unplaceable one go first.
-      await harness.db.execute(
-        sql`UPDATE issues SET priority = 'critical' WHERE id = ${blockedIssue}`,
-      );
-      await harness.db.execute(
-        sql`UPDATE issues SET priority = 'low'      WHERE id = ${readyIssue}`,
-      );
+      await harness.db.execute(sql`UPDATE issues SET priority = 'critical' WHERE id = ${blockedIssue}`);
+      await harness.db.execute(sql`UPDATE issues SET priority = 'low'      WHERE id = ${readyIssue}`);
       const blockedJob = await insertJob(project.id, { issueId: blockedIssue });
       const readyJob = await insertJob(project.id, { issueId: readyIssue });
 

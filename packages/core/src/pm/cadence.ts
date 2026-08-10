@@ -48,7 +48,10 @@ export async function runPmCadenceTickOnce(now: Date = new Date()): Promise<stri
       const result = await spawnPmSession({ projectId: c.projectId, cause: 'tick' });
       if (result.ok) fired.push(c.projectId);
     } catch (err) {
-      logger.warn({ err, projectId: c.projectId, cron: c.cadenceCron }, 'pm.cadence: bad cron');
+      logger.warn(
+        { err, projectId: c.projectId, cron: c.cadenceCron },
+        'pm.cadence: bad cron',
+      );
     }
   }
   return fired;
@@ -59,15 +62,19 @@ export async function registerPmCadenceTicker(): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(PM_CADENCE_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: see schedules/runner.ts
-  const id = (await (boss as any).work(PM_CADENCE_QUEUE, { batchSize: 1 }, async () => {
-    try {
-      const fired = await runPmCadenceTickOnce();
-      if (fired.length > 0) logger.info({ projectIds: fired }, 'pm.cadence: fired');
-    } catch (err) {
-      logger.error({ err }, 'pm.cadence: tick threw');
-      throw err;
-    }
-  })) as string;
+  const id = (await (boss as any).work(
+    PM_CADENCE_QUEUE,
+    { batchSize: 1 },
+    async () => {
+      try {
+        const fired = await runPmCadenceTickOnce();
+        if (fired.length > 0) logger.info({ projectIds: fired }, 'pm.cadence: fired');
+      } catch (err) {
+        logger.error({ err }, 'pm.cadence: tick threw');
+        throw err;
+      }
+    },
+  )) as string;
   workerId = id;
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).schedule(PM_CADENCE_QUEUE, PM_CADENCE_CRON, {});

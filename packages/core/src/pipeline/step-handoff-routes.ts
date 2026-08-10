@@ -3,9 +3,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectAccess } from '../lib/authz.js';
-import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
+import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
+import {
+  deleteIssueContext,
+  getIssueContexts,
+  writeIssueContext,
+} from './issue-context-store.js';
 
 /**
  * REST surface for step-handoff persistence (proposal Y). 1-to-1 with the
@@ -31,14 +35,7 @@ const listQuerySchema = z.object({
   steps: z
     .string()
     .optional()
-    .transform((v) =>
-      v
-        ? v
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined,
-    ),
+    .transform((v) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : undefined)),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   orderDir: z.enum(['asc', 'desc']).default('desc'),
 });

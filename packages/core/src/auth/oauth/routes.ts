@@ -1,13 +1,13 @@
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts } from '../../db/schema.js';
+import { env } from '../../config/env.js';
 import { isEnabled } from '../../lib/feature-flags.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { handleCallback, handleStart } from './handler.js';
-import { type ProviderId, getEnabledProviders, toPublic } from './providers.js';
+import { getEnabledProviders, toPublic, type ProviderId } from './providers.js';
 
 export const oauthRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -68,14 +68,19 @@ oauthRoutes.get('/oauth/:provider/reauth-start', requireAuth(), async (c) => {
   const [linked] = await db
     .select({ id: oauthAccounts.id })
     .from(oauthAccounts)
-    .where(and(eq(oauthAccounts.userId, uid), eq(oauthAccounts.provider, providerId)))
+    .where(
+      and(eq(oauthAccounts.userId, uid), eq(oauthAccounts.provider, providerId)),
+    )
     .limit(1);
 
   if (!linked) {
     // Top-level browser navigation, so a JSON 4xx would leave the user on a
     // raw error page. Redirect back to the tokens settings tab with a typed
     // code so the page can render a banner.
-    return c.redirect(`${appBase}/settings?tab=tokens&reauth_error=oauth_not_linked`, 302);
+    return c.redirect(
+      `${appBase}/settings?tab=tokens&reauth_error=oauth_not_linked`,
+      302,
+    );
   }
 
   return handleStart(c, providerId, { mode: 'reauth', uid });

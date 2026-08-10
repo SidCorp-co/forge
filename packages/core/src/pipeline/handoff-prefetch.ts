@@ -1,14 +1,14 @@
-import type { JobType } from '../db/schema.js';
 import {
   type HandoffScope,
   type HandoffStep,
   type StepHandoffPayload,
   isHandoffStep,
 } from '../memory/step-handoff-schema.js';
-import type { PriorHandoff } from '../prompt/user.js';
+import type { JobType } from '../db/schema.js';
 import { resolveHandoffsPolicy } from './handoff-policy.js';
-import { getIssueContexts } from './issue-context-store.js';
 import type { UserPromptPolicyConfig } from './pipeline-config-schema.js';
+import type { PriorHandoff } from '../prompt/user.js';
+import { getIssueContexts } from './issue-context-store.js';
 
 /**
  * Pre-fetch step-handoff context for a new pipeline job (proposal Y wiring).

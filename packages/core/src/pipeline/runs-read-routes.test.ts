@@ -29,19 +29,23 @@ function selectWhere(): unknown {
   return {
     orderBy: selectOrderBy,
     limit: selectLimit,
-    then: (onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) =>
-      Promise.resolve(whereThenableValues.shift() ?? []).then(onFulfilled, onRejected),
+    then: (
+      onFulfilled: (v: unknown) => unknown,
+      onRejected?: (e: unknown) => unknown,
+    ) =>
+      Promise.resolve(whereThenableValues.shift() ?? []).then(
+        onFulfilled,
+        onRejected,
+      ),
   };
 }
 
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
 // .where().limit() — route the join chain back into the same where/limit FIFO.
-const selectLeftJoin = vi.fn(
-  (): Record<string, unknown> => ({
-    leftJoin: selectLeftJoin,
-    where: selectWhere,
-  }),
-);
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 function setupSelectChain() {
@@ -62,7 +66,10 @@ vi.mock('./runs-rollup.js', () => ({
   listItemsFromRows: (rows: unknown[]) => listItemsSpy(rows),
 }));
 
-const { pipelineRunReadRoutes, pipelineRunProjectRoutes } = await import('./runs-read-routes.js');
+const {
+  pipelineRunReadRoutes,
+  pipelineRunProjectRoutes,
+} = await import('./runs-read-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -251,9 +258,10 @@ describe('GET /api/projects/:id/pipeline-runs', () => {
 
   it('rejects invalid status filter with 400', async () => {
     authVerified();
-    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/pipeline-runs?status=bogus`, {
-      headers: { authorization: `Bearer ${await token()}` },
-    });
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/pipeline-runs?status=bogus`,
+      { headers: { authorization: `Bearer ${await token()}` } },
+    );
     expect(res.status).toBe(400);
   });
 });

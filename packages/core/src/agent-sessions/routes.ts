@@ -210,7 +210,10 @@ agentSessionRoutes.get(
 
     const sessionMatch = usageSessionMatch(sql`= ${id}`);
 
-    const [totals] = await db.select(usageTotalsSelection()).from(usageRecords).where(sessionMatch);
+    const [totals] = await db
+      .select(usageTotalsSelection())
+      .from(usageRecords)
+      .where(sessionMatch);
 
     // Per-model breakdown for the detail rail's "Model" stat (one row per model
     // this session billed against), ordered by spend.

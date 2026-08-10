@@ -52,7 +52,9 @@ export interface MergeStatesConfig {
  * project row). Probes one level deep for the `pipelineConfig` wrapper;
  * unknown shape falls back to defaults.
  */
-export function resolveMergeStates(pipelineConfigOrAgentConfig: unknown): MergeStatesConfig {
+export function resolveMergeStates(
+  pipelineConfigOrAgentConfig: unknown,
+): MergeStatesConfig {
   const obj = (pipelineConfigOrAgentConfig ?? {}) as Record<string, unknown>;
   const pipelineConfig =
     obj.pipelineConfig && typeof obj.pipelineConfig === 'object'

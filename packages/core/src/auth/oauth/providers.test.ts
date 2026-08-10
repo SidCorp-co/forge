@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock env BEFORE importing the module — providers.ts captures `env` at
 // import time so we set up a fixture-driven `env` object per test by
@@ -76,6 +76,8 @@ describe('oauth provider registry', () => {
     const { getCallbackUrl } = await loadProvidersWithEnv({
       OAUTH_REDIRECT_BASE: 'https://api.example.com/',
     });
-    expect(getCallbackUrl('google')).toBe('https://api.example.com/api/auth/oauth/google/callback');
+    expect(getCallbackUrl('google')).toBe(
+      'https://api.example.com/api/auth/oauth/google/callback',
+    );
   });
 });

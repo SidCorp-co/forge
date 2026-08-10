@@ -17,11 +17,14 @@
 import { z } from 'zod';
 import { issueDependencyKinds, jobTypes, modelTiers } from '../../db/schema.js';
 import { pmDispatchHandler } from './forge-pm-dispatch.js';
-import { PM_GRAPH_MAX_DEPTH, pmGraphHandler } from './forge-pm-graph.js';
+import { pmGraphHandler, PM_GRAPH_MAX_DEPTH } from './forge-pm-graph.js';
 import { pmRunnerLoadHandler } from './forge-pm-runner-load.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import { pmSnapshotHandler } from './forge-pm-snapshot.js';
-import { PM_DECISION_CAUSES, pmWriteDecisionHandler } from './forge-pm-write-decision.js';
+import {
+  PM_DECISION_CAUSES,
+  pmWriteDecisionHandler,
+} from './forge-pm-write-decision.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 
 const escalateSchema = z
@@ -62,7 +65,10 @@ const inputSchema = z
     toIssueId: z.uuid().optional(),
     kind: z.enum(issueDependencyKinds).optional(),
     validUntil: z.iso.datetime().optional(),
-    decomposeOpts: z.object({ useIntegrationBranch: z.boolean().optional() }).strict().optional(),
+    decomposeOpts: z
+      .object({ useIntegrationBranch: z.boolean().optional() })
+      .strict()
+      .optional(),
     // write_decision
     sessionId: z.uuid().optional(),
     cause: z.enum(PM_DECISION_CAUSES).optional(),

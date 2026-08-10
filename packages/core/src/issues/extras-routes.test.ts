@@ -167,12 +167,7 @@ describe('POST /api/issues/:id/enrich', () => {
   it('403 when not a project member', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/enrich`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await token()}` },
@@ -338,12 +333,7 @@ describe('GET /api/issues/pipeline-timing', () => {
 
   it('403 when not a project member', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/issues/pipeline-timing?projectId=${PROJECT_ID}`, {
       headers: { authorization: `Bearer ${await token()}` },
     });

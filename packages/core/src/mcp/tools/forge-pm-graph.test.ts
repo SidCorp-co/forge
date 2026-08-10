@@ -19,7 +19,8 @@ chain.orderBy = () => chain;
 chain.limit = () => chain;
 chain.groupBy = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
-chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
+chain.then = (resolve: any, reject: any) =>
+  Promise.resolve(queue.shift()).then(resolve, reject);
 
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => chain) },

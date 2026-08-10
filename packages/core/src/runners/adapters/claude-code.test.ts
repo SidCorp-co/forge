@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const publish = vi.fn((..._args: unknown[]) => 0);
 
@@ -101,21 +101,10 @@ describe('claude-code adapter', () => {
         dispatchedAt: new Date(),
       },
       runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
+        id: 'r-1', projectId: 'p-1', type: 'claude-code', host: 'device',
+        deviceId: 'd-1', name: 'desk', labels: [], capabilities: {}, config: {},
+        status: 'online', lastSeenAt: new Date(), lastError: null,
+        limitReason: null, rateLimitedUntil: null, limitDetail: null,
       },
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: string } }).data;
@@ -133,21 +122,10 @@ describe('claude-code adapter', () => {
         dispatchedAt: new Date(),
       },
       runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
+        id: 'r-1', projectId: 'p-1', type: 'claude-code', host: 'device',
+        deviceId: 'd-1', name: 'desk', labels: [], capabilities: {}, config: {},
+        status: 'online', lastSeenAt: new Date(), lastError: null,
+        limitReason: null, rateLimitedUntil: null, limitDetail: null,
       },
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: unknown } }).data;

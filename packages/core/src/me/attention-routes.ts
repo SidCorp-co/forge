@@ -2,7 +2,14 @@ import { and, desc, eq, inArray, isNull, notExists, notInArray, or, sql } from '
 import { alias } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
-import { commentMentions, comments, issues, jobs, notifications, projects } from '../db/schema.js';
+import {
+  comments,
+  commentMentions,
+  issues,
+  jobs,
+  notifications,
+  projects,
+} from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 type AttentionKind = 'needs_review' | 'awaiting_input' | 'mention' | 'failed_job';
@@ -79,7 +86,12 @@ meAttentionRoutes.get('/attention', async (c) => {
       })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(and(eq(issues.assigneeId, userId), inArray(issues.status, [...NEEDS_REVIEW_STATUSES])))
+      .where(
+        and(
+          eq(issues.assigneeId, userId),
+          inArray(issues.status, [...NEEDS_REVIEW_STATUSES]),
+        ),
+      )
       .orderBy(desc(issues.updatedAt))
       .limit(PER_BUCKET),
 
@@ -96,7 +108,10 @@ meAttentionRoutes.get('/attention', async (c) => {
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
       .where(
-        and(eq(issues.assigneeId, userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])),
+        and(
+          eq(issues.assigneeId, userId),
+          inArray(issues.status, [...AWAITING_INPUT_STATUSES]),
+        ),
       )
       .orderBy(desc(issues.updatedAt))
       .limit(PER_BUCKET),
@@ -158,7 +173,10 @@ meAttentionRoutes.get('/attention', async (c) => {
           // Exclusion 1: drop every superseded attempt in a retry chain — see
           // the criteria doc above.
           notExists(
-            db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id)),
+            db
+              .select({ one: sql`1` })
+              .from(retryJobs)
+              .where(eq(retryJobs.retryOf, jobs.id)),
           ),
           // Exclusion 2: drop failures whose linked issue already moved on;
           // null-issue jobs (no `jobs.issueId`) are kept.

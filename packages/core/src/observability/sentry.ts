@@ -1,5 +1,5 @@
-import { scrubSentryEvent } from '@forge/observability';
 import * as Sentry from '@sentry/node';
+import { scrubSentryEvent } from '@forge/observability';
 import pkg from '../../package.json' with { type: 'json' };
 
 // Sentry is opt-in for `@forge/core`. Set `SENTRY_DSN` in the runtime

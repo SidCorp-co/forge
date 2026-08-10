@@ -185,10 +185,7 @@ describe('ISS-492 — cross-tenant IDOR isolation', () => {
     await seedRunner(projB.id, deviceB.id);
 
     // Foreign deviceId — online device in project B, but userA is unrelated.
-    const byDevice = await req(
-      `/api/agent-sessions/desktop/status?deviceId=${deviceB.id}`,
-      userA.id,
-    );
+    const byDevice = await req(`/api/agent-sessions/desktop/status?deviceId=${deviceB.id}`, userA.id);
     expect(byDevice.status).toBe(200);
     expect(await byDevice.json()).toEqual({ data: { connected: false } });
 
@@ -222,12 +219,7 @@ describe('ISS-492 — cross-tenant IDOR isolation', () => {
 
     const create = await req('/api/usage-records', userA.id, {
       method: 'POST',
-      body: JSON.stringify({
-        source: 'cli',
-        model: 'claude-opus-4-8',
-        inputTokens: 1,
-        outputTokens: 2,
-      }),
+      body: JSON.stringify({ source: 'cli', model: 'claude-opus-4-8', inputTokens: 1, outputTokens: 2 }),
     });
     expect(create.status).toBe(400);
   });

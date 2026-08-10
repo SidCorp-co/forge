@@ -161,7 +161,9 @@ if (isMain) {
   run()
     .catch((err) => {
       // Never block core boot on a release-fetch failure.
-      console.warn(`[runner-release] skipped: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(
+        `[runner-release] skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
     })
     .finally(() => {
       // Explicit clean exit so `&&` in the container CMD proceeds to the server.

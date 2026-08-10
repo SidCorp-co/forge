@@ -37,7 +37,10 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { dispatchTickForProject, setDispatchTickDebounceMs } = await import('./dispatch-tick.js');
+const {
+  dispatchTickForProject,
+  setDispatchTickDebounceMs,
+} = await import('./dispatch-tick.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,7 +80,9 @@ describe('dispatchTickForProject', () => {
   // stateless picker honors excludeJobIds (modelled here as j-stuck → null), so
   // it never re-picks the skipped job and the loop ends with no spin.
   it('excludes a skipped job and re-picks (no head-of-line block, no spin)', async () => {
-    pickFn.mockResolvedValueOnce({ id: 'j-stuck' }).mockResolvedValueOnce(null); // real picker excludes j-stuck → null
+    pickFn
+      .mockResolvedValueOnce({ id: 'j-stuck' })
+      .mockResolvedValueOnce(null); // real picker excludes j-stuck → null
     handleDispatch.mockResolvedValue('skipped');
     await dispatchTickForProject('p1');
     expect(handleDispatch).toHaveBeenCalledTimes(1);
@@ -92,7 +97,8 @@ describe('dispatchTickForProject', () => {
     const firstPick = new Promise((r) => {
       resolveFirst = r;
     });
-    pickFn.mockImplementationOnce(() => firstPick.then(() => null));
+    pickFn
+      .mockImplementationOnce(() => firstPick.then(() => null));
     // second .mock would be triggered if dropping doesn't work
     pickFn.mockResolvedValueOnce(null);
 
@@ -148,7 +154,9 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
   // than a persisted prior gate reason. A dispatched job + supplied blocker
   // → emit; anything else → no emit.
   it('emits dependency.unblocked when a dispatched job has triggerBlockerIssueId', async () => {
-    pickFn.mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID }).mockResolvedValueOnce(null);
+    pickFn
+      .mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID })
+      .mockResolvedValueOnce(null);
     handleDispatch.mockResolvedValue('dispatched');
 
     await dispatchTickForProject('p1', { triggerBlockerIssueId: BLOCKER_ID });
@@ -166,7 +174,9 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
   });
 
   it('does not emit when triggerBlockerIssueId is absent', async () => {
-    pickFn.mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID }).mockResolvedValueOnce(null);
+    pickFn
+      .mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID })
+      .mockResolvedValueOnce(null);
     handleDispatch.mockResolvedValue('dispatched');
 
     await dispatchTickForProject('p1');
@@ -178,7 +188,9 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
   });
 
   it('does not emit when handleDispatch returns skipped', async () => {
-    pickFn.mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID }).mockResolvedValueOnce(null);
+    pickFn
+      .mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID })
+      .mockResolvedValueOnce(null);
     handleDispatch.mockResolvedValue('skipped');
 
     await dispatchTickForProject('p1', { triggerBlockerIssueId: BLOCKER_ID });
@@ -189,3 +201,4 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
     expect(matched).toBeUndefined();
   });
 });
+

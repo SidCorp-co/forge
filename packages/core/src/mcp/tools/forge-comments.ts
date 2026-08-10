@@ -10,15 +10,15 @@ import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { comments, issues, projectMembers, projects } from '../../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
+import { comments, issues, projectMembers, projects } from '../../db/schema.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   zodToMcpSchema,
+  assertPrincipalIsWriter,
 } from './lib.js';
 
 /**

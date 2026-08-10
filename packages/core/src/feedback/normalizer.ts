@@ -112,7 +112,13 @@ export function registerFeedbackNormalizer(bus: HooksBus): void {
   bus.on('jobFailed', (p) => {
     if (!p.issueId) return;
     queueMicrotask(() => {
-      foldReportsForJob(p.jobId, p.projectId, p.issueId, 'failed', p.failureKind).catch((err) => {
+      foldReportsForJob(
+        p.jobId,
+        p.projectId,
+        p.issueId,
+        'failed',
+        p.failureKind,
+      ).catch((err) => {
         logger.warn(
           { err: (err as Error).message, jobId: p.jobId },
           'feedback.normalizer: fold failed (jobFailed)',

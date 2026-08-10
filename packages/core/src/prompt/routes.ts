@@ -4,7 +4,11 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type JobType, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireAuth,
+} from '../middleware/auth.js';
 // Single source of truth for stage-override schemas. Reused here so the
 // preview endpoint inherits the F12 refinement (replace mode requires
 // non-empty extras) and any future invariants stay in lockstep.
@@ -13,8 +17,14 @@ import {
   userPromptPolicySchema,
 } from '../pipeline/pipeline-config-schema.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
-import { type SystemPromptOverride, buildPipelinePreambleStructured } from './system.js';
-import { type UserPromptPolicyOverride, buildJobPromptString } from './user.js';
+import {
+  buildPipelinePreambleStructured,
+  type SystemPromptOverride,
+} from './system.js';
+import {
+  buildJobPromptString,
+  type UserPromptPolicyOverride,
+} from './user.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -65,7 +75,8 @@ promptRoutes.post(
       throw forbidden('not a project member');
     }
 
-    const systemPromptOverride: SystemPromptOverride | null = body.overrides?.systemPrompt ?? null;
+    const systemPromptOverride: SystemPromptOverride | null =
+      body.overrides?.systemPrompt ?? null;
     const userPromptPolicy: UserPromptPolicyOverride | null =
       body.overrides?.userPromptPolicy ?? null;
 
@@ -78,7 +89,9 @@ promptRoutes.post(
     // above): an issueId belonging to a DIFFERENT project resolves to null and
     // 404s below instead of leaking that issue's content (ISS-492).
     const issueSnapshot =
-      body.issueId !== undefined ? await loadIssueSnapshot(body.issueId, body.projectId) : null;
+      body.issueId !== undefined
+        ? await loadIssueSnapshot(body.issueId, body.projectId)
+        : null;
     if (body.issueId !== undefined && !issueSnapshot) {
       throw notFound('issue not found');
     }

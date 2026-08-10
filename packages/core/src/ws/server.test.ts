@@ -33,9 +33,7 @@ vi.mock('../auth/cookie.js', () => ({
 
 vi.mock('../db/client.js', () => ({
   db: {
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(async () => []) })) })),
-    })),
+    select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(async () => []) })) })) })),
   },
 }));
 
@@ -81,9 +79,7 @@ function dial(opts: {
   protocols?: string | string[];
   query?: string;
   headers?: Record<string, string>;
-}): Promise<
-  { status: 'open'; protocol: string } | { status: 'error'; code?: number; message: string }
-> {
+}): Promise<{ status: 'open'; protocol: string } | { status: 'error'; code?: number; message: string }> {
   const url = `ws://127.0.0.1:${port}/ws${opts.query ? `?${opts.query}` : ''}`;
   return new Promise((resolve) => {
     const ws = new WebSocketLib(url, opts.protocols, { headers: opts.headers });

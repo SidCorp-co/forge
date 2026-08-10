@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 // ISS-580 — the mock must support three call shapes used by the three exported
 // functions in session-resume.ts:
@@ -52,9 +52,7 @@ function serializeSqlFragments(node: unknown): string {
   return out.join(' ');
 }
 
-const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import(
-  './session-resume.js'
-);
+const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import('./session-resume.js');
 
 beforeEach(() => {
   selectLimitResults.length = 0;
@@ -120,25 +118,21 @@ describe('loadResumeBounds (ISS-580)', () => {
   });
 
   it('returns configured values when both fields are present', async () => {
-    selectLimitResults.push([
-      {
-        agentConfig: {
-          pipelineConfig: { maxResumeTokens: 200_000, maxResumeReopenCycles: 5 },
-        },
+    selectLimitResults.push([{
+      agentConfig: {
+        pipelineConfig: { maxResumeTokens: 200_000, maxResumeReopenCycles: 5 },
       },
-    ]);
+    }]);
     const bounds = await loadResumeBounds('p-1');
     expect(bounds).toEqual({ maxResumeTokens: 200_000, maxResumeReopenCycles: 5 });
   });
 
   it('treats 0 as a valid (gate-disabled) value', async () => {
-    selectLimitResults.push([
-      {
-        agentConfig: {
-          pipelineConfig: { maxResumeTokens: 0, maxResumeReopenCycles: 0 },
-        },
+    selectLimitResults.push([{
+      agentConfig: {
+        pipelineConfig: { maxResumeTokens: 0, maxResumeReopenCycles: 0 },
       },
-    ]);
+    }]);
     const bounds = await loadResumeBounds('p-1');
     expect(bounds).toEqual({ maxResumeTokens: 0, maxResumeReopenCycles: 0 });
   });

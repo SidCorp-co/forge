@@ -2,7 +2,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { improvementMessageDrafts, memoryCandidates } from '../db/schema.js';
 
-export type ImprovementMessageDraftRow = typeof improvementMessageDrafts.$inferSelect;
+export type ImprovementMessageDraftRow =
+  typeof improvementMessageDrafts.$inferSelect;
 
 export interface PromoteCandidateInput {
   candidateId: string;

@@ -46,6 +46,9 @@ export async function persistPromptSnapshot(args: PersistPromptSnapshotArgs): Pr
       })
       .where(eq(jobs.id, args.jobId));
   } catch (err) {
-    logger.warn({ err, jobId: args.jobId }, 'prompt-snapshot: persist failed, continuing dispatch');
+    logger.warn(
+      { err, jobId: args.jobId },
+      'prompt-snapshot: persist failed, continuing dispatch',
+    );
   }
 }

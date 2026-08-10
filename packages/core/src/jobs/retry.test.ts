@@ -39,11 +39,7 @@ vi.mock('../pipeline/recovery-verifier.js', () => ({
 }));
 
 // Round-robin candidate set. Default: a healthy 3-device project.
-const onlineDevicesMock = vi.fn(async (..._args: unknown[]) => [
-  'device-A',
-  'device-B',
-  'device-C',
-]);
+const onlineDevicesMock = vi.fn(async (..._args: unknown[]) => ['device-A', 'device-B', 'device-C']);
 vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: (...a: unknown[]) => onlineDevicesMock(...(a as [never])),
 }));

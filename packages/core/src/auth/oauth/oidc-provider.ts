@@ -10,9 +10,14 @@
  * that point at the same machinery; only the issuer URL changes.
  */
 
-import { getDiscovery, verifyIdToken } from './oidc-discovery.js';
 import type { ProviderConfig } from './providers.js';
-import type { AuthorizeArgs, CallbackArgs, OAuthIdentity, OAuthProvider } from './types.js';
+import { getDiscovery, verifyIdToken } from './oidc-discovery.js';
+import type {
+  AuthorizeArgs,
+  CallbackArgs,
+  OAuthIdentity,
+  OAuthProvider,
+} from './types.js';
 
 interface IdTokenClaims {
   sub?: string;
@@ -26,7 +31,10 @@ interface UserInfoResponse {
   email_verified?: boolean;
 }
 
-async function buildAuthorizeUrl(cfg: ProviderConfig, args: AuthorizeArgs): Promise<string> {
+async function buildAuthorizeUrl(
+  cfg: ProviderConfig,
+  args: AuthorizeArgs,
+): Promise<string> {
   if (!cfg.issuerUrl) {
     throw new Error(`oidc: provider ${cfg.id} has no issuerUrl configured`);
   }
@@ -48,7 +56,10 @@ async function buildAuthorizeUrl(cfg: ProviderConfig, args: AuthorizeArgs): Prom
   return `${doc.authorization_endpoint}?${params.toString()}`;
 }
 
-async function callback(cfg: ProviderConfig, args: CallbackArgs): Promise<OAuthIdentity> {
+async function callback(
+  cfg: ProviderConfig,
+  args: CallbackArgs,
+): Promise<OAuthIdentity> {
   if (!cfg.issuerUrl) {
     throw new Error(`oidc: provider ${cfg.id} has no issuerUrl configured`);
   }

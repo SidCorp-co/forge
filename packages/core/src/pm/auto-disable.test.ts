@@ -43,10 +43,7 @@ function queueTxOwner(rows: Array<{ createdBy: string }>): void {
   }));
 }
 
-function setupTxUpdateChain(): {
-  setSpy: ReturnType<typeof vi.fn>;
-  whereSpy: ReturnType<typeof vi.fn>;
-} {
+function setupTxUpdateChain(): { setSpy: ReturnType<typeof vi.fn>; whereSpy: ReturnType<typeof vi.fn> } {
   const whereSpy = vi.fn(async () => undefined);
   const setSpy = vi.fn(() => ({ where: whereSpy }));
   txUpdateMock.mockImplementation(() => ({ set: setSpy }));

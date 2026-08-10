@@ -16,13 +16,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const scheduleRetryMock = vi.fn(
-  async (..._args: unknown[]) =>
-    ({ scheduled: false }) as {
-      scheduled: boolean;
-      reason?: string;
-    },
-);
+const scheduleRetryMock = vi.fn(async (..._args: unknown[]) => ({ scheduled: false }) as {
+  scheduled: boolean;
+  reason?: string;
+});
 vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...args),
 }));
@@ -155,13 +152,7 @@ function makeJob(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   scheduleRetryMock.mockResolvedValue({ scheduled: false });
   issueRowMock.mockReturnValue([
-    {
-      id: 'i1',
-      projectId: 'p1',
-      status: 'in_progress',
-      reopenCount: 0,
-      projectCreatedBy: 'owner1',
-    },
+    { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
   ]);
 });
 
@@ -184,9 +175,11 @@ describe('finalizeFailedJob', () => {
     );
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(dispatchTickMock).toHaveBeenCalledWith('p1');
-    expect(syncSessionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'j1' }), 'failed', {
-      retryPending: true,
-    });
+    expect(syncSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'j1' }),
+      'failed',
+      { retryPending: true },
+    );
     expect(wsPublishMock).toHaveBeenCalledWith(
       'project:p1',
       expect.objectContaining({ event: 'job.failed' }),
@@ -212,10 +205,7 @@ describe('finalizeFailedJob', () => {
 
   it('parks the issue at `waiting` and reaps the run when retry is NOT scheduled', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
-    const retry = await finalizeFailedJob(makeJob({ type: 'code' }), {
-      error: 'boom',
-      exitCode: 1,
-    });
+    const retry = await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom', exitCode: 1 });
 
     expect(retry.scheduled).toBe(false);
     expect(applyTransitionMock).toHaveBeenCalledWith(

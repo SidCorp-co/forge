@@ -35,7 +35,11 @@ const runConflict = (message: string) =>
   new HTTPException(409, { message, cause: { code: 'run_terminal' } });
 
 async function loadRunWithAccess(runId: string, userId: string): Promise<PipelineRunRow> {
-  const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
+  const [row] = await db
+    .select()
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
   if (!row) throw notFound('pipeline run not found');
   // pause/resume/cancel are mutations — viewers are read-only.
   const access = await loadProjectAccess(row.projectId, userId);

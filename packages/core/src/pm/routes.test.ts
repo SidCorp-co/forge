@@ -57,9 +57,7 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
 }));
 
 const spawnMock = vi.fn(
-  async (
-    ..._args: unknown[]
-  ): Promise<{ ok: boolean; jobId?: string | null; reason?: string }> => ({
+  async (..._args: unknown[]): Promise<{ ok: boolean; jobId?: string | null; reason?: string }> => ({
     ok: true,
     jobId: 'pm-1',
   }),

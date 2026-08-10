@@ -103,11 +103,10 @@ export interface RunTransitionArgs extends BaseArgs {
  * `completed` (ISS-352), so a step that finished its work is never recorded as
  * cancelled/failed just because the run closed around its still-active row.
  */
-export function resolvePipelineCompletedTarget<E extends KernelEntity, T extends string>(
-  entity: E,
-  reason: string | null | undefined,
-  fallback: T,
-): T | 'done' | 'completed' {
+export function resolvePipelineCompletedTarget<
+  E extends KernelEntity,
+  T extends string,
+>(entity: E, reason: string | null | undefined, fallback: T): T | 'done' | 'completed' {
   if (reason !== 'pipeline_completed') return fallback;
   if (entity === 'job') return 'done';
   if (entity === 'session') return 'completed';

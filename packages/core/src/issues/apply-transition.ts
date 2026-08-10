@@ -4,7 +4,11 @@ import { type IssueStatus, comments, issues } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { REOPEN_CAP, canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
+import {
+  REOPEN_CAP,
+  canTransitionFree,
+  isReopenEntry,
+} from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
@@ -34,7 +38,9 @@ export type DeviceLite = { id: string; ownerId: string };
  * (ISS-196 trigger attribution); the WS `actorId` is the user id for user
  * actors and the device owner for device actors.
  */
-export type TransitionActor = { type: 'user'; id: string } | ({ type: 'device' } & DeviceLite);
+export type TransitionActor =
+  | { type: 'user'; id: string }
+  | ({ type: 'device' } & DeviceLite);
 
 export type TransitionErrorCode =
   | 'NO_OP'
@@ -165,10 +171,11 @@ export async function transitionIssueStatus(
 
   const reopening = isReopenEntry(fromStatus, toStatus);
   if (reopening && issue.reopenCount >= REOPEN_CAP && !options.overrideReopenCap) {
-    throw new TransitionError('REOPEN_CAP_EXCEEDED', `reopen cap reached (${REOPEN_CAP})`, {
-      reopenCount: issue.reopenCount,
-      max: REOPEN_CAP,
-    });
+    throw new TransitionError(
+      'REOPEN_CAP_EXCEEDED',
+      `reopen cap reached (${REOPEN_CAP})`,
+      { reopenCount: issue.reopenCount, max: REOPEN_CAP },
+    );
   }
 
   // Conditional UPDATE gates on current status so concurrent transitions
@@ -180,41 +187,48 @@ export async function transitionIssueStatus(
   // `withActorContext` so the trigger captures actor metadata via SET LOCAL
   // session settings.
   const txResult = await db.transaction((tx) =>
-    withActorContext(tx, { type: actor.type, id: actor.id }, options.reason ?? null, async (t) => {
-      const [row] = await t
-        .update(issues)
-        .set({
-          status: toStatus,
-          reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-          updatedAt: sql`now()`,
-        })
-        .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
-        .returning({
-          id: issues.id,
-          status: issues.status,
-          reopenCount: issues.reopenCount,
-          updatedAt: issues.updatedAt,
-        });
-      let stampedOnClose = false;
-      if (row) {
-        // ISS-232 — stamp `merged_at` inside the same tx so a rollback
-        // drops the column write alongside the status flip.
-        await markMergedIfLeavingBase(t, {
-          issueId: issue.id,
-          projectId: issue.projectId,
-          fromStatus,
-          toStatus,
-        });
-        // closed = done: a close from ANY surface satisfies the L2 blocks
-        // gate. No-op when merged_at is already stamped (pipeline path).
-        const closeStamp = await markMergedOnClose(t, {
-          issueId: issue.id,
-          toStatus,
-        });
-        stampedOnClose = closeStamp.stamped;
-      }
-      return row ? { row, stampedOnClose } : undefined;
-    }),
+    withActorContext(
+      tx,
+      { type: actor.type, id: actor.id },
+      options.reason ?? null,
+      async (t) => {
+        const [row] = await t
+          .update(issues)
+          .set({
+            status: toStatus,
+            reopenCount: reopening
+              ? sql`${issues.reopenCount} + 1`
+              : issues.reopenCount,
+            updatedAt: sql`now()`,
+          })
+          .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
+          .returning({
+            id: issues.id,
+            status: issues.status,
+            reopenCount: issues.reopenCount,
+            updatedAt: issues.updatedAt,
+          });
+        let stampedOnClose = false;
+        if (row) {
+          // ISS-232 — stamp `merged_at` inside the same tx so a rollback
+          // drops the column write alongside the status flip.
+          await markMergedIfLeavingBase(t, {
+            issueId: issue.id,
+            projectId: issue.projectId,
+            fromStatus,
+            toStatus,
+          });
+          // closed = done: a close from ANY surface satisfies the L2 blocks
+          // gate. No-op when merged_at is already stamped (pipeline path).
+          const closeStamp = await markMergedOnClose(t, {
+            issueId: issue.id,
+            toStatus,
+          });
+          stampedOnClose = closeStamp.stamped;
+        }
+        return row ? { row, stampedOnClose } : undefined;
+      },
+    ),
   );
   const updated = txResult?.row;
   if (!updated) {

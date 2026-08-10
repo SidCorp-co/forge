@@ -102,12 +102,7 @@ describe('POST /api/knowledge/ingest', () => {
 
   it('403 non-member', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request('/api/knowledge/ingest', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -121,12 +116,7 @@ describe('POST /api/knowledge/ingest', () => {
 
   it('200 ingests valid documents', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'member',
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
 
     const res = await buildApp().request('/api/knowledge/ingest', {
       method: 'POST',
@@ -153,12 +143,7 @@ describe('POST /api/knowledge/ingest', () => {
 
   it('skips oversized docs', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'member',
-      orgRole: null,
-    });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
     const oversized = 'x'.repeat(60 * 1024);
 
     const res = await buildApp().request('/api/knowledge/ingest', {

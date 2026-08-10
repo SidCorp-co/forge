@@ -267,9 +267,7 @@ describe('forge_runners', () => {
       set: () => ({
         where: () => ({
           returning: () =>
-            Promise.resolve([
-              { ...runnerRow, status: 'online', capabilities: { maxConcurrent: 4 } },
-            ]),
+            Promise.resolve([{ ...runnerRow, status: 'online', capabilities: { maxConcurrent: 4 } }]),
         }),
       }),
     }));
