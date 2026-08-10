@@ -42,6 +42,12 @@ vi.mock('./activity.js', () => ({
 vi.mock('./policy-landed.js', () => ({
   ensurePolicyLandedFor: vi.fn().mockResolvedValue(false),
 }));
+vi.mock('../notifications/emit.js', () => ({
+  emitNotification: vi.fn().mockResolvedValue({ id: 'n-1' }),
+}));
+vi.mock('../notifications/auto-resolve.js', () => ({
+  resolveNotifications: vi.fn().mockResolvedValue(0),
+}));
 
 import { rejectReconcileRun } from './reconcile-service.js';
 
