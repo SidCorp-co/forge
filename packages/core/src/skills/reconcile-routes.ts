@@ -128,7 +128,8 @@ reconcileRoutes.post(
     try {
       await applyReconcileRun(runId, userId);
     } catch (err: unknown) {
-      const msg = String(err);
+      // cm:why ISS-808 — String(err) on an Error prepends "Error: ", so the BAD_REQUEST/NOT_FOUND prefix match below never fired and every guard rejection fell through to a 500
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
       if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;
@@ -160,7 +161,8 @@ reconcileRoutes.post(
     try {
       await rejectReconcileRun(runId, userId, reason);
     } catch (err: unknown) {
-      const msg = String(err);
+      // cm:why ISS-808 — String(err) on an Error prepends "Error: ", so the BAD_REQUEST/NOT_FOUND prefix match below never fired and every guard rejection fell through to a 500
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
       if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;

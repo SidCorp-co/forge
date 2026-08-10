@@ -62,6 +62,14 @@ pub(crate) fn resolve_repo(
     }
 }
 
+/// `reconcile`/`verify_skill` jobs edit a skill body via MCP and never touch
+/// git, so the pipeline-lane git preflight (work tree / origin remote /
+/// reachability) does not apply to them — e.g. a storefront project has no
+/// repo by design (ISS-808).
+fn requires_preflight(job_type: &str) -> bool {
+    !matches!(job_type, "reconcile" | "verify_skill")
+}
+
 const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 /// Cadence for the per-job session heartbeat. A `POST /api/jobs/:id/events`
 /// bumps `agent_sessions.lastHeartbeatAt` server-side, so emitting a tiny
@@ -194,14 +202,17 @@ pub async fn handle(
 
     // ISS-451 (ISS-442 C5, invariant I6): fail fast BEFORE claiming the job
     // when the repo / push credentials / hooks are broken, instead of a
-    // 40-minute mid-run discovery. The `preflight_failed` prefix is
-    // load-bearing — core's classifier maps it to failureKind=infra for fast
-    // device failover.
-    if let Err(err) = preflight::preflight(&resolved.repo_path).await {
-        let msg = format!("preflight_failed: {err}");
-        tracing::error!("[job {job_id}] {msg}");
-        let _ = lifecycle::fail(client, &job_id, &msg).await;
-        return Ok(());
+    // 40-minute mid-run discovery. The `preflight_failed` prefix and its
+    // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
+    // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
+    // pattern-matches on this exact string to pick failureKind (ISS-808).
+    if requires_preflight(&ja.job_type) {
+        if let Err(err) = preflight::preflight(&resolved.repo_path).await {
+            let msg = format!("preflight_failed: {err}");
+            tracing::error!("[job {job_id}] {msg}");
+            let _ = lifecycle::fail(client, &job_id, &msg).await;
+            return Ok(());
+        }
     }
 
     // ISS-449 (Decision B): explicit claim ack once preflight passes.
@@ -441,5 +452,18 @@ mod tests {
         let cfg = Config::default();
         let err = resolve_repo(&server, &cfg, "p-1").unwrap_err();
         assert_eq!(err, "app");
+    }
+
+    #[test]
+    fn preflight_skipped_for_reconcile_and_verify_skill() {
+        assert!(!requires_preflight("reconcile"));
+        assert!(!requires_preflight("verify_skill"));
+    }
+
+    #[test]
+    fn preflight_required_for_pipeline_job_types() {
+        for job_type in ["triage", "plan", "code", "fix", "review"] {
+            assert!(requires_preflight(job_type), "{job_type} should preflight");
+        }
     }
 }

@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure } from './failure-classifier.js';
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(5);
+    expect(CLASSIFIER_VERSION).toBe(6);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -176,6 +176,23 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     expect(
       classifyFailure({ error: 'preflight_failed: push_credentials: ls-remote timed out' }).kind,
     ).toBe('infra');
+    expect(classifyFailure({ error: "preflight_failed: hooks_path: missing" }).kind).toBe(
+      'infra',
+    );
+  });
+
+  it('classifies structural preflight sub-variants as code, not infra (ISS-808)', () => {
+    expect(
+      classifyFailure({
+        error: "preflight_failed: origin_remote: no 'origin' remote configured",
+      }).kind,
+    ).toBe('code');
+    expect(
+      classifyFailure({ error: 'preflight_failed: work_tree: not a git working tree' }).kind,
+    ).toBe('code');
+    expect(
+      classifyFailure({ error: 'preflight_failed: repo_path: not a directory' }).kind,
+    ).toBe('code');
   });
 
   describe('cc-startup death → transient-cc (ISS-402 class)', () => {
