@@ -185,6 +185,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed a race condition that could corrupt a runner's synced skill files when multiple runner instances share a repo.
 - The Issues screen no longer shows a non-functional Assignee field — list, detail, and filters now show who created each issue, with pipeline/agent-generated issues labeled "Forge Agent".
 - Chat replies no longer show the "couldn't find a confident answer" fallback just because the first server tried was overloaded or logged out — the system now skips unhealthy runners and retries on a healthy one before giving up.
+- Status transitions to developed or testing now require code evidence — the pipeline validates that code has been merged before these transitions are allowed.
 
 ## [0.3.0] - 2026-06-11
 
