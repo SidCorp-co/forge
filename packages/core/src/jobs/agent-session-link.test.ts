@@ -233,6 +233,28 @@ describe('jobs/agent-session-link', () => {
       expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'completed');
     });
 
+    // cm:why ISS-759 — the I1 trigger stamps failure_reason on an active session when its run goes terminal and a late report then lands here; asserting only `status` let 6 rows sit `completed` WITH `orphan_under_terminal_run` for a week
+    it('ISS-759: a completed session clears any failureReason the I1 trigger left behind', async () => {
+      await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
+      expect(updateCalls[0]?.set.status).toBe('completed');
+      expect(updateCalls[0]?.set.failureReason).toBeNull();
+    });
+
+    it('ISS-759: the cancelled→completed mapping clears it too', async () => {
+      await syncAgentSessionLifecycle(
+        { ...baseJob, agentSessionId: 'sess-1' } as never,
+        'cancelled',
+      );
+      expect(updateCalls[0]?.set.status).toBe('completed');
+      expect(updateCalls[0]?.set.failureReason).toBeNull();
+    });
+
+    it('ISS-759: a failed session still records why', async () => {
+      await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
+      expect(updateCalls[0]?.set.status).toBe('failed');
+      expect(updateCalls[0]?.set.failureReason).toBe('job_failed');
+    });
+
     it('maps cancelled → completed (enum has no cancelled); closes run as cancelled', async () => {
       await syncAgentSessionLifecycle(
         { ...baseJob, agentSessionId: 'sess-1' } as never,
