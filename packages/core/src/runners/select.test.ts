@@ -14,7 +14,9 @@ vi.mock('../lib/dispatch-liveness.js', () => ({
   dispatchLivenessMs: () => 120_000,
 }));
 
-const { selectRunnerForJob, getTrippedDeviceIds } = await import('./select.js');
+const { selectRunnerForJob, getTrippedDeviceIds, onlineCapableDeviceIds } = await import(
+  './select.js'
+);
 
 beforeEach(() => {
   execute.mockReset();
@@ -93,6 +95,63 @@ describe('selectRunnerForJob', () => {
     for (const sql of captured) {
       expect(sql).toContain('disabled_at');
     }
+  });
+
+  // ISS-825 — quarantine must be a HARD exclusion enforced inside every
+  // candidate query (same layer as rate_limited_until), not a caller-supplied
+  // exclude set the wrap-arounds can discard. Covers all three query shapes:
+  // findHealthyByDevice (pin/primary), findStandby, and the cap>1 load-aware
+  // pickLeastLoadedFreeRunner.
+  it('gates every selection query (incl. cap>1 pool pick) on the quarantine hard-exclusion', async () => {
+    const captured: string[] = [];
+    execute.mockImplementation(async (q: unknown) => {
+      captured.push(JSON.stringify(q));
+      return [];
+    });
+    await selectRunnerForJob({ projectId: PROJECT_A, pinDeviceId: DEVICE_X });
+    limit.mockResolvedValueOnce([{ defaultDeviceId: null }]);
+    await selectRunnerForJob({ projectId: PROJECT_A, projectCap: 2 });
+    expect(captured.length).toBeGreaterThan(0);
+    for (const sql of captured) {
+      expect(sql).toContain('quarantined_until');
+    }
+  });
+
+  it('both wrap-arounds still return null when every device is quarantined (first dispatch)', async () => {
+    // Primary + standby both filtered out by the DB (quarantined_until hard
+    // exclusion), same as an all-rate-limited fleet would look to this mock.
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    execute.mockResolvedValueOnce([]); // primary
+    execute.mockResolvedValueOnce([]); // standby (with exclusion)
+    // First-dispatch wrap-around re-runs with excludeDeviceIds: [] — quarantine
+    // is NOT in excludeDeviceIds, it is enforced inside the query, so the
+    // wrap-around must still come back empty for a fully-quarantined fleet.
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    execute.mockResolvedValueOnce([]); // wrap-around primary
+    execute.mockResolvedValueOnce([]); // wrap-around standby
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      excludeDeviceIds: ['dev-a'],
+    });
+    expect(r).toBeNull();
+  });
+
+  it('both wrap-arounds still return null when every device is quarantined (retry skipPrimary)', async () => {
+    execute.mockResolvedValueOnce([]); // pin lookup
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    execute.mockResolvedValueOnce([]); // standby (with exclusion)
+    // Retry wrap-around re-runs with excludeDeviceIds: [] — still empty because
+    // quarantine, unlike excludeDeviceIds, is enforced inside the query itself.
+    execute.mockResolvedValueOnce([]); // wrap-around pin lookup (no longer excluded)
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    execute.mockResolvedValueOnce([]); // wrap-around standby
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: 'dev-target',
+      excludeDeviceIds: ['dev-a'],
+      skipPrimary: true,
+    });
+    expect(r).toBeNull();
   });
 
   it('prefers pinDeviceId when the pinned runner is online + fresh', async () => {
@@ -412,5 +471,36 @@ describe('getTrippedDeviceIds (device circuit breaker)', () => {
     expect(q).toContain('bool_and'); // all of the last N are failed
     expect(q).toMatch(/'failed'/); // counts failed/done terminal outcomes only
     expect(q).toContain('finished_at'); // recency window
+  });
+});
+
+describe('onlineCapableDeviceIds (retry round-robin candidate set)', () => {
+  const PROJECT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  // ISS-825 — without this, the retry rotation could pin a quarantined device
+  // that selectRunnerForJob then refuses (the ISS-823 wedge class), because
+  // the round-robin candidate set and the actual selector would disagree on
+  // who is eligible.
+  it('health-gated (default) query excludes quarantined runners', async () => {
+    execute.mockResolvedValueOnce([]);
+    await onlineCapableDeviceIds(PROJECT_A);
+    const q = JSON.stringify(execute.mock.calls.at(-1)?.[0]);
+    expect(q).toContain('quarantined_until');
+  });
+
+  it('includeLimited:true returns the unfiltered set (no quarantine gate)', async () => {
+    execute.mockResolvedValueOnce([]);
+    await onlineCapableDeviceIds(PROJECT_A, undefined, { includeLimited: true });
+    const q = JSON.stringify(execute.mock.calls.at(-1)?.[0]);
+    expect(q).not.toContain('quarantined_until');
+  });
+
+  it('omits a quarantined runner device from the health-gated candidate set', async () => {
+    // The real WHERE clause filters the quarantined row out at the DB layer;
+    // simulate that by having the query return only the healthy device.
+    execute.mockResolvedValueOnce([{ device_id: 'dev-healthy' }]);
+    const ids = await onlineCapableDeviceIds(PROJECT_A);
+    expect(ids).toEqual(['dev-healthy']);
+    expect(ids).not.toContain('dev-quarantined');
   });
 });

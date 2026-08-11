@@ -44,6 +44,8 @@ describe('claude-code adapter', () => {
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
       },
     });
     expect(result.status).toBe('dispatched');
@@ -80,6 +82,8 @@ describe('claude-code adapter', () => {
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
       },
     });
     const call = publish.mock.calls[0];
@@ -116,6 +120,8 @@ describe('claude-code adapter', () => {
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
       },
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: string } }).data;
@@ -148,6 +154,8 @@ describe('claude-code adapter', () => {
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
       },
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: unknown } }).data;
@@ -180,6 +188,8 @@ describe('claude-code adapter', () => {
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
       },
     });
     const call = publish.mock.calls[0];
@@ -213,6 +223,8 @@ describe('claude-code adapter', () => {
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
       },
     });
     expect(result.status).toBe('failed');
@@ -243,6 +255,8 @@ describe('claude-code adapter', () => {
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
       },
     });
     expect(r.ok).toBe(false);

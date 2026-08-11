@@ -17,6 +17,10 @@ const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
 
+// cm:why placed alongside rate_limited_until (not a bare column ref) so it
+// resolves correctly whether the enclosing query aliases `runners` as `r.` or not
+const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
+
 /**
  * Decide the initial `capabilities` jsonb for a freshly-created runner row.
  *
@@ -161,6 +165,8 @@ type RunnerRow = {
   limit_reason: 'usage_limit' | 'rate_limit' | 'auth' | null;
   rate_limited_until: string | null;
   limit_detail: string | null;
+  quarantined_until: string | null;
+  quarantine_reason: string | null;
 };
 
 function rowToRunner(r: RunnerRow): Runner {
@@ -180,6 +186,8 @@ function rowToRunner(r: RunnerRow): Runner {
     limitReason: r.limit_reason,
     rateLimitedUntil: r.rate_limited_until ? new Date(r.rate_limited_until) : null,
     limitDetail: r.limit_detail,
+    quarantinedUntil: r.quarantined_until ? new Date(r.quarantined_until) : null,
+    quarantineReason: r.quarantine_reason,
   };
 }
 
@@ -347,7 +355,8 @@ async function findHealthyByDevice(
     sql`
       SELECT id, project_id, type, host, device_id, name, labels,
              capabilities, config, status, last_seen_at, last_error,
-             limit_reason, rate_limited_until, limit_detail
+             limit_reason, rate_limited_until, limit_detail,
+             quarantined_until, quarantine_reason
       FROM runners
       WHERE project_id = ${projectId}
         AND device_id = ${deviceId}
@@ -356,6 +365,7 @@ async function findHealthyByDevice(
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
+        ${NOT_QUARANTINED}
         ${NOT_DISABLED_DEVICE}
       ORDER BY last_seen_at DESC, id ASC
       LIMIT 1
@@ -405,7 +415,8 @@ async function findStandby(
     sql`
       SELECT id, project_id, type, host, device_id, name, labels,
              capabilities, config, status, last_seen_at, last_error,
-             limit_reason, rate_limited_until, limit_detail
+             limit_reason, rate_limited_until, limit_detail,
+             quarantined_until, quarantine_reason
       FROM runners
       WHERE project_id = ${projectId}
         AND status = 'online'
@@ -413,6 +424,7 @@ async function findStandby(
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
+        ${NOT_QUARANTINED}
         ${NOT_DISABLED_DEVICE}
         ${exclusionClause}
         ${retryExclusionClause}
@@ -452,7 +464,8 @@ async function pickLeastLoadedFreeRunner(
     sql`
       SELECT r.id, r.project_id, r.type, r.host, r.device_id, r.name, r.labels,
              r.capabilities, r.config, r.status, r.last_seen_at, r.last_error,
-             r.limit_reason, r.rate_limited_until, r.limit_detail
+             r.limit_reason, r.rate_limited_until, r.limit_detail,
+             r.quarantined_until, r.quarantine_reason
       FROM runners r
       LEFT JOIN (
         -- per-runner in-flight, orphan-aware (parent pipeline_run non-terminal)
@@ -470,6 +483,7 @@ async function pickLeastLoadedFreeRunner(
         AND r.last_seen_at IS NOT NULL
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+        ${NOT_QUARANTINED}
         AND COALESCE(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
         ${NOT_DISABLED_DEVICE}
         ${retryExclusionClause}
@@ -510,7 +524,7 @@ export async function onlineCapableDeviceIds(
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const limitClause = opts?.includeLimited
     ? sql``
-    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now())`;
+    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now()) ${NOT_QUARANTINED}`;
   const rows = await db.execute<{ device_id: string }>(
     sql`
       SELECT DISTINCT device_id
