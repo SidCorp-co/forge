@@ -137,7 +137,7 @@ import { hooks } from './pipeline/hooks.js';
 import { backfillMissingSkillPauses } from './pipeline/missing-skill-backfill.js';
 import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
-import { registerOutboxWorker } from './pipeline/outbox-worker.js';
+import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
@@ -275,6 +275,8 @@ export async function runShutdown(
     await unregisterPmCadenceTicker();
     await unregisterAgentCronTicker();
     await unregisterPmEscalationSweeper();
+    // cm:guard ISS-830 — MUST be awaited while the DB is still open and before closeDb(). The outbox claims a batch by committing `claimed_at = now()`, and only the emitting tick clears it (success → processed_at, failure → claimed_at NULL). Abandon that tick and the rows stay claimed until CLAIM_LEASE_MS (120s) expires, so every rolling restart that lands mid-drain adds up to two minutes of latency to the pipeline transitions in that batch.
+    await stopOutboxWorker();
     await stopBoss();
     await httpClosed;
     await closeDb();
