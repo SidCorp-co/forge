@@ -50,3 +50,26 @@ export function describeUnrecorded(missing: JournalEntry[]): string {
     '[migrate] whose `when` exceeds the highest recorded created_at, and reports success when it skips.',
   ].join('\n');
 }
+
+/**
+ * Sentry event payload for unrecorded-migration drift — pure, so it unit-tests without mocking
+ * the SDK. `migrate.js` boots as its own short-lived process where nobody reads stdout; this is
+ * what makes the drift visible without tailing container logs.
+ */
+export function unrecordedSentryEvent(missing: JournalEntry[]): {
+  message: string;
+  level: 'warning';
+  tags: Record<string, string>;
+  extra: Record<string, unknown>;
+} {
+  return {
+    message: `db.migrate: ${missing.length} unrecorded migration(s) in drizzle.__drizzle_migrations`,
+    level: 'warning',
+    tags: { area: 'db-migrate', issue: 'ISS-809' },
+    extra: {
+      count: missing.length,
+      entries: missing.map((m) => ({ tag: m.tag, idx: m.idx, when: m.when })),
+      note: 'Unrecorded != unapplied — check schema before re-running. Migrator will never re-touch these.',
+    },
+  };
+}
