@@ -952,6 +952,9 @@ export const runners = pgTable(
     limitReason: text('limit_reason', { enum: runnerLimitReasons }),
     rateLimitedUntil: timestamp('rate_limited_until', { withTimezone: true }),
     limitDetail: text('limit_detail'),
+    // cm:why durable hard-exclusion alongside rateLimitedUntil so it survives both selectRunnerForJob wrap-arounds (excludeDeviceIds is discarded there); self-heals on expiry, cleared on the next success
+    quarantinedUntil: timestamp('quarantined_until', { withTimezone: true }),
+    quarantineReason: text('quarantine_reason'),
     // Per (device × project) workspace provisioning state. NULL = not yet
     // provisioned / legacy row. The runner advances this via the device
     // provision-status report; web renders it as a live stepper. `queued` is

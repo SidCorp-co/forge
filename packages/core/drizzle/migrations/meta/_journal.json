@@ -1205,6 +1205,13 @@
       "when": 1788393600000,
       "tag": "0173_jobs_kill_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1788480000000,
+      "tag": "0174_iss825_runner_quarantine",
+      "breakpoints": true
     }
   ]
 }

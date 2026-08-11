@@ -24,7 +24,8 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import type { RunnerLimit } from './limit-detect.js';
 
-function broadcastRunnerChanged(projectId: string, runnerId: string): void {
+// cm:edge naming -> packages/core/src/runners/quarantine.ts — reused so runner.status has one broadcaster, not two competing writers
+export function broadcastRunnerChanged(projectId: string, runnerId: string): void {
   roomManager.publish(projectRoom(projectId), {
     event: 'runner.status',
     // projectId lets the web event-router refresh the project's runner list

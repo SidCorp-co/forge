@@ -44,6 +44,7 @@ import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { attributeFailureToRunner } from '../runners/attribute-failure.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
+import { maybeQuarantineRunner } from '../runners/quarantine.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -260,6 +261,9 @@ export async function finalizeFailedJob(
 
   // cm:why ISS-806 — stamp the box BEFORE any retry decision: a retry re-targets another device, so `updated.runnerId` only names the failing box until then
   await attributeFailureToRunner(updated.runnerId, opts.error);
+
+  // cm:why ISS-825 — MUST be awaited before the retry decision: onlineCapableDeviceIds/selectRunnerForJob read quarantinedUntil for THIS retry, same ordering contract as stampRunnerLimit below
+  await maybeQuarantineRunner(updated.runnerId, updated.projectId, updated.id, opts.error);
 
   // cm:why retryAfter's canonical source is failureMeta (via classifyFailure below), not jobs.retryAfterAt — that column is only the retry engine's flat cooldown on the *next* attempt's row, never this failed one
   // cm:why ISS-823 review blocker — stampRunnerLimit MUST be awaited BEFORE scheduleAutoRetryWithVerify: the all_devices_exhausted check reads onlineCapableDeviceIds, which filters on rateLimitedUntil, so a fire-and-forget stamp made AFTER that read let the box that just hit the cap still count as healthy for THIS decision

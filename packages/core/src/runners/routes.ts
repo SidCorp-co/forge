@@ -23,6 +23,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { normalizeAntigravityEvent } from './event-normalizer.js';
+import { clearRunnerQuarantine } from './quarantine.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
@@ -54,6 +55,8 @@ function rowToRunner(r: typeof runners.$inferSelect): Runner {
     limitReason: r.limitReason,
     rateLimitedUntil: r.rateLimitedUntil,
     limitDetail: r.limitDetail,
+    quarantinedUntil: r.quarantinedUntil,
+    quarantineReason: r.quarantineReason,
   };
 }
 
@@ -524,6 +527,24 @@ runnerRoutes.post(
     // Same gate as PATCH `status` — exclude/include are status mutations.
     assertProjectRole(access, 'admin', 'project admin only');
     await setRunnerStatus({ runnerId: id, newStatus: 'offline', reason: 'operator_include' });
+    return c.json({ ok: true });
+  },
+);
+
+runnerRoutes.post(
+  '/:id/clear-quarantine',
+  zValidator('param', idParam, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const userId = c.get('userId');
+    const { id } = c.req.valid('param');
+    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    if (!existing) throw notFound();
+    const access = await loadProjectAccess(existing.projectId, userId);
+    // Same gate as exclude/include — an operator clearing a hard-exclusion is a status mutation.
+    assertProjectRole(access, 'admin', 'project admin only');
+    await clearRunnerQuarantine(id, existing.projectId);
     return c.json({ ok: true });
   },
 );

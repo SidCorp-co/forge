@@ -247,6 +247,22 @@ describe('jobs/dispatcher', () => {
     expect((db as any).update).not.toHaveBeenCalled();
   });
 
+  // ISS-825 — a fully-quarantined fleet must look identical to the dispatcher
+  // as "no runner online": selectRunnerForJob enforces the quarantine hard
+  // exclusion inside its own candidate queries and returns null, so the job
+  // stays queued and self-heals on the next tick (once a quarantine expires)
+  // rather than being silently failed.
+  it('leaves queued (never silently fails the job) when every runner is quarantined', async () => {
+    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    const result = await handleDispatch({ jobId: 'j1' });
+    expect(result).toBe('skipped');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
+    expect((db as any).update).not.toHaveBeenCalled();
+  });
+
   it('dispatches to the runner adapter with the full job envelope', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-27T00:00:00.000Z'));

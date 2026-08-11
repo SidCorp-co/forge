@@ -42,6 +42,10 @@ export interface Runner {
   rateLimitedUntil: Date | null;
   /** Short human-readable limit detail for the UI. */
   limitDetail: string | null;
+  /** Hard-exclusion expiry after N identical box-scoped failures; null when not quarantined. */
+  quarantinedUntil: Date | null;
+  /** Why the runner is quarantined (the tripping preflight check), or null. */
+  quarantineReason: string | null;
 }
 
 export interface DispatchInput {

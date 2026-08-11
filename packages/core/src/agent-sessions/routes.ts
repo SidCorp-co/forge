@@ -19,6 +19,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { clearRunnerLimit, stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
+import { clearRunnerQuarantine } from '../runners/quarantine.js';
 import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import {
   EMPTY_USAGE_TOTALS,
@@ -798,6 +799,7 @@ agentSessionRoutes.patch(
           .limit(1);
         if (runner) {
           await clearRunnerLimit(runner.id, updated.projectId);
+          await clearRunnerQuarantine(runner.id, updated.projectId);
         }
       } catch (err) {
         logger.warn(
