@@ -128,7 +128,7 @@ describe('deliverAgentChatReplyOnce', () => {
       'proj-1',
       'Here is the final answer.',
       [],
-      undefined,
+      'legacy-session',
     );
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
@@ -160,7 +160,7 @@ describe('deliverAgentChatReplyOnce', () => {
       'proj-1',
       'Created ISS-42 for you.',
       [{ name: 'forge_issues', arguments: JSON.stringify({ action: 'create' }) }],
-      undefined,
+      'legacy-session',
     );
   });
 

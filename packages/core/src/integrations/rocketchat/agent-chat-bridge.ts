@@ -66,16 +66,18 @@ function readAgentChatMeta(metadata: unknown): AgentChatMeta | null {
 
 /** `metadata.progressFacts` as stored by `startAgentChat`/the failover retry
  *  — the snapshot the session's prompt was actually built with (ISS-671).
- *  Returns `undefined` (not `null`) when the key is entirely absent — an
- *  in-flight session created before this field existed — so the caller's
- *  `screenStakeholderReply(..., readProgressFacts(...))` self-computes
+ *  Returns the `'legacy-session'` sentinel (ISS-818) when the key is entirely
+ *  absent — an in-flight session created before this field existed — so the
+ *  caller's `screenStakeholderReply(..., readProgressFacts(...))` self-computes
  *  instead of failing closed on a session that was simply never given a
- *  snapshot to check against. `null` means the key IS present but the
- *  snapshot computation failed when the session was created — that DOES
- *  fail closed, same as any other guard failure. */
-function readProgressFacts(metadata: unknown): ProgressFacts | null | undefined {
+ *  snapshot to check against. That case is named explicitly rather than
+ *  spelled `undefined`, so it cannot be reached by a caller who merely forgot
+ *  to pass the argument. `null` means the key IS present but the snapshot
+ *  computation failed when the session was created — that DOES fail closed,
+ *  same as any other guard failure. */
+function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-session' {
   const m = metadata as Record<string, unknown> | null;
-  if (!m || !('progressFacts' in m)) return undefined;
+  if (!m || !('progressFacts' in m)) return 'legacy-session';
   const pf = m.progressFacts;
   if (!pf || typeof pf !== 'object') return null;
   const p = pf as Record<string, unknown>;

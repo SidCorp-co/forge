@@ -28,6 +28,7 @@ describe('screenStakeholderReply', () => {
       'proj-1',
       'Đơn hàng của bạn đã được xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
       [],
+      null,
     );
     expect(verdict.ok).toBe(true);
     expect(verdict.problems).toEqual([]);
@@ -39,6 +40,7 @@ describe('screenStakeholderReply', () => {
       'proj-1',
       'Xem ISS-42 để biết chi tiết.', // i18n-allow: a bot reply citing an unverified ISS id
       [],
+      null,
     );
     expect(verdict.ok).toBe(false);
     expect(verdict.problems.join(' ')).toMatch(/ISS-42/);
@@ -50,6 +52,7 @@ describe('screenStakeholderReply', () => {
       'proj-1',
       'Xem ISS-42 để biết chi tiết.', // i18n-allow: a bot reply citing a now-verified ISS id
       [],
+      null,
     );
     expect(verdict.ok).toBe(true);
   });
@@ -60,6 +63,7 @@ describe('screenStakeholderReply', () => {
       'proj-1',
       'Đây là log:\n```\nerror\n```', // i18n-allow: a bot reply leaking a code fence
       [],
+      null,
     );
     expect(verdict.ok).toBe(false);
   });
@@ -70,6 +74,7 @@ describe('screenStakeholderReply', () => {
       'proj-1',
       'Để mình kiểm tra rồi báo lại nhé.', // i18n-allow: the empty-promise phrasing under test
       [],
+      null,
     );
     expect(verdict.ok).toBe(false);
   });
@@ -80,6 +85,7 @@ describe('screenStakeholderReply', () => {
       'proj-1',
       'Xem ISS-999 để biết chi tiết.', // i18n-allow: a bot reply citing an ISS id during a DB outage
       [],
+      null,
     );
     expect(verdict.ok).toBe(true);
   });
@@ -107,11 +113,16 @@ describe('screenStakeholderReply', () => {
       expect(verdict.ok).toBe(true);
     });
 
-    it('omitting the snapshot argument self-computes rather than skipping the check', async () => {
+    it("the 'legacy-session' sentinel self-computes rather than skipping the check", async () => {
       // cm:why the db mock has no `.groupBy`, so the self-compute fails closed — proving the call happened rather than being skipped
       selectWhere.mockResolvedValue([]);
-      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
-      const verdict = await screenStakeholderReply('proj-1', 'Dự án đã hoàn thành 54 việc.', []); // i18n-allow: Vietnamese progress phrasing under test
+      const verdict = await screenStakeholderReply(
+        'proj-1',
+        // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+        'Dự án đã hoàn thành 54 việc.', // i18n-allow: Vietnamese progress phrasing under test
+        [],
+        'legacy-session',
+      );
       expect(verdict.ok).toBe(false);
     });
 

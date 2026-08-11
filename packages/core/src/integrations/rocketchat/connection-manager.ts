@@ -157,9 +157,13 @@ const errorFallbackReply = (name: string): string =>
   `Xin lỗi, ${name} đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
 /** Sent when even the corrective retry produced unverifiable claims — an
- *  honest non-answer beats a hallucinated one reaching the channel. */
+ *  honest non-answer beats a hallucinated one reaching the channel.
+ *  ISS-818: name the REASON. A bare "couldn't verify" reads to a stakeholder
+ *  as "didn't understand you", so they rephrase — which cannot help, because
+ *  the question was understood and it was the ANSWER that failed the check.
+ *  Say the figures couldn't be reconciled and to ask again shortly. */
 const unverifiedFallbackReply = (name: string): string =>
-  `Xin lỗi, ${name} chưa thực hiện được yêu cầu này một cách chắc chắn (kết quả không xác minh được). Bạn nhắn lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply
+  `Xin lỗi, ${name} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
 const emptyFallbackReply = (name: string): string =>
   `Xin lỗi, ${name} chưa đưa ra được câu trả lời cho yêu cầu này — bạn diễn đạt lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply

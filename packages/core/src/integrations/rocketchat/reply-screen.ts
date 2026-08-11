@@ -93,19 +93,23 @@ async function verifyReplyClaims(
  * so that check applies there too.
  *
  * `progress` (ISS-671) is the deterministic snapshot to screen any stated
- * completion figure against. Pass the SAME snapshot the reply's turn was
- * shown (via `ExternalChatTurnResult.progress` or the agent-chat session's
- * stored `progressFacts`) — screening against a fresh re-query would bounce
- * a reply that was accurate for what the model actually saw. Omitting the
- * argument entirely (`undefined`) self-computes, so a caller that forgets
- * still gets the check; passing `null` explicitly means "no snapshot for
- * this turn" and screens fail-closed via `checkProgressClaims`.
+ * completion figure against, and is REQUIRED (ISS-818): forgetting it is a
+ * compile error, not a silent re-query. Pass the SAME snapshot the reply's
+ * turn was shown (via `ExternalChatTurnResult.progress` or the agent-chat
+ * session's stored `progressFacts`) — screening against a fresh re-query
+ * would bounce a reply that was accurate for what the model actually saw.
+ * The three accepted values are exhaustive and mean different things:
+ * a snapshot screens against it; `null` means the snapshot computation
+ * failed for this turn and screens fail-closed via `checkProgressClaims`;
+ * `'legacy-session'` is the ONLY case that self-computes — an in-flight
+ * session created before `progressFacts` was stored, a self-clearing window.
  */
+// cm:guard `progress` is required on purpose (ISS-818) — never widen it back to optional; a caller that omits it must fail to compile rather than silently screen against a snapshot the model never saw
 export async function screenStakeholderReply(
   projectId: string,
   reply: string,
   toolCalls: Array<{ name: string; arguments: string }>,
-  progress?: ProgressFacts | null,
+  progress: ProgressFacts | null | 'legacy-session',
 ): Promise<ReplyScreenVerdict> {
   const claim = await verifyReplyClaims(projectId, reply, toolCalls);
   const lint = lintStakeholderReply(reply, {
@@ -113,7 +117,7 @@ export async function screenStakeholderReply(
     skipIssueIdRule: claim.dbError,
   });
   const promise = detectEmptyPromise(reply);
-  const facts = progress === undefined ? await computeProjectProgress(projectId) : progress;
+  const facts = progress === 'legacy-session' ? await computeProjectProgress(projectId) : progress;
   const progressVerdict = checkProgressClaims(reply, facts);
   return {
     ok: claim.ok && lint.ok && promise.ok && progressVerdict.ok,
