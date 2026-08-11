@@ -116,4 +116,21 @@ describe('buildSystemPrompt', () => {
     expect(prompt.startsWith('Override.')).toBe(true);
     expect(prompt).toContain('Always end with a suggested action.');
   });
+
+  it('progressFacts is appended even when an override is set', () => {
+    const prompt = buildSystemPrompt({
+      project: { name: 'Acme' },
+      appConfig: { systemPromptOverride: 'Override.' },
+      progressFacts: 'Project progress (computed by the system from live data — AUTHORITATIVE).',
+    });
+    expect(prompt).toContain('AUTHORITATIVE');
+  });
+
+  it('blank progressFacts adds no section', () => {
+    const prompt = buildSystemPrompt({
+      project: { name: 'Acme' },
+      progressFacts: '   ',
+    });
+    expect(prompt).not.toContain('AUTHORITATIVE');
+  });
 });

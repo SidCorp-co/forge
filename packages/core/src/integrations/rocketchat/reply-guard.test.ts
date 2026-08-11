@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  checkProgressClaims,
   detectEmptyPromise,
   extractIssueClaims,
   judgeIssueClaims,
@@ -153,6 +154,98 @@ describe('detectEmptyPromise', () => {
 
   it('accepts a reply that states a concrete result', () => {
     const verdict = detectEmptyPromise('Task hiện có 3 issue đang mở, không có issue nào quá hạn.'); // i18n-allow: representative concrete-result reply
+    expect(verdict.ok).toBe(true);
+  });
+});
+
+describe('checkProgressClaims', () => {
+  const facts = { done: 54, inFlight: 7, remaining: 3, total: 64 };
+
+  it('rejects Vietnamese "nothing done" phrasing when done > 0', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Dự án chưa làm gì cả, đang bắt đầu triển khai.', facts); // i18n-allow: Vietnamese denial phrasing under test
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/54/);
+  });
+
+  it('rejects English "nothing done" phrasing when done > 0', () => {
+    const verdict = checkProgressClaims('Nothing has been done on this project yet.', facts);
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('does not flag the denial phrasing when done is actually 0', () => {
+    const zero = { done: 0, inFlight: 2, remaining: 1, total: 3 };
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Chưa có gì được làm cả.', zero); // i18n-allow: Vietnamese denial phrasing under test
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('rejects an off-by-N count near a progress keyword', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Đã hoàn thành 40 việc trong dự án.', facts); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/40/);
+    expect(verdict.problems.join(' ')).toMatch(/54/);
+  });
+
+  it('accepts a count near a progress keyword that matches the authoritative figure', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Đã hoàn thành 54 việc, còn lại 3 việc.', facts); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('rejects a percentage that does not match the authoritative figures', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Dự án đã hoàn thành 40%.', facts); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/40%/);
+  });
+
+  it('accepts a percentage that matches the authoritative figures', () => {
+    const pct = Math.round((facts.done / facts.total) * 100);
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims(`Dự án đã hoàn thành ${pct}%.`, facts); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('rejects any percentage when total is 0', () => {
+    const empty = { done: 0, inFlight: 0, remaining: 0, total: 0 };
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Dự án đã hoàn thành 0%.', empty); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('never reads an ISS-<n> id or an ISO date as a figure', () => {
+    const verdict = checkProgressClaims(
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+      'Xem ISS-2026 (cập nhật 2026-08-11), hoàn thành 54 việc.', // i18n-allow: Vietnamese progress phrasing under test
+      facts,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('fails CLOSED and rejects any progress figure when the snapshot is null', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Đã hoàn thành 54 việc.', null); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toMatch(/could not be computed/);
+  });
+
+  it('fails CLOSED and rejects a bare percentage when the snapshot is null', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Dự án đã hoàn thành 54%.', null); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('passes a reply with no progress figures even when the snapshot is null', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Chào bạn, mình có thể giúp gì cho bạn?', null); // i18n-allow: Vietnamese greeting under test
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('accepts a reply with no figures at all', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Dự án đang tiến triển tốt.', facts); // i18n-allow: Vietnamese progress phrasing under test
     expect(verdict.ok).toBe(true);
   });
 });

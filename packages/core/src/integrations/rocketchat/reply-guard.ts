@@ -179,3 +179,123 @@ export function detectEmptyPromise(reply: string): ProductLintResult {
     ],
   };
 }
+
+/**
+ * Kernel guard against a SELF-COUNTED progress figure in bot replies
+ * (ISS-671 direction B): the 54-issue incident happened because the model
+ * had only `forge_issues.list` (newest-25) to go on, so a wrong figure
+ * looked plausible to the model that produced it. This guard cross-validates
+ * any completion count or percentage in the reply against the deterministic
+ * snapshot (`issues/progress.ts`) injected earlier in the SAME turn — it
+ * cannot fix a bad count, only reject it, which is what forces the
+ * corrective retry that restates the authoritative numbers.
+ *
+ * Fail-CLOSED when `facts` is null: the snapshot computation failed, so
+ * nothing authoritative was injected this turn — any progress figure in that
+ * state can only have been self-counted. This is deliberately STRICTER than
+ * `reply-screen.ts`'s documented fail-OPEN carve-out for its own DB lookup:
+ * an infra blip there costs one ordinary reply, whereas failing open here
+ * would let through exactly the hallucination this guard exists to catch.
+ */
+
+export interface ProgressFacts {
+  done: number;
+  inFlight: number;
+  remaining: number;
+  total: number;
+}
+
+const UUID_TOKEN_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const ISS_TOKEN_RE = /\bISS-\d{1,6}\b/gi;
+const ISO_DATE_RE =
+  /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g;
+
+/** Already-guarded citations and timestamps must never register as figures —
+ *  strip them before the count/percentage scan ever sees the text. */
+function stripNonFigureTokens(reply: string): string {
+  return reply.replace(UUID_TOKEN_RE, ' ').replace(ISS_TOKEN_RE, ' ').replace(ISO_DATE_RE, ' ');
+}
+
+// cm:why matches the Vietnamese/English "nothing done" phrasing that produced the literal 54-issue incident
+const DENIAL_RE =
+  // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese denial phrasing being matched
+  /chưa\s+(có\s+gì|làm\s+gì|bắt\s+đầu|triển\s+khai)|chưa\s+có\s+tiến\s+độ|chưa\s+hoàn\s+thành\s+(việc|issue)\s+nào|\bnot\s+started\b|\bnothing\s+(has\s+been\s+)?(done|completed)\b|\bno\s+(work|progress)\s+(has\s+been\s+)?(done|made)\b/i; // i18n-allow: matches the Vietnamese/English "nothing done" phrasing under test
+
+const PROGRESS_KEYWORD_RE =
+  // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese progress-keyword vocabulary being scanned
+  /hoàn thành|hoàn tất|đã xong|đã đóng|còn lại|đang làm|tổng|done|completed|closed|finished|remaining|in progress|total/gi; // i18n-allow: the Vietnamese progress-keyword vocabulary being scanned
+
+const PERCENT_RE = /(\d{1,3})\s*%/g;
+
+/** Plan's tuning knob (unmeasured false-positive rate — see the plan's risk
+ *  note): every integer within this many chars of a progress keyword is
+ *  scanned as a claimed count. */
+const KEYWORD_WINDOW = 40;
+
+function authoritativeSummary(facts: ProgressFacts): string {
+  return `done=${facts.done}, in progress=${facts.inFlight}, not started=${facts.remaining}, total=${facts.total}`;
+}
+
+/** Every integer within `KEYWORD_WINDOW` chars of a progress keyword, paired
+ *  with the keyword that put it in scope. */
+function progressContextNumbers(scanText: string): Array<{ n: number; keyword: string }> {
+  const found: Array<{ n: number; keyword: string }> = [];
+  for (const kwMatch of scanText.matchAll(PROGRESS_KEYWORD_RE)) {
+    const kwIndex = kwMatch.index ?? 0;
+    const windowStart = Math.max(0, kwIndex - KEYWORD_WINDOW);
+    const windowEnd = Math.min(scanText.length, kwIndex + kwMatch[0].length + KEYWORD_WINDOW);
+    const window = scanText.slice(windowStart, windowEnd);
+    for (const numMatch of window.matchAll(/\d+/g)) {
+      // cm:why a "84%" is validated by the percentage rule below, not here — else it would also flag 84 as an unmatched count
+      const afterMatch = window.slice(numMatch.index + numMatch[0].length);
+      if (/^\s*%/.test(afterMatch)) continue;
+      found.push({ n: Number(numMatch[0]), keyword: kwMatch[0] });
+    }
+  }
+  return found;
+}
+
+export function checkProgressClaims(reply: string, facts: ProgressFacts | null): ProductLintResult {
+  const scanText = stripNonFigureTokens(reply);
+  const percentMatches = [...scanText.matchAll(PERCENT_RE)];
+
+  if (facts === null) {
+    const numbers = progressContextNumbers(scanText);
+    if (numbers.length === 0 && percentMatches.length === 0) return { ok: true, problems: [] };
+    return {
+      ok: false,
+      problems: [
+        'reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead',
+      ],
+    };
+  }
+
+  const problems = new Set<string>();
+
+  if (facts.done > 0 && DENIAL_RE.test(scanText)) {
+    problems.add(
+      `reply claims no work has been done, but authoritative progress is ${authoritativeSummary(facts)} — restate using these figures`,
+    );
+  }
+
+  const allowedCounts = new Set([facts.done, facts.inFlight, facts.remaining, facts.total]);
+  for (const { n, keyword } of progressContextNumbers(scanText)) {
+    if (!allowedCounts.has(n)) {
+      problems.add(
+        `stated "${n}" near "${keyword}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,
+      );
+    }
+  }
+
+  const expectedPct = facts.total === 0 ? null : Math.round((facts.done / facts.total) * 100);
+  for (const pctMatch of percentMatches) {
+    const pct = Number(pctMatch[1]);
+    if (expectedPct === null || Math.abs(pct - expectedPct) > 1) {
+      problems.add(
+        `stated "${pctMatch[0]}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,
+      );
+    }
+  }
+
+  return { ok: problems.size === 0, problems: [...problems] };
+}

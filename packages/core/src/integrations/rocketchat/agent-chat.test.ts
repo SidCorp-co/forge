@@ -11,6 +11,18 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
+vi.mock('../../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
+vi.mock('../../pipeline/outbox-session.js', () => ({ withActorContext: vi.fn() }));
+vi.mock('../../pipeline/runs.js', () => ({
+  closeOpenRunForIssue: vi.fn(),
+  setCurrentStepForOpenIssueRun: vi.fn(),
+}));
+
+const computeProjectProgress = vi.fn(async (..._args: unknown[]) => null);
+vi.mock('../../issues/progress.js', () => ({
+  computeProjectProgress: (...args: unknown[]) => computeProjectProgress(...args),
+  buildProgressFactsBlock: () => 'PROGRESS FACTS BLOCK',
+}));
 
 const createChatSessionRow = vi.fn();
 const dispatchChatTurn = vi.fn();
@@ -31,9 +43,9 @@ vi.mock('../../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
 }));
 
-const postRoomMessage = vi.fn();
-vi.mock('./rest-client.js', () => ({
-  postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
+const sendFixedReply = vi.fn();
+vi.mock('./outbound.js', () => ({
+  sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
 }));
 
 const resolveRoomPostAuth = vi.fn();
@@ -315,13 +327,13 @@ describe('redispatchAgentChatSessionOnFailover', () => {
       authToken: 'tok',
       userId: 'bot',
     });
-    postRoomMessage.mockResolvedValue(undefined);
+    sendFixedReply.mockResolvedValue(undefined);
 
     await redispatchAgentChatSessionOnFailover(makeSession());
 
     await vi.runAllTimersAsync();
 
-    expect(postRoomMessage).toHaveBeenCalled();
+    expect(sendFixedReply).toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -412,7 +424,7 @@ describe('scheduleDelayedAck', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     selectLimit.mockReset();
-    postRoomMessage.mockReset();
+    sendFixedReply.mockReset();
     resolveRoomPostAuth.mockReset();
     resolveRoomPostAuth.mockResolvedValue({
       serverUrl: 'https://rc.example',
@@ -431,7 +443,7 @@ describe('scheduleDelayedAck', () => {
     ]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS - 1000);
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('posts the interim ack when the turn is still running and undelivered after the delay', async () => {
@@ -440,11 +452,14 @@ describe('scheduleDelayedAck', () => {
     ]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(postRoomMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ serverUrl: 'https://rc.example' }),
-      'room-1',
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'rest',
+        auth: expect.objectContaining({ serverUrl: 'https://rc.example' }),
+        rid: 'room-1',
+        tmid: undefined,
+      }),
       AGENT_CHAT_ACK('Babo'),
-      undefined,
     );
   });
 
@@ -454,11 +469,9 @@ describe('scheduleDelayedAck', () => {
     ]);
     scheduleDelayedAck({ ...ACK_ARGS, tmid: 'thread-1' });
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(postRoomMessage).toHaveBeenCalledWith(
-      expect.anything(),
-      'room-1',
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      expect.objectContaining({ rid: 'room-1', tmid: 'thread-1' }),
       AGENT_CHAT_ACK('Babo'),
-      'thread-1',
     );
   });
 
@@ -468,7 +481,7 @@ describe('scheduleDelayedAck', () => {
     ]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
     expect(resolveRoomPostAuth).not.toHaveBeenCalled();
   });
 
@@ -478,14 +491,14 @@ describe('scheduleDelayedAck', () => {
     ]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('does NOT post when the session row is gone', async () => {
     selectLimit.mockResolvedValue([]);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('swallows a missing-connection resolve (no throw, no post)', async () => {
@@ -495,6 +508,6 @@ describe('scheduleDelayedAck', () => {
     resolveRoomPostAuth.mockResolvedValue(null);
     scheduleDelayedAck(ACK_ARGS);
     await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,11 @@
  *     `systemPromptOverride` still wins over it.
  *   - `conversationContext` — the seeded recent-channel-discussion block,
  *     appended as its own section regardless of override.
+ *
+ * ISS-671 adds `progressFacts` — the rendered `buildProgressFactsBlock`
+ * output. Appended unconditionally like `conversationContext`, i.e. it
+ * survives `systemPromptOverride`: a kernel fact must not be strippable by a
+ * project's own prompt customization.
  */
 
 export interface ProjectSummary {
@@ -30,6 +35,8 @@ export interface BuildSystemPromptInput {
   persona?: string | null | undefined;
   /** Recent-conversation seed (external channels); always appended when set. */
   conversationContext?: string | null | undefined;
+  /** Deterministic project-progress block (ISS-671); always appended when set. */
+  progressFacts?: string | null | undefined;
 }
 
 function readAgentConfigString(agentConfig: unknown, key: string): string | null {
@@ -67,6 +74,11 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     sections.push(
       `Conversation context — the discussion that led to this message (if it references older matter, use the available history tools before concluding):\n${conversation}`,
     );
+  }
+
+  const progressFacts = input.progressFacts?.trim();
+  if (progressFacts) {
+    sections.push(progressFacts);
   }
 
   if (input.pageContext && Object.keys(input.pageContext).length > 0) {

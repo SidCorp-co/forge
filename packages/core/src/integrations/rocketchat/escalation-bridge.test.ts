@@ -39,9 +39,9 @@ vi.mock('./reply-screen.js', () => ({
   screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
 }));
 
-const postRoomMessage = vi.fn();
-vi.mock('./rest-client.js', () => ({
-  postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
+const sendFixedReply = vi.fn();
+vi.mock('./outbound.js', () => ({
+  sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
 }));
 
 const rocketChatPersona = vi.fn((..._args: unknown[]) => 'PERSONA');
@@ -170,7 +170,7 @@ describe('deliverEscalationReplyOnce', () => {
     findConnectionById.mockReset();
     decryptConnectionSecrets.mockReset();
     screenStakeholderReply.mockReset();
-    postRoomMessage.mockReset();
+    sendFixedReply.mockReset();
     rocketChatPersona.mockClear();
     runExternalChatTurn.mockReset();
     buildProjectToolset.mockClear();
@@ -201,7 +201,7 @@ describe('deliverEscalationReplyOnce', () => {
   it('no-ops (does not post) when the CAS loses the race', async () => {
     updateReturning.mockResolvedValue([]); // another caller already claimed it
     await deliverEscalationReplyOnce(makeSession());
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('delivers via a Bao synthesis turn — the room never receives the raw PM text', async () => {
@@ -231,14 +231,17 @@ describe('deliverEscalationReplyOnce', () => {
         persona: 'PERSONA',
       }),
     );
-    expect(postRoomMessage).toHaveBeenCalledWith(
-      { serverUrl: 'https://chat.example.co', authToken: 'tok', userId: 'bot-1' },
-      'room-1',
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      {
+        kind: 'rest',
+        auth: { serverUrl: 'https://chat.example.co', authToken: 'tok', userId: 'bot-1' },
+        rid: 'room-1',
+        tmid: undefined,
+      },
       'Bao says: here is the synthesized answer.',
-      undefined,
     );
     // never posts the PM's raw answer text directly
-    expect(postRoomMessage.mock.calls[0]?.[2]).not.toContain('raw PM answer');
+    expect(sendFixedReply.mock.calls[0]?.[1]).not.toContain('raw PM answer');
   });
 
   it('PM-advise → Bao-create: builds the forge toolset only when an issueProposal is present', async () => {
@@ -312,7 +315,7 @@ describe('deliverEscalationReplyOnce', () => {
       makeSession({ messages: [{ type: 'assistant', content: '```json\n{"answer": "x"}\n```' }] }),
     );
 
-    const [, , postedText] = postRoomMessage.mock.calls[0] as [unknown, unknown, string, unknown];
+    const [, postedText] = sendFixedReply.mock.calls[0] as [unknown, string];
     expect(postedText).not.toContain('```');
     expect(postedText).toMatch(/Babo/);
   });
@@ -326,7 +329,7 @@ describe('deliverEscalationReplyOnce', () => {
 
     expect(runExternalChatTurn).not.toHaveBeenCalled();
     expect(screenStakeholderReply).not.toHaveBeenCalled();
-    expect(postRoomMessage).toHaveBeenCalled();
+    expect(sendFixedReply).toHaveBeenCalled();
   });
 
   it('room-never-silent: falls back when the Bao synthesis turn throws', async () => {
@@ -340,8 +343,8 @@ describe('deliverEscalationReplyOnce', () => {
       makeSession({ messages: [{ type: 'assistant', content: '```json\n{"answer": "x"}\n```' }] }),
     );
 
-    expect(postRoomMessage).toHaveBeenCalled();
-    const [, , postedText] = postRoomMessage.mock.calls[0] as [unknown, unknown, string, unknown];
+    expect(sendFixedReply).toHaveBeenCalled();
+    const [, postedText] = sendFixedReply.mock.calls[0] as [unknown, string];
     expect(postedText).toMatch(/Babo/);
   });
 
@@ -356,8 +359,8 @@ describe('deliverEscalationReplyOnce', () => {
     );
 
     expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(postRoomMessage).toHaveBeenCalled();
-    const [, , postedText] = postRoomMessage.mock.calls[0] as [unknown, unknown, string, unknown];
+    expect(sendFixedReply).toHaveBeenCalled();
+    const [, postedText] = sendFixedReply.mock.calls[0] as [unknown, string];
     expect(postedText).toMatch(/Babo/);
   });
 });

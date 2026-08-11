@@ -25,9 +25,9 @@ vi.mock('./reply-screen.js', () => ({
   screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
 }));
 
-const postRoomMessage = vi.fn();
-vi.mock('./rest-client.js', () => ({
-  postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
+const sendFixedReply = vi.fn();
+vi.mock('./outbound.js', () => ({
+  sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
 }));
 
 const extractFinalAssistantText = vi.fn();
@@ -73,7 +73,7 @@ describe('deliverAgentChatReplyOnce', () => {
     updateReturning.mockReset();
     resolveRoomPostAuth.mockReset();
     screenStakeholderReply.mockReset();
-    postRoomMessage.mockReset();
+    sendFixedReply.mockReset();
     extractFinalAssistantText.mockReset();
     AGENT_CHAT_FALLBACK_REPLY.mockClear();
     redispatchAgentChatSessionOnFailover.mockReset();
@@ -104,14 +104,14 @@ describe('deliverAgentChatReplyOnce', () => {
   it('no-ops (does not post) when the CAS loses the race', async () => {
     updateReturning.mockResolvedValue([]); // another caller already claimed it
     await deliverAgentChatReplyOnce(makeSession());
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('no-ops (does not post) when the connection cannot be resolved', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     resolveRoomPostAuth.mockResolvedValue(null);
     await deliverAgentChatReplyOnce(makeSession());
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('delivers the runner reply verbatim when the output guard passes', async () => {
@@ -122,12 +122,15 @@ describe('deliverAgentChatReplyOnce', () => {
 
     await deliverAgentChatReplyOnce(makeSession());
 
-    expect(screenStakeholderReply).toHaveBeenCalledWith('proj-1', 'Here is the final answer.', []);
-    expect(postRoomMessage).toHaveBeenCalledWith(
-      AUTH,
-      'room-1',
+    expect(screenStakeholderReply).toHaveBeenCalledWith(
+      'proj-1',
       'Here is the final answer.',
+      [],
       undefined,
+    );
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'Here is the final answer.',
     );
   });
 
@@ -150,9 +153,12 @@ describe('deliverAgentChatReplyOnce', () => {
       }),
     );
 
-    expect(screenStakeholderReply).toHaveBeenCalledWith('proj-1', 'Created ISS-42 for you.', [
-      { name: 'forge_issues', arguments: JSON.stringify({ action: 'create' }) },
-    ]);
+    expect(screenStakeholderReply).toHaveBeenCalledWith(
+      'proj-1',
+      'Created ISS-42 for you.',
+      [{ name: 'forge_issues', arguments: JSON.stringify({ action: 'create' }) }],
+      undefined,
+    );
   });
 
   it('falls back when the output guard rejects the reply', async () => {
@@ -163,7 +169,7 @@ describe('deliverAgentChatReplyOnce', () => {
 
     await deliverAgentChatReplyOnce(makeSession());
 
-    const [, , postedText] = postRoomMessage.mock.calls[0] as [unknown, unknown, string, unknown];
+    const [, postedText] = sendFixedReply.mock.calls[0] as [unknown, string];
     expect(postedText).not.toContain('```');
     expect(postedText).toBe('FALLBACK(Babo)');
   });
@@ -177,7 +183,10 @@ describe('deliverAgentChatReplyOnce', () => {
 
     expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
     expect(screenStakeholderReply).not.toHaveBeenCalled();
-    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'FALLBACK(Babo)',
+    );
   });
 
   it('re-dispatches a failed/transient session to a healthy runner instead of posting the fallback', async () => {
@@ -193,7 +202,7 @@ describe('deliverAgentChatReplyOnce', () => {
 
     expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
     expect(resolveRoomPostAuth).not.toHaveBeenCalled();
-    expect(postRoomMessage).not.toHaveBeenCalled();
+    expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('never retries a user_cancelled session — goes straight to fallback', async () => {
@@ -205,7 +214,10 @@ describe('deliverAgentChatReplyOnce', () => {
     );
 
     expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
-    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'FALLBACK(Babo)',
+    );
   });
 
   it('never retries a skill_not_synced failure — deterministic, retrying would reproduce the same outcome', async () => {
@@ -217,7 +229,10 @@ describe('deliverAgentChatReplyOnce', () => {
     );
 
     expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
-    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'FALLBACK(Babo)',
+    );
   });
 
   it('never retries a ws-publish-failed dispatch failure — deterministic, not an infra routing issue', async () => {
@@ -229,7 +244,10 @@ describe('deliverAgentChatReplyOnce', () => {
     );
 
     expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
-    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'FALLBACK(Babo)',
+    );
   });
 
   it('posts exactly one fallback when failover dispatch throws (dispatch-throw path returns {ok:false,status:error})', async () => {
@@ -239,8 +257,11 @@ describe('deliverAgentChatReplyOnce', () => {
 
     await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
-    expect(postRoomMessage).toHaveBeenCalledTimes(1);
-    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+    expect(sendFixedReply).toHaveBeenCalledTimes(1);
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'FALLBACK(Babo)',
+    );
   });
 
   it('never retries a content-side outcome (completed session, output-guard rejected)', async () => {
@@ -252,7 +273,10 @@ describe('deliverAgentChatReplyOnce', () => {
     await deliverAgentChatReplyOnce(makeSession({ status: 'completed' }));
 
     expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
-    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'FALLBACK(Babo)', undefined);
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'FALLBACK(Babo)',
+    );
   });
 
   it('posts to the tmid thread when the original message was threaded', async () => {
@@ -275,15 +299,18 @@ describe('deliverAgentChatReplyOnce', () => {
       }),
     );
 
-    expect(postRoomMessage).toHaveBeenCalledWith(AUTH, 'room-1', 'answer', 'thread-1');
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: 'thread-1' },
+      'answer',
+    );
   });
 
-  it('room-never-silent: falls back when postRoomMessage throws (swallows the error)', async () => {
+  it('room-never-silent: falls back when sendFixedReply throws (swallows the error)', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
-    postRoomMessage.mockRejectedValue(new Error('network error'));
+    sendFixedReply.mockRejectedValue(new Error('network error'));
 
     await expect(deliverAgentChatReplyOnce(makeSession())).resolves.toBeUndefined();
   });

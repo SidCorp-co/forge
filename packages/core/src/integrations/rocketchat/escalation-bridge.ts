@@ -20,7 +20,6 @@
  * any proposed follow-up issue via Bao's own create authority.
  */
 
-import { scrubLogText } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
 import { buildChatToolContext } from '../../chat/tools/principal.js';
@@ -35,8 +34,8 @@ import {
 import { logger } from '../../logger.js';
 import { rocketChatPersona, webBaseUrl } from './connection-manager.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
+import { sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
-import { postRoomMessage } from './rest-client.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
@@ -102,12 +101,6 @@ export function extractFinalAssistantText(messages: unknown): string | null {
     if (typeof e.content === 'string' && e.content.trim().length > 0) return e.content.trim();
   }
   return null;
-}
-
-const MAX_REPLY_CHARS = 4500;
-
-function clip(text: string): string {
-  return text.length > MAX_REPLY_CHARS ? `${text.slice(0, MAX_REPLY_CHARS)}… [truncated]` : text;
 }
 
 const JSON_FENCE_RE = /```json\s*([\s\S]*?)```/gi;
@@ -243,7 +236,12 @@ async function synthesizeViaBao(
   });
 
   const verdict = result.reply.trim()
-    ? await screenStakeholderReply(session.projectId, result.reply, result.toolCalls)
+    ? await screenStakeholderReply(
+        session.projectId,
+        result.reply,
+        result.toolCalls,
+        result.progress,
+      )
     : { ok: false, problems: ['empty synthesis reply'] };
   return verdict.ok ? result.reply : ESCALATION_FALLBACK_REPLY(meta.botName);
 }
@@ -304,9 +302,11 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
     }
   }
 
-  const safe = scrubLogText(clip(reply), [auth.authToken]);
   try {
-    await postRoomMessage(auth, meta.rid, safe, meta.tmid ?? undefined);
+    await sendFixedReply(
+      { kind: 'rest', auth, rid: meta.rid, tmid: meta.tmid ?? undefined },
+      reply,
+    );
   } catch (err) {
     logger.error(
       { err, sessionId: session.id, rid: meta.rid },

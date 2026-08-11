@@ -13,6 +13,11 @@
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
+import {
+  type ProjectProgress,
+  buildProgressFactsBlock,
+  computeProjectProgress,
+} from '../issues/progress.js';
 import { logger } from '../logger.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
@@ -67,6 +72,11 @@ export interface ExternalChatTurnResult {
   /** Tool calls the model made this turn — callers verify reply claims
    *  (e.g. cited issue ids) against what was actually done. */
   toolCalls: Array<{ name: string; arguments: string }>;
+  /** The deterministic progress snapshot injected into this turn's system
+   *  prompt (ISS-671), or `null` on a computation failure. Callers screen the
+   *  reply against THIS snapshot rather than re-querying, so the guard never
+   *  bounces a reply that matched what the model was actually shown. */
+  progress: ProjectProgress | null;
 }
 
 export async function runExternalChatTurn(
@@ -92,6 +102,9 @@ export async function runExternalChatTurn(
     .where(eq(appConfig.projectId, args.projectId))
     .limit(1);
 
+  // cm:why computed unconditionally every turn, never gated on "is this a progress question" — that intent-routing is the hole ISS-673 fell through
+  const progress = await computeProjectProgress(args.projectId, dbi);
+
   const resolved = await resolveForProject(args.projectId, {
     fallbackProviderId: defaultChatProviderId(),
     db: dbi,
@@ -113,6 +126,7 @@ export async function runExternalChatTurn(
     pageContext: null,
     persona: args.persona ?? null,
     conversationContext: args.conversationContext ?? null,
+    progressFacts: progress ? buildProgressFactsBlock(progress) : null,
   });
   const providerMessages = [
     { role: 'system' as const, content: systemPrompt },
@@ -175,5 +189,6 @@ export async function runExternalChatTurn(
     error: result.errorMessage,
     iterations: result.iterations,
     toolCalls: result.toolCalls,
+    progress,
   };
 }

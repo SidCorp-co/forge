@@ -19,15 +19,15 @@
  * (or the same site twice) without a double post.
  */
 
-import { scrubLogText } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { agentSessions, type agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
 import { extractFinalAssistantText } from './escalation-bridge.js';
+import { sendFixedReply } from './outbound.js';
+import type { ProgressFacts } from './reply-guard.js';
 import { screenStakeholderReply } from './reply-screen.js';
-import { postRoomMessage } from './rest-client.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
@@ -64,10 +64,30 @@ function readAgentChatMeta(metadata: unknown): AgentChatMeta | null {
   };
 }
 
-const MAX_REPLY_CHARS = 4500;
-
-function clip(text: string): string {
-  return text.length > MAX_REPLY_CHARS ? `${text.slice(0, MAX_REPLY_CHARS)}… [truncated]` : text;
+/** `metadata.progressFacts` as stored by `startAgentChat`/the failover retry
+ *  — the snapshot the session's prompt was actually built with (ISS-671).
+ *  Returns `undefined` (not `null`) when the key is entirely absent — an
+ *  in-flight session created before this field existed — so the caller's
+ *  `screenStakeholderReply(..., readProgressFacts(...))` self-computes
+ *  instead of failing closed on a session that was simply never given a
+ *  snapshot to check against. `null` means the key IS present but the
+ *  snapshot computation failed when the session was created — that DOES
+ *  fail closed, same as any other guard failure. */
+function readProgressFacts(metadata: unknown): ProgressFacts | null | undefined {
+  const m = metadata as Record<string, unknown> | null;
+  if (!m || !('progressFacts' in m)) return undefined;
+  const pf = m.progressFacts;
+  if (!pf || typeof pf !== 'object') return null;
+  const p = pf as Record<string, unknown>;
+  if (
+    typeof p.done !== 'number' ||
+    typeof p.inFlight !== 'number' ||
+    typeof p.remaining !== 'number' ||
+    typeof p.total !== 'number'
+  ) {
+    return null;
+  }
+  return { done: p.done, inFlight: p.inFlight, remaining: p.remaining, total: p.total };
 }
 
 /**
@@ -155,13 +175,16 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
       session.projectId,
       finalText,
       extractToolCalls(session.messages),
+      readProgressFacts(session.metadata),
     );
     reply = verdict.ok ? finalText : AGENT_CHAT_FALLBACK_REPLY(meta.botName);
   }
 
-  const safe = scrubLogText(clip(reply), [auth.authToken]);
   try {
-    await postRoomMessage(auth, meta.rid, safe, meta.tmid ?? undefined);
+    await sendFixedReply(
+      { kind: 'rest', auth, rid: meta.rid, tmid: meta.tmid ?? undefined },
+      reply,
+    );
   } catch (err) {
     logger.error(
       { err, sessionId: session.id, rid: meta.rid },
