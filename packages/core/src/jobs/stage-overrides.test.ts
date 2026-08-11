@@ -169,14 +169,20 @@ describe('resolveDefaultModel (ISS-535)', () => {
 });
 
 describe('escalateModel (ISS-535)', () => {
-  it('bumps a tier alias up the ladder by reopenCount steps', () => {
-    expect(escalateModel('haiku', 1)).toBe('sonnet');
-    expect(escalateModel('sonnet', 1)).toBe('opus');
-    expect(escalateModel('haiku', 2)).toBe('opus');
+  // cm:why the FIRST reopen is deliberately free — one review bounce is ordinary, and escalating it would have jumped every bounce sonnet->opus the moment ISS-781 made reopenCount reachable (ISS-766: review-at-opus was 58% of a $1,207 week)
+  it('does NOT escalate on the first reopen', () => {
+    expect(escalateModel('haiku', 1)).toBe('haiku');
+    expect(escalateModel('sonnet', 1)).toBe('sonnet');
+  });
+
+  it('bumps a tier alias one step per reopen BEYOND the first', () => {
+    expect(escalateModel('haiku', 2)).toBe('sonnet');
+    expect(escalateModel('sonnet', 2)).toBe('opus');
+    expect(escalateModel('haiku', 3)).toBe('opus');
   });
 
   it('clamps at the top tier (opus)', () => {
-    expect(escalateModel('sonnet', 2)).toBe('opus');
+    expect(escalateModel('sonnet', 3)).toBe('opus');
     expect(escalateModel('opus', 5)).toBe('opus');
     expect(escalateModel('haiku', 99)).toBe('opus');
   });

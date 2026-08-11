@@ -149,18 +149,28 @@ export function resolveDefaultModel(stageStatus: string): string | null {
 }
 
 /**
- * ISS-535 escalation — bump a tier-alias model up the ladder by `reopenCount`
- * steps, clamped to the top tier (`opus`). Used for `fix`/`review` jobs so a
- * reopened issue retries at a stronger model (ECC "upgrade-on-failure").
+ * Reopens that do NOT escalate the model tier. One review bounce is an ordinary
+ * outcome, not evidence the issue is hard — escalation should signal "a stronger
+ * model might actually help", which is the SECOND bounce onward.
+ */
+const ESCALATION_FREE_REOPENS = 1;
+
+/**
+ * ISS-535 escalation — bump a tier-alias model up the ladder for a reopened
+ * issue (ECC "upgrade-on-failure"), clamped to the top tier (`opus`). Used for
+ * `fix`/`review` jobs.
  *
  * Passes the model through unchanged when: it is null, it is not a known tier
- * alias (a custom full-ID override can't be laddered), or `reopenCount <= 0`.
+ * alias (a custom full-ID override can't be laddered), or the reopen count has
+ * not yet exceeded `ESCALATION_FREE_REOPENS`.
  */
+// cm:why the free first reopen is a cost guard, added when ISS-781 made this reachable at all — before that fix reopenCount never incremented on the pipeline's own rejection paths, so ISS-535 escalation had NEVER actually run. Turning it on unmodified would have jumped every single review bounce sonnet->opus, and ISS-766 measured review-at-opus as $698 of a $1,207 week (58%) driven by exactly those 3-4 pass loops.
 export function escalateModel(model: string | null, reopenCount: number): string | null {
-  if (!model || reopenCount <= 0) return model;
+  const steps = reopenCount - ESCALATION_FREE_REOPENS;
+  if (!model || steps <= 0) return model;
   const idx = MODEL_TIER_LADDER.indexOf(model as (typeof MODEL_TIER_LADDER)[number]);
   if (idx < 0) return model; // not a ladder alias — leave custom overrides alone
-  const next = Math.min(idx + reopenCount, MODEL_TIER_LADDER.length - 1);
+  const next = Math.min(idx + steps, MODEL_TIER_LADDER.length - 1);
   // `next` is a clamped, in-bounds index, so this is always defined.
   return MODEL_TIER_LADDER[next] ?? model;
 }

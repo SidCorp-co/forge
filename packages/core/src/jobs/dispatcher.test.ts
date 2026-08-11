@@ -499,7 +499,7 @@ describe('jobs/dispatcher', () => {
   // chain, (4) preDispatch resolveStageOverrides loadStageMap, (5) loadRepoPath,
   // (6) escalation issues.reopenCount lookup. The mcp-resolver selects after
   // fall through to the base empty-row mock.
-  it('ISS-535: escalates a fix job up the tier ladder when reopenCount >= 1', async () => {
+  it('ISS-535: escalates a fix job up the tier ladder once reopenCount exceeds the free first reopen', async () => {
     mockSelectOnce([
       {
         id: 'j-fix',
@@ -516,12 +516,13 @@ describe('jobs/dispatcher', () => {
     const dispatchSpy = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-fix' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
-    mockSelectOnce([{ reopenCount: 1 }]); // escalation lookup
+    mockSelectOnce([{ reopenCount: 2 }]); // escalation lookup
 
     const result = await handleDispatch({ jobId: 'j-fix' });
     expect(result).toBe('dispatched');
     const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
-    expect(arg.job.payload.model).toBe('opus'); // sonnet +1 step → opus
+    // cm:why reopenCount 2, not 1 — the first reopen is escalation-free (ESCALATION_FREE_REOPENS)
+    expect(arg.job.payload.model).toBe('opus');
   });
 
   it('ISS-535: does NOT escalate a fix job when reopenCount is 0', async () => {
