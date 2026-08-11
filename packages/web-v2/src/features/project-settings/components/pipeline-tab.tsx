@@ -25,6 +25,7 @@ import {
   Button,
   Card,
   CardContent,
+  Collapsible,
   EmptyState,
   ErrorState,
   Icon,
@@ -50,7 +51,10 @@ import { SessionGroupsSection } from "./session-groups-section";
 import { MergeStatesSection } from "./merge-states-section";
 import { ConcurrencySection } from "./concurrency-section";
 import { IntakeGateSection } from "./intake-gate-section";
+import { StagePermissionsSection } from "./stage-permissions-section";
+import { AgentConfigSection } from "./agent-config-section";
 import {
+  API_ONLY_KEYS,
   applyCheckpointMode,
   applyJobStageMode,
   CHECKPOINT_STAGES,
@@ -454,6 +458,8 @@ export function PipelineTab({
         {/* Session groups — round-trips the full fetched config. */}
         <SessionGroupsSection projectId={projectId} config={server} canEdit={canEdit} />
 
+        <StagePermissionsSection config={server} />
+
         {/* Merge points (mergeStates) — round-trips the full fetched config. */}
         <MergeStatesSection projectId={projectId} config={server} canEdit={canEdit} />
 
@@ -461,6 +467,21 @@ export function PipelineTab({
         <ConcurrencySection projectId={projectId} config={server} canEdit={canEdit} />
 
         <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
+
+        <AgentConfigSection projectId={projectId} />
+
+        <div className="mt-6 border-t border-line pt-5">
+          <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
+            <ul className="space-y-2">
+              {API_ONLY_KEYS.map((k) => (
+                <li key={k.key}>
+                  <p className="fg-label font-mono text-fg">{k.key}</p>
+                  <p className="fg-caption text-muted">{k.reason}</p>
+                </li>
+              ))}
+            </ul>
+          </Collapsible>
+        </div>
       </CardContent>
     </Card>
   );

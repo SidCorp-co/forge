@@ -143,6 +143,65 @@ export const STEP_TOGGLE_KEYS = [
 export type StepToggleKey = (typeof STEP_TOGGLE_KEYS)[number];
 
 /**
+ * One `states[<status>]` entry — mirrors `stageConfigSchema` in core
+ * `pipeline/pipeline-config-schema.ts`. Only `enabled`/`mode` are edited by
+ * this tab today (ISS-813 Phase 1 adds read-only display of the rest);
+ * the index signature keeps every other key round-tripping on save.
+ */
+export interface PipelineStateConfig {
+	enabled?: boolean;
+	mode?: "auto" | "manual";
+	skillName?: string;
+	model?: string;
+	allowedTools?: string[] | null;
+	disallowedTools?: string[] | null;
+	permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
+	timeoutSeconds?: number;
+	/** Per-state MCP servers — overrides the project-default `mcpServers` above. */
+	mcpServers?: Record<string, unknown>;
+	systemPrompt?: { mode?: "append" | "replace"; extras?: string | null };
+	userPromptPolicy?: Record<string, unknown>;
+	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
+	sessionGroup?: string;
+	skipComplexities?: string[];
+	[key: string]: unknown;
+}
+
+/**
+ * A Claude Code plugin the project designates (installed at DEVICE scope —
+ * a device installs the union of every project it serves). Mirrors
+ * `pluginDesignationSchema` in core `plugins/designation.ts`. Stored at
+ * `agentConfig.plugins`, read via `GET /api/projects/:id`.
+ */
+export interface PluginDesignation {
+	marketplace: string;
+	name: string;
+	pinnedRef?: string | null;
+	autoUpdate?: boolean;
+}
+
+/** One `agentConfig.stateContext[<jobType>]` entry — mirrors
+ *  `stateContextEntrySchema` in core `projects/state-context.ts`. */
+export interface StateContextEntry {
+	modelOverride?: string | null;
+	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
+	blocks?: Record<string, unknown>;
+	[key: string]: unknown;
+}
+
+/**
+ * The `agentConfig` jsonb blob on a project — read-only surface for plugins +
+ * stateContext (ISS-813). `Project.agentConfig` is untyped jsonb (`unknown`),
+ * same reason `previewDeploy` needs `PreviewDeployConfig` — cast through this,
+ * as `rocketchat-section.tsx:89` already does for `agentConfig.rocketChatAnswerMode`.
+ */
+export interface ProjectAgentConfig {
+	plugins?: PluginDesignation[];
+	stateContext?: Record<string, StateContextEntry> | null;
+	[key: string]: unknown;
+}
+
+/**
  * Loosely-typed pipeline config. We only read/write the master `enabled` flag
  * and the 8 step toggles; everything else (`states`, `sessionGroups`, …) is
  * carried through opaquely so a PATCH never drops keys the FE doesn't surface.
@@ -161,6 +220,11 @@ export interface PipelineConfig {
 	 * and integration servers (postman/epodsystem) layering on top.
 	 */
 	mcpServers?: Record<string, unknown>;
+	/**
+	 * Per-stage overrides, keyed by ISSUE STATUS (not step name) — mirrors
+	 * `statesConfigSchema` in core. See `PipelineStateConfig` above.
+	 */
+	states?: Record<string, PipelineStateConfig | undefined>;
 	/**
 	 * Named session groups: `group → the issue STATUSES whose jobs share one
 	 * Claude CLI session (resumed via `--resume`). This is only a DECLARATION —
@@ -326,11 +390,7 @@ export function toggleEnabled(value: unknown): boolean {
 
 export type StageMode = "auto" | "manual" | "skip";
 
-type StageStateEntry = {
-	enabled?: boolean;
-	mode?: "auto" | "manual";
-	[k: string]: unknown;
-};
+type StageStateEntry = PipelineStateConfig;
 type StagesMap = Record<string, StageStateEntry | undefined>;
 
 function statesOf(cfg: PipelineConfig): StagesMap {
@@ -481,11 +541,9 @@ export function applyCheckpointMode(
 			states: mergeStateEntry(cfg, status, { enabled: true, mode: "manual" }),
 		};
 	}
-	// Skip: REPLACE the entry with just `{enabled:false}` (don't merge — a leftover
-	// `mode:"manual"` from a prior Manual selection would otherwise survive and make
-	// deriveCheckpointMode/the server read it ambiguously). Checkpoints carry no
-	// other per-state keys worth preserving.
-	return { ...cfg, states: { ...statesOf(cfg), [status]: { enabled: false } } };
+	// cm:guard Skip must drop `mode` but keep every other key — deriveCheckpointMode reads enabled:false as authoritative, but a replace-the-whole-entry approach (the prior bug) silently deletes sibling keys like disallowedTools
+	const { mode: _mode, ...rest } = statesOf(cfg)[status] ?? {};
+	return { ...cfg, states: { ...statesOf(cfg), [status]: { ...rest, enabled: false } } };
 }
 
 // ---------------------------------------------------------------------------
@@ -608,3 +666,190 @@ export function validateSessionGroups(
 
 	return errors;
 }
+
+/** status → step label, for every `StageName` core accepts under `states`. */
+// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — same 10 STAGE_NAMES keys, same order; add a stage there and add its row here
+export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [
+	{ status: "open", label: "Triage" },
+	{ status: "needs_info", label: "Needs info" },
+	{ status: "confirmed", label: "Clarify" },
+	{ status: "clarified", label: "Plan" },
+	{ status: "approved", label: "Code" },
+	{ status: "developed", label: "Review" },
+	{ status: "testing", label: "Test" },
+	{ status: "tested", label: "Awaiting release" },
+	{ status: "reopen", label: "Fix" },
+	{ status: "released", label: "Release" },
+];
+
+const PIPELINE_STATUS_LABELS: Record<string, string> = Object.fromEntries(
+	PIPELINE_STATUS_ROWS.map((r) => [r.status, r.label]),
+);
+
+/** status → step label; falls back to the raw status for one core doesn't list here yet. */
+export function pipelineStatusLabel(status: string): string {
+	return PIPELINE_STATUS_LABELS[status] ?? status;
+}
+
+export interface HumanizedToolName {
+	label: string;
+	server: string | null;
+	raw: string;
+}
+
+function toSentenceCase(words: string[]): string {
+	return words
+		.map((w, i) => {
+			const lower = w.toLowerCase();
+			return i === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+		})
+		.join(" ");
+}
+
+/** "CronCreate" -> ["Cron","Create"]; "Workflow" -> ["Workflow"]. */
+function splitPascalCase(raw: string): string[] {
+	return raw
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+		.split(/\s+/)
+		.filter(Boolean);
+}
+
+/**
+ * Tool id -> a human label, for both shapes seen in `disallowedTools`/`allowedTools`:
+ *   - `mcp__<server>__<rest>` (every forge MCP tool) -> server + a de-prefixed,
+ *     space-cased rest. `mcp__forge__forge_projects_archive` -> "Projects archive".
+ *   - a bare Claude Code builtin, PascalCase -> space-cased. `CronCreate` -> "Cron create".
+ * `raw` is always kept so a caller can offer it via `title=`.
+ */
+export function humanizeToolName(raw: string): HumanizedToolName {
+	if (raw.startsWith("mcp__")) {
+		const parts = raw.split("__");
+		const server = parts[1] ?? null;
+		let rest = parts.slice(2).join("__");
+		if (server && rest.startsWith(`${server}_`)) rest = rest.slice(server.length + 1);
+		const words = rest.split("_").filter(Boolean);
+		return { label: words.length > 0 ? toSentenceCase(words) : rest, server, raw };
+	}
+	const words = splitPascalCase(raw);
+	return { label: words.length > 0 ? toSentenceCase(words) : raw, server: null, raw };
+}
+
+/** One stage row worth rendering on the Stage permissions section — carries
+ *  any of allowedTools/disallowedTools/mcpServers/skipComplexities/sessionGroup. */
+export interface StagePermissionRow {
+	status: string;
+	label: string;
+	config: PipelineStateConfig;
+}
+
+function stageHasOverride(sc: PipelineStateConfig): boolean {
+	return (
+		(sc.allowedTools?.length ?? 0) > 0 ||
+		(sc.disallowedTools?.length ?? 0) > 0 ||
+		Object.keys(sc.mcpServers ?? {}).length > 0 ||
+		(sc.skipComplexities?.length ?? 0) > 0 ||
+		Boolean(sc.sessionGroup)
+	);
+}
+
+/** Every `states[status]` that carries a permission-relevant override, in
+ *  ladder order — a status outside `PIPELINE_STATUS_ROWS` still renders,
+ *  labelled with its raw key, so a future `StageName` is never silently dropped. */
+export function summarizeStageConfig(cfg: PipelineConfig): StagePermissionRow[] {
+	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
+	const rows: StagePermissionRow[] = [];
+	const seen = new Set<string>();
+
+	for (const { status, label } of PIPELINE_STATUS_ROWS) {
+		seen.add(status);
+		const sc = states[status];
+		if (sc && stageHasOverride(sc)) rows.push({ status, label, config: sc });
+	}
+	for (const [status, sc] of Object.entries(states)) {
+		if (seen.has(status) || !stageHasOverride(sc)) continue;
+		rows.push({ status, label: status, config: sc });
+	}
+	return rows;
+}
+
+/** Per-row diff against the modal `disallowedTools` signature (the set shared
+ *  by the most stages). `missing` = tools the baseline denies that this stage
+ *  does NOT — i.e. tools this stage is allowed to use that most others aren't. */
+export interface DenylistDiff {
+	status: string;
+	isOutlier: boolean;
+	extra: string[];
+	missing: string[];
+}
+
+export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
+	const counts = new Map<string, { set: Set<string>; count: number }>();
+	for (const row of rows) {
+		const tools = row.config.disallowedTools ?? [];
+		if (tools.length === 0) continue;
+		const key = [...tools].sort().join(" ");
+		const entry = counts.get(key) ?? { set: new Set(tools), count: 0 };
+		entry.count += 1;
+		counts.set(key, entry);
+	}
+	let baseline = new Set<string>();
+	let bestCount = -1;
+	for (const { set, count } of counts.values()) {
+		if (count > bestCount) {
+			bestCount = count;
+			baseline = set;
+		}
+	}
+	return rows.map((row) => {
+		const tools = new Set(row.config.disallowedTools ?? []);
+		const missing = [...baseline].filter((t) => !tools.has(t));
+		const extra = [...tools].filter((t) => !baseline.has(t));
+		return { status: row.status, isOutlier: missing.length > 0 || extra.length > 0, extra, missing };
+	});
+}
+
+/** Config keys the settings API accepts that this screen intentionally does
+ *  not surface yet — driving the "configured elsewhere" note (invariant D:
+ *  an unsurfaced key must state why, never go silent). */
+export interface ApiOnlyKey {
+	key: string;
+	reason: string;
+}
+
+export const API_ONLY_KEYS: ApiOnlyKey[] = [
+	{
+		key: "states[*].model",
+		reason:
+			"Opaque input passed straight to the runner adapter; an unset value resolves to a per-stage default, so a raw string here would misrepresent what actually runs.",
+	},
+	{
+		key: "states[*].permissionMode",
+		reason: "Controls the Claude CLI's own approval mode — an operational lever, deferred to ISS-814.",
+	},
+	{
+		key: "states[*].timeoutSeconds",
+		reason: "Per-stage job timeout override — deferred to ISS-814.",
+	},
+	{
+		key: "states[*].budget",
+		reason: "Per-stage spend caps (perRunUsd/perMonthUsd) — deferred to ISS-814.",
+	},
+	{
+		key: "states[*].systemPrompt",
+		reason: "Raw prompt override (append/replace) — high blast radius, deferred pending a dedicated review surface.",
+	},
+	{
+		key: "states[*].userPromptPolicy",
+		reason: "Prompt field/truncation tuning — an advanced knob, deferred to ISS-814.",
+	},
+	{
+		key: "maxResumeTokens / maxResumeReopenCycles",
+		reason: "Session-resume budget guards (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
+	},
+	{
+		key: "recoveryMaxAttempts / recoveryWindowHours / recoveryByFailureKind",
+		reason:
+			"Absent from pipelineConfigSchema — the GET route's schema parse strips them before the response reaches the browser, so this screen genuinely cannot read them (core schema change, tracked on ISS-814).",
+	},
+];
