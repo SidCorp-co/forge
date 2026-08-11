@@ -179,3 +179,167 @@ export function detectEmptyPromise(reply: string): ProductLintResult {
     ],
   };
 }
+
+/**
+ * Kernel guard against a SELF-COUNTED progress figure in bot replies
+ * (ISS-671 direction B): the 54-issue incident happened because the model
+ * had only `forge_issues.list` (newest-25) to go on, so a wrong figure
+ * looked plausible to the model that produced it. This guard cross-validates
+ * any completion count or percentage in the reply against the deterministic
+ * snapshot (`issues/progress.ts`) injected earlier in the SAME turn — it
+ * cannot fix a bad count, only reject it, which is what forces the
+ * corrective retry that restates the authoritative numbers.
+ *
+ * Fail-CLOSED when `facts` is null: the snapshot computation failed, so
+ * nothing authoritative was injected this turn — any progress figure in that
+ * state can only have been self-counted. This is deliberately STRICTER than
+ * `reply-screen.ts`'s documented fail-OPEN carve-out for its own DB lookup:
+ * an infra blip there costs one ordinary reply, whereas failing open here
+ * would let through exactly the hallucination this guard exists to catch.
+ */
+
+export interface ProgressFacts {
+  shipped: number;
+  closedUnshipped: number;
+  inFlight: number;
+  remaining: number;
+  total: number;
+}
+
+const UUID_TOKEN_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const ISS_TOKEN_RE = /\bISS-\d{1,6}\b/gi;
+const ISO_DATE_RE =
+  /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g;
+
+/** Already-guarded citations and timestamps must never register as figures —
+ *  strip them before the count/percentage scan ever sees the text. */
+function stripNonFigureTokens(reply: string): string {
+  return reply.replace(UUID_TOKEN_RE, ' ').replace(ISS_TOKEN_RE, ' ').replace(ISO_DATE_RE, ' ');
+}
+
+// cm:why matches the Vietnamese/English "nothing done" phrasing that produced the literal 54-issue incident
+const DENIAL_RE =
+  // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese denial phrasing being matched
+  /chưa\s+(có\s+gì|làm\s+gì|bắt\s+đầu|triển\s+khai)|chưa\s+có\s+tiến\s+độ|chưa\s+hoàn\s+thành\s+(việc|issue)\s+nào|\bnot\s+started\b|\bnothing\s+(has\s+been\s+)?(done|completed)\b|\bno\s+(work|progress)\s+(has\s+been\s+)?(done|made)\b/i; // i18n-allow: matches the Vietnamese/English "nothing done" phrasing under test
+
+const PROGRESS_KEYWORD_RE =
+  // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese progress-keyword vocabulary being scanned
+  /hoàn thành|hoàn tất|đã xong|đã đóng|còn lại|đang làm|tổng|done|completed|closed|finished|remaining|in progress|total/gi; // i18n-allow: the Vietnamese progress-keyword vocabulary being scanned
+
+// cm:why a number must be DIRECTLY adjacent to a keyword (only whitespace/colon between) — a wide character window flagged ordinary unrelated numbers several words away as if they were claimed counts (AC#6)
+const NUMBER_AFTER_KEYWORD_RE = new RegExp(`(${PROGRESS_KEYWORD_RE.source})\\s*:?\\s*(\\d+)`, 'gi');
+const NUMBER_BEFORE_KEYWORD_RE = new RegExp(`(\\d+)\\s+(${PROGRESS_KEYWORD_RE.source})`, 'gi');
+
+// cm:why same adjacency requirement as the count rule — an unrelated percentage ("nhanh hơn 20%") must never be read as a progress claim (B1) // i18n-allow: quotes the Vietnamese example phrase being guarded against
+const PERCENT_AFTER_KEYWORD_RE = new RegExp(
+  `(${PROGRESS_KEYWORD_RE.source})\\s*:?\\s*(\\d{1,3})\\s*%`,
+  'gi',
+);
+const PERCENT_BEFORE_KEYWORD_RE = new RegExp(
+  `(\\d{1,3})\\s*%\\s+(${PROGRESS_KEYWORD_RE.source})`,
+  'gi',
+);
+
+function authoritativeSummary(facts: ProgressFacts): string {
+  return `shipped=${facts.shipped}, closed without shipping=${facts.closedUnshipped}, in progress=${facts.inFlight}, not started=${facts.remaining}, total=${facts.total}`;
+}
+
+/** Every integer immediately adjacent to a progress keyword (before or
+ *  after, only whitespace/colon in between), paired with the keyword that
+ *  put it in scope. A number elsewhere in the sentence — even a few words
+ *  away — is ordinary prose, not a claimed count. */
+function progressContextNumbers(scanText: string): Array<{ n: number; keyword: string }> {
+  const found: Array<{ n: number; keyword: string }> = [];
+  const isPercent = (numIndex: number, numStr: string): boolean =>
+    /^\s*%/.test(scanText.slice(numIndex + numStr.length));
+  for (const m of scanText.matchAll(NUMBER_AFTER_KEYWORD_RE)) {
+    const [whole, keyword, numStr] = m as unknown as [string, string, string];
+    const numIndex = (m.index ?? 0) + whole.length - numStr.length;
+    if (isPercent(numIndex, numStr)) continue;
+    found.push({ n: Number(numStr), keyword });
+  }
+  for (const m of scanText.matchAll(NUMBER_BEFORE_KEYWORD_RE)) {
+    const [, numStr, keyword] = m as unknown as [string, string, string];
+    const numIndex = m.index ?? 0;
+    if (isPercent(numIndex, numStr)) continue;
+    found.push({ n: Number(numStr), keyword });
+  }
+  return found;
+}
+
+/** Every `N%` immediately adjacent to a progress keyword — same adjacency
+ *  rule as {@link progressContextNumbers}, so an unrelated percentage several
+ *  words away is ordinary prose, not a progress claim. */
+function progressContextPercents(scanText: string): Array<{ pct: number; keyword: string }> {
+  const found: Array<{ pct: number; keyword: string }> = [];
+  for (const m of scanText.matchAll(PERCENT_AFTER_KEYWORD_RE)) {
+    const [, keyword, pctStr] = m as unknown as [string, string, string];
+    found.push({ pct: Number(pctStr), keyword });
+  }
+  for (const m of scanText.matchAll(PERCENT_BEFORE_KEYWORD_RE)) {
+    const [, pctStr, keyword] = m as unknown as [string, string, string];
+    found.push({ pct: Number(pctStr), keyword });
+  }
+  return found;
+}
+
+/** Legal percentage for each bucket independently (shipped/closedUnshipped/
+ *  inFlight/remaining over total) — a claim can legitimately describe any one
+ *  of the four ("10% đang làm", "còn 27% chưa xong"), not only shipped/total. // i18n-allow: quotes the Vietnamese example phrases being permitted
+ *  `total === 0` makes every bucket's share 0%, so 0% alone is legal. */
+function expectedPercents(facts: ProgressFacts): number[] {
+  if (facts.total === 0) return [0];
+  return [facts.shipped, facts.closedUnshipped, facts.inFlight, facts.remaining].map((n) =>
+    Math.round((n / facts.total) * 100),
+  );
+}
+
+export function checkProgressClaims(reply: string, facts: ProgressFacts | null): ProductLintResult {
+  const scanText = stripNonFigureTokens(reply);
+
+  if (facts === null) {
+    const numbers = progressContextNumbers(scanText);
+    const percents = progressContextPercents(scanText);
+    if (numbers.length === 0 && percents.length === 0) return { ok: true, problems: [] };
+    return {
+      ok: false,
+      problems: [
+        'reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead',
+      ],
+    };
+  }
+
+  const problems = new Set<string>();
+
+  if ((facts.shipped > 0 || facts.inFlight > 0) && DENIAL_RE.test(scanText)) {
+    problems.add(
+      `reply claims no work has been done, but authoritative progress is ${authoritativeSummary(facts)} — restate using these figures`,
+    );
+  }
+
+  const allowedCounts = new Set([
+    facts.shipped,
+    facts.closedUnshipped,
+    facts.inFlight,
+    facts.remaining,
+    facts.total,
+  ]);
+  for (const { n, keyword } of progressContextNumbers(scanText)) {
+    if (!allowedCounts.has(n)) {
+      problems.add(
+        `stated "${n}" near "${keyword}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,
+      );
+    }
+  }
+
+  const expectedPcts = expectedPercents(facts);
+  for (const { pct, keyword } of progressContextPercents(scanText)) {
+    if (!expectedPcts.some((e) => Math.abs(pct - e) <= 1)) {
+      problems.add(
+        `stated "${pct}%" near "${keyword}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,
+      );
+    }
+  }
+
+  return { ok: problems.size === 0, problems: [...problems] };
+}

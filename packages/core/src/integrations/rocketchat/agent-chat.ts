@@ -24,10 +24,12 @@ import {
 } from '../../agent-sessions/chat-turn.js';
 import { db } from '../../db/client.js';
 import { agentSessions, projects } from '../../db/schema.js';
+import { buildProgressFactsBlock, computeProjectProgress } from '../../issues/progress.js';
 import { findAvailableDeviceForProject } from '../../lib/device-pool.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
-import { postRoomMessage } from './rest-client.js';
+import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
+import type { ProgressFacts } from './reply-guard.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
@@ -111,6 +113,10 @@ export function buildAgentChatPrompt(args: {
   conversationContext?: string | null | undefined;
   message: string;
   askedByUsername?: string | undefined;
+  /** Deterministic project-progress block (ISS-671) — same injection every
+   *  external turn gets via `buildSystemPrompt`'s `progressFacts`, since agent
+   *  mode does not go through that builder. */
+  progressFacts?: string | null | undefined;
 }): string {
   const lines = [args.persona];
   const conversation = args.conversationContext?.trim();
@@ -118,6 +124,10 @@ export function buildAgentChatPrompt(args: {
     lines.push(
       `Conversation context — the discussion that led to this message (if it references older matter, use the available history tools before concluding):\n${conversation}`,
     );
+  }
+  const progressFacts = args.progressFacts?.trim();
+  if (progressFacts) {
+    lines.push(progressFacts);
   }
   lines.push(`${args.askedByUsername ? `@${args.askedByUsername} asks: ` : ''}"${args.message}"`);
   lines.push(
@@ -146,6 +156,18 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
     return { started: false, reason: 'no-device' };
   }
 
+  // cm:why store the snapshot NUMBERS on metadata (not just the rendered prompt block) so agent-chat-bridge.ts screens the reply against what this session was actually told, not a fresh re-query that could skew if an issue closes mid-session
+  const progress = await computeProjectProgress(args.projectId);
+  const progressFacts: ProgressFacts | null = progress
+    ? {
+        shipped: progress.shipped,
+        closedUnshipped: progress.closedUnshipped,
+        inFlight: progress.inFlight,
+        remaining: progress.remaining,
+        total: progress.total,
+      }
+    : null;
+
   const session = await createChatSessionRow({
     projectId: args.projectId,
     userId: null,
@@ -163,6 +185,7 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
         deliveredAt: null,
       },
       lensOverride: ['product'],
+      progressFacts,
     },
   });
 
@@ -176,6 +199,7 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
         conversationContext: args.conversationContext,
         message: args.message,
         askedByUsername: args.askedByUsername,
+        progressFacts: progress ? buildProgressFactsBlock(progress) : null,
       }),
       forceLenses: ['product'],
       broadcastEvent: 'agent-session.created',
@@ -296,7 +320,11 @@ export async function redispatchAgentChatSessionOnFailover(
         session.title ?? `Chat: ${String(agentChat.question ?? '').slice(0, AGENT_CHAT_TITLE_MAX)}`,
       runKind: 'system',
       runMetadata: { source: 'rocketchat.agentChat', rid: agentChat.rid },
-      metadata: { agentChat: nextAgentChat, lensOverride: ['product'] },
+      metadata: {
+        agentChat: nextAgentChat,
+        lensOverride: ['product'],
+        progressFacts: meta.progressFacts ?? null,
+      },
     });
   } catch (err) {
     logger.error(
@@ -428,7 +456,11 @@ async function postDelayedAck(args: {
 
     const auth = await resolveRoomPostAuth(args.connectionId, { sessionId: args.sessionId });
     if (!auth) return;
-    await postRoomMessage(auth, args.rid, AGENT_CHAT_ACK(args.botName), args.tmid ?? undefined);
+    await sendFixedReply(
+      { kind: 'rest', auth, rid: args.rid, tmid: args.tmid ?? undefined },
+      AGENT_CHAT_ACK(args.botName),
+      FIXED_REPLY_CONSTANT,
+    );
   } catch (err) {
     logger.error(
       { err, sessionId: args.sessionId, rid: args.rid },

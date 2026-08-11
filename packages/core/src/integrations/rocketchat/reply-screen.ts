@@ -14,8 +14,11 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
+import { computeProjectProgress } from '../../issues/progress.js';
 import { logger } from '../../logger.js';
 import {
+  type ProgressFacts,
+  checkProgressClaims,
   detectEmptyPromise,
   extractIssueClaims,
   judgeIssueClaims,
@@ -88,11 +91,21 @@ async function verifyReplyClaims(
  * still apply. The agent-chat bridge instead threads in the runner
  * session's own tool calls (`agent-chat-bridge.ts`'s `extractToolCalls`),
  * so that check applies there too.
+ *
+ * `progress` (ISS-671) is the deterministic snapshot to screen any stated
+ * completion figure against. Pass the SAME snapshot the reply's turn was
+ * shown (via `ExternalChatTurnResult.progress` or the agent-chat session's
+ * stored `progressFacts`) — screening against a fresh re-query would bounce
+ * a reply that was accurate for what the model actually saw. Omitting the
+ * argument entirely (`undefined`) self-computes, so a caller that forgets
+ * still gets the check; passing `null` explicitly means "no snapshot for
+ * this turn" and screens fail-closed via `checkProgressClaims`.
  */
 export async function screenStakeholderReply(
   projectId: string,
   reply: string,
   toolCalls: Array<{ name: string; arguments: string }>,
+  progress?: ProgressFacts | null,
 ): Promise<ReplyScreenVerdict> {
   const claim = await verifyReplyClaims(projectId, reply, toolCalls);
   const lint = lintStakeholderReply(reply, {
@@ -100,8 +113,15 @@ export async function screenStakeholderReply(
     skipIssueIdRule: claim.dbError,
   });
   const promise = detectEmptyPromise(reply);
+  const facts = progress === undefined ? await computeProjectProgress(projectId) : progress;
+  const progressVerdict = checkProgressClaims(reply, facts);
   return {
-    ok: claim.ok && lint.ok && promise.ok,
-    problems: [...claim.problems, ...lint.problems, ...promise.problems],
+    ok: claim.ok && lint.ok && promise.ok && progressVerdict.ok,
+    problems: [
+      ...claim.problems,
+      ...lint.problems,
+      ...promise.problems,
+      ...progressVerdict.problems,
+    ],
   };
 }

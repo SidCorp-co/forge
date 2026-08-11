@@ -159,3 +159,43 @@ the Forge tools.
 2. Write scope: `forge_issues` create/update + `forge_comments` create.
 3. Issue-creation safety: **draft-first + confirm** (recommended) vs direct `open`.
 4. Authz: tools run as project org owner (any channel member mentioning the bot acts under that principal) — RC-user→Forge-user mapping deferred.
+
+## Kernel-hard answer rules (SHIPPED — ISS-671/672/674/675/687/727)
+
+Persona-only rules drift; VISION №11 (kernel-hard, policy-soft) moved four of them into code.
+
+| Rule | Where | Status |
+|---|---|---|
+| Output guard (jargon leak, empty promise, hallucinated issue claim) | `reply-guard.ts` + `reply-screen.ts`'s `screenStakeholderReply` | ISS-672 |
+| Product-only lens (technical questions can't leak to the support channel) | `lensOverride: ['product']` pinned server-side at session creation | ISS-674 |
+| Retrieval-miss escalation, async, knowledge-backed | `escalation.ts` + `escalation-bridge.ts` (PM-advisory, Bao-synthesized reply) | ISS-675, refined ISS-687/727 |
+| Deterministic progress (below) | `issues/progress.ts` + `checkProgressClaims` | ISS-671 |
+
+**Progress (ISS-671).** First attempt (ISS-673: a standalone `forge-project-status-summary` MCP
+tool) was merged then reverted the same day — it made the *count* deterministic but left
+*invocation* to the model's discretion, so the model kept self-counting via `forge_issues.list`
+(`.limit(25)`, newest-first) and undercounted a 54-issue-done project as "nothing done" (sampling
+bias, not arithmetic). The fix instead:
+- `issues/progress.ts` — the one `computeProjectProgress`/`bucketOf` computation. "Shipped" ≠
+  "closed": `closed` also covers duplicates, merges into another issue, and decided-not-to-do —
+  conflating them overstated forge-dev's own figure by 39% (33 of 85 closed issues, measured
+  2026-08-11). `bucketOf` counts `released` unconditionally, and `closed` as shipped only when
+  the issue's `activity_log` shows an `issue.statusChanged` row to the project's base-merge state
+  (`pipelineConfig.mergeStates.baseBranch`, default `released`) — otherwise it's
+  `closed_unshipped`, still counted in `total` but not in `shipped`.
+- Injected unconditionally into every external turn's system prompt (`buildSystemPrompt`'s
+  `progressFacts`, agent mode's `buildAgentChatPrompt`) — never gated on intent. Each figure in
+  the rendered block carries its own definition so the model can't blur the two closed buckets.
+- `checkProgressClaims` (in `reply-guard.ts`) cross-validates any stated count/percentage against
+  that same snapshot, matching a number only when it is DIRECTLY adjacent to a progress keyword
+  (not a wide character window — that flagged ordinary unrelated numbers several words away, e.g.
+  a duration, as if they were claimed counts). Composed into `screenStakeholderReply`. Fails
+  CLOSED when the snapshot is null — stricter than the claim-verification guard's documented
+  fail-open carve-out, since a null snapshot means nothing authoritative was ever shown to the
+  model.
+
+**No-bypass chokepoint (ISS-671).** `outbound.ts` is now the only door to a Rocket.Chat room
+(`sendStakeholderReply` screens + delivers; `sendFixedReply` delivers a code-authored constant
+verbatim). `outbound.test.ts` statically scans the WHOLE `packages/core/src` tree (not just this
+directory) and fails CI if any file other than `outbound.ts`/`rest-client.ts`/`ddp-client.ts`
+calls `postRoomMessage`/`.sendMessage` directly.

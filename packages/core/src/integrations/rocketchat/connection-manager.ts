@@ -10,7 +10,6 @@
  * bot's own messages / system / edits are ignored (no reply loops).
  */
 
-import { scrubLogText } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
@@ -43,6 +42,7 @@ import {
   startEscalation,
 } from './escalation.js';
 import { createSeenTracker, decideHandling } from './inbound-gate.js';
+import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
@@ -113,9 +113,6 @@ const LISTEN_RETRY_MS = 5000;
  *  that worst-case deaf window. The `nosub` handler recovers the SIGNALLED case
  *  immediately; this is the backstop for the silent one. */
 const DDP_REFRESH_INTERVAL_MS = 10 * 60_000;
-/** Rocket.Chat rejects messages over `Message_MaxAllowedSize` (default 5000)
- *  outright — the user would get silence. Truncate below that. */
-const MAX_REPLY_CHARS = 4500;
 /** Hard ceiling on the model turn(s) via the abort signal — cancels the
  *  provider fetch/SSE read so a stalled upstream terminates as an error. */
 const TURN_TIMEOUT_MS = 90_000;
@@ -171,10 +168,6 @@ const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.sli
 
 const correctiveMessage = (problems: string[]): string =>
   `[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
-
-function clipReply(reply: string): string {
-  return reply.length > MAX_REPLY_CHARS ? `${reply.slice(0, MAX_REPLY_CHARS)}… [truncated]` : reply;
-}
 
 interface Route {
   rid: string;
@@ -532,6 +525,8 @@ class RocketChatConnectionManager {
     let external: ExternalMcpToolsets | undefined;
     let phase = 'start';
     let reply: string;
+    // cm:why default stays the fixed-constant proof for every branch below EXCEPT the one that returns raw model text (right after `verdict.ok` is confirmed) — see that branch for why
+    let sendProof: ReplySendProof = FIXED_REPLY_CONSTANT;
     try {
       reply = await withTimeout(
         (async (): Promise<string> => {
@@ -681,7 +676,12 @@ class RocketChatConnectionManager {
           // product-lint + empty-promise guards).
           phase = 'verify';
           let verdict = result.reply.trim()
-            ? await screenStakeholderReply(route.projectId, result.reply, result.toolCalls)
+            ? await screenStakeholderReply(
+                route.projectId,
+                result.reply,
+                result.toolCalls,
+                result.progress,
+              )
             : { ok: true, problems: [] as string[] };
           if (!verdict.ok) {
             logger.warn(
@@ -702,7 +702,12 @@ class RocketChatConnectionManager {
             });
             this.sessionByRid.set(m.rid, result.sessionId);
             verdict = result.reply.trim()
-              ? await screenStakeholderReply(route.projectId, result.reply, result.toolCalls)
+              ? await screenStakeholderReply(
+                  route.projectId,
+                  result.reply,
+                  result.toolCalls,
+                  result.progress,
+                )
               : { ok: false, problems: ['empty retry reply'] };
             if (!verdict.ok) {
               logger.error(
@@ -711,12 +716,16 @@ class RocketChatConnectionManager {
               );
             }
           }
-          return !verdict.ok
-            ? unverifiedFallbackReply(ac.botName)
-            : result.reply.trim() ||
-                (result.terminal === 'error'
-                  ? errorFallbackReply(ac.botName)
-                  : emptyFallbackReply(ac.botName));
+          if (!verdict.ok) return unverifiedFallbackReply(ac.botName);
+          const trimmedReply = result.reply.trim();
+          if (!trimmedReply) {
+            return result.terminal === 'error'
+              ? errorFallbackReply(ac.botName)
+              : emptyFallbackReply(ac.botName);
+          }
+          // cm:why proof this exact text passed screenStakeholderReply above — the only way sendFixedReply's `proof` param accepts model-generated text
+          sendProof = { ok: true, problems: verdict.problems };
+          return trimmedReply;
         })(),
         HANDLE_TIMEOUT_MS,
       );
@@ -746,17 +755,14 @@ class RocketChatConnectionManager {
       clearTimeout(timer);
       await external?.dispose();
     }
-    // A threaded mention gets its reply in the same thread. `reply === ''` is
-    // the ISS-675 escalation sentinel (dispatch-failed: the completion bridge
-    // already delivers the one honest fallback asynchronously via REST) — skip
-    // the DDP send entirely so the room never gets a second reply. Otherwise
-    // secret-scrub runs unconditionally on the final chosen reply (incl. any
-    // fallback) — redact only, never retry, per ISS-672's spec; `ac.authToken`
-    // is passed as an extra secret so the bot's own credential is redacted
-    // wholesale if it ever echoes.
-    if (reply) {
-      const safe = scrubLogText(clipReply(reply), [ac.authToken]);
-      await ac.client?.sendMessage(m.rid, safe, m.tmid);
+    // cm:why reply === '' is the ISS-675 escalation sentinel (its fallback already delivered async via REST) — skip this send so the room doesn't get a second reply
+    // cm:why reply was already screened (or replaced with a fixed fallback) above — sendProof carries the proof through; this send is delivery-only through the outbound chokepoint, not a second guard pass
+    if (reply && ac.client) {
+      await sendFixedReply(
+        { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
+        reply,
+        sendProof,
+      );
     }
   }
 

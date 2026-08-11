@@ -22,7 +22,26 @@ vi.mock('./session.js', () => ({
 }));
 
 vi.mock('./providers/bootstrap.js', () => ({ defaultChatProviderId: () => 'mock' }));
-vi.mock('./system-prompt.js', () => ({ buildSystemPrompt: () => 'SYS' }));
+const buildSystemPromptCalls: Array<Record<string, unknown>> = [];
+vi.mock('./system-prompt.js', () => ({
+  buildSystemPrompt: (input: Record<string, unknown>) => {
+    buildSystemPromptCalls.push(input);
+    return 'SYS';
+  },
+}));
+
+const fakeProgress = {
+  done: 54,
+  inFlight: 7,
+  remaining: 3,
+  total: 64,
+  byStatus: {},
+  computedAt: new Date(),
+};
+vi.mock('../issues/progress.js', () => ({
+  computeProjectProgress: async () => fakeProgress,
+  buildProgressFactsBlock: () => 'PROGRESS FACTS BLOCK',
+}));
 
 const mockProvider = {
   id: 'mock',
@@ -61,6 +80,7 @@ describe('runExternalChatTurn', () => {
   it('resolves, runs the turn, returns the reply, and persists the final text', async () => {
     appended.length = 0;
     selectCall = 0;
+    buildSystemPromptCalls.length = 0;
     const out = await runExternalChatTurn({
       projectId: 'p1',
       source: 'rocketchat',
@@ -71,5 +91,18 @@ describe('runExternalChatTurn', () => {
     expect(out.reply).toBe('The answer is 42.');
     expect(out.terminal).toBe('done');
     expect(appended).toEqual(['The answer is 42.']);
+  });
+
+  it('injects the progress facts block into the system prompt and returns the snapshot', async () => {
+    buildSystemPromptCalls.length = 0;
+    selectCall = 0;
+    const out = await runExternalChatTurn({
+      projectId: 'p1',
+      source: 'rocketchat',
+      message: 'how is the project progressing?',
+      userId: null,
+    });
+    expect(buildSystemPromptCalls[0]?.progressFacts).toBe('PROGRESS FACTS BLOCK');
+    expect(out.progress).toEqual(fakeProgress);
   });
 });

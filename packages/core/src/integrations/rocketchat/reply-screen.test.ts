@@ -10,6 +10,12 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
+vi.mock('../../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
+vi.mock('../../pipeline/outbox-session.js', () => ({ withActorContext: vi.fn() }));
+vi.mock('../../pipeline/runs.js', () => ({
+  closeOpenRunForIssue: vi.fn(),
+  setCurrentStepForOpenIssueRun: vi.fn(),
+}));
 
 const { screenStakeholderReply } = await import('./reply-screen.js');
 
@@ -76,5 +82,49 @@ describe('screenStakeholderReply', () => {
       [],
     );
     expect(verdict.ok).toBe(true);
+  });
+
+  describe('progress claim (ISS-671)', () => {
+    const facts = { shipped: 54, closedUnshipped: 10, inFlight: 7, remaining: 3, total: 74 };
+
+    it('ANDs a progress-claim rejection into the composed verdict', async () => {
+      selectWhere.mockResolvedValue([]);
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+      const verdict = await screenStakeholderReply('proj-1', 'Dự án chưa làm gì cả.', [], facts); // i18n-allow: Vietnamese denial phrasing under test
+      expect(verdict.ok).toBe(false);
+      expect(verdict.problems.join(' ')).toMatch(/54/);
+    });
+
+    it('passes a reply whose stated figure matches the given snapshot, with no extra DB query for it', async () => {
+      selectWhere.mockResolvedValue([]);
+      const verdict = await screenStakeholderReply(
+        'proj-1',
+        // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+        'Dự án đã hoàn thành 54 việc.', // i18n-allow: Vietnamese progress phrasing under test
+        [],
+        facts,
+      );
+      expect(verdict.ok).toBe(true);
+    });
+
+    it('omitting the snapshot argument self-computes rather than skipping the check', async () => {
+      // cm:why the db mock has no `.groupBy`, so the self-compute fails closed — proving the call happened rather than being skipped
+      selectWhere.mockResolvedValue([]);
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+      const verdict = await screenStakeholderReply('proj-1', 'Dự án đã hoàn thành 54 việc.', []); // i18n-allow: Vietnamese progress phrasing under test
+      expect(verdict.ok).toBe(false);
+    });
+
+    it('passing null explicitly fails closed on any stated figure', async () => {
+      selectWhere.mockResolvedValue([]);
+      const verdict = await screenStakeholderReply(
+        'proj-1',
+        // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+        'Dự án đã hoàn thành 54 việc.', // i18n-allow: Vietnamese progress phrasing under test
+        [],
+        null,
+      );
+      expect(verdict.ok).toBe(false);
+    });
   });
 });
