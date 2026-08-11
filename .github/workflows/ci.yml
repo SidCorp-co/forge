@@ -299,9 +299,12 @@ jobs:
   # installed and can bypass — the authoritative merge gate. The blocking
   # signals it enforces today: install-check, lang-check, the affected
   # package build(s)+test(s) — including core's real-Postgres integration
-  # suite and the Rust runner gate — and markdown-link integrity. (`core build` runs
-  # `tsc -p tsconfig.build.json`, so prod typecheck is gated here; the
-  # test-inclusive `typecheck`/`lint` stay non-blocking debt for now.)
+  # suite and the Rust runner gate — markdown-link integrity, and the codemap
+  # comment convention. (`core build` runs `tsc -p tsconfig.build.json`; the
+  # test-inclusive `typecheck` and `lint` became blocking inside the `core` job
+  # on 2026-08-10/11 once their debt reached 0, and `codemap` joined this list
+  # the same way. All three had drifted for months precisely because nothing
+  # failed on them.)
   ci-passed:
     if: always()
     needs:
@@ -316,6 +319,7 @@ jobs:
         core-integration,
         runner,
         docs,
+        codemap,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -331,7 +335,8 @@ jobs:
             "core:${{ needs.core.result }}" \
             "core-integration:${{ needs.core-integration.result }}" \
             "runner:${{ needs.runner.result }}" \
-            "docs:${{ needs.docs.result }}"; do
+            "docs:${{ needs.docs.result }}" \
+            "codemap:${{ needs.codemap.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

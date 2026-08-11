@@ -36,10 +36,10 @@ Open-source control plane for Claude Code — full-stack project management + an
 
 This repo is onboarded onto the `forge-codemap` plugin. Config: `.forge/codemap.json` (flow
 vocabulary + enforcement scope) · `.forge/codemap-baseline.json` (13,794 legacy comments across
-1,103 files frozen — a file fails only when its count **rises**). The `codemap` job in
-`.github/workflows/ci.yml` runs `cm verify` at tag `codemap-v0.2.1`, but it is **advisory**: it is
-not in `ci-passed`'s `needs` list, so a violation reports without blocking a merge. Spec: the
-plugin's `SPEC.md`.
+1,103 files frozen — a file fails only when its count **rises**). **Gate**: the `codemap` job in
+`.github/workflows/ci.yml` runs `cm verify` at tag `codemap-v0.2.1` and sits in `ci-passed`'s
+`needs` list, so a violation blocks the merge. Post-baseline prose is at 0, so anything it reports
+is something you just added. Spec: the plugin's `SPEC.md`.
 
 **Rule: if a tool can derive it, don't write it.** No `// Load the config` — the compiler already
 says that. No new `TODO`/`FIXME`: file an issue at `draft` instead. Orientation prose goes in the
