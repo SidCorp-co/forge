@@ -41,6 +41,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { JOB_TYPE_ENTRY_STATUS, classifyVerdict } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
+import { attributeFailureToRunner } from '../runners/attribute-failure.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -204,6 +205,9 @@ export async function finalizeFailedJob(
     if (flipped) return { scheduled: false, reason: 'completed_via_handoff' };
     // CAS lost (a concurrent terminal write won) → fall through to normal path.
   }
+
+  // cm:why ISS-806 — stamp the box BEFORE any retry decision: a retry re-targets another device, so `updated.runnerId` only names the failing box until then
+  await attributeFailureToRunner(updated.runnerId, opts.error);
 
   const retry: RetryOutcome =
     opts.precomputedRetry ?? (await scheduleAutoRetryWithVerify(updated, opts.error));
