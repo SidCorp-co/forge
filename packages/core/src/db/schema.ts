@@ -712,6 +712,10 @@ export const jobs = pgTable(
     failureKind: text('failure_kind', {
       enum: ['code', 'infra', 'transient-cc', 'timeout'],
     }),
+    // cm:why ISS-823 — NULL on pre-existing rows; retry.ts falls back to deriveActionFromKind(failureKind) so historical behaviour is unchanged
+    failureAction: text('failure_action', {
+      enum: ['terminal', 'quarantine', 'failover', 'retry'],
+    }),
     failureReason: text('failure_reason'),
     failureMeta: jsonb('failure_meta'),
     classifierVersion: integer('classifier_version'),
@@ -1157,6 +1161,8 @@ export const comments = pgTable(
     authorDeviceId: uuid('author_device_id').references(() => devices.id, {
       onDelete: 'set null',
     }),
+    // cm:guard durable agent-authored marker set by every agent write path (MCP + core guards), incl. owner-lane PAT comments — human test is isAi=false AND authorDeviceId IS NULL
+    isAi: boolean('is_ai').notNull().default(false),
     body: text('body').notNull(),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

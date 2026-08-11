@@ -54,8 +54,9 @@ export const AGENT_CHAT_DEDUP_REPLY = (botName: string): string =>
 export const AGENT_CHAT_NO_DEVICE_REPLY = (botName: string): string =>
   `Xin lỗi, hiện không có runner nào sẵn sàng để ${botName} trả lời đầy đủ câu hỏi này — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
+// cm:why ISS-818 — states WHY (figures unreconciled), not a bare "couldn't verify" that reads as "didn't understand you" and sends the user off to rephrase
 export const AGENT_CHAT_FALLBACK_REPLY = (botName: string): string =>
-  `Xin lỗi, ${botName} chưa tìm ra câu trả lời chắc chắn cho câu hỏi này — bạn hỏi lại giúp mình nhé.`; // i18n-allow: user-facing channel reply
+  `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
 export interface StartAgentChatArgs {
   projectId: string;

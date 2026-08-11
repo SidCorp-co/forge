@@ -970,7 +970,6 @@ describe('pipeline/orchestrator', () => {
       expect(postMissingPlanCommentMock).toHaveBeenCalledWith(
         expect.objectContaining({ issueId: 'iss-1', routedTo: 'clarified' }),
       );
-      // review r2 finding 2 — comment lands BEFORE the route is attempted
       expect(postMissingPlanCommentMock.mock.invocationCallOrder[0]).toBeLessThan(
         applyTransitionMock.mock.invocationCallOrder[0] as number,
       );
@@ -986,8 +985,7 @@ describe('pipeline/orchestrator', () => {
       await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
 
       expect(applyTransitionMock).toHaveBeenCalledTimes(1);
-      // The comment is posted BEFORE the route is attempted, so a throwing
-      // transition can never silence the refusal (invisible-starvation guard).
+      // cm:guard the refusal must stay visible when the route itself fails — a throwing transition leaves the issue at `approved`, so without the comment the starvation is invisible (ISS-819 review r2 finding 2)
       expect(postMissingPlanCommentMock).toHaveBeenCalledWith(
         expect.objectContaining({ issueId: 'iss-1', routedTo: 'clarified' }),
       );
@@ -1007,9 +1005,7 @@ describe('pipeline/orchestrator', () => {
       const bus = makeBus();
       await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
 
-      // Plan stage is auto-skipped for complexity `s`, so the blank plan is
-      // legitimate — the backstop must not reroute (that would livelock against
-      // autoSkipDisabledStages) and must not even reach the DB liveness check.
+      // cm:guard a complexity-skipped plan stage makes the blank plan legitimate — rerouting here livelocks against autoSkipDisabledStages, so the backstop must short-circuit before it even reaches the DB liveness check (ISS-819 review r2 blocker)
       expect(applyTransitionMock).not.toHaveBeenCalled();
       expect(postMissingPlanCommentMock).not.toHaveBeenCalled();
       expect(isPlanStageLiveMock).not.toHaveBeenCalled();
@@ -1084,10 +1080,7 @@ describe('pipeline/orchestrator', () => {
       const bus = makeBus();
       await bus.emit('transition', transition({ from: 'waiting', to: 'approved' }) as never);
 
-      // A plan job ran for this child and left the plan blank — it is the same
-      // fabrication class every other issue is, so it must be routed (to
-      // needs_info, since a plan job already ran), not exempted forever. The
-      // cascade-kickoff exemption is short-circuited before the decompose check.
+      // cm:guard a decompose child whose plan job ran and left the plan blank is the same fabrication class as any other issue — the cascade-kickoff exemption must short-circuit before the decompose check, never exempt it forever (ISS-819 review r2 finding 4)
       expect(findDecompositionParentMock).not.toHaveBeenCalled();
       expect(applyTransitionMock).toHaveBeenCalledTimes(1);
       expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
@@ -1134,8 +1127,7 @@ describe('pipeline/orchestrator', () => {
       expect(postNeedsInfoReopenCommentMock).toHaveBeenCalledWith(
         expect.objectContaining({ issueId: 'iss-1' }),
       );
-      // review r2 finding 3 — comment lands BEFORE the needs_info entry it routes to,
-      // so the next reopenEnteredFromNeedsInfo can't read it as an answer and self-release
+      // cm:guard post-before-route keeps the refusal visible when the transition fails; the guard's own comment can no longer be mistaken for the answer either, since hasHumanAnswerSince ignores isAi=true (ISS-819 review r2 finding 3 + ISS-820)
       expect(postNeedsInfoReopenCommentMock.mock.invocationCallOrder[0]).toBeLessThan(
         applyTransitionMock.mock.invocationCallOrder[0] as number,
       );

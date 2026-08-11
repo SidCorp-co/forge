@@ -109,6 +109,7 @@ describe('sendStakeholderReply', () => {
       projectId: 'proj-1',
       text: 'Here is the answer.',
       toolCalls: [],
+      progress: null,
       transport: transport as never,
     });
     expect(outcome).toEqual({ sent: true });
@@ -126,6 +127,7 @@ describe('sendStakeholderReply', () => {
       projectId: 'proj-1',
       text: '```leaky```',
       toolCalls: [],
+      progress: null,
       transport: transport as never,
     });
     expect(outcome).toEqual({ sent: false, problems: ['leaks a code fence'] });
@@ -138,6 +140,7 @@ describe('sendStakeholderReply', () => {
       projectId: 'proj-1',
       text: '   ',
       toolCalls: [],
+      progress: null,
       transport: transport as never,
     });
     expect(outcome).toEqual({ sent: false, problems: ['empty reply'] });
@@ -164,6 +167,7 @@ describe('sendStakeholderReply', () => {
       projectId: 'proj-1',
       text: 'answer',
       toolCalls: [],
+      progress: null,
       transport: restTransport() as never,
     });
     expect(postRoomMessage).toHaveBeenCalledWith(

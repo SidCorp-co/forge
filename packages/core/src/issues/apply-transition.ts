@@ -72,12 +72,16 @@ export type TransitionIssueRow = {
 
 export interface ApplyStatusTransitionOptions {
   /**
-   * Bypass the `canTransition` state-machine check. The orchestrator's
-   * soft-skip resolver (ISS-110) walks a curated forward chain
-   * (`STAGE_FORWARD`) that intentionally collapses stages the state-machine
-   * matrix wouldn't allow directly — e.g. `developed → testing` (skip
-   * review+deploy). All other safety checks (NO_OP, reopen cap, stale
-   * transition) still apply. Only the orchestrator should pass this.
+   * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
+   * as a target and restricts `draft`'s own exits, so this flag buys exactly
+   * two things: entering `draft` (nothing does) and moving a `draft` issue to
+   * a status outside {open, closed, developed} — which is what the decompose
+   * cascade needs to promote children straight to `approved`. The soft-skip
+   * resolver (ISS-110) also passes it while walking `STAGE_FORWARD`.
+   *
+   * It is NOT a general safety override: NO_OP, the reopen cap, stale-
+   * transition detection and every content guard still run. Callers are the
+   * orchestrator and the decomposition subscriber.
    */
   skip?: boolean;
   /**
@@ -302,6 +306,7 @@ export async function transitionIssueStatus(
   // not fail the caller.
   if (txResult?.stampedOnClose) {
     try {
+      // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,
@@ -309,6 +314,7 @@ export async function transitionIssueStatus(
           'merged_at auto-stamped on close — `closed` counts as done, so `blocks`-dependents can now dispatch. ' +
           'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.',
         parentId: null,
+        isAi: true,
       });
     } catch (err) {
       logger.warn(

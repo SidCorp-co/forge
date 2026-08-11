@@ -65,7 +65,7 @@ export async function sendStakeholderReply(args: {
   projectId: string;
   text: string;
   toolCalls: Array<{ name: string; arguments: string }>;
-  progress?: ProgressFacts | null;
+  progress: ProgressFacts | null | 'legacy-session';
   transport: ReplyTransport;
 }): Promise<{ sent: true } | { sent: false; problems: string[] }> {
   if (!args.text.trim()) return { sent: false, problems: ['empty reply'] };

@@ -1184,6 +1184,20 @@
       "when": 1788134400000,
       "tag": "0170_iss678_outbox_claim_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1788220800000,
+      "tag": "0171_iss823_jobs_failure_action",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1788307200000,
+      "tag": "0172_iss820_comments_is_ai",
+      "breakpoints": true
     }
   ]
 }

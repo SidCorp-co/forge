@@ -474,7 +474,7 @@ export async function parkClosedUnmergedBlockedDependents(
           authorId: row.created_by,
           isAi: true,
           body: `⛔ Blocked: ISS-${row.blocker_seq} "${row.blocker_title}" was closed without merging its code to the base branch (merged_at is empty). Pipeline can't build on it. Decide the base: reopen/merge the blocker, or \`mark_merged\` it if the code is genuinely in, then move this issue back to its stage.`,
-        } as never);
+        });
 
         await closeOpenRunForIssue(row.issue_id, 'failed');
         parked++;

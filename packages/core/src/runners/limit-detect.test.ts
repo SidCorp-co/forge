@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_LIMIT_COOLDOWN_MS,
+  SPEND_LIMIT_COOLDOWN_MS,
   detectRunnerLimit,
   isAuthError,
   isRateLimitError,
+  isSpendLimitError,
   isUsageLimitError,
   parseUsageLimitReset,
 } from './limit-detect.js';
@@ -40,6 +42,29 @@ describe('isUsageLimitError', () => {
   it('is false for empty / unrelated text', () => {
     expect(isUsageLimitError('')).toBe(false);
     expect(isUsageLimitError('ECONNRESET')).toBe(false);
+  });
+});
+
+describe('isSpendLimitError', () => {
+  it('matches the exact evidenced org spend-cap string', () => {
+    expect(isSpendLimitError("You've hit your org's monthly spend limit")).toBe(true);
+  });
+
+  it('matches an account-scoped variant', () => {
+    expect(isSpendLimitError("You've hit your account's monthly spend limit")).toBe(true);
+  });
+
+  it('does NOT match a long agent response merely discussing spend limits', () => {
+    const essay = `Here is a long explanation of how spend limits work. ${'x'.repeat(400)} you might hit your org's monthly spend limit eventually.`;
+    expect(isSpendLimitError(essay)).toBe(false);
+  });
+
+  it('is false for empty / unrelated text, including the time-windowed usage-limit string', () => {
+    expect(isSpendLimitError('')).toBe(false);
+    expect(isSpendLimitError('ECONNRESET')).toBe(false);
+    expect(
+      isSpendLimitError("You've hit your 5-hour limit. Your limit resets 11am (Asia/Bangkok)."),
+    ).toBe(false);
   });
 });
 
@@ -133,6 +158,18 @@ describe('detectRunnerLimit', () => {
     const out = detectRunnerLimit('out of extra usage');
     expect(out!.reason).toBe('usage_limit');
     expect(out!.until!.getTime()).toBe(Date.now() + DEFAULT_LIMIT_COOLDOWN_MS);
+  });
+
+  it('classifies the org/account spend-cap string as usage_limit with the 6h cooldown', () => {
+    const out = detectRunnerLimit("You've hit your org's monthly spend limit");
+    expect(out!.reason).toBe('usage_limit');
+    expect(out!.until!.getTime()).toBe(Date.now() + SPEND_LIMIT_COOLDOWN_MS);
+  });
+
+  it('prefers a provider Retry-After over the spend-cap default cooldown', () => {
+    const retryAfter = new Date('2026-06-22T09:00:00.000Z');
+    const out = detectRunnerLimit("You've hit your org's monthly spend limit", retryAfter);
+    expect(out!.until!.toISOString()).toBe(retryAfter.toISOString());
   });
 
   it('classifies a 401 as auth with no reset time', () => {

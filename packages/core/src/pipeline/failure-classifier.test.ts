@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLASSIFIER_VERSION, classifyFailure } from './failure-classifier.js';
+import { CLASSIFIER_VERSION, classifyFailure, deriveActionFromKind } from './failure-classifier.js';
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(6);
+    expect(CLASSIFIER_VERSION).toBe(7);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -75,6 +75,24 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
         error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
       });
       expect(r.kind).toBe('infra');
+    });
+  });
+
+  describe('ISS-823 — org/account spend-cap → transient-cc/failover (spec override)', () => {
+    it('pins the exact evidenced string to failover, NOT terminal', () => {
+      const r = classifyFailure({ error: "You've hit your org's monthly spend limit" });
+      expect(r.kind).toBe('transient-cc');
+      expect(r.action).toBe('failover');
+      expect(r.meta).toMatchObject({ limitScope: 'account-spend' });
+    });
+
+    it('still classifies a time-windowed limit as failover (no regression)', () => {
+      const r = classifyFailure({
+        error: "You've hit your 5-hour limit. Your limit resets 11am (Asia/Bangkok).",
+      });
+      expect(r.kind).toBe('transient-cc');
+      expect(r.action).toBe('failover');
+      expect((r.meta as Record<string, unknown> | null)?.limitScope).toBeUndefined();
     });
   });
 
@@ -239,6 +257,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('classifies unmatched text as infra with needsReview (no unknown class — I4)', () => {
     const r = classifyFailure({ error: 'weirdness nobody mapped' });
     expect(r.kind).toBe('infra');
+    expect(r.action).toBe('retry');
     expect(r.reason).toContain('weirdness nobody mapped');
     expect((r.meta as { needsReview?: boolean })?.needsReview).toBe(true);
   });
@@ -246,6 +265,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('classifies empty input as infra with a stable reason + needsReview', () => {
     const r = classifyFailure({});
     expect(r.kind).toBe('infra');
+    expect(r.action).toBe('retry');
     expect(r.reason).toBe('unclassified');
     expect((r.meta as { needsReview?: boolean })?.needsReview).toBe(true);
   });
@@ -274,6 +294,23 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
       error: 'invalid_request_error: rate limit-shaped phrasing but auth was the real cause',
     });
     expect(r.kind).toBe('code');
+  });
+
+  describe('ISS-823 — action axis', () => {
+    it('assigns terminal to code failures', () => {
+      const r = classifyFailure({
+        meta: { error: { type: 'invalid_request_error', message: 'bad input' } },
+      });
+      expect(r.kind).toBe('code');
+      expect(r.action).toBe('terminal');
+    });
+
+    it('deriveActionFromKind round-trips all four kinds', () => {
+      expect(deriveActionFromKind('code')).toBe('terminal');
+      expect(deriveActionFromKind('transient-cc')).toBe('failover');
+      expect(deriveActionFromKind('infra')).toBe('retry');
+      expect(deriveActionFromKind('timeout')).toBe('retry');
+    });
   });
 
   describe('retryAfter extraction', () => {

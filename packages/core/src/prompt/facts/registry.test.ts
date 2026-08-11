@@ -46,6 +46,15 @@ describe('forge facts registry', () => {
     expect(renderFact('mcp-tool-reference')).toContain('forge_step_start');
   });
 
+  it('pipeline-rules forbids fabricating a human decision (ISS-820)', () => {
+    const text = renderFact('pipeline-rules') ?? '';
+    expect(text).toContain('Never speak for a human');
+    expect(text).toContain('QUOTE that human');
+    expect(text).toContain('NEW `needs_info`');
+    const fact = getFact('pipeline-rules');
+    expect(fact?.version).toBe(5);
+  });
+
   // AC5 token evidence (measured via renderFact + estimateTokens, no new
   // instrumentation): the mcp-tool-reference block grew 735 -> 766 estTokens
   // (+31, +111 chars) for this one bullet. A connected provider with a seeded

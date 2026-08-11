@@ -216,7 +216,7 @@ async function postStageStalledComment(args: {
         doneCount: args.doneCount,
       }),
       isAi: true,
-    } as never);
+    });
   } catch (err) {
     logger.warn(
       { err, issueId: args.issueId, stage: args.stage },

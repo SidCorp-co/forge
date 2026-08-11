@@ -580,7 +580,7 @@ async function considerEnqueue(args: {
   // cm:why a reopen entered directly from needs_info must never dispatch fix — a fix cannot be scoped from an unanswered question, regardless of what re-triggered the reopen
   if (jobMap.type === 'fix' && (await reopenEnteredFromNeedsInfo(args.issueId))) {
     const device = resolveSkipDevice(args.actor, projectCreatedBy);
-    // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — post BEFORE the transition so the guard's own comment lands before the needs_info entry it routes to; posting after makes the next reopenEnteredFromNeedsInfo read it as an answer via hasInputSince and self-release on the second bounce (ISS-819 review r2 finding 3)
+    // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — post BEFORE the transition so a failed or no-op route can never silence the refusal (ISS-819 review r2 finding 2). Self-release is separately impossible: the guard releases on hasHumanAnswerSince, which ignores this agent-authored comment (ISS-820)
     await postNeedsInfoReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
     if (device) {
       try {

@@ -7,7 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Jobs that hit a temporary per-account spend limit now automatically retry on another account instead of stalling, and budget-capped stages no longer leave a pipeline run stuck.
 - Forge now delivers every skill update through a unified 5-stage pipeline — from authoring through machine enforcement, per-project agent reconciliation, runner convergence, and observation — with a full activity log answering which runners have the update and which do not.
+- Closed a loophole where an automated pipeline step could impersonate a human decision or log an unverified claim as fact.
+- Fixed pipeline integration verification and resolved TypeScript errors in the update pipeline.
 - Added a live guide index so agents/CLI sessions can look up Forge features and test credentials on demand.
 - Runners now automatically pick up newly published or updated skills in the background, without a manual sync.
 - Runners now support a Claude Code plugin marketplace channel for distributing shared skills with device-wide availability.

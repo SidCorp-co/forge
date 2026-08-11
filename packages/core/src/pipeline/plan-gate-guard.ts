@@ -46,7 +46,8 @@ async function postGuardComment(
 ): Promise<void> {
   if (!authorId) return;
   try {
-    await db.insert(comments).values({ issueId, authorId, body, isAi: true } as never);
+    // cm:edge contract -> packages/core/src/pipeline/bounce-replay-guard.ts — isAi:true is load-bearing, not just audit hygiene: hasHumanAnswerSince releases a needs_info bounce on any non-AI comment, so dropping it would make this guard's own refusal read as the human answer it is waiting for (ISS-820)
+    await db.insert(comments).values({ issueId, authorId, body, isAi: true });
   } catch (err) {
     logger.warn({ err, issueId }, 'plan-gate-guard: failed to post comment, continuing');
   }

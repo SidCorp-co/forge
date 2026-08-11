@@ -493,13 +493,24 @@ async function pickLeastLoadedFreeRunner(
  * candidate set: which devices a sweep cycles through, and when a round is
  * complete (every candidate already tried). Remote/server runners (NULL
  * device_id) are excluded — rotation is device-scoped.
+ *
+ * ISS-823 — health-gated by default (`rate_limited_until IS NULL OR <= now()`)
+ * so this matches what `selectRunnerForJob` will actually accept; without the
+ * gate the rotation could pin a `target` that selection then refuses, and
+ * "every online box is limited" was invisible to the retry engine.
+ * `includeLimited: true` returns the unfiltered set the retry engine also
+ * needs, to tell all-exhausted apart from all-offline.
  */
 export async function onlineCapableDeviceIds(
   projectId: string,
   requiredCapabilities?: RequiredCapabilities,
+  opts?: { includeLimited?: boolean },
 ): Promise<string[]> {
   const required = JSON.stringify(requiredCapabilities ?? {});
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  const limitClause = opts?.includeLimited
+    ? sql``
+    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now())`;
   const rows = await db.execute<{ device_id: string }>(
     sql`
       SELECT DISTINCT device_id
@@ -510,6 +521,7 @@ export async function onlineCapableDeviceIds(
         AND capabilities @> ${required}::jsonb
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        ${limitClause}
         ${NOT_DISABLED_DEVICE}
       ORDER BY device_id ASC
     `,

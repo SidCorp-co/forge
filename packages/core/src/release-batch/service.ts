@@ -341,7 +341,7 @@ export async function abortReleaseBatch(
         authorId: actorUserId,
         body: `Batch release aborted: ${reason}. Issue remains at its current status and can be re-selected for a future batch release.`,
         isAi: true,
-      } as never);
+      });
     } catch (err) {
       logger.warn({ err, issueId, runId }, 'release-batch: failed to write abort comment');
     }

@@ -166,13 +166,13 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 60 });
   });
 
-  it('does NOT retry a `code` classification (non_retryable_code)', async () => {
+  it('does NOT retry a `code` classification (non_retryable_terminal)', async () => {
     const result = await scheduleAutoRetryWithVerify(
       { ...baseJob, error: 'invalid_request_error' } as never,
       'crashed',
     );
     expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('non_retryable_code');
+    expect(result.reason).toBe('non_retryable_terminal');
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
@@ -182,7 +182,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       'crashed',
     );
     expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('non_retryable_code');
+    expect(result.reason).toBe('non_retryable_terminal');
   });
 
   it('RETRIES an infra classification (401 → infra under v3)', async () => {
@@ -431,6 +431,66 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         custom: 'keep-me',
         _autoRetry: { round: 1, target: 'device-A', tries: 2, done: [] },
       });
+    });
+  });
+
+  describe('ISS-823 — action axis overrides kind', () => {
+    it('a persisted failureAction=terminal wins even over a non-terminal kind', async () => {
+      const result = await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          error: 'ECONNRESET',
+          failureKind: 'infra',
+          failureAction: 'terminal',
+        } as never,
+        'crashed',
+      );
+      expect(result.scheduled).toBe(false);
+      expect(result.reason).toBe('non_retryable_terminal');
+      expect(dbInsert).not.toHaveBeenCalled();
+    });
+
+    it('a historical row (failureAction null) falls back to deriveActionFromKind', async () => {
+      const result = await scheduleAutoRetryWithVerify(
+        { ...baseJob, error: 'whatever text', failureKind: 'code', failureAction: null } as never,
+        'crashed',
+      );
+      expect(result.scheduled).toBe(false);
+      expect(result.reason).toBe('non_retryable_terminal');
+    });
+  });
+
+  describe('ISS-823 — all-devices-exhausted vs all-offline (failover)', () => {
+    it('parks as all_devices_exhausted when every online device is rate-limited', async () => {
+      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
+        const opts = _args[2] as { includeLimited?: boolean } | undefined;
+        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
+      });
+      const result = await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          error: "You've hit your org's monthly spend limit",
+        } as never,
+        'spend-limit',
+      );
+      expect(result.scheduled).toBe(false);
+      expect(result.reason).toBe('all_devices_exhausted');
+      expect(dbInsert).not.toHaveBeenCalled();
+    });
+
+    it('keeps rotating (does not park) when every device is merely offline', async () => {
+      onlineDevicesMock.mockResolvedValue([]);
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      const result = await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          error: "You've hit your org's monthly spend limit",
+        } as never,
+        'spend-limit',
+      );
+      expect(result.scheduled).toBe(true);
     });
   });
 

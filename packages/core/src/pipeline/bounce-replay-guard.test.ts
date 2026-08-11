@@ -6,11 +6,13 @@ vi.mock('../config/env.js', () => ({
 
 // cm:why queued by call order — the mock cannot see which table drizzle targeted, so the three selects are: last departure from the stage, comments since, non-status activity since
 const queue: unknown[][] = [];
+let selectCalls = 0;
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
       from: () => ({
         where: () => {
+          selectCalls += 1;
           const rows = queue.shift() ?? [];
           const chain = {
             limit: async () => rows,
@@ -32,6 +34,7 @@ const departure = (to: string) => [{ payload: { from: 'approved', to }, createdA
 
 function setup(...batches: unknown[][]) {
   queue.length = 0;
+  selectCalls = 0;
   queue.push(...batches);
 }
 
@@ -66,6 +69,25 @@ describe('findUnansweredBounce', () => {
 
   it('allows the dispatch when non-status activity landed after the bounce', async () => {
     setup(departure('waiting'), [], [{ id: 'a1' }]);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
+  it('allows the dispatch when non-status activity landed after an on_hold bounce', async () => {
+    setup(departure('on_hold'), [], [{ id: 'a1' }]);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
+  // cm:guard ISS-820 — an agent's own comment (or unrelated activity) must NOT release its own needs_info bounce, or a fabricated "the owner decided" comment can silently override a real human answer. needs_info has no activity-log fallback and issues a single human-filtered comment query, so an empty result here models "no human comment" regardless of what non-human input landed.
+  it('still blocks a needs_info replay when no human-authored comment has landed since', async () => {
+    setup(departure('needs_info'), []);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toEqual({
+      bounced: 'needs_info',
+      at: BOUNCED_AT,
+    });
+  });
+
+  it('releases a needs_info bounce only on a human-authored comment (isAi=false, no device)', async () => {
+    setup(departure('needs_info'), [{ id: 'c1' }]);
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
   });
 
@@ -132,18 +154,26 @@ describe('reopenEnteredFromNeedsInfo', () => {
   const enteredReopenFrom = (from: string) => [{ payload: { from, to: 'reopen' } }];
 
   it('flags a reopen that arrived directly from needs_info with no input since', async () => {
-    setup(enteredReopenFrom('needs_info'), [], [], []);
+    setup(enteredReopenFrom('needs_info'), [], []);
     expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(true);
   });
 
-  it('releases the guard when a comment followed the needs_info entry', async () => {
-    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], [{ id: 'c1' }], []);
+  it('releases the guard when a human comment followed the needs_info entry', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], [{ id: 'c1' }]);
     expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
   });
 
-  it('releases the guard when non-status activity followed the needs_info entry', async () => {
-    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], [], [{ id: 'a1' }]);
-    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+  // cm:guard ISS-820 — the release query is already filtered to human comments (isAi=false, no device), so an empty third batch models "only agent comments or bare activity landed". A fix must never be scoped from a question no human answered — this guard's OWN comment is agent-authored and lands right before the needs_info entry it routes to.
+  it('keeps blocking when only agent-authored input followed the needs_info entry', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], []);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(true);
+  });
+
+  // cm:guard the activity-log fallback must stay OUT of the needs_info path — three selects (reopen entry, needs_info entry, human comment) and no fourth, or bare activity silently answers the question again
+  it('issues no activity-log fallback query for the needs_info release check', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], []);
+    await reopenEnteredFromNeedsInfo('iss-1');
+    expect(selectCalls).toBe(3);
   });
 
   it.each(['testing', 'tested', 'developed', 'released', 'closed'])(

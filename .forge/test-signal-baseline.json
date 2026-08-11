@@ -11,7 +11,7 @@
     },
     "packages/core/src/jobs/finalize-failure.test.ts": {
       "declaration": 0,
-      "mock": 26
+      "mock": 34
     },
     "packages/core/src/pipeline/orchestrator.test.ts": {
       "declaration": 0,

@@ -65,8 +65,8 @@ An agent hits a login wall on a preview deploy, can't find credentials in \`forg
     slug: 'issue-dependencies-and-decompose',
     title: 'Issue dependencies & decompose',
     summary:
-      'How blocks edges gate dispatch, the merged_at unblock signal, and why decompose lifecycle is system-owned.',
-    version: 1,
+      'How blocks edges gate dispatch, the merged_at unblock signal, why decompose lifecycle is system-owned, and the one decompose action that IS yours.',
+    version: 2,
     body: `## Issue dependencies & decompose
 
 ### Relation kinds
@@ -84,7 +84,17 @@ Edges are directional \`fromIssue --kind--> toIssue\`:
 A dependent dispatches the moment its blocker's \`merged_at\` is stamped, not when the blocker reaches \`released\`. \`merged_at\` auto-stamps only when a project's pipeline actually walks through the base-merge state. If you merge an issue's branch to the base branch and then **park** at that state manually (a gate the system doesn't auto-advance through), nothing stamps it and every downstream dependent stalls silently — stamp it yourself right after the merge lands.
 
 ### Decompose is system-owned
-When a parent is too large to ship atomically: write each child's plan, create the children (they land at \`draft\`), link each with a \`decomposes\` edge, then the parent is automatically parked at \`waiting\` — a human review gate. Approving the parent auto-cascades approval to the children. The parent's own integration work is held until every child has \`merged_at\` set (or is \`closed\`), then runs last. Do not hand-set parent or child status during this flow — it breaks the kickoff.
+Decomposing is part of **writing a plan** — the plan step declares the \`decomposes\` edges. It is not something to do by hand while working an issue directly.
+
+The flow: write each child's plan, create the children (they land at \`draft\`), link each with a \`decomposes\` edge, then the parent is automatically parked at \`waiting\` — a human review gate. Approving the parent auto-cascades approval to the children. The parent's own integration work is held until every child has \`merged_at\` set (or is \`closed\`), then runs last.
+
+**The human has exactly one action here: approve the split, by moving the PARENT \`waiting → approved\`.** That single transition is what promotes every child. Nothing else about decompose status is yours to set.
+
+Do not hand-set parent or child status. Two failure modes, both observed:
+- Moving children forward yourself skips the cascade, so they arrive without the parent's plan behind them and each burns a full triage/clarify/plan cycle rediscovering it.
+- A child you have already moved past \`draft\`/\`on_hold\` is **skipped** by the cascade for good — those are the only two statuses it promotes from. If you have already done this, park the children back at \`on_hold\` and re-enter \`approved\` on the parent; the cascade then picks them up correctly.
+
+Leaving the parent at \`waiting\` is not a safe default either — its own integration step can never dispatch from there. A decomposed epic that nobody approves is stalled, not waiting.
 
 ### Recording a note without triggering a pipeline run
 Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spawns a pipeline run, burning a runner slot for something that was only meant to be a note.`,
@@ -139,14 +149,34 @@ Verify liveness on the deployed environment before declaring success — a deplo
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, draft vs open, status-last discipline, bounce states, and who owns which derived fields.',
-    version: 2,
+      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, bounce states, and who owns which derived fields.',
+    version: 3,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
 \`draft\` never dispatches; \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. Creating a note-only issue at \`open\` is the single most common way to accidentally start unwanted pipeline work.
 
 But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later, and for decompose children awaiting parent approval. Red flags: \`open-as-note\` AND \`draft-as-note\`.
+
+### Working an issue directly, outside the pipeline
+\`draft\` vs \`open\` is not the whole choice. \`draft\` has **three** exits, and picking the wrong one is what makes a direct session expensive:
+
+| You have | Set | Why |
+|---|---|---|
+| Finished the work entirely by hand; the pipeline has nothing left to do | \`closed\` | See the \`merged_at\` warning below before you do this |
+| Written AND pushed the \`ISS-*\` branch yourself; you want review → test → release run on it | \`developed\` **+ \`sessionContext.branch\`** | Enters at the REVIEW gate. Walking \`open\` instead re-runs triage/clarify/plan/code over already-finished work |
+| Not started it; you want the pipeline to do the whole thing | \`open\` | Full ladder from triage |
+| Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
+| It turned out not to be work at all | delete it; write the content to memory/docs | \`draft-as-note\` |
+
+The \`developed\` route is the one people miss. It is the direct-ship path: you did the coding, the pipeline still gates it.
+
+**Closing is not free.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue. Closing something you ABANDONED rather than finished silently unblocks work that should still be blocked — call \`forge_issues\` \`unmark\` to clear the stamp in that case.
+
+### What is actually enforced, and what is only advice
+The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`closed\` or \`developed\`. That is the whole rule.
+
+The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (a reopen cap, a content guard) — reason from that error, never from the shape of the ladder.
 
 ### The description is a requirements contract, not an implementation script
 A description is the one context channel every downstream step trusts without re-verifying, so what you put in it decides whether plan and code explore the repo or just obey a stale snapshot.

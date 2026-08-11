@@ -95,6 +95,7 @@ const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **A stale clone is not evidence of absence.** The runner's checkout can be many commits behind the remote. Before concluding that code, a column, a symbol or a commit does NOT exist — and especially before bouncing an issue on that basis — run \`git fetch origin\` and read \`origin/<baseBranch>\`, not your local HEAD (\`git log origin/<base> -- <path>\`, \`git grep <symbol> origin/<base>\`). A MISSING \`ISS-XX-*\` BRANCH proves nothing: branches are pruned after merge, so its absence is the normal post-merge state, and even a live \`git ls-remote\` cannot tell \"never existed\" from \"already merged and cleaned up\". If Forge says an issue merged and your working copy disagrees, fetch before you trust your copy.
 - **ISS-* branch is source of truth.** Kept alive through the pipeline. Squash-merges to \`productionBranch\` at release.
 - **Check in first.** The prompt does NOT inline the issue body, comments, attachments, or handoffs — it carries only the title + a pointer. Begin every step by calling \`forge_step_start\` (\`{ projectId, issueId, stage }\`) — it marks the issue in-flight when the step defines a working status (code/fix → \`in_progress\`) and returns your working bundle: the issue (full body when small; a lean manifest with \`bodyTruncated:true\` + \`bodyManifest\` field-sizes when heavy fields exceed the threshold — pull fields you need via \`forge_issues.get { documentId, fields: ['plan', ...] }\`), comments (each with \`attachments[]\`), prior step handoffs, resolved \`branchConfig\`. Never assume data from the prompt. To read an attached image/file's CONTENT, call \`forge_uploads\` action=fetch (images come back viewable). If the tool errors, fall back to \`forge_issues.get\` + \`forge_comments.list\` and set the working status yourself.
+- **Never speak for a human.** An automated step must NEVER post a comment framed as a human/owner decision or an owner approval — every comment you post is recorded as agent-authored (\`isAi:true\`), and claiming otherwise is a fabrication, not a shortcut. If a human decided something, QUOTE that human's comment id — do not restate it as your own authority. Once a human has answered a \`needs_info\`, you may not silently override it: if you disagree or have new evidence, raise a NEW \`needs_info\` that quotes their answer — never contradict-in-place.
 
 ## Capture Learnings
 Only when you hit a reusable lesson — a project convention, a non-obvious gotcha, or a fix pattern that will help a DIFFERENT agent on a DIFFERENT issue. If it's specific to this issue, it belongs in \`sessionContext\`, not memory.
@@ -178,7 +179,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 4,
+    version: 5,
     render: () => PIPELINE_RULES_TEXT,
   },
   {

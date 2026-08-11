@@ -18,7 +18,7 @@ export interface ParkReasonInput {
   jobType: string;
   /** Stage status the step ran at, when known. */
   stageStatus?: string | null;
-  /** `retry_rounds_exhausted` | `non_retryable_code` | … — why no retry followed. */
+  /** `retry_rounds_exhausted` | `non_retryable_terminal` | … — why no retry followed. */
   reason: string;
   /** Classified failure kind (`transient`, `code`, `transient-cc`, …). */
   failureKind?: string | null;
@@ -80,7 +80,7 @@ export async function postParkReasonComment(input: ParkReasonInput): Promise<voi
       authorId: project.createdBy,
       body: lines.join('\n'),
       isAi: true,
-    } as never);
+    });
   } catch (err) {
     logger.warn(
       { err, issueId: input.issueId },
@@ -132,7 +132,7 @@ export async function postReopenCapEscalationComment(
       authorId: project.createdBy,
       body: lines.join('\n'),
       isAi: true,
-    } as never);
+    });
   } catch (err) {
     logger.warn(
       { err, issueId: input.issueId },
