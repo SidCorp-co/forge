@@ -39,6 +39,7 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
+import { projectAdminUserIds } from '../notifications/project-admins.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
@@ -85,34 +86,6 @@ async function logActivity(
     ...(params.outcome != null ? { outcome: params.outcome } : {}),
   };
   await recordSkillActivityEvent(executor, clean);
-}
-
-// cm:why mirrors effectiveProjectRole's admin rule (lib/authz.ts) — explicit project_members admin UNION org owner/admin — so the gate notification reaches exactly the people who can act on it via apply/reject/acknowledge.
-async function projectAdminUserIds(projectId: string): Promise<string[]> {
-  const [project] = await db
-    .select({ orgId: projects.orgId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return [];
-
-  const [explicitAdmins, orgAdmins] = await Promise.all([
-    db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.role, 'admin'))),
-    db
-      .select({ userId: organizationMembers.userId })
-      .from(organizationMembers)
-      .where(
-        and(
-          eq(organizationMembers.orgId, project.orgId),
-          inArray(organizationMembers.role, ['owner', 'admin']),
-        ),
-      ),
-  ]);
-
-  return [...new Set([...explicitAdmins.map((r) => r.userId), ...orgAdmins.map((r) => r.userId)])];
 }
 
 /**

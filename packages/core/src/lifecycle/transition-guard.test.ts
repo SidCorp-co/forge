@@ -55,10 +55,12 @@ function listSourceFiles(dir: string): string[] {
  *  status='failed'`" in a JSDoc header can't trip the scanners. Heuristic, not a
  *  full lexer: good enough for guard-rail purposes. */
 function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    // cm:why the leading [^:] is what keeps a `scheme://` inside a string from being eaten as a line comment
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  return (
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      // cm:why the leading [^:] is what keeps a `scheme://` inside a string from being eaten as a line comment
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+  );
 }
 
 /** Scan one file for bypassing terminal writes; returns human-readable hits. */

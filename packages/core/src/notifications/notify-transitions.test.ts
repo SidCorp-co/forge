@@ -125,10 +125,26 @@ describe('notify-transitions', () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 
-  it('does not auto-resolve for a non-healthy, non-listed status', async () => {
+  it('does not auto-resolve the STATUS problem for a non-healthy, non-listed status', async () => {
     const bus = makeBus();
     await bus.emit('transition', transition('in_progress') as never);
-    expect(resolveNotifications).not.toHaveBeenCalled();
+    expect(resolveNotifications).not.toHaveBeenCalledWith(`issue:${ISSUE_ID}:status`);
+  });
+
+  // cm:guard ISS-762 — the stranded alarm asks a human to unpark, so ANY move off `waiting` answers it, including a move to an unhealthy status. Narrowing this back to HEALTHY_STATUSES leaves the alarm lit after the decision was already made.
+  it('auto-resolves the stranded alarm on any move off waiting, healthy or not', async () => {
+    for (const to of ['in_progress', 'developed', 'closed', 'reopen']) {
+      resolveNotifications.mockClear();
+      const bus = makeBus();
+      await bus.emit('transition', transition(to) as never);
+      expect(resolveNotifications).toHaveBeenCalledWith(`issue:${ISSUE_ID}:stranded`);
+    }
+  });
+
+  it('leaves the stranded alarm lit while the issue is still parked at waiting', async () => {
+    const bus = makeBus();
+    await bus.emit('transition', transition('waiting') as never);
+    expect(resolveNotifications).not.toHaveBeenCalledWith(`issue:${ISSUE_ID}:stranded`);
   });
 
   it('skips self-notify when the actor is the recipient', async () => {

@@ -5,6 +5,7 @@ import { issues } from '../db/schema.js';
 import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { strandedResolutionKey } from '../pipeline/stranded-issues.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
 
@@ -105,6 +106,11 @@ export function registerTransitionNotifications(bus: HooksBus): void {
     // best-effort (never throws), and is idempotent (only unread rows match).
     if (HEALTHY_STATUSES.has(p.to)) {
       await resolveNotifications(statusResolutionKey(p.issueId));
+    }
+
+    // cm:why ISS-762 — the stranded alarm asks a human to unpark; ANY move off `waiting` is that human answering, including a move to another unhealthy status. Gating this on HEALTHY_STATUSES would leave the alarm lit after the decision was made.
+    if (p.to !== 'waiting') {
+      await resolveNotifications(strandedResolutionKey(p.issueId));
     }
 
     if (!NOTIFY_ON_STATUS.has(p.to)) return;

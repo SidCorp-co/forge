@@ -17,6 +17,7 @@ const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   intake_pending: 'info',
   schedule_report: 'info',
   reconcile_gate_pending: 'warning',
+  issue_stranded: 'warning',
 };
 
 function defaultSeverityForType(type: NotificationType): string {

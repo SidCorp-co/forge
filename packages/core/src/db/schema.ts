@@ -1997,6 +1997,7 @@ export const chatLogs = pgTable(
   }),
 );
 
+// cm:edge lockstep -> packages/contracts/src/notifications.ts — NOTIFICATION_TYPES + NOTIFICATION_CONTRACT carry the same taxonomy; core validates the column against THIS list while every emitter is typed against the contracts one, so a value added here alone is insertable but untyped, and one added there alone typechecks then fails at the column
 export const notificationTypes = [
   'issue_status_changed',
   'comment_added',
@@ -2014,6 +2015,8 @@ export const notificationTypes = [
   // owner (report/API-check results with no LLM involved).
   'schedule_report',
   'reconcile_gate_pending',
+  // cm:why ISS-762 — `waiting` + merged code is the one issue state that contradicts itself, and nothing else surfaces it
+  'issue_stranded',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

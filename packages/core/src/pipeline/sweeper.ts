@@ -49,6 +49,7 @@ import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
+import { type StrandedIssuesResult, detectStrandedIssues } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
@@ -114,6 +115,8 @@ export interface SweepResult {
   parkedClosedUnmerged: ParkClosedUnmergedResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
+  /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
+  strandedIssues: StrandedIssuesResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -198,6 +201,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
     reapStaleReleaseBatchClaims(),
   );
+  const strandedIssues = await runPass('detectStrandedIssues', () => detectStrandedIssues(now));
   const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
   // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
@@ -226,6 +230,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     stalledDependencies: stalledDependencies as StallDetectResult,
     parkedClosedUnmerged: parkedClosedUnmerged as ParkClosedUnmergedResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
+    strandedIssues: strandedIssues as StrandedIssuesResult,
     backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,
   };

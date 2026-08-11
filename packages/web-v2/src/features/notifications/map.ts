@@ -22,6 +22,8 @@ function typeLabel(type: string): string {
       return "INVITE";
     case "reconcile_gate_pending":
       return "SKILL";
+    case "issue_stranded":
+      return "STRANDED";
     default:
       return "EVENT";
   }
