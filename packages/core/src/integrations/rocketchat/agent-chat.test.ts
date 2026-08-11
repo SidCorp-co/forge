@@ -43,8 +43,10 @@ vi.mock('../../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
 }));
 
+const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
 const sendFixedReply = vi.fn();
 vi.mock('./outbound.js', () => ({
+  FIXED_REPLY_CONSTANT,
   sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
 }));
 
@@ -460,6 +462,7 @@ describe('scheduleDelayedAck', () => {
         tmid: undefined,
       }),
       AGENT_CHAT_ACK('Babo'),
+      FIXED_REPLY_CONSTANT,
     );
   });
 
@@ -472,6 +475,7 @@ describe('scheduleDelayedAck', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       expect.objectContaining({ rid: 'room-1', tmid: 'thread-1' }),
       AGENT_CHAT_ACK('Babo'),
+      FIXED_REPLY_CONSTANT,
     );
   });
 

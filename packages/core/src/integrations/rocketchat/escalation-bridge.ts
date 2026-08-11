@@ -34,7 +34,7 @@ import {
 import { logger } from '../../logger.js';
 import { rocketChatPersona, webBaseUrl } from './connection-manager.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
-import { sendFixedReply } from './outbound.js';
+import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 
@@ -203,9 +203,9 @@ async function synthesizeViaBao(
   session: SessionRow,
   meta: EscalationMeta,
   payload: EscalationPayload,
-): Promise<string> {
+): Promise<{ text: string; proof: ReplySendProof }> {
   const route = await resolveEscalationRoute(session.projectId);
-  if (!route) return ESCALATION_FALLBACK_REPLY(meta.botName);
+  if (!route) return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
 
   const persona = rocketChatPersona(route.name, meta.askedByUsername, {
     projectSlug: route.slug,
@@ -243,7 +243,9 @@ async function synthesizeViaBao(
         result.progress,
       )
     : { ok: false, problems: ['empty synthesis reply'] };
-  return verdict.ok ? result.reply : ESCALATION_FALLBACK_REPLY(meta.botName);
+  return verdict.ok
+    ? { text: result.reply, proof: { ok: true, problems: verdict.problems } }
+    : { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
 }
 
 /**
@@ -287,12 +289,15 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
   const finalText =
     session.status === 'completed' ? extractFinalAssistantText(session.messages) : null;
   let reply: string;
+  let proof: ReplySendProof = FIXED_REPLY_CONSTANT;
   if (!finalText) {
     reply = ESCALATION_FALLBACK_REPLY(meta.botName);
   } else {
     const payload = parseEscalationPayload(finalText);
     try {
-      reply = await synthesizeViaBao(session, meta, payload);
+      const synthesized = await synthesizeViaBao(session, meta, payload);
+      reply = synthesized.text;
+      proof = synthesized.proof;
     } catch (err) {
       logger.error(
         { err, sessionId: session.id, rid: meta.rid },
@@ -306,6 +311,7 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
     await sendFixedReply(
       { kind: 'rest', auth, rid: meta.rid, tmid: meta.tmid ?? undefined },
       reply,
+      proof,
     );
   } catch (err) {
     logger.error(

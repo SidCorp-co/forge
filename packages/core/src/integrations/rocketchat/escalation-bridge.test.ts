@@ -39,8 +39,10 @@ vi.mock('./reply-screen.js', () => ({
   screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
 }));
 
+const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
 const sendFixedReply = vi.fn();
 vi.mock('./outbound.js', () => ({
+  FIXED_REPLY_CONSTANT,
   sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
 }));
 
@@ -239,6 +241,7 @@ describe('deliverEscalationReplyOnce', () => {
         tmid: undefined,
       },
       'Bao says: here is the synthesized answer.',
+      { ok: true, problems: [] },
     );
     // never posts the PM's raw answer text directly
     expect(sendFixedReply.mock.calls[0]?.[1]).not.toContain('raw PM answer');

@@ -10,8 +10,13 @@
  * `rest-client.ts`, or `ddp-client.ts` calls `postRoomMessage(`/`.sendMessage(`.
  *
  * `sendStakeholderReply` screens fresh, not-yet-verified text through
- * `screenStakeholderReply` before delivering — callers that already resolved
- * their own screened-or-fallback string use `sendFixedReply` instead.
+ * `screenStakeholderReply` before delivering. `sendFixedReply` is for
+ * delivering a decision a caller already made (a code-authored fallback
+ * constant, or model text it already holds a passing verdict for) — its
+ * required `proof` argument closes the B3 gap where that decision used to be
+ * unenforced convention: `FIXED_REPLY_CONSTANT` for the former, or the
+ * `{ok:true}`-narrowed `ReplyScreenVerdict` for the latter, so a 5th path
+ * that forgets to screen model text fails to type-check instead of shipping.
  */
 
 import { scrubLogText } from '@forge/observability';
@@ -75,8 +80,30 @@ export async function sendStakeholderReply(args: {
   return { sent: true };
 }
 
-/** Code-authored constants ONLY (acks, honest fallbacks) — guard-exempt by
- *  construction. Never pass model-generated text here. */
-export async function sendFixedReply(transport: ReplyTransport, text: string): Promise<void> {
+/** Pass this as `sendFixedReply`'s `proof` for a genuine code-authored
+ *  constant (ack, honest fallback) — never for model-generated text. */
+export const FIXED_REPLY_CONSTANT: unique symbol = Symbol('rocketchat.outbound.fixedReplyConstant');
+
+/** Either {@link FIXED_REPLY_CONSTANT}, or a `ReplyScreenVerdict` narrowed to
+ *  `ok: true` for the exact text being sent — see {@link sendFixedReply}. */
+export type ReplySendProof = typeof FIXED_REPLY_CONSTANT | { ok: true; problems: string[] };
+
+/**
+ * `proof` must be either {@link FIXED_REPLY_CONSTANT} or a
+ * `ReplyScreenVerdict` narrowed to `ok: true` for THIS `text` — i.e. the
+ * caller just ran `if (verdict.ok) { ... }` and is inside that block. There
+ * is no third way to satisfy this parameter, so a reply path that forgot to
+ * screen model text (B3) fails to compile instead of shipping unguarded.
+ */
+export async function sendFixedReply(
+  transport: ReplyTransport,
+  text: string,
+  proof: ReplySendProof,
+): Promise<void> {
+  if (proof !== FIXED_REPLY_CONSTANT && !proof.ok) {
+    throw new Error(
+      'outbound: sendFixedReply requires proof text is a fixed constant or passed the output guard',
+    );
+  }
   await deliver(transport, text);
 }

@@ -226,11 +226,19 @@ const PROGRESS_KEYWORD_RE =
   // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese progress-keyword vocabulary being scanned
   /hoàn thành|hoàn tất|đã xong|đã đóng|còn lại|đang làm|tổng|done|completed|closed|finished|remaining|in progress|total/gi; // i18n-allow: the Vietnamese progress-keyword vocabulary being scanned
 
-const PERCENT_RE = /(\d{1,3})\s*%/g;
-
 // cm:why a number must be DIRECTLY adjacent to a keyword (only whitespace/colon between) — a wide character window flagged ordinary unrelated numbers several words away as if they were claimed counts (AC#6)
 const NUMBER_AFTER_KEYWORD_RE = new RegExp(`(${PROGRESS_KEYWORD_RE.source})\\s*:?\\s*(\\d+)`, 'gi');
 const NUMBER_BEFORE_KEYWORD_RE = new RegExp(`(\\d+)\\s+(${PROGRESS_KEYWORD_RE.source})`, 'gi');
+
+// cm:why same adjacency requirement as the count rule — an unrelated percentage ("nhanh hơn 20%") must never be read as a progress claim (B1) // i18n-allow: quotes the Vietnamese example phrase being guarded against
+const PERCENT_AFTER_KEYWORD_RE = new RegExp(
+  `(${PROGRESS_KEYWORD_RE.source})\\s*:?\\s*(\\d{1,3})\\s*%`,
+  'gi',
+);
+const PERCENT_BEFORE_KEYWORD_RE = new RegExp(
+  `(\\d{1,3})\\s*%\\s+(${PROGRESS_KEYWORD_RE.source})`,
+  'gi',
+);
 
 function authoritativeSummary(facts: ProgressFacts): string {
   return `shipped=${facts.shipped}, closed without shipping=${facts.closedUnshipped}, in progress=${facts.inFlight}, not started=${facts.remaining}, total=${facts.total}`;
@@ -259,13 +267,40 @@ function progressContextNumbers(scanText: string): Array<{ n: number; keyword: s
   return found;
 }
 
+/** Every `N%` immediately adjacent to a progress keyword — same adjacency
+ *  rule as {@link progressContextNumbers}, so an unrelated percentage several
+ *  words away is ordinary prose, not a progress claim. */
+function progressContextPercents(scanText: string): Array<{ pct: number; keyword: string }> {
+  const found: Array<{ pct: number; keyword: string }> = [];
+  for (const m of scanText.matchAll(PERCENT_AFTER_KEYWORD_RE)) {
+    const [, keyword, pctStr] = m as unknown as [string, string, string];
+    found.push({ pct: Number(pctStr), keyword });
+  }
+  for (const m of scanText.matchAll(PERCENT_BEFORE_KEYWORD_RE)) {
+    const [, pctStr, keyword] = m as unknown as [string, string, string];
+    found.push({ pct: Number(pctStr), keyword });
+  }
+  return found;
+}
+
+/** Legal percentage for each bucket independently (shipped/closedUnshipped/
+ *  inFlight/remaining over total) — a claim can legitimately describe any one
+ *  of the four ("10% đang làm", "còn 27% chưa xong"), not only shipped/total. // i18n-allow: quotes the Vietnamese example phrases being permitted
+ *  `total === 0` makes every bucket's share 0%, so 0% alone is legal. */
+function expectedPercents(facts: ProgressFacts): number[] {
+  if (facts.total === 0) return [0];
+  return [facts.shipped, facts.closedUnshipped, facts.inFlight, facts.remaining].map((n) =>
+    Math.round((n / facts.total) * 100),
+  );
+}
+
 export function checkProgressClaims(reply: string, facts: ProgressFacts | null): ProductLintResult {
   const scanText = stripNonFigureTokens(reply);
-  const percentMatches = [...scanText.matchAll(PERCENT_RE)];
 
   if (facts === null) {
     const numbers = progressContextNumbers(scanText);
-    if (numbers.length === 0 && percentMatches.length === 0) return { ok: true, problems: [] };
+    const percents = progressContextPercents(scanText);
+    if (numbers.length === 0 && percents.length === 0) return { ok: true, problems: [] };
     return {
       ok: false,
       problems: [
@@ -276,7 +311,7 @@ export function checkProgressClaims(reply: string, facts: ProgressFacts | null):
 
   const problems = new Set<string>();
 
-  if (facts.shipped > 0 && DENIAL_RE.test(scanText)) {
+  if ((facts.shipped > 0 || facts.inFlight > 0) && DENIAL_RE.test(scanText)) {
     problems.add(
       `reply claims no work has been done, but authoritative progress is ${authoritativeSummary(facts)} — restate using these figures`,
     );
@@ -297,12 +332,11 @@ export function checkProgressClaims(reply: string, facts: ProgressFacts | null):
     }
   }
 
-  const expectedPct = facts.total === 0 ? null : Math.round((facts.shipped / facts.total) * 100);
-  for (const pctMatch of percentMatches) {
-    const pct = Number(pctMatch[1]);
-    if (expectedPct === null || Math.abs(pct - expectedPct) > 1) {
+  const expectedPcts = expectedPercents(facts);
+  for (const { pct, keyword } of progressContextPercents(scanText)) {
+    if (!expectedPcts.some((e) => Math.abs(pct - e) <= 1)) {
       problems.add(
-        `stated "${pctMatch[0]}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,
+        `stated "${pct}%" near "${keyword}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,
       );
     }
   }

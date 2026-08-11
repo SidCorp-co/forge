@@ -21,8 +21,9 @@ function makeChain(rows: Array<Record<string, unknown>>): Record<string, unknown
 }
 
 /** `computeProjectProgress` makes two `db.select` calls in order: the
- *  project's `agentConfig` (to resolve `mergeStates.baseBranch`), then the
- *  grouped issue rows. */
+ *  project's `agentConfig` (to resolve `mergeStates`), then the grouped issue
+ *  rows — the widened shipped-evidence SQL itself lives in the untested
+ *  query, not in this fake chain (see the module's known-limitations note). */
 function fakeDb(
   rows: Array<Record<string, unknown>>,
   agentConfig: unknown = null,
@@ -56,7 +57,7 @@ function failingDb(): { select: () => unknown } {
 const REMAINING: IssueStatus[] = ['draft', 'waiting', 'needs_info', 'on_hold'];
 
 describe('bucketOf', () => {
-  it('released always counts as shipped, regardless of everLeftBaseMergeState', () => {
+  it('released always counts as shipped, regardless of hasShippedEvidence', () => {
     expect(bucketOf('released', false)).toBe('shipped');
     expect(bucketOf('released', true)).toBe('shipped');
   });
@@ -69,16 +70,16 @@ describe('bucketOf', () => {
     expect(bucketOf('closed', false)).toBe('closed_unshipped');
   });
 
-  it('covers all 15 statuses x everLeftBaseMergeState true/false with a single bucket each', () => {
+  it('covers all 15 statuses x hasShippedEvidence true/false with a single bucket each', () => {
     for (const status of issueStatuses) {
-      for (const everLeftBaseMergeState of [true, false]) {
-        const bucket = bucketOf(status, everLeftBaseMergeState);
+      for (const hasShippedEvidence of [true, false]) {
+        const bucket = bucketOf(status, hasShippedEvidence);
         expect(['shipped', 'closed_unshipped', 'in_flight', 'remaining']).toContain(bucket);
       }
     }
   });
 
-  it('remaining statuses land in remaining regardless of everLeftBaseMergeState', () => {
+  it('remaining statuses land in remaining regardless of hasShippedEvidence', () => {
     for (const status of REMAINING) {
       expect(bucketOf(status, false)).toBe('remaining');
       expect(bucketOf(status, true)).toBe('remaining');
@@ -99,10 +100,10 @@ describe('bucketOf', () => {
 describe('computeProjectProgress', () => {
   it('shipped + closedUnshipped + inFlight + remaining === total', async () => {
     const db = fakeDb([
-      { status: 'closed', everLeftBaseMergeState: true, count: 21 },
-      { status: 'closed', everLeftBaseMergeState: false, count: 33 },
-      { status: 'open', everLeftBaseMergeState: false, count: 7 },
-      { status: 'draft', everLeftBaseMergeState: false, count: 3 },
+      { status: 'closed', hasShippedEvidence: true, count: 21 },
+      { status: 'closed', hasShippedEvidence: false, count: 33 },
+      { status: 'open', hasShippedEvidence: false, count: 7 },
+      { status: 'draft', hasShippedEvidence: false, count: 3 },
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     if (!progress) throw new Error('expected a progress snapshot');
@@ -118,8 +119,8 @@ describe('computeProjectProgress', () => {
 
   it('does not conflate closed-without-shipping into shipped (the 39%-overstatement bug)', async () => {
     const db = fakeDb([
-      { status: 'closed', everLeftBaseMergeState: true, count: 52 },
-      { status: 'closed', everLeftBaseMergeState: false, count: 33 },
+      { status: 'closed', hasShippedEvidence: true, count: 52 },
+      { status: 'closed', hasShippedEvidence: false, count: 33 },
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     if (!progress) throw new Error('expected a progress snapshot');
@@ -130,9 +131,9 @@ describe('computeProjectProgress', () => {
 
   it('two consecutive computes on unchanged data return identical numbers', async () => {
     const rows = [
-      { status: 'closed', everLeftBaseMergeState: true, count: 54 },
-      { status: 'open', everLeftBaseMergeState: false, count: 7 },
-      { status: 'draft', everLeftBaseMergeState: false, count: 3 },
+      { status: 'closed', hasShippedEvidence: true, count: 54 },
+      { status: 'open', hasShippedEvidence: false, count: 7 },
+      { status: 'draft', hasShippedEvidence: false, count: 3 },
     ];
     const a = await computeProjectProgress('p1', fakeDb(rows) as never);
     const b = await computeProjectProgress('p1', fakeDb(rows) as never);
@@ -158,15 +159,15 @@ describe('computeProjectProgress', () => {
 
   it('released counts as shipped alongside a genuinely-shipped closed issue', async () => {
     const db = fakeDb([
-      { status: 'closed', everLeftBaseMergeState: true, count: 2 },
-      { status: 'released', everLeftBaseMergeState: true, count: 5 },
+      { status: 'closed', hasShippedEvidence: true, count: 2 },
+      { status: 'released', hasShippedEvidence: true, count: 5 },
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     expect(progress?.shipped).toBe(7);
   });
 
   it('resolves the base-merge state from the project agentConfig, defaulting to released', async () => {
-    const db = fakeDb([{ status: 'closed', everLeftBaseMergeState: true, count: 1 }], {
+    const db = fakeDb([{ status: 'closed', hasShippedEvidence: true, count: 1 }], {
       pipelineConfig: { mergeStates: { baseBranch: 'tested' } },
     });
     const progress = await computeProjectProgress('p1', db as never);
@@ -192,7 +193,7 @@ describe('buildProgressFactsBlock', () => {
     });
     expect(block).toContain('shipped');
     expect(block).toContain('52');
-    expect(block).toMatch(/closed without shipping.*33/s);
+    expect(block).toMatch(/closed with no recorded release.*33/s);
     expect(block).toContain('in progress: 7');
     expect(block).toContain('not started: 3');
     expect(block).toContain('total: 95');

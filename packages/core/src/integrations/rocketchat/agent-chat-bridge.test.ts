@@ -25,8 +25,10 @@ vi.mock('./reply-screen.js', () => ({
   screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
 }));
 
+const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
 const sendFixedReply = vi.fn();
 vi.mock('./outbound.js', () => ({
+  FIXED_REPLY_CONSTANT,
   sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
 }));
 
@@ -131,6 +133,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'Here is the final answer.',
+      { ok: true, problems: [] },
     );
   });
 
@@ -186,6 +189,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'FALLBACK(Babo)',
+      FIXED_REPLY_CONSTANT,
     );
   });
 
@@ -217,6 +221,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'FALLBACK(Babo)',
+      FIXED_REPLY_CONSTANT,
     );
   });
 
@@ -232,6 +237,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'FALLBACK(Babo)',
+      FIXED_REPLY_CONSTANT,
     );
   });
 
@@ -247,6 +253,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'FALLBACK(Babo)',
+      FIXED_REPLY_CONSTANT,
     );
   });
 
@@ -261,6 +268,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'FALLBACK(Babo)',
+      FIXED_REPLY_CONSTANT,
     );
   });
 
@@ -276,6 +284,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'FALLBACK(Babo)',
+      FIXED_REPLY_CONSTANT,
     );
   });
 
@@ -302,6 +311,7 @@ describe('deliverAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: 'thread-1' },
       'answer',
+      { ok: true, problems: [] },
     );
   });
 

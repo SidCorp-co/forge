@@ -72,7 +72,9 @@ vi.mock('./rest-client.js', () => ({
   postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
 }));
 
-const { sendStakeholderReply, sendFixedReply } = await import('./outbound.js');
+const { FIXED_REPLY_CONSTANT, sendStakeholderReply, sendFixedReply } = await import(
+  './outbound.js'
+);
 
 function ddpTransport(overrides: Record<string, unknown> = {}) {
   return {
@@ -179,9 +181,13 @@ describe('sendFixedReply', () => {
     postRoomMessage.mockReset();
   });
 
-  it('delivers verbatim without calling the guard', async () => {
+  it('delivers verbatim without calling the guard when proof is FIXED_REPLY_CONSTANT', async () => {
     const transport = ddpTransport();
-    await sendFixedReply(transport as never, 'Sorry, overloaded right now.');
+    await sendFixedReply(
+      transport as never,
+      'Sorry, overloaded right now.',
+      FIXED_REPLY_CONSTANT as never,
+    );
     expect(screenStakeholderReply).not.toHaveBeenCalled();
     expect(transport.client.sendMessage).toHaveBeenCalledWith(
       'room-1',
@@ -190,23 +196,51 @@ describe('sendFixedReply', () => {
     );
   });
 
+  it('delivers verbatim when proof is a verdict narrowed to ok:true (B3)', async () => {
+    const transport = ddpTransport();
+    await sendFixedReply(transport as never, 'Already-screened model reply.', {
+      ok: true,
+      problems: [],
+    });
+    expect(transport.client.sendMessage).toHaveBeenCalledWith(
+      'room-1',
+      'Already-screened model reply.',
+      undefined,
+    );
+  });
+
+  it('rejects delivery when proof is a verdict that is NOT ok (B3 runtime backstop)', async () => {
+    const transport = ddpTransport();
+    await expect(
+      sendFixedReply(transport as never, 'Should never ship.', {
+        ok: false,
+        problems: ['leaks a code fence'],
+      } as never),
+    ).rejects.toThrow(/requires proof/);
+    expect(transport.client.sendMessage).not.toHaveBeenCalled();
+  });
+
   it('redacts the transport auth token if it appears in the text', async () => {
     const transport = ddpTransport({ authToken: 'super-secret-token' });
-    await sendFixedReply(transport as never, 'leaked super-secret-token in reply');
+    await sendFixedReply(
+      transport as never,
+      'leaked super-secret-token in reply',
+      FIXED_REPLY_CONSTANT as never,
+    );
     const [, sentText] = transport.client.sendMessage.mock.calls[0] as [unknown, string];
     expect(sentText).not.toContain('super-secret-token');
   });
 
   it('clips a reply longer than the Rocket.Chat message-size ceiling', async () => {
     const transport = ddpTransport();
-    await sendFixedReply(transport as never, 'x'.repeat(5000));
+    await sendFixedReply(transport as never, 'x'.repeat(5000), FIXED_REPLY_CONSTANT as never);
     const [, sentText] = transport.client.sendMessage.mock.calls[0] as [unknown, string];
     expect(sentText.length).toBeLessThan(5000);
     expect(sentText).toMatch(/truncated/);
   });
 
   it('delivers over REST when the transport is rest', async () => {
-    await sendFixedReply(restTransport() as never, 'fallback text');
+    await sendFixedReply(restTransport() as never, 'fallback text', FIXED_REPLY_CONSTANT as never);
     expect(postRoomMessage).toHaveBeenCalledWith(
       { serverUrl: 'https://chat.example.co', authToken: 'tok', userId: 'bot-1' },
       'room-1',

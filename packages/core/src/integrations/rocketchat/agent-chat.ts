@@ -28,7 +28,7 @@ import { buildProgressFactsBlock, computeProjectProgress } from '../../issues/pr
 import { findAvailableDeviceForProject } from '../../lib/device-pool.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
-import { sendFixedReply } from './outbound.js';
+import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import type { ProgressFacts } from './reply-guard.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 
@@ -459,6 +459,7 @@ async function postDelayedAck(args: {
     await sendFixedReply(
       { kind: 'rest', auth, rid: args.rid, tmid: args.tmid ?? undefined },
       AGENT_CHAT_ACK(args.botName),
+      FIXED_REPLY_CONSTANT,
     );
   } catch (err) {
     logger.error(

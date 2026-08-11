@@ -173,11 +173,18 @@ describe('checkProgressClaims', () => {
     expect(verdict.ok).toBe(false);
   });
 
-  it('does not flag the denial phrasing when done is actually 0', () => {
-    const zero = { shipped: 0, closedUnshipped: 0, inFlight: 2, remaining: 1, total: 3 };
+  it('does not flag the denial phrasing when nothing has shipped AND nothing is in flight', () => {
+    const zero = { shipped: 0, closedUnshipped: 0, inFlight: 0, remaining: 3, total: 3 };
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
     const verdict = checkProgressClaims('Chưa có gì được làm cả.', zero); // i18n-allow: Vietnamese denial phrasing under test
     expect(verdict.ok).toBe(true);
+  });
+
+  it('rejects the denial phrasing when shipped is 0 but work is in flight (review minor)', () => {
+    const inFlightOnly = { shipped: 0, closedUnshipped: 0, inFlight: 2, remaining: 1, total: 3 };
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Chưa có gì được làm cả.', inFlightOnly); // i18n-allow: Vietnamese denial phrasing under test
+    expect(verdict.ok).toBe(false);
   });
 
   it('rejects an off-by-N count near a progress keyword', () => {
@@ -214,11 +221,43 @@ describe('checkProgressClaims', () => {
     expect(verdict.ok).toBe(true);
   });
 
-  it('rejects any percentage when total is 0', () => {
+  it('accepts 0% when total is 0 (nothing to divide, so 0% is the only legal share)', () => {
     const empty = { shipped: 0, closedUnshipped: 0, inFlight: 0, remaining: 0, total: 0 };
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
     const verdict = checkProgressClaims('Dự án đã hoàn thành 0%.', empty); // i18n-allow: Vietnamese progress phrasing under test
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('rejects a non-zero percentage when total is 0', () => {
+    const empty = { shipped: 0, closedUnshipped: 0, inFlight: 0, remaining: 0, total: 0 };
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Dự án đã hoàn thành 40%.', empty); // i18n-allow: Vietnamese progress phrasing under test
     expect(verdict.ok).toBe(false);
+  });
+
+  it('accepts a legitimate percentage claim about a bucket other than shipped/total (AC#6/B1)', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('10% đang làm.', facts); // i18n-allow: inFlight=7/total=74 rounds to 9%, within the +/-1 tolerance of the stated 10%
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('accepts multiple legal percentages in the same reply (B1)', () => {
+    const pctShipped = Math.round((facts.shipped / facts.total) * 100);
+    const verdict = checkProgressClaims(
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+      `Đã hoàn thành ${pctShipped}%, còn lại 4% chưa xong.`, // i18n-allow: Vietnamese progress phrasing under test
+      facts,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('does not flag an unrelated percentage nowhere near a progress keyword (B1)', () => {
+    const verdict = checkProgressClaims(
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+      'Tuần này build nhanh hơn 20%, và đã hoàn thành 54 việc.', // i18n-allow: Vietnamese progress phrasing under test — "20%" is not a progress claim
+      facts,
+    );
+    expect(verdict.ok).toBe(true);
   });
 
   it('never reads an ISS-<n> id or an ISO date as a figure', () => {
@@ -241,6 +280,12 @@ describe('checkProgressClaims', () => {
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
     const verdict = checkProgressClaims('Dự án đã hoàn thành 54%.', null); // i18n-allow: Vietnamese progress phrasing under test
     expect(verdict.ok).toBe(false);
+  });
+
+  it('passes an unrelated percentage nowhere near a progress keyword when the snapshot is null (B1)', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Discount hôm nay là 20% cho khách mới.', null); // i18n-allow: representative unrelated-percentage sentence under test
+    expect(verdict.ok).toBe(true);
   });
 
   it('passes a reply with no progress figures even when the snapshot is null', () => {

@@ -8,11 +8,8 @@
  * injection, the output guard, any future UI/REST surface) reads instead.
  *
  * "Shipped" is NOT the same as "closed": `closed` also covers duplicates,
- * merges into another issue, and decided-not-to-do. `closed` only counts as
- * shipped when the issue's history shows it left the project's base-merge
- * state (`pipelineConfig.mergeStates.baseBranch`, default `released` — see
- * `issues/merged-at.ts`); `released` itself always counts, since a
- * just-released issue's `activity_log` row may not have landed yet.
+ * merges into another issue, and decided-not-to-do. See `bucketOf` and
+ * `computeProjectProgress` for what counts as shipped-evidence.
  */
 
 import { eq, sql } from 'drizzle-orm';
@@ -26,8 +23,11 @@ export type ProgressBucket = 'shipped' | 'closed_unshipped' | 'in_flight' | 'rem
 export interface ProjectProgress {
   /** Released, or closed with evidence the code actually shipped. */
   shipped: number;
-  /** Closed WITHOUT ever leaving the base-merge state — duplicate, merged
-   *  into another issue, decided not to do. Counts toward `total`, not
+  /** Closed with NO evidence found that it shipped — duplicate, merged into
+   *  another issue, decided not to do, OR a shipped issue this predicate
+   *  can't see (e.g. code landed under a different issue's branch). Absence
+   *  of evidence is not evidence the work was dropped — see
+   *  `buildProgressFactsBlock`'s rendered label. Counts toward `total`, not
    *  toward `shipped`. */
   closedUnshipped: number;
   inFlight: number;
@@ -39,9 +39,12 @@ export interface ProjectProgress {
 
 const REMAINING_STATUSES = new Set<IssueStatus>(['draft', 'waiting', 'needs_info', 'on_hold']);
 
+// cm:why reached only once a code step has run — paired with `merged_at` as evidence a manual/owner-lane close (skipping the release rung) still shipped code (review B2)
+const POST_CODE_STATUSES: readonly IssueStatus[] = ['developed', 'testing', 'tested', 'released'];
+
 // cm:guard the ONLY place issue statuses are bucketed into a progress figure — a second counter (chat self-count, a bespoke report) re-opens ISS-671's 54-issue incident
-export function bucketOf(status: IssueStatus, everLeftBaseMergeState: boolean): ProgressBucket {
-  if (status === 'released' || (status === 'closed' && everLeftBaseMergeState)) return 'shipped';
+export function bucketOf(status: IssueStatus, hasShippedEvidence: boolean): ProgressBucket {
+  if (status === 'released' || (status === 'closed' && hasShippedEvidence)) return 'shipped';
   if (status === 'closed') return 'closed_unshipped';
   if (REMAINING_STATUSES.has(status)) return 'remaining';
   return 'in_flight';
@@ -53,10 +56,11 @@ function emptyByStatus(): Record<IssueStatus, number> {
 
 /**
  * One grouped aggregate per project, joined against `activity_log` to check
- * (per `status`/`everLeftBaseMergeState` pair) whether the base-merge-state
- * transition ever happened. `bucketOf` maps each group to a progress bucket.
- * Returns `null` on a DB error (logged); callers MUST treat `null` as
- * fail-closed, not as "zero progress".
+ * (per `status`/`hasShippedEvidence` pair) whether shipped-evidence exists:
+ * a transition into the base- or production-merge state, OR `merged_at` set
+ * together with a transition into a post-code status. `bucketOf` maps each
+ * group to a progress bucket. Returns `null` on a DB error (logged); callers
+ * MUST treat `null` as fail-closed, not as "zero progress".
  */
 export async function computeProjectProgress(
   projectId: string,
@@ -68,24 +72,36 @@ export async function computeProjectProgress(
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    const { baseBranch } = resolveMergeStates(projectRow?.agentConfig);
+    const { baseBranch, productionBranch } = resolveMergeStates(projectRow?.agentConfig);
 
-    const everLeftBaseMergeState = sql<boolean>`exists (
+    const leftMergeState = sql`exists (
       select 1 from ${activityLog}
       where ${activityLog.issueId} = ${issues.id}
         and ${activityLog.action} = 'issue.statusChanged'
-        and ${activityLog.payload}->>'to' = ${baseBranch}
+        and ${activityLog.payload}->>'to' in (${baseBranch}, ${productionBranch})
     )`;
+
+    const reachedPostCode = sql`exists (
+      select 1 from ${activityLog}
+      where ${activityLog.issueId} = ${issues.id}
+        and ${activityLog.action} = 'issue.statusChanged'
+        and ${activityLog.payload}->>'to' in (${sql.join(
+          POST_CODE_STATUSES.map((s) => sql`${s}`),
+          sql`, `,
+        )})
+    )`;
+
+    const hasShippedEvidence = sql<boolean>`(${leftMergeState} or (${issues.mergedAt} is not null and ${reachedPostCode}))`;
 
     const rows = await dbi
       .select({
         status: issues.status,
-        everLeftBaseMergeState,
+        hasShippedEvidence,
         count: sql<number>`count(*)::int`,
       })
       .from(issues)
       .where(eq(issues.projectId, projectId))
-      .groupBy(issues.status, everLeftBaseMergeState);
+      .groupBy(issues.status, hasShippedEvidence);
 
     const byStatus = emptyByStatus();
     let shipped = 0;
@@ -96,7 +112,7 @@ export async function computeProjectProgress(
       const status = row.status;
       const count = Number(row.count);
       byStatus[status] += count;
-      const bucket = bucketOf(status, row.everLeftBaseMergeState);
+      const bucket = bucketOf(status, row.hasShippedEvidence);
       if (bucket === 'shipped') shipped += count;
       else if (bucket === 'closed_unshipped') closedUnshipped += count;
       else if (bucket === 'remaining') remaining += count;
@@ -129,7 +145,7 @@ export function buildProgressFactsBlock(p: ProjectProgress): string {
     'Project progress (computed by the system from live data — AUTHORITATIVE).',
     'Do not recount, re-derive, or estimate these figures from issue lists; state them as given. Each figure below is a distinct bucket — do not merge them.',
     `- shipped (released to production): ${p.shipped}`,
-    `- closed without shipping (duplicate, merged elsewhere, or decided not to do — not delivered work): ${p.closedUnshipped}`,
+    `- closed with no recorded release (duplicate, merged elsewhere, decided not to do — or shipped without a matching record): ${p.closedUnshipped}`,
     `- in progress: ${p.inFlight}`,
     `- not started: ${p.remaining}`,
     `- total: ${p.total}`,

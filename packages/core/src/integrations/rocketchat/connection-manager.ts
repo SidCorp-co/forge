@@ -42,7 +42,7 @@ import {
   startEscalation,
 } from './escalation.js';
 import { createSeenTracker, decideHandling } from './inbound-gate.js';
-import { sendFixedReply } from './outbound.js';
+import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
@@ -525,6 +525,8 @@ class RocketChatConnectionManager {
     let external: ExternalMcpToolsets | undefined;
     let phase = 'start';
     let reply: string;
+    // cm:why default stays the fixed-constant proof for every branch below EXCEPT the one that returns raw model text (right after `verdict.ok` is confirmed) — see that branch for why
+    let sendProof: ReplySendProof = FIXED_REPLY_CONSTANT;
     try {
       reply = await withTimeout(
         (async (): Promise<string> => {
@@ -714,12 +716,16 @@ class RocketChatConnectionManager {
               );
             }
           }
-          return !verdict.ok
-            ? unverifiedFallbackReply(ac.botName)
-            : result.reply.trim() ||
-                (result.terminal === 'error'
-                  ? errorFallbackReply(ac.botName)
-                  : emptyFallbackReply(ac.botName));
+          if (!verdict.ok) return unverifiedFallbackReply(ac.botName);
+          const trimmedReply = result.reply.trim();
+          if (!trimmedReply) {
+            return result.terminal === 'error'
+              ? errorFallbackReply(ac.botName)
+              : emptyFallbackReply(ac.botName);
+          }
+          // cm:why proof this exact text passed screenStakeholderReply above — the only way sendFixedReply's `proof` param accepts model-generated text
+          sendProof = { ok: true, problems: verdict.problems };
+          return trimmedReply;
         })(),
         HANDLE_TIMEOUT_MS,
       );
@@ -750,11 +756,12 @@ class RocketChatConnectionManager {
       await external?.dispose();
     }
     // cm:why reply === '' is the ISS-675 escalation sentinel (its fallback already delivered async via REST) — skip this send so the room doesn't get a second reply
-    // cm:why reply was already screened (or replaced with a fixed fallback) above — this send is delivery-only through the outbound chokepoint, not a second guard pass
+    // cm:why reply was already screened (or replaced with a fixed fallback) above — sendProof carries the proof through; this send is delivery-only through the outbound chokepoint, not a second guard pass
     if (reply && ac.client) {
       await sendFixedReply(
         { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
         reply,
+        sendProof,
       );
     }
   }

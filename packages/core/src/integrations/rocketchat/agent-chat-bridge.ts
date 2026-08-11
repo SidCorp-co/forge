@@ -25,7 +25,7 @@ import { agentSessions, type agentSessions as agentSessionsTable } from '../../d
 import { logger } from '../../logger.js';
 import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
 import { extractFinalAssistantText } from './escalation-bridge.js';
-import { sendFixedReply } from './outbound.js';
+import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import type { ProgressFacts } from './reply-guard.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
@@ -175,6 +175,7 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   const finalText =
     session.status === 'completed' ? extractFinalAssistantText(session.messages) : null;
   let reply: string;
+  let proof: ReplySendProof = FIXED_REPLY_CONSTANT;
   if (!finalText) {
     reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
   } else {
@@ -184,13 +185,19 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
       extractToolCalls(session.messages),
       readProgressFacts(session.metadata),
     );
-    reply = verdict.ok ? finalText : AGENT_CHAT_FALLBACK_REPLY(meta.botName);
+    if (verdict.ok) {
+      reply = finalText;
+      proof = { ok: true, problems: verdict.problems };
+    } else {
+      reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
+    }
   }
 
   try {
     await sendFixedReply(
       { kind: 'rest', auth, rid: meta.rid, tmid: meta.tmid ?? undefined },
       reply,
+      proof,
     );
   } catch (err) {
     logger.error(
