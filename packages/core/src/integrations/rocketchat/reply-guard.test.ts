@@ -159,7 +159,7 @@ describe('detectEmptyPromise', () => {
 });
 
 describe('checkProgressClaims', () => {
-  const facts = { done: 54, inFlight: 7, remaining: 3, total: 64 };
+  const facts = { shipped: 54, closedUnshipped: 10, inFlight: 7, remaining: 3, total: 74 };
 
   it('rejects Vietnamese "nothing done" phrasing when done > 0', () => {
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
@@ -174,7 +174,7 @@ describe('checkProgressClaims', () => {
   });
 
   it('does not flag the denial phrasing when done is actually 0', () => {
-    const zero = { done: 0, inFlight: 2, remaining: 1, total: 3 };
+    const zero = { shipped: 0, closedUnshipped: 0, inFlight: 2, remaining: 1, total: 3 };
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
     const verdict = checkProgressClaims('Chưa có gì được làm cả.', zero); // i18n-allow: Vietnamese denial phrasing under test
     expect(verdict.ok).toBe(true);
@@ -194,6 +194,12 @@ describe('checkProgressClaims', () => {
     expect(verdict.ok).toBe(true);
   });
 
+  it('does not flag an ordinary number several words away from a progress keyword (AC#6)', () => {
+    // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
+    const verdict = checkProgressClaims('Trong 3 tuần đã hoàn thành 54 việc.', facts); // i18n-allow: Vietnamese progress phrasing under test — "3" (weeks) must not be read as a claimed count
+    expect(verdict.ok).toBe(true);
+  });
+
   it('rejects a percentage that does not match the authoritative figures', () => {
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
     const verdict = checkProgressClaims('Dự án đã hoàn thành 40%.', facts); // i18n-allow: Vietnamese progress phrasing under test
@@ -202,14 +208,14 @@ describe('checkProgressClaims', () => {
   });
 
   it('accepts a percentage that matches the authoritative figures', () => {
-    const pct = Math.round((facts.done / facts.total) * 100);
+    const pct = Math.round((facts.shipped / facts.total) * 100);
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
     const verdict = checkProgressClaims(`Dự án đã hoàn thành ${pct}%.`, facts); // i18n-allow: Vietnamese progress phrasing under test
     expect(verdict.ok).toBe(true);
   });
 
   it('rejects any percentage when total is 0', () => {
-    const empty = { done: 0, inFlight: 0, remaining: 0, total: 0 };
+    const empty = { shipped: 0, closedUnshipped: 0, inFlight: 0, remaining: 0, total: 0 };
     // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
     const verdict = checkProgressClaims('Dự án đã hoàn thành 0%.', empty); // i18n-allow: Vietnamese progress phrasing under test
     expect(verdict.ok).toBe(false);

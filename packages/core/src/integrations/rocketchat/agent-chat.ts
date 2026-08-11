@@ -160,7 +160,8 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
   const progress = await computeProjectProgress(args.projectId);
   const progressFacts: ProgressFacts | null = progress
     ? {
-        done: progress.done,
+        shipped: progress.shipped,
+        closedUnshipped: progress.closedUnshipped,
         inFlight: progress.inFlight,
         remaining: progress.remaining,
         total: progress.total,

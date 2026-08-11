@@ -1,29 +1,50 @@
 /**
  * ISS-671 (AC#1) — the static half of the outbound chokepoint's enforcement:
- * no file in this directory other than outbound.ts/rest-client.ts/ddp-client.ts
- * may call the raw RC send primitives. A fifth reply path that forgets the
- * door now fails CI instead of shipping unguarded.
+ * no file under packages/core/src other than the rocketchat outbound/rest-client/
+ * ddp-client trio may call the raw RC send primitives. A fifth reply path that
+ * forgets the door now fails CI instead of shipping unguarded. Scoped to the
+ * whole src tree (not just this directory) per AC#1 — a bypass anywhere in the
+ * package is the same failure.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const DIR = fileURLToPath(new URL('.', import.meta.url));
-const ALLOWED = new Set(['outbound.ts', 'rest-client.ts', 'ddp-client.ts']);
+const SRC_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const ALLOWED = new Set([
+  'integrations/rocketchat/outbound.ts',
+  'integrations/rocketchat/rest-client.ts',
+  'integrations/rocketchat/ddp-client.ts',
+]);
 const CALL_RE = /postRoomMessage\(|\.sendMessage\(/;
 
 function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
+function listSourceFiles(dir: string, prefix = ''): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = `${dir}/${entry}`;
+    const rel = prefix ? `${prefix}/${entry}` : entry;
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      out.push(...listSourceFiles(full, rel));
+    } else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts') && !entry.endsWith('.d.ts')) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
 describe('outbound chokepoint — no bypass (ISS-671 AC#1)', () => {
-  it('no file other than outbound/rest-client/ddp-client calls postRoomMessage or .sendMessage', () => {
+  it('no file under src other than the rocketchat outbound/rest-client/ddp-client trio calls postRoomMessage or .sendMessage', () => {
     const violations: string[] = [];
-    for (const entry of readdirSync(DIR)) {
-      if (!entry.endsWith('.ts') || entry.endsWith('.test.ts') || ALLOWED.has(entry)) continue;
-      const body = stripComments(readFileSync(`${DIR}${entry}`, 'utf8'));
-      if (CALL_RE.test(body)) violations.push(entry);
+    for (const rel of listSourceFiles(SRC_ROOT)) {
+      if (ALLOWED.has(rel)) continue;
+      const body = stripComments(readFileSync(`${SRC_ROOT}${rel}`, 'utf8'));
+      if (CALL_RE.test(body)) violations.push(rel);
     }
     expect(
       violations,
@@ -124,7 +145,7 @@ describe('sendStakeholderReply', () => {
 
   it('threads the progress snapshot into the guard', async () => {
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
-    const facts = { done: 54, inFlight: 7, remaining: 3, total: 64 };
+    const facts = { shipped: 54, closedUnshipped: 10, inFlight: 7, remaining: 3, total: 74 };
     await sendStakeholderReply({
       projectId: 'proj-1',
       text: 'Done: 54.',

@@ -85,7 +85,7 @@ describe('screenStakeholderReply', () => {
   });
 
   describe('progress claim (ISS-671)', () => {
-    const facts = { done: 54, inFlight: 7, remaining: 3, total: 64 };
+    const facts = { shipped: 54, closedUnshipped: 10, inFlight: 7, remaining: 3, total: 74 };
 
     it('ANDs a progress-claim rejection into the composed verdict', async () => {
       selectWhere.mockResolvedValue([]);

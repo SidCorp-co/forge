@@ -80,14 +80,21 @@ function readProgressFacts(metadata: unknown): ProgressFacts | null | undefined 
   if (!pf || typeof pf !== 'object') return null;
   const p = pf as Record<string, unknown>;
   if (
-    typeof p.done !== 'number' ||
+    typeof p.shipped !== 'number' ||
+    typeof p.closedUnshipped !== 'number' ||
     typeof p.inFlight !== 'number' ||
     typeof p.remaining !== 'number' ||
     typeof p.total !== 'number'
   ) {
     return null;
   }
-  return { done: p.done, inFlight: p.inFlight, remaining: p.remaining, total: p.total };
+  return {
+    shipped: p.shipped,
+    closedUnshipped: p.closedUnshipped,
+    inFlight: p.inFlight,
+    remaining: p.remaining,
+    total: p.total,
+  };
 }
 
 /**

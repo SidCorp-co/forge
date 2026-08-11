@@ -199,7 +199,8 @@ export function detectEmptyPromise(reply: string): ProductLintResult {
  */
 
 export interface ProgressFacts {
-  done: number;
+  shipped: number;
+  closedUnshipped: number;
   inFlight: number;
   remaining: number;
   total: number;
@@ -227,30 +228,33 @@ const PROGRESS_KEYWORD_RE =
 
 const PERCENT_RE = /(\d{1,3})\s*%/g;
 
-/** Plan's tuning knob (unmeasured false-positive rate — see the plan's risk
- *  note): every integer within this many chars of a progress keyword is
- *  scanned as a claimed count. */
-const KEYWORD_WINDOW = 40;
+// cm:why a number must be DIRECTLY adjacent to a keyword (only whitespace/colon between) — a wide character window flagged ordinary unrelated numbers several words away as if they were claimed counts (AC#6)
+const NUMBER_AFTER_KEYWORD_RE = new RegExp(`(${PROGRESS_KEYWORD_RE.source})\\s*:?\\s*(\\d+)`, 'gi');
+const NUMBER_BEFORE_KEYWORD_RE = new RegExp(`(\\d+)\\s+(${PROGRESS_KEYWORD_RE.source})`, 'gi');
 
 function authoritativeSummary(facts: ProgressFacts): string {
-  return `done=${facts.done}, in progress=${facts.inFlight}, not started=${facts.remaining}, total=${facts.total}`;
+  return `shipped=${facts.shipped}, closed without shipping=${facts.closedUnshipped}, in progress=${facts.inFlight}, not started=${facts.remaining}, total=${facts.total}`;
 }
 
-/** Every integer within `KEYWORD_WINDOW` chars of a progress keyword, paired
- *  with the keyword that put it in scope. */
+/** Every integer immediately adjacent to a progress keyword (before or
+ *  after, only whitespace/colon in between), paired with the keyword that
+ *  put it in scope. A number elsewhere in the sentence — even a few words
+ *  away — is ordinary prose, not a claimed count. */
 function progressContextNumbers(scanText: string): Array<{ n: number; keyword: string }> {
   const found: Array<{ n: number; keyword: string }> = [];
-  for (const kwMatch of scanText.matchAll(PROGRESS_KEYWORD_RE)) {
-    const kwIndex = kwMatch.index ?? 0;
-    const windowStart = Math.max(0, kwIndex - KEYWORD_WINDOW);
-    const windowEnd = Math.min(scanText.length, kwIndex + kwMatch[0].length + KEYWORD_WINDOW);
-    const window = scanText.slice(windowStart, windowEnd);
-    for (const numMatch of window.matchAll(/\d+/g)) {
-      // cm:why a "84%" is validated by the percentage rule below, not here — else it would also flag 84 as an unmatched count
-      const afterMatch = window.slice(numMatch.index + numMatch[0].length);
-      if (/^\s*%/.test(afterMatch)) continue;
-      found.push({ n: Number(numMatch[0]), keyword: kwMatch[0] });
-    }
+  const isPercent = (numIndex: number, numStr: string): boolean =>
+    /^\s*%/.test(scanText.slice(numIndex + numStr.length));
+  for (const m of scanText.matchAll(NUMBER_AFTER_KEYWORD_RE)) {
+    const [whole, keyword, numStr] = m as unknown as [string, string, string];
+    const numIndex = (m.index ?? 0) + whole.length - numStr.length;
+    if (isPercent(numIndex, numStr)) continue;
+    found.push({ n: Number(numStr), keyword });
+  }
+  for (const m of scanText.matchAll(NUMBER_BEFORE_KEYWORD_RE)) {
+    const [, numStr, keyword] = m as unknown as [string, string, string];
+    const numIndex = m.index ?? 0;
+    if (isPercent(numIndex, numStr)) continue;
+    found.push({ n: Number(numStr), keyword });
   }
   return found;
 }
@@ -272,13 +276,19 @@ export function checkProgressClaims(reply: string, facts: ProgressFacts | null):
 
   const problems = new Set<string>();
 
-  if (facts.done > 0 && DENIAL_RE.test(scanText)) {
+  if (facts.shipped > 0 && DENIAL_RE.test(scanText)) {
     problems.add(
       `reply claims no work has been done, but authoritative progress is ${authoritativeSummary(facts)} — restate using these figures`,
     );
   }
 
-  const allowedCounts = new Set([facts.done, facts.inFlight, facts.remaining, facts.total]);
+  const allowedCounts = new Set([
+    facts.shipped,
+    facts.closedUnshipped,
+    facts.inFlight,
+    facts.remaining,
+    facts.total,
+  ]);
   for (const { n, keyword } of progressContextNumbers(scanText)) {
     if (!allowedCounts.has(n)) {
       problems.add(
@@ -287,7 +297,7 @@ export function checkProgressClaims(reply: string, facts: ProgressFacts | null):
     }
   }
 
-  const expectedPct = facts.total === 0 ? null : Math.round((facts.done / facts.total) * 100);
+  const expectedPct = facts.total === 0 ? null : Math.round((facts.shipped / facts.total) * 100);
   for (const pctMatch of percentMatches) {
     const pct = Number(pctMatch[1]);
     if (expectedPct === null || Math.abs(pct - expectedPct) > 1) {
