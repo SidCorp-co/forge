@@ -79,10 +79,11 @@ export async function pipelineRunsListHandler(
       createdAt: pipelineRuns.createdAt,
       updatedAt: pipelineRuns.updatedAt,
       // cm:why ISS-789 — `status` alone cannot say whether anything is still working on a run; a correlated count keeps that answer in the same round-trip as the row it describes
+      // cm:guard write the identifiers LITERALLY here — do NOT interpolate `${jobs.pipelineRunId}` / `${pipelineRuns.id}`. Drizzle renders a column reference inside a raw sql template UNQUALIFIED (`"id"`, not `"pipeline_runs"."id"`), so inside this subquery the bare `"id"` binds to jobs.id and the correlation becomes `jobs.pipeline_run_id = jobs.id` — always false, count always 0. It compiles, typechecks, and is wrong; it shipped in 65bb8a0b and only real data caught it.
       liveJobs: sql<number>`(
-        SELECT count(*)::int FROM ${jobs}
-        WHERE ${jobs.pipelineRunId} = ${pipelineRuns.id}
-          AND ${jobs.status} IN ('queued','dispatched','running')
+        SELECT count(*)::int FROM jobs lj
+        WHERE lj.pipeline_run_id = pipeline_runs.id
+          AND lj.status IN ('queued','dispatched','running')
       )`.mapWith(Number),
     })
     .from(pipelineRuns)
