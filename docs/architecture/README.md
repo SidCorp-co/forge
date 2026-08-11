@@ -14,6 +14,7 @@ System-level documentation. For feature-by-feature detail, see [../modules/](../
 - [Skill delivery](skill-delivery.md) — **canonical ADR**: two skill kinds, three channels (disk / plugin / MCP-reference), anchors, load-bearing shims.
   - [Skill delivery, channel 3: the plugin marketplace](skill-delivery-plugin-channel.md) — plugin channel mechanism detail.
 - [Reopen loop guard](reopen-loop-guard.md) — the reopen-count cap, its device-actor escalation to `waiting`, and why the cap is a single global value rather than complexity-scaled.
+- [The closed job loop](job-loop-monitor.md) — the four-hop reap model in `jobs/loop-monitor.ts`, and the ISS-785 kill-before-reap gate that stops a false "silent death" from spawning a second agent.
 
 ## Related
 

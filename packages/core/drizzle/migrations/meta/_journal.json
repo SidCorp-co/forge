@@ -1198,6 +1198,13 @@
       "when": 1788307200000,
       "tag": "0172_iss820_comments_is_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1788393600000,
+      "tag": "0173_jobs_kill_gate",
+      "breakpoints": true
     }
   ]
 }

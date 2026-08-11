@@ -12,7 +12,11 @@ import { db } from '../db/client.js';
 import { type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { hooks } from './hooks.js';
-import { broadcastAbortEvents, cascadeCancelChildJobs, reasonForOutcome } from './runs-cascade.js';
+import {
+  cascadeCancelChildJobs,
+  reasonForOutcome,
+  requestKillsForCascade,
+} from './runs-cascade.js';
 
 export type OpenIssueRun = { id: string; startedAt: Date };
 
@@ -169,8 +173,7 @@ export async function closeRun(
         : null;
     return { rows: updated, cascade: c };
   });
-  if (cascade)
-    await broadcastAbortEvents(cascade.deviceBySession, reasonForOutcome(outcome), runId);
+  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(outcome));
   await emitCloseHook(rows, outcome, cascade?.cancelledJobIds ?? []);
 }
 
@@ -228,8 +231,7 @@ export async function closeRunIfOneShot(
         : null;
     return { rows: updated, cascade: c };
   });
-  if (cascade)
-    await broadcastAbortEvents(cascade.deviceBySession, reasonForOutcome(outcome), runId);
+  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(outcome));
   await emitCloseHook(rows, outcome, cascade?.cancelledJobIds ?? []);
 }
 
@@ -267,7 +269,7 @@ export async function closeOpenRunForIssue(
     return { rows: updatedRows, cascades: cs };
   });
   for (const c of cascades) {
-    await broadcastAbortEvents(c.result.deviceBySession, reasonForOutcome(outcome), c.runId);
+    await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(outcome));
   }
   const cascadedByRun = new Map(cascades.map((c) => [c.runId, c.result.cancelledJobIds]));
   await emitCloseHookPerRow(rows, outcome, cascadedByRun);

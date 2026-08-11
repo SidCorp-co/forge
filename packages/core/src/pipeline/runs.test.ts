@@ -39,16 +39,15 @@ const cascadeMock = vi.fn(async (_tx: unknown, _runId: string, _reason: string) 
   cancelledJobIds: [] as string[],
   abortedSessionIds: [] as string[],
   deviceBySession: new Map<string, string>(),
+  killableJobs: [] as Array<Record<string, unknown>>,
 }));
-const broadcastMock = vi.fn(
-  async (_map: unknown, _reason: string, _runId: string) => [] as string[],
-);
+const requestKillsMock = vi.fn(async (_jobs: unknown, _reason: string) => [] as string[]);
 
 vi.mock('./runs-cascade.js', () => ({
   cascadeCancelChildJobs: (...args: unknown[]) =>
     (cascadeMock as unknown as (...a: unknown[]) => unknown)(...args),
-  broadcastAbortEvents: (...args: unknown[]) =>
-    (broadcastMock as unknown as (...a: unknown[]) => unknown)(...args),
+  requestKillsForCascade: (...args: unknown[]) =>
+    (requestKillsMock as unknown as (...a: unknown[]) => unknown)(...args),
   reasonForOutcome: (outcome: string) =>
     outcome === 'completed'
       ? 'pipeline_completed'
@@ -178,7 +177,7 @@ beforeEach(() => {
   nextInsertReturnsEmpty = false;
   emitMock.mockClear();
   cascadeMock.mockClear();
-  broadcastMock.mockClear();
+  requestKillsMock.mockClear();
 });
 
 describe('openIssueRun', () => {
@@ -316,7 +315,7 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     });
   });
 
-  it('closeRun cascade-cancels orphan child jobs and broadcasts agent:abort', async () => {
+  it('closeRun cascade-cancels orphan child jobs and requests a job.cancel kill for each (ISS-785)', async () => {
     nextUpdateReturning.push([
       {
         id: 'run-1',
@@ -330,14 +329,14 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
       cancelledJobIds: ['job-orphan'],
       abortedSessionIds: ['sess-orphan'],
       deviceBySession: new Map([['sess-orphan', 'dev-1']]),
+      killableJobs: [{ id: 'job-orphan', deviceId: 'dev-1' }],
     });
     await closeRun('run-1', 'completed');
     expect(cascadeMock).toHaveBeenCalledTimes(1);
-    expect(broadcastMock).toHaveBeenCalledTimes(1);
-    const [deviceMap, reason, runId] = broadcastMock.mock.calls[0] ?? [];
+    expect(requestKillsMock).toHaveBeenCalledTimes(1);
+    const [killableJobs, reason] = requestKillsMock.mock.calls[0] ?? [];
     expect(reason).toBe('pipeline_completed');
-    expect(runId).toBe('run-1');
-    expect(deviceMap).toBeInstanceOf(Map);
+    expect(killableJobs).toEqual([{ id: 'job-orphan', deviceId: 'dev-1' }]);
     expect(emitMock).toHaveBeenCalledWith('pipelineRunStatusChanged', {
       runId: 'run-1',
       projectId: 'p-1',
@@ -350,11 +349,11 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     });
   });
 
-  it('closeRun skips cascade + broadcast when the UPDATE was a no-op (already terminal)', async () => {
+  it('closeRun skips cascade + kill request when the UPDATE was a no-op (already terminal)', async () => {
     nextUpdateReturning.push([]);
     await closeRun('run-1', 'completed');
     expect(cascadeMock).not.toHaveBeenCalled();
-    expect(broadcastMock).not.toHaveBeenCalled();
+    expect(requestKillsMock).not.toHaveBeenCalled();
   });
 
   it('closeRun emits zero hooks when the UPDATE was a no-op (already-terminal row)', async () => {
@@ -412,7 +411,7 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     nextUpdateReturning.push([]);
     await closeOpenRunForIssue('i-1', 'completed');
     expect(cascadeMock).not.toHaveBeenCalled();
-    expect(broadcastMock).not.toHaveBeenCalled();
+    expect(requestKillsMock).not.toHaveBeenCalled();
     expect(emitMock).not.toHaveBeenCalled();
   });
 });

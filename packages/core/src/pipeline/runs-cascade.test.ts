@@ -10,7 +10,11 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { cascadeCancelChildJobs, reasonForOutcome } from './runs-cascade.js';
+import {
+  cascadeCancelChildJobs,
+  reasonForOutcome,
+  requestKillsForCascade,
+} from './runs-cascade.js';
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ _and: args }),
@@ -28,7 +32,13 @@ vi.mock('../db/schema.js', () => ({
 }));
 
 vi.mock('../logger.js', () => ({ logger: { error: vi.fn(), info: vi.fn() } }));
-vi.mock('../ws/rooms.js', () => ({ deviceRoom: (id: string) => `device:${id}` }));
+// cm:why stub jobs/kill-gate.js so importing this module doesn't pull in the real db/client.js (env-validated) at collection time — cascadeCancelChildJobs itself never calls requestJobKill
+const requestJobKillMock = vi.fn(
+  async (..._args: unknown[]): Promise<'requested' | 'no_device'> => 'requested',
+);
+vi.mock('../jobs/kill-gate.js', () => ({
+  requestJobKill: (...args: unknown[]) => requestJobKillMock(...args),
+}));
 
 interface UpdateCapture {
   table: unknown;
@@ -116,6 +126,16 @@ describe('cascadeCancelChildJobs — session-status mapping (ISS-352)', () => {
     expect(res.abortedSessionIds).toEqual(['sess-1', 'sess-2']);
   });
 
+  it('ISS-785: returns the cancelled job rows with a deviceId as killableJobs, for a post-commit job.cancel — not just the ones with a linked session', async () => {
+    const { tx } = makeTx([
+      { id: 'job-1', agentSessionId: 'sess-1', deviceId: 'dev-1' },
+      { id: 'job-2', agentSessionId: null, deviceId: 'dev-1' },
+      { id: 'job-3', agentSessionId: 'sess-3', deviceId: null },
+    ]);
+    const res = await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_cancelled');
+    expect(res.killableJobs.map((j) => j.id)).toEqual(['job-1', 'job-2']);
+  });
+
   it('genuine cancel/fail closes still cancel orphan jobs', async () => {
     const { tx, captures } = makeTx(jobRows);
     await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_failed');
@@ -134,5 +154,52 @@ describe('cascadeCancelChildJobs — session-status mapping (ISS-352)', () => {
     expect(reasonForOutcome('completed')).toBe('pipeline_completed');
     expect(reasonForOutcome('failed')).toBe('pipeline_failed');
     expect(reasonForOutcome('cancelled')).toBe('pipeline_cancelled');
+  });
+});
+
+describe('requestKillsForCascade (ISS-785)', () => {
+  it('requests a kill for every killable job and returns the notified devices', async () => {
+    requestJobKillMock.mockReset();
+    requestJobKillMock
+      .mockResolvedValueOnce('requested')
+      .mockResolvedValueOnce('requested')
+      .mockResolvedValueOnce('no_device');
+
+    const notified = await requestKillsForCascade(
+      [
+        { id: 'job-1', deviceId: 'dev-1' } as never,
+        { id: 'job-2', deviceId: 'dev-1' } as never,
+        { id: 'job-3', deviceId: null } as never,
+      ],
+      'pipeline_cancelled',
+    );
+
+    expect(requestJobKillMock).toHaveBeenCalledTimes(3);
+    expect(requestJobKillMock).toHaveBeenCalledWith(
+      { id: 'job-1', deviceId: 'dev-1' },
+      'pipeline_cancelled',
+    );
+    expect(notified).toEqual(['dev-1']);
+  });
+
+  it('is a no-op on an empty list', async () => {
+    requestJobKillMock.mockReset();
+    const notified = await requestKillsForCascade([], 'pipeline_failed');
+    expect(notified).toEqual([]);
+    expect(requestJobKillMock).not.toHaveBeenCalled();
+  });
+
+  it('one job.cancel request throwing does not stop the rest', async () => {
+    requestJobKillMock.mockReset();
+    requestJobKillMock
+      .mockRejectedValueOnce(new Error('publish boom'))
+      .mockResolvedValueOnce('requested');
+
+    const notified = await requestKillsForCascade(
+      [{ id: 'job-1', deviceId: 'dev-1' } as never, { id: 'job-2', deviceId: 'dev-2' } as never],
+      'pipeline_cancelled',
+    );
+
+    expect(notified).toEqual(['dev-2']);
   });
 });

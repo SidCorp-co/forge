@@ -41,11 +41,15 @@ function buildTitle(skillName: string | null, jobType: string, issueTitle: strin
  *
  * Idempotency rules:
  * 1. If `job.agentSessionId` is already set, no-op.
- * 2. If the job is a retry (`retryOf` set) and the parent has an
- *    `agentSessionId`, reuse it: link this job to the same session and flip
- *    the session back to `running`. The session row therefore tracks the
- *    full retry chain, not each attempt.
- * 3. Otherwise, INSERT a new `agent_sessions` row and link it.
+ * 2. Otherwise, INSERT a new `agent_sessions` row and link it — ALWAYS,
+ *    including for a retry (`job.retryOf` set). Every attempt gets its own
+ *    row so a still-writing prior attempt's `messages`/`startedAt` can never
+ *    be overwritten by the retry that superseded it (ISS-785 — the old
+ *    reuse+reset-in-place branch raced exactly that when the prior attempt
+ *    wasn't actually dead yet, e.g. ISS-37). Retry continuity is metadata-only
+ *    (`attempt` / `retryOfJobId` / `retryOfSessionId` / `rootSessionId`) plus
+ *    a `pipelineHealth` snapshot carried forward from the parent row, so the
+ *    UI can still group a chain without any row being mutated after the fact.
  *
  * Returns the resolved session id, or `null` if the operation failed
  * non-fatally (the caller continues — observability is best-effort, never
@@ -58,32 +62,28 @@ export async function ensureAgentSessionForJob(
   try {
     if (job.agentSessionId) return job.agentSessionId;
 
+    let parentSession: {
+      id: string;
+      metadata: unknown;
+      pipelineHealth: unknown;
+    } | null = null;
     if (job.retryOf) {
-      const [parent] = await db
+      const [parentJob] = await db
         .select({ agentSessionId: jobs.agentSessionId })
         .from(jobs)
         .where(eq(jobs.id, job.retryOf))
         .limit(1);
-      if (parent?.agentSessionId) {
-        // Re-queue the parent for retry; worker CAS flips to running on claim.
-        const now = new Date();
-        await db
-          .update(agentSessions)
-          .set({
-            status: 'queued',
-            dispatchedAt: now,
-            startedAt: null,
-            lastHeartbeatAt: null,
-            failureReason: null,
-            updatedAt: now,
+      if (parentJob?.agentSessionId) {
+        const [row] = await db
+          .select({
+            id: agentSessions.id,
+            metadata: agentSessions.metadata,
+            pipelineHealth: agentSessions.pipelineHealth,
           })
-          .where(eq(agentSessions.id, parent.agentSessionId));
-        await db
-          .update(jobs)
-          .set({ agentSessionId: parent.agentSessionId })
-          .where(eq(jobs.id, job.id));
-        broadcastSessionStatus(parent.agentSessionId, job.projectId, job.deviceId, 'queued');
-        return parent.agentSessionId;
+          .from(agentSessions)
+          .where(eq(agentSessions.id, parentJob.agentSessionId))
+          .limit(1);
+        parentSession = row ?? null;
       }
     }
 
@@ -134,6 +134,20 @@ export async function ensureAgentSessionForJob(
     const payloadStageStatus = deriveStageStatus(job.payload);
     if (payloadStageStatus) metadata.stageStatus = payloadStageStatus;
 
+    // cm:why rootSessionId inherits from the parent's OWN metadata (not just parentSession.id) so the whole retry chain resolves to one root regardless of attempt count
+    if (job.retryOf) {
+      metadata.attempt = job.attempts;
+      metadata.retryOfJobId = job.retryOf;
+      if (parentSession) {
+        metadata.retryOfSessionId = parentSession.id;
+        const parentMetadata = (parentSession.metadata ?? {}) as Record<string, unknown>;
+        metadata.rootSessionId =
+          typeof parentMetadata.rootSessionId === 'string'
+            ? parentMetadata.rootSessionId
+            : parentSession.id;
+      }
+    }
+
     // Pipeline sessions enter `queued`; worker CAS flips to `running` on
     // first write (routes.ts PATCH/send). Separates "waiting for worker"
     // from "actually streaming" so the sweeper can distinguish zombies.
@@ -151,6 +165,10 @@ export async function ensureAgentSessionForJob(
         dispatchedAt: new Date(),
         repoPath: context.repoPath,
         metadata: metadata as never,
+        // cm:why carry pipelineHealth (recoveryStats/autoRetries) forward so it accumulates across a retry chain instead of resetting per row
+        ...(parentSession?.pipelineHealth
+          ? { pipelineHealth: parentSession.pipelineHealth as never }
+          : {}),
       })
       .returning({ id: agentSessions.id });
 

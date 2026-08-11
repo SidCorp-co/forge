@@ -43,6 +43,17 @@ pub async fn fail(client: &CoreClient, job_id: &str, error: &str) -> Result<()> 
     send(client, &url, body).await
 }
 
+/// ISS-785 — answer a `job.cancel` frame with the real outcome (`"killed"` or
+/// `"not_found"`). Core's kill-before-reap gate treats `not_found` as
+/// positive confirmation the job is safe to fail-and-retry (no process ever
+/// existed to kill) — without it, every ordinary reap on an online runner
+/// would park at `waiting` forever.
+pub async fn kill_ack(client: &CoreClient, job_id: &str, outcome: &str) -> Result<()> {
+    let url = client.url(&format!("/api/jobs/{job_id}/kill-ack"));
+    let body = serde_json::json!({ "outcome": outcome });
+    send(client, &url, body).await
+}
+
 async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result<()> {
     let resp = client
         .http()

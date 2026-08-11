@@ -693,6 +693,14 @@ export const jobs = pgTable(
     modelTier: text('model_tier', { enum: modelTiers }),
     attempts: integer('attempts').notNull().default(1),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
+    // cm:guard never conflate with cancellationRequested — a reap kill must stay retryable once confirmed, unlike an operator cancel
+    // cm:edge contract -> packages/core/src/jobs/retry.ts — scheduleAutoRetryWithVerify short-circuits retry on cancellationRequested, not on killRequestedAt/killOutcome
+    killRequestedAt: timestamp('kill_requested_at', { withTimezone: true }),
+    killConfirmedAt: timestamp('kill_confirmed_at', { withTimezone: true }),
+    // cm:why plain text (no pg enum) — adding an outcome value is additive, no migration
+    killOutcome: text('kill_outcome', {
+      enum: ['killed', 'not_found', 'runner_gone', 'reported_terminal', 'never_claimed'],
+    }),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
     // ISS-197 — when set, dispatch gate L1 skips this row until now() >=
     // retry_after_at. Written by the retry engine after a transient/timeout
@@ -744,6 +752,10 @@ export const jobs = pgTable(
     runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
     agentSessionIdIdx: index('jobs_agent_session_id_idx').on(t.agentSessionId),
+    // cm:why partial index keeps the kill-gate phase-2 scan off the hot unfiltered jobs table
+    killRequestedAtIdx: index('jobs_kill_requested_at_idx')
+      .on(t.status, t.killRequestedAt)
+      .where(sql`kill_requested_at IS NOT NULL`),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
@@ -786,6 +798,8 @@ export const jobEventKinds = [
   // is a plain text column, so this is additive with no migration; the
   // interventions metric (C6) counts rows with this kind.
   'intervention',
+  // cm:why audit row written by POST /jobs/:id/kill-ack (runner's answer to a job.cancel: outcome killed|not_found in data.outcome)
+  'kill_ack',
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];
 
