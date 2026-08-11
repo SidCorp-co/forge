@@ -1,4 +1,10 @@
 import { logger } from '../logger.js';
+import {
+  type FailureAction,
+  type FailureKind,
+  classifyFailure,
+} from '../pipeline/failure-classifier.js';
+import { parseUsageLimitReset } from '../runners/limit-detect.js';
 import { extractPromptString } from './turns-helpers.js';
 
 /**
@@ -71,33 +77,17 @@ export function detectUnexpandedSkillFailure(
 }
 
 /**
- * ISS-572 — detect a usage/session-limit failure from a session's transcript +
- * the runner's terminal note. Returns `{ hit, resetAt }`. Pure detection reused
- * by both terminal-report paths (the runner's chat/schedule failure PATCHes
- * `/:id` via patch_session; some runs report `/desktop/status`).
+ * ISS-824 — recover a schedule run the classifier routed to `failover` (device-
+ * exhaustion classes: usage/session limit, org spend cap, cc-startup-death) by
+ * failing over to a device whose account has headroom (reuses the loop-monitor
+ * failover). No headroom device → the schedule's next cron tick recovers once
+ * the window resets. Best-effort — never throws (a recovery failure must not
+ * break the status write that already persisted the classified reason).
  */
-export async function detectUsageLimitFromSession(
-  messages: unknown,
-  note: string | null | undefined,
-): Promise<{ hit: boolean; resetAt: string | null }> {
-  const { isUsageLimitError, parseUsageLimitReset } = await import('../runners/limit-detect.js');
-  const text = extractSessionFailureText(messages, note);
-  if (!isUsageLimitError(text)) return { hit: false, resetAt: null };
-  const reset = parseUsageLimitReset(text);
-  return { hit: true, resetAt: reset ? reset.toISOString() : null };
-}
-
-/**
- * ISS-572 — recover a rate-limited SCHEDULE run by failing over to a device
- * whose account has headroom (reuses the loop-monitor failover). No headroom
- * device → the schedule's next cron tick recovers once the window resets.
- * Best-effort — never throws (a recovery failure must not break the status
- * write that already persisted the classified reason).
- */
-export async function recoverScheduleOnUsageLimit(
+export async function recoverScheduleOnFailoverAction(
   sessionId: string,
   metadata: unknown,
-  resetAt: string | null,
+  reason: string,
 ): Promise<void> {
   const meta = (metadata ?? {}) as Record<string, unknown>;
   if (meta.source !== 'schedule.run') return;
@@ -105,57 +95,68 @@ export async function recoverScheduleOnUsageLimit(
     const { redispatchScheduleSessionOnFailover } = await import('../schedules/dispatch.js');
     const result = await redispatchScheduleSessionOnFailover(sessionId);
     logger.info(
-      { sessionId, scheduleId: meta.scheduleId, resetAt, result },
-      'agent-sessions: schedule usage-limit → cross-account failover',
+      { sessionId, scheduleId: meta.scheduleId, reason, result },
+      'agent-sessions: schedule failure classified as failover → cross-account failover',
     );
   } catch (err) {
     logger.error(
       { err, sessionId, scheduleId: meta.scheduleId },
-      'agent-sessions: schedule usage-limit failover threw (left failed for next cron)',
+      'agent-sessions: schedule failover threw (left failed for next cron)',
     );
   }
 }
 
 /**
- * ISS-572 — THE shared terminal-report finalizer for a `failed` status write.
+ * ISS-824 — THE shared terminal-report finalizer for a `failed` status write.
  * Both terminal-report paths (POST /desktop/status and PATCH /:id) call this
- * once, right before persisting the status: it classifies a usage/session-
- * limit failure and, on a hit, stamps `failureReason: 'usage_limit'` plus a
- * `limitResetAt` metadata merge onto the pending update `set`. The returned
- * `recoverAfterWrite` runs AFTER the status write has persisted (best-effort,
- * schedule runs only) so a recovery failure can never break the write.
+ * once, right before persisting the status: it asks the SAME classifier the
+ * job path asks (`classifyFailure`) instead of a bespoke regex, then always
+ * stamps a `failureReason` onto the pending update `set` — `unclassified`
+ * included, so a failure that matches nothing is still recorded (never left
+ * NULL). `runners/limit-detect.ts` is used only for the reset-time detail on
+ * an `action:'failover'` hit; the routing decision is the classifier's.
  *
- * The call sites keep their own gating + inputs (message source, terminal
- * note, metadata base) — only this classify+stamp+recover core is shared.
+ * The returned `recoverAfterWrite` runs AFTER the status write has persisted
+ * (best-effort, schedule runs only) so a recovery failure can never break the
+ * write. The call sites keep their own gating + inputs (message source,
+ * terminal note, metadata base) — only this classify+stamp+recover core is
+ * shared.
  */
-export async function finalizeUsageLimitOnFailure(opts: {
+export async function finalizeScheduleSessionFailure(opts: {
   sessionId: string;
   messages: unknown;
   note: string | null | undefined;
   /** Metadata base for the `limitResetAt` merge (caller-resolved precedence). */
   baseMetadata: Record<string, unknown> | null | undefined;
-  /** Pending update object the status write will persist; mutated on a hit. */
+  /** Pending update object the status write will persist; mutated always. */
   set: Record<string, unknown>;
 }): Promise<{
-  hit: boolean;
-  resetAt: string | null;
-  /** Post-write schedule failover; no-op unless the classification hit. */
+  kind: FailureKind;
+  action: FailureAction;
+  reason: string;
+  /** Post-write schedule failover; no-op unless the classifier said `failover`. */
   recoverAfterWrite: (metadata: unknown) => Promise<void>;
 }> {
-  const det = await detectUsageLimitFromSession(opts.messages, opts.note);
-  if (det.hit) {
-    opts.set.failureReason = 'usage_limit';
+  const text = extractSessionFailureText(opts.messages, opts.note);
+  const classified = classifyFailure({ error: text });
+
+  opts.set.failureReason = classified.reason;
+
+  if (classified.action === 'failover') {
+    const reset = parseUsageLimitReset(text);
     opts.set.metadata = {
       ...(opts.baseMetadata ?? {}),
-      ...(det.resetAt ? { limitResetAt: det.resetAt } : {}),
+      ...(reset ? { limitResetAt: reset.toISOString() } : {}),
     };
   }
+
   return {
-    hit: det.hit,
-    resetAt: det.resetAt,
+    kind: classified.kind,
+    action: classified.action,
+    reason: classified.reason,
     recoverAfterWrite: async (metadata: unknown) => {
-      if (!det.hit) return;
-      await recoverScheduleOnUsageLimit(opts.sessionId, metadata, det.resetAt);
+      if (classified.action !== 'failover') return;
+      await recoverScheduleOnFailoverAction(opts.sessionId, metadata, classified.reason);
     },
   };
 }

@@ -74,14 +74,9 @@ export interface DispatchScheduleInput {
   resolvedTarget?: { id: string; createdBy: string };
 }
 
-// `success` here means: the agent_sessions row was created + WS publish was
-// emitted to the device. It does NOT mean the prompt completed — the session
-// has its own lifecycle (running → completed/failed/cancelled_stale) tracked
-// by the runner's heartbeat. `skipped` causes are bounded by what the
-// dispatcher can detect synchronously; tick callers use them to back off
-// quietly while manual callers turn them into 4xx responses.
 export type DispatchScheduleResult =
-  | { ok: true; sessionId: string; status: 'success'; resolvedProjectId: string }
+  // cm:why 'running' (interactive session path, decided later by the session's own lifecycle -> writeBackScheduleLastStatus) vs 'success' (script path, already ran synchronously in dispatchScheduleScriptRun) — the caller never re-derives which
+  | { ok: true; sessionId: string; status: 'running' | 'success'; resolvedProjectId: string }
   | {
       ok: false;
       reason: 'project-not-found' | 'no-device' | 'unsupported-runner' | 'already-applied';
@@ -374,7 +369,7 @@ export async function dispatchScheduleRun(
     );
   }
 
-  return { ok: true, sessionId: inserted.id, status: 'success', resolvedProjectId };
+  return { ok: true, sessionId: inserted.id, status: 'running', resolvedProjectId };
 }
 
 /**
@@ -609,12 +604,11 @@ export async function redispatchScheduleSessionOnFailover(
       message: firstUser.content,
       broadcastEvent: 'agent-session.created',
     });
-    // Point the schedule's "last run" link at the live attempt (best-effort —
-    // a failure here only staleness the UI link, never the re-dispatch).
+    // cm:why lastStatus:'running' — a failover is a fresh dispatch too; without this the prior 'failed' write lingers as the reported outcome for the whole failover attempt
     try {
       await db
         .update(schedules)
-        .set({ lastSessionId: dispatched.id })
+        .set({ lastSessionId: dispatched.id, lastStatus: 'running' })
         .where(eq(schedules.id, meta.scheduleId as string));
     } catch {
       // ignore

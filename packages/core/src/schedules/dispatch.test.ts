@@ -286,7 +286,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     expect(result).toEqual({
       ok: true,
       sessionId: SESSION_ID,
-      status: 'success',
+      status: 'running',
       resolvedProjectId: SOURCE_PROJECT_ID,
     });
 
@@ -493,7 +493,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     expect(setPayloads.some((p) => p?.status === 'failed')).toBe(true);
   });
 
-  it('hook subscriber throws → dispatch still returns success (best-effort emit)', async () => {
+  it('hook subscriber throws → dispatch still returns ok (best-effort emit)', async () => {
     selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
     seedDesktopHappy();
     hooksModule.hooks.on('scheduleRun', () => {
@@ -512,7 +512,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.status).toBe('success');
+    if (result.ok) expect(result.status).toBe('running');
   });
 
   it('tick attribution → falls back to project owner when no actorUserId', async () => {

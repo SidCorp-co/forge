@@ -794,6 +794,126 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
   });
 });
 
+describe('PATCH /api/agent-sessions/:id — ISS-824: schedule terminal write-back + classifier', () => {
+  it('persists a classifier reason on a schedule.run failure that matches no known pattern', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'failed',
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        status: 'failed',
+        messages: [{ role: 'assistant', content: 'some unrelated tool error' }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const failureUpdate = updateSet.mock.calls.find(
+      (c) => (c[0] as { failureReason?: unknown }).failureReason !== undefined,
+    )?.[0] as { failureReason?: string } | undefined;
+    expect(failureUpdate?.failureReason).toBeTruthy();
+    const scheduleUpdate = updateSet.mock.calls.find(
+      (c) => (c[0] as { lastStatus?: unknown }).lastStatus !== undefined,
+    )?.[0] as { lastStatus?: string } | undefined;
+    expect(scheduleUpdate?.lastStatus).toBe('failed');
+  });
+
+  it('writes schedules.lastStatus=success when a schedule.run session completes', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'completed',
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    const scheduleUpdate = updateSet.mock.calls.find(
+      (c) => (c[0] as { lastStatus?: unknown }).lastStatus !== undefined,
+    )?.[0] as { lastStatus?: string } | undefined;
+    expect(scheduleUpdate?.lastStatus).toBe('success');
+  });
+
+  it('does not write schedules.lastStatus for a plain chat (non-schedule) completion', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: null,
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'completed',
+        metadata: {},
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    const scheduleUpdate = updateSet.mock.calls.find(
+      (c) => (c[0] as { lastStatus?: unknown }).lastStatus !== undefined,
+    );
+    expect(scheduleUpdate).toBeUndefined();
+  });
+});
+
 describe('POST /api/agent-sessions/:id/pipeline-control', () => {
   it('merges + broadcasts control when caller is owner', async () => {
     authVerified();
@@ -1045,6 +1165,82 @@ describe('POST /api/agent-sessions/desktop/status', () => {
       body: JSON.stringify({ sessionId: SESSION_ID, status: 'completed' }),
     });
     expect(res.status).toBe(200);
+  });
+
+  it('persists a classifier reason on a schedule.run failure that matches no known pattern', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [{ role: 'assistant', content: 'some unrelated tool error' }],
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      },
+    ]);
+    projectAccessAsOwner();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'failed',
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      },
+    ]);
+
+    const res = await buildApp().request('/api/agent-sessions/desktop/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ sessionId: SESSION_ID, status: 'failed' }),
+    });
+
+    expect(res.status).toBe(200);
+    const failureUpdate = updateSet.mock.calls.find(
+      (c) => (c[0] as { failureReason?: unknown }).failureReason !== undefined,
+    )?.[0] as { failureReason?: string } | undefined;
+    expect(failureUpdate?.failureReason).toBeTruthy();
+    const scheduleUpdate = updateSet.mock.calls.find(
+      (c) => (c[0] as { lastStatus?: unknown }).lastStatus !== undefined,
+    )?.[0] as { lastStatus?: string } | undefined;
+    expect(scheduleUpdate?.lastStatus).toBe('failed');
+  });
+
+  it('writes schedules.lastStatus=success when a schedule.run session completes', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      },
+    ]);
+    projectAccessAsOwner();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'completed',
+        metadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      },
+    ]);
+
+    const res = await buildApp().request('/api/agent-sessions/desktop/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ sessionId: SESSION_ID, status: 'completed' }),
+    });
+
+    expect(res.status).toBe(200);
+    const scheduleUpdate = updateSet.mock.calls.find(
+      (c) => (c[0] as { lastStatus?: unknown }).lastStatus !== undefined,
+    )?.[0] as { lastStatus?: string } | undefined;
+    expect(scheduleUpdate?.lastStatus).toBe('success');
   });
 });
 

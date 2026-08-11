@@ -28,6 +28,7 @@ import type { AuthVars } from '../middleware/auth.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
+import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -47,7 +48,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import { finalizeUsageLimitOnFailure } from './session-failure.js';
+import { finalizeScheduleSessionFailure } from './session-failure.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
 // === Static-path lifecycle routes (start / send / abort / build-prompt /
@@ -620,16 +621,9 @@ agentSessionLifecycleRoutes.post(
 
     const statusSet: Record<string, unknown> = { status, updatedAt: new Date() };
 
-    // ISS-572 — classify a usage/session-limit failure on an agent:start
-    // (schedule/chat) session. The job path already routes usage limits to a
-    // cross-device failover (failure-classifier v5), but agent:start sessions
-    // bypass that and previously landed `failed` with `failureReason=null` —
-    // silently burning a scheduled slot. Detect it here (the runner's terminal
-    // report), persist a distinct reason + reset time, and (for schedule runs)
-    // fail over to a device whose account still has headroom.
-    const usageLimit =
+    const classification =
       status === 'failed'
-        ? await finalizeUsageLimitOnFailure({
+        ? await finalizeScheduleSessionFailure({
             sessionId,
             messages: existing.messages,
             note,
@@ -651,10 +645,13 @@ agentSessionLifecycleRoutes.post(
       await closeRunIfOneShot(updated.pipelineRunId, status === 'failed' ? 'failed' : 'completed');
     }
 
-    // ISS-572 — recover a rate-limited SCHEDULE run by failing over to an
-    // account with headroom (see recoverScheduleOnUsageLimit).
-    if (usageLimit) {
-      await usageLimit.recoverAfterWrite(existing.metadata);
+    // cm:edge ordering -> packages/core/src/schedules/service.ts — writeBackScheduleLastStatus is gated on schedules.lastSessionId, the same column runScheduleTickOnce/redispatchScheduleSessionOnFailover stamp at dispatch, so a late report from a superseded run is a no-op
+    if (status === 'completed' || status === 'failed') {
+      await writeBackScheduleLastStatus(updated.metadata, sessionId, status);
+    }
+
+    if (classification) {
+      await classification.recoverAfterWrite(existing.metadata);
     }
 
     // ISS-548/ISS-556 — schedule session completion write-back.

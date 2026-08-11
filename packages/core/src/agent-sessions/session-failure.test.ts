@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Stub eager env validation (config/env.js throws at import when DATABASE_URL /
 // JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) so this unit suite stays hermetic
@@ -7,7 +7,20 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
-const { detectUnexpandedSkillFailure } = await import('./session-failure.js');
+const redispatchScheduleSessionOnFailoverMock = vi.fn(async (_sessionId: string) => ({
+  ok: true as const,
+  status: 'redispatched' as const,
+  sessionId: 'retry-sess',
+  deviceId: 'device-2',
+}));
+vi.mock('../schedules/dispatch.js', () => ({
+  redispatchScheduleSessionOnFailover: (sessionId: string) =>
+    redispatchScheduleSessionOnFailoverMock(sessionId),
+}));
+
+const { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } = await import(
+  './session-failure.js'
+);
 
 // ISS-733 fix — the sync-then-dispatch race: a chat-runs-skill cold start can
 // report `completed` even when the skill file hadn't synced to the runner's
@@ -97,5 +110,68 @@ describe('detectUnexpandedSkillFailure', () => {
     // a literal dot must not match an arbitrary character
     const messages2 = [{ type: 'assistant', content: 'Unknown command: /forgeXonboard' }];
     expect(detectUnexpandedSkillFailure(messages2, 'forge.onboard', 0)).toBe(false);
+  });
+});
+
+describe('finalizeScheduleSessionFailure', () => {
+  beforeEach(() => {
+    redispatchScheduleSessionOnFailoverMock.mockClear();
+  });
+
+  it('a failure that matches no classifier pattern still persists a reason (never left NULL)', async () => {
+    const set: Record<string, unknown> = {};
+    const result = await finalizeScheduleSessionFailure({
+      sessionId: 'sess-1',
+      messages: [{ role: 'assistant', content: 'some unrelated tool error' }],
+      note: null,
+      baseMetadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      set,
+    });
+    expect(result.action).not.toBe('failover');
+    expect(typeof set.failureReason).toBe('string');
+    expect(set.failureReason).toBeTruthy();
+    expect(redispatchScheduleSessionOnFailoverMock).not.toHaveBeenCalled();
+  });
+
+  it('classifies a usage/session-limit hit as action:failover, stamps limitResetAt, and recovers the schedule run', async () => {
+    const set: Record<string, unknown> = {};
+    const result = await finalizeScheduleSessionFailure({
+      sessionId: 'sess-1',
+      messages: [
+        {
+          role: 'assistant',
+          content: "[RESULT_ERROR] You've hit your weekly limit · resets 11am (Asia/Ho_Chi_Minh)",
+        },
+      ],
+      note: null,
+      baseMetadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      set,
+    });
+
+    expect(result.action).toBe('failover');
+    expect(set.failureReason).toBeTruthy();
+    expect((set.metadata as Record<string, unknown>)?.scheduleId).toBe('sched-1');
+
+    await result.recoverAfterWrite({ source: 'schedule.run', scheduleId: 'sched-1' });
+    expect(redispatchScheduleSessionOnFailoverMock).toHaveBeenCalledWith('sess-1');
+  });
+
+  it('does not fail over a non-schedule (plain chat) session even on a failover-classified hit', async () => {
+    const set: Record<string, unknown> = {};
+    const result = await finalizeScheduleSessionFailure({
+      sessionId: 'sess-1',
+      messages: [
+        {
+          role: 'assistant',
+          content: "[RESULT_ERROR] You've hit your weekly limit · resets 11am (Asia/Ho_Chi_Minh)",
+        },
+      ],
+      note: null,
+      baseMetadata: { source: 'chat' },
+      set,
+    });
+    expect(result.action).toBe('failover');
+    await result.recoverAfterWrite({ source: 'chat' });
+    expect(redispatchScheduleSessionOnFailoverMock).not.toHaveBeenCalled();
   });
 });

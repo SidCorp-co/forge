@@ -62,6 +62,34 @@ export async function markScheduleFailed(scheduleId: string, ctx: string): Promi
   }
 }
 
+/**
+ * ISS-824 — write a schedule.run session's REAL terminal outcome onto
+ * `schedules.lastStatus`. Dispatch only ever writes `running`/`skipped`
+ * (see `DispatchScheduleResult`); this is the only writer of `success`/
+ * `failed` for the interactive session path.
+ */
+export async function writeBackScheduleLastStatus(
+  metadata: unknown,
+  sessionId: string,
+  outcome: 'completed' | 'failed',
+): Promise<void> {
+  const meta = (metadata ?? {}) as Record<string, unknown>;
+  if (meta.source !== 'schedule.run' || typeof meta.scheduleId !== 'string') return;
+  const scheduleId = meta.scheduleId;
+  try {
+    // cm:guard the WHERE clause must keep lastSessionId = sessionId — a superseded session's late terminal report must update zero rows, never overwrite a newer run's status
+    await db
+      .update(schedules)
+      .set({ lastStatus: outcome === 'completed' ? 'success' : 'failed' })
+      .where(and(eq(schedules.id, scheduleId), eq(schedules.lastSessionId, sessionId)));
+  } catch (err) {
+    logger.error(
+      { err, scheduleId, sessionId },
+      'schedule session terminal: lastStatus write-back threw',
+    );
+  }
+}
+
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
   const access = await loadProjectAccess(projectId, actorUserId);
   assertProjectRole(access, 'viewer', 'not a project member');
