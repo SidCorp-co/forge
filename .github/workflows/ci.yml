@@ -214,11 +214,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
-      # Lint debt — biome reports many pre-existing errors in core (test files
-      # mostly: noExplicitAny, noNonNullAssertion). Tracked for cleanup as a
-      # separate ISS. Don't block CI on it for now.
+      # BLOCKING since 2026-08-11. Ran non-blocking for months and drifted to 366
+      # errors, 192 of them pure formatting. Now 0 errors — biome exits non-zero
+      # only on errors, and `noNonNullAssertion` / `noExplicitAny` are configured
+      # "warn" in packages/core/biome.json on purpose, so the ~189 warnings do not
+      # fail the job. A failure here is a real new violation.
       - run: pnpm --filter @forge/core lint
-        continue-on-error: true
       - run: pnpm --filter @forge/core test
       # BLOCKING since 2026-08-10. `typecheck` uses the base tsconfig, which
       # includes test files (build uses tsconfig.build.json and excludes them).

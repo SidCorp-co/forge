@@ -698,7 +698,7 @@ agentSessionRoutes.patch(
     // agent_session_turns — otherwise high-frequency status/heartbeat PATCHes
     // from the runner pay an unnecessary tx round-trip.
     const messagesPatched = patch.messages !== undefined;
-    let updated;
+    let updated: typeof agentSessions.$inferSelect | undefined;
     let sync: Awaited<ReturnType<typeof syncTurnsWithMessages>> | null = null;
     if (messagesPatched) {
       const txResult = await db.transaction(async (tx) => {

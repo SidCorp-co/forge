@@ -69,7 +69,6 @@ vi.mock('../db/client.js', () => {
       c[m] = () => c;
     }
     c.limit = () => nextResult();
-    // biome-ignore lint/suspicious/noThenProperty: deliberate thenable mock of a drizzle query
     c.then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
       nextResult().then(resolve, reject);
     return c;

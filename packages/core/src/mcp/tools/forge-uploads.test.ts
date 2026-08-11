@@ -20,7 +20,6 @@ chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
-// biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await — the mock must be thenable
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
 chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 

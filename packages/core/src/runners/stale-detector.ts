@@ -68,9 +68,7 @@ let registered = false;
 
 export async function registerRunnerStaleDetector(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(RUNNER_STALE_DETECTOR_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(RUNNER_STALE_DETECTOR_QUEUE, async () => {
     try {
       const result = await runRunnerStaleSweep();
@@ -80,7 +78,6 @@ export async function registerRunnerStaleDetector(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   // ISS-198 — every minute (was */2). Lands the offline flip well inside
   // the 60s detection budget required by the acceptance criteria.
   await (boss as any).schedule(RUNNER_STALE_DETECTOR_QUEUE, '* * * * *');

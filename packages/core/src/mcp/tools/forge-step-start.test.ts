@@ -18,7 +18,6 @@ chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
-// biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await — the mock must be thenable
 chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 
 vi.mock('../../db/client.js', () => ({

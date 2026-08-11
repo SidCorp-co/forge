@@ -16,7 +16,6 @@ function makeChain() {
   const chain: Record<string, unknown> & PromiseLike<unknown> = {} as never;
   const methods = ['from', 'where', 'leftJoin', 'innerJoin', 'orderBy', 'groupBy', 'limit'];
   for (const m of methods) (chain as Record<string, unknown>)[m] = () => chain;
-  // biome-ignore lint/suspicious/noThenProperty: test double mirrors drizzle's thenable QueryBuilder
   (chain as { then: PromiseLike<unknown>['then'] }).then = (resolve, reject) => {
     const result = queryQueue.shift() ?? [];
     return Promise.resolve(result).then(resolve, reject);

@@ -16,7 +16,6 @@ const selectOrderBy = vi.fn(() => ({ limit: selectOrderByLimit, offset: selectOr
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
   orderBy: selectOrderBy,
-  // biome-ignore lint/suspicious/noThenProperty: drizzle query builder is awaitable
   then: (cb: (v: unknown) => unknown) => {
     const result = whereResults.shift() ?? [];
     return Promise.resolve(result).then(cb);
@@ -36,7 +35,6 @@ const insertReturning = vi.fn();
 const insertOnConflictReturning = vi.fn();
 const insertOnConflictDoNothing = vi.fn(() => ({
   returning: insertOnConflictReturning,
-  // biome-ignore lint/suspicious/noThenProperty: drizzle query builder is awaitable
   then: (cb: (v: unknown) => unknown) => Promise.resolve(undefined).then(cb),
 }));
 const insertValues = vi.fn(() => ({
@@ -47,7 +45,6 @@ const insertValues = vi.fn(() => ({
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({
   returning: updateReturning,
-  // biome-ignore lint/suspicious/noThenProperty: drizzle query builder is awaitable
   then: (cb: (v: unknown) => unknown) => Promise.resolve(undefined).then(cb),
 }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));

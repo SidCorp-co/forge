@@ -63,8 +63,7 @@ export function dispatchTickForProject(
   const tail = projectLocks.get(projectId) ?? Promise.resolve();
   // Forward-declare `next` so the `.then` callback can clear the lock entry
   // on its own promise — keeps a freshly-chained sweep from clobbering us.
-  let next: Promise<void>;
-  next = tail
+  const next: Promise<void> = tail
     .catch(() => undefined) // isolate from prior tick errors
     .then(async () => {
       pendingTrigger.delete(projectId);

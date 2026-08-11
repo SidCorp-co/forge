@@ -32,7 +32,6 @@ function makeThenable(): any {
     where: () => p,
     orderBy: () => p,
     limit: () => p,
-    // biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await — the mock must be thenable
     then: (resolve: (v: unknown) => void) => resolve(resultQueue.shift() ?? []),
   };
   return p;

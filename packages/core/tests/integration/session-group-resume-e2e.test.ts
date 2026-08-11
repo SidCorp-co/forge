@@ -104,6 +104,7 @@ describe('ISS-195 session-group resume end-to-end', () => {
   }, 120_000);
 
   afterAll(async () => {
+    // biome-ignore lint/performance/noDelete: assigning undefined to process.env coerces to the string "undefined"
     delete process.env.FEATURE_PIPELINE_CONTROL;
   });
 

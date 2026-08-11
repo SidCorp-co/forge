@@ -92,6 +92,7 @@ describe('sendVerificationEmail', () => {
         link: 'https://api.example.com/api/auth/verify?token=tok-split',
       });
     } finally {
+      // biome-ignore lint/performance/noDelete: delete is the only way to actually unset the key on the env clone
       delete e.OAUTH_REDIRECT_BASE;
     }
   });

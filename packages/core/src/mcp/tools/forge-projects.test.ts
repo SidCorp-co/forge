@@ -81,7 +81,6 @@ function chainOnce(impl: ReturnType<typeof vi.fn>, rows: unknown[]) {
   for (const m of ['from', 'leftJoin', 'innerJoin', 'where', 'orderBy', 'limit']) {
     chain[m] = () => chain;
   }
-  // biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await
   // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
   chain.then = (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject);
   impl.mockImplementationOnce(() => chain);

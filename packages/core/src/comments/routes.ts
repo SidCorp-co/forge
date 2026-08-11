@@ -497,7 +497,7 @@ commentRoutes.post(
     const mime = file.type || 'application/octet-stream';
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    let persisted;
+    let persisted: Awaited<ReturnType<typeof persistCommentAttachment>>;
     try {
       persisted = await persistCommentAttachment({
         commentId: comment.id,

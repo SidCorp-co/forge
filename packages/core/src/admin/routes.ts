@@ -192,8 +192,6 @@ whoamiRoutes.get('/whoami', async (c) => {
   // Mirror the allow-list check from requireAdmin, but answer Yes/No
   // instead of throwing 403. This lets the /admin layout branch on the
   // result without UI flicker.
-  // biome-ignore lint/style/noProcessEnv: env parsing is centralised; this
-  // single call is hot-path-safe.
   const { env } = await import('../config/env.js');
   const allowed = (env.ADMIN_EMAILS ?? '')
     .split(',')

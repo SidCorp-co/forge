@@ -195,7 +195,7 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
     return oauthErrorRedirect(c, 'session_expired');
   }
 
-  let payload;
+  let payload: Awaited<ReturnType<typeof verifyState>>;
   try {
     payload = await verifyState(cookieJwt);
   } catch {

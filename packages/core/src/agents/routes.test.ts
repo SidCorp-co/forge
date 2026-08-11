@@ -13,7 +13,6 @@ const selectOrderBy = vi.fn();
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
   orderBy: selectOrderBy,
-  // biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await — the mock must be thenable
   then: (cb: (v: unknown) => unknown) => {
     const result = whereResults.shift() ?? [];
     return Promise.resolve(result).then(cb);
