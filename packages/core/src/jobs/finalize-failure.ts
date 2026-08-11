@@ -40,6 +40,7 @@ import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { JOB_TYPE_ENTRY_STATUS, classifyVerdict } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
+import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { attributeFailureToRunner } from '../runners/attribute-failure.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
@@ -167,6 +168,16 @@ async function reconcileIssueStatusAfterFailure(
     } catch (err) {
       logger.warn({ err, issueId: row.id }, 'finalize-failure: park-to-waiting failed');
     }
+    await emitPipelineWedge({
+      projectId: row.projectId,
+      issueId: row.id,
+      hop: 'dispatch',
+      entity: 'job',
+      entityId: job.id,
+      reason: retry.reason ?? 'unknown',
+      action:
+        'Review the park-reason comment and either fix the underlying issue or clear it manually.',
+    });
   }
   // Issue-kind runs are not closed by `syncAgentSessionLifecycle`
   // (`closeRunIfOneShot` only touches pm/interactive runs); close it here so

@@ -65,3 +65,44 @@ the classifier on archived rows. Bump the version on any pattern change.
   sub-variants now win over the generic `preflight_failed` transient
   catch-all, which stays `infra` for genuinely fixable environment failures
   (`push_credentials:`, `hooks_path:`).
+- **v7** — ISS-823 splits diagnosis from policy. `classifyFailure` now
+  returns a required `action` (`terminal` | `quarantine` | `failover` |
+  `retry`) alongside the unchanged 4-value `kind`, and the retry engine
+  (`jobs/retry.ts`) decides retryability from `action` ONLY — no call site
+  re-derives it from a kind, a regex or a job type. `action` is persisted on
+  `jobs.failure_action`; historical rows (`NULL`) fall back to
+  `deriveActionFromKind(kind)`, which reproduces today's behaviour exactly
+  (`code`→terminal, `transient-cc`→failover, `infra`/`timeout`→retry).
+  `quarantine` is reserved for ISS-825 (deterministic box-broken detection) —
+  no rule in this classifier emits it yet; it rides the `failover` rotation
+  path in `retry.ts` in the meantime.
+
+  **Spend-cap classifies `failover`, not `terminal` — a spec correction.**
+  The org/account monthly spend-cap string (`"You've hit your org's monthly
+  spend limit"`, no `resets <time>` clause — structurally distinct from the
+  time-windowed usage-limit path) was assumed org-wide and therefore
+  non-retryable. Real job data on this fleet disproved that: issue `42ce58b2`
+  failed 3× with the exact string on device `d8caf576`, then succeeded on
+  device `0629f109` on the very next attempt — the limit is per-account, and
+  rotating off the exhausted box recovers it. Shipping `terminal` here would
+  have turned a self-recovering failure into a hard park. The fix
+  (`isSpendLimitError` in `runners/limit-detect.ts`) stamps the exhausted box
+  with `usage_limit` + a `rateLimitedUntil` 6h out (`SPEND_LIMIT_COOLDOWN_MS`
+  — the string carries no parseable reset and the real boundary is monthly,
+  so 1h would re-probe an exhausted box 24×/day) and fails over to another
+  device immediately, with memory: `runners/select.ts`'s
+  `onlineCapableDeviceIds` is now health-gated by default (previously the
+  only selection path that did NOT filter `rate_limited_until`, so the retry
+  rotation could pin a device that selection would then refuse). `retry.ts` reads
+  the health-gated set apart from the unfiltered set to tell "every online
+  box is exhausted" (→ terminal park, `all_devices_exhausted`) from "every
+  box is merely offline" (→ keep today's wait-for-a-runner behaviour).
+
+  The pre-dispatch monthly-budget gate (`jobs/dispatcher.ts`) also stopped
+  being a private terminal path: it now stamps `failureAction: 'terminal'`
+  with the real `CLASSIFIER_VERSION` (was hardcoded `1`) and routes through
+  `finalizeFailedJob`, so a budget-exhausted job parks its issue at `waiting`
+  and closes the open `pipeline_run` instead of leaving both stranded. Every
+  no-retry park now also emits the existing `pipeline_wedge` notification
+  (`emitPipelineWedge`, deduped per job) so a terminal failure reaches the
+  project owner instead of halting silently.

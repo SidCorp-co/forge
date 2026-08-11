@@ -712,6 +712,10 @@ export const jobs = pgTable(
     failureKind: text('failure_kind', {
       enum: ['code', 'infra', 'transient-cc', 'timeout'],
     }),
+    // cm:why ISS-823 — NULL on pre-existing rows; retry.ts falls back to deriveActionFromKind(failureKind) so historical behaviour is unchanged
+    failureAction: text('failure_action', {
+      enum: ['terminal', 'quarantine', 'failover', 'retry'],
+    }),
     failureReason: text('failure_reason'),
     failureMeta: jsonb('failure_meta'),
     classifierVersion: integer('classifier_version'),

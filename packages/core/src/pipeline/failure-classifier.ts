@@ -2,8 +2,9 @@
  * Pipeline failure classifier.
  *
  * Maps a job-failure error string + optional structured metadata to a
- * `kind` that the sweeper + scheduleAutoRetryWithVerify use to decide
- * whether the failure is worth retrying.
+ * `kind` (diagnosis) and an `action` (policy — terminal/quarantine/failover/
+ * retry) that `scheduleAutoRetryWithVerify` obeys instead of re-deriving
+ * retryability from `kind` itself.
  *
  * `version` is bumped whenever the patterns below change semantically.
  * Persisted on `jobs.classifier_version` so that, when patterns evolve,
@@ -13,22 +14,43 @@
  * docs/modules/agents-jobs/failure-classifier.md
  */
 
-import { isUsageLimitError } from '../runners/limit-detect.js';
+import { isSpendLimitError, isUsageLimitError } from '../runners/limit-detect.js';
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
 // cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
-export const CLASSIFIER_VERSION = 6;
+export const CLASSIFIER_VERSION = 7;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
+// cm:why quarantine is reserved for ISS-825 (deterministic box-broken detection); no rule in this classifier emits it yet
+export type FailureAction = 'terminal' | 'quarantine' | 'failover' | 'retry';
+
 export interface ClassifyResult {
   kind: FailureKind;
+  /** Policy verdict callers must obey instead of re-deriving from `kind`. */
+  action: FailureAction;
   reason: string;
   meta: Record<string, unknown> | null;
   version: number;
   /** Provider Retry-After hint as an absolute timestamp, or null. */
   retryAfter: Date | null;
+}
+
+/**
+ * Fallback for job rows persisted before ISS-823 (`failure_action IS NULL`),
+ * so a historical row behaves byte-for-byte as it did under the old
+ * kind-only policy.
+ */
+export function deriveActionFromKind(kind: FailureKind): FailureAction {
+  switch (kind) {
+    case 'code':
+      return 'terminal';
+    case 'transient-cc':
+      return 'failover';
+    default:
+      return 'retry';
+  }
 }
 
 const PERMISSION_PATTERNS: ReadonlyArray<RegExp> = [
@@ -104,20 +126,39 @@ interface ClassifyInput {
 }
 
 /**
- * Classify a failure into code / infra / transient-cc / timeout plus a short
- * human-readable reason and an optional Retry-After timestamp. Always returns
- * a verdict — never throws, never `unknown`.
+ * Classify a failure into code / infra / transient-cc / timeout plus the
+ * policy `action` (terminal / quarantine / failover / retry) callers must
+ * obey instead of re-deriving retryability themselves, a short
+ * human-readable reason, and an optional Retry-After timestamp. Always
+ * returns a verdict — never throws, never `unknown`.
  *
- * Match order: structured `meta.error.type` → cc-startup signal →
- * PERMISSION (infra) → TIMEOUT → PERMANENT (code) → TRANSIENT (infra) →
- * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
- * the broader buckets because their patterns are more specific.
+ * Match order: structured `meta.error.type` → runner token → spend-cap →
+ * usage/session limit → cc-startup signal → PERMISSION (infra) → TIMEOUT →
+ * PERMANENT (code) → TRANSIENT (infra) → CC_STARTUP text fallback → infra +
+ * needsReview. Permission/timeout precede the broader buckets because their
+ * patterns are more specific.
  */
 export function classifyFailure(input: ClassifyInput): ClassifyResult {
   const text = (input.error ?? '').trim();
   const meta = input.meta ?? null;
-  const reasonExcerpt = text.length > 200 ? `${text.slice(0, 197)}…` : text;
   const retryAfter = extractRetryAfter(meta);
+  const { kind, reason, meta: resultMeta } = classifyKind(text, meta, input.signals);
+  return {
+    kind,
+    action: deriveActionFromKind(kind),
+    reason,
+    meta: resultMeta,
+    version: CLASSIFIER_VERSION,
+    retryAfter,
+  };
+}
+
+function classifyKind(
+  text: string,
+  meta: Record<string, unknown> | null,
+  signals: ClassifyInput['signals'],
+): { kind: FailureKind; reason: string; meta: Record<string, unknown> | null } {
+  const reasonExcerpt = text.length > 200 ? `${text.slice(0, 197)}…` : text;
 
   const metaErrorType = readMetaErrorType(meta);
   if (metaErrorType) {
@@ -126,8 +167,6 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         kind: 'infra',
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
       };
     }
     if (metaErrorType === 'invalid_request_error' || metaErrorType === 'billing_error') {
@@ -135,8 +174,6 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         kind: 'code',
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
       };
     }
     if (
@@ -148,8 +185,6 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         kind: 'infra',
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
       };
     }
   }
@@ -162,12 +197,15 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
   // message in its detail still flows to the PERMANENT/TRANSIENT patterns.
   const runnerKind = classifyRunnerToken(text);
   if (runnerKind) {
+    return { kind: runnerKind, reason: reasonExcerpt, meta };
+  }
+
+  // cm:why ISS-823 — org/account spend-cap is per-account (evidence: docs/modules/agents-jobs/failure-classifier.md v7), so it fails over with exhaustion memory instead of going terminal
+  if (isSpendLimitError(text)) {
     return {
-      kind: runnerKind,
-      reason: reasonExcerpt,
-      meta,
-      version: CLASSIFIER_VERSION,
-      retryAfter,
+      kind: 'transient-cc',
+      reason: 'org/account spend limit → per-account failover with exhaustion memory',
+      meta: { ...(meta ?? {}), limitScope: 'account-spend' },
     };
   }
 
@@ -180,8 +218,6 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
       kind: 'transient-cc',
       reason: 'usage/session limit → cross-device failover',
       meta,
-      version: CLASSIFIER_VERSION,
-      retryAfter,
     };
   }
 
@@ -190,64 +226,35 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
   // with ≤3 assistant messages and no tool use (ISS-402 skill-registration
   // glitch class). Checked before the text passes so a generic error string
   // from a startup death still routes to the immediate-failover policy.
-  if (
-    input.signals?.diedBeforeFirstToolUse === true &&
-    (input.signals.sessionMessageCount ?? 0) <= 3
-  ) {
+  if (signals?.diedBeforeFirstToolUse === true && (signals.sessionMessageCount ?? 0) <= 3) {
     return {
       kind: 'transient-cc',
       reason: 'cc-startup-death (≤3 msgs, no tool use)',
       meta,
-      version: CLASSIFIER_VERSION,
-      retryAfter,
     };
   }
 
   for (const pat of PERMISSION_PATTERNS) {
     if (pat.test(text)) {
-      return {
-        kind: 'infra',
-        reason: reasonExcerpt || 'permission (pattern match)',
-        meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
-      };
+      return { kind: 'infra', reason: reasonExcerpt || 'permission (pattern match)', meta };
     }
   }
 
   for (const pat of TIMEOUT_PATTERNS) {
     if (pat.test(text)) {
-      return {
-        kind: 'timeout',
-        reason: reasonExcerpt || 'timeout (pattern match)',
-        meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
-      };
+      return { kind: 'timeout', reason: reasonExcerpt || 'timeout (pattern match)', meta };
     }
   }
 
   for (const pat of PERMANENT_PATTERNS) {
     if (pat.test(text)) {
-      return {
-        kind: 'code',
-        reason: reasonExcerpt || 'permanent (pattern match)',
-        meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
-      };
+      return { kind: 'code', reason: reasonExcerpt || 'permanent (pattern match)', meta };
     }
   }
 
   for (const pat of TRANSIENT_PATTERNS) {
     if (pat.test(text)) {
-      return {
-        kind: 'infra',
-        reason: reasonExcerpt || 'transient (pattern match)',
-        meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
-      };
+      return { kind: 'infra', reason: reasonExcerpt || 'transient (pattern match)', meta };
     }
   }
 
@@ -257,8 +264,6 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         kind: 'transient-cc',
         reason: reasonExcerpt || 'cc-startup-death (pattern match)',
         meta,
-        version: CLASSIFIER_VERSION,
-        retryAfter,
       };
     }
   }
@@ -270,8 +275,6 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
     kind: 'infra',
     reason: reasonExcerpt || 'unclassified',
     meta: { ...(meta ?? {}), needsReview: true },
-    version: CLASSIFIER_VERSION,
-    retryAfter,
   };
 }
 

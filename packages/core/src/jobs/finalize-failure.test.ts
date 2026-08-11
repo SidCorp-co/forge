@@ -60,6 +60,12 @@ vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: (...args: unknown[]) => closeRunMock(...args),
 }));
 
+// cm:edge contract -> packages/core/src/notifications/routes.ts — its static import chain validates env vars at load time (same pitfall as reconcile-service.ts above); mock the entry point instead.
+const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../pipeline/wedge.js', () => ({
+  emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...args),
+}));
+
 const JOB_TYPE_ENTRY_STATUS: Record<string, string> = {
   triage: 'open',
   clarify: 'confirmed',
@@ -228,6 +234,9 @@ describe('finalizeFailedJob', () => {
     expect(syncSessionMock).toHaveBeenCalledWith(expect.any(Object), 'failed', {
       retryPending: false,
     });
+    expect(emitWedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'p1', issueId: 'i1', hop: 'dispatch', entity: 'job' }),
+    );
   });
 
   it('does NOT touch issue state or run for a job with no issue (system job)', async () => {
@@ -238,6 +247,7 @@ describe('finalizeFailedJob', () => {
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(publishHealthMock).not.toHaveBeenCalled();
     expect(dispatchTickMock).toHaveBeenCalledWith('p1');
+    expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
   it.each(['completed_via_recovery', 'cancelled_stale'])(
@@ -254,6 +264,7 @@ describe('finalizeFailedJob', () => {
       expect(syncSessionMock).toHaveBeenCalledWith(expect.any(Object), 'failed', {
         retryPending: false,
       });
+      expect(emitWedgeMock).not.toHaveBeenCalled();
     },
   );
 
@@ -291,5 +302,8 @@ describe('finalizeFailedJob', () => {
       { skip: true },
     );
     expect(closeRunMock).toHaveBeenCalledWith('i1', 'failed');
+    expect(emitWedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'p1', issueId: 'i1', hop: 'dispatch', entity: 'job' }),
+    );
   });
 });

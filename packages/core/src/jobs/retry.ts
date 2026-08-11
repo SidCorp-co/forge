@@ -1,37 +1,21 @@
 /**
  * Per-class round-robin auto-retry engine.
  *
- * ISS-450 (ISS-442 C4 / I4) — this REVERSES the ISS-407 "uniform, no
- * per-error branching" design. The classifier verdict now DRIVES the retry
- * decision, with one policy per failure class:
+ * ISS-823 — driven by the classifier's `action` (`jobs.failure_action`;
+ * historical NULL rows fall back to `deriveActionFromKind(failureKind)`):
+ * `terminal` never retries; `failover`/`quarantine` (CLI startup death,
+ * ISS-402; per-account spend/session limit, ISS-823) do an IMMEDIATE
+ * different-device failover, parking `all_devices_exhausted` only when every
+ * online device is rate-limited (not merely offline); `retry`
+ * (`infra`/`timeout`) takes the standard bounded round-robin: uniform
+ * `RETRY_COOLDOWN_MS` (60s) between attempts, `RETRY_TRIES_PER_DEVICE` (3)
+ * tries per device before rotating (state in `payload._autoRetry`), bounded
+ * by `RETRY_MAX_ROUNDS` (10) sweeps — the failover path shares this budget so
+ * it cannot ping-pong unbounded. Detail: docs/modules/agents-jobs.
  *
- *   - **`code`** — the work itself is wrong (validation, content filter,
- *     unsupported type). Retrying burns spend without changing the outcome →
- *     NO retry; the caller parks the issue at `waiting` immediately.
- *   - **`transient-cc`** — Claude-CLI startup death (ISS-402 class). Burning
- *     the same-device tries against a wedged CLI install wasted 46 retries on
- *     ISS-402 before rotation saved it → IMMEDIATE different-device failover:
- *     no cooldown, no same-device tries, straight to the next online device.
- *     Falls back to the standard rotation when no other device is online.
- *   - **`infra` / `timeout`** — environment failures. Standard bounded
- *     round-robin (below), unchanged from ISS-407.
- *
- * The standard rotation:
- *   - **Uniform cooldown.** `RETRY_COOLDOWN_MS` (60s) between attempts.
- *   - **Round-robin across devices.** Each device gets `RETRY_TRIES_PER_DEVICE`
- *     (3) attempts before the chain rotates to the next online device. The
- *     project's `defaultDeviceId` (primary) only decides the FIRST dispatch;
- *     from the first retry on, every online device is treated equally. The
- *     rotation state lives in `payload._autoRetry` and the dispatcher honours
- *     it (`target` → pin, `done` → exclude).
- *   - **Bounded.** After `RETRY_MAX_ROUNDS` (10) full sweeps the chain stops
- *     and the caller parks the issue at `waiting` for a human. The
- *     `transient-cc` failover path consumes the SAME round budget (it burns a
- *     device's slot per hop), so it cannot ping-pong unbounded.
- *
- * Structural guards that short-circuit any class: a job whose cancellation
- * was requested, and the verify-first check (the issue already advanced past /
- * reverted away from this step, so retrying would be wasted spend).
+ * Structural guards ahead of any class: cancellation-requested, and the
+ * verify-first check (issue already advanced/reverted, so retrying is wasted
+ * spend).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -46,7 +30,7 @@ import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
-import { classifyFailure } from '../pipeline/failure-classifier.js';
+import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
 import { verifyRecovery } from '../pipeline/recovery-verifier.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
@@ -214,12 +198,14 @@ export async function scheduleAutoRetryWithVerify(
         .update(jobs)
         .set({
           failureKind: classified.kind,
+          failureAction: classified.action,
           failureReason: classified.reason,
           failureMeta: classified.meta as never,
           classifierVersion: classified.version,
         })
         .where(eq(jobs.id, job.id));
       job.failureKind = classified.kind;
+      job.failureAction = classified.action;
       job.failureReason = classified.reason;
       job.classifierVersion = classified.version;
     } catch (err) {
@@ -274,34 +260,39 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  // ISS-450 — per-class policy. `code` failures never retry: the work itself
-  // is wrong, so re-running it burns spend without changing the outcome. The
-  // caller (finalizeFailedJob) parks the issue at `waiting` for a human.
-  // Checked AFTER verify-first so an already-advanced issue still resolves as
-  // completed_via_recovery instead of being parked.
-  const effectiveKind = job.failureKind ?? classified.kind;
-  if (effectiveKind === 'code') {
+  // cm:why checked AFTER verify-first so an already-advanced issue still resolves completed_via_recovery instead of being parked terminal
+  const effectiveAction =
+    job.failureAction ?? deriveActionFromKind(job.failureKind ?? classified.kind);
+  if (effectiveAction === 'terminal') {
     logger.info(
-      { jobId: job.id, failureKind: effectiveKind, reason },
-      'retry: non-retryable code failure, no retry scheduled',
+      { jobId: job.id, failureAction: effectiveAction, reason },
+      'retry: non-retryable terminal failure, no retry scheduled',
     );
-    return { scheduled: false, reason: 'non_retryable_code' };
+    return { scheduled: false, reason: 'non_retryable_terminal' };
   }
 
-  // Round-robin rotation. `null` → 10-round budget exhausted → park.
-  //
-  // ISS-450 — `transient-cc` (cc-startup death) does an IMMEDIATE
-  // different-device failover: same-device retries burn the whole budget
-  // against a wedged CLI install (ISS-402: 46 wasted retries). Forcing
-  // `tries` to the per-device cap makes `nextRotation` treat the device that
-  // just ran as exhausted, so it picks the next online device (or advances
-  // the round — keeping the same RETRY_MAX_ROUNDS bound). Cooldown is skipped
-  // only when the failover actually landed on a different device; when no
-  // other device is online the standard cooldown applies (same device needs
-  // the breather).
+  // cm:why an empty health-gated set alongside a non-empty unfiltered set means the fleet is up but every box is rate-limited — park instead of blindly rotating
+  const isFailoverAction = effectiveAction === 'failover' || effectiveAction === 'quarantine';
+  if (isFailoverAction) {
+    const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
+      ?.requiredCapabilities;
+    const [healthyDevices, allDevices] = await Promise.all([
+      onlineCapableDeviceIds(job.projectId, required),
+      onlineCapableDeviceIds(job.projectId, required, { includeLimited: true }),
+    ]);
+    if (healthyDevices.length === 0 && allDevices.length > 0) {
+      logger.info(
+        { jobId: job.id, failureAction: effectiveAction, reason },
+        'retry: every online device is rate-limited, parking',
+      );
+      return { scheduled: false, reason: 'all_devices_exhausted' };
+    }
+  }
+
+  // cm:why forcing tries to the per-device cap makes nextRotation treat the device that just ran as exhausted, so it rotates immediately instead of spending same-device tries
   const state = readAutoRetryPayload(job.payload);
   let next: AutoRetryPayload | null;
-  if (effectiveKind === 'transient-cc') {
+  if (isFailoverAction) {
     next = await nextRotation(job, {
       ...state,
       target: state.target ?? job.deviceId ?? null,
@@ -319,7 +310,7 @@ export async function scheduleAutoRetryWithVerify(
   }
 
   const immediateFailover =
-    effectiveKind === 'transient-cc' && next.target !== null && next.target !== job.deviceId;
+    isFailoverAction && next.target !== null && next.target !== job.deviceId;
   const cooldownMs = immediateFailover ? 0 : RETRY_COOLDOWN_MS;
   const retryAfterAt = new Date(Date.now() + cooldownMs);
   const basePayload = (job.payload ?? {}) as Record<string, unknown>;
