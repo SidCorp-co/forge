@@ -90,10 +90,15 @@ describe('state machine', () => {
     expect(isReopenEntry('developed', 'reopen')).toBe(true);
     expect(isReopenEntry('testing', 'reopen')).toBe(true);
     expect(isReopenEntry('tested', 'reopen')).toBe(true);
-    expect(isReopenEntry('in_progress', 'reopen')).toBe(true);
-    // cm:why negative cases: already at reopen, or not heading there at all
+    // cm:why negative cases: already at reopen, not heading there at all, or a mechanical revert (ISS-766)
     expect(isReopenEntry('reopen', 'reopen')).toBe(false);
     expect(isReopenEntry('closed', 'developed')).toBe(false);
+  });
+
+  it('isReopenEntry excludes in_progress → reopen — a system revert, not an agent rejection (ISS-766)', () => {
+    expect(isReopenEntry('in_progress', 'reopen')).toBe(false);
+    expect(isReopenEntry('developed', 'reopen')).toBe(true);
+    expect(isReopenEntry('testing', 'reopen')).toBe(true);
   });
 
   it('REOPEN_CAP is 5', () => {

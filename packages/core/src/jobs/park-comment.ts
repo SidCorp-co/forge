@@ -7,8 +7,9 @@
 
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, jobs, projects } from '../db/schema.js';
+import { type IssueStatus, comments, jobs, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { REOPEN_CAP } from '../pipeline/state-machine.js';
 
 export interface ParkReasonInput {
   issueId: string;
@@ -84,6 +85,58 @@ export async function postParkReasonComment(input: ParkReasonInput): Promise<voi
     logger.warn(
       { err, issueId: input.issueId },
       'park-comment: failed to post park-reason comment, continuing',
+    );
+  }
+}
+
+export interface ReopenCapEscalationInput {
+  issueId: string;
+  projectId: string;
+  /** Status the reopen would have entered from (the stage that hit the cap). */
+  fromStatus: IssueStatus;
+  /** Count at the moment the cap was hit — does NOT increment on this redirect. */
+  reopenCount: number;
+  /** What the actor asked for (always `reopen` today, kept explicit for the caller's contract). */
+  requestedStatus: IssueStatus;
+}
+
+// cm:edge ordering -> packages/core/src/issues/apply-transition.ts — caller posts this BEFORE writing the redirected status, same contract as postParkReasonComment above
+export async function postReopenCapEscalationComment(
+  input: ReopenCapEscalationInput,
+): Promise<void> {
+  try {
+    const [project] = await db
+      .select({ createdBy: projects.createdBy })
+      .from(projects)
+      .where(eq(projects.id, input.projectId))
+      .limit(1);
+    if (!project) return;
+
+    const lines = [
+      '🛑 **Reopen cap reached — parked at `waiting` instead of looping again.**',
+      '',
+      `**Stage:** \`${input.fromStatus}\` requested \`${input.requestedStatus}\`, redirected to \`waiting\`.`,
+      `**Reopen count:** \`${input.reopenCount}\` (cap \`${REOPEN_CAP}\`) — unchanged by this redirect.`,
+      '',
+      'This is a deliberate stop, not a failure: repeated reopen→fix→review passes cost real money and wall-clock, so the pipeline hands the decision to a human instead of looping a 6th time.',
+      '',
+      '**Operator exits:**',
+      '- Override the cap and resume: an admin can force the reopen (`overrideReopenCap`) and resume the paused run.',
+      '- Split the issue: if the churn suggests this issue is too large, decompose it instead of continuing to reopen this one.',
+      '',
+      'Do not retry the reopen — it will hit the same cap. Report this outcome instead.',
+    ];
+
+    await db.insert(comments).values({
+      issueId: input.issueId,
+      authorId: project.createdBy,
+      body: lines.join('\n'),
+      isAi: true,
+    } as never);
+  } catch (err) {
+    logger.warn(
+      { err, issueId: input.issueId },
+      'park-comment: failed to post reopen-cap escalation comment, continuing',
     );
   }
 }

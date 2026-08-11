@@ -1,8 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, comments, issues } from '../db/schema.js';
+import { postReopenCapEscalationComment } from '../jobs/park-comment.js';
 import { logger } from '../logger.js';
+import { recordReopenCapEscalated } from '../observability/hold-metrics.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
+import { pauseOpenRunForIssue } from '../pipeline/run-pause.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { REOPEN_CAP, canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -102,6 +106,16 @@ export interface StatusTransitionResult {
    * is in `RUN_CLOSING_STATUSES` (ISS-669 — `released` no longer closes it).
    */
   terminal: boolean;
+  /**
+   * A device-actor reopen at the cap was redirected to `waiting` instead of
+   * throwing `REOPEN_CAP_EXCEEDED` — `status` above is `waiting`, not the
+   * `reopen` the caller asked for. Callers surfacing this to an agent (MCP
+   * `forge_issues` update/transition) MUST say so explicitly — the agent
+   * otherwise believes it set `reopen` and may retry the same call forever.
+   */
+  capEscalated: boolean;
+  /** What the actor actually requested when `capEscalated` is true (always `reopen` today). */
+  requestedStatus: IssueStatus | undefined;
 }
 
 /**
@@ -163,13 +177,47 @@ export async function transitionIssueStatus(
     );
   }
 
-  const reopening = isReopenEntry(fromStatus, toStatus);
-  if (reopening && issue.reopenCount >= REOPEN_CAP && !options.overrideReopenCap) {
-    throw new TransitionError('REOPEN_CAP_EXCEEDED', `reopen cap reached (${REOPEN_CAP})`, {
+  const wantsReopen = isReopenEntry(fromStatus, toStatus);
+  let effectiveToStatus = toStatus;
+  let capEscalated = false;
+  let requestedStatus: IssueStatus | undefined;
+
+  if (wantsReopen && issue.reopenCount >= REOPEN_CAP && !options.overrideReopenCap) {
+    if (actor.type === 'user') {
+      throw new TransitionError('REOPEN_CAP_EXCEEDED', `reopen cap reached (${REOPEN_CAP})`, {
+        reopenCount: issue.reopenCount,
+        max: REOPEN_CAP,
+      });
+    }
+    // cm:why ISS-766 — device actors (every pipeline agent) used to hit the same throw here, leaving the issue at `fromStatus` (an auto-dispatch trigger) so the reconciler re-enqueued full-tier jobs every ~60s until the stage-stall guard mispublished the cause as a missing skill. Redirecting to `waiting` is a real, honestly-reported stop instead — see docs/architecture/reopen-loop-guard.md.
+    requestedStatus = toStatus;
+    effectiveToStatus = 'waiting';
+    capEscalated = true;
+    // cm:edge ordering -> packages/core/src/jobs/park-comment.ts — post BEFORE the transition below, same contract as the finalize-failure park-to-waiting precedent
+    await postReopenCapEscalationComment({
+      issueId: issue.id,
+      projectId: issue.projectId,
+      fromStatus,
       reopenCount: issue.reopenCount,
-      max: REOPEN_CAP,
+      requestedStatus,
     });
+    recordReopenCapEscalated();
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'pipeline.reopen_cap_escalated',
+        level: 'warning',
+        data: {
+          issueId: issue.id,
+          projectId: issue.projectId,
+          reopenCount: issue.reopenCount,
+          fromStatus,
+          requestedStatus,
+        },
+      });
+    }
   }
+
+  const reopening = isReopenEntry(fromStatus, effectiveToStatus);
 
   // Conditional UPDATE gates on current status so concurrent transitions
   // can't both win. activity_log write is owned by F5; do not insert here.
@@ -184,7 +232,7 @@ export async function transitionIssueStatus(
       const [row] = await t
         .update(issues)
         .set({
-          status: toStatus,
+          status: effectiveToStatus,
           reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
           updatedAt: sql`now()`,
         })
@@ -203,13 +251,13 @@ export async function transitionIssueStatus(
           issueId: issue.id,
           projectId: issue.projectId,
           fromStatus,
-          toStatus,
+          toStatus: effectiveToStatus,
         });
         // closed = done: a close from ANY surface satisfies the L2 blocks
         // gate. No-op when merged_at is already stamped (pipeline path).
         const closeStamp = await markMergedOnClose(t, {
           issueId: issue.id,
-          toStatus,
+          toStatus: effectiveToStatus,
         });
         stampedOnClose = closeStamp.stamped;
       }
@@ -220,14 +268,14 @@ export async function transitionIssueStatus(
   if (!updated) {
     throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
       from: fromStatus,
-      to: toStatus,
+      to: effectiveToStatus,
     });
   }
 
   publishIssueStatusChange(issue.projectId, {
     issueId: updated.id,
     from: fromStatus,
-    to: toStatus,
+    to: effectiveToStatus,
     reopenCount: updated.reopenCount,
     actorId: actor.type === 'user' ? actor.id : actor.ownerId,
     reason: options.reason ?? null,
@@ -263,10 +311,21 @@ export async function transitionIssueStatus(
   // ISS-101 — keep run timeline in sync with issue status, then close it on
   // RUN_CLOSING_STATUSES entries. No-ops when no open run exists (e.g. an
   // issue that transitions before any job is queued).
-  await setCurrentStepForOpenIssueRun(issue.id, toStatus);
-  const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
-  if (RUN_CLOSING_STATUSES.has(toStatus)) {
+  await setCurrentStepForOpenIssueRun(issue.id, effectiveToStatus);
+  const terminal = TERMINAL_FOR_DISPATCH.has(effectiveToStatus);
+  if (RUN_CLOSING_STATUSES.has(effectiveToStatus)) {
     await closeOpenRunForIssue(issue.id, 'completed');
+  }
+
+  if (capEscalated) {
+    try {
+      await pauseOpenRunForIssue({ issueId: issue.id, pauseReason: `reopen_cap:${fromStatus}` });
+    } catch (err) {
+      logger.warn(
+        { err, issueId: issue.id },
+        'transition: reopen-cap pauseRun failed (park + comment already committed)',
+      );
+    }
   }
 
   return {
@@ -275,6 +334,8 @@ export async function transitionIssueStatus(
     reopenCount: updated.reopenCount,
     updatedAt: updated.updatedAt,
     terminal,
+    capEscalated,
+    requestedStatus,
   };
 }
 
@@ -290,6 +351,6 @@ export async function applyStatusTransition(
   toStatus: IssueStatus,
   device: DeviceLite,
   options: ApplyStatusTransitionOptions = {},
-): Promise<void> {
-  await transitionIssueStatus(issue, toStatus, { type: 'device', ...device }, options);
+): Promise<StatusTransitionResult> {
+  return transitionIssueStatus(issue, toStatus, { type: 'device', ...device }, options);
 }
