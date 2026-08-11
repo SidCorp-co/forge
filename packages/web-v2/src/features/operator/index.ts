@@ -1,6 +1,8 @@
 /* Operator Ops Console module (ISS-650). Isolation invariant (A->C): only
    @/design, @/lib/*, @/providers/*, next, react, react-query are imported —
-   no @/features/<other>. server/whoami.ts is deliberately NOT re-exported
+   no @/features/<other>. Consumers are app/admin/** and src/middleware.ts,
+   which Next requires at that exact path and which therefore deep-imports
+   server/operator-gate.ts. server/whoami.ts is deliberately NOT re-exported
    here (RSC-only, see its cm:guard) — app/admin/layout.tsx imports it by its
    deep path. */
 

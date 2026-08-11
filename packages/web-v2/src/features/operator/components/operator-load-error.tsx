@@ -7,11 +7,11 @@ import { ErrorState } from "@/design";
  *  check itself fails (network/5xx) — a layout throw would escape past its
  *  own segment's error.tsx, so the gate returns a result instead of throwing.
  *  Retry calls router.refresh() to re-run the RSC gate. */
-export function OperatorLoadError({ message }: { message: string }) {
+export function OperatorLoadError({ title, message }: { title?: string; message: string }) {
   const router = useRouter();
   return (
     <div className="flex h-dvh items-center justify-center bg-app">
-      <ErrorState message={message} onRetry={() => router.refresh()} />
+      <ErrorState title={title} message={message} onRetry={() => router.refresh()} />
     </div>
   );
 }
