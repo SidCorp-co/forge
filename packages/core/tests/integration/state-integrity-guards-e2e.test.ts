@@ -14,6 +14,7 @@
  * to fail.
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -72,6 +73,22 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     `);
   }
 
+  // Real resolver, real DB: `isPlanStageLive` (transition-evidence.ts) requires
+  // a `skill_registrations` row for stage 'clarified', mirroring
+  // pipeline-per-project-config.test.ts:121,164 — without it C's guard is a
+  // correct no-op and `PLAN_REQUIRED` can never fire.
+  async function registerPlanStageSkill(projectId: string, registeredBy: string): Promise<void> {
+    const skillId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO skills (id, name, description, scope, prompt, source, content_hash)
+      VALUES (${skillId}, 'forge-plan', 'integration: forge-plan', 'global', 'noop', 'builtin', ${`hash-${skillId}`})
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO skill_registrations (project_id, skill_id, stage, registered_by)
+      VALUES (${projectId}, ${skillId}, 'clarified', ${registeredBy})
+    `);
+  }
+
   async function logTransition(
     issueId: string,
     actorId: string,
@@ -90,6 +107,7 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id);
+    await registerPlanStageSkill(project.id, owner.id);
 
     const { findUnansweredBounce } = await import('../../src/pipeline/bounce-replay-guard.js');
     const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
