@@ -1,7 +1,7 @@
-"use client";
-
 // Review pane for one reconcile run: what the agent proposes, why, what three
 // independent verifiers made of it, and the exact diff — then approve or reject.
+
+"use client";
 
 import { useMemo, useState } from "react";
 import { Badge, Button, ErrorState, Field, Skeleton, Textarea } from "@/design";

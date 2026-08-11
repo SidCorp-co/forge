@@ -103,8 +103,7 @@ const dataSchema = z
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
-    // Detector identity — see issues/detector-key.ts. Set it on create and the
-    // kernel guarantees at most one live issue per (project, key).
+    // cm:why setting this on create makes the kernel guarantee at most one live issue per (project, detectorKey) — see issues/detector-key.ts
     detectorKey: z.string().trim().min(1).max(120).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
@@ -878,8 +877,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           labelIds = await resolveLabelIdsForWrite(projectId, input.data.labels);
         }
 
-        // One live issue per detector. A recurring finding must land on the
-        // issue that already tracks it, never as issue number N+1.
+        // cm:guard one live issue per detector — a recurring finding must land on the issue already tracking it, never as issue N+1
         const detectorKey = input.data.detectorKey ?? null;
         if (detectorKey) {
           if (!isValidDetectorKey(detectorKey)) {

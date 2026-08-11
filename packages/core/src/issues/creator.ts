@@ -34,7 +34,7 @@ export function buildOriginCondition(origin: 'detector' | 'human'): SQL {
   if (origin === 'detector') {
     return or(isNotNull(issues.detectorKey), viaDetectorChannel) as SQL;
   }
-  // Legacy rows predate created_via and are human backlog, so NULL lands here.
+  // cm:why legacy rows predate created_via and are human backlog, so NULL lands in this branch
   return and(
     isNull(issues.detectorKey),
     or(isNull(issues.createdVia), notInArray(issues.createdVia, channels)),

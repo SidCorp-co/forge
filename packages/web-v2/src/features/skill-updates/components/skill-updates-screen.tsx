@@ -1,11 +1,12 @@
-"use client";
-
 // Skill-update review surface (Update Pipeline stage ②, ISS-795).
 //
 // The pipeline routes any non-additive skill change to a human gate, and until
 // this screen existed that human had no door: a `decided` run sat forever
 // unless someone called MCP or POSTed by hand. Runs waiting on a person are
 // pinned to the top for exactly that reason.
+
+"use client";
+
 import { useMemo, useState } from "react";
 import { Badge, Card, EmptyState, ErrorState, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -61,7 +62,7 @@ export function SkillUpdatesScreen({ scope }: SkillUpdatesScreenProps) {
   const { data: runs, isLoading, isError, error, refetch } = useReconcileRuns(scope.projectId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Runs that need a decision come first; everything else is history.
+  // cm:why runs that need a decision sort first; everything else is history
   const ordered = useMemo(() => {
     const rows = runs ?? [];
     return [...rows].sort((a, b) => {

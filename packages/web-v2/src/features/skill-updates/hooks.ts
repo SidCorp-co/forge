@@ -1,10 +1,10 @@
-"use client";
-
 // web-v2 feature module: skill updates — React Query hooks.
 //
 // A run at `decided` + `gate: 'human'` is waiting on a person, and until this
 // screen existed the only way to act on one was an MCP call or a raw POST — so
 // a waiting run was invisible to the owner it was waiting for.
+
+"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";

@@ -151,5 +151,5 @@ export interface ImprovementMessageDraft {
   updatedAt: string;
 }
 
-// ISS-800 — Divergence Charter row type (Update Pipeline §5).
+// cm:why ISS-800 — Divergence Charter row type, Update Pipeline §5
 export type DivergenceCharterRow = typeof schema.divergenceCharters.$inferSelect;

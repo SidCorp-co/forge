@@ -1,6 +1,3 @@
-import { createHash } from 'node:crypto';
-import { listFacts, renderFact } from './registry.js';
-
 // Stage ① of the Update Pipeline (ISS-795 §2): the platform invariant set.
 //
 // `tier: 'mandatory'` facts ARE the non-forking layer — `prompt/system.ts`
@@ -11,6 +8,9 @@ import { listFacts, renderFact } from './registry.js';
 // The rendered text is deliberately NOT carried here: the agent already has it
 // in its system prompt. What it cannot otherwise know is WHICH version is in
 // force and WHAT just changed.
+
+import { createHash } from 'node:crypto';
+import { listFacts, renderFact } from './registry.js';
 
 export interface PlatformInvariantEntry {
   id: string;

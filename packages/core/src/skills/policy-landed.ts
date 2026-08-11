@@ -1,3 +1,11 @@
+// Stage ① producer (ISS-795 §2). Without this, `policy.landed` had a reader
+// and no writer: `reconcile-service.assembleBundle()` item 11 was always empty,
+// so the verifier's hard constraint was permanently null and "stage ① binds
+// stage ②" never actually held.
+//
+// Runs at boot, next to seedBuiltinSkills — the invariant set lives in code, so
+// a deploy is exactly when it can change.
+
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, skillActivityEvents } from '../db/schema.js';
@@ -8,14 +16,6 @@ import {
   describeInvariantDelta,
 } from '../prompt/facts/invariant-set.js';
 import { recordSkillActivityEvent } from './activity.js';
-
-// Stage ① producer (ISS-795 §2). Without this, `policy.landed` had a reader
-// and no writer: `reconcile-service.assembleBundle()` item 11 was always empty,
-// so the verifier's hard constraint was permanently null and "stage ① binds
-// stage ②" never actually held.
-//
-// Runs at boot, next to seedBuiltinSkills — the invariant set lives in code, so
-// a deploy is exactly when it can change.
 
 export interface PolicyLandedSweepResult {
   digest: string;

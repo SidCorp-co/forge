@@ -53,8 +53,7 @@ const searchQuerySchema = z
     assignee: z.uuid().optional(),
     // cm:why a uuid here means that person's non-agent-channel rows ONLY — see buildCreatedByCondition
     createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
-    // Splits unreviewed detector output from work someone chose to do. Distinct
-    // from `createdBy=agent`, which is a display concern and counts `mcp` too.
+    // cm:why splits unreviewed detector output from work someone chose to do — distinct from createdBy=agent, which is a display concern and counts `mcp` too
     origin: z.enum(['detector', 'human']).optional(),
     category: z.string().trim().min(1).max(100).optional(),
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),

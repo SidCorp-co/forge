@@ -33,9 +33,7 @@ export const MCP_ONLY_ISSUE_PATCH_FIELDS = [
   'aiSuggestedSolution',
   'aiAcceptanceCriteria',
   'aiConfidence',
-  // Lets an existing issue adopt a detector's key, so the next run of that
-  // detector lands on it instead of opening a rival. The partial unique index
-  // rejects the write if another live issue already holds the key.
+  // cm:why lets an existing issue adopt a detector's key so the next run lands on it instead of opening a rival; the partial unique index rejects the write if another live issue already holds that key
   'detectorKey',
 ] as const;
 

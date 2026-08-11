@@ -175,11 +175,7 @@ feedbackReportRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    // A feedback report is a report about FORGE. `projectId` records WHERE the
-    // defect was observed, not who owns the fix — which almost always lands in
-    // the Forge project itself. So resolve `linkedIssueId` against every
-    // project this user can see, NOT the report's project: same-project made
-    // the field unusable for exactly the reports it exists to close.
+    // cm:why projectId records WHERE the defect was observed, not who owns the fix, so linkedIssueId resolves against every project this user can SEE rather than the report's own project — same-project made the field unusable for exactly the reports it exists to close
     // cm:edge contract -> packages/core/src/mcp/tools/forge-feedback.ts — the MCP `review` action must resolve a link the same way; a caller must not get a different answer per surface
     let validatedLinkedIssueId: string | undefined;
     if (reviewed && linkedIssueId) {

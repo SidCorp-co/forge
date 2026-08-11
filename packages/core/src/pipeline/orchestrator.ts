@@ -469,12 +469,7 @@ async function considerEnqueue(args: {
     return;
   }
 
-  // A reopen straight out of `released`/`closed` with nobody saying why leaves
-  // forge-fix nothing to scope against — it can only re-derive "already
-  // shipped, no feedback" and bounce. Sibling of the guard above: there the
-  // issue never had an implementation, here it shipped one and the reopen
-  // carries no rejection. Runs second because the cheap job-existence check
-  // above already covers the never-implemented case.
+  // cm:why a reopen straight out of released/closed with no rationale leaves forge-fix nothing to scope against, so it can only re-derive "already shipped, no feedback" and bounce; runs after the cheap job-existence check above, which already covers the never-implemented case
   if (jobMap.type === 'fix') {
     const unexplained = await findUnexplainedReopen(args.issueId);
     if (unexplained) {

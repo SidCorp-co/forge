@@ -66,8 +66,7 @@ export async function findUnexplainedReopen(issueId: string): Promise<Unexplaine
     const from = (entered.payload as { from?: string } | null)?.from;
     if (!from || !REOPEN_NEEDS_RATIONALE_FROM.has(from)) return null;
 
-    // The window opens when the issue ENTERED that terminal status, so a
-    // rationale counts whether the human wrote it before or after flipping.
+    // cm:why the window opens when the issue ENTERED the terminal status, so a rationale counts whether the human wrote it before or after flipping
     const [origin] = await db
       .select({ createdAt: activityLog.createdAt })
       .from(activityLog)

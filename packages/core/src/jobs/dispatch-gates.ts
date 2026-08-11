@@ -479,12 +479,7 @@ function buildBarrierFragments(args: {
   const blockClosedArm = baseStampable ? sql`` : sql` AND p.status <> 'closed'`;
   const decompClosedArm = baseStampable ? sql`` : sql` AND c2.status <> 'closed'`;
 
-  // sid-desk ISS-20/25 — `merged_at` is COALESCE-once and never cleared, so a
-  // blocker that reached `tested` (stamping it) and was then REJECTED back to
-  // `reopen` still reads as satisfied. The parent dispatched for integration
-  // work while the child's fix was mid-cycle and staging was genuinely broken.
-  // Treat a currently-reopened blocker as unsatisfied regardless of the stamp:
-  // the stamp records that code landed once, not that it is still good.
+  // cm:guard treat a currently-reopened blocker as UNSATISFIED regardless of merged_at — the stamp is COALESCE-once and never cleared, so a blocker that reached `tested` then got rejected back to `reopen` still reads as satisfied and dispatches the parent onto a broken child (sid-desk ISS-20/25); the stamp records that code landed once, not that it is still good
   //
   // cm:why ONLY `reopen` — `on_hold`/`needs_info` were considered and rejected. Over-blocking wedges a queue silently (the ISS-639 failure mode this file was already burned by); `reopen` is the only bounce that asserts the landed code itself is suspect.
   const blockReopenArm = sql` OR p.status = 'reopen'`;

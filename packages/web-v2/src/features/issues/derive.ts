@@ -261,14 +261,11 @@ export function filterToQueryParams(filter: IssueFilter): {
   origin?: "detector" | "human";
 } {
   switch (filter) {
-    // Parked work a PERSON chose to do. Detector output is excluded so this
-    // bucket answers "what did I decide to build?" and nothing else.
+    // cm:why detector output is excluded so this bucket answers "what did I decide to build?" and nothing else
     // cm:edge contract -> packages/core/src/issues/creator.ts — `origin` values must match buildOriginCondition
     case "draft":
       return { status: ["draft"], origin: "human" };
-    // Unreviewed machine findings, any status. Deliberately its own lane: on
-    // one project these outnumbered the real parked backlog and made the Draft
-    // tab unreadable.
+    // cm:why unreviewed machine findings get their own lane because on one project they outnumbered the real parked backlog and made the Draft tab unreadable
     case "findings":
       return { origin: "detector" };
     case "active":

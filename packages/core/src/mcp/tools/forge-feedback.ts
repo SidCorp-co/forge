@@ -334,13 +334,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'review': {
         const reviewed = input.reviewed ?? true;
 
-        // A feedback report is a report about FORGE. Its `projectId` records
-        // WHERE the defect was observed, not who owns the fix — which almost
-        // always lands in the Forge project itself. So `linkedIssueId` resolves
-        // against every project the caller can see, NOT the report's project:
-        // requiring same-project made the field unusable for exactly the
-        // reports it exists to close. Authorization stays real — caller
-        // visibility bounds the lookup.
+        // cm:why a report records WHERE the defect was observed, not who owns the fix — which almost always lands in the Forge project itself, so linkedIssueId resolves against every project the caller can SEE rather than the report's own project; requiring same-project made the field unusable for exactly the reports it exists to close, and caller visibility still bounds the lookup
         const resolveLinkedIssue = async (linkedIssueId: string): Promise<string> => {
           const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
           if (visibleIds.length === 0) {
@@ -419,7 +413,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, projectId);
         if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
 
-        // Explicit-link path (ISS-712); no heuristic auto-stamping.
+        // cm:why ISS-712 — linking is explicit only; nothing here auto-stamps a link by heuristic
         const patch = await linkPatch();
 
         const [updated] = await db
@@ -427,7 +421,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           .set({
             reviewedAt: reviewed ? new Date() : null,
             // Omitting linkedIssueId on a reviewed:true call leaves any
-            // existing link untouched (back-compat); reviewed:false clears it.
+            // cm:why omitting the field leaves an existing link untouched (back-compat); only reviewed:false clears it
             ...patch,
           })
           .where(
