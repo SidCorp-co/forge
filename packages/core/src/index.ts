@@ -8,6 +8,7 @@ import { cors } from 'hono/cors';
 // see observability/sentry.ts for the opt-in / scrubbing contract.
 import { initSentry } from './observability/sentry.js';
 initSentry();
+import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
 import { agentSessionAttachmentRoutes } from './agent-sessions/attachment-routes.js';
@@ -447,6 +448,7 @@ app.route('/api/pipeline-runs', pipelineRunReadRoutes);
 app.route('/api/pipeline-runs', pipelineRunRoutes);
 app.route('/api/projects', pipelineRunProjectRoutes);
 app.route('/api/admin', adminRoutes);
+app.route('/api/admin', adminAggregateRoutes);
 app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
 app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceLoginRoutes);
