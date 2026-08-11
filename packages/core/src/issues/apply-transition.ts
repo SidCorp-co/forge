@@ -70,12 +70,16 @@ export type TransitionIssueRow = {
 
 export interface ApplyStatusTransitionOptions {
   /**
-   * Bypass the `canTransition` state-machine check. The orchestrator's
-   * soft-skip resolver (ISS-110) walks a curated forward chain
-   * (`STAGE_FORWARD`) that intentionally collapses stages the state-machine
-   * matrix wouldn't allow directly — e.g. `developed → testing` (skip
-   * review+deploy). All other safety checks (NO_OP, reopen cap, stale
-   * transition) still apply. Only the orchestrator should pass this.
+   * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
+   * as a target and restricts `draft`'s own exits, so this flag buys exactly
+   * two things: entering `draft` (nothing does) and moving a `draft` issue to
+   * a status outside {open, closed, developed} — which is what the decompose
+   * cascade needs to promote children straight to `approved`. The soft-skip
+   * resolver (ISS-110) also passes it while walking `STAGE_FORWARD`.
+   *
+   * It is NOT a general safety override: NO_OP, the reopen cap, stale-
+   * transition detection and every content guard still run. Callers are the
+   * orchestrator and the decomposition subscriber.
    */
   skip?: boolean;
   /**

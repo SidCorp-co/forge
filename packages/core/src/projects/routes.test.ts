@@ -1651,7 +1651,8 @@ describe('previewDeployPatchSchema · notes (ISS-767)', () => {
   it('accepts the how-to-use note alongside the resources it describes', () => {
     const r = previewDeployPatchSchema.parse({
       testingUrls: [{ url: 'https://beta.example.com', label: 'Beta' }],
-      notes: 'The QA account is not a member of every project — check before promising a live walk.',
+      notes:
+        'The QA account is not a member of every project — check before promising a live walk.',
     });
     expect(r.notes).toContain('not a member');
   });

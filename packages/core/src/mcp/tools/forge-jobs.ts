@@ -102,6 +102,7 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
         retryAfterAt: jobs.retryAfterAt,
         agentSessionId: jobs.agentSessionId,
         failureKind: jobs.failureKind,
+        failureAction: jobs.failureAction,
         failureReason: jobs.failureReason,
         classifierVersion: jobs.classifierVersion,
         systemPromptHash: jobs.systemPromptHash,

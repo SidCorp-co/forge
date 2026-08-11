@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-08T22:53:12.910Z",
+  "generatedAt": "2026-08-11T17:18:19.532Z",
   "files": {
     "packages/core/src/db/schema.test.ts": {
       "declaration": 94,
@@ -11,7 +11,7 @@
     },
     "packages/core/src/jobs/finalize-failure.test.ts": {
       "declaration": 0,
-      "mock": 26
+      "mock": 34
     },
     "packages/core/src/pipeline/orchestrator.test.ts": {
       "declaration": 0,

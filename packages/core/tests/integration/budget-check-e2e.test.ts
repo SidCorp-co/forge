@@ -28,6 +28,7 @@ type Mods = {
   handleDispatch: typeof import('../../src/jobs/dispatcher.js').handleDispatch;
   hooks: typeof import('../../src/pipeline/hooks.js').hooks;
   __resetBudgetWarnDedup: typeof import('../../src/jobs/budget-check.js').__resetBudgetWarnDedup;
+  CLASSIFIER_VERSION: typeof import('../../src/pipeline/failure-classifier.js').CLASSIFIER_VERSION;
 };
 
 describe('W2.3.2 monthly budget gate E2E', () => {
@@ -51,10 +52,12 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     const dispatcherMod = await import('../../src/jobs/dispatcher.js');
     const hooksMod = await import('../../src/pipeline/hooks.js');
     const budgetMod = await import('../../src/jobs/budget-check.js');
+    const classifierMod = await import('../../src/pipeline/failure-classifier.js');
     mods = {
       handleDispatch: dispatcherMod.handleDispatch,
       hooks: hooksMod.hooks,
       __resetBudgetWarnDedup: budgetMod.__resetBudgetWarnDedup,
+      CLASSIFIER_VERSION: classifierMod.CLASSIFIER_VERSION,
     };
   }, 60_000);
 
@@ -368,6 +371,46 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     expect(commentRows.length).toBeGreaterThanOrEqual(1);
     expect(commentRows[0]?.body).toContain('Budget cap reached');
     expect(commentRows[0]?.author_id).toBeTruthy();
+  });
+
+  it('ISS-823 — parks the issue at waiting + closes the run instead of stranding both', async () => {
+    const { project } = await seedProjectWithBudget({ perMonthUsd: 1.0, action: 'pause' });
+    const issueId = await insertIssue(project.id);
+    await seedHistoricalSpend(project.id, { costUsd: 1.1, jobType: 'code', issueId });
+
+    const jobId = await insertQueuedJob(project.id, { issueId, type: 'code' });
+    const runIdRows = await harness.db.execute<{ pipeline_run_id: string }>(sql`
+      SELECT pipeline_run_id FROM jobs WHERE id = ${jobId}
+    `);
+    const runId = runIdRows[0]?.pipeline_run_id;
+    expect(runId).toBeTruthy();
+
+    const result = await mods.handleDispatch({ jobId });
+    expect(result).toBe('skipped');
+
+    const jobRows = await harness.db.execute<{
+      status: string;
+      failure_action: string | null;
+      classifier_version: number | null;
+    }>(sql`SELECT status, failure_action, classifier_version FROM jobs WHERE id = ${jobId}`);
+    expect(jobRows[0]?.status).toBe('failed');
+    expect(jobRows[0]?.failure_action).toBe('terminal');
+    expect(jobRows[0]?.classifier_version).toBe(mods.CLASSIFIER_VERSION);
+
+    const issueRows = await harness.db.execute<{ status: string }>(sql`
+      SELECT status FROM issues WHERE id = ${issueId}
+    `);
+    expect(issueRows[0]?.status).toBe('waiting');
+
+    const runRows = await harness.db.execute<{ status: string }>(sql`
+      SELECT status FROM pipeline_runs WHERE id = ${runId}
+    `);
+    expect(runRows[0]?.status).not.toBe('running');
+
+    const commentRows = await harness.db.execute<{ body: string }>(sql`
+      SELECT body FROM comments WHERE issue_id = ${issueId}
+    `);
+    expect(commentRows.length).toBeGreaterThanOrEqual(2);
   });
 
   // ---------- action='warn' (no enforcement) -----------------------------

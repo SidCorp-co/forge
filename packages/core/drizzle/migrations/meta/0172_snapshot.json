@@ -1,6 +1,6 @@
 {
-  "id": "19e59add-ba2e-41b0-b91c-448939e27077",
-  "prevId": "8c661eda-1012-4df3-b493-83bad85f6a5d",
+  "id": "ccd75740-a7b3-4975-be98-8080eda83590",
+  "prevId": "19e59add-ba2e-41b0-b91c-448939e27077",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1373,6 +1373,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "is_ai": {
+          "name": "is_ai",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "body": {
           "name": "body",
