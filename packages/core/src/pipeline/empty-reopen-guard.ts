@@ -120,7 +120,7 @@ async function postGuardComment(
 ): Promise<void> {
   if (!authorId) return;
   try {
-    await db.insert(comments).values({ issueId, authorId, body, isAi: true } as never);
+    await db.insert(comments).values({ issueId, authorId, body, isAi: true });
   } catch (err) {
     logger.warn({ err, issueId }, 'empty-reopen-guard: failed to post comment, continuing');
   }

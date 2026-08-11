@@ -119,7 +119,7 @@ export async function postMissingSkillComment(args: {
       authorId: row.createdBy,
       body: buildMissingSkillCommentBody(args.stage),
       isAi: true,
-    } as never);
+    });
   } catch (err) {
     logger.warn(
       { err, issueId: args.issueId, stage: args.stage },
