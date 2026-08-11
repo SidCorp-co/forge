@@ -1,0 +1,261 @@
+/**
+ * ISS-786 [Epic] — composed walk of the four VISION №10 state-integrity
+ * guards against real Postgres. Every guard already has unit coverage that
+ * mocks the query builder (and, for A/B/C, a real-DB test of its own
+ * predicate); none of them exercises the SEQUENCE an issue actually walks:
+ * an agent tries to fabricate its way past a human-gated bounce (A), the
+ * state-machine writer refuses a plan-less `approved` (C), the same writer
+ * refuses a `developed` with no code evidence (B), and the reconciler-side
+ * no-op-loop cap names a verified cause instead of asserting one (D). This
+ * file drives that sequence end to end on one issue, through the real
+ * `transitionIssueStatus` writer and the real dispatch-side guards — not
+ * through mocks — so a regression that only shows up when the guards compose
+ * (e.g. one guard's fail-open swallowing another's violation) has somewhere
+ * to fail.
+ */
+
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  type TestDatabase,
+  createTestDevice,
+  createTestProject,
+  createTestUser,
+  setupTestDatabase,
+  truncateAll,
+} from '../helpers/index.js';
+
+describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () => {
+  let harness: TestDatabase;
+
+  beforeAll(async () => {
+    harness = await setupTestDatabase();
+    process.env.DATABASE_URL = harness.url;
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  });
+
+  afterAll(async () => {
+    if (harness) await harness.cleanup();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(harness.db);
+  });
+
+  async function insertIssue(args: {
+    projectId: string;
+    ownerId: string;
+    status: string;
+    plan?: string | null;
+  }): Promise<{ id: string; reopenCount: number }> {
+    const rows = await harness.db.execute<{ id: string; reopen_count: number }>(sql`
+      INSERT INTO issues (project_id, title, status, created_by_id, plan)
+      VALUES (${args.projectId}, 'state-integrity walk', ${args.status}, ${args.ownerId}, ${args.plan ?? null})
+      RETURNING id, reopen_count
+    `);
+    const row = rows[0] as { id: string; reopen_count: number };
+    return { id: row.id, reopenCount: row.reopen_count };
+  }
+
+  async function insertComment(
+    issueId: string,
+    authorId: string,
+    opts: { isAi: boolean; authorDeviceId: string | null; createdAt: Date },
+  ): Promise<void> {
+    await harness.db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, author_device_id, is_ai, body, created_at)
+      VALUES (
+        ${issueId}, ${authorId}, ${opts.authorDeviceId}, ${opts.isAi}, 'x',
+        ${opts.createdAt.toISOString()}::timestamptz
+      )
+    `);
+  }
+
+  async function logTransition(
+    issueId: string,
+    actorId: string,
+    from: string,
+    to: string,
+    at: Date,
+  ): Promise<void> {
+    await harness.db.execute(sql`
+      INSERT INTO activity_log (issue_id, actor_type, actor_id, action, payload, created_at)
+      VALUES (${issueId}, 'device', ${actorId}, 'issue.statusChanged',
+              ${JSON.stringify({ from, to })}::jsonb, ${at.toISOString()}::timestamptz)
+    `);
+  }
+
+  it('walks A (needs_info self-release refused) -> C (plan-less approved refused) -> B (evidence-less developed refused) -> D (verified-cause stall)', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const device = await createTestDevice(harness.db, owner.id);
+
+    const { findUnansweredBounce } = await import('../../src/pipeline/bounce-replay-guard.js');
+    const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
+    const { checkStageStallAndPause } = await import('../../src/pipeline/stage-stall-guard.js');
+
+    // ---- A: an agent-authored comment must not release a needs_info bounce ----
+    const bouncedAt = new Date('2026-08-01T10:00:00Z');
+    const issue = await insertIssue({
+      projectId: project.id,
+      ownerId: owner.id,
+      status: 'needs_info',
+    });
+    await logTransition(issue.id, device.id, 'clarified', 'needs_info', bouncedAt);
+
+    await insertComment(issue.id, owner.id, {
+      isAi: true,
+      authorDeviceId: device.id,
+      createdAt: new Date('2026-08-01T10:05:00Z'),
+    });
+    expect(await findUnansweredBounce(issue.id, 'clarified')).toEqual({
+      bounced: 'needs_info',
+      at: bouncedAt,
+    });
+
+    // A human comment is the only thing that actually answers it.
+    await insertComment(issue.id, owner.id, {
+      isAi: false,
+      authorDeviceId: null,
+      createdAt: new Date('2026-08-01T10:10:00Z'),
+    });
+    expect(await findUnansweredBounce(issue.id, 'clarified')).toBeNull();
+
+    // Human moves the issue on to `clarified`, mirroring what the released
+    // bounce actually lets happen next.
+    await harness.db.execute(sql`UPDATE issues SET status = 'clarified' WHERE id = ${issue.id}`);
+
+    // ---- C: the writer refuses `approved` while the plan is blank ----
+    const actor = { type: 'device' as const, id: device.id, ownerId: owner.id };
+
+    await expect(
+      transitionIssueStatus(
+        { id: issue.id, projectId: project.id, status: 'clarified', reopenCount: 0 },
+        'approved',
+        actor,
+      ),
+    ).rejects.toMatchObject({ code: 'PLAN_REQUIRED' });
+
+    await harness.db.execute(sql`UPDATE issues SET plan = 'do the thing' WHERE id = ${issue.id}`);
+    const approved = await transitionIssueStatus(
+      { id: issue.id, projectId: project.id, status: 'clarified', reopenCount: 0 },
+      'approved',
+      actor,
+    );
+    expect(approved.status).toBe('approved');
+
+    // ---- B: the writer refuses `developed` with zero recorded code evidence ----
+    await expect(
+      transitionIssueStatus(
+        {
+          id: issue.id,
+          projectId: project.id,
+          status: 'approved',
+          reopenCount: approved.reopenCount,
+        },
+        'developed',
+        actor,
+      ),
+    ).rejects.toMatchObject({ code: 'NO_WORK_EVIDENCE' });
+
+    // Recording a branch (the direct-ship marker `work-evidence.ts` reads) is
+    // enough real evidence to unblock the same transition.
+    await harness.db.execute(sql`
+      UPDATE issues SET session_context = ${JSON.stringify({ branch: 'ISS-786-fix' })}::jsonb
+      WHERE id = ${issue.id}
+    `);
+    const developed = await transitionIssueStatus(
+      {
+        id: issue.id,
+        projectId: project.id,
+        status: 'approved',
+        reopenCount: approved.reopenCount,
+      },
+      'developed',
+      actor,
+    );
+    expect(developed.status).toBe('developed');
+
+    // ---- D: the stage-stall guard verifies a cause instead of asserting one ----
+    // `developed` maps to job type `review` (registry.ts). Three consecutive
+    // `done` review jobs with no advance, and no device recorded on them,
+    // reproduce the no-op loop this guard bounds — with no skill-sync signal
+    // to check, verifySkillSyncCause must report `unverified`, not a
+    // confident diagnosis it never checked.
+    const runRows = await harness.db.execute<{ id: string }>(sql`
+      INSERT INTO pipeline_runs (project_id, issue_id, kind, status, current_step)
+      VALUES (${project.id}, ${issue.id}, 'issue', 'running', 'developed')
+      RETURNING id
+    `);
+    const runId = (runRows[0] as { id: string }).id;
+
+    for (let i = 0; i < 3; i++) {
+      await harness.db.execute(sql`
+        INSERT INTO jobs (project_id, issue_id, pipeline_run_id, created_by, type, status)
+        VALUES (${project.id}, ${issue.id}, ${runId}, ${owner.id}, 'review', 'done')
+      `);
+    }
+
+    const stallResult = await checkStageStallAndPause({
+      projectId: project.id,
+      issueId: issue.id,
+      status: 'developed',
+    });
+    expect(stallResult).toEqual({ stalled: true });
+
+    const pausedRunRows = await harness.db.execute<{ status: string; metadata: unknown }>(sql`
+      SELECT status, metadata FROM pipeline_runs WHERE id = ${runId}
+    `);
+    const pausedRun = pausedRunRows[0] as { status: string; metadata: { pauseReason?: string } };
+    expect(pausedRun.status).toBe('paused');
+    expect(pausedRun.metadata.pauseReason).toBe('stage_stalled:developed');
+
+    const commentRows = await harness.db.execute<{ body: string; is_ai: boolean }>(sql`
+      SELECT body, is_ai FROM comments WHERE issue_id = ${issue.id} ORDER BY created_at DESC LIMIT 1
+    `);
+    const stallComment = commentRows[0] as { body: string; is_ai: boolean };
+    expect(stallComment.is_ai).toBe(true);
+    // Verified-cause branch: no device recorded on the stalled jobs, so the
+    // cause is named as unverified rather than confidently misdiagnosed.
+    expect(stallComment.body).toContain('Could not verify a cause');
+    expect(stallComment.body).toContain('**Current state:**');
+    expect(stallComment.body).toContain('**Exits:**');
+  });
+
+  it('fails open end to end: a broken DB read never freezes the composed sequence', async () => {
+    // Each guard's own unit suite already forces its query to throw and
+    // asserts fail-open in isolation (transition-evidence.test.ts,
+    // work-evidence.test.ts, bounce-replay-guard.test.ts,
+    // stage-stall-guard.test.ts). This checks the property that actually
+    // matters operationally: a lookup for an issue that does not exist at all
+    // (the sharpest "the read cannot succeed" case available without mocking
+    // the DB client) still lets every guard return its safe default instead
+    // of throwing out of the guard itself.
+    const { findUnansweredBounce, reopenEnteredFromNeedsInfo } = await import(
+      '../../src/pipeline/bounce-replay-guard.js'
+    );
+    const { checkStageStallAndPause } = await import('../../src/pipeline/stage-stall-guard.js');
+    const { checkTransitionEvidence } = await import('../../src/issues/transition-evidence.js');
+    const ghostIssueId = '00000000-0000-0000-0000-000000000000';
+    const ghostProjectId = '00000000-0000-0000-0000-000000000000';
+
+    await expect(findUnansweredBounce(ghostIssueId, 'clarified')).resolves.toBeNull();
+    await expect(reopenEnteredFromNeedsInfo(ghostIssueId)).resolves.toBe(false);
+    await expect(
+      checkStageStallAndPause({
+        projectId: ghostProjectId,
+        issueId: ghostIssueId,
+        status: 'developed',
+      }),
+    ).resolves.toEqual({ stalled: false });
+    await expect(
+      checkTransitionEvidence({
+        issue: { id: ghostIssueId, projectId: ghostProjectId },
+        toStatus: 'approved',
+        actorType: 'device',
+        skip: false,
+      }),
+    ).resolves.toBeNull();
+  });
+});
