@@ -10,14 +10,16 @@ vi.mock('../jobs/dispatch-tick.js', () => ({
   dispatchTickForProject: (projectId: string) => dispatchTick(projectId),
 }));
 
+const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
+
 // ISS-449 — the loop monitor is the primary pass; the sweeper only drives it.
 // Mock it so these tests assert the sweeper's own contract (ordering, alarm
 // passes, still-active reapers) without pulling in the loop's reap graph.
 const runLoopMonitorMock = vi.fn(async (..._args: unknown[]) => ({
-  ackMisses: 0,
+  ackMisses: zeroAxis,
   sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
-  sessionLostJobs: 0,
-  resultMisses: 0,
+  sessionLostJobs: zeroAxis,
+  resultMisses: zeroAxis,
 }));
 vi.mock('../jobs/loop-monitor.js', () => ({
   runLoopMonitor: (...args: unknown[]) => runLoopMonitorMock(...(args as [])),
@@ -178,28 +180,30 @@ beforeEach(() => {
   emitWedgeMock.mockClear();
   runLoopMonitorMock.mockClear();
   runLoopMonitorMock.mockResolvedValue({
-    ackMisses: 0,
+    ackMisses: zeroAxis,
     sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
-    sessionLostJobs: 0,
-    resultMisses: 0,
+    sessionLostJobs: zeroAxis,
+    resultMisses: zeroAxis,
   });
 });
 
 describe('runPipelineSweep — loop-first ordering (ISS-449)', () => {
   it('runs the loop monitor FIRST and reports its result', async () => {
+    const ackMisses = { reaped: 1, killRequested: 0, awaitingKill: 0 };
+    const sessionLostJobs = { reaped: 3, killRequested: 0, awaitingKill: 0 };
     runLoopMonitorMock.mockResolvedValueOnce({
-      ackMisses: 1,
+      ackMisses,
       sessions: { queueTimedOut: 2, heartbeatTimedOut: 0, noClientAcked: 0 },
-      sessionLostJobs: 3,
-      resultMisses: 0,
+      sessionLostJobs,
+      resultMisses: zeroAxis,
     });
     const result = await runPipelineSweep();
     expect(runLoopMonitorMock).toHaveBeenCalledTimes(1);
     expect(result.loop).toEqual({
-      ackMisses: 1,
+      ackMisses,
       sessions: { queueTimedOut: 2, heartbeatTimedOut: 0, noClientAcked: 0 },
-      sessionLostJobs: 3,
-      resultMisses: 0,
+      sessionLostJobs,
+      resultMisses: zeroAxis,
     });
     // The loop ran before the alarm SELECTs hit the db (call order).
     const firstAlarmCall = dbExecute.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
@@ -246,7 +250,7 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
 });
 
 describe('alarmOrphanedJobs — demoted to alarm-only (was ISS-280 reconcile)', () => {
-  it('candidate SELECT covers active jobs + terminal sessions and skips result-event jobs', async () => {
+  it('candidate SELECT covers active jobs + terminal sessions, skips result-event jobs, and excludes rows still inside the kill-gate grace', async () => {
     dbExecute.mockResolvedValueOnce([]);
     const result = await alarmOrphanedJobs(new Date('2026-05-30T00:00:00Z'));
 
@@ -255,6 +259,7 @@ describe('alarmOrphanedJobs — demoted to alarm-only (was ISS-280 reconcile)', 
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
     expect(text).toMatch(/s\.status\s+IN\s*\(\s*'failed'\s*,\s*'cancelled_stale'\s*\)/);
     expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
+    expect(text).toMatch(/kill_requested_at\s+IS\s+NULL\s+OR\s+j\.kill_requested_at\s*<=/);
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
@@ -280,7 +285,7 @@ describe('alarmOrphanedJobs — demoted to alarm-only (was ISS-280 reconcile)', 
 });
 
 describe('alarmNeverClaimedDispatches — demoted to alarm-only (was ISS-378)', () => {
-  it('candidate SELECT adds the acked_at IS NULL term (lockstep with the ack hop)', async () => {
+  it('candidate SELECT adds the acked_at IS NULL term (lockstep with the ack hop) and excludes rows still inside the kill-gate grace', async () => {
     dbExecute.mockResolvedValueOnce([]);
     const result = await alarmNeverClaimedDispatches(new Date('2026-06-04T00:00:00Z'));
 
@@ -291,6 +296,7 @@ describe('alarmNeverClaimedDispatches — demoted to alarm-only (was ISS-378)', 
     expect(text).toMatch(/dispatched_at\s+IS\s+NOT\s+NULL/);
     expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events/);
     expect(text).not.toMatch(/kind\s*=\s*'result'/);
+    expect(text).toMatch(/kill_requested_at\s+IS\s+NULL\s+OR\s+j\.kill_requested_at\s*<=/);
   });
 
   it('alarms a match with an ack-hop wedge, no terminal write', async () => {

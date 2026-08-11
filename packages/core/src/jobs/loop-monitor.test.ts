@@ -64,10 +64,7 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// ISS-785 — the kill-gate primitives are unit-tested on their own
-// (kill-gate.test.ts); here they're mocked so loop-monitor tests stay
-// focused on hop wiring (when is each phase entered, what gets CAS'd/
-// finalized) without pulling the real ws/server graph (env validation) in.
+// cm:why kill-gate primitives are unit-tested on their own (kill-gate.test.ts) — mocked here so loop-monitor tests stay focused on hop wiring without pulling in the real ws/server graph (env validation)
 const requestJobKillMock = vi.fn(async (..._args: unknown[]) => 'requested' as const);
 let resolveKillConfirmationResult: { confirmed: boolean; outcome: string | null } = {
   confirmed: false,
@@ -165,7 +162,7 @@ describe('reapAckMisses — dispatch→ack hop', () => {
     expect(text).not.toMatch(/kind\s*=\s*'result'/);
   });
 
-  it('tick 1 (no kill requested yet): requests the kill, wedges, and does NOT touch job status', async () => {
+  it('tick 1 (no kill requested yet): requests the kill and does NOT touch job status or wedge', async () => {
     dbExecute.mockResolvedValueOnce([candidateRow()]);
 
     const result = await reapAckMisses(new Date('2026-06-12T00:00:00Z'));
@@ -174,12 +171,10 @@ describe('reapAckMisses — dispatch→ack hop', () => {
     expect(requestJobKillMock).toHaveBeenCalledTimes(1);
     expect(updateReturning).not.toHaveBeenCalled();
     expect(finalizeFailedJobMock).not.toHaveBeenCalled();
-    expect(emitWedgeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ hop: 'ack', entity: 'job', entityId: 'job-1', issueId: 'i1' }),
-    );
+    expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
-  it('tick 2 within the grace: waits, no status change', async () => {
+  it('tick 2 within the grace: re-publishes the kill (idempotent), waits, no status change', async () => {
     dbExecute.mockResolvedValueOnce([
       candidateRow({ kill_requested_at: new Date(Date.now() - 1_000) }),
     ]);
@@ -187,7 +182,7 @@ describe('reapAckMisses — dispatch→ack hop', () => {
     const result = await reapAckMisses(new Date('2026-06-12T00:00:00Z'));
 
     expect(result).toEqual({ reaped: 0, killRequested: 0, awaitingKill: 1 });
-    expect(requestJobKillMock).not.toHaveBeenCalled();
+    expect(requestJobKillMock).toHaveBeenCalledTimes(1);
     expect(updateReturning).not.toHaveBeenCalled();
   });
 
@@ -207,7 +202,6 @@ describe('reapAckMisses — dispatch→ack hop', () => {
       expect.objectContaining({ id: 'job-1' }),
       expect.objectContaining({ error: 'dispatch_unclaimed' }),
     );
-    // Confirmed (forced) — retry is allowed, no precomputedRetry override.
     expect(finalizeFailedJobMock.mock.calls[0]?.[1]).not.toHaveProperty('precomputedRetry');
   });
 

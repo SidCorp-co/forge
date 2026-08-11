@@ -67,11 +67,8 @@ const cancelBodySchema = z
   })
   .strict();
 
-// ISS-785 — the runner's answer to a `job.cancel` frame sent by the
-// kill-before-reap gate (`jobs/kill-gate.ts`). `not_found` is the important
-// value: it is the ONLY way a hop confirms a job that no runner ever claimed
-// (or already finished) is safe to fail-and-retry without waiting out a
-// stale-heartbeat window.
+// cm:why outcome:'not_found' is the only way to confirm-without-waiting-out-the-heartbeat-window that a job no runner claimed is safe to fail-and-retry
+// cm:edge protocol -> packages/core/src/jobs/kill-gate.ts — runner's answer to the job.cancel frame requestJobKill publishes
 const killAckBodySchema = z
   .object({
     outcome: z.enum(['killed', 'not_found']),

@@ -510,9 +510,7 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
     );
 
     expect(r.status).toBe(200);
-    // The status guard on the UPDATE is left to the WHERE clause (first ack
-    // wins via `killConfirmedAt IS NULL`) — the route itself never rejects a
-    // terminal job, since the ack is pure evidence, not a transition.
+    // cm:guard first-ack-wins is enforced by the UPDATE's WHERE (killConfirmedAt IS NULL) — the route must never reject a terminal job, the ack is evidence not a transition
     expect(txInsertValues).toHaveBeenCalledTimes(1);
   });
 });

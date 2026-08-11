@@ -693,14 +693,8 @@ export const jobs = pgTable(
     modelTier: text('model_tier', { enum: modelTiers }),
     attempts: integer('attempts').notNull().default(1),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
-    // ISS-785 — kill-before-reap gate. `killRequestedAt` is stamped the first
-    // time a reap candidate is detected (a `job.cancel` frame is published to
-    // the owning device in the same call); the job stays active until either
-    // `killConfirmedAt`/`killOutcome` land (runner terminal report or the new
-    // kill-ack) or the owning runner's heartbeat goes stale past
-    // `dispatchLivenessMs()`. Distinct from `cancellationRequested`, which
-    // `scheduleAutoRetryWithVerify` treats as an operator-cancel signal that
-    // must never retry — a reap kill must still be retryable once confirmed.
+    // cm:guard never conflate with cancellationRequested — a reap kill must stay retryable once confirmed, unlike an operator cancel
+    // cm:edge contract -> packages/core/src/jobs/retry.ts — scheduleAutoRetryWithVerify short-circuits retry on cancellationRequested, not on killRequestedAt/killOutcome
     killRequestedAt: timestamp('kill_requested_at', { withTimezone: true }),
     killConfirmedAt: timestamp('kill_confirmed_at', { withTimezone: true }),
     killOutcome: text('kill_outcome', {
@@ -753,9 +747,7 @@ export const jobs = pgTable(
     runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
     agentSessionIdIdx: index('jobs_agent_session_id_idx').on(t.agentSessionId),
-    // ISS-785 — the kill-gate phase-2 scan (jobs whose kill was requested at
-    // least killGraceMs() ago) filters by status too, but the partial index
-    // keeps it off the hot unfiltered jobs table.
+    // cm:why partial index keeps the kill-gate phase-2 scan off the hot unfiltered jobs table
     killRequestedAtIdx: index('jobs_kill_requested_at_idx')
       .on(t.status, t.killRequestedAt)
       .where(sql`kill_requested_at IS NOT NULL`),
@@ -801,8 +793,7 @@ export const jobEventKinds = [
   // is a plain text column, so this is additive with no migration; the
   // interventions metric (C6) counts rows with this kind.
   'intervention',
-  // ISS-785 — audit row written by POST /jobs/:id/kill-ack (runner's answer
-  // to a job.cancel: outcome killed|not_found in `data.outcome`).
+  // cm:why audit row written by POST /jobs/:id/kill-ack (runner's answer to a job.cancel: outcome killed|not_found in data.outcome)
   'kill_ack',
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];

@@ -32,10 +32,7 @@ vi.mock('../db/schema.js', () => ({
 }));
 
 vi.mock('../logger.js', () => ({ logger: { error: vi.fn(), info: vi.fn() } }));
-// ISS-785 — requestKillsForCascade (tested on its own below) is the only
-// thing in this module that needs jobs/kill-gate.js; cascadeCancelChildJobs
-// itself never calls it. Stub it out so importing this module doesn't pull
-// in the real db/client.js (env-validated) at collection time.
+// cm:why stub jobs/kill-gate.js so importing this module doesn't pull in the real db/client.js (env-validated) at collection time — cascadeCancelChildJobs itself never calls requestJobKill
 const requestJobKillMock = vi.fn(
   async (..._args: unknown[]): Promise<'requested' | 'no_device'> => 'requested',
 );

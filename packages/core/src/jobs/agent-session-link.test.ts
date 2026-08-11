@@ -123,12 +123,12 @@ describe('jobs/agent-session-link', () => {
     });
 
     it('ISS-785 — mints a FRESH session row for a retry job instead of reusing the parent, chaining metadata + carrying pipelineHealth forward', async () => {
-      pushSelect({ agentSessionId: 'sess-parent' }); // parent job lookup
+      pushSelect({ agentSessionId: 'sess-parent' });
       pushSelect({
         id: 'sess-parent',
         metadata: { rootSessionId: 'sess-root' },
         pipelineHealth: { recoveryStats: { totalFailures: 2 } },
-      }); // parent session lookup
+      });
 
       const result = await ensureAgentSessionForJob(
         { ...baseJob, retryOf: 'job-0', attempts: 2 } as never,
@@ -142,18 +142,15 @@ describe('jobs/agent-session-link', () => {
       expect(meta.attempt).toBe(2);
       expect(meta.retryOfJobId).toBe('job-0');
       expect(meta.retryOfSessionId).toBe('sess-parent');
-      // Inherits the ROOT of the whole chain, not just the immediate parent.
       expect(meta.rootSessionId).toBe('sess-root');
-      // Recovery badge carries forward instead of resetting to zero.
       expect(inserted?.values.pipelineHealth).toEqual({ recoveryStats: { totalFailures: 2 } });
-      // The parent row itself is never touched — only the new job→session link.
       expect(updateCalls).toHaveLength(1);
       expect(updateCalls[0]?.table).toBe('jobs');
       expect(updateCalls[0]?.set.agentSessionId).toBe('sess-new');
     });
 
     it('ISS-785 — a retry whose parent job never got a session (defensive) still mints a fresh row, just without retryOfSessionId/rootSessionId', async () => {
-      pushSelect({ agentSessionId: null }); // parent job found, but no session
+      pushSelect({ agentSessionId: null });
 
       const result = await ensureAgentSessionForJob(
         { ...baseJob, retryOf: 'job-prev', attempts: 3 } as never,
@@ -167,9 +164,7 @@ describe('jobs/agent-session-link', () => {
       expect(meta.retryOfJobId).toBe('job-prev');
       expect(meta.retryOfSessionId).toBeUndefined();
       expect(meta.rootSessionId).toBeUndefined();
-      // ISS-434 is not resurrected: there is no reuse+reset branch left to
-      // revive a terminal session, so a NULL-session retry clone can only
-      // ever mint a fresh `queued` row — never inherit a terminal one.
+      // cm:guard a NULL-session retry clone must mint a fresh queued row, never inherit a terminal one — don't resurrect ISS-434's reuse+reset
       expect(insertCalls[0]?.values.status).toBe('queued');
     });
 

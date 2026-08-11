@@ -63,9 +63,11 @@ export type RequestKillResult = 'requested' | 'no_device';
 /**
  * Stamp `killRequestedAt` (idempotent — a second call for the same job is a
  * no-op) and publish `job.cancel` to the owning device room. Returns
- * `'no_device'` when the job has no `deviceId` — there is no channel to kill
- * over, so the caller must fall back to confirmation-by-absence once the
- * grace elapses.
+ * `'no_device'` when the job has no `deviceId` (e.g. an antigravity-remote
+ * runner) — there is no channel to kill over. `resolveKillConfirmation`
+ * still falls back to the owning RUNNER's heartbeat going stale in that case,
+ * but a live, un-cancelable no-device job parks at `waiting` until that
+ * heartbeat lapses — there is no faster confirmation path today.
  */
 export async function requestJobKill(
   job: KillableJobRef,

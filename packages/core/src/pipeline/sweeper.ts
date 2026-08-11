@@ -37,6 +37,7 @@ import {
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
+import { killGraceMs } from '../jobs/kill-gate.js';
 import {
   type LoopMonitorResult,
   type LoopScope,
@@ -633,10 +634,12 @@ type JobAlarmRow = {
  * propagation (`reapSessionLostJobs`, was ISS-280 `reconcileOrphanedJobs`).
  */
 export async function alarmOrphanedJobs(
-  _now: Date = new Date(),
+  now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<OrphanReconcileResult> {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
+  // cm:edge lockstep -> packages/core/src/jobs/kill-gate.ts — a gated row deliberately survives the loop until killGraceMs() elapses; exclude it or every gate trips a false loop-miss
+  const killGateCutoffIso = new Date(now.getTime() - killGraceMs()).toISOString();
   const candidates = await db.execute<JobAlarmRow>(sql`
     SELECT j.id, j.project_id, j.issue_id
     FROM jobs j
@@ -647,6 +650,7 @@ export async function alarmOrphanedJobs(
         SELECT 1 FROM job_events e
         WHERE e.job_id = j.id AND e.kind = 'result'
       )
+      AND (j.kill_requested_at IS NULL OR j.kill_requested_at <= ${killGateCutoffIso})
       ${projectClause}
   `);
 
@@ -667,6 +671,7 @@ export async function alarmNeverClaimedDispatches(
 ): Promise<OrphanReconcileResult> {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   const cutoffIso = new Date(now.getTime() - getLoopThresholds().ackMs).toISOString();
+  const killGateCutoffIso = new Date(now.getTime() - killGraceMs()).toISOString();
   const candidates = await db.execute<JobAlarmRow>(sql`
     SELECT j.id, j.project_id, j.issue_id
     FROM jobs j
@@ -677,6 +682,7 @@ export async function alarmNeverClaimedDispatches(
       AND NOT EXISTS (
         SELECT 1 FROM job_events e WHERE e.job_id = j.id
       )
+      AND (j.kill_requested_at IS NULL OR j.kill_requested_at <= ${killGateCutoffIso})
       ${projectClause}
   `);
 

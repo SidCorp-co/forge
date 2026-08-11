@@ -2,63 +2,18 @@
  * ISS-449 (ISS-442 C3 / invariant I3) — the closed job loop.
  *
  * Models the job lifecycle as four hops — dispatch → ack → heartbeat →
- * result — each with ONE timeout and exactly ONE miss-handler. This module is
- * the PRIMARY reaper for every non-progressing kernel state; the four legacy
- * sweepers (`sweepZombieSessions`, `reconcileOrphanedJobs`,
- * `reconcileNeverClaimedDispatches` in pipeline/sweeper.ts and `runStaleSweep`
- * in jobs/stale-detector.ts) are demoted to alarm-only: they keep their
- * detection SELECTs but perform no terminal writes — a row they still match
- * after this loop ran is a loop MISS, logged as `loop-miss` (coverage proof
- * during the cutover; deletion happens at the ISS-442 parent integration).
+ * result — each with ONE timeout and exactly ONE miss-handler, all reaps
+ * routed through the same `finalizeFailedJob` tail as a runner-reported
+ * failure. The PRIMARY reaper for non-progressing kernel state; the legacy
+ * sweepers in `pipeline/sweeper.ts` / `jobs/stale-detector.ts` are demoted to
+ * alarm-only (`loop-miss`) coverage-proof passes.
  *
- * Hops and their miss-handlers (all terminal writes via
- * `applyKernelTransition`, all job reaps routed through the SAME
- * `finalizeFailedJob` tail as a runner-reported failure — verify-first retry
- * or park-at-`waiting`):
+ * JOB-axis hops (dispatch→ack, session_lost, result-stale) are two-phase via
+ * `jobs/kill-gate.ts` (ISS-785): request-kill, then fail only once confirmed
+ * — see the design doc for the hop table and the kill-gate rationale.
  *
- *   1. dispatch→ack — the runner explicitly acks a claim (`POST
- *      /jobs/:id/ack`, ISS-449; first job_event doubles as a fallback ack).
- *      A `dispatched` job with no ack and zero events past the grace window
- *      means no runner ever claimed it → fail `dispatch_unclaimed`
- *      (kind `infra`, fast failover). Replaces
- *      `reconcileNeverClaimedDispatches` (ISS-378).
- *   2. ack→heartbeat (claim) — a pipeline/pm session sitting `queued` past
- *      the queue timeout was never picked up by a worker → fail the session
- *      `queue_timeout`. Replaces zombie pass 1.
- *   3. heartbeat — (a) a `running` pipeline/pm session whose heartbeat went
- *      stale → fail `heartbeat_timeout`; (b) a chat/schedule session that
- *      never got a working client (`claudeSessionId` NULL) → fail
- *      `no_client_ack` (ISS-420); (c) a job whose linked session is terminal
- *      with no `result` event → fail `session_lost` (kind `infra`). Replaces
- *      zombie passes 2–3 + `reconcileOrphanedJobs` (ISS-280).
- *   4. result — a claimed job that emitted no event for RESULT_QUIET_MINUTES
- *      (and never a `result`) is a wedged worker → fail `stale`
- *      (kind `timeout`). Replaces `runStaleSweep` (ISS-258), now evaluated on
- *      the 1-minute loop tick instead of the old 5-minute schedule.
- *
- * ISS-785 — the three JOB-axis hops above (1, 3c, 4) no longer fail the job
- * on the same tick they detect it. Failing it immediately let a false
- * "silent death" spawn a genuine second agent on the same worktree racing the
- * still-alive first one (ISS-37: the first agent reverted a merge the retry
- * had no idea about). Each is now two-phase via `jobs/kill-gate.ts`: tick 1
- * stamps `kill_requested_at` + sends the runner a `job.cancel` and leaves the
- * job active; only once termination is confirmed (or, for the ack hop only,
- * once the grace elapses on a job no runner ever claimed) does a later tick
- * flip it to `failed` and allow a retry. The SESSION-axis hop (2, 3a/3b) is
- * unchanged — it fails a `agent_sessions` row directly, which has no runner
- * process of its own to kill.
- *
- * Every miss-handler emits a `pipeline_wedge` event (ISS-452 C6 / I7) carrying
- * WHERE (the hop) + WHY (the reason) + WHAT a human should do, so
- * `interventions/issue` is measurable.
- *
- * Constraint: strict-sequential dispatch is untouched — the loop only REAPS
- * non-progressing state; it never relaxes terminal-before-next gating.
- *
- * Scheduling: `runLoopMonitor` runs as the FIRST pass of the per-minute
- * pipeline-sweeper tick (pipeline/sweeper.ts `runPipelineSweep`), so the
- * demoted alarm passes in the same tick only see rows the loop failed to
- * handle.
+ * Full hop table + the ISS-785 kill-gate model:
+ * docs/architecture/job-loop-monitor.md
  */
 
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
@@ -237,8 +192,6 @@ interface KillGateReapConfig {
   finalizeError?: string;
   failureKind: 'infra' | 'timeout';
   failureReason: string;
-  requestedWedgeReason: string;
-  requestedWedgeAction: string;
   confirmedWedgeReason: string;
   confirmedWedgeAction: string;
   /**
@@ -270,20 +223,14 @@ async function resolveKillGateDecision(
   const ref = toKillableRef(row);
 
   if (!ref.killRequestedAt) {
+    // cm:guard no wedge here — nothing is actionable until the kill is confirmed or times out; a wedge now would occupy the per-entity dedupe slot (wedge.ts) and swallow the actionable phase-2 wedge below
     await requestJobKill(ref, cfg.error);
-    await emitPipelineWedge({
-      projectId: row.project_id,
-      issueId: row.issue_id,
-      hop: cfg.hop,
-      entity: 'job',
-      entityId: row.id,
-      reason: cfg.requestedWedgeReason,
-      action: cfg.requestedWedgeAction,
-    });
     return { phase: 'kill_requested' };
   }
 
   if (Date.now() - ref.killRequestedAt.getTime() < killGraceMs()) {
+    // cm:why re-publish job.cancel on every tick while awaiting confirmation — a WS blip that drops the first publish must not park a job whose runner reconnects before the grace elapses; idempotent, the runner answers not_found
+    await requestJobKill(ref, cfg.error);
     return { phase: 'awaiting_kill' };
   }
 
@@ -318,7 +265,7 @@ async function resolveKillGateDecision(
     actor: { type: 'sweeper' },
     source: 'loop-monitor',
   });
-  if (!updated) return { phase: 'lost_race' }; // a lifecycle call finalized it first
+  if (!updated) return { phase: 'lost_race' };
 
   return { phase: 'reaped', updated, confirmed };
 }
@@ -360,11 +307,11 @@ async function finalizeKillGateReap(
  * zero events past the grace window: no runner claimed it. CAS on
  * `status='dispatched'` so a runner that acks in the same instant wins.
  *
- * ISS-785 — still two-phase (a kill is requested and wedged before the job
- * fails), but the candidate predicate itself proves no process exists, so
- * confirmation is forced true once the grace elapses (see
- * `KillGateReapConfig.forceConfirmAfterGrace`) — this hop's fast failover is
- * unchanged from before the kill gate.
+ * ISS-785 — still two-phase (a kill is requested before the job fails), but
+ * the candidate predicate itself proves no process exists, so confirmation
+ * is forced true once the grace elapses (see
+ * `KillGateReapConfig.forceConfirmAfterGrace`) — this hop now fails at
+ * `ackMs + killGraceMs()` instead of `ackMs` alone.
  */
 export async function reapAckMisses(
   now: Date = new Date(),
@@ -399,10 +346,6 @@ export async function reapAckMisses(
         failureKind: 'infra',
         failureReason:
           'dispatch never claimed by a runner (no ack / no started event within grace window)',
-        requestedWedgeReason:
-          'runner never acked the dispatch (no ack, zero job events) within the grace window',
-        requestedWedgeAction:
-          'A job.cancel was sent to the assigned device as a precaution (no runner should have claimed this job at all). Check the device is online; the job fails automatically once the grace elapses.',
         confirmedWedgeReason:
           'runner never acked the dispatch (no ack, zero job events) within the grace window',
         confirmedWedgeAction:
@@ -680,10 +623,6 @@ export async function reapSessionLostJobs(
         failureKind: 'infra',
         failureReason:
           'agent session terminated without job completion (silent runner/agent death)',
-        requestedWedgeReason:
-          'linked agent session terminated without the job reporting completion — a job.cancel was sent to confirm the process is actually gone before failing it',
-        requestedWedgeAction:
-          'No action needed yet. If the device is online and the process is genuinely dead, the job fails automatically once the kill is confirmed.',
         confirmedWedgeReason:
           'linked agent session terminated without the job reporting completion',
         confirmedWedgeAction:
@@ -751,9 +690,6 @@ export async function reapResultMisses(
         finalizeError: STALE_REASON,
         failureKind: 'timeout',
         failureReason: STALE_REASON,
-        requestedWedgeReason: `${STALE_REASON} — a job.cancel was sent to confirm the worker is actually wedged before failing it`,
-        requestedWedgeAction:
-          'No action needed yet. The job fails automatically once the kill is confirmed or the runner goes stale.',
         confirmedWedgeReason: STALE_REASON,
         confirmedWedgeAction:
           'The job was failed and routed to a device-rotated retry. Check the original device for a hung Claude CLI / runaway step.',

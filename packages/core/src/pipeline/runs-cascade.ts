@@ -13,12 +13,9 @@
  * This module is the single SSOT for the cascade so MCP cancel and natural
  * close cannot drift.
  *
- * ISS-785 — the cascade only ever touches `jobs` rows (pipeline jobs), which
- * the runner keys by `jobId` — `agent:abort` (keyed by `agent_sessions.id`,
- * chat-only) was ALWAYS a no-op on this path, so a cancelled/completed run
- * left its still-active agent process writing git with nothing telling it to
- * stop. `requestKillsForCascade` fixes that with the real primitive,
- * `job.cancel` (see `jobs/kill-gate.ts`).
+ * ISS-785 — `agent:abort` (keyed by `agent_sessions.id`) was always a no-op
+ * for pipeline jobs (keyed by `jobId`); `requestKillsForCascade` fixes that
+ * with the real primitive, `job.cancel` (see `jobs/kill-gate.ts`).
  */
 
 import { and, eq, inArray } from 'drizzle-orm';

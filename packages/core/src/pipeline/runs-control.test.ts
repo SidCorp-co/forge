@@ -175,10 +175,7 @@ describe('cancelPipelineRun', () => {
 
     const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
     expect(events.filter((e) => e === 'pipeline_run.status_changed')).toHaveLength(1);
-    // ISS-785 — `agent:abort` can't kill a pipeline job's process (chat-only
-    // primitive); the cascade now fans out `job.cancel`, ONE PER JOB (not per
-    // session) so job-1 and job-2 — which share device dev-A but are
-    // DIFFERENT processes — each get their own kill request.
+    // cm:why job.cancel fans out ONE PER JOB (not per session) — job-1/job-2 share device dev-A but are different processes, each needs its own kill request
     expect(events.filter((e) => e === 'agent:abort')).toHaveLength(0);
     const kills = publishSpy.mock.calls.filter(
       (c) => (c[1] as { event: string }).event === 'job.cancel',

@@ -134,11 +134,7 @@ export async function ensureAgentSessionForJob(
     const payloadStageStatus = deriveStageStatus(job.payload);
     if (payloadStageStatus) metadata.stageStatus = payloadStageStatus;
 
-    // ISS-785 — retry continuity, metadata-only (no schema change on the
-    // session axis; jobs already chain via `retryOf`). `rootSessionId`
-    // inherits from the parent's own metadata so the whole chain — not just
-    // the immediate parent — resolves to the same root regardless of how
-    // many attempts preceded this one.
+    // cm:why rootSessionId inherits from the parent's OWN metadata (not just parentSession.id) so the whole retry chain resolves to one root regardless of attempt count
     if (job.retryOf) {
       metadata.attempt = job.attempts;
       metadata.retryOfJobId = job.retryOf;
@@ -169,9 +165,7 @@ export async function ensureAgentSessionForJob(
         dispatchedAt: new Date(),
         repoPath: context.repoPath,
         metadata: metadata as never,
-        // ISS-785 — carry the recovery badge (recoveryStats/autoRetries)
-        // forward from the parent attempt so it keeps accumulating across a
-        // retry chain instead of resetting to zero on every new row.
+        // cm:why carry pipelineHealth (recoveryStats/autoRetries) forward so it accumulates across a retry chain instead of resetting per row
         ...(parentSession?.pipelineHealth
           ? { pipelineHealth: parentSession.pipelineHealth as never }
           : {}),

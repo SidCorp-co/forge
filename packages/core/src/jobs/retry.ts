@@ -350,18 +350,7 @@ export async function scheduleAutoRetryWithVerify(
       attempts: job.attempts + 1,
       retryOf: job.id,
       retryAfterAt,
-      // Intentionally DO NOT carry agentSessionId onto the clone: it must be
-      // born NULL. The parent's linked session is terminal (`failed` after the
-      // failure that triggered this retry), and copying it here would (a) let
-      // `ensureAgentSessionForJob` early-return at dispatch, and (b) make the
-      // job a candidate for `reconcileOrphanedJobs`, which reaps it
-      // `session_lost` on the next sweeper tick. Leaving it NULL means the
-      // orphan reconciler's JOIN on agent_session_id finds no row, and
-      // `ensureAgentSessionForJob` mints a FRESH `agent_sessions` row at
-      // dispatch (ISS-785 — no more reuse+reset of the parent's row; every
-      // attempt gets its own, chained via metadata.attempt/retryOfSessionId/
-      // rootSessionId so the reaped attempt's transcript is never
-      // overwritten). (ISS-434)
+      // cm:guard never carry agentSessionId onto the clone — the parent's session is terminal, and copying it would short-circuit ensureAgentSessionForJob's dispatch-time insert and make the job a false reconcileOrphanedJobs candidate. Leaving it NULL lets ensureAgentSessionForJob mint a fresh row, chained via metadata.attempt/retryOfSessionId/rootSessionId, never overwriting the reaped attempt's transcript (ISS-434/ISS-785).
     })
     .returning({ id: jobs.id });
 
