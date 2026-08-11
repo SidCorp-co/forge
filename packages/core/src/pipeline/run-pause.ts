@@ -122,3 +122,29 @@ export async function resumeRun(args: {
   const rows = await resumeRunsWhere(eq(pipelineRuns.id, args.runId), { bus: args.bus });
   return rows[0] ?? null;
 }
+
+/**
+ * Pause an issue's open (running) `pipeline_run` by issue id, for callers
+ * that don't already have the run id in hand (e.g. `apply-transition.ts`'s
+ * reopen-cap escalation). Null when the issue has no `running` issue-kind
+ * run — e.g. a device actor transitions before any job opened one.
+ */
+export async function pauseOpenRunForIssue(args: {
+  issueId: string;
+  pauseReason: string;
+  bus?: HooksBus | undefined;
+}): Promise<PipelineRunRow | null> {
+  const [run] = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.issueId, args.issueId),
+        eq(pipelineRuns.kind, 'issue'),
+        eq(pipelineRuns.status, 'running'),
+      ),
+    )
+    .limit(1);
+  if (!run) return null;
+  return pauseRun({ runId: run.id, pauseReason: args.pauseReason, bus: args.bus });
+}

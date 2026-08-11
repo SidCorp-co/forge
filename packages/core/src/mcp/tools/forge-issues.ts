@@ -13,7 +13,10 @@ import {
   taskStatuses,
   tasks,
 } from '../../db/schema.js';
-import { applyStatusTransition } from '../../issues/apply-transition.js';
+import {
+  type StatusTransitionResult,
+  applyStatusTransition,
+} from '../../issues/apply-transition.js';
 import {
   AttachmentError,
   type DecodedAttachment,
@@ -372,6 +375,18 @@ type IssueListProjection = Pick<
  * token cap. Heavy fields stay reachable per-issue via `action=get`. Do NOT
  * widen this back to `serialize()`.
  */
+// cm:why ISS-766 — without this the tool result says `status: 'updated'`/echoes the fresh issue with nothing marking the redirect, so an agent that asked for `reopen` believes it got `reopen` and may retry the identical call forever
+function applyReopenCapEscalationNote(
+  output: Record<string, unknown>,
+  result: StatusTransitionResult,
+): void {
+  output.capEscalated = true;
+  output.requestedStatus = result.requestedStatus;
+  output.note =
+    `Reopen cap reached (reopenCount=${result.reopenCount}) — the issue was parked at \`waiting\` ` +
+    `instead of \`${result.requestedStatus}\`. Do not retry the reopen; report this outcome and stop.`;
+}
+
 function serializeListRow(row: IssueListProjection): Record<string, unknown> {
   return {
     documentId: row.id,
@@ -1012,12 +1027,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // ISS-596: when `data.unblock:true` is set on an `on_hold → *` update,
         // thread `reason:'operator_unblock'` so the orchestrator's ISS-411
         // hard-stop lets the transition re-engage the pipeline.
+        let transitionResult: StatusTransitionResult | undefined;
         if (input.data.status && input.data.status !== issue.status) {
           const useOperatorUnblock =
             input.data.unblock === true &&
             issue.status === 'on_hold' &&
             input.data.status !== 'on_hold';
-          await applyStatusTransition(
+          transitionResult = await applyStatusTransition(
             issue,
             input.data.status,
             device,
@@ -1089,7 +1105,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         const fresh = await loadIssue(issue.id);
-        return { ...(await serializeWithAttachments(fresh)), status: 'updated' };
+        const updateResult: Record<string, unknown> = {
+          ...(await serializeWithAttachments(fresh)),
+          status: 'updated',
+        };
+        if (transitionResult?.capEscalated) {
+          applyReopenCapEscalationNote(updateResult, transitionResult);
+        }
+        return updateResult;
       }
 
       case 'transition': {
@@ -1100,9 +1123,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
-        await applyStatusTransition(issue, target, device);
+        const transitionResult = await applyStatusTransition(issue, target, device);
         const fresh = await loadIssue(issue.id);
-        return serializeWithAttachments(fresh);
+        const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
+        if (transitionResult.capEscalated) {
+          applyReopenCapEscalationNote(transitionOutput, transitionResult);
+        }
+        return transitionOutput;
       }
 
       // ISS-286 — explicit, idempotent, auditable merge-marker. Decouples

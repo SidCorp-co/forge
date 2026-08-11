@@ -48,6 +48,7 @@ interface HoldMetricsState {
   runnerDeath: RunnerDeathHistogram;
   dispatchBarrierSkips: Map<GateSkipReason, DispatchBarrierCounters>;
   resumeBoundFresh: Map<ResumeBoundReason, ResumeBoundFreshCounters>;
+  reopenCapEscalated: number;
 }
 
 function makeState(): HoldMetricsState {
@@ -61,6 +62,7 @@ function makeState(): HoldMetricsState {
     runnerDeath: histogram,
     dispatchBarrierSkips: new Map(),
     resumeBoundFresh: new Map(),
+    reopenCapEscalated: 0,
   };
 }
 
@@ -92,6 +94,10 @@ export function recordResumeBoundFresh(reason: ResumeBoundReason): void {
   }
 }
 
+export function recordReopenCapEscalated(): void {
+  state.reopenCapEscalated += 1;
+}
+
 export function recordRunnerDeathDetection(seconds: number): void {
   if (!Number.isFinite(seconds) || seconds < 0) return;
   state.runnerDeath.count += 1;
@@ -111,6 +117,7 @@ export interface HoldMetricsSnapshot {
   };
   dispatchBarrierSkips: DispatchBarrierCounters[];
   resumeBoundFresh: ResumeBoundFreshCounters[];
+  reopenCapEscalated: number;
 }
 
 export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
@@ -125,6 +132,7 @@ export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
     },
     dispatchBarrierSkips: [...state.dispatchBarrierSkips.values()],
     resumeBoundFresh: [...state.resumeBoundFresh.values()],
+    reopenCapEscalated: state.reopenCapEscalated,
   };
 }
 
