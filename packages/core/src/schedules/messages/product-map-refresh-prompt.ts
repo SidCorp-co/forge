@@ -76,7 +76,7 @@ For each existing entry, decide: UNCHANGED (skip) · CHANGED (a newer shipped is
 ${
   isAuto
     ? `For each CHANGED/NEW entry, call \`forge_knowledge action=upsert\` with the refreshed body (keep the same slug for updates so it replaces in place; kebab-slug for new). Set \`authoredBy: "agent"\`, \`injection: "on_demand"\`. Leave UNCHANGED entries untouched (do not bump them).`
-    : `DRY-RUN — call NOTHING that writes. Output a list of {slug, kind, change: updated|new, why, backing issue ids}. Do NOT call forge_knowledge upsert/delete and do NOT create issues.`
+    : 'DRY-RUN — call NOTHING that writes. Output a list of {slug, kind, change: updated|new, why, backing issue ids}. Do NOT call forge_knowledge upsert/delete and do NOT create issues.'
 }
 
 ## STEP 5 — Report

@@ -5,8 +5,8 @@ import type { CandidateSignal } from './reopen-loop.js';
 function hasOpenItems(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return false;
   const p = payload as Record<string, unknown>;
-  const unknowns = Array.isArray(p['unknowns']) ? p['unknowns'] : [];
-  const limitations = Array.isArray(p['knownLimitations']) ? p['knownLimitations'] : [];
+  const unknowns = Array.isArray(p.unknowns) ? p.unknowns : [];
+  const limitations = Array.isArray(p.knownLimitations) ? p.knownLimitations : [];
   return unknowns.length > 0 || limitations.length > 0;
 }
 

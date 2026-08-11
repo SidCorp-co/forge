@@ -125,13 +125,13 @@ describe('jobCompleted — one report → one candidate', () => {
     expect(upsertMock).toHaveBeenCalledTimes(1);
     const [projectId, candidate] = upsertMock.mock.calls[0] as [string, Record<string, unknown>];
     expect(projectId).toBe('proj-1');
-    expect(candidate['signalType']).toBe('agent_self_report');
-    expect(candidate['signalKey']).toBe('self_report:skill:forge-code:friction');
-    expect((candidate['evidence'] as Record<string, unknown>)['outcome']).toBe('completed');
+    expect(candidate.signalType).toBe('agent_self_report');
+    expect(candidate.signalKey).toBe('self_report:skill:forge-code:friction');
+    expect((candidate.evidence as Record<string, unknown>).outcome).toBe('completed');
 
     expect(updateSetMock).toHaveBeenCalledTimes(1);
     const updateArg = updateSetMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(updateArg['candidateId']).toBe('cand-1');
+    expect(updateArg.candidateId).toBe('cand-1');
   });
 });
 
@@ -168,9 +168,9 @@ describe('jobFailed — outcome recorded as failed', () => {
 
     expect(upsertMock).toHaveBeenCalledTimes(1);
     const [, candidate] = upsertMock.mock.calls[0] as [string, Record<string, unknown>];
-    const evidence = candidate['evidence'] as Record<string, unknown>;
-    expect(evidence['outcome']).toBe('failed');
-    expect(evidence['failureKind']).toBe('infra');
+    const evidence = candidate.evidence as Record<string, unknown>;
+    expect(evidence.outcome).toBe('failed');
+    expect(evidence.failureKind).toBe('infra');
   });
 });
 

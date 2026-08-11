@@ -68,7 +68,7 @@ describe('notify-transitions', () => {
           type: 'issue_status_changed',
           issueId: ISSUE_ID,
           projectId: PROJECT_ID,
-          title: expect.stringContaining(`ISS-42`),
+          title: expect.stringContaining('ISS-42'),
         }),
       );
     },

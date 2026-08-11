@@ -289,12 +289,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `I evaluated release-conflict-2tier against this 2-branch project.\n` +
-          `baseBranch=main, productionBranch=release — condition met.\n` +
-          `Created draft issue ISS-999.\n` +
-          `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
-          `{"key":"release-conflict-2tier","version":1,"status":"proposed"}`,
+        content: `I evaluated release-conflict-2tier against this 2-branch project.\nbaseBranch=main, productionBranch=release — condition met.\nCreated draft issue ISS-999.\n${SKILL_IMPROVE_REPORT_SENTINEL}\n{"key":"release-conflict-2tier","version":1,"status":"proposed"}`,
       },
     ];
     const result = extractReportFromMessages(messages);
@@ -305,11 +300,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `Evaluated release-conflict-2tier.\n` +
-          `baseBranch=main === productionBranch=main — single-branch, condition not met.\n` +
-          `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
-          `{"key":"release-conflict-2tier","version":1,"status":"skipped","reason":"baseBranch equals productionBranch — single-branch project"}`,
+        content: `Evaluated release-conflict-2tier.\nbaseBranch=main === productionBranch=main — single-branch, condition not met.\n${SKILL_IMPROVE_REPORT_SENTINEL}\n{"key":"release-conflict-2tier","version":1,"status":"skipped","reason":"baseBranch equals productionBranch — single-branch project"}`,
       },
     ];
     const result = extractReportFromMessages(messages);
@@ -321,10 +312,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `Project has web app. Condition met.\n` +
-          `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
-          `{"key":"qa-quality-bar","version":1,"status":"proposed"}`,
+        content: `Project has web app. Condition met.\n${SKILL_IMPROVE_REPORT_SENTINEL}\n{"key":"qa-quality-bar","version":1,"status":"proposed"}`,
       },
     ];
     const result = extractReportFromMessages(messages);
@@ -336,10 +324,7 @@ describe('extractReportFromMessages', () => {
     const messages = [
       {
         role: 'assistant',
-        content:
-          `No frontend surface found. Condition not met.\n` +
-          `${SKILL_IMPROVE_REPORT_SENTINEL}\n` +
-          `{"key":"qa-quality-bar","version":1,"status":"skipped","reason":"project has no frontend/UI surface — backend-only service"}`,
+        content: `No frontend surface found. Condition not met.\n${SKILL_IMPROVE_REPORT_SENTINEL}\n{"key":"qa-quality-bar","version":1,"status":"skipped","reason":"project has no frontend/UI surface — backend-only service"}`,
       },
     ];
     const result = extractReportFromMessages(messages);

@@ -326,7 +326,7 @@ projectHealthRoutes.get('/health', async (c) => {
       totalActive,
       statusDistribution: dist,
       blockers,
-      pendingEscalations: dist['needs_info'] ?? 0,
+      pendingEscalations: dist.needs_info ?? 0,
       avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
       liveRuns: liveRunsByProject.get(p.id) ?? 0,
       runnerCount: runnersByProject.get(p.id) ?? 0,

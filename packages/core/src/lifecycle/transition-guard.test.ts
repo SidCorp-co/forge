@@ -115,8 +115,7 @@ describe('kernel transition single-writer guard (I2)', () => {
     }
     expect(
       violations,
-      `Terminal status on jobs/agent_sessions/pipeline_runs must go through ` +
-        `applyKernelTransition (lifecycle/transition.ts). Offending sites:\n${violations.join('\n')}`,
+      `Terminal status on jobs/agent_sessions/pipeline_runs must go through applyKernelTransition (lifecycle/transition.ts). Offending sites:\n${violations.join('\n')}`,
     ).toEqual([]);
   });
 

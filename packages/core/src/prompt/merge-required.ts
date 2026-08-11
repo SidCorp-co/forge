@@ -61,7 +61,7 @@ export function buildMergeRequiredBlock(args: BuildMergeRequiredBlockArgs): stri
       `1. Ensure issue \`${args.issueId}\` branch is fully committed and pushed to origin`,
     );
     lines.push(`2. \`git checkout ${b.ref} && git pull origin ${b.ref}\``);
-    lines.push(`3. \`git merge --no-ff origin/<issue-branch>\` (or fast-forward if linear)`);
+    lines.push('3. `git merge --no-ff origin/<issue-branch>` (or fast-forward if linear)');
     lines.push(`4. \`git push origin ${b.ref}\``);
     lines.push(
       '5. Verify the merge commit exists on remote before issuing the final status transition',

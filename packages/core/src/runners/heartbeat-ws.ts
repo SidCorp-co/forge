@@ -193,9 +193,9 @@ export async function handleRunnerUpdate(ws: RunnerWs, msg: unknown): Promise<vo
   if (!parsed.success) return;
   const input = parsed.data;
   const update: Record<string, unknown> = { lastSeenAt: new Date(), updatedAt: new Date() };
-  if (input.capabilities) update['capabilities'] = input.capabilities;
-  if (input.labels) update['labels'] = input.labels;
-  if (input.name) update['name'] = input.name;
+  if (input.capabilities) update.capabilities = input.capabilities;
+  if (input.labels) update.labels = input.labels;
+  if (input.name) update.name = input.name;
   await db
     .update(runners)
     .set(update)

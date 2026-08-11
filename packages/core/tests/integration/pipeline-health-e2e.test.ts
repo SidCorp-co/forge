@@ -86,7 +86,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
-        ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status}, 'medium',
+        ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status}, 'medium',
         (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);

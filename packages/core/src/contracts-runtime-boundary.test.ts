@@ -76,8 +76,7 @@ describe('@forge/contracts runtime boundary', () => {
     }
     expect(
       offenders,
-      `Value import(s) from @forge/contracts crash core at boot (ERR_MODULE_NOT_FOUND). ` +
-        `Use \`import type\` or inline the value into core:\n  ${offenders.join('\n  ')}`,
+      `Value import(s) from @forge/contracts crash core at boot (ERR_MODULE_NOT_FOUND). Use \`import type\` or inline the value into core:\n  ${offenders.join('\n  ')}`,
     ).toEqual([]);
   });
 });

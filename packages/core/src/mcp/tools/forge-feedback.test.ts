@@ -360,9 +360,9 @@ describe('forge_feedback list', () => {
     const fatReports = Array.from({ length: 200 }, (_, i) => ({
       ...baseReport,
       id: `rr${i}rrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrrr`.slice(0, 36),
-      summary: `A`.repeat(300),
-      detail: `B`.repeat(500),
-      suggestion: `C`.repeat(200),
+      summary: 'A'.repeat(300),
+      detail: 'B'.repeat(500),
+      suggestion: 'C'.repeat(200),
     }));
     selectLimit.mockResolvedValueOnce(fatReports);
 

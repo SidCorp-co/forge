@@ -71,7 +71,7 @@ export const antigravityAdapter: RunnerAdapter = {
       prompt: (job.payload as { prompt?: unknown })?.prompt,
       payload: job.payload,
       ...(skillsZip ? { skills_zip: skillsZip.url } : {}),
-      callback_url: `${process.env['CORE_PUBLIC_URL'] ?? ''}/api/runners/${runner.id}/events`,
+      callback_url: `${process.env.CORE_PUBLIC_URL ?? ''}/api/runners/${runner.id}/events`,
     };
     try {
       const res = await fetch(url, {

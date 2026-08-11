@@ -478,7 +478,7 @@ runnerRoutes.post(
       const next = {
         ...config,
         quota: {
-          ...(config['quota'] as object | undefined),
+          ...(config.quota as object | undefined),
           ...result,
           refreshedAt: new Date().toISOString(),
         },

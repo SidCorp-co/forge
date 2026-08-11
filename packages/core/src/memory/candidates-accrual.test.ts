@@ -87,8 +87,8 @@ describe('upsertCandidate — new row', () => {
     await upsertCandidate('proj-1', CANDIDATE);
     expect(insertMock).toHaveBeenCalledTimes(1);
     const values = insertMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(values?.['confidence']).toBe('0.30');
-    expect(values?.['evidenceCount']).toBe(1);
+    expect(values?.confidence).toBe('0.30');
+    expect(values?.evidenceCount).toBe(1);
   });
 });
 
@@ -98,8 +98,8 @@ describe('upsertCandidate — existing accruing row', () => {
     await upsertCandidate('proj-1', CANDIDATE);
     expect(updateMock).toHaveBeenCalledTimes(1);
     const updateSet = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(updateSet?.['confidence']).toBe('0.45');
-    expect(updateSet?.['evidenceCount']).toBe(2);
+    expect(updateSet?.confidence).toBe('0.45');
+    expect(updateSet?.evidenceCount).toBe(2);
   });
 
   it('does NOT double-count the same runId', async () => {
@@ -112,8 +112,8 @@ describe('upsertCandidate — existing accruing row', () => {
     );
     await upsertCandidate('proj-1', CANDIDATE);
     const updateSet = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(updateSet?.['confidence']).toBe('0.45');
-    expect(updateSet?.['evidenceCount']).toBe(2);
+    expect(updateSet?.confidence).toBe('0.45');
+    expect(updateSet?.evidenceCount).toBe(2);
   });
 
   it('graduates when confidence >= 0.60 and evidence_count >= 2', async () => {
@@ -121,7 +121,7 @@ describe('upsertCandidate — existing accruing row', () => {
     await upsertCandidate('proj-1', CANDIDATE);
     const updateSet = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
     // 0.45 + 0.15 = 0.60 >= 0.60, count 2 >= 2 → graduate
-    expect(updateSet?.['status']).toBe('graduated');
+    expect(updateSet?.status).toBe('graduated');
   });
 
   it('does not graduate when evidence_count < 2', async () => {
@@ -130,7 +130,7 @@ describe('upsertCandidate — existing accruing row', () => {
     );
     await upsertCandidate('proj-1', CANDIDATE);
     const updateSet = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(updateSet?.['status']).toBe('accruing');
+    expect(updateSet?.status).toBe('accruing');
   });
 
   it('caps confidence at 0.90', async () => {
@@ -143,7 +143,7 @@ describe('upsertCandidate — existing accruing row', () => {
     );
     await upsertCandidate('proj-1', CANDIDATE);
     const updateSet = updateMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(Number(updateSet?.['confidence'])).toBeLessThanOrEqual(CONFIDENCE_CAP);
+    expect(Number(updateSet?.confidence)).toBeLessThanOrEqual(CONFIDENCE_CAP);
   });
 
   it('does not re-accrue accepted/rejected rows', async () => {

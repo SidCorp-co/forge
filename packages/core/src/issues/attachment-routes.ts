@@ -65,7 +65,7 @@ issueAttachmentRoutes.post(
     assertProjectRole(access, 'member');
 
     const body = await c.req.parseBody();
-    const file = body['file'];
+    const file = body.file;
     if (!(file instanceof File)) throw badRequest('missing "file" field');
     const buffer = Buffer.from(await file.arrayBuffer());
     try {

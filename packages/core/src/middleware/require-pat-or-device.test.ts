@@ -31,7 +31,7 @@ const { requirePatOrDevice, __resetPatBuckets } = await import('./require-pat-or
 const { verifyDeviceToken } = await import('../auth/deviceToken.js');
 const { verifyPat, forceRevokePat } = await import('../auth/pat.js');
 
-const PAT_TOKEN = 'forge_pat_dev_' + 'a'.repeat(64);
+const PAT_TOKEN = `forge_pat_dev_${'a'.repeat(64)}`;
 
 const testDevice = {
   id: 'dev-1',

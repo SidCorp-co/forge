@@ -211,12 +211,7 @@ export function buildRehydrationBlock(
     total += line.length;
   }
   kept.reverse();
-  return (
-    `[This is a cold start; the previous local process context is unavailable. ` +
-    `The prior conversation transcript follows — treat it as the established ` +
-    `history and continue seamlessly.]\n\n${kept.join('\n\n')}\n\n[End of prior ` +
-    `transcript. Continue with the new message below.]\n\n`
-  );
+  return `[This is a cold start; the previous local process context is unavailable. The prior conversation transcript follows — treat it as the established history and continue seamlessly.]\n\n${kept.join('\n\n')}\n\n[End of prior transcript. Continue with the new message below.]\n\n`;
 }
 
 export interface CreateChatSessionArgs {

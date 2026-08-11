@@ -26,7 +26,7 @@ export function normalizeAntigravityEvent(event: AntigravityWireEvent): Normaliz
   // copy of `data` — for `progress`/`result`/`stderr` we already spread `raw`
   // so duplicating the same payload under `_raw.data` would triple storage.
   const envelope: Record<string, unknown> = { type: event.type };
-  if (event.timestamp !== undefined) envelope['timestamp'] = event.timestamp;
+  if (event.timestamp !== undefined) envelope.timestamp = event.timestamp;
   const withRaw = (kind: JobEventKind, data: Record<string, unknown>): NormalizedJobEvent => ({
     kind,
     data: { ...data, _raw: envelope },
@@ -37,21 +37,21 @@ export function normalizeAntigravityEvent(event: AntigravityWireEvent): Normaliz
     case 'tool_call':
       return [
         withRaw('tool_call', {
-          tool: raw['tool'] ?? raw['name'],
-          args: raw['args'] ?? raw['arguments'],
+          tool: raw.tool ?? raw.name,
+          args: raw.args ?? raw.arguments,
         }),
       ];
     case 'tool_finished':
     case 'tool_result':
       return [
         withRaw('tool_result', {
-          tool: raw['tool'] ?? raw['name'],
-          result: raw['result'] ?? raw['output'],
+          tool: raw.tool ?? raw.name,
+          result: raw.result ?? raw.output,
         }),
       ];
     case 'assistant_chunk':
     case 'text': {
-      const text = raw['text'] ?? raw['content'];
+      const text = raw.text ?? raw.content;
       if (typeof text !== 'string') return [];
       return [withRaw('stdout', { text })];
     }
@@ -61,7 +61,7 @@ export function normalizeAntigravityEvent(event: AntigravityWireEvent): Normaliz
     case 'error':
       return [
         withRaw('stderr', {
-          message: raw['message'] ?? 'antigravity error',
+          message: raw.message ?? 'antigravity error',
           ...raw,
         }),
       ];

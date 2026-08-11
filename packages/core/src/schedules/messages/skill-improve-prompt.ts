@@ -112,7 +112,7 @@ Make a judgment: does this condition hold for this project?
 
 - If NOT met → write a one-sentence reason, then go directly to Step 5 and report status="skipped" with that reason. Do not propose or apply.
 - If met → proceed to Step 3.`
-    : `No specific condition is required — proceed directly to Step 3.`
+    : 'No specific condition is required — proceed directly to Step 3.'
 }
 
 ### Step 3 — Compose a TAILORED improvement

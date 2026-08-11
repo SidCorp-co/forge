@@ -54,10 +54,10 @@ describe('PIPELINE_STEPS literal sanity', () => {
   });
 
   it('clarify sits on the happy path: confirmed → clarify, clarified → plan', () => {
-    expect(STATUS_TO_JOB_TYPE['confirmed']?.type).toBe('clarify');
-    expect(STATUS_TO_JOB_TYPE['clarified']?.type).toBe('plan');
+    expect(STATUS_TO_JOB_TYPE.confirmed?.type).toBe('clarify');
+    expect(STATUS_TO_JOB_TYPE.clarified?.type).toBe('plan');
     // needs_info is a human-gated bounce state — nothing dispatches there.
-    expect(STATUS_TO_JOB_TYPE['needs_info']).toBeUndefined();
+    expect(STATUS_TO_JOB_TYPE.needs_info).toBeUndefined();
   });
 
   it('MANUAL_ONLY_JOB_TYPES is empty after clarify promotion (ISS-171)', () => {

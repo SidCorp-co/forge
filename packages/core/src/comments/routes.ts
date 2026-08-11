@@ -492,7 +492,7 @@ commentRoutes.post(
     assertProjectRole(access, 'member');
 
     const body = await c.req.parseBody();
-    const file = body['file'];
+    const file = body.file;
     if (!(file instanceof File)) throw attachmentBadRequest('missing "file" field');
     const mime = file.type || 'application/octet-stream';
     const buffer = Buffer.from(await file.arrayBuffer());
