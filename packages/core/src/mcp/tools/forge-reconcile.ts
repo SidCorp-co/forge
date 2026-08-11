@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import {
+  acknowledgeReconcileRun,
   applyReconcileRun,
   getReconcileRun,
   listReconcileRunsForProject,
@@ -24,7 +25,16 @@ import {
 
 const inputSchema = z
   .object({
-    action: z.enum(['trigger', 'get', 'list', 'record_verdict', 'record_vote', 'apply', 'reject']),
+    action: z.enum([
+      'trigger',
+      'get',
+      'list',
+      'record_verdict',
+      'record_vote',
+      'apply',
+      'reject',
+      'acknowledge',
+    ]),
     projectId: z.string().uuid().optional(),
     /** Required for action=trigger: the update packet to reconcile against. */
     packetId: z.string().uuid().optional(),
@@ -48,6 +58,8 @@ const inputSchema = z
     reason: z.string().max(2000).optional(),
     /** Required for action=reject. */
     rejectReason: z.string().min(1).max(1000).optional(),
+    /** Optional note for action=acknowledge; recorded on the activity event. */
+    acknowledgeReason: z.string().max(1000).optional(),
   })
   .strict();
 
@@ -60,7 +72,8 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
   - record_verdict: Master agent records its verdict + candidate body for an in-flight run (admin-only). Verdicts: no-op | apply | apply-with-adaptation | escalate. For apply/apply-with-adaptation, candidateBody and rationale are required. The 'gate' field is required on every verdict and is YOUR judgement, not a server rule: 'auto' publishes on a passing verifier majority, 'human' parks the run for an owner. Nothing downstream re-checks it.
   - record_vote: Verifier agent records its pass/fail vote for a run in 'verifying' status. jobId (this verifier's job ID), vote ('pass'|'fail'), and reason are required.
   - apply: Human approves a 'decided' run at the human gate and publishes the candidate body (admin-only).
-  - reject: Human rejects a 'decided' run with a reason (admin-only). Sets status to 'escalated'.`,
+  - reject: Human rejects a 'decided' run with a reason (admin-only). Sets status to 'escalated'.
+  - acknowledge: Clear an ESCALATED run's attention item (admin-only). Only valid for status='escalated' + verdict='escalate'; idempotent (a second call is a no-op, not an error). Does NOT change status — the run stays terminal; it resolves the gate notification for EVERY admin, not just the caller. The REST equivalent is JWT-only, so this action is the only path for a PAT or device principal (ISS-810).`,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -186,6 +199,25 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       try {
         await rejectReconcileRun(input.runId, actorUserId, input.rejectReason);
+      } catch (err: unknown) {
+        const msg = String(err);
+        if (msg.startsWith('NOT_FOUND:') || msg.startsWith('BAD_REQUEST:')) throw new Error(msg);
+        throw err;
+      }
+      return { ok: true };
+    }
+
+    if (input.action === 'acknowledge') {
+      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=acknowledge');
+
+      // cm:guard re-read the run and re-check run.projectId === projectId before mutating — runId alone is caller-supplied, so skipping this is an IDOR
+      const ackRun = await getReconcileRun(input.runId);
+      if (!ackRun || ackRun.projectId !== projectId)
+        throw new Error('NOT_FOUND: reconcile run not found');
+
+      try {
+        await acknowledgeReconcileRun(input.runId, actorUserId, input.acknowledgeReason);
       } catch (err: unknown) {
         const msg = String(err);
         if (msg.startsWith('NOT_FOUND:') || msg.startsWith('BAD_REQUEST:')) throw new Error(msg);
