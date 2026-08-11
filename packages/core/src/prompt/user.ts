@@ -34,7 +34,16 @@ import { resolveHandoffsPolicy } from '../pipeline/handoff-policy.js';
 import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
 import { markUntrusted, sanitizeUntrusted } from './sanitize.js';
 
+/** ISS-699 — steps that finished after `sessionContext.lastUpdated`, measured
+ *  from the jobs ledger by `loadIssueSnapshot`. null when nothing is newer. */
+export interface SupersededBy {
+  count: number;
+  latestType: string;
+  latestFinishedAt: string;
+}
+
 export interface IssueSnapshot {
+  supersededBy?: SupersededBy | null | undefined;
   title: string;
   status?: string | null;
   priority?: string | null;
@@ -343,9 +352,18 @@ function formatSessionContext(
   ctx: SessionContextSnapshot,
   jobType: JobType,
   policyOverride?: UserPromptPolicyOverride['sessionContext'],
+  supersededBy?: SupersededBy | null,
 ): string {
   const { policy, depth } = resolveSessionPolicy(jobType, policyOverride);
   const lines: string[] = ['## Previous Session Context'];
+
+  // cm:guard the staleness banner goes ABOVE the narrative, not below it. The footer already carried `last updated`, and on ISS-698 a release step read the FAIL verdict at the top and acted on it — a timestamp printed after the thing it qualifies is read too late to change a decision.
+  if (supersededBy && supersededBy.count > 0) {
+    const plural = supersededBy.count === 1 ? 'step has' : 'steps have';
+    lines.push(
+      `> **SUPERSEDED — do not act on the verdict below.** ${supersededBy.count} ${plural} finished since this snapshot was written (most recently \`${supersededBy.latestType}\` at ${supersededBy.latestFinishedAt}). It describes a state that has since changed. Re-derive the current situation from the issue's comments and step handoffs; use the text below only for background such as files touched.`,
+    );
+  }
 
   if (ctx.currentState) {
     lines.push(`**Current state:** ${ctx.currentState}`);
@@ -514,7 +532,10 @@ export function buildJobPromptString(args: {
 
     const sc = snapshot.sessionContext;
     if (sc && (sc.sessionCount ?? 0) >= 1) {
-      lines.push('', formatSessionContext(sc, args.jobType, args.policy?.sessionContext));
+      lines.push(
+        '',
+        formatSessionContext(sc, args.jobType, args.policy?.sessionContext, snapshot.supersededBy),
+      );
     }
   } else if (handoffsToRender.length > 0) {
     lines.push('', formatPriorHandoffs(handoffsToRender));

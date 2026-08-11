@@ -499,3 +499,69 @@ describe('buildJobPromptString — open items address block (ISS-537)', () => {
     expect(out).toContain('Before you advance — address the open items above');
   });
 });
+
+describe('sessionContext staleness banner (ISS-699)', () => {
+  const stale = {
+    sessionCount: 2,
+    currentState: 'Live E2E FAILED on AC1 — reopening for forge-fix',
+    filesModified: ['core/routes.ts'],
+    lastUpdated: '2026-07-20T04:44:00.000Z',
+  };
+
+  const build = (supersededBy: IssueSnapshot['supersededBy']) =>
+    buildJobPromptString({
+      jobType: 'release',
+      issueId: 'iss-698',
+      issueSnapshot: { ...SAMPLE, sessionContext: stale, supersededBy },
+    });
+
+  // cm:guard the ISS-698 reproduction — a release step read this exact FAIL narrative, written before a fix, a re-review, a re-merge and a PASSING re-test, and bounced a verified issue back to `reopen`
+  it('warns that the verdict is superseded when later steps have finished', () => {
+    const out = build({
+      count: 3,
+      latestType: 'test',
+      latestFinishedAt: '2026-07-20T05:01:56.000Z',
+    });
+    expect(out).toContain('SUPERSEDED');
+    expect(out).toContain('3 steps have finished');
+    expect(out).toContain('test');
+    expect(out).toContain('2026-07-20T05:01:56.000Z');
+  });
+
+  // cm:guard position is the fix, not the wording — the old footer already carried `last updated` and was read after the verdict it qualifies
+  it('puts the warning ABOVE the stale narrative, not after it', () => {
+    const out = build({
+      count: 1,
+      latestType: 'review',
+      latestFinishedAt: '2026-07-20T05:00:00.000Z',
+    });
+    expect(out.indexOf('SUPERSEDED')).toBeLessThan(out.indexOf('Live E2E FAILED'));
+  });
+
+  it('says nothing when the snapshot is the most recent thing that happened', () => {
+    const out = build(null);
+    expect(out).not.toContain('SUPERSEDED');
+    expect(out).toContain('Live E2E FAILED');
+  });
+
+  it('treats a zero count as fresh rather than printing an empty warning', () => {
+    const out = build({ count: 0, latestType: 'test', latestFinishedAt: 'x' });
+    expect(out).not.toContain('SUPERSEDED');
+  });
+
+  it('supersedes the verdict without removing the block — the narrative and footer stay', () => {
+    const out = build({
+      count: 2,
+      latestType: 'fix',
+      latestFinishedAt: '2026-07-20T04:50:00.000Z',
+    });
+    expect(out).toContain('SUPERSEDED');
+    expect(out).toContain('Live E2E FAILED');
+    expect(out).toContain('last updated 2026-07-20T04:44:00.000Z');
+  });
+
+  it('uses singular phrasing for a single superseding step', () => {
+    const out = build({ count: 1, latestType: 'fix', latestFinishedAt: 'z' });
+    expect(out).toContain('1 step has finished');
+  });
+});

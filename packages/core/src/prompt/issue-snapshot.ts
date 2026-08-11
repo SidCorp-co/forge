@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import { issues, jobs } from '../db/schema.js';
 import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
 
 /**
@@ -38,7 +38,10 @@ export async function loadIssueSnapshot(
     )
     .limit(1);
   if (!row) return null;
+
+  const ctx = (row.sessionContext ?? null) as SessionContextSnapshot | null;
   return {
+    supersededBy: await countStepsSince(issueId, ctx?.lastUpdated ?? null),
     title: row.title,
     status: row.status,
     priority: row.priority,
@@ -47,5 +50,46 @@ export async function loadIssueSnapshot(
     plan: row.plan,
     acceptanceCriteria: row.acceptanceCriteria,
     sessionContext: (row.sessionContext ?? null) as SessionContextSnapshot | null,
+  };
+}
+
+/**
+ * Steps that finished AFTER the sessionContext snapshot was written (ISS-699).
+ *
+ * The snapshot is agent-authored — a prompt line asks each step to refresh it,
+ * and a step that skips leaves the previous narrative in place. Later steps then
+ * read a verdict describing a state that no longer exists. On ISS-698 a release
+ * step read a FAIL narrative written before the fix, re-review, re-merge and a
+ * PASSING re-test, and bounced an already-verified issue back to `reopen`.
+ *
+ * Freshness is therefore measured here rather than trusted: a count the reader
+ * cannot forget to check, computed from the jobs ledger.
+ */
+async function countStepsSince(
+  issueId: string,
+  lastUpdated: string | null,
+): Promise<{ count: number; latestType: string; latestFinishedAt: string } | null> {
+  if (!lastUpdated) return null;
+  const since = new Date(lastUpdated);
+  if (Number.isNaN(since.getTime())) return null;
+
+  const rows = await db
+    .select({ type: jobs.type, finishedAt: jobs.finishedAt })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.issueId, issueId),
+        inArray(jobs.status, ['done', 'failed']),
+        gt(jobs.finishedAt, since),
+      ),
+    )
+    .orderBy(desc(jobs.finishedAt));
+
+  const latest = rows[0];
+  if (!latest?.finishedAt) return null;
+  return {
+    count: rows.length,
+    latestType: latest.type,
+    latestFinishedAt: latest.finishedAt.toISOString(),
   };
 }
