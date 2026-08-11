@@ -91,17 +91,33 @@ export async function computeProjectProgress(
         )})
     )`;
 
-    const hasShippedEvidence = sql<boolean>`(${leftMergeState} or (${issues.mergedAt} is not null and ${reachedPostCode}))`;
+    // cm:guard ISS-817 — `merged_at` alone is NOT shipped-evidence: markMergedOnClose stamps it on EVERY close, so dropping this NOT re-degenerates the predicate to "closed after ever reaching developed" and reports never-merged code as shipped
+    // cm:why the auto-stamp and the close's activity_log row are written in ONE transaction and Postgres now() is transaction-start time, so their timestamps are identical; a genuine base-merge stamp came from an earlier transaction and cannot collide
+    // cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — this reads the timestamp identity that markMergedOnClose + the activity_log write produce together; splitting those two writes apart silently re-inflates `shipped`
+    const stampedByCloseItself = sql`exists (
+      select 1 from ${activityLog}
+      where ${activityLog.issueId} = ${issues.id}
+        and ${activityLog.action} = 'issue.statusChanged'
+        and ${activityLog.payload}->>'to' = 'closed'
+        and ${activityLog.createdAt} = ${issues.mergedAt}
+    )`;
 
-    const rows = await dbi
-      .select({
-        status: issues.status,
-        hasShippedEvidence,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(issues)
-      .where(eq(issues.projectId, projectId))
-      .groupBy(issues.status, hasShippedEvidence);
+    const hasShippedEvidence = sql<boolean>`(${leftMergeState} or (${issues.mergedAt} is not null and ${reachedPostCode} and not ${stampedByCloseItself}))`;
+
+    // cm:why evidence is computed per issue in a derived table then grouped — grouping DIRECTLY on the expression made Postgres reject it ("subquery uses ungrouped column issues.id"): the builder renders it differently in the select list vs the GROUP BY, so the two stop matching
+    const rows = await dbi.execute<{
+      status: IssueStatus;
+      has_shipped_evidence: boolean;
+      count: number;
+    }>(sql`
+      select status, has_shipped_evidence, count(*)::int as count
+      from (
+        select ${issues.status} as status, ${hasShippedEvidence} as has_shipped_evidence
+        from ${issues}
+        where ${issues.projectId} = ${projectId}
+      ) evidence_per_issue
+      group by status, has_shipped_evidence
+    `);
 
     const byStatus = emptyByStatus();
     let shipped = 0;
@@ -112,7 +128,7 @@ export async function computeProjectProgress(
       const status = row.status;
       const count = Number(row.count);
       byStatus[status] += count;
-      const bucket = bucketOf(status, row.hasShippedEvidence);
+      const bucket = bucketOf(status, row.has_shipped_evidence);
       if (bucket === 'shipped') shipped += count;
       else if (bucket === 'closed_unshipped') closedUnshipped += count;
       else if (bucket === 'remaining') remaining += count;
@@ -144,7 +160,8 @@ export function buildProgressFactsBlock(p: ProjectProgress): string {
   return [
     'Project progress (computed by the system from live data — AUTHORITATIVE).',
     'Do not recount, re-derive, or estimate these figures from issue lists; state them as given. Each figure below is a distinct bucket — do not merge them.',
-    `- shipped (released to production): ${p.shipped}`,
+    // cm:why ISS-817 — "released to production" overclaimed: this bucket also holds issues merged to the base branch and closed by hand, which have shipped code but no production release
+    `- shipped (code reached the release branch): ${p.shipped}`,
     `- closed with no recorded release (duplicate, merged elsewhere, decided not to do — or shipped without a matching record): ${p.closedUnshipped}`,
     `- in progress: ${p.inFlight}`,
     `- not started: ${p.remaining}`,

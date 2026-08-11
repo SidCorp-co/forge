@@ -11,34 +11,23 @@ vi.mock('../pipeline/runs.js', () => ({
 
 const { bucketOf, buildProgressFactsBlock, computeProjectProgress } = await import('./progress.js');
 
-function makeChain(rows: Array<Record<string, unknown>>): Record<string, unknown> {
-  const chain = {
-    from: () => chain,
-    where: () => chain,
-    groupBy: () => Promise.resolve(rows),
-  };
-  return chain;
-}
-
-/** `computeProjectProgress` makes two `db.select` calls in order: the
- *  project's `agentConfig` (to resolve `mergeStates`), then the grouped issue
- *  rows — the widened shipped-evidence SQL itself lives in the untested
- *  query, not in this fake chain (see the module's known-limitations note). */
+/** `computeProjectProgress` reads the project's `agentConfig` via `db.select`
+ *  (to resolve `mergeStates`), then runs the grouped evidence aggregate via
+ *  `db.execute`. The shipped-evidence SQL itself is NOT exercised here — this
+ *  fake returns whatever rows it is handed. That predicate is covered against
+ *  real Postgres in `tests/integration/progress-shipped-evidence-e2e.test.ts`;
+ *  keep it there, since a fake that ignores the `where` cannot see it. */
 function fakeDb(
   rows: Array<Record<string, unknown>>,
   agentConfig: unknown = null,
-): { select: () => unknown } {
-  let call = 0;
+): { select: () => unknown; execute: () => unknown } {
   return {
-    select: () => {
-      call += 1;
-      if (call === 1) {
-        return {
-          from: () => ({ where: () => ({ limit: () => Promise.resolve([{ agentConfig }]) }) }),
-        };
-      }
-      return makeChain(rows);
-    },
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: () => Promise.resolve([{ agentConfig }]) }),
+      }),
+    }),
+    execute: () => Promise.resolve(rows),
   };
 }
 
@@ -100,10 +89,10 @@ describe('bucketOf', () => {
 describe('computeProjectProgress', () => {
   it('shipped + closedUnshipped + inFlight + remaining === total', async () => {
     const db = fakeDb([
-      { status: 'closed', hasShippedEvidence: true, count: 21 },
-      { status: 'closed', hasShippedEvidence: false, count: 33 },
-      { status: 'open', hasShippedEvidence: false, count: 7 },
-      { status: 'draft', hasShippedEvidence: false, count: 3 },
+      { status: 'closed', has_shipped_evidence: true, count: 21 },
+      { status: 'closed', has_shipped_evidence: false, count: 33 },
+      { status: 'open', has_shipped_evidence: false, count: 7 },
+      { status: 'draft', has_shipped_evidence: false, count: 3 },
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     if (!progress) throw new Error('expected a progress snapshot');
@@ -119,8 +108,8 @@ describe('computeProjectProgress', () => {
 
   it('does not conflate closed-without-shipping into shipped (the 39%-overstatement bug)', async () => {
     const db = fakeDb([
-      { status: 'closed', hasShippedEvidence: true, count: 52 },
-      { status: 'closed', hasShippedEvidence: false, count: 33 },
+      { status: 'closed', has_shipped_evidence: true, count: 52 },
+      { status: 'closed', has_shipped_evidence: false, count: 33 },
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     if (!progress) throw new Error('expected a progress snapshot');
@@ -131,9 +120,9 @@ describe('computeProjectProgress', () => {
 
   it('two consecutive computes on unchanged data return identical numbers', async () => {
     const rows = [
-      { status: 'closed', hasShippedEvidence: true, count: 54 },
-      { status: 'open', hasShippedEvidence: false, count: 7 },
-      { status: 'draft', hasShippedEvidence: false, count: 3 },
+      { status: 'closed', has_shipped_evidence: true, count: 54 },
+      { status: 'open', has_shipped_evidence: false, count: 7 },
+      { status: 'draft', has_shipped_evidence: false, count: 3 },
     ];
     const a = await computeProjectProgress('p1', fakeDb(rows) as never);
     const b = await computeProjectProgress('p1', fakeDb(rows) as never);
@@ -159,15 +148,15 @@ describe('computeProjectProgress', () => {
 
   it('released counts as shipped alongside a genuinely-shipped closed issue', async () => {
     const db = fakeDb([
-      { status: 'closed', hasShippedEvidence: true, count: 2 },
-      { status: 'released', hasShippedEvidence: true, count: 5 },
+      { status: 'closed', has_shipped_evidence: true, count: 2 },
+      { status: 'released', has_shipped_evidence: true, count: 5 },
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     expect(progress?.shipped).toBe(7);
   });
 
   it('resolves the base-merge state from the project agentConfig, defaulting to released', async () => {
-    const db = fakeDb([{ status: 'closed', hasShippedEvidence: true, count: 1 }], {
+    const db = fakeDb([{ status: 'closed', has_shipped_evidence: true, count: 1 }], {
       pipelineConfig: { mergeStates: { baseBranch: 'tested' } },
     });
     const progress = await computeProjectProgress('p1', db as never);
