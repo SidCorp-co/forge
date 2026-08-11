@@ -9,6 +9,7 @@ import { withActorContext } from '../pipeline/outbox-session.js';
 import { pauseOpenRunForIssue } from '../pipeline/run-pause.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { REOPEN_CAP, canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
+import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
@@ -46,7 +47,8 @@ export type TransitionErrorCode =
   | 'ILLEGAL_TRANSITION'
   | 'REOPEN_CAP_EXCEEDED'
   | 'STALE_TRANSITION'
-  | 'PLAN_REQUIRED';
+  | 'PLAN_REQUIRED'
+  | 'NO_WORK_EVIDENCE';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -306,13 +308,22 @@ export async function transitionIssueStatus(
   // not fail the caller.
   if (txResult?.stampedOnClose) {
     try {
+      // ISS-786 child B, requirement 5 — name whether any code evidence
+      // exists so a false unblock (ISS-75/76/77/78 shape) becomes visible
+      // instead of silent. Best-effort: a read failure here must not change
+      // the comment into a false-negative claim, so it falls back to the
+      // evidence-exists text (unmark is still the correct remedy either way).
+      const evidenceFound = await collectWorkEvidence(issue.id)
+        .then(hasCodeEvidence)
+        .catch(() => true);
+      const evidenceNote = evidenceFound
+        ? 'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.'
+        : 'No branch, commit or code handoff is recorded for this issue — if its code never landed, run `forge_issues` `unmark` to re-block dependents.';
       // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-        body:
-          'merged_at auto-stamped on close — `closed` counts as done, so `blocks`-dependents can now dispatch. ' +
-          'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.',
+        body: `merged_at auto-stamped on close — \`closed\` counts as done, so \`blocks\`-dependents can now dispatch. ${evidenceNote}`,
         parentId: null,
         isAi: true,
       });

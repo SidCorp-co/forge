@@ -36,6 +36,7 @@ import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-note
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
+import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import {
@@ -1237,6 +1238,18 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         const issue = await loadIssue(issueId);
         await assertPrincipalIsWriter(principal, issue.projectId);
+
+        // ISS-786 child B (ISS-75/76/77/78 shape) — a device-principal claim
+        // of "this is merged" needs the same in-DB evidence `developed`/
+        // `testing` require. A `user`-driven PAT is a deliberate human
+        // action and is NOT gated (mirrors `checkTransitionEvidence`'s
+        // device-only scope). Fails OPEN on any internal error.
+        if (principal.kind === 'device') {
+          const missingEvidence = await findMissingWorkEvidence(issueId);
+          if (missingEvidence) {
+            throw new Error(`NO_WORK_EVIDENCE: ${missingEvidence}`);
+          }
+        }
 
         // COALESCE keeps the first stamp: a second mark_merged call is a no-op
         // on the timestamp (AC2 idempotency). `mergedAt` overrides the default
