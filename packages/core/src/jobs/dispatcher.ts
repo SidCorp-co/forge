@@ -12,6 +12,7 @@ import {
   recordRunnerDeathDetection,
 } from '../observability/hold-metrics.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { injectTurnLevelRules } from '../prompt/user.js';
@@ -118,19 +119,21 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
   // see W2.3.2 PR notes.
   const budgetCheck = await checkMonthlyBudget(job);
   if (budgetCheck.action === 'pause') {
-    await applyKernelTransition(db, {
+    // cm:why ISS-823 — routes through finalizeFailedJob (below) so a budget-exhausted job parks the issue + closes the run like any other terminal failure, instead of stranding both
+    const [updated] = await applyKernelTransition(db, {
       entity: 'job',
       to: 'failed',
       set: {
         finishedAt: new Date(),
         failureKind: 'code',
+        failureAction: 'terminal',
         failureReason: 'monthly_budget_exhausted',
         failureMeta: {
           spent: budgetCheck.spent,
           budget: budgetCheck.budget,
           stageStatus: budgetCheck.stageStatus,
         } as never,
-        classifierVersion: 1,
+        classifierVersion: CLASSIFIER_VERSION,
       },
       where: and(eq(jobs.id, job.id), eq(jobs.status, 'queued')),
       fromStatus: 'queued',
@@ -171,6 +174,19 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
       },
       'dispatcher: monthly budget exhausted, failing job',
     );
+    if (updated) {
+      try {
+        await finalizeFailedJob(updated, {
+          error: 'monthly_budget_exhausted',
+          precomputedRetry: { scheduled: false, reason: 'monthly_budget_exhausted' },
+        });
+      } catch (err) {
+        logger.error(
+          { err, jobId: job.id, issueId: job.issueId },
+          'dispatcher: finalizeFailedJob threw after budget pause',
+        );
+      }
+    }
     return 'skipped';
   }
   if (

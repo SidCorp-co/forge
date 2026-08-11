@@ -18,7 +18,7 @@ export interface ParkReasonInput {
   jobType: string;
   /** Stage status the step ran at, when known. */
   stageStatus?: string | null;
-  /** `retry_rounds_exhausted` | `non_retryable_code` | … — why no retry followed. */
+  /** `retry_rounds_exhausted` | `non_retryable_terminal` | … — why no retry followed. */
   reason: string;
   /** Classified failure kind (`transient`, `code`, `transient-cc`, …). */
   failureKind?: string | null;

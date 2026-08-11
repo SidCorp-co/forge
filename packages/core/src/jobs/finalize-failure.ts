@@ -40,6 +40,7 @@ import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { JOB_TYPE_ENTRY_STATUS, classifyVerdict } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
+import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { attributeFailureToRunner } from '../runners/attribute-failure.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
@@ -54,6 +55,43 @@ import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
 type JobRow = typeof jobs.$inferSelect;
+
+// cm:why ISS-823 review #4 — business-language wedge copy per no-retry reason; reasons absent here (e.g. cancellation_requested) fall back to emitPipelineWedge's technical hop/entity/reason/action template
+const PARK_WEDGE_CONTENT: Partial<
+  Record<string, { title: string; summary: string; nextStep: string }>
+> = {
+  monthly_budget_exhausted: {
+    title: 'Pipeline paused: monthly budget exhausted',
+    summary:
+      'This project hit its monthly spend budget, so the pipeline stopped dispatching new work.',
+    nextStep: 'Raise the budget or wait for the next billing cycle, then clear the park to resume.',
+  },
+  all_devices_exhausted: {
+    title: 'Pipeline paused: every runner is rate-limited',
+    summary:
+      'The job failed and every online, capable runner is currently rate-limited or over its spend cap.',
+    nextStep: 'Wait for a runner to recover or add capacity, then clear the park to resume.',
+  },
+  non_retryable_terminal: {
+    title: 'Pipeline paused: non-retryable failure',
+    summary: 'The job failed in a way the pipeline will not retry automatically.',
+    nextStep:
+      'Review the park-reason comment, fix the underlying issue, then clear the park to resume.',
+  },
+  retry_rounds_exhausted: {
+    title: 'Pipeline paused: retry budget exhausted',
+    summary: 'The job kept failing across every retry round without succeeding.',
+    nextStep:
+      'Review the park-reason comment and either fix the underlying issue or clear it manually.',
+  },
+  verify_unavailable: {
+    title: 'Pipeline paused: recovery check unavailable',
+    summary:
+      'The job failed and the pipeline could not verify whether the work already completed, so it stopped rather than risk a wrong retry.',
+    nextStep:
+      'Review the park-reason comment, confirm the issue state, then clear the park to resume.',
+  },
+};
 
 export interface FinalizeFailedJobOptions {
   /** Human-readable failure reason; passed to the retry engine. */
@@ -167,6 +205,20 @@ async function reconcileIssueStatusAfterFailure(
     } catch (err) {
       logger.warn({ err, issueId: row.id }, 'finalize-failure: park-to-waiting failed');
     }
+    const content = PARK_WEDGE_CONTENT[retry.reason ?? ''];
+    await emitPipelineWedge({
+      projectId: row.projectId,
+      issueId: row.id,
+      hop: 'dispatch',
+      entity: 'job',
+      entityId: job.id,
+      reason: retry.reason ?? 'unknown',
+      action:
+        'Review the park-reason comment and either fix the underlying issue or clear it manually.',
+      ...(content
+        ? { title: content.title, summary: content.summary, nextStep: content.nextStep }
+        : {}),
+    });
   }
   // Issue-kind runs are not closed by `syncAgentSessionLifecycle`
   // (`closeRunIfOneShot` only touches pm/interactive runs); close it here so
@@ -209,6 +261,18 @@ export async function finalizeFailedJob(
   // cm:why ISS-806 — stamp the box BEFORE any retry decision: a retry re-targets another device, so `updated.runnerId` only names the failing box until then
   await attributeFailureToRunner(updated.runnerId, opts.error);
 
+  // cm:why retryAfter's canonical source is failureMeta (via classifyFailure below), not jobs.retryAfterAt — that column is only the retry engine's flat cooldown on the *next* attempt's row, never this failed one
+  // cm:why ISS-823 review blocker — stampRunnerLimit MUST be awaited BEFORE scheduleAutoRetryWithVerify: the all_devices_exhausted check reads onlineCapableDeviceIds, which filters on rateLimitedUntil, so a fire-and-forget stamp made AFTER that read let the box that just hit the cap still count as healthy for THIS decision
+  const errorText = updated.error ?? '';
+  const { retryAfter } = classifyFailure({
+    error: errorText,
+    meta: (updated.failureMeta as Record<string, unknown> | null) ?? null,
+  });
+  const limit = detectRunnerLimit(errorText, retryAfter);
+  if (limit) {
+    await stampRunnerLimit(updated.runnerId, updated.projectId, limit);
+  }
+
   const retry: RetryOutcome =
     opts.precomputedRetry ?? (await scheduleAutoRetryWithVerify(updated, opts.error));
 
@@ -221,25 +285,6 @@ export async function finalizeFailedJob(
   //    would wedge one that already recovered (ISS-280 AC2/AC4).
   const recoveredViaVerify =
     retry.reason === 'completed_via_recovery' || retry.reason === 'cancelled_stale';
-
-  // Rate-limit / usage-limit / auth highlighting (ported from forge-agents).
-  // Detect from the failure text (the runner emits `[USAGE_LIMIT] …resets…`,
-  // and Anthropic 429/401 surface in `error`). For a 429 with no parseable
-  // reset phrase we fall back to the provider `Retry-After` header, which the
-  // shared failure classifier extracts from `failureMeta` (its canonical
-  // source — `jobs.retryAfterAt` is only the retry engine's flat cooldown on
-  // the *next* attempt's row, never this failed row). Stamps the owning runner
-  // so the dispatcher skips it until reset and the UI shows a distinct
-  // "limited" badge. Fire-and-forget.
-  const errorText = updated.error ?? '';
-  const { retryAfter } = classifyFailure({
-    error: errorText,
-    meta: (updated.failureMeta as Record<string, unknown> | null) ?? null,
-  });
-  const limit = detectRunnerLimit(errorText, retryAfter);
-  if (limit) {
-    void stampRunnerLimit(updated.runnerId, updated.projectId, limit);
-  }
 
   // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
   // (retry path) or park at `waiting` + reap the run (no-retry path).
