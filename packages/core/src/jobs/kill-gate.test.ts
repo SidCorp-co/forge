@@ -13,11 +13,17 @@ vi.mock('../db/schema.js', () => ({
   runners: 'runners-table',
 }));
 
+const updateSetMock = vi.fn();
 const updateWhereMock = vi.fn(async (_arg: unknown) => undefined);
 const selectLimitMock = vi.fn(async () => [] as Array<{ lastSeenAt: Date | string | null }>);
 vi.mock('../db/client.js', () => ({
   db: {
-    update: () => ({ set: () => ({ where: (arg: unknown) => updateWhereMock(arg) }) }),
+    update: () => ({
+      set: (patch: unknown) => {
+        updateSetMock(patch);
+        return { where: (arg: unknown) => updateWhereMock(arg) };
+      },
+    }),
     select: () => ({
       from: () => ({
         where: () => ({ limit: () => selectLimitMock() }),
@@ -32,7 +38,13 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: (...a: unknown[]) => publishMock(...a) },
 }));
 
-const { requestJobKill, resolveKillConfirmation, killGraceMs } = await import('./kill-gate.js');
+const {
+  requestJobKill,
+  resolveKillConfirmation,
+  killGraceMs,
+  killEpisodeWindowMs,
+  isKillEpisodeLive,
+} = await import('./kill-gate.js');
 
 function ref(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -68,6 +80,22 @@ describe('killGraceMs', () => {
   });
 });
 
+describe('isKillEpisodeLive', () => {
+  it('is false for a job that was never kill-requested', () => {
+    expect(isKillEpisodeLive(ref())).toBe(false);
+  });
+
+  it('is true inside the window and false once the request has aged out', () => {
+    const window = killEpisodeWindowMs();
+    expect(isKillEpisodeLive(ref({ killRequestedAt: new Date(Date.now() - window + 1_000) }))).toBe(
+      true,
+    );
+    expect(isKillEpisodeLive(ref({ killRequestedAt: new Date(Date.now() - window - 1_000) }))).toBe(
+      false,
+    );
+  });
+});
+
 describe('requestJobKill', () => {
   it('stamps kill_requested_at and publishes job.cancel when a device is bound', async () => {
     const result = await requestJobKill(ref(), 'session_lost');
@@ -80,10 +108,31 @@ describe('requestJobKill', () => {
     });
   });
 
-  it('is idempotent — skips the stamp when kill_requested_at is already set', async () => {
+  it('is idempotent within a live episode — skips the stamp, still re-publishes', async () => {
     await requestJobKill(ref({ killRequestedAt: new Date() }), 'session_lost');
 
     expect(updateWhereMock).not.toHaveBeenCalled();
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-opens the episode past the window, clearing the previous answer', async () => {
+    await requestJobKill(
+      ref({
+        killRequestedAt: new Date(Date.now() - killEpisodeWindowMs() - 1_000),
+        killConfirmedAt: new Date(Date.now() - killEpisodeWindowMs()),
+        killOutcome: 'not_found',
+      }),
+      'stale',
+    );
+
+    expect(updateWhereMock).toHaveBeenCalledTimes(1);
+    expect(updateSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        killRequestedAt: expect.any(Date),
+        killConfirmedAt: null,
+        killOutcome: null,
+      }),
+    );
   });
 
   it('reports no_device and skips the publish when the job has no deviceId', async () => {
@@ -95,12 +144,44 @@ describe('requestJobKill', () => {
 });
 
 describe('resolveKillConfirmation', () => {
-  it('is confirmed once killConfirmedAt is set, echoing the stored outcome', async () => {
+  it('is confirmed once THIS episode is answered, echoing the stored outcome', async () => {
     const result = await resolveKillConfirmation(
-      ref({ killConfirmedAt: new Date(), killOutcome: 'killed' }),
+      ref({
+        killRequestedAt: new Date(Date.now() - 1_000),
+        killConfirmedAt: new Date(),
+        killOutcome: 'killed',
+      }),
     );
 
     expect(result).toEqual({ confirmed: true, outcome: 'killed' });
+  });
+
+  it('ignores an answer from an aged-out episode and falls through to the runner check', async () => {
+    selectLimitMock.mockResolvedValueOnce([{ lastSeenAt: new Date() }]);
+
+    const result = await resolveKillConfirmation(
+      ref({
+        killRequestedAt: new Date(Date.now() - killEpisodeWindowMs() - 1_000),
+        killConfirmedAt: new Date(Date.now() - killEpisodeWindowMs()),
+        killOutcome: 'not_found',
+      }),
+    );
+
+    expect(result).toEqual({ confirmed: false, outcome: null });
+  });
+
+  it('ignores an answer that predates the request it supposedly answers', async () => {
+    selectLimitMock.mockResolvedValueOnce([{ lastSeenAt: new Date() }]);
+
+    const result = await resolveKillConfirmation(
+      ref({
+        killRequestedAt: new Date(Date.now() - 1_000),
+        killConfirmedAt: new Date(Date.now() - 60_000),
+        killOutcome: 'not_found',
+      }),
+    );
+
+    expect(result).toEqual({ confirmed: false, outcome: null });
   });
 
   it('is unconfirmed when the owning runner has no runnerId to check', async () => {

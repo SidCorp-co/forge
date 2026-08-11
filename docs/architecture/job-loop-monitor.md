@@ -42,6 +42,23 @@ first agent reverted a merge the retry had no idea about). The SESSION-axis hop 
 unchanged — it fails an `agent_sessions` row directly, which has no runner process of its own to
 kill.
 
+**Confirmation** comes from exactly one of: the runner's `POST /jobs/:id/kill-ack` (outcome
+`killed` or `not_found`), a terminal lifecycle report that raced the request, or the owning
+runner's heartbeat being stale past `dispatchLivenessMs()` (`runner_gone` — the box is
+unreachable, so there is no channel an answer could arrive on). Unconfirmed on an ONLINE runner is
+the one state a reap must never retry: the job fails with `precomputedRetry {scheduled:false}` and
+the issue parks at `waiting`, and its wedge tells the operator to kill the process on the device
+before resuming.
+
+**Episodes.** `kill_requested_at` / `kill_confirmed_at` / `kill_outcome` are per-job columns
+describing ONE reap episode. A job can outlive an episode — an ack-hop kill request against a job
+whose cold-clone preflight is merely slow gets a `not_found` (nothing to kill yet), then the job
+acks and runs for an hour. Reading those columns later as if they answered the CURRENT reap would
+fail-and-retry a live job whose runner was never told to stop. So a request older than
+`killEpisodeWindowMs()` (2× the grace) is dead state: `isKillEpisodeLive` returns false, the next
+reap opens a fresh episode, and `requestJobKill` clears the previous answer as it re-stamps. The
+ack hop's forced confirmation records `never_claimed`, not a `not_found` no runner ever sent.
+
 ## Cross-cutting
 
 - Every miss-handler emits a `pipeline_wedge` event (ISS-452 C6 / I7) carrying WHERE (the hop) +

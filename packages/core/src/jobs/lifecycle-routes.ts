@@ -153,7 +153,15 @@ jobLifecycleDeviceRoutes.post(
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(jobs)
-        .set({ ackedAt: now, ...(skillsRanWith !== null ? { skillsRanWith } : {}) })
+        // cm:guard the FIRST ack ends any open kill episode — a kill requested before the runner claimed the job was answered about a process that did not exist yet, and keeping that answer would let a later reap read it as proof this now-running agent is dead (ISS-785)
+        // cm:edge lockstep -> packages/core/src/jobs/events-routes.ts — the first-event fallback ack must clear the same columns
+        .set({
+          ackedAt: now,
+          killRequestedAt: null,
+          killConfirmedAt: null,
+          killOutcome: null,
+          ...(skillsRanWith !== null ? { skillsRanWith } : {}),
+        })
         .where(
           and(
             eq(jobs.id, id),
@@ -505,7 +513,8 @@ jobLifecycleDeviceRoutes.post(
  * only stamps `killConfirmedAt`/`killOutcome` (first ack wins — idempotent)
  * and appends a `kill_ack` audit event, then returns 200 whether or not the
  * job is still active. `resolveKillConfirmation` (jobs/kill-gate.ts) is the
- * ONLY reader of these columns.
+ * ONLY reader of these columns. `recorded:false` in the response means the
+ * ack was audited but not stamped — see the guard below.
  */
 jobLifecycleDeviceRoutes.post(
   '/:id/kill-ack',
@@ -524,16 +533,20 @@ jobLifecycleDeviceRoutes.post(
     const job = await loadJob(id);
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
 
+    // cm:guard only an ack answering a LIVE kill request may stamp — an unsolicited one (stale frame, runner replay) would leave a confirmation on a job nobody asked to kill, which a later reap would read as proof of death and retry
+    const recorded = job.killRequestedAt !== null;
     const now = new Date();
     await db.transaction(async (tx) => {
-      await tx
-        .update(jobs)
-        .set({ killConfirmedAt: now, killOutcome: outcome })
-        .where(and(eq(jobs.id, id), isNull(jobs.killConfirmedAt)));
-      await insertKillAckEvent(tx, id, outcome, device.id);
+      if (recorded) {
+        await tx
+          .update(jobs)
+          .set({ killConfirmedAt: now, killOutcome: outcome })
+          .where(and(eq(jobs.id, id), isNull(jobs.killConfirmedAt)));
+      }
+      await insertKillAckEvent(tx, id, outcome, device.id, recorded);
     });
 
-    return c.json({ jobId: id, killOutcome: outcome, acked: true });
+    return c.json({ jobId: id, killOutcome: outcome, acked: true, recorded });
   },
 );
 
@@ -548,6 +561,7 @@ async function insertKillAckEvent(
   jobId: string,
   outcome: 'killed' | 'not_found',
   deviceId: string,
+  recorded: boolean,
 ): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
   const maxRows = await tx.execute<{ max_seq: number | string | null }>(
@@ -559,7 +573,7 @@ async function insertKillAckEvent(
   await tx.insert(jobEvents).values({
     jobId,
     kind: 'kill_ack',
-    data: { outcome, deviceId },
+    data: { outcome, deviceId, recorded },
     seq: nextSeq,
   });
 }

@@ -275,8 +275,17 @@ describe('jobs/events-routes POST /:id/events', () => {
     // session CAS queued→running. The heartbeat-only fallback path is skipped
     // because the CAS returned a row.
     expect(dbUpdate).toHaveBeenCalledTimes(2);
-    const ackSetArg = updateSet.mock.calls[0]?.[0] as { ackedAt?: Date };
+    const ackSetArg = updateSet.mock.calls[0]?.[0] as {
+      ackedAt?: Date;
+      killRequestedAt?: Date | null;
+    };
     expect(ackSetArg?.ackedAt).toBeInstanceOf(Date);
+    // cm:guard clears the kill columns in lockstep with the explicit ack route — a kill requested before the runner claimed the job must not survive as confirmation for a later reap (ISS-785)
+    expect(ackSetArg).toMatchObject({
+      killRequestedAt: null,
+      killConfirmedAt: null,
+      killOutcome: null,
+    });
     const setArg = updateSet.mock.calls[1]?.[0] as { status?: string; startedAt?: Date };
     expect(setArg?.status).toBe('running');
     expect(setArg?.startedAt).toBeInstanceOf(Date);

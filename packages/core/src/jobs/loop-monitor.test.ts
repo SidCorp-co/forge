@@ -22,6 +22,7 @@ const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string
 // applyKernelTransition → db.update(...).set(...).where(...).returning()
 const updateReturning = vi.fn();
 const sweepWhereArgs: unknown[] = [];
+const sweepSetArgs: Array<Record<string, unknown>> = [];
 // loop-monitor's lookupIssueForRun → db.select(...).from(...).where(...).limit(1)
 const selectLimit = vi.fn(async () => [] as Array<{ issueId: string | null }>);
 
@@ -29,12 +30,15 @@ vi.mock('../db/client.js', () => ({
   db: {
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({
-      set: () => ({
-        where: (arg: unknown) => {
-          sweepWhereArgs.push(arg);
-          return { returning: () => updateReturning() };
-        },
-      }),
+      set: (patch: Record<string, unknown>) => {
+        sweepSetArgs.push(patch);
+        return {
+          where: (arg: unknown) => {
+            sweepWhereArgs.push(arg);
+            return { returning: () => updateReturning() };
+          },
+        };
+      },
     }),
     insert: () => ({ values: async () => undefined }),
     select: () => ({
@@ -78,6 +82,10 @@ vi.mock('./kill-gate.js', () => ({
   requestJobKill: (...args: unknown[]) => requestJobKillMock(...args),
   resolveKillConfirmation: (...args: unknown[]) => resolveKillConfirmationMock(...args),
   killGraceMs: () => killGraceMsValue,
+  killEpisodeWindowMs: () => killGraceMsValue * 2,
+  isKillEpisodeLive: (job: { killRequestedAt: Date | null }) =>
+    job.killRequestedAt !== null &&
+    Date.now() - job.killRequestedAt.getTime() <= killGraceMsValue * 2,
 }));
 
 const {
@@ -137,6 +145,7 @@ beforeEach(() => {
   selectLimit.mockReset();
   selectLimit.mockResolvedValue([]);
   sweepWhereArgs.length = 0;
+  sweepSetArgs.length = 0;
   finalizeFailedJobMock.mockClear();
   finalizeFailedJobMock.mockResolvedValue({ scheduled: false });
   requestJobKillMock.mockClear();
@@ -203,6 +212,21 @@ describe('reapAckMisses — dispatch→ack hop', () => {
       expect.objectContaining({ error: 'dispatch_unclaimed' }),
     );
     expect(finalizeFailedJobMock.mock.calls[0]?.[1]).not.toHaveProperty('precomputedRetry');
+  });
+
+  it('records the forced confirmation as never_claimed, not a not_found no runner ever sent', async () => {
+    dbExecute.mockResolvedValueOnce([
+      candidateRow({ kill_requested_at: new Date(Date.now() - killGraceMsValue - 1_000) }),
+    ]);
+    updateReturning.mockResolvedValueOnce([
+      { id: 'job-1', projectId: 'p1', issueId: 'i1', status: 'failed' },
+    ]);
+
+    await reapAckMisses(new Date('2026-06-12T00:00:00Z'));
+
+    expect(sweepSetArgs.at(-1)).toEqual(
+      expect.objectContaining({ killOutcome: 'never_claimed', killConfirmedAt: expect.any(Date) }),
+    );
   });
 
   it('skips a CAS loser (the runner acked the same instant)', async () => {
@@ -341,6 +365,47 @@ describe('reapSessionLostJobs — heartbeat hop, job axis (was ISS-280), now kil
         precomputedRetry: { scheduled: false, reason: 'kill_unconfirmed' },
       }),
     );
+  });
+
+  it('the unconfirmed park gets its OWN wedge text — never the confirmed branch\'s "routed to retry"', async () => {
+    dbExecute.mockResolvedValueOnce([
+      candidateRow({
+        id: 'orphan-2',
+        kill_requested_at: new Date(Date.now() - killGraceMsValue - 1_000),
+      }),
+    ]);
+    resolveKillConfirmationResult = { confirmed: false, outcome: null };
+    updateReturning.mockResolvedValueOnce([
+      { id: 'orphan-2', projectId: 'p1', issueId: 'i1', status: 'failed' },
+    ]);
+
+    await reapSessionLostJobs(new Date('2026-05-30T00:00:00Z'));
+
+    const wedge = emitWedgeMock.mock.calls[0]?.[0] as { reason: string; action: string };
+    expect(wedge.reason).toMatch(/never confirmed the kill/i);
+    expect(wedge.action).toMatch(/kill any agent process still running/i);
+    expect(wedge.action).toMatch(/NO retry/);
+    expect(wedge.action).not.toMatch(/routed to retry/i);
+  });
+
+  it('a kill request left over from an EARLIER episode never counts as phase 1 — the job is re-killed, not failed (ISS-785 review round 2, BLOCKER A)', async () => {
+    dbExecute.mockResolvedValueOnce([
+      candidateRow({
+        id: 'survivor-1',
+        // cm:why an ack-hop episode the job then survived — the runner answered not_found about a process that had not started yet
+        kill_requested_at: new Date(Date.now() - 60 * 60_000),
+        kill_confirmed_at: new Date(Date.now() - 60 * 60_000 + 1_000),
+        kill_outcome: 'not_found',
+      }),
+    ]);
+
+    const result = await reapSessionLostJobs(new Date('2026-05-30T00:00:00Z'));
+
+    expect(result).toEqual({ reaped: 0, killRequested: 1, awaitingKill: 0 });
+    expect(requestJobKillMock).toHaveBeenCalledTimes(1);
+    expect(resolveKillConfirmationMock).not.toHaveBeenCalled();
+    expect(updateReturning).not.toHaveBeenCalled();
+    expect(finalizeFailedJobMock).not.toHaveBeenCalled();
   });
 
   it('skips a job that lost the CAS race (a late /complete already finalized it)', async () => {

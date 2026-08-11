@@ -28,6 +28,7 @@ import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import {
   type KillableJobRef,
+  isKillEpisodeLive,
   killGraceMs,
   requestJobKill,
   resolveKillConfirmation,
@@ -192,7 +193,11 @@ interface KillGateReapConfig {
   finalizeError?: string;
   failureKind: 'infra' | 'timeout';
   failureReason: string;
-  confirmedWedgeReason: string;
+  /** What tripped the hop — true on both the confirmed and unconfirmed
+   *  branch, so the unconfirmed wedge extends it rather than replacing it. */
+  wedgeReason: string;
+  /** Action text for the CONFIRMED branch only (a retry is in flight). The
+   *  unconfirmed branch owns `UNCONFIRMED_WEDGE_ACTION`. */
   confirmedWedgeAction: string;
   /**
    * Hop 1 (ack) only: the candidate predicate already proves no runner ever
@@ -222,13 +227,15 @@ async function resolveKillGateDecision(
 ): Promise<KillGateReapDecision> {
   const ref = toKillableRef(row);
 
-  if (!ref.killRequestedAt) {
+  const requestedAt = ref.killRequestedAt;
+  if (!requestedAt || !isKillEpisodeLive(ref)) {
     // cm:guard no wedge here — nothing is actionable until the kill is confirmed or times out; a wedge now would occupy the per-entity dedupe slot (wedge.ts) and swallow the actionable phase-2 wedge below
+    // cm:guard an aged-out request opens a NEW episode (requestJobKill clears the old answer) — reading it as "phase 1 already done" would fail+retry a job whose runner was never told to stop this time round
     await requestJobKill(ref, cfg.error);
     return { phase: 'kill_requested' };
   }
 
-  if (Date.now() - ref.killRequestedAt.getTime() < killGraceMs()) {
+  if (Date.now() - requestedAt.getTime() < killGraceMs()) {
     // cm:why re-publish job.cancel on every tick while awaiting confirmation — a WS blip that drops the first publish must not park a job whose runner reconnects before the grace elapses; idempotent, the runner answers not_found
     await requestJobKill(ref, cfg.error);
     return { phase: 'awaiting_kill' };
@@ -238,7 +245,8 @@ async function resolveKillGateDecision(
   let outcome: JobRow['killOutcome'];
   if (cfg.forceConfirmAfterGrace) {
     confirmed = true;
-    outcome = ref.killOutcome ?? 'not_found';
+    // cm:guard record never_claimed, NOT not_found — no runner answered, and an audit column that invents an answer is the state-never-lies violation (VISION §10) this gate exists to prevent
+    outcome = ref.killOutcome ?? 'never_claimed';
   } else {
     const resolution = await resolveKillConfirmation(ref);
     confirmed = resolution.confirmed;
@@ -270,6 +278,10 @@ async function resolveKillGateDecision(
   return { phase: 'reaped', updated, confirmed };
 }
 
+// cm:guard the unconfirmed park is the ONE reap outcome with no retry and a possibly-live agent — its wedge must never reuse the confirmed branch's "routed to retry" text, or the operator reads "handled" and leaves the process writing git (VISION §10)
+const UNCONFIRMED_WEDGE_ACTION =
+  'NO retry was scheduled and the issue is parked at `waiting`. Before resuming it, check the assigned device and kill any agent process still running for this job — resuming while it lives puts two agents on the same worktree.';
+
 /** Wedge + route the confirmed/unconfirmed reap through the shared
  *  `finalizeFailedJob` tail — retry forced off when the kill was never
  *  confirmed. Called AFTER the row is already counted `reaped` (see above). */
@@ -278,7 +290,7 @@ async function finalizeKillGateReap(
   confirmed: boolean,
   cfg: Pick<
     KillGateReapConfig,
-    'hop' | 'error' | 'finalizeError' | 'confirmedWedgeReason' | 'confirmedWedgeAction'
+    'hop' | 'error' | 'finalizeError' | 'wedgeReason' | 'confirmedWedgeAction'
   >,
 ): Promise<void> {
   await emitPipelineWedge({
@@ -287,8 +299,10 @@ async function finalizeKillGateReap(
     hop: cfg.hop,
     entity: 'job',
     entityId: updated.id,
-    reason: cfg.confirmedWedgeReason,
-    action: cfg.confirmedWedgeAction,
+    reason: confirmed
+      ? cfg.wedgeReason
+      : `${cfg.wedgeReason} — and the runner never confirmed the kill, so its agent process may still be running on the device`,
+    action: confirmed ? cfg.confirmedWedgeAction : UNCONFIRMED_WEDGE_ACTION,
   });
   const finalizeError = cfg.finalizeError ?? cfg.error;
   await finalizeFailedJob(
@@ -346,7 +360,7 @@ export async function reapAckMisses(
         failureKind: 'infra',
         failureReason:
           'dispatch never claimed by a runner (no ack / no started event within grace window)',
-        confirmedWedgeReason:
+        wedgeReason:
           'runner never acked the dispatch (no ack, zero job events) within the grace window',
         confirmedWedgeAction:
           'Check the assigned device is online and its forge-runner daemon is running. The job was auto-failed and routed to device-rotated retry; if it recurs, rotate or unbind the device.',
@@ -623,8 +637,7 @@ export async function reapSessionLostJobs(
         failureKind: 'infra',
         failureReason:
           'agent session terminated without job completion (silent runner/agent death)',
-        confirmedWedgeReason:
-          'linked agent session terminated without the job reporting completion',
+        wedgeReason: 'linked agent session terminated without the job reporting completion',
         confirmedWedgeAction:
           'The job was failed and routed to retry. If retries keep landing here, inspect the device runner logs for silent deaths.',
       };
@@ -690,7 +703,7 @@ export async function reapResultMisses(
         finalizeError: STALE_REASON,
         failureKind: 'timeout',
         failureReason: STALE_REASON,
-        confirmedWedgeReason: STALE_REASON,
+        wedgeReason: STALE_REASON,
         confirmedWedgeAction:
           'The job was failed and routed to a device-rotated retry. Check the original device for a hung Claude CLI / runaway step.',
       };

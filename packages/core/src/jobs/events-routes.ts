@@ -164,7 +164,13 @@ jobEventsRoutes.post(
     try {
       await db
         .update(jobs)
-        .set({ ackedAt: new Date() })
+        // cm:edge lockstep -> packages/core/src/jobs/lifecycle-routes.ts — the explicit ack clears the same kill columns; a first ack that leaves them behind hands a later reap a confirmation about a process that had not started yet (ISS-785)
+        .set({
+          ackedAt: new Date(),
+          killRequestedAt: null,
+          killConfirmedAt: null,
+          killOutcome: null,
+        })
         .where(and(eq(jobs.id, jobId), isNull(jobs.ackedAt)));
     } catch (err) {
       logger.warn({ err, jobId }, 'job-events: ack fallback stamp failed (continuing)');

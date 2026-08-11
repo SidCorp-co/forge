@@ -28,6 +28,9 @@ const jobRow = {
   exitCode: null,
   error: null,
   retryOf: null,
+  killRequestedAt: new Date() as Date | null,
+  killConfirmedAt: null,
+  killOutcome: null,
   createdAt: new Date(),
 };
 
@@ -155,6 +158,39 @@ beforeEach(() => {
 });
 
 describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
+  it('the first ack ends any open kill episode — the columns are cleared with the same CAS (ISS-785 review round 2)', async () => {
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...jobRow,
+        killRequestedAt: new Date(),
+        killConfirmedAt: new Date(),
+        killOutcome: 'not_found',
+      },
+    ]);
+    txUpdateReturning.mockResolvedValueOnce([
+      { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(r.status).toBe(200);
+    expect(txUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ackedAt: expect.any(Date),
+        killRequestedAt: null,
+        killConfirmedAt: null,
+        killOutcome: null,
+      }),
+    );
+  });
+
   it('records job.ran.with with the resolved skillId + packetId when the runner ACKs with a non-empty skillsRanWith map', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
     selectLimit.mockResolvedValueOnce([{ id: 'skill-1' }]);
@@ -462,8 +498,18 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
     );
 
     expect(r.status).toBe(200);
-    const json = (await r.json()) as { jobId: string; killOutcome: string; acked: boolean };
-    expect(json).toEqual({ jobId: validJobId, killOutcome: 'killed', acked: true });
+    const json = (await r.json()) as {
+      jobId: string;
+      killOutcome: string;
+      acked: boolean;
+      recorded: boolean;
+    };
+    expect(json).toEqual({
+      jobId: validJobId,
+      killOutcome: 'killed',
+      acked: true,
+      recorded: true,
+    });
     expect(txUpdateSet).toHaveBeenCalledWith(
       expect.objectContaining({ killConfirmedAt: expect.any(Date), killOutcome: 'killed' }),
     );
@@ -472,7 +518,29 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
       expect.objectContaining({
         jobId: validJobId,
         kind: 'kill_ack',
-        data: { outcome: 'killed', deviceId: 'dev-1' },
+        data: { outcome: 'killed', deviceId: 'dev-1', recorded: true },
+      }),
+    );
+  });
+
+  it('audits but does NOT stamp an ack for a job with no kill requested (ISS-785 review round 2)', async () => {
+    selectLimit.mockResolvedValueOnce([{ ...jobRow, killRequestedAt: null }]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/kill-ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ outcome: 'not_found' }),
+      }),
+    );
+
+    expect(r.status).toBe(200);
+    expect((await r.json()) as { recorded: boolean }).toMatchObject({ recorded: false });
+    expect(txUpdateSet).not.toHaveBeenCalled();
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { outcome: 'not_found', deviceId: 'dev-1', recorded: false },
       }),
     );
   });
@@ -493,7 +561,9 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
     const json = (await r.json()) as { killOutcome: string };
     expect(json.killOutcome).toBe('not_found');
     expect(txInsertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { outcome: 'not_found', deviceId: 'dev-1' } }),
+      expect.objectContaining({
+        data: { outcome: 'not_found', deviceId: 'dev-1', recorded: true },
+      }),
     );
   });
 

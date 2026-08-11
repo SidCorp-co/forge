@@ -697,8 +697,9 @@ export const jobs = pgTable(
     // cm:edge contract -> packages/core/src/jobs/retry.ts — scheduleAutoRetryWithVerify short-circuits retry on cancellationRequested, not on killRequestedAt/killOutcome
     killRequestedAt: timestamp('kill_requested_at', { withTimezone: true }),
     killConfirmedAt: timestamp('kill_confirmed_at', { withTimezone: true }),
+    // cm:why plain text (no pg enum) — adding an outcome value is additive, no migration
     killOutcome: text('kill_outcome', {
-      enum: ['killed', 'not_found', 'runner_gone', 'reported_terminal'],
+      enum: ['killed', 'not_found', 'runner_gone', 'reported_terminal', 'never_claimed'],
     }),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
     // ISS-197 — when set, dispatch gate L1 skips this row until now() >=
