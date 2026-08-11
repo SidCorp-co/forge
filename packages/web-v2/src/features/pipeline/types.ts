@@ -104,6 +104,9 @@ export interface PipelineRunSummary {
   finishedAt: string | null;
   steps: PipelineRunStepSummary[];
   cost: PipelineRunCostSummary;
+  /** ISS-789 — jobs on this run not yet terminal. A `running` run with 0 has
+   *  nothing working on it; status alone cannot tell that apart. */
+  liveJobs: number;
   /** ISS-411 — per-attempt device/retry timeline. */
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */

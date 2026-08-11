@@ -24,7 +24,18 @@ function runLabel(kind: PipelineRunKind): string {
   return KIND_LABEL[kind] ?? `${kind} run`;
 }
 
-export function LiveRunsCard({ runs, slug }: { runs: PipelineRunListItem[]; slug: string }) {
+export function LiveRunsCard({
+  runs,
+  slug,
+  idle = [],
+}: {
+  runs: PipelineRunListItem[];
+  slug: string;
+  /** ISS-789 — runs still open with nothing working on them. Shown as a count
+   *  rather than hidden: they were invisible before, and a run that is open and
+   *  idle is exactly what a human needs to know to go unstick it. */
+  idle?: PipelineRunListItem[];
+}) {
   const router = useRouter();
 
   const open = (run: PipelineRunListItem) => {
@@ -80,6 +91,19 @@ export function LiveRunsCard({ runs, slug }: { runs: PipelineRunListItem[]; slug
               );
             })}
           </ul>
+        )}
+        {idle.length > 0 && (
+          <button
+            type="button"
+            onClick={() => router.push(`/projects/${slug}/pipeline`)}
+            className="fg-caption mt-3 flex w-full items-center gap-1.5 rounded-md px-2.5 py-2 text-left text-muted transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <Icon name="pause" size={13} className="flex-none text-subtle" />
+            <span className="min-w-0 flex-1">
+              {idle.length} {idle.length === 1 ? "run is" : "runs are"} open with nothing running
+            </span>
+            <Icon name="chevronRight" size={13} className="flex-none text-subtle" />
+          </button>
         )}
       </CardContent>
     </Card>

@@ -23,6 +23,7 @@ import { SpendCard } from "@/features/project-dashboard/components/spend-card";
 import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
 import {
   activeRuns,
+  idleRuns,
   activeSpend,
   awaitingReleaseRuns,
   projectAttention,
@@ -122,6 +123,7 @@ export default function ProjectOverviewPage() {
   const attention = projectAttention(attentionQ.view, project.slug, health?.blockers);
   const runItems = runsQ.data?.items;
   const runsActive = activeRuns(runItems);
+  const runsIdle = idleRuns(runItems);
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
   const inFlight = activeSpend(runItems);
   const runners = runnersSummary(
@@ -193,7 +195,7 @@ export default function ProjectOverviewPage() {
         <AttentionQueue items={attention} now={now} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          <LiveRunsCard runs={runsActive} slug={project.slug} />
+          <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />
           <AwaitingReleaseCard runs={runsAwaitingRelease} slug={project.slug} projectId={project.id} />
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />

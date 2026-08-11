@@ -78,6 +78,12 @@ export async function pipelineRunsListHandler(
       finishedAt: pipelineRuns.finishedAt,
       createdAt: pipelineRuns.createdAt,
       updatedAt: pipelineRuns.updatedAt,
+      // cm:why ISS-789 — `status` alone cannot say whether anything is still working on a run; a correlated count keeps that answer in the same round-trip as the row it describes
+      liveJobs: sql<number>`(
+        SELECT count(*)::int FROM ${jobs}
+        WHERE ${jobs.pipelineRunId} = ${pipelineRuns.id}
+          AND ${jobs.status} IN ('queued','dispatched','running')
+      )`.mapWith(Number),
     })
     .from(pipelineRuns)
     .where(and(...conds))

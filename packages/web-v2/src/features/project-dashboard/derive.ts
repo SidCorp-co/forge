@@ -188,10 +188,26 @@ export function liveRuns(runs: PipelineRunListItem[] | undefined): PipelineRunLi
   return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
 }
 
-/** Live runs that are genuinely executing a step (dispatched job or queued for
- *  one) — excludes runs parked at the `tested` manual release gate. */
+/** Live runs that are genuinely executing a step — i.e. something is actually
+ *  queued, dispatched or running on them.
+ *
+ *  This used to be `currentStep !== "tested"`, which only knew about ONE parked
+ *  state. Every other park — `waiting`, `needs_info`, `on_hold`, or a run whose
+ *  last job died — read as live forever. Measured 2026-08-11: getcontent had 14
+ *  runs at status `running`, of which 3 had any live job. `liveJobs` is the fact
+ *  the guess was standing in for (ISS-789). */
 export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
-  return liveRuns(runs).filter((r) => r.currentStep !== AWAITING_RELEASE_STEP);
+  return liveRuns(runs).filter((r) => (r.liveJobs ?? 0) > 0);
+}
+
+/** Live runs with nothing working on them — open in the DB, idle in reality.
+ *  Split out from `awaitingReleaseRuns`: that one names the single expected park
+ *  (the release gate); this one is everything else, which is the set nobody
+ *  could see before. */
+export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return liveRuns(runs).filter(
+    (r) => (r.liveJobs ?? 0) === 0 && r.currentStep !== AWAITING_RELEASE_STEP,
+  );
 }
 
 /** Live runs parked at the manual release gate — tested and done, just waiting

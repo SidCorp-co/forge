@@ -98,6 +98,13 @@ export interface PipelineRunSummary {
   finishedAt: string | null;
   steps: PipelineRunStepSummary[];
   cost: PipelineRunCostSummary;
+  /**
+   * ISS-789 — jobs on this run that are not yet terminal (`queued`,
+   * `dispatched`, `running`). A `running` run with `liveJobs: 0` has nothing
+   * left working on it; the status alone cannot say that, which is why
+   * filtering by `status=running` could not tell alive from dead.
+   */
+  liveJobs: number;
   /** ISS-411 — per-attempt device/retry timeline (jobs-sourced). */
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
@@ -301,6 +308,8 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     startedAt: toIsoRequired(row.startedAt),
     finishedAt: toIso(row.finishedAt),
     cost: EMPTY_COST,
+    // cm:why 0 is the honest default for a caller that did not batch the count — never a guess about liveness
+    liveJobs: 0,
   };
 }
 
@@ -352,6 +361,27 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
  * Runs with no usage rows are absent from the map; callers should fall back
  * to {@link EMPTY_COST}.
  */
+// cm:why ISS-789 — batched like loadCostByRunIds: the list endpoint renders up to `limit` runs, and a per-run count query would make the honest answer cost more than the dishonest one
+async function loadLiveJobCountsByRunIds(runIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (runIds.length === 0) return out;
+  const rows = await db
+    .select({
+      runId: jobs.pipelineRunId,
+      n: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(jobs)
+    .where(
+      and(
+        inArray(jobs.pipelineRunId, runIds),
+        inArray(jobs.status, ['queued', 'dispatched', 'running']),
+      ),
+    )
+    .groupBy(jobs.pipelineRunId);
+  for (const r of rows) if (r.runId) out.set(r.runId, Number(r.n));
+  return out;
+}
+
 async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineRunCostSummary>> {
   const out = new Map<string, PipelineRunCostSummary>();
   if (runIds.length === 0) return out;
@@ -400,7 +430,11 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
-  const [costMap, issueRefs] = await Promise.all([loadCostByRunIds(ids), loadIssueRefs(issueIds)]);
+  const [costMap, issueRefs, liveMap] = await Promise.all([
+    loadCostByRunIds(ids),
+    loadIssueRefs(issueIds),
+    loadLiveJobCountsByRunIds(ids),
+  ]);
   return rows.map((r) => {
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
     return {
@@ -408,6 +442,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
+      liveJobs: liveMap.get(r.id) ?? 0,
     };
   });
 }

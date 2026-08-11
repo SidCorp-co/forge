@@ -42,6 +42,7 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({
   name: 'forge_project_pipeline_runs',
   description:
     'Lifecycle controls for project pipeline_runs. Actions: list | get | pause | resume | cancel. ' +
+    'Every list row carries `liveJobs` — how many of its jobs are still queued/dispatched/running. READ IT before treating `status` as liveness: a run stays `running` after its last job ends, so `status:"running"` with `liveJobs: 0` means nothing is working on it and only a human can move it. Filtering on status alone cannot tell those apart. ' +
     'list: requires projectId; optional issueId/status/limit filters; newest-first by started_at. ' +
     'get/pause/resume/cancel: require runId. ' +
     'Authorization: list scopes to the device owner being a project member; get/pause/resume/cancel resolve the run first then enforce project membership (PAT principals additionally pass the projectIds allowlist).',
