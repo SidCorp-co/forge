@@ -2263,6 +2263,23 @@ describe('findVerifiedClaimViolation', () => {
     expect(violation?.path).toBe('verified');
   });
 
+  it.each(['2026', '2026-03-05', 'March 5 2026'])(
+    'rejects a loose date %s that Date.parse alone would accept',
+    (checkedAt) => {
+      const violation = findVerifiedClaimViolation({
+        verified: { evidence: 'some evidence', checkedAt },
+      });
+      expect(violation?.path).toBe('verified');
+    },
+  );
+
+  it('rejects an ISO-shaped checkedAt that is not a real instant', () => {
+    const violation = findVerifiedClaimViolation({
+      verified: { evidence: 'some evidence', checkedAt: '2026-13-45T99:99:99Z' },
+    });
+    expect(violation?.path).toBe('verified');
+  });
+
   it('rejects a shaped-looking value with empty evidence', () => {
     const violation = findVerifiedClaimViolation({
       verified: { evidence: '', checkedAt: new Date().toISOString() },
@@ -2278,12 +2295,23 @@ describe('findVerifiedClaimViolation', () => {
   // cm:guard ISS-820 — bound-exceed on a pathological payload MUST accept (fail-open), never reject a legitimate large payload nor hang
   it('accepts without hanging when a pathological payload exceeds the node bound', () => {
     const wide: Record<string, unknown> = {};
-    for (let i = 0; i < 20_000; i++) {
+    for (let i = 0; i < 120_000; i++) {
       wide[`key${i}`] = 'value';
     }
     wide.verifiedGroundTruth = 'bare string, but buried past the node bound';
     const violation = findVerifiedClaimViolation(wide);
     expect(violation).toBeNull();
+  });
+
+  // cm:guard ISS-820 — the node budget must stay out of reach of any payload the 200000-byte sessionContext refinement admits, or padding keys buy a free bare claim
+  it('still catches a bare claim padded to the largest payload the size cap admits', () => {
+    const padded: Record<string, unknown> = {};
+    for (let i = 0; i < 10_050; i++) {
+      padded[`k${i}`] = 'v';
+    }
+    padded.verifiedGroundTruth = 'bare';
+    expect(JSON.stringify(padded).length).toBeLessThan(200_000);
+    expect(findVerifiedClaimViolation(padded)?.path).toBe('verifiedGroundTruth');
   });
 
   it('accepts without hanging when a pathological payload exceeds the depth bound', () => {
@@ -2295,6 +2323,16 @@ describe('findVerifiedClaimViolation', () => {
     }
     const violation = findVerifiedClaimViolation(deep);
     expect(violation).toBeNull();
+  });
+
+  // cm:guard ISS-820 — depth prunes ONE subtree, never the whole walk: a single over-deep decoy key must not buy a bare sibling claim
+  it('still checks siblings of an over-deep decoy branch', () => {
+    let decoy: Record<string, unknown> = { leaf: true };
+    for (let i = 0; i < 70; i++) {
+      decoy = { nested: decoy };
+    }
+    const violation = findVerifiedClaimViolation({ decoy, verifiedGroundTruth: 'bare' });
+    expect(violation?.path).toBe('verifiedGroundTruth');
   });
 
   it('rejects a bare verified* value inside an array', () => {
