@@ -49,6 +49,8 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
       return new HTTPException(422, { message: err.detail, cause });
     case 'PLAN_REQUIRED':
       return new HTTPException(409, { message: err.detail, cause });
+    case 'NO_WORK_EVIDENCE':
+      return new HTTPException(409, { message: err.detail, cause });
     default:
       // ILLEGAL_TRANSITION | STALE_TRANSITION
       return new HTTPException(409, { message: err.detail, cause });

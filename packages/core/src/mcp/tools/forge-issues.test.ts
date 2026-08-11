@@ -106,6 +106,16 @@ vi.mock('../../jobs/dispatch-tick.js', () => ({
   dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
 }));
 
+// ISS-786 child B — mocked independently of the generic `db.select` chain
+// (real evidence collection is unit-tested in `pipeline/work-evidence.test.ts`).
+// Defaults to "evidence found" (null violation) so the dozens of pre-existing
+// mark_merged tests don't need to stage extra queries; the refusal path tests
+// below override per-call.
+const findMissingWorkEvidenceMock = vi.fn<() => Promise<string | null>>(async () => null);
+vi.mock('../../pipeline/work-evidence.js', () => ({
+  findMissingWorkEvidence: (...args: unknown[]) => findMissingWorkEvidenceMock(...(args as [])),
+}));
+
 vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
@@ -1704,6 +1714,54 @@ describe('forge_issues tool', () => {
       await expect(
         tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } }),
       ).rejects.toThrow(/FORBIDDEN/);
+    });
+
+    it('mark_merged refuses a device principal with no recorded code evidence (ISS-75/76/77/78 shape)', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      findMissingWorkEvidenceMock.mockResolvedValueOnce(
+        'no branch, commit or code handoff is recorded for this issue',
+      );
+
+      await expect(
+        tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } }),
+      ).rejects.toThrow(/NO_WORK_EVIDENCE/);
+      expect(updateSet).not.toHaveBeenCalled();
+      expect(insertValues).not.toHaveBeenCalled();
+    });
+
+    it('mark_merged does NOT evidence-gate a PAT (human) principal', async () => {
+      const tool = forgeIssuesTool({
+        principal: {
+          kind: 'pat',
+          userId: OWNER_ID,
+          tokenId: '55555555-5555-4555-8555-555555555555',
+          scopes: ['read', 'write'],
+          projectIds: null,
+          boundProjectId: null,
+        },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      // Would refuse a device principal — proves the PAT path skips the check.
+      findMissingWorkEvidenceMock.mockResolvedValueOnce('no evidence at all');
+      selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership/writer role
+      insertReturning.mockResolvedValueOnce([auditCommentRow]); // audit comment
+      selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]); // fresh
+
+      const result = (await tool.handler({
+        action: 'mark_merged',
+        data: { issueId: ISSUE_ID, target: 'base' },
+      })) as { status: string };
+
+      expect(result.status).toBe('merged');
+      expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
     });
 
     it("unmark rejects with NOT_FOUND when the issue's project is outside the PAT allowlist", async () => {

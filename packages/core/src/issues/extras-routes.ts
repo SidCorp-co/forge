@@ -85,7 +85,8 @@ type BatchSkipReason =
   | 'no_op'
   | 'reopen_cap_exceeded'
   | 'stale'
-  | 'plan_required';
+  | 'plan_required'
+  | 'no_work_evidence';
 
 const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   NO_OP: 'no_op',
@@ -93,6 +94,7 @@ const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   REOPEN_CAP_EXCEEDED: 'reopen_cap_exceeded',
   STALE_TRANSITION: 'stale',
   PLAN_REQUIRED: 'plan_required',
+  NO_WORK_EVIDENCE: 'no_work_evidence',
 };
 
 type BatchResult = {

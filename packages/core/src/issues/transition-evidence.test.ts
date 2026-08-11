@@ -6,7 +6,7 @@
  * soft-skip/failover chain.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // cm:why queued by call order: the plan_required rule's own `issues.plan` read, then (only if blank) `isPlanStageLive`'s `projects.agentConfig` read
 const queue: unknown[][] = [];
@@ -29,6 +29,15 @@ vi.mock('../logger.js', () => ({
 const resolverStages = vi.fn<() => Promise<Set<string>>>(async () => new Set(['clarified']));
 vi.mock('../pipeline/skill-mapping.js', () => ({
   createProjectSkillResolver: () => ({ stages: resolverStages }),
+}));
+
+// ISS-786 child B — real evidence collection is unit-tested in
+// `pipeline/work-evidence.test.ts`; here we only exercise the rule's
+// wiring (status gate, actorType/skip scope, error shape). Defaults to
+// "evidence found" (null) so the plan_required tests above are unaffected.
+const findMissingWorkEvidenceMock = vi.fn<() => Promise<string | null>>(async () => null);
+vi.mock('../pipeline/work-evidence.js', () => ({
+  findMissingWorkEvidence: (...args: unknown[]) => findMissingWorkEvidenceMock(...(args as [])),
 }));
 
 const { checkTransitionEvidence, isBlankPlan } = await import('./transition-evidence.js');
@@ -151,5 +160,86 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     expect(violation).toBeNull();
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
     (db as any).select = original;
+  });
+});
+
+describe('checkTransitionEvidence — no_work_evidence rule', () => {
+  beforeEach(() => {
+    findMissingWorkEvidenceMock.mockReset();
+    findMissingWorkEvidenceMock.mockResolvedValue(null);
+  });
+
+  it('blocks a device transition to developed with no recorded evidence', async () => {
+    findMissingWorkEvidenceMock.mockResolvedValueOnce(
+      'no branch, commit or code handoff is recorded',
+    );
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'developed',
+      actorType: 'device',
+      skip: false,
+    });
+    expect(violation).toEqual({
+      code: 'NO_WORK_EVIDENCE',
+      detail: 'no branch, commit or code handoff is recorded',
+      details: { issueId: 'iss-1', toStatus: 'developed' },
+    });
+  });
+
+  it('blocks a device transition to testing with no recorded evidence', async () => {
+    findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'testing',
+      actorType: 'device',
+      skip: false,
+    });
+    expect(violation?.code).toBe('NO_WORK_EVIDENCE');
+  });
+
+  it('allows a device transition to developed when evidence exists', async () => {
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'developed',
+      actorType: 'device',
+      skip: false,
+    });
+    expect(violation).toBeNull();
+  });
+
+  it('never checks evidence for closed/released — not claiming statuses', async () => {
+    findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      actorType: 'device',
+      skip: false,
+    });
+    expect(violation).toBeNull();
+    expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a user actor even with no evidence (device-only enforcement)', async () => {
+    findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'developed',
+      actorType: 'user',
+      skip: false,
+    });
+    expect(violation).toBeNull();
+    expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
+  });
+
+  it('allows options.skip:true (auto-skip/failover chain unaffected)', async () => {
+    findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'developed',
+      actorType: 'device',
+      skip: true,
+    });
+    expect(violation).toBeNull();
+    expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
   });
 });
