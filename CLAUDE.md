@@ -135,3 +135,7 @@ GROUP BY step ORDER BY p95_s DESC;
 - **New MCP tool** → `packages/core/src/mcp/tools/forge-<name>.ts`
 - **New web feature** → `packages/web-v2/src/features/<name>/` with `api.ts` + `types.ts` + `hooks/` + `components/`
 - **Schema change** → `packages/core/src/db/schema.ts` → `pnpm db:generate` + `pnpm db:migrate` → propagate to `packages/contracts` → web/dev TS types → MCP tool descriptions
+
+> ⚠️ **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at` already recorded in the target database — not just the previous entry's.** drizzle reads the single highest `created_at` once, before the loop, and applies only entries above it; per-hash presence is never checked. An entry at or below that watermark is skipped **silently, forever** — `migrate()` still reports success, so the container starts and serves new code against an old schema. This is not hypothetical: it put a live 500 on `GET /me/attention` for every signed-in user (ISS-807), because two hand-authored entries used real `Date.now()` values that were lower than a predecessor whose `when` had drifted into the future under this repo's `prev + 86400000` convention.
+>
+> Follow the convention — take `max(when)` across the journal and add `86400000` — rather than a real timestamp. `pnpm test` fails on a non-monotonic entry (`db/migrations-journal.test.ts`), and `db/migrate.js` prints a warning at startup naming any journal entry with no ledger row.
