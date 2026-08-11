@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { describeUnrecorded, findUnrecordedMigrations } from './migration-audit.js';
+import {
+  describeUnrecorded,
+  findUnrecordedMigrations,
+  unrecordedSentryEvent,
+} from './migration-audit.js';
 
 const e = (idx: number, when: number, tag = `m${idx}`) => ({ idx, when, tag });
 
@@ -54,5 +58,30 @@ describe('describeUnrecorded', () => {
     // cm:guard the message must NOT assert the migration did not run — on forge-beta three unrecorded entries have all their tables present
     expect(text).toMatch(/does NOT prove their DDL is missing/i);
     expect(text).toMatch(/reports success when it skips/i);
+  });
+});
+
+describe('unrecordedSentryEvent', () => {
+  it('builds a warning-level event for a single unrecorded entry', () => {
+    const event = unrecordedSentryEvent([e(2, 200, 'reconcile_acknowledge')]);
+    expect(event.level).toBe('warning');
+    expect(event.tags.area).toBe('db-migrate');
+    expect(event.message).toContain('1 unrecorded migration');
+    expect(event.extra.count).toBe(1);
+    expect(event.extra.entries).toEqual([{ tag: 'reconcile_acknowledge', idx: 2, when: 200 }]);
+  });
+
+  it('carries every entry for the ISS-807/beta 3-entry shape', () => {
+    const missing = [
+      e(41, 41000, '0041_pm_agent'),
+      e(62, 62000, '0062_personal_access_tokens'),
+      e(63, 63000, '0063_mcp_audit_log'),
+    ];
+    const event = unrecordedSentryEvent(missing);
+    expect(event.extra.count).toBe(3);
+    expect(
+      (event.extra.entries as unknown[]).map((entry) => (entry as { tag: string }).tag),
+    ).toEqual(['0041_pm_agent', '0062_personal_access_tokens', '0063_mcp_audit_log']);
+    expect(event.extra.note).toMatch(/Unrecorded != unapplied/);
   });
 });

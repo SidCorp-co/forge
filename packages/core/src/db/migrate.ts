@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
+import { Sentry, initSentry } from '../observability/sentry.js';
 import {
   type JournalEntry,
   describeUnrecorded,
   findUnrecordedMigrations,
+  unrecordedSentryEvent,
 } from './migration-audit.js';
 
 const url = process.env.DATABASE_URL;
@@ -34,7 +36,24 @@ try {
     journal.entries,
     recorded.map((r) => Number(r.created_at)),
   );
-  if (unrecorded.length > 0) console.warn(describeUnrecorded(unrecorded));
+  if (unrecorded.length > 0) {
+    console.warn(describeUnrecorded(unrecorded));
+    // cm:guard ISS-809 — best-effort: a Sentry failure must never fail container start, so this
+    // has its own try/catch and never reaches the outer `catch` / `process.exit(1)` below.
+    try {
+      if (initSentry()) {
+        const event = unrecordedSentryEvent(unrecorded);
+        Sentry.captureMessage(event.message, {
+          level: event.level,
+          tags: event.tags,
+          extra: event.extra,
+        });
+        await Sentry.flush(2000); // migrate.js exits right after — flush now or the event is dropped
+      }
+    } catch (sentryErr) {
+      console.warn('[migrate] failed to report unrecorded-migration drift to Sentry', sentryErr);
+    }
+  }
 
   console.log(
     `[migrate] done — journal ${journal.entries.length}, recorded ${recorded.length}, unrecorded ${unrecorded.length}`,
