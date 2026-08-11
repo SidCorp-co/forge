@@ -147,7 +147,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scheduled runs (Dream / Doc-Sync / Skill Audit) and agent chat that hit a Claude usage limit now recover by failing over to an account with headroom and record a clear "rate-limited" reason, instead of silently dying with no explanation and wasting the slot.
 - Fixed foreign key violations in forge_comments when using PAT or device-less principals, and restored ability to comment on system runs.
 - Forge's automated pipeline (triage, plan, review, and test stages) now reasons more carefully before asking for more info, flagging a UX problem, or missing a repeated pattern across the codebase — while keeping the same bar so it doesn't bounce or reopen issues unnecessarily.
-- Sessions are now accessible from the workspace navigation rail.
+- Sessions has been replaced by Conversations in the workspace navigation — a dedicated place to see and reply to your Ask-agent chats across every project, separate from pipeline job runs.
 - Chat module documentation now covers Ask Agent device chat flows, role-aware lenses, and RocketChat inbound integration setup.
 - Web-v2 issue list, issue detail, and chat composer are now fully responsive and work correctly on mobile viewports.
 - Fixed a rare issue where the issue list could briefly show outdated status for a few issues.
@@ -164,6 +164,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed documentation of skill delivery to accurately describe background sync behavior and skill propagation practices.
 - Fixed drizzle-kit snapshot chain collision that blocked all future schema migrations.
 - Master agent now enforces C1-C5 context contract with 12-item bundle, verifier, and auto/human gate.
+- Release several issues at once from the project dashboard's Awaiting-release card — select the parked issues and ship them together in one action: one deploy, one changelog entry, all closed at once.
+- The chat support bot now double-checks every reply before sending it — stripping out any leaked secrets, rephrasing overly technical replies for a general audience, and refusing to make a promise it can't keep — so answers are safer and easier to understand.
+- Progress questions to the assistant now get accurate, live counts of finished vs. in-progress work instead of guesses.
+- The chat bot now escalates questions it can't answer to a deeper research agent, then remembers the answer so it gets smarter over time.
+- The mobile bottom navigation inside a project now shows Dashboard, Issues, Chat, Agents, and a Project switcher, with Chat replacing the old header-only Ask Agent entry point on mobile.
+- Chat inputs on mobile Safari no longer force the page to zoom in when you tap to type, search, rename, or edit a message.
+- Mobile: switching projects, the chat panel, and the Issues page all take fewer taps and less screen space now.
+- The Sessions and Conversations lists now sort purely by most-recent activity, so the latest session is always at the top regardless of its status.
+- Issue list rows now show a reason tooltip when the status is Failed, a loading indicator while an issue is opening, and clearer hover/focus styling on the issue ID and title.
+- The Conversations list now expands into a full-width responsive grid when no chat pane is open, so more conversations fit on screen and you scroll less; it collapses back to a narrow rail once you open a conversation.
+- Conversation titles are now short AI-generated topic labels instead of a raw copy of your first message, and system/error strings can no longer leak into a title or preview.
+- forge-runner CLI adds a `sync` command to pull the latest skills for bound projects on demand, without waiting for the next background sync.
+- Fixed a race condition that could corrupt a runner's synced skill files when multiple runner instances share a repo.
+- The Issues screen no longer shows a non-functional Assignee field — list, detail, and filters now show who created each issue, with pipeline/agent-generated issues labeled "Forge Agent".
+- Chat replies no longer show the "couldn't find a confident answer" fallback just because the first server tried was overloaded or logged out — the system now skips unhealthy runners and retries on a healthy one before giving up.
 
 ## [0.3.0] - 2026-06-11
 
