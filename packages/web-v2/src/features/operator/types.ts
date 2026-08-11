@@ -20,5 +20,6 @@ export interface OperatorWhoami {
 export type OperatorWhoamiResult =
   | { kind: "admin"; email: string }
   | { kind: "not-admin" }
+  | { kind: "unverified" }
   | { kind: "unauthenticated" }
   | { kind: "error"; message: string };

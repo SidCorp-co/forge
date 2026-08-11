@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { NavRail, ScreenTabs, Skeleton, type NavItem } from "@/design";
+import { useAuth } from "@/providers/auth-provider";
 import { useOperatorWhoami } from "../hooks";
 import { OPERATOR_SECTIONS, activeSectionFromPath, hrefForSection } from "../nav-model";
 import type { OperatorSectionKey } from "../types";
@@ -11,15 +12,16 @@ const NAV_ITEMS: NavItem[] = OPERATOR_SECTIONS.map(({ key, label, icon }) => ({ 
 const TAB_ITEMS = OPERATOR_SECTIONS.map(({ key, label }) => ({ value: key, label }));
 
 /** Layer-2 nav gate: the server already redirected non-admins before this
- *  ever mounts, but the client whoami query can independently resolve
- *  `isAdmin !== true` (e.g. a session change after the RSC render) and hides
- *  nav items reactively rather than trusting the server render forever. */
+ *  ever mounts, so a failed/erroring whoami query keeps nav visible instead
+ *  of blanking it — there's nothing to distrust yet. Nav hides only once the
+ *  client confirms `isAdmin === false` (e.g. a session change post-render). */
 export function OperatorShell({ email, children }: { email: string; children: React.ReactNode }) {
   const router = useRouter();
+  const { logout } = useAuth();
   const pathname = usePathname() || "/admin";
   const active = activeSectionFromPath(pathname);
   const { data, isPending } = useOperatorWhoami();
-  const showNav = data?.isAdmin === true;
+  const showNav = data?.isAdmin !== false;
 
   function navigate(key: string) {
     router.push(hrefForSection(key as OperatorSectionKey));
@@ -38,7 +40,14 @@ export function OperatorShell({ email, children }: { email: string; children: Re
           </div>
         ) : (
           showNav && (
-            <NavRail workspaceItems={NAV_ITEMS} activeKey={active} onNavigate={navigate} user={{ initials }} />
+            <NavRail
+              workspaceItems={NAV_ITEMS}
+              activeKey={active}
+              onNavigate={navigate}
+              user={{ initials }}
+              onAccount={() => router.push("/")}
+              onSignOut={logout}
+            />
           )
         )}
       </div>

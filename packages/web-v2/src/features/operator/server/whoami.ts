@@ -7,7 +7,7 @@ function resolveApiBase(): string {
   const base =
     process.env.NEXT_PUBLIC_API_URL ||
     (process.env.E2E_CORE_PROXY_URL ? `${process.env.E2E_CORE_PROXY_URL}/api` : null) ||
-    "http://localhost:3000/api";
+    "http://localhost:8080/api";
   return base.replace(/\/+$/, "");
 }
 
@@ -23,7 +23,10 @@ export async function getOperatorWhoami(): Promise<OperatorWhoamiResult> {
       cache: "no-store",
     });
     if (res.status === 401) return { kind: "unauthenticated" };
-    if (res.status === 403) return { kind: "not-admin" };
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => null)) as { code?: string } | null;
+      return body?.code === "EMAIL_NOT_VERIFIED" ? { kind: "unverified" } : { kind: "not-admin" };
+    }
     if (!res.ok) return { kind: "error", message: `Request failed (${res.status})` };
 
     const body = (await res.json()) as { isAdmin: boolean; email: string };

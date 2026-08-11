@@ -8,7 +8,6 @@ export { OperatorShell } from "./components/operator-shell";
 export { OperatorTopbar } from "./components/operator-topbar";
 export { OperatorSection } from "./components/operator-section";
 export { OperatorLoadError } from "./components/operator-load-error";
-export { OperatorShellSkeleton } from "./components/operator-shell-skeleton";
 export { OPERATOR_SECTIONS, activeSectionFromPath, hrefForSection, type OperatorNavItem } from "./nav-model";
 export { useOperatorWhoami } from "./hooks";
 export { operatorApi } from "./api";
