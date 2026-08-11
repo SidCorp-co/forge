@@ -462,7 +462,7 @@ describe('POST /api/schedules/:id/run', () => {
     dispatchMock.mockResolvedValueOnce({
       ok: true,
       sessionId: SESSION_ID,
-      status: 'success',
+      status: 'running',
       resolvedProjectId: PROJECT_ID,
     });
 
@@ -474,11 +474,10 @@ describe('POST /api/schedules/:id/run', () => {
     const body = (await res.json()) as { sessionId: string; jobId?: string };
     expect(body.sessionId).toBe(SESSION_ID);
     expect(body.jobId).toBeUndefined();
-    // lastStatus + lastRunAt written from dispatch result (ISS-557: lastRunAt must not be null)
     const statusWrites = updateSet.mock.calls.map(
       (c) => c[0] as { lastStatus?: string; lastRunAt?: unknown },
     );
-    expect(statusWrites.some((p) => p?.lastStatus === 'success')).toBe(true);
+    expect(statusWrites.some((p) => p?.lastStatus === 'running')).toBe(true);
     expect(statusWrites.some((p) => p?.lastRunAt instanceof Date)).toBe(true);
   });
 
@@ -541,7 +540,7 @@ describe('POST /api/schedules/:id/run', () => {
     dispatchMock.mockResolvedValueOnce({
       ok: true,
       sessionId: SESSION_ID,
-      status: 'success',
+      status: 'running',
       resolvedProjectId: TARGET_PROJECT_ID,
     });
 

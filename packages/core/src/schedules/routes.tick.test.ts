@@ -92,13 +92,13 @@ beforeEach(() => {
 });
 
 describe('runScheduleTickOnce', () => {
-  it('passes targetProjectSlug through to dispatcher and updates lastStatus to success', async () => {
+  it('passes targetProjectSlug through to dispatcher and leaves lastStatus at running (ISS-824 — dispatch does not know the eventual outcome)', async () => {
     selectFromMock.mockResolvedValueOnce([dueScheduleRow({ targetProjectSlug: 'marketing' })]);
     updateReturningMock.mockResolvedValueOnce([{ id: SCHEDULE_ID }]); // atomic claim wins
     dispatchMock.mockResolvedValueOnce({
       ok: true,
       sessionId: 'sess-1',
-      status: 'success',
+      status: 'running',
       resolvedProjectId: 'proj-target',
     });
 
@@ -113,10 +113,9 @@ describe('runScheduleTickOnce', () => {
     expect(dispatchArg.schedule.targetProjectSlug).toBe('marketing');
     expect(dispatchArg.tick).toBe(true);
 
-    // lastStatus transitions: 'running' (atomic claim) then 'success' (post-dispatch)
     const setPayloads = updateSetMock.mock.calls.map((c) => c[0] as { lastStatus?: string });
     expect(setPayloads[0]?.lastStatus).toBe('running');
-    expect(setPayloads[1]?.lastStatus).toBe('success');
+    expect(setPayloads[1]?.lastStatus).toBe('running');
   });
 
   it("desktop schedule with no online device → lastStatus='skipped' (no dispatched id)", async () => {

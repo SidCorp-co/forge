@@ -19,6 +19,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { clearRunnerLimit, stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
+import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -48,7 +49,7 @@ import { recordSessionCreatedActivity } from './session-activity.js';
 import {
   detectUnexpandedSkillFailure,
   extractSessionFailureText,
-  finalizeUsageLimitOnFailure,
+  finalizeScheduleSessionFailure,
 } from './session-failure.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
@@ -671,13 +672,10 @@ agentSessionRoutes.patch(
       updates.metadata = restMeta;
     }
 
-    // ISS-572 — chat/schedule sessions finalize HERE (the runner's patch_failed
-    // → patch_session), not /desktop/status. Classify a usage/session-limit
-    // failure so the run-log stops recording a bare 'failed' + null reason, and
-    // (for schedule runs) fail over to an account with headroom after the write.
-    const usageLimit =
+    // cm:edge naming -> packages/core/src/agent-sessions/lifecycle-routes.ts — chat/schedule sessions finalize HERE (the runner's patch_failed -> patch_session), not /desktop/status; both call the SAME finalizeScheduleSessionFailure
+    const classification =
       patch.status === 'failed' && !isUserCancelled && existing.failureReason !== 'user_cancelled'
-        ? await finalizeUsageLimitOnFailure({
+        ? await finalizeScheduleSessionFailure({
             sessionId: id,
             messages: patch.messages ?? existing.messages,
             note: null,
@@ -744,10 +742,13 @@ agentSessionRoutes.patch(
       broadcastSession(updated, 'agent-session.updated');
     }
 
-    // ISS-572 — after persisting the classified usage_limit reason, recover a
-    // rate-limited schedule run via cross-account failover (best-effort).
-    if (usageLimit) {
-      await usageLimit.recoverAfterWrite(updated.metadata ?? existing.metadata);
+    if (classification) {
+      await classification.recoverAfterWrite(updated.metadata ?? existing.metadata);
+    }
+
+    // cm:guard gate on the PERSISTED updated.status, not patch.status — the ISS-733 rewrite above can flip a reported 'completed' into 'failed' before the write
+    if (updated.status === 'completed' || updated.status === 'failed') {
+      await writeBackScheduleLastStatus(updated.metadata, id, updated.status);
     }
 
     // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
