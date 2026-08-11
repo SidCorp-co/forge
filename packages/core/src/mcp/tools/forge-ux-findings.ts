@@ -2,8 +2,6 @@ import { and, count, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
-  agentSessions,
-  jobs,
   uxContractRules,
   uxFindingKinds,
   uxFindingStages,
@@ -11,6 +9,7 @@ import {
   uxRuleSeverities,
 } from '../../db/schema.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
+import { resolveActiveJobContext } from './active-job-context.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -46,35 +45,6 @@ const inputSchema = z
     limit: z.number().int().min(1).max(200).optional(),
   })
   .strict();
-
-type ActiveJobContext = {
-  jobId: string;
-  runId: string;
-  issueId: string | null;
-};
-
-// Resolve the device's running pipeline job → the issue + run the finding
-// belongs to. ux_findings.issueId is NOT NULL, so a write with no active
-// issue-bound job is rejected (returned as ok:false, not a 500).
-async function resolveActiveJobContext(deviceId: string): Promise<ActiveJobContext | null> {
-  const [row] = await db
-    .select({
-      jobId: jobs.id,
-      runId: jobs.pipelineRunId,
-      issueId: jobs.issueId,
-    })
-    .from(agentSessions)
-    .innerJoin(jobs, eq(jobs.agentSessionId, agentSessions.id))
-    .where(
-      and(
-        eq(agentSessions.deviceId, deviceId),
-        eq(agentSessions.status, 'running'),
-        eq(jobs.status, 'running'),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-}
 
 export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_ux_findings',

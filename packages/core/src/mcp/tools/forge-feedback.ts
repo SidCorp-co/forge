@@ -13,6 +13,7 @@ import {
   projects,
 } from '../../db/schema.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
+import { resolveActiveJobContext } from './active-job-context.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -111,35 +112,6 @@ function buildSignalKey(
 ): string {
   const safeRef = targetRef ? stripFrameTokens(sanitizeUntrusted(targetRef)) : '-';
   return `self_report:${target}:${safeRef}:${kind}`;
-}
-
-type ActiveJobContext = {
-  jobId: string;
-  runId: string;
-  issueId: string | null;
-  stage: string | null;
-};
-
-async function resolveActiveJobContext(deviceId: string): Promise<ActiveJobContext | null> {
-  // Find the running agent session for this device, then join to its job.
-  const [row] = await db
-    .select({
-      jobId: jobs.id,
-      runId: jobs.pipelineRunId,
-      issueId: jobs.issueId,
-      stage: jobs.type,
-    })
-    .from(agentSessions)
-    .innerJoin(jobs, eq(jobs.agentSessionId, agentSessions.id))
-    .where(
-      and(
-        eq(agentSessions.deviceId, deviceId),
-        eq(agentSessions.status, 'running'),
-        eq(jobs.status, 'running'),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
 }
 
 // ISS-557 — steward runs are schedule sessions with no job row, so the job-join
@@ -420,7 +392,6 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           .update(feedbackReports)
           .set({
             reviewedAt: reviewed ? new Date() : null,
-            // Omitting linkedIssueId on a reviewed:true call leaves any
             // cm:why omitting the field leaves an existing link untouched (back-compat); only reviewed:false clears it
             ...patch,
           })

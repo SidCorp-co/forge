@@ -56,8 +56,9 @@ function listSourceFiles(dir: string): string[] {
  *  full lexer: good enough for guard-rail purposes. */
 function stripComments(src: string): string {
   return src
-    .replace(/\/\*[\s\S]*?\*\//g, ' ') // block comments
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (skip scheme:// in URLs)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    // cm:why the leading [^:] is what keeps a `scheme://` inside a string from being eaten as a line comment
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
 /** Scan one file for bypassing terminal writes; returns human-readable hits. */
