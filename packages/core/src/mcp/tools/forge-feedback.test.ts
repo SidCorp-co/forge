@@ -602,8 +602,7 @@ describe('forge_feedback review', () => {
     });
   });
 
-  // cm:guard visibility is still the fence — relaxing same-project must not let a caller
-  // link to an issue in a project they cannot see.
+  // cm:guard visibility is still the fence — relaxing same-project must not let a caller link to an issue in a project they cannot see.
   it('refuses a linkedIssueId in a project the caller cannot see, and stamps nothing', async () => {
     const tool = forgeFeedbackTool(makeCtx());
     const HIDDEN_ISSUE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';

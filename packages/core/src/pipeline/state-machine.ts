@@ -90,12 +90,7 @@ export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
 
 export const REOPEN_CAP = 5;
 
-// cm:why ISS-781 — ANY entry into `reopen` is a reopen, not just `closed → reopen`.
-// The pipeline's own rejection paths (developed → reopen on a review REQUEST
-// CHANGES, testing → reopen on a failed live E2E) are precisely the churn this
-// counter exists to measure, and gating on `closed` left reopenCount at 0 for all
-// of them — which silently disabled the REOPEN_CAP gate and ISS-535 model
-// escalation (escalateModel returns early at reopenCount <= 0).
+// cm:why ISS-781 — ANY entry into `reopen` is a reopen, not just `closed → reopen`. The pipeline's own rejection paths (developed → reopen on a review REQUEST CHANGES, testing → reopen on a failed live E2E) are precisely the churn this counter exists to measure, and gating on `closed` left reopenCount at 0 for all of them — which silently disabled the REOPEN_CAP gate and ISS-535 model escalation (escalateModel returns early at reopenCount <= 0).
 export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
   return to === 'reopen' && from !== 'reopen';
 }

@@ -16,8 +16,7 @@ const TEMPLATE_DB = 'forge_test_tpl';
 
 let stopContainer: (() => Promise<void>) | null = null;
 
-// cm:guard the template must have ZERO open connections when a worker clones it —
-// `CREATE DATABASE ... TEMPLATE` fails with "source database is being accessed by other users"
+// cm:guard the template must have ZERO open connections when a worker clones it — `CREATE DATABASE ... TEMPLATE` fails with "source database is being accessed by other users"
 async function buildTemplate(adminUrl: string): Promise<void> {
   const postgres = (await import('postgres')).default;
   const { drizzle } = await import('drizzle-orm/postgres-js');

@@ -34,8 +34,7 @@ describe('two sub-apps sharing one prefix', () => {
     app.route('/api/x', guardedSubApp());
     app.route('/api/x', publicSubApp());
 
-    // No Authorization header. The public handler would answer 400 (bad hash);
-    // instead the guard answers first.
+    // cm:why no Authorization header — the public handler would answer 400 (bad hash), so a 401 here proves the guard ran first
     const res = await app.request('/api/x/callback/NOT-A-HASH');
     expect(res.status).toBe(401);
     await expect(res.json()).resolves.toEqual({ code: 'UNAUTHENTICATED' });

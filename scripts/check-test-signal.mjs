@@ -29,8 +29,7 @@ const MIN_ASSERTIONS = 20;
 const DECLARATION_RATIO = 0.5;
 const MOCK_RATIO = 0.7;
 
-// cm:why `.onDelete` is deliberately absent — cascade-vs-restrict decides whether deleting a
-// parent destroys child rows, which the declaration does not make obvious and a bug here loses data
+// cm:why `.onDelete` is deliberately absent — cascade-vs-restrict decides whether deleting a parent destroys child rows, which the declaration does not make obvious and a bug here loses data
 const DECLARATION_RE =
   /\.(columnType|notNull|hasDefault|primary|isUnique|dataType|foreignKeys|indexes)\b|withTimezone\(|names\.sort\(\)/g;
 const MOCK_RE = /toHaveBeenCalled[A-Za-z]*\(/g;

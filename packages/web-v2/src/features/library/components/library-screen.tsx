@@ -19,8 +19,7 @@ const TABS: TabItem[] = [
   { value: "knowledge", label: "Knowledge" },
   { value: "memory", label: "Memory" },
   { value: "skills", label: "Skills" },
-  // cm:why the human gate has to live where a person will look — a `decided` run
-  // used to be reachable only through MCP or a hand-written POST.
+  // cm:why the human gate has to live where a person will look — a `decided` run used to be reachable only through MCP or a hand-written POST.
   { value: "updates", label: "Updates" },
 ];
 

@@ -68,8 +68,7 @@ export async function ensurePolicyLandedFor(projectId: string): Promise<boolean>
   const previous = await lastSnapshotFor(projectId);
   if (previous?.digest === set.digest) return false;
 
-  // cm:guard one row per project, not one global row — assembleBundle reads `policy.landed`
-  // scoped to its project, so a global-only stamp would leave every bundle's item 11 empty
+  // cm:guard one row per project, not one global row — assembleBundle reads `policy.landed` scoped to its project, so a global-only stamp would leave every bundle's item 11 empty
   await db.transaction(async (tx) => {
     await recordSkillActivityEvent(tx, {
       eventType: 'policy.landed',

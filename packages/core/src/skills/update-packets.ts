@@ -26,8 +26,7 @@ const inputSchema = z.object({
     .optional(),
 });
 
-// cm:guard validates BEFORE the insert — the DB CHECK on `story` is a backstop,
-// not the enforcement point, per Update Pipeline §3 ("enforce at the write boundary").
+// cm:guard validates BEFORE the insert — the DB CHECK on `story` is a backstop, not the enforcement point, per Update Pipeline §3 ("enforce at the write boundary").
 export async function createUpdatePacket(
   db: Db,
   input: CreateUpdatePacketInput,

@@ -20,8 +20,7 @@ export function isAgentChannel(createdVia: string | null): boolean {
  * `schedule`. These channels stay in the predicate only to catch server-side
  * writers that never pass a key.
  */
-// cm:guard both halves must stay complementary — a row matching neither (or both) vanishes
-// from the UI or shows twice. Change buildOriginCondition's two branches together.
+// cm:guard both halves must stay complementary — a row matching neither (or both) vanishes from the UI or shows twice. Change buildOriginCondition's two branches together.
 export const DETECTOR_CHANNELS = ['system', 'schedule'] as const;
 
 export function isDetectorChannel(createdVia: string | null): boolean {

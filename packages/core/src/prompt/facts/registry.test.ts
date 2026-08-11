@@ -184,8 +184,7 @@ describe('worktree-protocol fact — the invariant that must outrank a stale ski
     expect(body).toMatch(/never assume they are yours/);
   });
 
-  // cm:guard the precedence clause is load-bearing — without it the fact keeps losing to the
-  // forked skill body, which is exactly how this protocol failed on four projects.
+  // cm:guard the precedence clause is load-bearing — without it the fact keeps losing to the forked skill body, which is exactly how this protocol failed on four projects.
   it('explicitly outranks a contradicting step in the adopted skill', () => {
     expect(body).toMatch(/this block wins/);
     expect(body).toMatch(/do not receive template fixes/);
@@ -208,8 +207,7 @@ describe('status-ladder fact — authoritative over a stale exit status in a for
     expect(body).toMatch(/authoritative set of statuses/);
   });
 
-  // cm:guard naming `deploying` explicitly is the point — a generic "check the enum" loses to a
-  // concrete numbered step the agent is already executing, which is how this failed six times.
+  // cm:guard naming `deploying` explicitly is the point — a generic "check the enum" loses to a concrete numbered step the agent is already executing, which is how this failed six times.
   it('names `deploying` and says what to do instead', () => {
     expect(body).toContain('deploying');
     expect(body).toMatch(/retired platform-wide/);
@@ -271,8 +269,7 @@ describe('pipeline-rules — merged_at is caller-asserted, both directions', () 
     expect(text).toContain('forge_issues.unmark');
   });
 
-  // cm:guard the READ side is the half nobody had stated — devbox ISS-4 had to discover by hand
-  // that a `closed` blocker's code was never on main.
+  // cm:guard the READ side is the half nobody had stated — devbox ISS-4 had to discover by hand that a `closed` blocker's code was never on main.
   it("tells a dependent that a blocker's stamp is a claim, not proof", () => {
     expect(text).toMatch(/is a claim, not proof/);
     expect(text).toMatch(/do NOT silently build against it/);

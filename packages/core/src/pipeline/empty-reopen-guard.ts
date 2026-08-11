@@ -45,9 +45,8 @@ export interface UnexplainedReopen {
  *
  * Distinct from the empty-reopen guard above: there the issue never had an
  * implementation; here it shipped one and the reopen carries no rejection.
- *
- * cm:guard fails OPEN on every uncertainty (no history, unreadable window, any query error) — a false needs_info strands work a human is waiting on, which is far worse than the wasted run this catches
  */
+// cm:guard fails OPEN on every uncertainty (no history, unreadable window, any query error) — a false needs_info strands work a human is waiting on, which is far worse than the wasted run this catches
 export async function findUnexplainedReopen(issueId: string): Promise<UnexplainedReopen | null> {
   try {
     const [entered] = await db

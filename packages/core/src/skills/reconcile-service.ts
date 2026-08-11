@@ -514,8 +514,7 @@ export async function buildVerifierPrompt(runId: string, jobId: string): Promise
 // cm:why must equal the number of verify_skill jobs spawnVerifierJobs dispatches — recordVerifierVote's majority tally never resolves if fewer jobs exist than it waits for.
 const VERIFIER_VOTE_COUNT = 3;
 
-// cm:why bounds the retryOf walk below; independent of jobs/retry.ts's RETRY_MAX_ROUNDS (importing
-// it would cycle retry.ts -> reconcile-service.ts -> retry.ts) but serves the same purpose.
+// cm:why bounds the retryOf walk below; independent of jobs/retry.ts's RETRY_MAX_ROUNDS (importing it would cycle retry.ts -> reconcile-service.ts -> retry.ts) but serves the same purpose.
 const MAX_RETRY_CHAIN_DEPTH = 10;
 
 /**
@@ -605,8 +604,7 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
     return;
   }
 
-  // cm:why projects.createdBy is a valid FK stand-in for a system-initiated dispatch —
-  // same convention as finalize-failure.ts's reconcileIssueStatusAfterFailure.
+  // cm:why projects.createdBy is a valid FK stand-in for a system-initiated dispatch — same convention as finalize-failure.ts's reconcileIssueStatusAfterFailure.
   const [projectRow] = await db
     .select({ createdBy: projects.createdBy })
     .from(projects)
@@ -736,8 +734,7 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'pinned', detail };
   }
 
-  // cm:why self-heal before assembling — the boot sweep only sees projects that existed at boot,
-  // so a project created since would otherwise carry an empty bundle item 11 (ISS-795 stage ①)
+  // cm:why self-heal before assembling — the boot sweep only sees projects that existed at boot, so a project created since would otherwise carry an empty bundle item 11 (ISS-795 stage ①)
   await ensurePolicyLandedFor(input.projectId).catch((err) =>
     logger.warn({ err, projectId: input.projectId }, 'reconcile.policyLanded.ensure.failed'),
   );
@@ -867,13 +864,11 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'error', detail: String(err) };
   }
 
-  // cm:why pg-boss send() must happen after commit — enqueueing inside the tx above risks a job
-  // message for a run the tx then rolls back.
+  // cm:why pg-boss send() must happen after commit — enqueueing inside the tx above risks a job message for a run the tx then rolls back.
   try {
     await enqueueReconcileJob(jobId);
   } catch (err) {
-    // cm:guard a send() failure here must not strand reconcile_runs at 'pending' forever — nothing
-    // else can terminate it, and reconcile_runs_active_project_uq would then block every future run.
+    // cm:guard a send() failure here must not strand reconcile_runs at 'pending' forever — nothing else can terminate it, and reconcile_runs_active_project_uq would then block every future run.
     logger.error(
       { err, projectId: input.projectId, runId, jobId },
       'reconcile.spawn.enqueue.error',
@@ -937,8 +932,7 @@ interface VerdictTxResult {
  *
  * Called by the reconcile agent via the `forge_reconcile` MCP tool.
  */
-// cm:guard call only when the run is 'pending' or 'running' — nothing else ever writes 'running',
-// so 'pending' must stay a valid pre-verdict status here (BLOCKER F, ISS-801 review).
+// cm:guard call only when the run is 'pending' or 'running' — nothing else ever writes 'running', so 'pending' must stay a valid pre-verdict status here (BLOCKER F, ISS-801 review).
 export async function recordReconcileVerdict(input: RecordVerdictInput): Promise<void> {
   const result = await db.transaction(async (tx): Promise<VerdictTxResult> => {
     // cm:why FOR UPDATE row-locks this run, serializing concurrent verdict calls.
@@ -1105,8 +1099,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       return { notify: null, projectId: runRow.projectId };
     }
 
-    // cm:guard jobId must resolve to a real dispatched verify_skill job bound to this run —
-    // a fabricated jobId must never reach the majority tally (BLOCKER C, ISS-801 review).
+    // cm:guard jobId must resolve to a real dispatched verify_skill job bound to this run — a fabricated jobId must never reach the majority tally (BLOCKER C, ISS-801 review).
     const [verifierJob] = await tx
       .select({ id: jobs.id })
       .from(jobs)
@@ -1139,8 +1132,7 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     const passCount = allVotes.filter((v) => v.vote === 'pass').length;
     const failCount = allVotes.filter((v) => v.vote === 'fail').length;
 
-    // cm:why VERIFIER_VOTE_COUNT (module-level, shared with spawnVerifierJobs) is 3 (odd, no ties);
-    // 2-of-3 pass auto-publishes (ISS-795 design).
+    // cm:why VERIFIER_VOTE_COUNT (module-level, shared with spawnVerifierJobs) is 3 (odd, no ties); 2-of-3 pass auto-publishes (ISS-795 design).
     const MAJORITY = Math.ceil(VERIFIER_VOTE_COUNT / 2);
 
     const majorityPass = passCount >= MAJORITY;

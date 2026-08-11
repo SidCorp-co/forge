@@ -67,10 +67,7 @@ describe('findUnansweredBounce', () => {
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
   });
 
-  // cm:guard the code/fix shape — forge_step_start flips the issue to `in_progress`, so the
-  // departure FROM `approved` is the in-flight hop and the bounce is recorded one hop later.
-  // Before ISS-85 the guard stopped at the first hop and returned null, so it never fired for
-  // the two most expensive stages — sid-desk ISS-85 re-dispatched 7 times past it.
+  // cm:guard the code/fix shape — forge_step_start flips the issue to `in_progress`, so the departure FROM `approved` is the in-flight hop and the bounce is recorded one hop later. Before ISS-85 the guard stopped at the first hop and returned null, so it never fired for the two most expensive stages — sid-desk ISS-85 re-dispatched 7 times past it.
   it('follows the in-flight hop for code/fix and still blocks the replay', async () => {
     const bouncedAt = new Date('2026-08-01T10:05:00Z');
     setup(

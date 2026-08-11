@@ -251,8 +251,7 @@ describe('skill-activity log integration (ISS-797)', () => {
   });
 
   it('applyReconcileRun emits skill.body.changed with afterHash = hashSkillBody(body, files) — real hash path (ISS-798 BLOCKER C)', async () => {
-    // cm:why exercises the REAL reconcile->publish path with a skill that has files.
-    // Prior fix hand-seeded skill.body.changed with an arbitrary hash, masking the formula mismatch.
+    // cm:why exercises the REAL reconcile->publish path with a skill that has files. Prior fix hand-seeded skill.body.changed with an arbitrary hash, masking the formula mismatch.
     const { hashSkillBody } = await import('../../src/skills/hash.js');
 
     const { user, project, skill } = await seedProjectSkill('old-hash');

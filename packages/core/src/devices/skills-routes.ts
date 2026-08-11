@@ -323,9 +323,7 @@ async function applyReportedSkill(input: {
         },
       });
 
-    // cm:why resolve packetId unconditionally from installedHash — device.skill.applied describes
-    // installing the project-canonical body, which comes from a packet regardless of shadow state.
-    // device.skill.shadowed still withholds packetId because the shadow body is user-authored (ISS-798 BLOCKER D).
+    // cm:why resolve packetId unconditionally from installedHash — device.skill.applied describes installing the project-canonical body, which comes from a packet regardless of shadow state. device.skill.shadowed still withholds packetId because the shadow body is user-authored (ISS-798 BLOCKER D).
     const appliedPacketId = await resolvePacketIdForHash(
       tx,
       projectId,

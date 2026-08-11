@@ -15,9 +15,8 @@
  * across surfaces that no mechanism reconciles. These tests are that
  * mechanism. They assert INTENT, not bytes — the surfaces legitimately differ
  * in framing, escaping and audience, so byte-equality would just get disabled.
- *
- * cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/orientation.rs — the runner template is the other copy of the affordance rules; edit one, this test fails until you edit the other
  */
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/orientation.rs — the runner template is the other copy of the affordance rules; edit one, this test fails until you edit the other
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -96,8 +95,7 @@ describe('rule parity — operating affordances (prompt preamble vs runner orien
     expect(runnerCopy, 'missing from the runner orientation template').toContain(flag);
   });
 
-  // cm:guard the exact row that survived two of three fixes on 2026-08-07 — if it comes back
-  // anywhere, an agent is being taught to file notes as issues again.
+  // cm:guard the exact row that survived two of three fixes on 2026-08-07 — if it comes back anywhere, an agent is being taught to file notes as issues again.
   it('neither surface still routes a note to a draft issue', () => {
     const retired = /To record a note \/ follow-up \| create an issue at `draft`/;
     expect(promptCopy).not.toMatch(retired);

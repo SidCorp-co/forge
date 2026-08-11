@@ -473,11 +473,7 @@ app.route('/api/usage-records', usageRecordRoutes);
 app.route('/api/chat-logs', chatLogRoutes);
 app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
-// cm:guard runnerCallbackRoutes MUST mount before runnerRoutes — runnerRoutes
-// carries `use('*', requireAuth(), assertEmailVerified())`, which covers every
-// /api/runners path regardless of which sub-app declares the handler. Mounted
-// second, the HMAC events callback and the capability-gated skills-zip download
-// 401 for their own (session-less) callers. See middleware/route-mount-order.test.ts.
+// cm:guard runnerCallbackRoutes MUST mount before runnerRoutes — runnerRoutes carries `use('*', requireAuth(), assertEmailVerified())`, which covers every /api/runners path regardless of which sub-app declares the handler. Mounted second, the HMAC events callback and the capability-gated skills-zip download 401 for their own (session-less) callers. See middleware/route-mount-order.test.ts.
 app.route('/api/runners', runnerCallbackRoutes);
 app.route('/api/runners', runnerRoutes);
 

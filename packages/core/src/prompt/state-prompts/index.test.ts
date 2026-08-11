@@ -80,8 +80,7 @@ describe('state-prompts — release terminal-exit invariant lives in the non-for
     expect(release).toMatch(/never blindly re-merge/);
   });
 
-  // cm:guard POLICY here, PROCEDURE in the per-project skill — anhome merges nothing at this
-  // stage (batched cutoff), so a default that hardcodes a merge would contradict its skill.
+  // cm:guard POLICY here, PROCEDURE in the per-project skill — anhome merges nothing at this stage (batched cutoff), so a default that hardcodes a merge would contradict its skill.
   it('defers the merge decision to the project skill instead of mandating one', () => {
     expect(release).toContain("governed by the project's adopted");
     expect(release).toMatch(/promote in batches and merge nothing here/);
