@@ -180,6 +180,7 @@ function makeProjectResolver(src: {
   productionBranch: string | null;
   repoPath: string | null;
   testingUrls: TestingUrl[];
+  testNotes: string | null;
   integrations: IntegrationRow[];
   projectFacts: Record<string, string>;
 }): ProjectVarResolver {
@@ -193,6 +194,7 @@ function makeProjectResolver(src: {
         : undefined,
     'test-creds': () =>
       'Fetch test credentials at runtime via `forge_projects.get` → `previewDeploy.testCredentials` (never hardcode secrets).',
+    'test-notes': () => src.testNotes ?? undefined,
     integrations: () => renderIntegrations(src.integrations),
   };
   return (key) =>
@@ -210,6 +212,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let productionBranch: string | null = null;
   let repoPath: string | null = null;
   let testingUrls: TestingUrl[] = [];
+  let testNotes: string | null = null;
   let integrations: IntegrationRow[] = [];
   try {
     const [row] = await db
@@ -236,8 +239,10 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       ac?.projectFactsConfig && typeof ac.projectFactsConfig === 'object'
         ? ac.projectFactsConfig
         : {};
-    const pd = (row?.previewDeploy as { testingUrls?: TestingUrl[] } | null) ?? null;
+    const pd =
+      (row?.previewDeploy as { testingUrls?: TestingUrl[]; notes?: string | null } | null) ?? null;
     testingUrls = Array.isArray(pd?.testingUrls) ? pd.testingUrls : [];
+    testNotes = typeof pd?.notes === 'string' && pd.notes.length > 0 ? pd.notes : null;
     baseBranch = row?.baseBranch ?? null;
     productionBranch = row?.productionBranch ?? null;
     repoPath = row?.repoPath ?? null;
@@ -277,6 +282,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       productionBranch,
       repoPath,
       testingUrls,
+      testNotes,
       integrations,
       projectFacts,
     }),

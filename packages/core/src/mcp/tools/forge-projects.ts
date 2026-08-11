@@ -227,6 +227,8 @@ const updateInputSchema = z
         repoPath: z.string().trim().max(500).nullable().optional(),
         baseBranch: z.string().trim().max(100).nullable().optional(),
         productionBranch: z.string().trim().max(100).nullable().optional(),
+        // cm:guard scoped write for `previewDeploy.notes` ONLY — the rest of previewDeploy holds testCredentials and stays REST-only. This merges into the existing jsonb; it must never replace it, or a note would delete the credentials beside it.
+        previewDeployNotes: z.string().trim().max(8000).nullable().optional(),
       })
       .strict()
       // Zod v4 `.strict()` only rejects unknown keys; it does NOT strip
@@ -259,7 +261,7 @@ const updateInputSchema = z
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   description:
-    "Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is read-only via forge_projects.get.",
+    "Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is otherwise read-only via forge_projects.get, with ONE scoped exception: `previewDeployNotes` writes `previewDeploy.notes` — the how-to-use and known limits of the project's test resources (which surfaces the test account can reach, which states this environment never contains, what must not be faked). Write it as prose for whoever plans a live walk. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -297,6 +299,15 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.patch.baseBranch !== undefined) updates.baseBranch = input.patch.baseBranch;
     if (input.patch.productionBranch !== undefined) {
       updates.productionBranch = input.patch.productionBranch;
+    }
+    if (input.patch.previewDeployNotes !== undefined) {
+      const [row] = await db
+        .select({ previewDeploy: projects.previewDeploy })
+        .from(projects)
+        .where(eq(projects.id, input.projectId))
+        .limit(1);
+      const current = (row?.previewDeploy ?? {}) as Record<string, unknown>;
+      updates.previewDeploy = { ...current, notes: input.patch.previewDeployNotes };
     }
 
     const updated = await db
@@ -337,7 +348,7 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
   description:
-    'Fetch project detail visible to the principal — id, slug, name, description, orgId, createdBy, role (effective: admin|member|viewer), repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials}, createdAt. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+    'Fetch project detail visible to the principal — id, slug, name, description, orgId, createdBy, role (effective: admin|member|viewer), repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials,notes}, createdAt. READ previewDeploy.notes before planning any live verification: it carries the how-to-use and the known limits of these resources (what a test account can and cannot reach, states this environment never contains), and those limits decide whether an acceptance criterion is walkable AT ALL — check it while the work is still being scoped, not at the testing gate. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
@@ -394,6 +405,7 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
       stagingApiUrl: (pd.stagingApiUrl as string | null | undefined) ?? null,
       testingUrls: Array.isArray(pd.testingUrls) ? pd.testingUrls : [],
       testCredentials: Array.isArray(pd.testCredentials) ? pd.testCredentials : [],
+      notes: (pd.notes as string | null | undefined) ?? null,
     };
 
     return {

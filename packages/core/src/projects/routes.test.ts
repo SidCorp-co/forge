@@ -97,7 +97,7 @@ vi.mock('../skills/service.js', async (importOriginal) => ({
   resolveOrAdoptProjectSkill: resolveOrAdoptProjectSkillMock,
 }));
 
-const { projectRoutes } = await import('./routes.js');
+const { projectRoutes, previewDeployPatchSchema } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -1644,5 +1644,26 @@ describe('DELETE /api/projects/:id', () => {
     });
     expect(res.status).toBe(204);
     expect(deleteWhere).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('previewDeployPatchSchema · notes (ISS-767)', () => {
+  it('accepts the how-to-use note alongside the resources it describes', () => {
+    const r = previewDeployPatchSchema.parse({
+      testingUrls: [{ url: 'https://beta.example.com', label: 'Beta' }],
+      notes: 'The QA account is not a member of every project — check before promising a live walk.',
+    });
+    expect(r.notes).toContain('not a member');
+  });
+
+  it('accepts null to clear it, and trims', () => {
+    expect(previewDeployPatchSchema.parse({ notes: null }).notes).toBeNull();
+    expect(previewDeployPatchSchema.parse({ notes: '  x  ' }).notes).toBe('x');
+  });
+
+  it('leaves the other preview fields untouched when only notes is sent', () => {
+    const r = previewDeployPatchSchema.parse({ notes: 'x' });
+    expect(r.testingUrls).toBeUndefined();
+    expect(r.testCredentials).toBeUndefined();
   });
 });

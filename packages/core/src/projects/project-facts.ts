@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 // Author-defined project constants referenced from a skill body via
 // `{{project:<key>}}` (see docs/skill-facts-design.md). Stored under
 // `projects.agentConfig.projectFacts` as a flat kebab-case → text map.
@@ -12,12 +10,14 @@ import { z } from 'zod';
 //
 // Reserved keys are derived (from project columns / connected integrations) and
 // cannot be shadowed by this map: `base-branch`, `production-branch`,
-// `repo-path`, `test-urls`, `test-creds`, `integrations`.
+// `repo-path`, `test-urls`, `test-creds`, `test-notes`, `integrations`.
 //
 // Everything else is a free-text guide note (we run an LLM — structured field
 // values aren't needed; a `forge_*` MCP fetches live detail, so a how-to-use
 // note injected into the prompt is enough). E.g. `build-commands`,
 // `test-commands`, `git-remote`, `feature-flags` are just prose the agent reads.
+
+import { z } from 'zod';
 
 export const RESERVED_PROJECT_FACT_KEYS = [
   'base-branch',
@@ -25,6 +25,7 @@ export const RESERVED_PROJECT_FACT_KEYS = [
   'repo-path',
   'test-urls',
   'test-creds',
+  'test-notes',
   'integrations',
 ] as const;
 

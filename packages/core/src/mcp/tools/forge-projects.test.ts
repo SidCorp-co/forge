@@ -456,6 +456,65 @@ describe('forge_projects.update', () => {
     expect(selectImpl).toHaveBeenCalledTimes(1);
   });
 
+  // cm:guard previewDeploy holds testCredentials; the notes write MERGES into the existing jsonb. Replacing it would silently delete the project's test logins the first time somebody saved a note.
+  it('previewDeployNotes merges into previewDeploy without dropping the credentials beside it', async () => {
+    mockAccess({ memberRole: null, orgRole: 'owner' });
+    mockSelect([
+      {
+        previewDeploy: {
+          testCredentials: [{ label: 'Admin', username: 'bot@x', password: 'keep-me' }],
+          testingUrls: [{ url: 'https://beta.x', label: 'Beta' }],
+        },
+      },
+    ]);
+    let applied: Record<string, unknown> | undefined;
+    updateImpl.mockImplementationOnce(() => ({
+      set: (v: Record<string, unknown>) => {
+        applied = v;
+        return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
+      },
+    }));
+
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await tool.handler({
+      projectId: PROJECT_A,
+      patch: { previewDeployNotes: 'the QA account cannot reach this project' },
+    });
+
+    const pd = applied?.previewDeploy as Record<string, unknown>;
+    expect(pd.notes).toBe('the QA account cannot reach this project');
+    expect(pd.testCredentials).toEqual([
+      { label: 'Admin', username: 'bot@x', password: 'keep-me' },
+    ]);
+    expect(pd.testingUrls).toEqual([{ url: 'https://beta.x', label: 'Beta' }]);
+  });
+
+  it('previewDeployNotes: null clears the note and keeps the rest', async () => {
+    mockAccess({ memberRole: null, orgRole: 'owner' });
+    mockSelect([{ previewDeploy: { notes: 'old', testCredentials: [{ label: 'Admin' }] } }]);
+    let applied: Record<string, unknown> | undefined;
+    updateImpl.mockImplementationOnce(() => ({
+      set: (v: Record<string, unknown>) => {
+        applied = v;
+        return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
+      },
+    }));
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await tool.handler({ projectId: PROJECT_A, patch: { previewDeployNotes: null } });
+    const pd = applied?.previewDeploy as Record<string, unknown>;
+    expect(pd.notes).toBeNull();
+    expect(pd.testCredentials).toEqual([{ label: 'Admin' }]);
+  });
+
+  it('a non-org-admin cannot write the notes either', async () => {
+    mockAccess({ memberRole: 'admin', orgRole: 'member' });
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, patch: { previewDeployNotes: 'nope' } }),
+    ).rejects.toThrow(/FORBIDDEN/);
+    expect(updateImpl).not.toHaveBeenCalled();
+  });
+
   it('org admin (non-owner) is accepted', async () => {
     mockAccess({ memberRole: null, orgRole: 'admin' });
     mockUpdateReturning({
@@ -740,6 +799,7 @@ describe('forge_projects.get', () => {
       stagingApiUrl: null,
       testingUrls: [],
       testCredentials: [],
+      notes: null,
     });
   });
 

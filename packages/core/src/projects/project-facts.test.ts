@@ -35,12 +35,14 @@ describe('mergeProjectFacts', () => {
     expect(mergeProjectFacts({ a: '1' }, undefined)).toEqual({ a: '1' });
   });
 
+  // cm:guard every reserved key is derived from a first-class column, so letting a projectFacts entry shadow one would splice author-controlled text into the prompt where the agent expects the project's real configuration
   it('ignores reserved (derived) keys', () => {
     const r = mergeProjectFacts(
       {},
       {
         'base-branch': 'main',
         'test-urls': 'x',
+        'test-notes': 'shadow attempt',
         'build-commands': 'pnpm build',
       },
     );

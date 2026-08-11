@@ -87,6 +87,8 @@ export const previewDeployPatchSchema = z
     stagingApiUrl: z.string().trim().url().max(500).nullable().optional(),
     testingUrls: z.array(testingUrlSchema).max(50).optional(),
     testCredentials: z.array(testCredentialSchema).max(50).optional(),
+    // cm:why ISS-767 — free-text how-to-use + caveats for the resources above. The URLs and credentials say WHAT exists; they cannot say "this account is not a member of project X" or "no issue ever rests at the `tested` gate here", which is exactly what made three live-verify runs park after the work was already done.
+    notes: z.string().trim().max(8000).nullable().optional(),
   })
   .catchall(z.unknown());
 
