@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Conversations feels roomier: denser list rows with one clear status per conversation, the side nav tucks away while you're focused on a chat, temporary menus now pop up as overlays instead of taking permanent space, and the message composer is more compact with model/skills/attach tucked inline.
 - Feedback reports now track which issue a curation was folded into and when it was reviewed, distinguishing processed reports from newly received feedback.
 - Fixed a bug where the release step could report an issue as merged and deployed, and close it, even when the code never actually reached the base branch.
+- Fixed a rare pipeline reliability bug where a stage wrongly declared dead could keep running in parallel with its retry, and the retry could overwrite the original run's history.
 - Live E2E tests can now use Chrome DevTools browser automation reliably in dispatched pipeline runner sessions.
 - Agents now flag memory notes a newer release has made outdated, instead of repeating stale guidance.
 - Desktop: multi-pane split-view for side-by-side conversations in a project.
