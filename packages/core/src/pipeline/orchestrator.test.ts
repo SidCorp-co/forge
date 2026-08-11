@@ -129,6 +129,39 @@ vi.mock('./empty-reopen-guard.js', () => ({
   postUnexplainedReopenComment: (...a: unknown[]) => postUnexplainedReopenCommentMock(...(a as [])),
 }));
 
+// cm:why stubs only reopenEnteredFromNeedsInfo (detection covered by bounce-replay-guard.test.ts) — findUnansweredBounce stays real via importActual so existing bounce-replay orchestration tests are unaffected
+const reopenEnteredFromNeedsInfoMock = vi.fn<() => Promise<boolean>>(async () => false);
+vi.mock('./bounce-replay-guard.js', async () => {
+  const actual = await vi.importActual<typeof import('./bounce-replay-guard.js')>(
+    './bounce-replay-guard.js',
+  );
+  return {
+    ...actual,
+    reopenEnteredFromNeedsInfo: (...a: unknown[]) => reopenEnteredFromNeedsInfoMock(...(a as [])),
+  };
+});
+
+// cm:why stubs only isPlanStageLive (detection covered by transition-evidence.test.ts) — isBlankPlan is pure so stays real via importActual
+const isPlanStageLiveMock = vi.fn<() => Promise<boolean>>(async () => true);
+vi.mock('../issues/transition-evidence.js', async () => {
+  const actual = await vi.importActual<typeof import('../issues/transition-evidence.js')>(
+    '../issues/transition-evidence.js',
+  );
+  return {
+    isBlankPlan: actual.isBlankPlan,
+    isPlanStageLive: (...a: unknown[]) => isPlanStageLiveMock(...(a as [])),
+  };
+});
+
+const postMissingPlanCommentMock = vi.fn(async () => undefined);
+const postNeedsInfoReopenCommentMock = vi.fn(async () => undefined);
+vi.mock('./plan-gate-guard.js', () => ({
+  buildMissingPlanCommentBody: () => 'body',
+  buildNeedsInfoFixCommentBody: () => 'body',
+  postMissingPlanComment: (...a: unknown[]) => postMissingPlanCommentMock(...(a as [])),
+  postNeedsInfoReopenComment: (...a: unknown[]) => postNeedsInfoReopenCommentMock(...(a as [])),
+}));
+
 // ISS-108 — orchestrator resolves skillName from the DB via
 // createProjectSkillResolver. Stubbing the module keeps the orchestrator unit
 // test pure (no skill_registrations rows needed) and lets each case control
@@ -265,16 +298,25 @@ function noSkillRegistered() {
   resolverResolve.mockResolvedValueOnce(null);
 }
 
-// ISS-635 Change A — considerEnqueue re-reads the live issue row
-// (loadIssueForSkip) before dispatching. Queue the row a passing test
-// expects to find (status matching the dispatch target keeps the guard a
-// no-op); mismatched/missing rows are what the race-guard tests assert on.
+// cm:why models considerEnqueue's live-issue re-read (loadIssueForSkip) — status mismatch is what the race-guard tests assert on; plan defaults non-blank so the plan-required backstop (isBlankPlan(liveIssue.plan)) stays a no-op unless a test opts into a blank plan
 function liveIssue(
   status: string,
-  overrides: Partial<{ id: string; projectId: string; reopenCount: number }> = {},
+  overrides: Partial<{
+    id: string;
+    projectId: string;
+    reopenCount: number;
+    plan: string | null;
+  }> = {},
 ) {
   nextSelect.mockResolvedValueOnce([
-    { id: 'iss-1', projectId: 'proj-1', status, reopenCount: 0, ...overrides },
+    {
+      id: 'iss-1',
+      projectId: 'proj-1',
+      status,
+      reopenCount: 0,
+      plan: 'an existing plan',
+      ...overrides,
+    },
   ]);
 }
 
@@ -319,6 +361,12 @@ beforeEach(() => {
   appendSkipChainEntryMock.mockResolvedValue(undefined);
   postSkipChainCappedCommentMock.mockReset();
   postSkipChainCappedCommentMock.mockResolvedValue(undefined);
+  reopenEnteredFromNeedsInfoMock.mockReset();
+  reopenEnteredFromNeedsInfoMock.mockResolvedValue(false);
+  isPlanStageLiveMock.mockReset();
+  isPlanStageLiveMock.mockResolvedValue(true);
+  postMissingPlanCommentMock.mockReset();
+  postNeedsInfoReopenCommentMock.mockReset();
 });
 
 describe('pipeline/orchestrator', () => {
@@ -888,6 +936,116 @@ describe('pipeline/orchestrator', () => {
 
     expect(findUnexplainedReopenMock).not.toHaveBeenCalled();
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
+  });
+
+  describe('ISS-819: plan-required dispatch backstop', () => {
+    it('routes approved+blank-plan with no prior plan job back to clarified', async () => {
+      cfgResolved({ enabled: true, autoCode: true });
+      liveIssue('approved', { plan: null });
+      nextSelect.mockResolvedValueOnce([]); // cm:why hasDonePlanJob → none
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
+
+      expect(resolverResolve).not.toHaveBeenCalled();
+      expect(dbInsert).not.toHaveBeenCalled();
+      expect(enqueueMock).not.toHaveBeenCalled();
+      expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+      expect(applyTransitionMock.mock.calls[0]?.[0]).toMatchObject({
+        id: 'iss-1',
+        status: 'approved',
+      });
+      expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('clarified');
+      expect(applyTransitionMock.mock.calls[0]?.[3]).toEqual({ skip: true });
+      expect(postMissingPlanCommentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ issueId: 'iss-1', routedTo: 'clarified' }),
+      );
+    });
+
+    it('routes approved+blank-plan with a prior done plan job to needs_info instead of looping', async () => {
+      cfgResolved({ enabled: true, autoCode: true });
+      liveIssue('approved', { plan: '   ' });
+      nextSelect.mockResolvedValueOnce([{ id: 'prior-plan-job' }]); // cm:why hasDonePlanJob → found
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
+
+      expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+      expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
+      expect(postMissingPlanCommentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ issueId: 'iss-1', routedTo: 'needs_info' }),
+      );
+      expect(dbInsert).not.toHaveBeenCalled();
+      expect(enqueueMock).not.toHaveBeenCalled();
+    });
+
+    it('dispatches code normally when the plan is blank but the plan stage is not live', async () => {
+      isPlanStageLiveMock.mockResolvedValueOnce(false);
+      cfgResolved({ enabled: true, autoCode: true });
+      liveIssue('approved', { plan: null });
+      skillRegistered('forge-code', 'code', 'autoCode');
+      nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+      insertReturning.mockResolvedValueOnce([{ id: 'code-job' }]);
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
+
+      expect(applyTransitionMock).not.toHaveBeenCalled();
+      expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
+    });
+
+    it('never consults the plan-required backstop for a non-code stage', async () => {
+      cfgResolved({ enabled: true, autoPlan: true });
+      liveIssue('clarified', { plan: null });
+      skillRegistered('forge-plan', 'plan', 'autoPlan');
+      nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+      insertReturning.mockResolvedValueOnce([{ id: 'plan-job' }]);
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
+
+      expect(isPlanStageLiveMock).not.toHaveBeenCalled();
+      expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'plan-job' }));
+    });
+  });
+
+  describe('ISS-819: needs_info-reopen guard', () => {
+    it('routes a reopen entered from needs_info back to needs_info instead of dispatching fix', async () => {
+      cfgResolved({ enabled: true, autoFix: true });
+      liveIssue('reopen');
+      reopenEnteredFromNeedsInfoMock.mockResolvedValueOnce(true);
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'needs_info', to: 'reopen' }) as never);
+
+      expect(resolverResolve).not.toHaveBeenCalled();
+      expect(dbInsert).not.toHaveBeenCalled();
+      expect(enqueueMock).not.toHaveBeenCalled();
+      expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+      expect(applyTransitionMock.mock.calls[0]?.[0]).toMatchObject({
+        id: 'iss-1',
+        status: 'reopen',
+      });
+      expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
+      expect(applyTransitionMock.mock.calls[0]?.[3]).toEqual({ skip: true });
+      expect(postNeedsInfoReopenCommentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ issueId: 'iss-1' }),
+      );
+    });
+
+    it('never consults the needs_info-reopen guard for a non-fix stage', async () => {
+      cfgResolved({ enabled: true, autoCode: true });
+      liveIssue('approved');
+      skillRegistered('forge-code', 'code', 'autoCode');
+      nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+      insertReturning.mockResolvedValueOnce([{ id: 'code-job' }]);
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
+
+      expect(reopenEnteredFromNeedsInfoMock).not.toHaveBeenCalled();
+      expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
+    });
   });
 });
 

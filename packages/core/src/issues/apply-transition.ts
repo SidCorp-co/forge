@@ -13,6 +13,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
+import { checkTransitionEvidence } from './transition-evidence.js';
 
 /**
  * Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2) and
@@ -44,7 +45,8 @@ export type TransitionErrorCode =
   | 'NO_OP'
   | 'ILLEGAL_TRANSITION'
   | 'REOPEN_CAP_EXCEEDED'
-  | 'STALE_TRANSITION';
+  | 'STALE_TRANSITION'
+  | 'PLAN_REQUIRED';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -150,8 +152,8 @@ export function publishIssueStatusChange(
  * broadcast, pipeline-health refresh and run close cannot drift apart.
  *
  * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
- * REOPEN_CAP_EXCEEDED / STALE_TRANSITION); callers map it onto their own
- * error surface.
+ * REOPEN_CAP_EXCEEDED / STALE_TRANSITION / PLAN_REQUIRED); callers map it
+ * onto their own error surface.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
@@ -215,6 +217,17 @@ export async function transitionIssueStatus(
         },
       });
     }
+  }
+
+  // cm:why skip exempts auto-skip/failover (both pass {skip:true} into `approved`) — only an unskipped device write is the fabrication class this guards against
+  const violation = await checkTransitionEvidence({
+    issue: { id: issue.id, projectId: issue.projectId },
+    toStatus: effectiveToStatus,
+    actorType: actor.type,
+    skip: options.skip === true,
+  });
+  if (violation) {
+    throw new TransitionError(violation.code, violation.detail, violation.details);
   }
 
   const reopening = isReopenEntry(fromStatus, effectiveToStatus);

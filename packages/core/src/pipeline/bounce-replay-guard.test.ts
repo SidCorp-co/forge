@@ -23,7 +23,9 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { findUnansweredBounce, BOUNCE_STATUSES } = await import('./bounce-replay-guard.js');
+const { findUnansweredBounce, BOUNCE_STATUSES, reopenEnteredFromNeedsInfo } = await import(
+  './bounce-replay-guard.js'
+);
 
 const BOUNCED_AT = new Date('2026-08-01T10:00:00Z');
 const departure = (to: string) => [{ payload: { from: 'approved', to }, createdAt: BOUNCED_AT }];
@@ -121,6 +123,47 @@ describe('findUnansweredBounce', () => {
       throw new Error('db down');
     };
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    (db as any).select = original;
+  });
+});
+
+describe('reopenEnteredFromNeedsInfo', () => {
+  const enteredReopenFrom = (from: string) => [{ payload: { from, to: 'reopen' } }];
+
+  it('flags a reopen that arrived directly from needs_info', async () => {
+    setup(enteredReopenFrom('needs_info'));
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(true);
+  });
+
+  it.each(['testing', 'tested', 'developed', 'released', 'closed'])(
+    'ignores a reopen arriving from %s',
+    async (from) => {
+      setup(enteredReopenFrom(from));
+      expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+    },
+  );
+
+  it('allows the dispatch when the issue never entered reopen', async () => {
+    setup([]);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+  });
+
+  it('allows the dispatch when the transition payload has no `from`', async () => {
+    setup([{ payload: { to: 'reopen' } }]);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+  });
+
+  // cm:guard fail OPEN — a broken guard must let the pipeline run, never silently freeze every dispatch
+  it('allows the dispatch when the check itself throws', async () => {
+    const { db } = await import('../db/client.js');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    const original = (db as any).select;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    (db as any).select = () => {
+      throw new Error('db down');
+    };
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
     (db as any).select = original;
   });

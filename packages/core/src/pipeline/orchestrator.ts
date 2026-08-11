@@ -11,13 +11,14 @@ import {
 } from '../db/schema.js';
 import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
+import { isBlankPlan, isPlanStageLive } from '../issues/transition-evidence.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
-import { findUnansweredBounce } from './bounce-replay-guard.js';
+import { findUnansweredBounce, reopenEnteredFromNeedsInfo } from './bounce-replay-guard.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
 import {
   findUnexplainedReopen,
@@ -35,6 +36,7 @@ import {
   type StageName,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
+import { postMissingPlanComment, postNeedsInfoReopenComment } from './plan-gate-guard.js';
 import { PIPELINE_STEPS } from './registry.js';
 import { openIssueRun } from './runs.js';
 import {
@@ -137,6 +139,30 @@ async function hasPriorImplementationJob(issueId: string): Promise<boolean> {
     .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, ['code', 'fix'])))
     .limit(1);
   return row != null;
+}
+
+/**
+ * ISS-819 requirement 4 — has a `plan` job already run to completion for this
+ * issue? Decides the blank-plan backstop's route: back to `clarified` (first
+ * time) vs `needs_info` (a plan job already ran and produced nothing —
+ * routing back to `clarified` again would loop). Fails open (false) on any
+ * query error: worst case is one extra `clarified` hop, never a freeze.
+ */
+async function hasDonePlanJob(issueId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.issueId, issueId), eq(jobs.type, 'plan'), eq(jobs.status, 'done')))
+      .limit(1);
+    return row != null;
+  } catch (err) {
+    logger.warn(
+      { err, issueId },
+      'orchestrator: hasDonePlanJob check failed, treating as no prior plan job',
+    );
+    return false;
+  }
 }
 
 function resolveCreatedBy(actor: Actor, projectCreatedBy: string | null): string {
@@ -487,6 +513,67 @@ async function considerEnqueue(args: {
     return;
   }
 
+  // ISS-239 — reuse the resolver from autoSkipDisabledStages when available
+  // so we don't refetch skill_registrations a second time per hook fire.
+  const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
+
+  // cm:why backstop for issues already at `approved` with a blank plan predating the transition-evidence writer guard — routes to `clarified` to get a plan written, or `needs_info` if a `plan` job already ran and it's still blank (else routing back would loop)
+  if (
+    jobMap.type === 'code' &&
+    isBlankPlan(liveIssue.plan) &&
+    (await isPlanStageLive(args.projectId, resolver))
+  ) {
+    const device = resolveSkipDevice(args.actor, projectCreatedBy);
+    const routedTo: IssueStatus = (await hasDonePlanJob(args.issueId)) ? 'needs_info' : 'clarified';
+    if (device) {
+      try {
+        await applyStatusTransition(liveIssue, routedTo, device, { skip: true });
+      } catch (err) {
+        logger.warn(
+          { err, issueId: args.issueId, to: routedTo },
+          'orchestrator: plan-required guard failed to route',
+        );
+      }
+    } else {
+      logger.warn(
+        { issueId: args.issueId },
+        'orchestrator: plan-required guard has no device principal for status transition',
+      );
+    }
+    await postMissingPlanComment({ issueId: args.issueId, authorId: projectCreatedBy, routedTo });
+    logger.info(
+      { issueId: args.issueId, routedTo },
+      'orchestrator: plan-required guard — approved with blank plan, routed',
+    );
+    return;
+  }
+
+  // cm:why a reopen entered directly from needs_info must never dispatch fix — a fix cannot be scoped from an unanswered question, regardless of what re-triggered the reopen
+  if (jobMap.type === 'fix' && (await reopenEnteredFromNeedsInfo(args.issueId))) {
+    const device = resolveSkipDevice(args.actor, projectCreatedBy);
+    if (device) {
+      try {
+        await applyStatusTransition(liveIssue, 'needs_info', device, { skip: true });
+      } catch (err) {
+        logger.warn(
+          { err, issueId: args.issueId },
+          'orchestrator: needs_info-reopen guard failed to route to needs_info',
+        );
+      }
+    } else {
+      logger.warn(
+        { issueId: args.issueId },
+        'orchestrator: needs_info-reopen guard has no device principal for needs_info transition',
+      );
+    }
+    await postNeedsInfoReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
+    logger.info(
+      { issueId: args.issueId },
+      'orchestrator: needs_info-reopen guard — reopen entered from needs_info, routed back to needs_info',
+    );
+    return;
+  }
+
   // ISS-635 Change B — a `reopen` (the only status mapping to `fix`) with no
   // prior `code`/`fix` job has no branch/commit for forge-fix to patch.
   // Route to `needs_info` instead of dispatching an empty fix.
@@ -569,9 +656,6 @@ async function considerEnqueue(args: {
     return;
   }
 
-  // ISS-239 — reuse the resolver from autoSkipDisabledStages when available
-  // so we don't refetch skill_registrations a second time per hook fire.
-  const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
   const skill = await resolver.resolve(args.status);
   if (!skill) {
     // ISS-238 — refuse + pause + comment instead of silently skipping. Loops
@@ -861,6 +945,7 @@ type SkipIssueRow = {
   status: IssueStatus;
   reopenCount: number;
   complexity: IssueComplexity | null;
+  plan: string | null;
 };
 
 async function loadIssueForSkip(issueId: string): Promise<SkipIssueRow | null> {
@@ -871,6 +956,7 @@ async function loadIssueForSkip(issueId: string): Promise<SkipIssueRow | null> {
       status: issues.status,
       reopenCount: issues.reopenCount,
       complexity: issues.complexity,
+      plan: issues.plan,
     })
     .from(issues)
     .where(eq(issues.id, issueId))

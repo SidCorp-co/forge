@@ -67,6 +67,37 @@ export async function findUnansweredBounce(
   }
 }
 
+/**
+ * Did this `reopen` arrive directly from `needs_info` (ISS-819 requirement
+ * 5)? A fix cannot be scoped from an unanswered question — the question
+ * still stands regardless of what re-triggered the reopen.
+ */
+// cm:guard fail OPEN — a broken guard must let the pipeline run, never silently freeze every dispatch
+export async function reopenEnteredFromNeedsInfo(issueId: string): Promise<boolean> {
+  try {
+    const [entered] = await db
+      .select({ payload: activityLog.payload })
+      .from(activityLog)
+      .where(
+        and(
+          eq(activityLog.issueId, issueId),
+          eq(activityLog.action, 'issue.statusChanged'),
+          sql`${activityLog.payload}->>'to' = 'reopen'`,
+        ),
+      )
+      .orderBy(desc(activityLog.createdAt))
+      .limit(1);
+    if (!entered) return false;
+    return (entered.payload as { from?: string } | null)?.from === 'needs_info';
+  } catch (err) {
+    logger.warn(
+      { err, issueId },
+      'bounce-replay-guard: reopen-entered-from-needs_info check failed, allowing dispatch',
+    );
+    return false;
+  }
+}
+
 type Departure = { payload: unknown; createdAt: Date };
 
 const departureTarget = (row: Departure): string | undefined =>
