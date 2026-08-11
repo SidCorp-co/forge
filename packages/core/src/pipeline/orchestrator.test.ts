@@ -153,6 +153,12 @@ vi.mock('../issues/transition-evidence.js', async () => {
   };
 });
 
+// cm:why defaults to "no decompose parent" so pre-existing blank-plan-backstop tests keep their old path — the exemption itself is asserted in the ISS-819 decompose-exemption test below
+const findDecompositionParentMock = vi.fn<() => Promise<unknown>>(async () => null);
+vi.mock('./decomposition.js', () => ({
+  findDecompositionParent: (...a: unknown[]) => findDecompositionParentMock(...(a as [])),
+}));
+
 const postMissingPlanCommentMock = vi.fn(async () => undefined);
 const postNeedsInfoReopenCommentMock = vi.fn(async () => undefined);
 vi.mock('./plan-gate-guard.js', () => ({
@@ -367,6 +373,8 @@ beforeEach(() => {
   isPlanStageLiveMock.mockResolvedValue(true);
   postMissingPlanCommentMock.mockReset();
   postNeedsInfoReopenCommentMock.mockReset();
+  findDecompositionParentMock.mockReset();
+  findDecompositionParentMock.mockResolvedValue(null);
 });
 
 describe('pipeline/orchestrator', () => {
@@ -962,6 +970,19 @@ describe('pipeline/orchestrator', () => {
       );
     });
 
+    it('does not post the missing-plan comment when the routing transition throws', async () => {
+      cfgResolved({ enabled: true, autoCode: true });
+      liveIssue('approved', { plan: null });
+      nextSelect.mockResolvedValueOnce([]); // cm:why hasDonePlanJob → none
+      applyTransitionMock.mockRejectedValueOnce(new Error('db down'));
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
+
+      expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+      expect(postMissingPlanCommentMock).not.toHaveBeenCalled();
+    });
+
     it('routes approved+blank-plan with a prior done plan job to needs_info instead of looping', async () => {
       cfgResolved({ enabled: true, autoCode: true });
       liveIssue('approved', { plan: '   ' });
@@ -991,6 +1012,28 @@ describe('pipeline/orchestrator', () => {
       await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
 
       expect(applyTransitionMock).not.toHaveBeenCalled();
+      expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
+    });
+
+    it('dispatches code normally for a decompose child approved with a blank plan (owner-flagged blocking collision)', async () => {
+      findDecompositionParentMock.mockResolvedValueOnce({
+        id: 'parent-1',
+        status: 'waiting',
+        projectId: 'proj-1',
+        issSeq: 1,
+      });
+      cfgResolved({ enabled: true, autoCode: true });
+      liveIssue('approved', { plan: null });
+      skillRegistered('forge-code', 'code', 'autoCode');
+      nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+      insertReturning.mockResolvedValueOnce([{ id: 'code-job' }]);
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'waiting', to: 'approved' }) as never);
+
+      expect(findDecompositionParentMock).toHaveBeenCalledWith('iss-1');
+      expect(applyTransitionMock).not.toHaveBeenCalled();
+      expect(postMissingPlanCommentMock).not.toHaveBeenCalled();
       expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
     });
 

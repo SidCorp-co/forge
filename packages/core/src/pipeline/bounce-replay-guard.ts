@@ -12,7 +12,7 @@
 // wired, even another step's note all release the guard. Only true silence
 // blocks, so this can never strand an issue a human actually responded to.
 
-import { and, desc, eq, gt, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, activityLog, comments } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -68,15 +68,16 @@ export async function findUnansweredBounce(
 }
 
 /**
- * Did this `reopen` arrive directly from `needs_info` (ISS-819 requirement
- * 5)? A fix cannot be scoped from an unanswered question — the question
- * still stands regardless of what re-triggered the reopen.
+ * Did this `reopen` arrive directly from `needs_info` with the question still
+ * unanswered (ISS-819 requirement 5)? A fix cannot be scoped from an
+ * unanswered question — but any input since the `needs_info` entry (a
+ * comment, another step's note) releases it, same as `findUnansweredBounce`.
  */
 // cm:guard fail OPEN — a broken guard must let the pipeline run, never silently freeze every dispatch
 export async function reopenEnteredFromNeedsInfo(issueId: string): Promise<boolean> {
   try {
     const [entered] = await db
-      .select({ payload: activityLog.payload })
+      .select({ payload: activityLog.payload, createdAt: activityLog.createdAt })
       .from(activityLog)
       .where(
         and(
@@ -88,7 +89,24 @@ export async function reopenEnteredFromNeedsInfo(issueId: string): Promise<boole
       .orderBy(desc(activityLog.createdAt))
       .limit(1);
     if (!entered) return false;
-    return (entered.payload as { from?: string } | null)?.from === 'needs_info';
+    if ((entered.payload as { from?: string } | null)?.from !== 'needs_info') return false;
+
+    const [needsInfoEntry] = await db
+      .select({ createdAt: activityLog.createdAt })
+      .from(activityLog)
+      .where(
+        and(
+          eq(activityLog.issueId, issueId),
+          eq(activityLog.action, 'issue.statusChanged'),
+          sql`${activityLog.payload}->>'to' = 'needs_info'`,
+          lt(activityLog.createdAt, entered.createdAt),
+        ),
+      )
+      .orderBy(desc(activityLog.createdAt))
+      .limit(1);
+    const since = needsInfoEntry?.createdAt ?? entered.createdAt;
+    if (await hasInputSince(issueId, since)) return false;
+    return true;
   } catch (err) {
     logger.warn(
       { err, issueId },

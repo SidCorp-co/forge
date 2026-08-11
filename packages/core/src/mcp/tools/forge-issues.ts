@@ -1021,26 +1021,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ? await resolveLabelIdsForWrite(issue.projectId, input.data.labels)
             : undefined;
 
-        // Status changes always route through the state machine so the
-        // transitions stay aligned with REST `/transition` (reopen-cap +
-        // illegal-transition guards). The hook + WS broadcast match too.
-        // ISS-596: when `data.unblock:true` is set on an `on_hold → *` update,
-        // thread `reason:'operator_unblock'` so the orchestrator's ISS-411
-        // hard-stop lets the transition re-engage the pipeline.
-        let transitionResult: StatusTransitionResult | undefined;
-        if (input.data.status && input.data.status !== issue.status) {
-          const useOperatorUnblock =
-            input.data.unblock === true &&
-            issue.status === 'on_hold' &&
-            input.data.status !== 'on_hold';
-          transitionResult = await applyStatusTransition(
-            issue,
-            input.data.status,
-            device,
-            useOperatorUnblock ? { reason: 'operator_unblock' } : {},
-          );
-        }
-
         if (input.data.detectorKey !== undefined && !isValidDetectorKey(input.data.detectorKey)) {
           throw new Error(
             `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${input.data.detectorKey}')`,
@@ -1054,10 +1034,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...MCP_ONLY_ISSUE_PATCH_FIELDS,
         ]);
 
+        // cm:edge ordering -> packages/core/src/issues/transition-evidence.ts — field writes MUST commit before the status transition below, which re-reads issues.plan for PLAN_REQUIRED; reversed order throws PLAN_REQUIRED on a legal { plan, status:'approved' } call and discards the submitted plan
         if (Object.keys(updates).length > 0 || labelIds !== undefined) {
-          // Use sql`now()` (matching applyStatusTransition above) so a
-          // combined status+fields update has a single canonical timestamp
-          // source rather than mixing JS Date and DB now().
+          // cm:why sql`now()`, matching applyStatusTransition below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
           updates.updatedAt = sql`now()`;
           const actor = { type: 'device' as const, id: device.id };
           await db.transaction(async (tx) => {
@@ -1102,6 +1081,26 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               }
             }
           });
+        }
+
+        // Status changes always route through the state machine so the
+        // transitions stay aligned with REST `/transition` (reopen-cap +
+        // illegal-transition guards). The hook + WS broadcast match too.
+        // ISS-596: when `data.unblock:true` is set on an `on_hold → *` update,
+        // thread `reason:'operator_unblock'` so the orchestrator's ISS-411
+        // hard-stop lets the transition re-engage the pipeline.
+        let transitionResult: StatusTransitionResult | undefined;
+        if (input.data.status && input.data.status !== issue.status) {
+          const useOperatorUnblock =
+            input.data.unblock === true &&
+            issue.status === 'on_hold' &&
+            input.data.status !== 'on_hold';
+          transitionResult = await applyStatusTransition(
+            issue,
+            input.data.status,
+            device,
+            useOperatorUnblock ? { reason: 'operator_unblock' } : {},
+          );
         }
 
         const fresh = await loadIssue(issue.id);

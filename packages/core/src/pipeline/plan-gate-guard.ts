@@ -25,11 +25,12 @@ export function buildMissingPlanCommentBody(args: {
 
 export function buildNeedsInfoFixCommentBody(): string {
   return [
-    '🛑 **`reopen` entered from `needs_info`**',
+    '🛑 **`reopen` entered from `needs_info` with the question still open**',
     '',
     'A fix cannot be scoped from an unanswered question — the open question still stands.',
     '',
-    'Routed back to `needs_info` instead of dispatching `fix`.',
+    'Routed back to `needs_info` instead of dispatching `fix`. Add a comment answering the',
+    'open question, then set the issue back to `reopen` to dispatch the fix.',
   ].join('\n');
 }
 

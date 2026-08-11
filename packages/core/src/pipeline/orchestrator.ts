@@ -20,6 +20,7 @@ import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
 import { findUnansweredBounce, reopenEnteredFromNeedsInfo } from './bounce-replay-guard.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
+import { findDecompositionParent } from './decomposition.js';
 import {
   findUnexplainedReopen,
   postEmptyReopenComment,
@@ -160,6 +161,26 @@ async function hasDonePlanJob(issueId: string): Promise<boolean> {
     logger.warn(
       { err, issueId },
       'orchestrator: hasDonePlanJob check failed, treating as no prior plan job',
+    );
+    return false;
+  }
+}
+
+/**
+ * ISS-819 owner-flagged blocking collision — decompose children land at
+ * `approved` with `plan:null` by design (their own `clarified`/`plan` stage
+ * has not run yet); the blank-plan backstop must not treat that as the
+ * fabrication it targets. Fails closed (not-a-child) on any query error, so
+ * a broken check costs one extra `clarified` hop rather than skipping the
+ * anti-fabrication guard it can't verify the exemption for.
+ */
+async function isDecompositionChild(issueId: string): Promise<boolean> {
+  try {
+    return (await findDecompositionParent(issueId)) !== null;
+  } catch (err) {
+    logger.warn(
+      { err, issueId },
+      'orchestrator: decompose-child check failed, treating as not a decompose child',
     );
     return false;
   }
@@ -518,16 +539,20 @@ async function considerEnqueue(args: {
   const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
 
   // cm:why backstop for issues already at `approved` with a blank plan predating the transition-evidence writer guard — routes to `clarified` to get a plan written, or `needs_info` if a `plan` job already ran and it's still blank (else routing back would loop)
+  // cm:guard a decompose child is created at `approved` with `plan:null` by design (its own clarified/plan stage has not run yet) — must be exempt, or the cascade-approve kickoff silently reroutes every child to `clarified` (ISS-819 owner-flagged blocking collision)
   if (
     jobMap.type === 'code' &&
     isBlankPlan(liveIssue.plan) &&
+    !(await isDecompositionChild(args.issueId)) &&
     (await isPlanStageLive(args.projectId, resolver))
   ) {
     const device = resolveSkipDevice(args.actor, projectCreatedBy);
     const routedTo: IssueStatus = (await hasDonePlanJob(args.issueId)) ? 'needs_info' : 'clarified';
+    let routed = false;
     if (device) {
       try {
         await applyStatusTransition(liveIssue, routedTo, device, { skip: true });
+        routed = true;
       } catch (err) {
         logger.warn(
           { err, issueId: args.issueId, to: routedTo },
@@ -540,11 +565,14 @@ async function considerEnqueue(args: {
         'orchestrator: plan-required guard has no device principal for status transition',
       );
     }
-    await postMissingPlanComment({ issueId: args.issueId, authorId: projectCreatedBy, routedTo });
-    logger.info(
-      { issueId: args.issueId, routedTo },
-      'orchestrator: plan-required guard — approved with blank plan, routed',
-    );
+    // cm:why gated on a successful route — otherwise the issue stays at `approved` and every later dispatch attempt (re-fired on the same live status) posts another identical comment (ISS-819 review finding 5)
+    if (routed) {
+      await postMissingPlanComment({ issueId: args.issueId, authorId: projectCreatedBy, routedTo });
+      logger.info(
+        { issueId: args.issueId, routedTo },
+        'orchestrator: plan-required guard — approved with blank plan, routed',
+      );
+    }
     return;
   }
 

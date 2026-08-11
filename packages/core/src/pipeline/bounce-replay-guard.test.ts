@@ -131,9 +131,19 @@ describe('findUnansweredBounce', () => {
 describe('reopenEnteredFromNeedsInfo', () => {
   const enteredReopenFrom = (from: string) => [{ payload: { from, to: 'reopen' } }];
 
-  it('flags a reopen that arrived directly from needs_info', async () => {
-    setup(enteredReopenFrom('needs_info'));
+  it('flags a reopen that arrived directly from needs_info with no input since', async () => {
+    setup(enteredReopenFrom('needs_info'), [], [], []);
     expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(true);
+  });
+
+  it('releases the guard when a comment followed the needs_info entry', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], [{ id: 'c1' }], []);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+  });
+
+  it('releases the guard when non-status activity followed the needs_info entry', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], [], [{ id: 'a1' }]);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
   });
 
   it.each(['testing', 'tested', 'developed', 'released', 'closed'])(
