@@ -113,9 +113,7 @@ export async function findDecompositionParent(
  * {staging, released, closed}? Empty input is false — a parent with no
  * decomposition edges should not trigger the watcher.
  */
-export function allChildrenReady(
-  children: ReadonlyArray<{ status: IssueStatus }>,
-): boolean {
+export function allChildrenReady(children: ReadonlyArray<{ status: IssueStatus }>): boolean {
   if (children.length === 0) return false;
   return children.every((c) => DECOMP_CHILD_READY_STATUSES.has(c.status));
 }

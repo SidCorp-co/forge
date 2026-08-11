@@ -2,8 +2,8 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
-import { roomManager } from '../ws/server.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { insertRunnerEvent } from './runner-events.js';
 
 export const RUNNER_STALE_DETECTOR_QUEUE = 'runner-status-detector';

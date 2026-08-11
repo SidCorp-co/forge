@@ -7,9 +7,9 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
+import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
@@ -119,9 +119,7 @@ issueAttachmentRoutes.get(
       .where(eq(issueAttachments.issueId, issue.id))
       .orderBy(asc(issueAttachments.createdAt));
 
-    return c.json(
-      rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` })),
-    );
+    return c.json(rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` })));
   },
 );
 

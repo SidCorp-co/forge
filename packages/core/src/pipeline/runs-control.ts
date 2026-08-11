@@ -173,10 +173,7 @@ export async function cancelPipelineRun(runId: string): Promise<CancelPipelineRu
       entity: 'run',
       to: 'cancelled',
       set: { finishedAt: cancelNow, updatedAt: cancelNow },
-      where: and(
-        eq(pipelineRuns.id, runId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-      ),
+      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
       fromStatus: 'open',
       reason: FAILURE_REASON_PIPELINE_CANCELLED,
       actor: { type: 'user' },

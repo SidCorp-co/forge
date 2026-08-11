@@ -57,10 +57,7 @@ type GraphNode = {
   assigneeId: string | null;
 };
 
-export async function pmGraphHandler(
-  device: Device,
-  input: z.infer<typeof pmGraphInputSchema>,
-) {
+export async function pmGraphHandler(device: Device, input: z.infer<typeof pmGraphInputSchema>) {
   await assertDeviceOwnerIsMember(device, input.projectId);
 
   if (!input.rootIssueId) {
@@ -183,10 +180,7 @@ export async function pmGraphHandler(
       .select({ id: issues.id, parentIssueId: issues.parentIssueId })
       .from(issues)
       .where(
-        and(
-          eq(issues.projectId, input.projectId),
-          inArray(issues.parentIssueId, frontierIds),
-        ),
+        and(eq(issues.projectId, input.projectId), inArray(issues.parentIssueId, frontierIds)),
       );
     for (const r of [...childRows, ...parentRows]) {
       if (!r.parentIssueId) continue;
@@ -204,9 +198,7 @@ export async function pmGraphHandler(
 
   // Dedupe edges (BFS may collect the same edge from both directions).
   const edgeKey = (e: GraphEdge) => `${e.from}:${e.to}:${e.kind}`;
-  const dedupedEdges = Array.from(
-    new Map(allEdges.map((e) => [edgeKey(e), e])).values(),
-  );
+  const dedupedEdges = Array.from(new Map(allEdges.map((e) => [edgeKey(e), e])).values());
 
   const nodeRows = await db
     .select({
@@ -216,9 +208,7 @@ export async function pmGraphHandler(
       assigneeId: issues.assigneeId,
     })
     .from(issues)
-    .where(
-      and(eq(issues.projectId, input.projectId), inArray(issues.id, [...visited])),
-    );
+    .where(and(eq(issues.projectId, input.projectId), inArray(issues.id, [...visited])));
 
   const nodes: GraphNode[] = nodeRows.map((r) => ({
     id: r.id,

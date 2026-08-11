@@ -107,9 +107,7 @@ describe('oauth callback — mode=reauth', () => {
     );
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe(
-      'https://web.example.test/settings/tokens?reauth=ok',
-    );
+    expect(res.headers.get('location')).toBe('https://web.example.test/settings/tokens?reauth=ok');
     expect(dbUpdate).toHaveBeenCalledTimes(1);
     expect(usersUpdateSet).toHaveBeenCalledWith(
       expect.objectContaining({ lastFreshAuthAt: expect.any(Date) }),

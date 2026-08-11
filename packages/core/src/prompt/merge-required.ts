@@ -57,11 +57,15 @@ export function buildMergeRequiredBlock(args: BuildMergeRequiredBlockArgs): stri
     );
     lines.push('Before transitioning the issue forward you MUST:');
     lines.push('');
-    lines.push(`1. Ensure issue \`${args.issueId}\` branch is fully committed and pushed to origin`);
+    lines.push(
+      `1. Ensure issue \`${args.issueId}\` branch is fully committed and pushed to origin`,
+    );
     lines.push(`2. \`git checkout ${b.ref} && git pull origin ${b.ref}\``);
     lines.push(`3. \`git merge --no-ff origin/<issue-branch>\` (or fast-forward if linear)`);
     lines.push(`4. \`git push origin ${b.ref}\``);
-    lines.push('5. Verify the merge commit exists on remote before issuing the final status transition');
+    lines.push(
+      '5. Verify the merge commit exists on remote before issuing the final status transition',
+    );
     lines.push(
       `6. Stamp \`merged_at\` so downstream \`blocks\`/\`decomposes\` dependents can dispatch: \`forge_issues.mark_merged({ issueId: "${args.issueId}", target: "${b.label === 'productionBranch' ? 'prod' : 'base'}" })\` (idempotent). Do this even when you then PARK the issue at a manual gate instead of advancing — the automatic stamp fires ONLY when the issue LEAVES \`${b.ref}\`, so a merged-but-parked issue would otherwise never unblock downstream. Forge does not merge or stamp server-side; this step is yours.`,
     );

@@ -3,11 +3,11 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { RULES } from '../config/rate-limits.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 
 // ISS-158 — Fresh re-auth primitive. Sibling children (PAT creation, device
@@ -62,10 +62,7 @@ reauthRoutes.post(
     if (!ok) throw invalid();
 
     const freshAuthAt = new Date();
-    await db
-      .update(users)
-      .set({ lastFreshAuthAt: freshAuthAt })
-      .where(eq(users.id, userId));
+    await db.update(users).set({ lastFreshAuthAt: freshAuthAt }).where(eq(users.id, userId));
 
     return c.json({ freshAuthAt: freshAuthAt.toISOString() });
   },

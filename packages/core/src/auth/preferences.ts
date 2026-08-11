@@ -22,10 +22,9 @@ const patchBodySchema = z
     language: z.enum(PREF_LANGUAGES).optional(),
   })
   .strict()
-  .refine(
-    (v) => v.theme !== undefined || v.language !== undefined,
-    { message: 'at least one of theme/language is required' },
-  );
+  .refine((v) => v.theme !== undefined || v.language !== undefined, {
+    message: 'at least one of theme/language is required',
+  });
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

@@ -21,9 +21,5 @@ export interface StorageAdapter {
 }
 
 export function isEnoent(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: string }).code === 'ENOENT'
-  );
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'ENOENT';
 }

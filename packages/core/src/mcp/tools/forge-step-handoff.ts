@@ -1,13 +1,11 @@
 import { z } from 'zod';
+import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
 import {
   deleteIssueContext,
   getIssueContexts,
   writeIssueContext,
 } from '../../pipeline/issue-context-store.js';
-import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
-import { assertDeviceOwnerIsMember, zodToMcpSchema,
-  assertDeviceOwnerIsWriter,
-} from './lib.js';
+import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter, zodToMcpSchema } from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
 
 /**

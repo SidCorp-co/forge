@@ -166,9 +166,9 @@ describe('spawnPmSession', () => {
     queueSelectScalar([{ count: 0 }]);
     queueSelect([{ ownerId: 'user-1' }]);
     mockInsertThrows(new Error('connection refused'));
-    await expect(
-      spawnPmSession({ projectId: 'proj-1', cause: 'tick' }),
-    ).rejects.toThrow('connection refused');
+    await expect(spawnPmSession({ projectId: 'proj-1', cause: 'tick' })).rejects.toThrow(
+      'connection refused',
+    );
   });
 
   it('happy path: inserts a pm job and enqueues on the PM queue', async () => {

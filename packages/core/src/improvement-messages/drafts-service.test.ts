@@ -67,7 +67,9 @@ describe('createImprovementMessageDraft', () => {
     expect(result.source).toBe('bottom_up');
     expect(result.candidateId).toBe(INPUT.candidateId);
 
-    const insertedValues = (insertValues.mock.calls as unknown as [Record<string, unknown>][])[0]?.[0];
+    const insertedValues = (
+      insertValues.mock.calls as unknown as [Record<string, unknown>][]
+    )[0]?.[0];
     expect(insertedValues?.key).toBe('draft-reopen-loop-bug');
     expect(insertedValues?.message).toContain('UNTRUSTED_DATA');
     expect(insertedValues?.candidateId).toBe(INPUT.candidateId);

@@ -63,12 +63,7 @@ async function detectCycle(
     const children = await db
       .select({ to: issueDependencies.toIssueId })
       .from(issueDependencies)
-      .where(
-        and(
-          eq(issueDependencies.fromIssueId, node),
-          eq(issueDependencies.kind, 'blocks'),
-        ),
-      );
+      .where(and(eq(issueDependencies.fromIssueId, node), eq(issueDependencies.kind, 'blocks')));
     for (const c of children) {
       if (c.to === target) return 'cycle';
       if (!visited.has(c.to)) stack.push({ node: c.to, depth: depth + 1 });
@@ -105,9 +100,7 @@ issueDependencyRoutes.get(
     const [member] = await db
       .select({ role: projectMembers.role })
       .from(projectMembers)
-      .where(
-        and(eq(projectMembers.projectId, issue.projectId), eq(projectMembers.userId, userId)),
-      )
+      .where(and(eq(projectMembers.projectId, issue.projectId), eq(projectMembers.userId, userId)))
       .limit(1);
     if (!member) throw forbidden('not a project member');
 
@@ -142,11 +135,7 @@ issueDependencyRoutes.get(
         .leftJoin(fromIssue, eq(fromIssue.id, issueDependencies.fromIssueId))
         .leftJoin(toIssue, eq(toIssue.id, issueDependencies.toIssueId));
 
-    const enrich = <
-      T extends { fromIssSeq: number | null; toIssSeq: number | null },
-    >(
-      edge: T,
-    ) => {
+    const enrich = <T extends { fromIssSeq: number | null; toIssSeq: number | null }>(edge: T) => {
       const { fromIssSeq, toIssSeq, ...rest } = edge;
       return {
         ...rest,
@@ -201,7 +190,10 @@ issueDependencyRoutes.post(
       // We allow cross-project edges in principle (PM may model org-wide
       // blockers), but for the user-facing route we require both sides in
       // the same project to keep the auth model simple.
-      throw badRequest({ message: 'cross-project edges not supported via this route' }, 'CROSS_PROJECT');
+      throw badRequest(
+        { message: 'cross-project edges not supported via this route' },
+        'CROSS_PROJECT',
+      );
     }
 
     const [member] = await db
@@ -324,9 +316,7 @@ issueDependencyRoutes.delete(
     const [member] = await db
       .select({ role: projectMembers.role })
       .from(projectMembers)
-      .where(
-        and(eq(projectMembers.projectId, edge.projectId), eq(projectMembers.userId, userId)),
-      )
+      .where(and(eq(projectMembers.projectId, edge.projectId), eq(projectMembers.userId, userId)))
       .limit(1);
     if (!member) throw forbidden('not a project member');
 

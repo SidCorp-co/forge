@@ -7,10 +7,7 @@ import {
   issueStepContextKinds,
   issueStepContexts,
 } from '../db/schema.js';
-import {
-  type StepHandoffPayload,
-  stepHandoffSchema,
-} from '../memory/step-handoff-schema.js';
+import { type StepHandoffPayload, stepHandoffSchema } from '../memory/step-handoff-schema.js';
 
 /**
  * ISS-381 (2.1) — derive the unified verdict column value from a handoff
@@ -167,9 +164,7 @@ export interface IssueContextRow {
   updatedAt: Date;
 }
 
-export async function getIssueContexts(
-  input: GetIssueContextsInput,
-): Promise<IssueContextRow[]> {
+export async function getIssueContexts(input: GetIssueContextsInput): Promise<IssueContextRow[]> {
   const validated = getIssueContextsInputSchema.parse(input);
   const conds = [
     eq(issueStepContexts.projectId, validated.projectId),

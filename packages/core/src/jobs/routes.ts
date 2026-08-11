@@ -90,8 +90,9 @@ async function loadActualUsage(jobId: string): Promise<ActualUsage | null> {
       input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
       output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
       cached: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
-      cacheCreation:
-        sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
+      cacheCreation: sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(
+        Number,
+      ),
       cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
       count: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
       samples: sql<number>`count(${usageRecords.id})`.mapWith(Number),

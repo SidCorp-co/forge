@@ -126,9 +126,7 @@ async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> 
  * column to match the DISTINCT ON column (`issueId`); `desc(finishedAt)` then
  * picks the newest failed job per issue.
  */
-async function latestFailedJobByIssue(
-  issueIds: string[],
-): Promise<
+async function latestFailedJobByIssue(issueIds: string[]): Promise<
   Map<
     string,
     {

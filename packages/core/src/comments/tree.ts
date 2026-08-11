@@ -74,10 +74,7 @@ export function buildCommentTree(
 
 // Depth-first walk over a comment tree (roots, then each node's nested
 // replies). Used to attach resolved authors after the tree is built.
-export function walkCommentTree(
-  nodes: CommentNode[],
-  visit: (node: CommentNode) => void,
-): void {
+export function walkCommentTree(nodes: CommentNode[], visit: (node: CommentNode) => void): void {
   for (const node of nodes) {
     visit(node);
     if (node.replies.length > 0) walkCommentTree(node.replies, visit);

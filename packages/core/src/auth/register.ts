@@ -4,13 +4,13 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
-import { ensurePersonalOrg } from '../orgs/service.js';
 import { users } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { ensurePersonalOrg } from '../orgs/service.js';
 import { sendVerificationEmail } from './email.js';
-import { hashPassword } from './password.js';
 import { MIN_PASSWORD_SCORE, evaluatePasswordStrength } from './password-strength.js';
+import { hashPassword } from './password.js';
 import { issueVerificationToken } from './verification-token.js';
 
 export const registerSchema = z.object({

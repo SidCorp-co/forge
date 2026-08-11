@@ -249,11 +249,9 @@ describe('jobs/agent-session-link', () => {
     });
 
     it('ISS-101: skips closeRun when retryPending so the retry can pick up the same run', async () => {
-      await syncAgentSessionLifecycle(
-        { ...baseJob, agentSessionId: 'sess-1' } as never,
-        'failed',
-        { retryPending: true },
-      );
+      await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed', {
+        retryPending: true,
+      });
       expect(updateCalls[0]?.set.status).toBe('failed');
       expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
     });

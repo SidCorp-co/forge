@@ -104,7 +104,11 @@ const reportColumns = {
   createdAt: feedbackReports.createdAt,
 } as const;
 
-function buildSignalKey(target: string, targetRef: string | null | undefined, kind: string): string {
+function buildSignalKey(
+  target: string,
+  targetRef: string | null | undefined,
+  kind: string,
+): string {
   const safeRef = targetRef ? stripFrameTokens(sanitizeUntrusted(targetRef)) : '-';
   return `self_report:${target}:${safeRef}:${kind}`;
 }
@@ -277,7 +281,15 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           .select(reportColumns)
           .from(feedbackReports)
           .leftJoin(projects, eq(projects.id, feedbackReports.projectId))
-          .where(and(scopeCondition, kindCondition, targetCondition, severityCondition, reviewedCondition))
+          .where(
+            and(
+              scopeCondition,
+              kindCondition,
+              targetCondition,
+              severityCondition,
+              reviewedCondition,
+            ),
+          )
           .orderBy(desc(feedbackReports.createdAt))
           .limit(limit);
 

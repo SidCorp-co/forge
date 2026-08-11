@@ -24,10 +24,12 @@ const selectWhere = vi.fn(() => ({
 }));
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
 // .where().limit() — route the join chain back into the same where/limit FIFO.
-const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
-  leftJoin: selectLeftJoin,
-  where: selectWhere,
-}));
+const selectLeftJoin = vi.fn(
+  (): Record<string, unknown> => ({
+    leftJoin: selectLeftJoin,
+    where: selectWhere,
+  }),
+);
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 const insertReturning = vi.fn();

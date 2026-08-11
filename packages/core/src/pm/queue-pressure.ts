@@ -86,13 +86,15 @@ async function loadInFlightRunPressure(): Promise<
         in_flight_runs: number;
         oldest_run_age_seconds: number;
       }>)
-    : ((result as {
-        rows?: Array<{
-          project_id: string;
-          in_flight_runs: number;
-          oldest_run_age_seconds: number;
-        }>;
-      }).rows ?? []);
+    : ((
+        result as {
+          rows?: Array<{
+            project_id: string;
+            in_flight_runs: number;
+            oldest_run_age_seconds: number;
+          }>;
+        }
+      ).rows ?? []);
   const map = new Map<string, { inFlightRuns: number; oldestRunAgeSeconds: number }>();
   for (const r of rows) {
     map.set(r.project_id, {

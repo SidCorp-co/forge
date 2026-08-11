@@ -304,7 +304,9 @@ describe('GET …/metrics/timeseries — series shape', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { series: Array<{ ts: string; rate: number | null; n: number }> };
+    const body = (await res.json()) as {
+      series: Array<{ ts: string; rate: number | null; n: number }>;
+    };
     expect(body.series).toHaveLength(7);
     expect(body.series.find((p) => p.ts === buckets[6])?.rate).toBeCloseTo(0.75);
     // empty buckets are null (distinguish "no runs" from "0% pass")
@@ -312,7 +314,7 @@ describe('GET …/metrics/timeseries — series shape', () => {
     const serialized = JSON.stringify(executedSql);
     expect(serialized).toContain('issue_step_contexts');
     expect(serialized).toContain('verdict');
-    expect(serialized).toContain("step = ");
+    expect(serialized).toContain('step = ');
   });
 
   it('approve_rate: targets review handoffs', async () => {
@@ -334,12 +336,19 @@ describe('GET …/metrics/timeseries — series shape', () => {
     authVerified();
     accessAsOwner();
     const buckets = bucketTimestamps(5, 'day', new Date());
-    queryQueue.push([{ bucket: buckets[4], queue_depth: 3.5, running_count: 1, avg_wait_ms: 1200 }]);
+    queryQueue.push([
+      { bucket: buckets[4], queue_depth: 3.5, running_count: 1, avg_wait_ms: 1200 },
+    ]);
     const res = await buildApp().request(url('queue_depth', '&days=5'), {
       headers: { authorization: `Bearer ${await token()}` },
     });
     const body = (await res.json()) as {
-      series: Array<{ ts: string; queueDepth: number; runningCount: number; avgWaitMs: number | null }>;
+      series: Array<{
+        ts: string;
+        queueDepth: number;
+        runningCount: number;
+        avgWaitMs: number | null;
+      }>;
     };
     expect(body.series).toHaveLength(5);
     expect(body.series.find((p) => p.ts === buckets[4])?.queueDepth).toBeCloseTo(3.5);

@@ -26,10 +26,14 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+type DependencyRoutesModule = typeof import('../../src/issues/dependency-routes.js');
+type JwtModule = typeof import('../../src/auth/jwt.js');
+type ErrorModule = typeof import('../../src/middleware/error.js');
+
 type Mods = {
-  issueDependencyRoutes: typeof import('../../src/issues/dependency-routes.js').issueDependencyRoutes;
-  signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-  errorHandler: typeof import('../../src/middleware/error.js').errorHandler;
+  issueDependencyRoutes: DependencyRoutesModule['issueDependencyRoutes'];
+  signUserToken: JwtModule['signUserToken'];
+  errorHandler: ErrorModule['errorHandler'];
 };
 
 describe('ISS-40 issue dependency routes E2E', () => {

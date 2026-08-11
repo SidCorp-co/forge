@@ -18,6 +18,7 @@ import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
+import { forgeDivergenceChartersTool } from './tools/forge-divergence-charters.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -62,6 +63,7 @@ import {
   forgeProjectsListTool,
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
+import { forgeReconcileTool } from './tools/forge-reconcile.js';
 import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
@@ -89,8 +91,6 @@ import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
-import { forgeDivergenceChartersTool } from './tools/forge-divergence-charters.js';
-import { forgeReconcileTool } from './tools/forge-reconcile.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
 import type { McpContext } from './tools/lib.js';

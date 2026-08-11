@@ -54,9 +54,7 @@ const DEFAULT_DEADLINE_MS = 120_000;
  * so call sites (subscribers, sweepers, the operator endpoint) can branch
  * without try/catch.
  */
-export async function spawnPmSession(
-  input: SpawnPmSessionInput,
-): Promise<SpawnPmSessionResult> {
+export async function spawnPmSession(input: SpawnPmSessionInput): Promise<SpawnPmSessionResult> {
   const [config] = await db
     .select()
     .from(pmConfig)

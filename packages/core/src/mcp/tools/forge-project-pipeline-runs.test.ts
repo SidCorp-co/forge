@@ -192,9 +192,7 @@ describe('forge_project_pipeline_runs (action=get)', () => {
   // case bypasses that gate by calling the factory directly, exercising the
   // dispatcher's own `assertPrincipalIsMember` (NOT_FOUND surface for PAT).
   it('returns NOT_FOUND for a PAT outside the project allowlist', async () => {
-    const tool = forgeProjectPipelineRunsTool(
-      makePatCtx(['99999999-9999-4999-8999-999999999999']),
-    );
+    const tool = forgeProjectPipelineRunsTool(makePatCtx(['99999999-9999-4999-8999-999999999999']));
     selectLimit.mockResolvedValueOnce([baseRun]);
     await expect(tool.handler({ action: 'get', runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
   });

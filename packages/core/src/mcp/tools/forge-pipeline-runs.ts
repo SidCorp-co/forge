@@ -32,8 +32,8 @@ import {
   type McpContext,
   assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
-  zodToMcpSchema,
   assertPrincipalIsWriter,
+  zodToMcpSchema,
 } from './lib.js';
 
 export const pipelineRunsListInputSchema = z
@@ -48,11 +48,7 @@ export const pipelineRunsListInputSchema = z
 export const pipelineRunsRunIdInputSchema = z.object({ runId: z.uuid() }).strict();
 
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
-  const [row] = await db
-    .select()
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
+  const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   if (!row) throw new Error('NOT_FOUND: pipeline run not found');
   await assertPrincipalIsMember(principal, row.projectId);
   return row;

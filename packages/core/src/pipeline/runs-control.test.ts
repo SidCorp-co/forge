@@ -258,7 +258,13 @@ describe('cancelPipelineRun', () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     updateReturning.mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0, createdBy: 'owner-1' },
+      {
+        id: ISSUE_ID,
+        projectId: PROJECT_ID,
+        status: 'closed',
+        reopenCount: 0,
+        createdBy: 'owner-1',
+      },
     ]);
 
     await cancelPipelineRun(RUN_ID);

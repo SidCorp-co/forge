@@ -8,13 +8,15 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { upsertKnowledgeEntry } from './service.js';
 
 function toKebabSlug(id: string): string {
-  return id
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/^([^a-z0-9])/, 'k$1')
-    .slice(0, 512) || 'knowledge';
+  return (
+    id
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/^([^a-z0-9])/, 'k$1')
+      .slice(0, 512) || 'knowledge'
+  );
 }
 
 const MAX_DOCS_PER_REQUEST = 20;

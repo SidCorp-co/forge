@@ -194,10 +194,7 @@ export function registerCiFixPatternLearner(bus: HooksBus): () => void {
   const detach = (fn: () => Promise<void>) =>
     queueMicrotask(() => {
       fn().catch((err) => {
-        logger.warn(
-          { err: (err as Error).message },
-          'ci_fix_pattern.learn: detached task failed',
-        );
+        logger.warn({ err: (err as Error).message }, 'ci_fix_pattern.learn: detached task failed');
       });
     });
 

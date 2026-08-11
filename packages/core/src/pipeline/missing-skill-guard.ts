@@ -32,8 +32,7 @@ export function buildMissingSkillReason(stage: IssueStatus): string {
  */
 export function buildMissingSkillCommentBody(stage: IssueStatus): string {
   const step = PIPELINE_STEPS.find((s) => s.status === stage);
-  const toggle =
-    step?.toggle ?? `auto${stage.charAt(0).toUpperCase()}${stage.slice(1)}`;
+  const toggle = step?.toggle ?? `auto${stage.charAt(0).toUpperCase()}${stage.slice(1)}`;
   return [
     `🛑 **Pipeline halted at stage \`${stage}\`**`,
     '',

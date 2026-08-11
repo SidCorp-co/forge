@@ -75,7 +75,10 @@ export async function loadResumeBounds(
     return { maxResumeTokens: maxTokens, maxResumeReopenCycles: maxCycles };
   } catch (err) {
     logger.warn({ err, projectId }, 'session-resume: failed to load resume bounds, using defaults');
-    return { maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS, maxResumeReopenCycles: DEFAULT_MAX_RESUME_REOPEN_CYCLES };
+    return {
+      maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS,
+      maxResumeReopenCycles: DEFAULT_MAX_RESUME_REOPEN_CYCLES,
+    };
   }
 }
 

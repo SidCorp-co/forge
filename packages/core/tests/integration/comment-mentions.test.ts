@@ -10,6 +10,12 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+type RoutesModule = typeof import('../../src/issues/routes.js');
+type JwtModule = typeof import('../../src/auth/jwt.js');
+type ErrorModule = typeof import('../../src/middleware/error.js');
+type HooksModule = typeof import('../../src/pipeline/hooks.js');
+type NotifyMentionsModule = typeof import('../../src/notifications/notify-mentions.js');
+
 // Integration coverage for ISS-276 PR-B — comment mentions + notification fan-out.
 //
 // Exercises POST /api/issues/:id/comments end-to-end against real Postgres:
@@ -18,11 +24,11 @@ import {
 // and unknown handles).
 
 type Mods = {
-  issueRoutes: typeof import('../../src/issues/routes.js').issueRoutes;
-  signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-  errorHandler: typeof import('../../src/middleware/error.js').errorHandler;
-  hooks: typeof import('../../src/pipeline/hooks.js').hooks;
-  registerNotifyMentionsSubscriber: typeof import('../../src/notifications/notify-mentions.js').registerNotifyMentionsSubscriber;
+  issueRoutes: RoutesModule['issueRoutes'];
+  signUserToken: JwtModule['signUserToken'];
+  errorHandler: ErrorModule['errorHandler'];
+  hooks: HooksModule['hooks'];
+  registerNotifyMentionsSubscriber: NotifyMentionsModule['registerNotifyMentionsSubscriber'];
 };
 
 describe('ISS-276 comment mentions', () => {

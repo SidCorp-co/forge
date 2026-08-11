@@ -18,8 +18,8 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const txInsert = vi.fn(() => ({ values: insertValues }));
-const transaction = vi.fn(
-  async (fn: (tx: { insert: typeof txInsert }) => Promise<unknown>) => fn({ insert: txInsert }),
+const transaction = vi.fn(async (fn: (tx: { insert: typeof txInsert }) => Promise<unknown>) =>
+  fn({ insert: txInsert }),
 );
 
 vi.mock('../db/client.js', () => ({

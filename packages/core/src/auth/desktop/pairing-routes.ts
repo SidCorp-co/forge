@@ -25,8 +25,8 @@ import { db } from '../../db/client.js';
 import { desktopPairingCodes, users } from '../../db/schema.js';
 import { isEnabled } from '../../lib/feature-flags.js';
 import { logger } from '../../logger.js';
+import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
-import { requireAuth, type AuthVars } from '../../middleware/auth.js';
 import { Sentry } from '../../observability/sentry.js';
 import { issueOrRotateDeviceToken } from '../deviceToken.js';
 import { signUserToken } from '../jwt.js';
@@ -273,10 +273,7 @@ pairingRoutes.post(
     }
     const row = updated[0]!;
 
-    logger.info(
-      { approvedUserId: userId, pairingCodeId: row.id },
-      'desktop pairing: approved',
-    );
+    logger.info({ approvedUserId: userId, pairingCodeId: row.id }, 'desktop pairing: approved');
 
     return c.json({
       approved: true,

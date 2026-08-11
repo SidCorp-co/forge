@@ -151,9 +151,24 @@ const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
   custom: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   smoke: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  release_batch: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  reconcile: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  verify_skill: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  release_batch: {
+    decisions: false,
+    filesModified: false,
+    errorsResolved: false,
+    reviewFeedback: false,
+  },
+  reconcile: {
+    decisions: false,
+    filesModified: false,
+    errorsResolved: false,
+    reviewFeedback: false,
+  },
+  verify_skill: {
+    decisions: false,
+    filesModified: false,
+    errorsResolved: false,
+    reviewFeedback: false,
+  },
 };
 
 function truncate(text: string, cap: number, strategy: 'paragraph-boundary' | 'byte-cut'): string {

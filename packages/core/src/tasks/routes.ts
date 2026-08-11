@@ -50,9 +50,7 @@ const taskPatchSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
-const taskReorderSchema = z
-  .object({ taskIds: z.array(z.uuid()).min(1) })
-  .strict();
+const taskReorderSchema = z.object({ taskIds: z.array(z.uuid()).min(1) }).strict();
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -227,10 +225,7 @@ taskIssueRoutes.post(
       for (let i = 0; i < taskIds.length; i++) {
         const id = taskIds[i] as string;
         if (previous.get(id) === i) continue;
-        await tx
-          .update(tasks)
-          .set({ sortOrder: i, updatedAt: new Date() })
-          .where(eq(tasks.id, id));
+        await tx.update(tasks).set({ sortOrder: i, updatedAt: new Date() }).where(eq(tasks.id, id));
         changed.push(id);
       }
     });
@@ -345,11 +340,7 @@ taskRoutes.patch(
       track('sortOrder', task.sortOrder, patch.sortOrder);
     }
 
-    const [updated] = await db
-      .update(tasks)
-      .set(updates)
-      .where(eq(tasks.id, taskId))
-      .returning();
+    const [updated] = await db.update(tasks).set(updates).where(eq(tasks.id, taskId)).returning();
     if (!updated) throw notFound('task not found');
 
     if (fields.length > 0) {

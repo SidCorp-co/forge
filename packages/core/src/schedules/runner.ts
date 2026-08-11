@@ -12,24 +12,20 @@ export async function registerScheduleTicker(): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(TICK_QUEUE_NAME);
   // biome-ignore lint/suspicious/noExplicitAny: see registerDispatcher
-  const id = (await (boss as any).work(
-    TICK_QUEUE_NAME,
-    { batchSize: 1 },
-    async (arg: unknown) => {
-      const entries = Array.isArray(arg) ? arg : [arg];
-      for (const _entry of entries) {
-        try {
-          const dispatched = await runScheduleTickOnce();
-          if (dispatched.length > 0) {
-            logger.info({ scheduleIds: dispatched }, 'schedule.tick: dispatched');
-          }
-        } catch (err) {
-          logger.error({ err }, 'schedule.tick: handler threw');
-          throw err;
+  const id = (await (boss as any).work(TICK_QUEUE_NAME, { batchSize: 1 }, async (arg: unknown) => {
+    const entries = Array.isArray(arg) ? arg : [arg];
+    for (const _entry of entries) {
+      try {
+        const dispatched = await runScheduleTickOnce();
+        if (dispatched.length > 0) {
+          logger.info({ scheduleIds: dispatched }, 'schedule.tick: dispatched');
         }
+      } catch (err) {
+        logger.error({ err }, 'schedule.tick: handler threw');
+        throw err;
       }
-    },
-  )) as string;
+    }
+  })) as string;
   workerId = id;
   // Schedule the tick to fire every minute.
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions

@@ -73,6 +73,5 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     sections.push(`Page context:\n${JSON.stringify(input.pageContext, null, 2)}`);
   }
 
-
   return sections.join('\n\n');
 }

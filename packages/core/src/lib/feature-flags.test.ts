@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isEnabled, snapshotFlags, type FeatureFlag } from './feature-flags';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { type FeatureFlag, isEnabled, snapshotFlags } from './feature-flags';
 
 describe('feature-flags', () => {
   const originalEnv = { ...process.env };

@@ -51,7 +51,13 @@ interface FakeState {
     productionBranch: string | null;
     repoPath: string | null;
   };
-  edges: Array<{ id: string; projectId: string; fromIssueId: string; toIssueId: string; kind: string }>;
+  edges: Array<{
+    id: string;
+    projectId: string;
+    fromIssueId: string;
+    toIssueId: string;
+    kind: string;
+  }>;
   activity: Array<{ issueId: string; action: string; payload: Record<string, unknown> }>;
   nextIssueId: number;
   nextEdgeId: number;
@@ -110,15 +116,42 @@ function makeChain(kind: QueryChain['_kind']): QueryChain & PromiseLike<unknown>
   const chain: QueryChain & Record<string, unknown> = { _kind: kind };
   // biome-ignore lint/suspicious/noExplicitAny: dynamic chain
   const proto: any = {
-    from(this: typeof chain, t: unknown) { this._table = tableName(t); return this; },
-    where(this: typeof chain, w: unknown) { this._where = w; return this; },
-    limit(this: typeof chain, n: number) { this._limit = n; return this; },
-    for(this: typeof chain, mode: string) { if (mode === 'update') this._forUpdate = true; return this; },
-    values(this: typeof chain, v: unknown) { this._values = v as Record<string, unknown>; return this; },
-    set(this: typeof chain, v: unknown) { this._set = v as Record<string, unknown>; return this; },
-    onConflictDoNothing(this: typeof chain) { this._conflictDoNothing = true; return this; },
-    returning(this: typeof chain) { this._returning = true; return this; },
-    into(this: typeof chain, t: unknown) { this._table = tableName(t); return this; },
+    from(this: typeof chain, t: unknown) {
+      this._table = tableName(t);
+      return this;
+    },
+    where(this: typeof chain, w: unknown) {
+      this._where = w;
+      return this;
+    },
+    limit(this: typeof chain, n: number) {
+      this._limit = n;
+      return this;
+    },
+    for(this: typeof chain, mode: string) {
+      if (mode === 'update') this._forUpdate = true;
+      return this;
+    },
+    values(this: typeof chain, v: unknown) {
+      this._values = v as Record<string, unknown>;
+      return this;
+    },
+    set(this: typeof chain, v: unknown) {
+      this._set = v as Record<string, unknown>;
+      return this;
+    },
+    onConflictDoNothing(this: typeof chain) {
+      this._conflictDoNothing = true;
+      return this;
+    },
+    returning(this: typeof chain) {
+      this._returning = true;
+      return this;
+    },
+    into(this: typeof chain, t: unknown) {
+      this._table = tableName(t);
+      return this;
+    },
     then(this: typeof chain, resolve: (v: unknown) => void, reject: (e: unknown) => void) {
       try {
         const out = executeQuery(this);
@@ -234,12 +267,15 @@ const fakeDb = {
 };
 
 vi.mock('../db/client.js', () => ({
-  db: new Proxy({}, {
-    get(_t, prop) {
-      // biome-ignore lint/suspicious/noExplicitAny: dynamic
-      return (fakeDb as any)[prop];
+  db: new Proxy(
+    {},
+    {
+      get(_t, prop) {
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic
+        return (fakeDb as any)[prop];
+      },
     },
-  }),
+  ),
 }));
 
 vi.mock('../logger.js', () => ({
@@ -297,9 +333,7 @@ beforeEach(() => {
 
 describe('slugifyIssueTitle', () => {
   it('lowercases and replaces non-alphanumerics with dashes', () => {
-    expect(slugifyIssueTitle('PR-D: Decompose / Integration!')).toBe(
-      'pr-d-decompose-integration',
-    );
+    expect(slugifyIssueTitle('PR-D: Decompose / Integration!')).toBe('pr-d-decompose-integration');
   });
   it('trims leading and trailing dashes', () => {
     expect(slugifyIssueTitle('  ---hello---  ')).toBe('hello');
@@ -311,11 +345,7 @@ describe('decomposeParent — happy path', () => {
     seedParent();
     const out = await decomposeParent(
       PARENT_ID,
-      [
-        { title: 'Child A' },
-        { title: 'Child B' },
-        { title: 'Child C' },
-      ],
+      [{ title: 'Child A' }, { title: 'Child B' }, { title: 'Child C' }],
       { userId: USER_ID },
     );
     expect(out.parentId).toBe(PARENT_ID);
@@ -331,9 +361,7 @@ describe('decomposeParent — happy path', () => {
     expect(state.edges).toHaveLength(3);
     expect(state.edges.every((e) => e.kind === 'decomposes')).toBe(true);
     expect(
-      state.activity.some(
-        (a) => a.action === 'issue.decomposed' && a.issueId === PARENT_ID,
-      ),
+      state.activity.some((a) => a.action === 'issue.decomposed' && a.issueId === PARENT_ID),
     ).toBe(true);
   });
 });
@@ -357,11 +385,7 @@ describe('decomposeParent — branch-name conflict resolution', () => {
   it('appends -2 when the base candidate already exists on the remote', async () => {
     seedParent();
     gitHasBranch.mockImplementation(async (_repo, branch) => branch === 'iss-7-pr-d-parent-epic');
-    const out = await decomposeParent(
-      PARENT_ID,
-      [{ title: 'Child A' }],
-      { userId: USER_ID },
-    );
+    const out = await decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID });
     expect(out.integrationBranch).toBe('iss-7-pr-d-parent-epic-2');
     expect(gitCreateBranch).toHaveBeenCalledWith(
       expect.objectContaining({ newBranch: 'iss-7-pr-d-parent-epic-2' }),
@@ -385,11 +409,7 @@ describe('decomposeParent — parent status guard', () => {
         branchConfig: { baseBranch: 'main', targetBranch: 'main' },
       },
     });
-    const out = await decomposeParent(
-      PARENT_ID,
-      [{ title: 'Late Child' }],
-      { userId: USER_ID },
-    );
+    const out = await decomposeParent(PARENT_ID, [{ title: 'Late Child' }], { userId: USER_ID });
     // Reuses the existing branch name from metadata (which is 'main' in our
     // contrived fixture); the helper does not re-issue a git push.
     expect(out.integrationBranch).toBe('main');
@@ -400,9 +420,9 @@ describe('decomposeParent — parent status guard', () => {
 describe('decomposeParent — input validation', () => {
   it('throws when children is empty', async () => {
     seedParent();
-    await expect(
-      decomposeParent(PARENT_ID, [], { userId: USER_ID }),
-    ).rejects.toBeInstanceOf(DecomposeError);
+    await expect(decomposeParent(PARENT_ID, [], { userId: USER_ID })).rejects.toBeInstanceOf(
+      DecomposeError,
+    );
   });
 
   it('throws when a new child has no title', async () => {

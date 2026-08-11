@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const journalPath = fileURLToPath(
-  new URL('../../drizzle/migrations/meta/_journal.json', import.meta.url)
+  new URL('../../drizzle/migrations/meta/_journal.json', import.meta.url),
 );
 
 // cm:why idx 21/36 predate ISS-807; a `when` may only be rewritten if its migration's DDL is idempotent or proven applied nowhere — neither holds for these, so they stay frozen

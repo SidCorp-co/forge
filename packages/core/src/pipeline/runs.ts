@@ -157,10 +157,7 @@ export async function closeRun(
       entity: 'run',
       to: outcome,
       set: { finishedAt: new Date(), updatedAt: new Date() },
-      where: and(
-        eq(pipelineRuns.id, runId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-      ),
+      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
       fromStatus: 'open',
       reason: reasonForOutcome(outcome),
       actor: { type: 'system' },

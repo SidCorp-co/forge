@@ -61,8 +61,5 @@ export async function handlePmJobFailedAutoDisable(
     });
   });
 
-  logger.warn(
-    { projectId: payload.projectId, failures: count },
-    'pm.auto-disable: cadence off',
-  );
+  logger.warn({ projectId: payload.projectId, failures: count }, 'pm.auto-disable: cadence off');
 }

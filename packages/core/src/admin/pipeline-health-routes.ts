@@ -42,12 +42,7 @@ pipelineHealthAdminRoutes.get('/health', async (c) => {
       count: count(),
     })
     .from(jobs)
-    .where(
-      and(
-        eq(jobs.status, 'failed'),
-        sql`${jobs.finishedAt} > now() - interval '24 hours'`,
-      ),
-    )
+    .where(and(eq(jobs.status, 'failed'), sql`${jobs.finishedAt} > now() - interval '24 hours'`))
     .groupBy(jobs.failureKind);
 
   return c.json({

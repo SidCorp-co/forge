@@ -20,10 +20,7 @@ import { resolveProjectDefaultMcpServers } from './stage-overrides.js';
 
 export type McpServersMap = Record<string, unknown> | null;
 
-type IntegrationMcpResolver = (
-  projectId: string,
-  current: McpServersMap,
-) => Promise<McpServersMap>;
+type IntegrationMcpResolver = (projectId: string, current: McpServersMap) => Promise<McpServersMap>;
 
 /** ISS-336 (postman) · ISS-387 (epodsystem) · ISS-524 (sentry). Order is the
  *  historical chain order; resolvers are name-keyed so it rarely matters. */
@@ -141,8 +138,7 @@ export async function resolveJobMcpServers(args: {
   const playwrightDedupedNotDropped =
     beforeBrowserDedupe.has('playwright') && !resolvedNames.has('playwright');
   const droppedNames = [...declaredNames].filter(
-    (name) =>
-      !resolvedNames.has(name) && !(name === 'playwright' && playwrightDedupedNotDropped),
+    (name) => !resolvedNames.has(name) && !(name === 'playwright' && playwrightDedupedNotDropped),
   );
 
   return { mcpServers: map, resolvedNames: [...resolvedNames], droppedNames };
@@ -150,9 +146,7 @@ export async function resolveJobMcpServers(args: {
 
 // cm:why stage-less callers must still run the integration resolvers — resolveProjectDefaultMcpServers alone stops at catalog expansion, leaking an `epodsystem` sentinel to the runner as bare `true`, which mcp/config.rs skips (connected integration, zero tools)
 // cm:edge contract -> packages/core/src/prompt/system.ts — buildChatPreamble renders these diagnostics as the `mcp-servers` block; pass them or a dropped sentinel stays invisible to the agent
-export async function resolveSessionMcpServers(
-  projectId: string,
-): Promise<ResolvedJobMcpServers> {
+export async function resolveSessionMcpServers(projectId: string): Promise<ResolvedJobMcpServers> {
   return resolveJobMcpServers({
     projectId,
     stageMcpServers: null,

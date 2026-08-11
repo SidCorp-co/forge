@@ -10,7 +10,9 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
 
   describe('ISS-479 — explicit runner failureReason tokens', () => {
     it('routes [MCP_INIT_FAILED] to infra', () => {
-      const r = classifyFailure({ error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup' });
+      const r = classifyFailure({
+        error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
+      });
       expect(r.kind).toBe('infra');
     });
 
@@ -176,9 +178,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     expect(
       classifyFailure({ error: 'preflight_failed: push_credentials: ls-remote timed out' }).kind,
     ).toBe('infra');
-    expect(classifyFailure({ error: "preflight_failed: hooks_path: missing" }).kind).toBe(
-      'infra',
-    );
+    expect(classifyFailure({ error: 'preflight_failed: hooks_path: missing' }).kind).toBe('infra');
   });
 
   it('classifies structural preflight sub-variants as code, not infra (ISS-808)', () => {
@@ -190,9 +190,9 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     expect(
       classifyFailure({ error: 'preflight_failed: work_tree: not a git working tree' }).kind,
     ).toBe('code');
-    expect(
-      classifyFailure({ error: 'preflight_failed: repo_path: not a directory' }).kind,
-    ).toBe('code');
+    expect(classifyFailure({ error: 'preflight_failed: repo_path: not a directory' }).kind).toBe(
+      'code',
+    );
   });
 
   describe('cc-startup death → transient-cc (ISS-402 class)', () => {

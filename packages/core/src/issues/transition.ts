@@ -187,7 +187,12 @@ transitionRoutes.post(
     let result: StatusTransitionResult;
     try {
       result = await transitionIssueStatus(
-        { id: issue.id, projectId: issue.projectId, status: fromStatus, reopenCount: issue.reopenCount },
+        {
+          id: issue.id,
+          projectId: issue.projectId,
+          status: fromStatus,
+          reopenCount: issue.reopenCount,
+        },
         toStatus,
         { type: 'user', id: userId },
         { reason, overrideReopenCap: override },

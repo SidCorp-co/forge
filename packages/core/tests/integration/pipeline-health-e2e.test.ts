@@ -20,10 +20,12 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+type PipelineHealthModule = typeof import('../../src/issues/pipeline-health.js');
+
 type Mods = {
-  hydratePipelineHealthForIssues: typeof import('../../src/issues/pipeline-health.js').hydratePipelineHealthForIssues;
-  recordTickAt: typeof import('../../src/issues/pipeline-health.js').recordTickAt;
-  resetLastTickAtForTest: typeof import('../../src/issues/pipeline-health.js').resetLastTickAtForTest;
+  hydratePipelineHealthForIssues: PipelineHealthModule['hydratePipelineHealthForIssues'];
+  recordTickAt: PipelineHealthModule['recordTickAt'];
+  resetLastTickAtForTest: PipelineHealthModule['resetLastTickAtForTest'];
 };
 
 describe('ISS-164 pipelineHealth E2E', () => {

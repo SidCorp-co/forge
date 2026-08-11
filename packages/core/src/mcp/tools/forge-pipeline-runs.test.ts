@@ -193,9 +193,7 @@ describe('forge_pipeline_runs.get', () => {
   // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
   // runId-resolved access.
   it('returns NOT_FOUND for a PAT when the run’s project is outside the allowlist', async () => {
-    const tool = forgePipelineRunsGetTool(
-      makePatCtx(['99999999-9999-4999-8999-999999999999']),
-    );
+    const tool = forgePipelineRunsGetTool(makePatCtx(['99999999-9999-4999-8999-999999999999']));
     selectLimit.mockResolvedValueOnce([baseRun]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
   });
@@ -261,9 +259,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   });
 
   it('cancel returns NOT_FOUND for a PAT when the run’s project is outside the allowlist', async () => {
-    const tool = forgePipelineRunsCancelTool(
-      makePatCtx(['99999999-9999-4999-8999-999999999999']),
-    );
+    const tool = forgePipelineRunsCancelTool(makePatCtx(['99999999-9999-4999-8999-999999999999']));
     selectLimit.mockResolvedValueOnce([baseRun]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
     expect(cancelSpy).not.toHaveBeenCalled();

@@ -21,8 +21,7 @@ chain.values = () => chain;
 chain.returning = () => chain;
 chain.onConflictDoNothing = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
-chain.then = (resolve: any, reject: any) =>
-  Promise.resolve(queue.shift()).then(resolve, reject);
+chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 
 vi.mock('../../db/client.js', () => ({
   db: {

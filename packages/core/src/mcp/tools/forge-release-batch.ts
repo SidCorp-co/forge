@@ -91,8 +91,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         await assertPrincipalIsWriter(principal, context.projectId);
 
-        const actorUserId =
-          principal.kind === 'pat' ? principal.userId : device.ownerId;
+        const actorUserId = principal.kind === 'pat' ? principal.userId : device.ownerId;
 
         const releasedIds = await abortReleaseBatch(
           input.runId,

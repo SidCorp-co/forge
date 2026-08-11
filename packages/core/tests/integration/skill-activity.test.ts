@@ -10,17 +10,21 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+type ActivityModule = typeof import('../../src/skills/activity.js');
+type ActivityChainIntegrityModule = typeof import('../../src/skills/activity-chain-integrity.js');
+type ActivityViewsModule = typeof import('../../src/skills/activity-views.js');
+
 // cm:why real Postgres, not a mocked `tx` (see src/skills/activity.test.ts) — only a real rollback proves §9.11's same-transaction invariant actually holds.
 describe('skill-activity log integration (ISS-797)', () => {
   let harness: TestDatabase;
   let schema: typeof import('../../src/db/schema.js');
-  let recordSkillActivityEvent: typeof import('../../src/skills/activity.js').recordSkillActivityEvent;
+  let recordSkillActivityEvent: ActivityModule['recordSkillActivityEvent'];
   let applyReconcileRun: (runId: string, actorUserId: string) => Promise<void>;
-  let checkSkillActivityChainIntegrity: typeof import('../../src/skills/activity-chain-integrity.js').checkSkillActivityChainIntegrity;
-  let listBySkill: typeof import('../../src/skills/activity-views.js').listBySkill;
-  let listByDevice: typeof import('../../src/skills/activity-views.js').listByDevice;
-  let listByPacket: typeof import('../../src/skills/activity-views.js').listByPacket;
-  let summarizeByEventType: typeof import('../../src/skills/activity-views.js').summarizeByEventType;
+  let checkSkillActivityChainIntegrity: ActivityChainIntegrityModule['checkSkillActivityChainIntegrity'];
+  let listBySkill: ActivityViewsModule['listBySkill'];
+  let listByDevice: ActivityViewsModule['listByDevice'];
+  let listByPacket: ActivityViewsModule['listByPacket'];
+  let summarizeByEventType: ActivityViewsModule['summarizeByEventType'];
 
   beforeAll(async () => {
     harness = await setupTestDatabase();

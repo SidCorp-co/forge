@@ -63,10 +63,14 @@ describe('persistPromptSnapshot', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
     const callArg = (db as any).execute.mock.calls[0][0];
     const joined = (callArg.queryChunks ?? [])
-      .map((c: unknown) => (typeof c === 'object' && c && 'value' in c ? (c as { value: string }).value : ''))
+      .map((c: unknown) =>
+        typeof c === 'object' && c && 'value' in c ? (c as { value: string }).value : '',
+      )
       .join('');
     expect(joined).toMatch(/INSERT INTO prompt_blobs/);
-    expect(joined).toMatch(/ON CONFLICT \(hash\) DO UPDATE SET ref_count = prompt_blobs.ref_count \+ 1/);
+    expect(joined).toMatch(
+      /ON CONFLICT \(hash\) DO UPDATE SET ref_count = prompt_blobs.ref_count \+ 1/,
+    );
     // The hash is the first parameter; assert it via the queryChunks.params side.
     expect(JSON.stringify(callArg)).toContain(expectedHash);
 

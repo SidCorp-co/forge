@@ -74,7 +74,10 @@ const ctx = {
 
 /** Queue: attachment row → effective-role row (lib/authz.ts single query). */
 function queueFetch(att: Record<string, unknown>) {
-  queue.push([att], [{ orgId: '66666666-6666-4666-8666-666666666666', memberRole: 'member', orgRole: null }]);
+  queue.push(
+    [att],
+    [{ orgId: '66666666-6666-4666-8666-666666666666', memberRole: 'member', orgRole: null }],
+  );
 }
 
 beforeEach(() => {
