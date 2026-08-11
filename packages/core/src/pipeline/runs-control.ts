@@ -31,7 +31,7 @@ import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { pauseRun, resumeRun } from './run-pause.js';
-import { broadcastAbortEvents, cascadeCancelChildJobs } from './runs-cascade.js';
+import { type JobRow, cascadeCancelChildJobs, requestKillsForCascade } from './runs-cascade.js';
 
 /**
  * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is
@@ -194,6 +194,7 @@ export async function cancelPipelineRun(runId: string): Promise<CancelPipelineRu
           abortedSessionIds: [] as string[],
           deviceIdsNotified: [] as string[],
           broadcast: false,
+          killableJobs: [] as JobRow[],
         };
       }
       throw conflict(current.status);
@@ -207,15 +208,13 @@ export async function cancelPipelineRun(runId: string): Promise<CancelPipelineRu
       abortedSessionIds: cascade.abortedSessionIds,
       deviceIdsNotified: Array.from(new Set([...cascade.deviceBySession.values()])),
       broadcast: true,
-      deviceBySession: cascade.deviceBySession,
+      killableJobs: cascade.killableJobs,
     };
   });
 
   if (result.broadcast) {
     broadcastRunStatus(result.run);
-    if (result.deviceBySession) {
-      await broadcastAbortEvents(result.deviceBySession, FAILURE_REASON_PIPELINE_CANCELLED, runId);
-    }
+    await requestKillsForCascade(result.killableJobs, FAILURE_REASON_PIPELINE_CANCELLED);
     // ISS-411 — make the cancel authoritative: park the linked issue so it does
     // not silently auto-resume. Best-effort; never fails the cancel.
     await parkIssueOnCancel(result.run);

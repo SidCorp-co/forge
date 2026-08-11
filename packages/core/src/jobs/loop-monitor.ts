@@ -36,6 +36,18 @@
  *      (kind `timeout`). Replaces `runStaleSweep` (ISS-258), now evaluated on
  *      the 1-minute loop tick instead of the old 5-minute schedule.
  *
+ * ISS-785 — the three JOB-axis hops above (1, 3c, 4) no longer fail the job
+ * on the same tick they detect it. Failing it immediately let a false
+ * "silent death" spawn a genuine second agent on the same worktree racing the
+ * still-alive first one (ISS-37: the first agent reverted a merge the retry
+ * had no idea about). Each is now two-phase via `jobs/kill-gate.ts`: tick 1
+ * stamps `kill_requested_at` + sends the runner a `job.cancel` and leaves the
+ * job active; only once termination is confirmed (or, for the ack hop only,
+ * once the grace elapses on a job no runner ever claimed) does a later tick
+ * flip it to `failed` and allow a retry. The SESSION-axis hop (2, 3a/3b) is
+ * unchanged — it fails a `agent_sessions` row directly, which has no runner
+ * process of its own to kill.
+ *
  * Every miss-handler emits a `pipeline_wedge` event (ISS-452 C6 / I7) carrying
  * WHERE (the hop) + WHY (the reason) + WHAT a human should do, so
  * `interventions/issue` is measurable.
@@ -51,13 +63,20 @@
 
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { or } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { emitPipelineWedge } from '../pipeline/wedge.js';
+import { type WedgeHop, emitPipelineWedge } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
+import {
+  type KillableJobRef,
+  killGraceMs,
+  requestJobKill,
+  resolveKillConfirmation,
+} from './kill-gate.js';
 
 // Lazily loaded (ISS-584 B). schedules/dispatch.js pulls a heavy prompt-builder
 // chain (and through it the env-validating embeddings module); importing it
@@ -67,6 +86,8 @@ import { finalizeFailedJob } from './finalize-failure.js';
 type RedispatchFn = (
   sessionId: string,
 ) => Promise<{ ok: boolean; status: string; sessionId?: string; deviceId?: string }>;
+type JobRow = typeof jobs.$inferSelect;
+
 let _redispatchScheduleFn: RedispatchFn | null = null;
 async function getRedispatchScheduleFn(): Promise<RedispatchFn> {
   if (!_redispatchScheduleFn) {
@@ -133,15 +154,25 @@ export interface ZombieSessionReapResult {
   noClientAcked: number;
 }
 
+/** ISS-785 — every job-axis hop now reports three counts instead of one:
+ *  `reaped` (confirmed dead, terminal write applied — same meaning the bare
+ *  number used to have), plus the two intermediate outcomes of the kill gate
+ *  so callers/tests can see the gate is actually engaging. */
+export interface JobAxisReapResult {
+  reaped: number;
+  killRequested: number;
+  awaitingKill: number;
+}
+
 export interface LoopMonitorResult {
   /** dispatch→ack misses reaped (`dispatch_unclaimed`). */
-  ackMisses: number;
+  ackMisses: JobAxisReapResult;
   /** Session-level claim/heartbeat misses reaped. */
   sessions: ZombieSessionReapResult;
   /** Jobs failed because their linked session is terminal (`session_lost`). */
-  sessionLostJobs: number;
+  sessionLostJobs: JobAxisReapResult;
   /** result-hop misses reaped (`stale`, no event for RESULT_QUIET_MINUTES). */
-  resultMisses: number;
+  resultMisses: JobAxisReapResult;
 }
 
 /** Resolve the linked issue for a session's wedge event via its pipeline_run
@@ -160,21 +191,192 @@ async function lookupIssueForRun(pipelineRunId: string | null): Promise<string |
   }
 }
 
+/** Raw-execute candidate row shared by every job-axis hop — the columns the
+ *  kill gate needs (`toKillableRef`) plus the identifiers a wedge needs.
+ *  A `type` (not `interface`) — `db.execute<T>`'s `T extends Record<string,
+ *  unknown>` constraint only structurally matches object-literal types. */
+type KillGateCandidateRow = {
+  id: string;
+  project_id: string;
+  issue_id: string | null;
+  device_id: string | null;
+  runner_id: string | null;
+  kill_requested_at: Date | string | null;
+  kill_confirmed_at: Date | string | null;
+  kill_outcome: JobRow['killOutcome'];
+};
+
+function toKillableRef(row: KillGateCandidateRow): KillableJobRef {
+  return {
+    id: row.id,
+    deviceId: row.device_id,
+    runnerId: row.runner_id,
+    killRequestedAt: row.kill_requested_at ? new Date(row.kill_requested_at) : null,
+    killConfirmedAt: row.kill_confirmed_at ? new Date(row.kill_confirmed_at) : null,
+    killOutcome: row.kill_outcome,
+  };
+}
+
+type KillGateReapDecision =
+  | { phase: 'kill_requested' }
+  | { phase: 'awaiting_kill' }
+  | { phase: 'lost_race' }
+  | { phase: 'reaped'; updated: JobRow; confirmed: boolean };
+
+interface KillGateReapConfig {
+  hop: WedgeHop;
+  /** CAS predicate for the terminal flip — MUST include the same status
+   *  guard the candidate SELECT used. */
+  where: SQL | undefined;
+  fromStatus: string;
+  /** Written to `jobs.error` — also the SYNTHETIC_REAP_ERRORS marker the
+   *  late-`/complete` reconciler matches on, so keep it the short form. */
+  error: string;
+  /** Passed to `finalizeFailedJob`'s `error` option (logging / classifier
+   *  fallback only). Defaults to `error` when the hop has no longer text. */
+  finalizeError?: string;
+  failureKind: 'infra' | 'timeout';
+  failureReason: string;
+  requestedWedgeReason: string;
+  requestedWedgeAction: string;
+  confirmedWedgeReason: string;
+  confirmedWedgeAction: string;
+  /**
+   * Hop 1 (ack) only: the candidate predicate already proves no runner ever
+   * claimed the job (`acked_at IS NULL`, zero job_events), so there is no
+   * process to confirm dead — treat silence past the grace as confirmed
+   * instead of falling through to `resolveKillConfirmation` (which would
+   * park at `waiting` on every ordinary never-claimed dispatch, defeating
+   * the hop's fast-failover contract).
+   */
+  forceConfirmAfterGrace?: boolean;
+}
+
+/**
+ * ISS-785 — shared two-phase gate + CAS for every job-axis hop. Tick 1 (no
+ * `killRequestedAt` yet): request the kill, wedge, and leave the job active.
+ * Tick 2+ within the grace: no-op, wait. Tick 2+ past the grace: resolve
+ * confirmation and CAS the job to `failed` exactly as the pre-ISS-785 code
+ * did. Deliberately stops at the CAS — the caller increments its `reaped`
+ * counter and THEN calls `finalizeKillGateReap` for the wedge + retry tail,
+ * mirroring the pre-ISS-785 ordering where a throw from `finalizeFailedJob`
+ * must not un-count a row whose terminal write already committed (see the
+ * per-row error-isolation tests).
+ */
+async function resolveKillGateDecision(
+  row: KillGateCandidateRow,
+  cfg: KillGateReapConfig,
+): Promise<KillGateReapDecision> {
+  const ref = toKillableRef(row);
+
+  if (!ref.killRequestedAt) {
+    await requestJobKill(ref, cfg.error);
+    await emitPipelineWedge({
+      projectId: row.project_id,
+      issueId: row.issue_id,
+      hop: cfg.hop,
+      entity: 'job',
+      entityId: row.id,
+      reason: cfg.requestedWedgeReason,
+      action: cfg.requestedWedgeAction,
+    });
+    return { phase: 'kill_requested' };
+  }
+
+  if (Date.now() - ref.killRequestedAt.getTime() < killGraceMs()) {
+    return { phase: 'awaiting_kill' };
+  }
+
+  let confirmed: boolean;
+  let outcome: JobRow['killOutcome'];
+  if (cfg.forceConfirmAfterGrace) {
+    confirmed = true;
+    outcome = ref.killOutcome ?? 'not_found';
+  } else {
+    const resolution = await resolveKillConfirmation(ref);
+    confirmed = resolution.confirmed;
+    outcome = resolution.outcome;
+  }
+
+  const set: Partial<Omit<JobRow, 'id' | 'status'>> = {
+    error: cfg.error,
+    finishedAt: new Date(),
+    failureKind: cfg.failureKind,
+    failureReason: cfg.failureReason,
+    classifierVersion: 3,
+  };
+  if (confirmed) set.killConfirmedAt = new Date();
+  if (outcome) set.killOutcome = outcome;
+
+  const [updated] = await applyKernelTransition(db, {
+    entity: 'job',
+    to: 'failed',
+    set,
+    where: cfg.where,
+    fromStatus: cfg.fromStatus,
+    reason: cfg.error,
+    actor: { type: 'sweeper' },
+    source: 'loop-monitor',
+  });
+  if (!updated) return { phase: 'lost_race' }; // a lifecycle call finalized it first
+
+  return { phase: 'reaped', updated, confirmed };
+}
+
+/** Wedge + route the confirmed/unconfirmed reap through the shared
+ *  `finalizeFailedJob` tail — retry forced off when the kill was never
+ *  confirmed. Called AFTER the row is already counted `reaped` (see above). */
+async function finalizeKillGateReap(
+  updated: JobRow,
+  confirmed: boolean,
+  cfg: Pick<
+    KillGateReapConfig,
+    'hop' | 'error' | 'finalizeError' | 'confirmedWedgeReason' | 'confirmedWedgeAction'
+  >,
+): Promise<void> {
+  await emitPipelineWedge({
+    projectId: updated.projectId,
+    issueId: updated.issueId,
+    hop: cfg.hop,
+    entity: 'job',
+    entityId: updated.id,
+    reason: cfg.confirmedWedgeReason,
+    action: cfg.confirmedWedgeAction,
+  });
+  const finalizeError = cfg.finalizeError ?? cfg.error;
+  await finalizeFailedJob(
+    updated,
+    confirmed
+      ? { error: finalizeError }
+      : {
+          error: finalizeError,
+          precomputedRetry: { scheduled: false, reason: 'kill_unconfirmed' },
+        },
+  );
+}
+
 /**
  * Hop 1 — dispatch→ack. A `dispatched` job that was never acked and emitted
  * zero events past the grace window: no runner claimed it. CAS on
  * `status='dispatched'` so a runner that acks in the same instant wins.
+ *
+ * ISS-785 — still two-phase (a kill is requested and wedged before the job
+ * fails), but the candidate predicate itself proves no process exists, so
+ * confirmation is forced true once the grace elapses (see
+ * `KillGateReapConfig.forceConfirmAfterGrace`) — this hop's fast failover is
+ * unchanged from before the kill gate.
  */
 export async function reapAckMisses(
   now: Date = new Date(),
   scope: LoopScope = {},
-): Promise<number> {
+): Promise<JobAxisReapResult> {
   const { ackMs } = getLoopThresholds();
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   // postgres-js rejects raw Date params; serialise to ISO before binding.
   const cutoffIso = new Date(now.getTime() - ackMs).toISOString();
-  const candidates = await db.execute<{ id: string }>(sql`
-    SELECT j.id
+  const candidates = await db.execute<KillGateCandidateRow>(sql`
+    SELECT j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
+           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome
     FROM jobs j
     WHERE j.status = 'dispatched'
       AND j.acked_at IS NULL
@@ -186,48 +388,43 @@ export async function reapAckMisses(
       ${projectClause}
   `);
 
-  let reaped = 0;
+  const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
   for (const row of candidates) {
     try {
-      const [updated] = await applyKernelTransition(db, {
-        entity: 'job',
-        to: 'failed',
-        set: {
-          error: 'dispatch_unclaimed',
-          finishedAt: new Date(),
-          failureKind: 'infra',
-          failureReason:
-            'dispatch never claimed by a runner (no ack / no started event within grace window)',
-          classifierVersion: 3,
-        },
+      const cfg: KillGateReapConfig = {
+        hop: 'ack',
         where: and(eq(jobs.id, row.id), eq(jobs.status, 'dispatched')),
         fromStatus: 'dispatched',
-        reason: 'dispatch_unclaimed',
-        actor: { type: 'sweeper' },
-        source: 'loop-monitor',
-      });
-      if (!updated) continue; // lost the CAS race — the runner just claimed it
-      reaped++;
-      await emitPipelineWedge({
-        projectId: updated.projectId,
-        issueId: updated.issueId,
-        hop: 'ack',
-        entity: 'job',
-        entityId: updated.id,
-        reason: 'runner never acked the dispatch (no ack, zero job events) within the grace window',
-        action:
+        error: 'dispatch_unclaimed',
+        failureKind: 'infra',
+        failureReason:
+          'dispatch never claimed by a runner (no ack / no started event within grace window)',
+        requestedWedgeReason:
+          'runner never acked the dispatch (no ack, zero job events) within the grace window',
+        requestedWedgeAction:
+          'A job.cancel was sent to the assigned device as a precaution (no runner should have claimed this job at all). Check the device is online; the job fails automatically once the grace elapses.',
+        confirmedWedgeReason:
+          'runner never acked the dispatch (no ack, zero job events) within the grace window',
+        confirmedWedgeAction:
           'Check the assigned device is online and its forge-runner daemon is running. The job was auto-failed and routed to device-rotated retry; if it recurs, rotate or unbind the device.',
-      });
-      await finalizeFailedJob(updated, { error: 'dispatch_unclaimed' });
+        forceConfirmAfterGrace: true,
+      };
+      const decision = await resolveKillGateDecision(row, cfg);
+      if (decision.phase === 'kill_requested') result.killRequested++;
+      else if (decision.phase === 'awaiting_kill') result.awaitingKill++;
+      else if (decision.phase === 'reaped') {
+        result.reaped++;
+        await finalizeKillGateReap(decision.updated, decision.confirmed, cfg);
+      }
     } catch (err) {
       logger.error({ err, jobId: row.id }, 'loop-monitor: ack-miss reap failed (row skipped)');
     }
   }
 
-  if (reaped > 0) {
-    logger.info({ reaped }, 'loop-monitor: ack-hop misses reaped to failed');
+  if (result.reaped > 0) {
+    logger.info({ reaped: result.reaped }, 'loop-monitor: ack-hop misses reaped to failed');
   }
-  return reaped;
+  return result;
 }
 
 /**
@@ -444,17 +641,23 @@ export async function reapZombieSessions(
 /**
  * Hop 3c (job axis) — session-lost propagation. When a linked session is
  * terminal but its job is still active (and never emitted a `result` event),
- * CAS-flip the job to `failed` and route through the shared finalize tail.
- * Moved from pipeline/sweeper.ts `reconcileOrphanedJobs` (ISS-280 semantics
- * preserved, incl. the result-event false-positive guard).
+ * kill-gate it and route the confirmed reap through the shared finalize
+ * tail. Moved from pipeline/sweeper.ts `reconcileOrphanedJobs` (ISS-280
+ * semantics preserved, incl. the result-event false-positive guard).
+ *
+ * ISS-37 lived here: the session heartbeat hop had already failed the
+ * linked session while the job's own process kept running, and this hop —
+ * pre-kill-gate — failed the job on the very same read, letting the retry it
+ * scheduled dispatch a second agent onto the still-live worktree.
  */
 export async function reapSessionLostJobs(
   _now: Date = new Date(),
   scope: LoopScope = {},
-): Promise<number> {
+): Promise<JobAxisReapResult> {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
-  const candidates = await db.execute<{ id: string }>(sql`
-    SELECT j.id
+  const candidates = await db.execute<KillGateCandidateRow>(sql`
+    SELECT j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
+           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome
     FROM jobs j
     JOIN agent_sessions s ON s.id = j.agent_session_id
     WHERE j.status IN ('dispatched', 'running')
@@ -466,48 +669,42 @@ export async function reapSessionLostJobs(
       ${projectClause}
   `);
 
-  let reaped = 0;
+  const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
   for (const row of candidates) {
     try {
-      const [updated] = await applyKernelTransition(db, {
-        entity: 'job',
-        to: 'failed',
-        set: {
-          error: 'session_lost',
-          finishedAt: new Date(),
-          failureKind: 'infra',
-          failureReason:
-            'agent session terminated without job completion (silent runner/agent death)',
-          classifierVersion: 3,
-        },
+      const cfg: KillGateReapConfig = {
+        hop: 'heartbeat',
         where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
         fromStatus: 'active',
-        reason: 'session_lost',
-        actor: { type: 'sweeper' },
-        source: 'loop-monitor',
-      });
-      if (!updated) continue; // lost the CAS race — a lifecycle call finalized it
-      reaped++;
-      await emitPipelineWedge({
-        projectId: updated.projectId,
-        issueId: updated.issueId,
-        hop: 'heartbeat',
-        entity: 'job',
-        entityId: updated.id,
-        reason: 'linked agent session terminated without the job reporting completion',
-        action:
+        error: 'session_lost',
+        failureKind: 'infra',
+        failureReason:
+          'agent session terminated without job completion (silent runner/agent death)',
+        requestedWedgeReason:
+          'linked agent session terminated without the job reporting completion — a job.cancel was sent to confirm the process is actually gone before failing it',
+        requestedWedgeAction:
+          'No action needed yet. If the device is online and the process is genuinely dead, the job fails automatically once the kill is confirmed.',
+        confirmedWedgeReason:
+          'linked agent session terminated without the job reporting completion',
+        confirmedWedgeAction:
           'The job was failed and routed to retry. If retries keep landing here, inspect the device runner logs for silent deaths.',
-      });
-      await finalizeFailedJob(updated, { error: 'session_lost' });
+      };
+      const decision = await resolveKillGateDecision(row, cfg);
+      if (decision.phase === 'kill_requested') result.killRequested++;
+      else if (decision.phase === 'awaiting_kill') result.awaitingKill++;
+      else if (decision.phase === 'reaped') {
+        result.reaped++;
+        await finalizeKillGateReap(decision.updated, decision.confirmed, cfg);
+      }
     } catch (err) {
       logger.error({ err, jobId: row.id }, 'loop-monitor: session-lost reap failed (row skipped)');
     }
   }
 
-  if (reaped > 0) {
-    logger.info({ reaped }, 'loop-monitor: session-lost jobs reconciled to failed');
+  if (result.reaped > 0) {
+    logger.info({ reaped: result.reaped }, 'loop-monitor: session-lost jobs reconciled to failed');
   }
-  return reaped;
+  return result;
 }
 
 /**
@@ -520,15 +717,16 @@ export async function reapSessionLostJobs(
 export async function reapResultMisses(
   _now: Date = new Date(),
   scope: LoopScope = {},
-): Promise<number> {
+): Promise<JobAxisReapResult> {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
-  const candidates = await db.execute<{ id: string }>(sql`
+  const candidates = await db.execute<KillGateCandidateRow>(sql`
     WITH last_event AS (
       SELECT job_id, MAX(ts) AS max_ts
       FROM job_events
       GROUP BY job_id
     )
-    SELECT j.id
+    SELECT j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
+           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome
     FROM jobs j
     LEFT JOIN last_event le ON le.job_id = j.id
     WHERE j.status IN ('dispatched', 'running')
@@ -542,47 +740,40 @@ export async function reapResultMisses(
   `);
 
   const STALE_REASON = `runner stale (no progress / no started event for >${RESULT_QUIET_MINUTES}min)`;
-  let reaped = 0;
+  const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
   for (const row of candidates) {
     try {
-      const [updated] = await applyKernelTransition(db, {
-        entity: 'job',
-        to: 'failed',
-        set: {
-          error: 'stale',
-          finishedAt: new Date(),
-          failureKind: 'timeout',
-          failureReason: STALE_REASON,
-          classifierVersion: 3,
-        },
+      const cfg: KillGateReapConfig = {
+        hop: 'result',
         where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
         fromStatus: 'active',
-        reason: 'stale',
-        actor: { type: 'sweeper' },
-        source: 'loop-monitor',
-      });
-      if (!updated) continue;
-      reaped++;
-      await emitPipelineWedge({
-        projectId: updated.projectId,
-        issueId: updated.issueId,
-        hop: 'result',
-        entity: 'job',
-        entityId: updated.id,
-        reason: STALE_REASON,
-        action:
+        error: 'stale',
+        finalizeError: STALE_REASON,
+        failureKind: 'timeout',
+        failureReason: STALE_REASON,
+        requestedWedgeReason: `${STALE_REASON} — a job.cancel was sent to confirm the worker is actually wedged before failing it`,
+        requestedWedgeAction:
+          'No action needed yet. The job fails automatically once the kill is confirmed or the runner goes stale.',
+        confirmedWedgeReason: STALE_REASON,
+        confirmedWedgeAction:
           'The job was failed and routed to a device-rotated retry. Check the original device for a hung Claude CLI / runaway step.',
-      });
-      await finalizeFailedJob(updated, { error: STALE_REASON });
+      };
+      const decision = await resolveKillGateDecision(row, cfg);
+      if (decision.phase === 'kill_requested') result.killRequested++;
+      else if (decision.phase === 'awaiting_kill') result.awaitingKill++;
+      else if (decision.phase === 'reaped') {
+        result.reaped++;
+        await finalizeKillGateReap(decision.updated, decision.confirmed, cfg);
+      }
     } catch (err) {
       logger.error({ err, jobId: row.id }, 'loop-monitor: result-miss reap failed (row skipped)');
     }
   }
 
-  if (reaped > 0) {
-    logger.info({ reaped }, 'loop-monitor: result-hop misses reaped to failed');
+  if (result.reaped > 0) {
+    logger.info({ reaped: result.reaped }, 'loop-monitor: result-hop misses reaped to failed');
   }
-  return reaped;
+  return result;
 }
 
 /**

@@ -12,6 +12,13 @@
  *
  * This module is the single SSOT for the cascade so MCP cancel and natural
  * close cannot drift.
+ *
+ * ISS-785 — the cascade only ever touches `jobs` rows (pipeline jobs), which
+ * the runner keys by `jobId` — `agent:abort` (keyed by `agent_sessions.id`,
+ * chat-only) was ALWAYS a no-op on this path, so a cancelled/completed run
+ * left its still-active agent process writing git with nothing telling it to
+ * stop. `requestKillsForCascade` fixes that with the real primitive,
+ * `job.cancel` (see `jobs/kill-gate.ts`).
  */
 
 import { and, eq, inArray } from 'drizzle-orm';
@@ -19,28 +26,34 @@ import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { deviceRoom } from '../ws/rooms.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+export type JobRow = typeof jobs.$inferSelect;
 
 export type CascadeReason = 'pipeline_cancelled' | 'pipeline_completed' | 'pipeline_failed';
 
 export interface CascadeResult {
   cancelledJobIds: string[];
   abortedSessionIds: string[];
-  /** deviceId keyed by sessionId — used to fan out `agent:abort` to the
-   *  exact device room of each in-flight session. */
+  /** deviceId keyed by sessionId — kept for the existing MCP cancel response
+   *  shape (`deviceIdsNotified`); no longer used to pick an event to send. */
   deviceBySession: Map<string, string>;
+  /** ISS-785 — the terminal-flipped job rows that have a device to kill on.
+   *  Pass to `requestKillsForCascade` AFTER the transaction commits (same
+   *  "never publish/act on a rolled-back write" contract the old
+   *  `agent:abort` fan-out had). */
+  killableJobs: JobRow[];
 }
 
 /**
  * Mark every still-active child job of `runId` cancelled, mark linked
- * agent_sessions failed, and return the device fan-out map. The caller is
- * responsible for broadcasting `agent:abort` AFTER the transaction commits
- * (so we never publish an event the DB has rolled back). Pass the
- * transaction handle so the cascade rides on the same tx as the run-status
- * UPDATE; if a transaction is not available, pass `db` directly — the
- * cascade is idempotent (status WHERE clause excludes terminal rows).
+ * agent_sessions failed, and return the device fan-out map plus the job rows
+ * to kill. The caller is responsible for calling `requestKillsForCascade`
+ * AFTER the transaction commits (so we never act on a write the DB has
+ * rolled back). Pass the transaction handle so the cascade rides on the same
+ * tx as the run-status UPDATE; if a transaction is not available, pass `db`
+ * directly — the cascade is idempotent (status WHERE clause excludes
+ * terminal rows).
  *
  * Includes `'running'` jobs deliberately: a closed pipeline_run with a
  * still-running child job is the same orphan class as a still-dispatched
@@ -140,37 +153,39 @@ export async function cascadeCancelChildJobs(
     });
   }
 
-  return { cancelledJobIds, abortedSessionIds, deviceBySession };
+  const killableJobs = cancelledJobs.filter((j) => j.deviceId);
+
+  return { cancelledJobIds, abortedSessionIds, deviceBySession, killableJobs };
 }
 
 /**
- * Fan out `agent:abort` to each affected device room. Defensive: one bad
- * fan-out must not propagate after the DB has committed.
+ * ISS-785 — request+broadcast a real `job.cancel` for each cascaded job that
+ * has a device to kill on, via the SSOT in `jobs/kill-gate.ts`. Call AFTER
+ * the transaction commits — same "never act on a rolled-back write" contract
+ * the `agent:abort` fan-out this replaces had. Defensive: one bad request
+ * must not stop the rest.
  *
- * `ws/server.js` is lazy-loaded so `pipeline/runs.ts` (imported by
- * lightweight call sites like `skills/crud-routes.ts`) does not pull the
- * full WS / runner / dispatcher graph in at module-init time. The publish
- * path is hit only on actual cascade, so the dynamic import cost is amortised.
+ * `jobs/kill-gate.js` is lazy-loaded (mirrors the old `agent:abort` fan-out's
+ * lazy `ws/server.js` import) — it pulls in `ws/server.js` (the full WS /
+ * runner / dispatcher graph), which lightweight callers of this module
+ * (`pipeline/runs.ts` → `skills/crud-routes.ts`, etc.) must not pay for at
+ * module-init time just because a cascade happened to run.
  */
-export async function broadcastAbortEvents(
-  deviceBySession: Map<string, string>,
+export async function requestKillsForCascade(
+  killableJobs: JobRow[],
   reason: CascadeReason,
-  runId: string,
 ): Promise<string[]> {
-  if (deviceBySession.size === 0) return [];
-  const { roomManager } = await import('../ws/server.js');
+  if (killableJobs.length === 0) return [];
+  const { requestJobKill } = await import('../jobs/kill-gate.js');
   const notified = new Set<string>();
-  for (const [sessionId, deviceId] of deviceBySession.entries()) {
+  for (const job of killableJobs) {
     try {
-      roomManager.publish(deviceRoom(deviceId), {
-        event: 'agent:abort',
-        data: { sessionId, reason },
-      });
-      notified.add(deviceId);
+      const outcome = await requestJobKill(job, reason);
+      if (outcome === 'requested' && job.deviceId) notified.add(job.deviceId);
     } catch (err) {
       logger.error(
-        { err, runId, sessionId, deviceId },
-        'cascadeCancelChildJobs: agent:abort publish failed',
+        { err, jobId: job.id, deviceId: job.deviceId },
+        'cascadeCancelChildJobs: job.cancel kill request failed',
       );
     }
   }

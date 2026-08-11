@@ -693,6 +693,19 @@ export const jobs = pgTable(
     modelTier: text('model_tier', { enum: modelTiers }),
     attempts: integer('attempts').notNull().default(1),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
+    // ISS-785 — kill-before-reap gate. `killRequestedAt` is stamped the first
+    // time a reap candidate is detected (a `job.cancel` frame is published to
+    // the owning device in the same call); the job stays active until either
+    // `killConfirmedAt`/`killOutcome` land (runner terminal report or the new
+    // kill-ack) or the owning runner's heartbeat goes stale past
+    // `dispatchLivenessMs()`. Distinct from `cancellationRequested`, which
+    // `scheduleAutoRetryWithVerify` treats as an operator-cancel signal that
+    // must never retry — a reap kill must still be retryable once confirmed.
+    killRequestedAt: timestamp('kill_requested_at', { withTimezone: true }),
+    killConfirmedAt: timestamp('kill_confirmed_at', { withTimezone: true }),
+    killOutcome: text('kill_outcome', {
+      enum: ['killed', 'not_found', 'runner_gone', 'reported_terminal'],
+    }),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
     // ISS-197 — when set, dispatch gate L1 skips this row until now() >=
     // retry_after_at. Written by the retry engine after a transient/timeout
@@ -740,6 +753,12 @@ export const jobs = pgTable(
     runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
     agentSessionIdIdx: index('jobs_agent_session_id_idx').on(t.agentSessionId),
+    // ISS-785 — the kill-gate phase-2 scan (jobs whose kill was requested at
+    // least killGraceMs() ago) filters by status too, but the partial index
+    // keeps it off the hot unfiltered jobs table.
+    killRequestedAtIdx: index('jobs_kill_requested_at_idx')
+      .on(t.status, t.killRequestedAt)
+      .where(sql`kill_requested_at IS NOT NULL`),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
@@ -782,6 +801,9 @@ export const jobEventKinds = [
   // is a plain text column, so this is additive with no migration; the
   // interventions metric (C6) counts rows with this kind.
   'intervention',
+  // ISS-785 — audit row written by POST /jobs/:id/kill-ack (runner's answer
+  // to a job.cancel: outcome killed|not_found in `data.outcome`).
+  'kill_ack',
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];
 

@@ -432,6 +432,91 @@ describe('POST /:id/fail (device)', () => {
   });
 });
 
+describe('POST /:id/kill-ack (device) — ISS-785', () => {
+  it('device-scoped: 403s a kill-ack from a device the job is not dispatched to', async () => {
+    selectLimit.mockResolvedValueOnce([{ ...jobRow, deviceId: 'someone-else' }]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/kill-ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ outcome: 'killed' }),
+      }),
+    );
+
+    expect(r.status).toBe(403);
+    expect(txInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('stamps killConfirmedAt/killOutcome and writes a kill_ack job_event', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/kill-ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ outcome: 'killed' }),
+      }),
+    );
+
+    expect(r.status).toBe(200);
+    const json = (await r.json()) as { jobId: string; killOutcome: string; acked: boolean };
+    expect(json).toEqual({ jobId: validJobId, killOutcome: 'killed', acked: true });
+    expect(txUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ killConfirmedAt: expect.any(Date), killOutcome: 'killed' }),
+    );
+    expect(txInsertValues).toHaveBeenCalledTimes(1);
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: validJobId,
+        kind: 'kill_ack',
+        data: { outcome: 'killed', deviceId: 'dev-1' },
+      }),
+    );
+  });
+
+  it('reports not_found (the important value — no process ever existed to kill)', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/kill-ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ outcome: 'not_found' }),
+      }),
+    );
+
+    expect(r.status).toBe(200);
+    const json = (await r.json()) as { killOutcome: string };
+    expect(json.killOutcome).toBe('not_found');
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { outcome: 'not_found', deviceId: 'dev-1' } }),
+    );
+  });
+
+  it('is idempotent and returns 200 even when the job is already terminal', async () => {
+    selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'failed' }]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/kill-ack`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ outcome: 'killed' }),
+      }),
+    );
+
+    expect(r.status).toBe(200);
+    // The status guard on the UPDATE is left to the WHERE clause (first ack
+    // wins via `killConfirmedAt IS NULL`) — the route itself never rejects a
+    // terminal job, since the ack is pure evidence, not a transition.
+    expect(txInsertValues).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('POST /:id/cancel (user)', () => {
   async function userToken(userId = 'u-1') {
     return await signUserToken(userId);

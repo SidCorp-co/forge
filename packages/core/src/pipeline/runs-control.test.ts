@@ -155,7 +155,7 @@ describe('cancelPipelineRun', () => {
     updateReturning.mockResolvedValueOnce(rows);
   }
 
-  it('cancels run + cascades jobs + transitions sessions + fans out agent:abort', async () => {
+  it('cancels run + cascades jobs + transitions sessions + fans out job.cancel to kill the actual runner process (ISS-785)', async () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     jobsCancelledReturning([
       { id: 'job-1', agentSessionId: 'sess-1', deviceId: 'dev-A' },
@@ -175,17 +175,27 @@ describe('cancelPipelineRun', () => {
 
     const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
     expect(events.filter((e) => e === 'pipeline_run.status_changed')).toHaveLength(1);
-    const aborts = publishSpy.mock.calls.filter(
-      (c) => (c[1] as { event: string }).event === 'agent:abort',
+    // ISS-785 — `agent:abort` can't kill a pipeline job's process (chat-only
+    // primitive); the cascade now fans out `job.cancel`, ONE PER JOB (not per
+    // session) so job-1 and job-2 — which share device dev-A but are
+    // DIFFERENT processes — each get their own kill request.
+    expect(events.filter((e) => e === 'agent:abort')).toHaveLength(0);
+    const kills = publishSpy.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'job.cancel',
     );
-    expect(aborts).toHaveLength(2);
-    for (const call of aborts) {
+    expect(kills).toHaveLength(3);
+    expect(kills.map((c) => (c[1] as { data: { jobId: string } }).data.jobId).sort()).toEqual([
+      'job-1',
+      'job-2',
+      'job-3',
+    ]);
+    for (const call of kills) {
       const data = (call[1] as { data: { reason: string } }).data;
       expect(data.reason).toBe('pipeline_cancelled');
     }
   });
 
-  it('skips session update + agent:abort when no jobs had a session', async () => {
+  it('still fans out job.cancel for a job with no linked session — that class was ALWAYS a no-op abort before ISS-785, silently leaving the process alive', async () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled')]);
     jobsCancelledReturning([{ id: 'job-1', agentSessionId: null, deviceId: 'dev-X' }]);
     // No third updateReturning consumed — confirms agent_sessions update was skipped.
@@ -194,11 +204,11 @@ describe('cancelPipelineRun', () => {
 
     expect(result.cancelledJobIds).toEqual(['job-1']);
     expect(result.abortedSessionIds).toEqual([]);
-    expect(result.deviceIdsNotified).toEqual([]);
-    const aborts = publishSpy.mock.calls.filter(
-      (c) => (c[1] as { event: string }).event === 'agent:abort',
+    const kills = publishSpy.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'job.cancel',
     );
-    expect(aborts).toHaveLength(0);
+    expect(kills).toHaveLength(1);
+    expect((kills[0]?.[1] as { data: { jobId: string } }).data.jobId).toBe('job-1');
   });
 
   it('is idempotent on an already-cancelled run', async () => {

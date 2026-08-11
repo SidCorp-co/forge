@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { jobs, skills } from '../db/schema.js';
+import { jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -64,6 +64,17 @@ const failBodySchema = z
 const cancelBodySchema = z
   .object({
     reason: z.string().max(500).optional(),
+  })
+  .strict();
+
+// ISS-785 — the runner's answer to a `job.cancel` frame sent by the
+// kill-before-reap gate (`jobs/kill-gate.ts`). `not_found` is the important
+// value: it is the ONLY way a hop confirms a job that no runner ever claimed
+// (or already finished) is safe to fail-and-retry without waiting out a
+// stale-heartbeat window.
+const killAckBodySchema = z
+  .object({
+    outcome: z.enum(['killed', 'not_found']),
   })
   .strict();
 
@@ -490,6 +501,71 @@ jobLifecycleDeviceRoutes.post(
     });
   },
 );
+
+/**
+ * ISS-785 — device-scoped kill-ack for the `job.cancel` frame the
+ * kill-before-reap gate sends. Deliberately NOT a lifecycle transition: it
+ * only stamps `killConfirmedAt`/`killOutcome` (first ack wins — idempotent)
+ * and appends a `kill_ack` audit event, then returns 200 whether or not the
+ * job is still active. `resolveKillConfirmation` (jobs/kill-gate.ts) is the
+ * ONLY reader of these columns.
+ */
+jobLifecycleDeviceRoutes.post(
+  '/:id/kill-ack',
+  requireDevice(),
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', killAckBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { outcome } = c.req.valid('json');
+    const device = c.get('device');
+
+    const job = await loadJob(id);
+    if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
+
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx
+        .update(jobs)
+        .set({ killConfirmedAt: now, killOutcome: outcome })
+        .where(and(eq(jobs.id, id), isNull(jobs.killConfirmedAt)));
+      await insertKillAckEvent(tx, id, outcome, device.id);
+    });
+
+    return c.json({ jobId: id, killOutcome: outcome, acked: true });
+  },
+);
+
+/**
+ * Append the audited `kill_ack` event inside an open transaction. Mirrors
+ * `cancel-job.ts`'s `insertInterventionEvent` — same advisory-lock +
+ * `MAX(seq)+1` frontier as the job_events POST route so the server-assigned
+ * seq stays monotonic under concurrent inserts.
+ */
+async function insertKillAckEvent(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  jobId: string,
+  outcome: 'killed' | 'not_found',
+  deviceId: string,
+): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
+  const maxRows = await tx.execute<{ max_seq: number | string | null }>(
+    sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${jobId}`,
+  );
+  const first = maxRows[0] as { max_seq: number | string | null } | undefined;
+  const nextSeq = Number(first?.max_seq ?? 0) + 1;
+
+  await tx.insert(jobEvents).values({
+    jobId,
+    kind: 'kill_ack',
+    data: { outcome, deviceId },
+    seq: nextSeq,
+  });
+}
 
 // Auth applied per-handler — see comment in jobs/routes.ts on why a bare
 // `.use('*')` would 401 device-only sibling routes.

@@ -307,6 +307,8 @@ describe('db/schema — job_events', () => {
       'result',
       // ISS-442 C0 — audited manual intervention (single-job cancel).
       'intervention',
+      // ISS-785 — audit row written by POST /jobs/:id/kill-ack.
+      'kill_ack',
     ]);
   });
 

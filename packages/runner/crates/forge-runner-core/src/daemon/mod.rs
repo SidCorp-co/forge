@@ -23,7 +23,7 @@ use crate::runner::Runner;
 use crate::transport::frames::{job_id_of, session_id_of, Frame};
 use crate::transport::runners;
 use crate::transport::ws::{self, RunnerRegistration, WsConfig};
-use crate::transport::{heartbeat, CoreClient};
+use crate::transport::{heartbeat, lifecycle, CoreClient};
 
 use dispatch::resolve_repo;
 
@@ -418,7 +418,21 @@ pub async fn run(
                     "job.cancel" | "job.cancelRequested" => {
                         if let Some(jid) = job_id_of(&frame.data) {
                             tracing::info!("[cancel] job={jid}");
-                            let _ = runner.abort(&jid).await;
+                            // ISS-785 — core's kill-before-reap gate waits on this ack
+                            // (or a runner_gone/terminal-report fallback) before it
+                            // allows a retry; report the real outcome instead of
+                            // silently discarding it, but never block the frame loop
+                            // on the ack POST.
+                            let (client, runner) = (client.clone(), runner.clone());
+                            tokio::spawn(async move {
+                                let outcome = match runner.abort(&jid).await {
+                                    Ok(_) => "killed",
+                                    Err(_) => "not_found",
+                                };
+                                if let Err(e) = lifecycle::kill_ack(&client, &jid, outcome).await {
+                                    tracing::warn!("[cancel] kill-ack job={jid}: {e}");
+                                }
+                            });
                         }
                     }
                     "agent:start" => {
