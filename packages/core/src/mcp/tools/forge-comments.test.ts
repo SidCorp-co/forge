@@ -100,6 +100,7 @@ const baseCommentRow = {
   id: COMMENT_ID,
   issueId: ISSUE_ID,
   authorId: OWNER_ID,
+  isAi: false,
   body: 'Hello',
   parentId: null,
   createdAt: new Date(),
@@ -258,20 +259,22 @@ describe('forge_comments tool', () => {
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
-    insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
+    insertReturning.mockResolvedValueOnce([{ ...baseCommentRow, isAi: true }]); // insert
 
     const result = (await tool.handler({
       action: 'create',
       data: { issue: ISSUE_ID, body: 'Hello' },
-    })) as { documentId: string; authorId: string };
+    })) as { documentId: string; authorId: string; isAi: boolean };
 
     expect(result.documentId).toBe(COMMENT_ID);
     expect(result.authorId).toBe(OWNER_ID);
+    expect(result.isAi).toBe(true);
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         issueId: ISSUE_ID,
         authorId: OWNER_ID,
         authorDeviceId: DEVICE_ID,
+        isAi: true,
         body: 'Hello',
       }),
     );
@@ -299,20 +302,22 @@ describe('forge_comments tool', () => {
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership (assertPrincipalIsWriter)
-    insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
+    insertReturning.mockResolvedValueOnce([{ ...baseCommentRow, isAi: true }]); // insert
 
     const result = (await tool.handler({
       action: 'create',
       data: { issue: ISSUE_ID, body: 'Hello from PAT' },
-    })) as { documentId: string; authorId: string };
+    })) as { documentId: string; authorId: string; isAi: boolean };
 
     expect(result.documentId).toBe(COMMENT_ID);
     expect(result.authorId).toBe(OWNER_ID);
+    expect(result.isAi).toBe(true);
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         issueId: ISSUE_ID,
         authorId: OWNER_ID,
         authorDeviceId: null,
+        isAi: true,
         body: 'Hello from PAT',
       }),
     );

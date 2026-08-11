@@ -80,7 +80,7 @@ export async function postParkReasonComment(input: ParkReasonInput): Promise<voi
       authorId: project.createdBy,
       body: lines.join('\n'),
       isAi: true,
-    } as never);
+    });
   } catch (err) {
     logger.warn(
       { err, issueId: input.issueId },
@@ -132,7 +132,7 @@ export async function postReopenCapEscalationComment(
       authorId: project.createdBy,
       body: lines.join('\n'),
       isAi: true,
-    } as never);
+    });
   } catch (err) {
     logger.warn(
       { err, issueId: input.issueId },

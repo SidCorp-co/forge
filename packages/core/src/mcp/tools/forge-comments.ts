@@ -27,6 +27,12 @@ import {
  * is additive and matches REST `DELETE /api/comments/:id`). See ISS-293.
  *
  * `documentId` is the comment UUID; `filters.issue` is the issue UUID.
+ *
+ * ISS-820: every comment created here is `isAi:true`, regardless of
+ * principal kind — including owner-lane PAT comments. That is honest
+ * labeling of an automated write path, not a misclassification: this MCP
+ * surface is only ever reached by an agent, never by a human typing into the
+ * REST/UI comment box.
  */
 
 const filtersSchema = z.object({ issue: z.uuid() }).strict().optional();
@@ -63,6 +69,7 @@ type CommentRow = {
   id: string;
   issueId: string;
   authorId: string;
+  isAi: boolean;
   body: string;
   parentId: string | null;
   createdAt: Date;
@@ -77,6 +84,7 @@ function serialize(
     documentId: row.id,
     issueId: row.issueId,
     authorId: row.authorId,
+    isAi: row.isAi,
     // ISS-532: comment bodies are untrusted (anyone can post) and reach the
     // agent verbatim via this MCP surface — frame as DATA, never instructions.
     body: markUntrusted(row.body, { source: 'comment.body' }),
@@ -159,6 +167,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
             id: comments.id,
             issueId: comments.issueId,
             authorId: comments.authorId,
+            isAi: comments.isAi,
             body: comments.body,
             parentId: comments.parentId,
             createdAt: comments.createdAt,
@@ -231,13 +240,8 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
         }
 
-        // The device principal posts comments on behalf of its owner: authorId
-        // stays the human owner (NOT-NULL FK to users), but we also stamp
-        // authorDeviceId so the comment is identifiable as an AGENT action and
-        // not mistaken for one the owner wrote by hand (ISS-519). A PAT
-        // principal has no `devices` row — `device` here is a transient stub
-        // (see `stubDeviceForPat`) whose `id` is the PAT token id, not a real
-        // device, so it must not be written to the author_device_id FK (ISS-638).
+        // cm:guard ISS-519 — authorId stays the human owner (device posts on their behalf); authorDeviceId is the AGENT marker, device-principal only — a PAT principal's stub device (stubDeviceForPat) must never be written here (ISS-638)
+        // cm:guard ISS-820 — every MCP comment is isAi:true regardless of principal kind, INCLUDING owner-lane PAT comments; that is honest labeling of an automated write path, not a misclassification
         let inserted: CommentRow | undefined;
         try {
           [inserted] = await db
@@ -246,6 +250,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
               issueId,
               authorId: device.ownerId,
               authorDeviceId: principal.kind === 'device' ? device.id : null,
+              isAi: true,
               body,
               parentId: input.data?.parentId ?? null,
             })
@@ -253,6 +258,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
               id: comments.id,
               issueId: comments.issueId,
               authorId: comments.authorId,
+              isAi: comments.isAi,
               body: comments.body,
               parentId: comments.parentId,
               createdAt: comments.createdAt,

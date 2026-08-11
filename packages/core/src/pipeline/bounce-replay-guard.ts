@@ -7,12 +7,15 @@
 // or capability recorded in between — so the second code attempt could only
 // spend a full agent run re-deriving the identical blocked conclusion.
 //
-// "Nothing has changed" is deliberately generous: ANY comment or activity after
-// the bounce counts as new input. A human answering the question, a tool being
-// wired, even another step's note all release the guard. Only true silence
-// blocks, so this can never strand an issue a human actually responded to.
+// `waiting`/`on_hold` release rule stays deliberately generous: ANY comment or
+// activity after the bounce counts as new input — a tool being wired, even
+// another step's note. `needs_info` is different (ISS-820): its whole premise
+// is "a human must answer a question", so an agent's own comment must not
+// release its own bounce (that let a fabricated "the owner decided" comment
+// override a real human answer). needs_info release requires a HUMAN comment
+// — isAi=false AND authorDeviceId IS NULL — with no activity fallback.
 
-import { and, desc, eq, gt, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, activityLog, comments } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -58,7 +61,11 @@ export async function findUnansweredBounce(
 
     if (!to || !isBounce(to)) return null;
 
-    if (await hasInputSince(issueId, row.createdAt)) return null;
+    const answered =
+      to === 'needs_info'
+        ? await hasHumanAnswerSince(issueId, row.createdAt)
+        : await hasAnyInputSince(issueId, row.createdAt);
+    if (answered) return null;
     return { bounced: to, at: row.createdAt };
   } catch (err) {
     // cm:guard fail OPEN — a broken guard must let the pipeline run, never silently freeze every dispatch
@@ -94,8 +101,8 @@ async function lastDepartureFrom(
   return row;
 }
 
-// cm:why a comment OR any activity counts — the guard's job is to catch true silence, so anything a human or another step recorded since the bounce must release it
-async function hasInputSince(issueId: string, since: Date): Promise<boolean> {
+// cm:why used by waiting/on_hold only — a comment OR any activity counts, since the guard's job there is to catch true silence: anything a human or another step recorded since the bounce releases it
+async function hasAnyInputSince(issueId: string, since: Date): Promise<boolean> {
   const [newComment] = await db
     .select({ id: comments.id })
     .from(comments)
@@ -116,4 +123,21 @@ async function hasInputSince(issueId: string, since: Date): Promise<boolean> {
     )
     .limit(1);
   return newActivity !== undefined;
+}
+
+// cm:guard ISS-820 — needs_info only: a HUMAN-authored comment, never an activity-log fallback. Activity is never a human answering a question, and an agent's own comment (isAi=true) must not release its own bounce — that is the exact fabrication mechanism this issue closes.
+async function hasHumanAnswerSince(issueId: string, since: Date): Promise<boolean> {
+  const [humanComment] = await db
+    .select({ id: comments.id })
+    .from(comments)
+    .where(
+      and(
+        eq(comments.issueId, issueId),
+        gt(comments.createdAt, since),
+        eq(comments.isAi, false),
+        isNull(comments.authorDeviceId),
+      ),
+    )
+    .limit(1);
+  return humanComment !== undefined;
 }

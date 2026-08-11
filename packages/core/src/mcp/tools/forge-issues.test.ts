@@ -143,7 +143,7 @@ vi.mock('./forge-pm-set-dependency.js', async (importActual) => {
   };
 });
 
-const { forgeIssuesTool } = await import('./forge-issues.js');
+const { forgeIssuesTool, findVerifiedClaimViolation } = await import('./forge-issues.js');
 const { db: mockDb } = await import('../../db/client.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -2208,5 +2208,140 @@ describe('forge_issues tool', () => {
       expect(result.documentId).toBe(TASK_ID);
       expect(deleteWhere).toHaveBeenCalled();
     });
+  });
+});
+
+describe('findVerifiedClaimViolation', () => {
+  it('rejects a bare string verified* value', () => {
+    const violation = findVerifiedClaimViolation({ verifiedGroundTruth: 'commit abc123 exists' });
+    expect(violation?.path).toBe('verifiedGroundTruth');
+  });
+
+  it('rejects a bare boolean verified* value', () => {
+    const violation = findVerifiedClaimViolation({ verified: true });
+    expect(violation?.path).toBe('verified');
+  });
+
+  it('rejects a bare verified* value nested at any depth', () => {
+    const violation = findVerifiedClaimViolation({
+      purpose: { nested: { verifiedGroundTruth: 'trust me' } },
+    });
+    expect(violation?.path).toBe('purpose.nested.verifiedGroundTruth');
+  });
+
+  it('matches verified* case-insensitively', () => {
+    const violation = findVerifiedClaimViolation({ VerifiedBy: 'me' });
+    expect(violation?.path).toBe('VerifiedBy');
+  });
+
+  it('accepts a shaped verified* value with string evidence', () => {
+    const violation = findVerifiedClaimViolation({
+      purpose: {
+        verifiedGroundTruth: {
+          evidence: 'git show abc123 confirms the file',
+          checkedAt: new Date().toISOString(),
+        },
+      },
+    });
+    expect(violation).toBeNull();
+  });
+
+  it('accepts a shaped verified* value with array evidence', () => {
+    const violation = findVerifiedClaimViolation({
+      verified: {
+        evidence: ['git log output', 'grep output'],
+        checkedAt: new Date().toISOString(),
+      },
+    });
+    expect(violation).toBeNull();
+  });
+
+  it('rejects a shaped-looking value with a non-ISO checkedAt', () => {
+    const violation = findVerifiedClaimViolation({
+      verified: { evidence: 'some evidence', checkedAt: 'not a date' },
+    });
+    expect(violation?.path).toBe('verified');
+  });
+
+  it('rejects a shaped-looking value with empty evidence', () => {
+    const violation = findVerifiedClaimViolation({
+      verified: { evidence: '', checkedAt: new Date().toISOString() },
+    });
+    expect(violation?.path).toBe('verified');
+  });
+
+  it('ignores keys that do not start with verified', () => {
+    const violation = findVerifiedClaimViolation({ unverifiedClaim: 'still just a string' });
+    expect(violation).toBeNull();
+  });
+
+  // cm:guard ISS-820 — bound-exceed on a pathological payload MUST accept (fail-open), never reject a legitimate large payload nor hang
+  it('accepts without hanging when a pathological payload exceeds the node bound', () => {
+    const wide: Record<string, unknown> = {};
+    for (let i = 0; i < 20_000; i++) {
+      wide[`key${i}`] = 'value';
+    }
+    wide.verifiedGroundTruth = 'bare string, but buried past the node bound';
+    const violation = findVerifiedClaimViolation(wide);
+    expect(violation).toBeNull();
+  });
+
+  it('accepts without hanging when a pathological payload exceeds the depth bound', () => {
+    let deep: Record<string, unknown> = {
+      verifiedGroundTruth: 'bare string, but past the depth bound',
+    };
+    for (let i = 0; i < 100; i++) {
+      deep = { nested: deep };
+    }
+    const violation = findVerifiedClaimViolation(deep);
+    expect(violation).toBeNull();
+  });
+
+  it('rejects a bare verified* value inside an array', () => {
+    const violation = findVerifiedClaimViolation({ items: [{ verifiedGroundTruth: 'bare' }] });
+    expect(violation?.path).toBe('items[0].verifiedGroundTruth');
+  });
+});
+
+describe('forge_issues create — sessionContext verified* wiring (ISS-820)', () => {
+  it('rejects create when sessionContext carries a bare verified* claim', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+
+    await expect(
+      tool.handler({
+        action: 'create',
+        data: {
+          title: 'x',
+          sessionContext: { purpose: { verifiedGroundTruth: 'the owner has decided' } },
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('accepts create when sessionContext verified* claim is properly shaped', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    insertReturning.mockResolvedValueOnce([{ ...baseIssueRow }]);
+
+    await expect(
+      tool.handler({
+        action: 'create',
+        data: {
+          title: 'x',
+          sessionContext: {
+            verified: { evidence: 'git log confirms', checkedAt: new Date().toISOString() },
+          },
+        },
+      }),
+    ).resolves.toBeDefined();
   });
 });

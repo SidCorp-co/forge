@@ -1184,6 +1184,13 @@
       "when": 1788134400000,
       "tag": "0170_iss678_outbox_claim_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1788220800000,
+      "tag": "0171_young_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

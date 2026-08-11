@@ -1,0 +1,1 @@
+ALTER TABLE "comments" ADD COLUMN "is_ai" boolean DEFAULT false NOT NULL;

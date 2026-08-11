@@ -67,6 +67,25 @@ describe('findUnansweredBounce', () => {
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
   });
 
+  it('allows the dispatch when non-status activity landed after an on_hold bounce', async () => {
+    setup(departure('on_hold'), [], [{ id: 'a1' }]);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
+  // cm:guard ISS-820 — an agent's own comment (or unrelated activity) must NOT release its own needs_info bounce, or a fabricated "the owner decided" comment can silently override a real human answer. needs_info has no activity-log fallback and issues a single human-filtered comment query, so an empty result here models "no human comment" regardless of what non-human input landed.
+  it('still blocks a needs_info replay when no human-authored comment has landed since', async () => {
+    setup(departure('needs_info'), []);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toEqual({
+      bounced: 'needs_info',
+      at: BOUNCED_AT,
+    });
+  });
+
+  it('releases a needs_info bounce only on a human-authored comment (isAi=false, no device)', async () => {
+    setup(departure('needs_info'), [{ id: 'c1' }]);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
   // cm:guard the code/fix shape — forge_step_start flips the issue to `in_progress`, so the departure FROM `approved` is the in-flight hop and the bounce is recorded one hop later. Before ISS-85 the guard stopped at the first hop and returned null, so it never fired for the two most expensive stages — sid-desk ISS-85 re-dispatched 7 times past it.
   it('follows the in-flight hop for code/fix and still blocks the replay', async () => {
     const bouncedAt = new Date('2026-08-01T10:05:00Z');

@@ -89,7 +89,7 @@ export async function postSkipChainCappedComment(args: {
       authorId: row.createdBy,
       body: buildSkipChainCappedCommentBody(args.from, args.visited),
       isAi: true,
-    } as never);
+    });
   } catch (err) {
     logger.warn(
       { err, issueId: args.issueId, from: args.from },
