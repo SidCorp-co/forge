@@ -25,12 +25,13 @@
  * advances status).
  */
 
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, comments, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { type DeviceSkillStatusValue, loadDeviceSkillStatus } from '../skills/effective.js';
 import { pauseRun } from './run-pause.js';
-import { resolveJobTypeForStatus } from './skill-mapping.js';
+import { createProjectSkillResolver, resolveJobTypeForStatus } from './skill-mapping.js';
 
 /**
  * Consecutive `done` jobs of one stage type in a single run without the issue
@@ -46,22 +47,178 @@ export function buildStageStalledReason(stage: IssueStatus): string {
   return `${STAGE_STALL_REASON_PREFIX}${stage}`;
 }
 
-function buildStageStalledCommentBody(args: {
+export type StageCauseVerification =
+  | {
+      kind: 'confirmed';
+      skillLabel: string;
+      evidence: Array<{ deviceId: string; status: DeviceSkillStatusValue }>;
+    }
+  | { kind: 'ruled_out'; skillLabel: string; checkedDeviceCount: number }
+  | { kind: 'unverified'; skillLabel: string; reason: string };
+
+export type StageStateFlag = 'yes' | 'no' | 'unknown';
+
+export interface StageState {
+  merged: StageStateFlag;
+  implementationRan: StageStateFlag;
+  stageProducedComment: StageStateFlag;
+}
+
+export function buildStageStalledCommentBody(args: {
   stage: IssueStatus;
   jobType: string;
   doneCount: number;
+  verification: StageCauseVerification;
+  state: StageState;
 }): string {
-  return [
+  const lines = [
     `🛑 **Pipeline halted at stage \`${args.stage}\`** — the stage keeps completing without advancing.`,
     '',
     `The \`${args.jobType}\` step has finished (\`done\`) ${args.doneCount} times in this run, yet the issue never left \`${args.stage}\`. That is a no-op loop: each attempt exits cleanly but does no work, so the reconciler keeps re-dispatching it.`,
     '',
-    'Most likely cause:',
-    `- The executing device's Claude CLI is **missing the \`forge-${args.jobType}\` skill** — the CLI then treats \`/forge-${args.jobType}\` as an unknown command, exits 0, and the job is recorded \`done\` with no work done. Verify the device has the project's skills synced (Skills page → push, or check the runner's \`.claude/skills\`).`,
-    `- Or the skill runs but never performs the \`${args.stage}\` status transition.`,
+  ];
+
+  const { verification } = args;
+  if (verification.kind === 'confirmed') {
+    lines.push(
+      'Cause (verified):',
+      `- The \`${verification.skillLabel}\` skill is **not synced** on the device(s) that ran this stage:`,
+      ...verification.evidence.map((e) => `  - device \`${e.deviceId}\`: \`${e.status}\``),
+      `  That would make the CLI treat \`/${verification.skillLabel}\` as an unknown command, exit 0, and record the job \`done\` with no work performed. Push the skill to the device (Skills page → sync) and resume.`,
+    );
+  } else if (verification.kind === 'ruled_out') {
+    lines.push(
+      `Skill sync ruled out as the cause: \`${verification.skillLabel}\` is \`synced\` on all ${verification.checkedDeviceCount} device(s) that ran this stage. Possible causes (unranked):`,
+      `- The \`${verification.skillLabel}\` skill runs but never performs the \`${args.stage}\` status transition.`,
+      '- A transient bug in the skill causes it to exit cleanly without doing the work.',
+    );
+  } else {
+    lines.push(
+      `Could not verify a cause: ${verification.reason}. Possible causes (unranked):`,
+      `- The executing device's Claude CLI is missing the \`${verification.skillLabel}\` skill — the CLI then treats it as an unknown command, exits 0, and the job is recorded \`done\` with no work done.`,
+      `- Or the \`${verification.skillLabel}\` skill runs but never performs the \`${args.stage}\` status transition.`,
+    );
+  }
+
+  lines.push(
     '',
-    'Pipeline paused for review. Resume the run once the executing device has the skill (or the skill is fixed).',
-  ].join('\n');
+    '**Current state:**',
+    `- Merge recorded (\`merged_at\`): ${args.state.merged}`,
+    `- Implementation ran (a \`code\`/\`fix\` job completed): ${args.state.implementationRan}`,
+    `- Stage produced a comment since this stall began: ${args.state.stageProducedComment}`,
+    '',
+    '**Exits:**',
+    '- Resume the run once the cause above is addressed.',
+    '- Or close this issue (force-close) if the work is no longer wanted.',
+  );
+
+  return lines.join('\n');
+}
+
+/**
+ * Verify the "missing/stale skill" cause against real device-skill state
+ * instead of asserting it. Never throws — any DB error degrades to
+ * `unverified` so the caller can still post a (honest) comment and pause.
+ */
+async function verifySkillSyncCause(args: {
+  projectId: string;
+  status: IssueStatus;
+  jobType: string;
+  deviceIds: string[];
+}): Promise<StageCauseVerification> {
+  let skillLabel = `forge-${args.jobType}`;
+  try {
+    const resolved = await createProjectSkillResolver(args.projectId).resolve(args.status);
+    if (resolved?.skillName) skillLabel = resolved.skillName;
+  } catch (err) {
+    logger.warn(
+      { err, projectId: args.projectId, status: args.status },
+      'stage-stall-guard: skill-name resolve failed, falling back to conventional name',
+    );
+  }
+
+  if (args.deviceIds.length === 0) {
+    return {
+      kind: 'unverified',
+      skillLabel,
+      reason: 'no executing device is recorded on the stalled jobs',
+    };
+  }
+
+  try {
+    const evidence: Array<{ deviceId: string; status: DeviceSkillStatusValue }> = [];
+    for (const deviceId of args.deviceIds) {
+      const entries = await loadDeviceSkillStatus(args.projectId, deviceId);
+      const entry = entries.find((e) => e.name === skillLabel);
+      if (entry) evidence.push({ deviceId, status: entry.status });
+    }
+    if (evidence.length === 0) {
+      return {
+        kind: 'unverified',
+        skillLabel,
+        reason: `\`${skillLabel}\` is not a registered effective skill for the executing device(s)`,
+      };
+    }
+    const nonSynced = evidence.filter((e) => e.status !== 'synced');
+    if (nonSynced.length > 0) return { kind: 'confirmed', skillLabel, evidence: nonSynced };
+    return { kind: 'ruled_out', skillLabel, checkedDeviceCount: evidence.length };
+  } catch (err) {
+    logger.warn(
+      { err, projectId: args.projectId, deviceIds: args.deviceIds },
+      'stage-stall-guard: skill-sync cause check failed, could not verify',
+    );
+    return { kind: 'unverified', skillLabel, reason: 'the skill-sync check failed to complete' };
+  }
+}
+
+async function checkFlag(fn: () => Promise<boolean>): Promise<StageStateFlag> {
+  try {
+    return (await fn()) ? 'yes' : 'no';
+  } catch (err) {
+    logger.warn({ err }, 'stage-stall-guard: state check failed');
+    return 'unknown';
+  }
+}
+
+/**
+ * Actionable current-state summary, read independently per field so one
+ * failing query degrades only that field to `unknown` rather than the whole
+ * summary. `windowStart` scopes the comment check to THIS stall episode (the
+ * oldest job of the consecutive done-tail), not the whole run, so an earlier
+ * stage's comment isn't misread as this stage's output.
+ */
+async function loadStageState(args: { issueId: string; windowStart: Date }): Promise<StageState> {
+  const merged = await checkFlag(async () => {
+    const [row] = await db
+      .select({ mergedAt: issues.mergedAt })
+      .from(issues)
+      .where(eq(issues.id, args.issueId))
+      .limit(1);
+    return row?.mergedAt != null;
+  });
+  const implementationRan = await checkFlag(async () => {
+    const [row] = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.issueId, args.issueId),
+          eq(jobs.status, 'done'),
+          inArray(jobs.type, ['code', 'fix']),
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
+  });
+  const stageProducedComment = await checkFlag(async () => {
+    const [row] = await db
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.issueId, args.issueId), gt(comments.createdAt, args.windowStart)))
+      .limit(1);
+    return Boolean(row);
+  });
+  return { merged, implementationRan, stageProducedComment };
 }
 
 export interface StageStallCheckInput {
@@ -146,7 +303,7 @@ async function checkStageStallAndPauseInner(
   // cm:guard count only the CONSECUTIVE tail of this stage's done jobs — a done job of another type in between is proof the issue advanced, which ends the no-op run this cap exists to bound
   // cm:why a lifetime count wedges `reopen` forever — it maps to `fix`, so any run that legitimately took >= 3 review->fix rounds trips the cap the instant it is reopened and every resume re-pauses within seconds (ISS-801, run ac5b4ad0: 9 healthy fix jobs)
   const recent = await db
-    .select({ type: jobs.type })
+    .select({ type: jobs.type, deviceId: jobs.deviceId, createdAt: jobs.createdAt })
     .from(jobs)
     .where(
       and(eq(jobs.issueId, input.issueId), eq(jobs.status, 'done'), eq(jobs.pipelineRunId, run.id)),
@@ -154,11 +311,12 @@ async function checkStageStallAndPauseInner(
     .orderBy(desc(jobs.createdAt))
     .limit(STAGE_STALL_CAP);
 
-  let doneCount = 0;
+  const tail: Array<{ type: string; deviceId: string | null; createdAt: Date }> = [];
   for (const job of recent) {
     if (job.type !== jobMap.type) break;
-    doneCount += 1;
+    tail.push(job);
   }
+  const doneCount = tail.length;
   if (doneCount < STAGE_STALL_CAP) return { stalled: false };
 
   // Effective pause via the shared pause writer (idempotent CAS on
@@ -179,13 +337,19 @@ async function checkStageStallAndPauseInner(
     'stage-stall-guard: stage completed >= cap times without advancing — pausing run, refusing re-enqueue',
   );
 
-  if (paused) {
+  const oldestTailJob = tail.at(-1);
+  if (paused && oldestTailJob) {
+    const deviceIds = [
+      ...new Set(tail.map((j) => j.deviceId).filter((d): d is string => Boolean(d))),
+    ];
     await postStageStalledComment({
       projectId: input.projectId,
       issueId: input.issueId,
       stage: input.status,
       jobType: jobMap.type,
       doneCount,
+      windowStart: oldestTailJob.createdAt,
+      deviceIds,
     });
   }
 
@@ -198,6 +362,8 @@ async function postStageStalledComment(args: {
   stage: IssueStatus;
   jobType: string;
   doneCount: number;
+  windowStart: Date;
+  deviceIds: string[];
 }): Promise<void> {
   const [row] = await db
     .select({ createdBy: projects.createdBy })
@@ -206,6 +372,15 @@ async function postStageStalledComment(args: {
     .where(eq(issues.id, args.issueId))
     .limit(1);
   if (!row?.createdBy) return;
+
+  const state = await loadStageState({ issueId: args.issueId, windowStart: args.windowStart });
+  const verification = await verifySkillSyncCause({
+    projectId: args.projectId,
+    status: args.stage,
+    jobType: args.jobType,
+    deviceIds: args.deviceIds,
+  });
+
   try {
     await db.insert(comments).values({
       issueId: args.issueId,
@@ -214,6 +389,8 @@ async function postStageStalledComment(args: {
         stage: args.stage,
         jobType: args.jobType,
         doneCount: args.doneCount,
+        verification,
+        state,
       }),
       isAi: true,
     });

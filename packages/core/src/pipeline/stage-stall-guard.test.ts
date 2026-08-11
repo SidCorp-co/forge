@@ -37,9 +37,12 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { checkStageStallAndPause, STAGE_STALL_CAP, buildStageStalledReason } = await import(
-  './stage-stall-guard.js'
-);
+const {
+  checkStageStallAndPause,
+  STAGE_STALL_CAP,
+  buildStageStalledReason,
+  buildStageStalledCommentBody,
+} = await import('./stage-stall-guard.js');
 
 const PROJECT_ID = 'proj-1';
 const ISSUE_ID = 'issue-1';
@@ -193,5 +196,104 @@ describe('checkStageStallAndPause (ISS-631 — stage-genericity regression guard
     });
 
     expect(result).toEqual({ stalled: false });
+  });
+
+  it('names a device-specific unverified reason (not the generic no-device one) when the stalled jobs carry a deviceId', async () => {
+    pushRunningRun();
+    queue.push(
+      Array.from({ length: STAGE_STALL_CAP }, () => ({
+        type: 'clarify',
+        deviceId: 'device-1',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      })),
+    );
+    queue.push([{ createdBy: 'owner-1' }]); // postStageStalledComment lookup
+
+    const result = await checkStageStallAndPause({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'confirmed',
+    });
+
+    expect(result).toEqual({ stalled: true });
+    const commentArgs = insertValues.mock.calls[0]?.[0] as { body: string };
+    expect(commentArgs.body).toContain('Could not verify a cause');
+    expect(commentArgs.body).toContain(
+      'not a registered effective skill for the executing device(s)',
+    );
+    expect(commentArgs.body).not.toContain('no executing device is recorded');
+  });
+});
+
+describe('buildStageStalledCommentBody (pure — ISS-822 cause-verification variants)', () => {
+  const base = { stage: 'confirmed' as const, jobType: 'clarify', doneCount: 3 };
+  const noState = {
+    merged: 'no' as const,
+    implementationRan: 'no' as const,
+    stageProducedComment: 'no' as const,
+  };
+
+  it('names the skill with device+status evidence only when confirmed', () => {
+    const body = buildStageStalledCommentBody({
+      ...base,
+      verification: {
+        kind: 'confirmed',
+        skillLabel: 'forge-clarify',
+        evidence: [{ deviceId: 'dev-1', status: 'missing' }],
+      },
+      state: noState,
+    });
+
+    expect(body).toContain('Cause (verified):');
+    expect(body).toContain('forge-clarify');
+    expect(body).toContain('device `dev-1`: `missing`');
+    expect(body).not.toContain('Most likely cause');
+    expect(body).toContain('**Current state:**');
+    expect(body).toContain('**Exits:**');
+    expect(body).toContain('Resume the run');
+    expect(body).toContain('close this issue');
+  });
+
+  it('lists causes unranked with no most-likely header when the skill sync is ruled out', () => {
+    const body = buildStageStalledCommentBody({
+      ...base,
+      verification: { kind: 'ruled_out', skillLabel: 'forge-clarify', checkedDeviceCount: 2 },
+      state: noState,
+    });
+
+    expect(body).toContain('ruled out');
+    expect(body).toContain('unranked');
+    expect(body).not.toContain('Most likely cause');
+    expect(body).not.toContain('Cause (verified)');
+    expect(body).toContain('**Current state:**');
+    expect(body).toContain('**Exits:**');
+  });
+
+  it('says it could not verify, with the reason, when the check cannot run', () => {
+    const reason = 'no executing device is recorded on the stalled jobs';
+    const body = buildStageStalledCommentBody({
+      ...base,
+      verification: { kind: 'unverified', skillLabel: 'forge-clarify', reason },
+      state: noState,
+    });
+
+    expect(body).toContain('Could not verify a cause');
+    expect(body).toContain(reason);
+    expect(body).toContain('unranked');
+    expect(body).not.toContain('Most likely cause');
+    expect(body).toContain('**Current state:**');
+    expect(body).toContain('**Exits:**');
+  });
+
+  it('always carries the current-state summary regardless of verification kind', () => {
+    const body = buildStageStalledCommentBody({
+      ...base,
+      verification: { kind: 'unverified', skillLabel: 'forge-clarify', reason: 'x' },
+      state: { merged: 'yes', implementationRan: 'yes', stageProducedComment: 'unknown' },
+    });
+
+    expect(body).toContain('Merge recorded (`merged_at`): yes');
+    expect(body).toContain('Implementation ran (a `code`/`fix` job completed): yes');
+    expect(body).toContain('Stage produced a comment since this stall began: unknown');
   });
 });
