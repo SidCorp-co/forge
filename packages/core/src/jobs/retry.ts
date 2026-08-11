@@ -192,22 +192,34 @@ export async function scheduleAutoRetryWithVerify(
     meta: (job.failureMeta as Record<string, unknown> | null) ?? null,
     signals: await deriveCcStartupSignals(job),
   });
-  if (job.failureKind === null || job.failureKind === undefined) {
+  // cm:why ISS-823 review #2 — gated independently so a row whose failureKind was pre-stamped at flip time (dispatcher.ts/lifecycle-routes.ts/loop-monitor.ts/runs-cascade.ts) still gets failure_action written instead of reading null on the forge_jobs projection
+  const needsKindPersist = job.failureKind === null || job.failureKind === undefined;
+  const needsActionPersist = job.failureAction === null || job.failureAction === undefined;
+  if (needsKindPersist || needsActionPersist) {
+    // cm:why backfills from the EXISTING failureKind, not from re-classifying the current error text, so the persisted action never disagrees with the effectiveAction fallback below
+    const actionToPersist = needsKindPersist
+      ? classified.action
+      : deriveActionFromKind(job.failureKind as NonNullable<typeof job.failureKind>);
     try {
-      await db
-        .update(jobs)
-        .set({
-          failureKind: classified.kind,
-          failureAction: classified.action,
-          failureReason: classified.reason,
-          failureMeta: classified.meta as never,
-          classifierVersion: classified.version,
-        })
-        .where(eq(jobs.id, job.id));
-      job.failureKind = classified.kind;
-      job.failureAction = classified.action;
-      job.failureReason = classified.reason;
-      job.classifierVersion = classified.version;
+      const patch: Partial<JobRow> = {};
+      if (needsKindPersist) {
+        patch.failureKind = classified.kind;
+        patch.failureReason = classified.reason;
+        patch.failureMeta = classified.meta as never;
+        patch.classifierVersion = classified.version;
+      }
+      if (needsActionPersist) {
+        patch.failureAction = actionToPersist;
+      }
+      await db.update(jobs).set(patch).where(eq(jobs.id, job.id));
+      if (needsKindPersist) {
+        job.failureKind = classified.kind;
+        job.failureReason = classified.reason;
+        job.classifierVersion = classified.version;
+      }
+      if (needsActionPersist) {
+        job.failureAction = actionToPersist;
+      }
     } catch (err) {
       logger.warn({ err, jobId: job.id }, 'retry: failed to persist classification, continuing');
     }

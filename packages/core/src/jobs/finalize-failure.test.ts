@@ -27,6 +27,15 @@ vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...args),
 }));
 
+// cm:why ISS-823 review blocker — pins the fix ordering: stampRunnerLimit must land BEFORE scheduleAutoRetryWithVerify runs, or the box that just hit the limit still reads as healthy when the retry engine checks all_devices_exhausted
+let callOrder: string[] = [];
+const stampRunnerLimitMock = vi.fn(async (..._args: unknown[]) => {
+  callOrder.push('stampRunnerLimit');
+});
+vi.mock('../runners/apply-runner-limit.js', () => ({
+  stampRunnerLimit: (...args: unknown[]) => stampRunnerLimitMock(...args),
+}));
+
 // cm:edge contract -> packages/core/src/skills/reconcile-service.ts — its static import chain reaches queue/boss.ts, whose top-level env import throws without DB env (BLOCKER AA).
 const failReconcileRunMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../skills/reconcile-service.js', () => ({
@@ -159,7 +168,11 @@ function makeJob(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  scheduleRetryMock.mockResolvedValue({ scheduled: false });
+  callOrder = [];
+  scheduleRetryMock.mockImplementation(async () => {
+    callOrder.push('scheduleAutoRetryWithVerify');
+    return { scheduled: false };
+  });
   issueRowMock.mockReturnValue([
     {
       id: 'i1',
@@ -305,5 +318,44 @@ describe('finalizeFailedJob', () => {
     expect(emitWedgeMock).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'p1', issueId: 'i1', hop: 'dispatch', entity: 'job' }),
     );
+  });
+
+  it('ISS-823 review blocker: stamps the runner limit BEFORE calling scheduleAutoRetryWithVerify', async () => {
+    await finalizeFailedJob(makeJob({ error: "You've hit your org's monthly spend limit" }), {
+      error: "You've hit your org's monthly spend limit",
+    });
+
+    expect(stampRunnerLimitMock).toHaveBeenCalled();
+    expect(scheduleRetryMock).toHaveBeenCalled();
+    expect(callOrder).toEqual(['stampRunnerLimit', 'scheduleAutoRetryWithVerify']);
+  });
+
+  it('does not stamp a runner limit for an error text that carries no limit signature', async () => {
+    await finalizeFailedJob(makeJob(), { error: 'boom' });
+
+    expect(stampRunnerLimitMock).not.toHaveBeenCalled();
+    expect(callOrder).toEqual(['scheduleAutoRetryWithVerify']);
+  });
+
+  it('wedge carries business-language content for all_devices_exhausted', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+
+    expect(emitWedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Pipeline paused: every runner is rate-limited',
+        summary: expect.any(String),
+        nextStep: expect.any(String),
+      }),
+    );
+  });
+
+  it('wedge falls back to the technical template for a reason with no business-language mapping', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'cancellation_requested' });
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+
+    const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call.title).toBeUndefined();
+    expect(call.summary).toBeUndefined();
   });
 });
