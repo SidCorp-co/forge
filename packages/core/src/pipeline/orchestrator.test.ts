@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// cm:why orchestrator.ts now imports env (PIPELINE_ADVISORY_LOCK_TIMEOUT_MS) — mock it so this suite doesn't pay real env-var validation
+vi.mock('../config/env.js', () => ({
+  env: { PIPELINE_ADVISORY_LOCK_TIMEOUT_MS: 3_000 },
+}));
+
 // Unified thenable mock: each select() terminal consumes one `nextSelect` row.
 // Default to empty array so unmocked SELECT calls (eg. loadIssueSnapshot when
 // the test only cares about the dispatch path) behave like a row-not-found
@@ -29,7 +34,7 @@ const dbInsert = vi.fn(() => ({
 // callback receives a tx with `execute` (for the lock) and `select`/`insert`
 // proxied to the same mocks (so `findActiveJob` and `insertAndEnqueueJob`
 // continue to see the same plumbing).
-const txExecute = vi.fn(async () => undefined);
+const txExecute = vi.fn(async (_query?: unknown) => undefined);
 vi.mock('../db/client.js', () => {
   const dbStub = {
     select: () => ({ from: () => ({ where: () => makeWhereChain() }) }),
@@ -44,7 +49,7 @@ vi.mock('../db/client.js', () => {
   };
 });
 
-const enqueueMock = vi.fn(async () => {});
+const enqueueMock = vi.fn(async (_job?: unknown) => {});
 vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...a: unknown[]) => enqueueMock(...(a as [])),
 }));
@@ -275,6 +280,9 @@ function liveIssue(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // cm:why restored here so retry-focused tests can install their own per-call behavior without leaking into later tests
+  txExecute.mockReset();
+  txExecute.mockImplementation(async () => undefined);
   nextSelect.mockReset();
   // mockReset wipes the default impl; restore it so unmocked SELECT calls
   // (eg. loadIssueSnapshot when the test only cares about the dispatch path)
@@ -1105,5 +1113,123 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(appendSkipChainEntryMock).not.toHaveBeenCalled();
     expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+// cm:why drizzle's `sql` template objects don't stringify usefully — walk queryChunks (recursing into nested sql.raw(...) wrappers) to recover the literal SQL text for assertions
+function sqlTextOf(q: unknown): string {
+  const chunks = (q as { queryChunks?: unknown[] })?.queryChunks ?? [];
+  let text = '';
+  for (const c of chunks) {
+    if (typeof c !== 'object' || c === null) continue;
+    if ('queryChunks' in c) {
+      text += sqlTextOf(c);
+      continue;
+    }
+    if ('value' in c) {
+      const v = (c as { value?: unknown }).value;
+      text += Array.isArray(v) ? v.filter((p): p is string => typeof p === 'string').join(' ') : '';
+    }
+  }
+  return text;
+}
+
+// cm:why each buildAndEnqueueStepJob attempt issues exactly two tx.execute calls (SET LOCAL, then the advisory lock) before findActiveJob takes over via nextSelect — so txExecute call count is a reliable proxy for attempt count
+describe('pipeline/orchestrator advisory-lock timeout + retry (ISS-678)', () => {
+  function lockNotAvailableError(): Error & { code: string } {
+    const err = new Error('lock_not_available') as Error & { code: string };
+    err.code = '55P03';
+    return err;
+  }
+
+  it('issues SET LOCAL lock_timeout before pg_advisory_xact_lock', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    skillRegistered('forge-plan', 'plan', 'autoPlan');
+    liveIssue('clarified');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'new-job' }]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
+
+    expect(txExecute.mock.calls.length).toBe(2);
+    const [firstCall, secondCall] = txExecute.mock.calls;
+    expect(sqlTextOf(firstCall?.[0])).toMatch(/SET LOCAL lock_timeout/);
+    expect(sqlTextOf(secondCall?.[0])).toMatch(/pg_advisory_xact_lock/);
+  });
+
+  it('retries a 55P03 up to MAX_ADVISORY_LOCK_ATTEMPTS times, then returns null on the auto path without throwing', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    skillRegistered('forge-plan', 'plan', 'autoPlan');
+    liveIssue('clarified');
+
+    let call = 0;
+    txExecute.mockImplementation(async () => {
+      call++;
+      // cm:why odd calls are SET LOCAL (no-op); even calls are the advisory lock — fail every attempt so retries exhaust
+      if (call % 2 === 0) throw lockNotAvailableError();
+      return undefined;
+    });
+
+    const bus = makeBus();
+    await expect(
+      bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never),
+    ).resolves.toBeUndefined();
+
+    // cm:why 3 attempts × 2 execute calls (SET LOCAL + advisory lock) each
+    expect(txExecute.mock.calls.length).toBe(6);
+    expect(dbInsert.mock.calls.length).toBe(0);
+    const timeoutCrumb = sentryAddBreadcrumb.mock.calls.find(
+      (c) => c[0]?.category === 'pipeline.advisory_lock.timeout',
+    );
+    expect(timeoutCrumb).toBeDefined();
+    expect(timeoutCrumb?.[0]?.data).toEqual(
+      expect.objectContaining({ issueId: 'iss-1', jobType: 'plan' }),
+    );
+  });
+
+  it('succeeds on the second attempt after one 55P03', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    skillRegistered('forge-plan', 'plan', 'autoPlan');
+    liveIssue('clarified');
+    nextSelect.mockResolvedValueOnce([]); // cm:why findActiveJob → none, on the surviving attempt
+    insertReturning.mockResolvedValueOnce([{ id: 'new-job' }]);
+
+    let call = 0;
+    txExecute.mockImplementation(async () => {
+      call++;
+      // cm:why fails only the FIRST attempt's advisory-lock call (call #2); every other call (including the retry's SET LOCAL + lock) succeeds
+      if (call === 2) throw lockNotAvailableError();
+      return undefined;
+    });
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
+
+    expect(txExecute.mock.calls.length).toBe(4);
+    expect(dbInsert.mock.calls.length).toBe(1);
+    expect(enqueueMock.mock.calls.at(-1)?.[0]).toMatchObject({ jobId: 'new-job' });
+  });
+
+  it('rethrows a non-55P03 error on the first attempt without retrying', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    skillRegistered('forge-plan', 'plan', 'autoPlan');
+    liveIssue('clarified');
+
+    let call = 0;
+    txExecute.mockImplementation(async () => {
+      call++;
+      if (call === 2) throw new Error('connection reset');
+      return undefined;
+    });
+
+    const bus = makeBus();
+    // cm:why HooksBus.emit swallows subscriber errors (hooks.ts), so the error never surfaces to the caller either way — the load-bearing assertion is the call count: exactly one attempt, no retry
+    await expect(
+      bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never),
+    ).resolves.toBeUndefined();
+
+    expect(txExecute.mock.calls.length).toBe(2);
+    expect(dbInsert.mock.calls.length).toBe(0);
   });
 });
