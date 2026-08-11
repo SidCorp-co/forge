@@ -12,17 +12,23 @@ import { hooks } from './hooks.js';
  * `issues.status` so any commit (REST, MCP, raw SQL) reaches subscribers
  * even when the producer process crashed mid-emit.
  *
- * Concurrency: `FOR UPDATE SKIP LOCKED` makes multiple workers safe — each
- * picks a disjoint batch. The advisory lock inside `considerEnqueue`
- * (orchestrator.ts) serialises job insertion per-issue across workers.
+ * ISS-678 — claim-then-emit, not claim-and-emit-in-one-tx. A single
+ * `UPDATE ... RETURNING` claims a batch (stamps `claimed_at`) and commits
+ * immediately, THEN hooks fire with no transaction open — a subscriber that
+ * blocks on a lock no longer pins this connection's MVCC snapshot or the
+ * `FOR UPDATE SKIP LOCKED` row locks. A crash between claim and emit leaves
+ * `processed_at` NULL under an expired lease, so the next tick re-claims and
+ * re-emits: at-least-once survives crashes, exactly as before. Duplicate
+ * emits are safe because the orchestrator's per-issue `pg_advisory_xact_lock`
+ * + in-lock active-job re-check collapse them (orchestrator.ts).
  *
- * Retry: any thrown error in a subscriber leaves `processed_at` NULL on
- * that row and increments `attempts` + records `last_error`. The next tick
- * picks the row up again.
+ * Concurrency: `FOR UPDATE SKIP LOCKED` makes multiple workers safe — each
+ * picks a disjoint batch.
  */
 
 const POLL_INTERVAL_MS = 1_000;
 const BATCH_LIMIT = 50;
+const CLAIM_LEASE_MS = 120_000;
 
 // Index signature lets this satisfy postgres-js's `Record<string, unknown>`
 // constraint on `db.execute<T>` without per-property TS noise.
@@ -43,77 +49,87 @@ let timer: NodeJS.Timeout | null = null;
 let running = false;
 let stopping = false;
 
+// cm:edge contract -> packages/core/src/pipeline/orchestrator.ts — this claim lease's at-least-once guarantee is only sound because considerEnqueue/buildAndEnqueueStepJob dedupe a re-emitted transition per-issue under pg_advisory_xact_lock
+async function claimBatch(): Promise<OutboxRow[]> {
+  return db.execute<OutboxRow>(sql`
+    UPDATE pipeline_outbox o
+       SET claimed_at = now(),
+           attempts = o.attempts + CASE WHEN o.claimed_at IS NOT NULL THEN 1 ELSE 0 END
+      FROM (
+        SELECT id FROM pipeline_outbox
+         WHERE processed_at IS NULL
+           AND (claimed_at IS NULL OR claimed_at < now() - interval '${sql.raw(String(CLAIM_LEASE_MS))} milliseconds')
+         ORDER BY created_at
+         FOR UPDATE SKIP LOCKED
+         LIMIT ${BATCH_LIMIT}
+      ) picked
+     WHERE o.id = picked.id
+    RETURNING o.id, o.issue_id, o.project_id, o.from_status, o.to_status,
+              o.actor_id, o.actor_type, o.reason, o.attempts, o.created_at
+  `);
+}
+
 export async function drainOutboxOnce(): Promise<{ processed: number; failed: number }> {
   let processed = 0;
   let failed = 0;
-  await db.transaction(async (tx) => {
-    const rows = await tx.execute<OutboxRow>(sql`
-      SELECT id, issue_id, project_id, from_status, to_status,
-             actor_id, actor_type, reason, attempts, created_at
-      FROM pipeline_outbox
-      WHERE processed_at IS NULL
-      ORDER BY created_at
-      FOR UPDATE SKIP LOCKED
-      LIMIT ${BATCH_LIMIT}
-    `);
+  const rows = await claimBatch();
 
-    for (const row of rows) {
-      const actor: Actor =
-        row.actor_type === 'device'
+  // cm:guard never await hooks.emit() while a transaction is open on this connection or any other — subscribers (e.g. the orchestrator) open their own tx and can block on an unbounded lock, pinning whatever tx is still around
+  for (const row of rows) {
+    const actor: Actor =
+      row.actor_type === 'device'
+        ? { type: 'device', id: row.actor_id ?? '<system>' }
+        : row.actor_type === 'system'
           ? { type: 'device', id: row.actor_id ?? '<system>' }
-          : row.actor_type === 'system'
-            ? { type: 'device', id: row.actor_id ?? '<system>' }
-            : { type: 'user', id: row.actor_id ?? '<system>' };
-      try {
-        await hooks.emit('transition', {
-          issueId: row.issue_id,
-          projectId: row.project_id,
-          actor,
-          from: row.from_status as IssueStatus,
-          to: row.to_status as IssueStatus,
-          // reopenCount is not carried on the outbox row (immutable event
-          // record) — subscribers that need it can read it from `issues`.
-          reopenCount: 0,
-          ...(row.reason ? { reason: row.reason } : {}),
+          : { type: 'user', id: row.actor_id ?? '<system>' };
+    try {
+      await hooks.emit('transition', {
+        issueId: row.issue_id,
+        projectId: row.project_id,
+        actor,
+        from: row.from_status as IssueStatus,
+        to: row.to_status as IssueStatus,
+        // cm:why reopenCount is not carried on the outbox row (immutable event record) — subscribers that need it can read it from `issues`
+        reopenCount: 0,
+        ...(row.reason ? { reason: row.reason } : {}),
+      });
+      await db.execute(sql`
+        UPDATE pipeline_outbox SET processed_at = now(), claimed_at = NULL WHERE id = ${row.id}
+      `);
+      processed++;
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'pipeline.outbox.processed',
+          level: 'info',
+          data: {
+            outboxId: row.id,
+            issueId: row.issue_id,
+            latencyMs: Date.now() - new Date(row.created_at).getTime(),
+          },
         });
-        await tx.execute(sql`
-          UPDATE pipeline_outbox SET processed_at = now() WHERE id = ${row.id}
-        `);
-        processed++;
-        if (isSentryEnabled()) {
-          Sentry.addBreadcrumb({
-            category: 'pipeline.outbox.processed',
-            level: 'info',
-            data: {
-              outboxId: row.id,
-              issueId: row.issue_id,
-              latencyMs: Date.now() - new Date(row.created_at).getTime(),
-            },
-          });
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        await tx.execute(sql`
-          UPDATE pipeline_outbox
-          SET attempts = attempts + 1, last_error = ${message}
-          WHERE id = ${row.id}
-        `);
-        failed++;
-        logger.error({ err, outboxId: row.id }, 'outbox-worker: dispatch failed');
-        if (isSentryEnabled()) {
-          Sentry.addBreadcrumb({
-            category: 'pipeline.outbox.failed',
-            level: 'warning',
-            data: {
-              outboxId: row.id,
-              attempts: row.attempts + 1,
-              lastError: message,
-            },
-          });
-        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await db.execute(sql`
+        UPDATE pipeline_outbox
+        SET claimed_at = NULL, attempts = attempts + 1, last_error = ${message}
+        WHERE id = ${row.id}
+      `);
+      failed++;
+      logger.error({ err, outboxId: row.id }, 'outbox-worker: dispatch failed');
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'pipeline.outbox.failed',
+          level: 'warning',
+          data: {
+            outboxId: row.id,
+            attempts: row.attempts + 1,
+            lastError: message,
+          },
+        });
       }
     }
-  });
+  }
   return { processed, failed };
 }
 

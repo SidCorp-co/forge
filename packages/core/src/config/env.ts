@@ -147,6 +147,8 @@ const EnvSchema = z.object({
   // so they never race a legitimate long-running pipeline operation.
   DATABASE_IDLE_IN_TX_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  // cm:why per-attempt bound on the pg_advisory_xact_lock wait in buildAndEnqueueStepJob (orchestrator.ts); MAX_ADVISORY_LOCK_ATTEMPTS retries at this default stay well under DATABASE_IDLE_IN_TX_TIMEOUT_MS
+  PIPELINE_ADVISORY_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
 });
 
 // ISS-234 — INTEGRATION_MASTER_KEY is intentionally NOT validated through

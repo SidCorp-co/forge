@@ -15,59 +15,68 @@ interface FakeRow {
   created_at: Date;
 }
 
-// Worker call order inside `db.transaction`:
-//   1. tx.execute(SELECT ... pipeline_outbox ... LIMIT N) → batch rows
-//   2. for each row:
-//        await hooks.emit('transition', ...)
-//        on success → tx.execute(UPDATE ... SET processed_at = now())
-//        on failure → tx.execute(UPDATE ... SET attempts = attempts + 1)
-//
-// We program the first execute call to return the seeded batch and capture
-// every subsequent execute call so the test can inspect what got marked
-// processed vs failed.
-const selectQueue: FakeRow[][] = [];
+// cm:why claimQueue backs the UPDATE...RETURNING branch of dbExecute; updateCalls captures every subsequent processed/failed UPDATE so tests can assert outcomes without a real DB
+const claimQueue: FakeRow[][] = [];
 const updateCalls: Array<{ kind: 'processed' | 'failed' | 'unknown'; chunks: unknown[] }> = [];
 
-const txExecute = vi.fn(async (q: unknown) => {
-  const chunks = (q as { queryChunks?: unknown[] }).queryChunks ?? [];
-  // drizzle StringChunk stores its fragments on `.value` as a string[] (one
-  // per template-literal piece). Concatenate all fragments so the kind
-  // matcher below sees the full SQL body, not just the leading piece.
-  let firstSql = '';
+function sqlTextOf(q: unknown): string {
+  const chunks = (q as { queryChunks?: unknown[] })?.queryChunks ?? [];
+  let text = '';
   for (const c of chunks) {
-    if (typeof c === 'object' && c !== null && 'value' in c) {
+    if (typeof c !== 'object' || c === null) continue;
+    // cm:why nested sql.raw(...) calls surface as their own SQL wrapper (with its own queryChunks) rather than a flat StringChunk — recurse into it
+    if ('queryChunks' in c) {
+      text += sqlTextOf(c);
+      continue;
+    }
+    if ('value' in c) {
       const v = (c as { value?: unknown }).value;
       if (Array.isArray(v)) {
-        firstSql += v.filter((p): p is string => typeof p === 'string').join(' ');
+        text += v.filter((p): p is string => typeof p === 'string').join(' ');
       } else if (typeof v === 'string') {
-        firstSql += v;
+        text += v;
       }
     }
   }
-  if (/select/i.test(firstSql) && /pipeline_outbox/i.test(firstSql)) {
-    return selectQueue.shift() ?? [];
+  return text;
+}
+
+const dbExecute = vi.fn(async (q: unknown) => {
+  const text = sqlTextOf(q);
+  if (/UPDATE\s+pipeline_outbox\s+o/i.test(text) && /RETURNING/i.test(text)) {
+    return claimQueue.shift() ?? [];
   }
-  if (/processed_at\s*=\s*now/i.test(firstSql) || /SET processed_at/i.test(firstSql)) {
-    updateCalls.push({ kind: 'processed', chunks });
+  if (/SET\s+processed_at\s*=\s*now/i.test(text)) {
+    updateCalls.push({
+      kind: 'processed',
+      chunks: (q as { queryChunks?: unknown[] }).queryChunks ?? [],
+    });
     return [];
   }
-  if (/attempts\s*=\s*attempts\s*\+\s*1/i.test(firstSql) || /SET\s+attempts/i.test(firstSql)) {
-    updateCalls.push({ kind: 'failed', chunks });
+  if (/SET\s+claimed_at\s*=\s*NULL,\s*attempts/i.test(text)) {
+    updateCalls.push({
+      kind: 'failed',
+      chunks: (q as { queryChunks?: unknown[] }).queryChunks ?? [],
+    });
     return [];
   }
-  updateCalls.push({ kind: 'unknown', chunks });
+  updateCalls.push({
+    kind: 'unknown',
+    chunks: (q as { queryChunks?: unknown[] }).queryChunks ?? [],
+  });
   return [];
 });
 
-const transactionMock = vi.fn(async (cb: (tx: { execute: typeof txExecute }) => Promise<unknown>) =>
-  cb({ execute: txExecute }),
-);
+const transactionMock = vi.fn();
 
 vi.mock('../db/client.js', () => ({
-  db: { transaction: transactionMock },
+  db: { execute: dbExecute, transaction: transactionMock },
 }));
 
-const emitMock = vi.fn(async () => undefined);
+// cm:why the regression guard: emitMock asserts no transaction is ever opened while a hook is in flight — fails against pre-ISS-678 code, which awaits hooks.emit from inside an open db.transaction
+const emitMock = vi.fn(async () => {
+  expect(transactionMock).not.toHaveBeenCalled();
+});
 vi.mock('./hooks.js', () => ({
   hooks: { emit: emitMock, on: vi.fn() },
 }));
@@ -100,18 +109,30 @@ function row(overrides: Partial<FakeRow> = {}): FakeRow {
 }
 
 beforeEach(() => {
-  selectQueue.length = 0;
+  claimQueue.length = 0;
   updateCalls.length = 0;
-  txExecute.mockClear();
-  emitMock.mockReset();
-  emitMock.mockResolvedValue(undefined);
+  dbExecute.mockClear();
+  emitMock.mockClear();
+  emitMock.mockImplementation(async () => {
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
   transactionMock.mockClear();
 });
 
 describe('outbox-worker', () => {
-  it('marks a successfully dispatched row as processed', async () => {
+  it('never opens a db.transaction — claim and emit both run outside one', async () => {
     const r = row({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' });
-    selectQueue.push([r]);
+    claimQueue.push([r]);
+
+    await drainOutboxOnce();
+
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(emitMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks a successfully dispatched row as processed and clears the lease', async () => {
+    const r = row({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' });
+    claimQueue.push([r]);
 
     const result = await drainOutboxOnce();
 
@@ -130,10 +151,12 @@ describe('outbox-worker', () => {
     expect(updateCalls).toEqual([expect.objectContaining({ kind: 'processed' })]);
   });
 
-  it('on subscriber failure, leaves row unprocessed and records last_error', async () => {
+  it('on subscriber failure, clears the lease, bumps attempts, and records last_error', async () => {
     const r = row({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' });
-    selectQueue.push([r]);
-    emitMock.mockRejectedValueOnce(new Error('subscriber boom'));
+    claimQueue.push([r]);
+    emitMock.mockImplementationOnce(async () => {
+      throw new Error('subscriber boom');
+    });
 
     const result = await drainOutboxOnce();
 
@@ -142,17 +165,28 @@ describe('outbox-worker', () => {
     expect(updateCalls).toEqual([expect.objectContaining({ kind: 'failed' })]);
   });
 
-  it('processes a batch of rows in a single tx', async () => {
+  it('processes a batch of rows from a single claim call', async () => {
     const rA = row({ id: 'aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa', issue_id: 'iss-A' });
     const rB = row({ id: 'bbbbbbbb-1111-4bbb-8bbb-bbbbbbbbbbbb', issue_id: 'iss-B' });
-    selectQueue.push([rA, rB]);
+    claimQueue.push([rA, rB]);
 
     const result = await drainOutboxOnce();
 
     expect(result.processed).toBe(2);
     expect(emitMock).toHaveBeenCalledTimes(2);
     expect(updateCalls.filter((c) => c.kind === 'processed')).toHaveLength(2);
-    expect(transactionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('claim query filters expired leases via a CLAIM_LEASE_MS-based interval', async () => {
+    claimQueue.push([]);
+
+    await drainOutboxOnce();
+
+    const claimCall = dbExecute.mock.calls.find(([q]) => /RETURNING/i.test(sqlTextOf(q)));
+    expect(claimCall).toBeDefined();
+    const text = sqlTextOf(claimCall?.[0]);
+    expect(text).toMatch(/claimed_at IS NULL OR claimed_at < now\(\)/i);
+    expect(text).toMatch(/120000 milliseconds/);
   });
 
   it('routes actor_type=device through the device actor branch', async () => {
@@ -161,7 +195,7 @@ describe('outbox-worker', () => {
       actor_type: 'device',
       actor_id: 'dev-1',
     });
-    selectQueue.push([r]);
+    claimQueue.push([r]);
 
     await drainOutboxOnce();
 
@@ -179,7 +213,7 @@ describe('outbox-worker', () => {
       actor_type: 'system',
       actor_id: null,
     });
-    selectQueue.push([r]);
+    claimQueue.push([r]);
 
     await drainOutboxOnce();
 
@@ -193,7 +227,7 @@ describe('outbox-worker', () => {
 
   it('passes reason through when present', async () => {
     const r = row({ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', reason: 'manual override' });
-    selectQueue.push([r]);
+    claimQueue.push([r]);
 
     await drainOutboxOnce();
 
@@ -203,8 +237,8 @@ describe('outbox-worker', () => {
     );
   });
 
-  it('is a no-op when no rows are unprocessed', async () => {
-    selectQueue.push([]);
+  it('is a no-op when no rows are claimed', async () => {
+    claimQueue.push([]);
 
     const result = await drainOutboxOnce();
 

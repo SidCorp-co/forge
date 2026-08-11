@@ -1,4 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
   type IssueComplexity,
@@ -224,6 +225,15 @@ export async function reEnqueueForIssue(args: {
   return considerEnqueue(args);
 }
 
+const MAX_ADVISORY_LOCK_ATTEMPTS = 3;
+
+// cm:why mirrors isUniqueViolation (lib/db-errors.ts) — postgres-js surfaces the SQLSTATE on err.code, but drizzle re-throws inside a `{cause}` wrapper on some paths, so check both
+function isLockNotAvailable(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; cause?: { code?: unknown } };
+  return e.code === '55P03' || e.cause?.code === '55P03';
+}
+
 /**
  * Shared tail of the manual + auto enqueue paths: build prompt inputs, open
  * the issue run, then insert + enqueue the job under the per-issue advisory
@@ -239,6 +249,16 @@ export async function reEnqueueForIssue(args: {
  * On an in-lock race: `onRacing: 'throw'` (manual) throws
  * `ActiveJobConflictError` so the route can 409; `onRacing: 'skip'` (auto)
  * debug-logs and returns null (dedupe skip).
+ *
+ * ISS-678 — the advisory-lock wait is bounded by `SET LOCAL lock_timeout`
+ * and retried up to `MAX_ADVISORY_LOCK_ATTEMPTS` times on `55P03` (backoff
+ * outside the transaction — the tx mutates nothing before the lock, and
+ * `preventiveContext`/`issueSnapshot`/`run` above are fetched once, outside
+ * the retried block, so a retry never repeats them). On exhaustion this
+ * returns null exactly like an in-lock race does: the manual path's existing
+ * `if (!enqueued) throw new ActiveJobConflictError(...)` converts that to
+ * the same 409 a race would produce, and the auto path already treats null
+ * as a dedupe-skip — no new error type, no route change.
  */
 async function buildAndEnqueueStepJob(args: {
   projectId: string;
@@ -265,76 +285,102 @@ async function buildAndEnqueueStepJob(args: {
   const effectiveSkillName = stageCfg?.skillName ?? skill.skillName;
 
   let enqueued: { jobId: string } | null = null;
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('issue:' || ${args.issueId}))`);
+  for (let attempt = 1; attempt <= MAX_ADVISORY_LOCK_ATTEMPTS; attempt++) {
+    try {
+      await db.transaction(async (tx) => {
+        // cm:why SET is a utility statement — postgres rejects a bind parameter here ("syntax error at or near $1"), so the value must be inlined as a literal; safe because env.PIPELINE_ADVISORY_LOCK_TIMEOUT_MS is z.coerce.number().int().positive()
+        await tx.execute(
+          sql`SET LOCAL lock_timeout = '${sql.raw(String(env.PIPELINE_ADVISORY_LOCK_TIMEOUT_MS))}ms'`,
+        );
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('issue:' || ${args.issueId}))`);
 
-    // Re-check inside the lock — the caller's cheap pre-check may have raced.
-    const racing = await findActiveJob(args.issueId, skill.type);
-    if (racing) {
-      if (args.onRacing === 'throw') throw new ActiveJobConflictError(racing, skill.type);
-      logger.debug(
-        { issueId: args.issueId, type: skill.type, racing },
-        `${args.logLabel}: active job appeared while waiting on lock`,
-      );
-      return;
+        // Re-check inside the lock — the caller's cheap pre-check may have raced.
+        const racing = await findActiveJob(args.issueId, skill.type);
+        if (racing) {
+          if (args.onRacing === 'throw') throw new ActiveJobConflictError(racing, skill.type);
+          logger.debug(
+            { issueId: args.issueId, type: skill.type, racing },
+            `${args.logLabel}: active job appeared while waiting on lock`,
+          );
+          return;
+        }
+
+        // ISS-232 — inject merge-required block when this stage is configured
+        // as the project's merge point. The state-machine writer keys on the
+        // same `mergeStates.baseBranch`; without the prompt block the skill has
+        // no signal it must merge + push before transitioning.
+        const mergeRequiredText = buildMergeRequiredBlock({
+          stageStatus: args.status,
+          mergeStates: resolveMergeStates(args.cfg),
+          issueId: args.issueId,
+        });
+        // Proposal Y — pre-fetch step handoffs scoped to this issue's current run
+        // so buildJobPromptString can render `## Prior step handoffs` + the
+        // `## Termination protocol` block with concrete scope literals.
+        const handoffInputs = await fetchHandoffPromptInputs({
+          projectId: args.projectId,
+          issueId: args.issueId,
+          pipelineRunId: run.id,
+          attempt: 1,
+          jobType: skill.type,
+          policy: stageCfg?.userPromptPolicy ?? null,
+        });
+        enqueued = await insertAndEnqueueJob({
+          projectId: args.projectId,
+          issueId: args.issueId,
+          pipelineRunId: run.id,
+          createdBy: args.createdBy,
+          type: skill.type,
+          skillName: effectiveSkillName,
+          promptString: buildJobPromptString({
+            skillName: effectiveSkillName,
+            jobType: skill.type,
+            issueId: args.issueId,
+            issueSnapshot,
+            policy: stageCfg?.userPromptPolicy ?? null,
+            mergeRequiredText,
+            priorHandoffs: handoffInputs.priorHandoffs,
+            handoffScope: handoffInputs.handoffScope,
+          }),
+          payloadExtras: {
+            ...args.reason,
+            preventiveContext,
+            // Stamp the stage so dispatcher can re-resolve overrides without a
+            // second pipelineConfig load.
+            stageStatus: args.status,
+            // PR-5 — stamp session group membership so the dispatcher's
+            // runner-framework path + agent-session-link can find the prior
+            // session of the same (issue, group) without a second config load.
+            ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
+          },
+          // On unique-violation the error names the racing job id.
+          resolveRacingJobId: () => findActiveJob(args.issueId, skill.type),
+        });
+        logger.info(
+          { jobId: enqueued.jobId, type: skill.type, issueId: args.issueId },
+          `${args.logLabel}: enqueued`,
+        );
+      });
+      break;
+    } catch (err) {
+      if (!isLockNotAvailable(err)) throw err;
+      if (attempt >= MAX_ADVISORY_LOCK_ATTEMPTS) {
+        logger.warn(
+          { issueId: args.issueId, type: skill.type, attempts: attempt },
+          `${args.logLabel}: advisory lock wait exhausted retries — reconciler will re-enqueue if this was a real transition`,
+        );
+        if (isSentryEnabled()) {
+          Sentry.addBreadcrumb({
+            category: 'pipeline.advisory_lock.timeout',
+            level: 'warning',
+            data: { issueId: args.issueId, jobType: skill.type },
+          });
+        }
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt + Math.random() * 50));
     }
-
-    // ISS-232 — inject merge-required block when this stage is configured
-    // as the project's merge point. The state-machine writer keys on the
-    // same `mergeStates.baseBranch`; without the prompt block the skill has
-    // no signal it must merge + push before transitioning.
-    const mergeRequiredText = buildMergeRequiredBlock({
-      stageStatus: args.status,
-      mergeStates: resolveMergeStates(args.cfg),
-      issueId: args.issueId,
-    });
-    // Proposal Y — pre-fetch step handoffs scoped to this issue's current run
-    // so buildJobPromptString can render `## Prior step handoffs` + the
-    // `## Termination protocol` block with concrete scope literals.
-    const handoffInputs = await fetchHandoffPromptInputs({
-      projectId: args.projectId,
-      issueId: args.issueId,
-      pipelineRunId: run.id,
-      attempt: 1,
-      jobType: skill.type,
-      policy: stageCfg?.userPromptPolicy ?? null,
-    });
-    enqueued = await insertAndEnqueueJob({
-      projectId: args.projectId,
-      issueId: args.issueId,
-      pipelineRunId: run.id,
-      createdBy: args.createdBy,
-      type: skill.type,
-      skillName: effectiveSkillName,
-      promptString: buildJobPromptString({
-        skillName: effectiveSkillName,
-        jobType: skill.type,
-        issueId: args.issueId,
-        issueSnapshot,
-        policy: stageCfg?.userPromptPolicy ?? null,
-        mergeRequiredText,
-        priorHandoffs: handoffInputs.priorHandoffs,
-        handoffScope: handoffInputs.handoffScope,
-      }),
-      payloadExtras: {
-        ...args.reason,
-        preventiveContext,
-        // Stamp the stage so dispatcher can re-resolve overrides without a
-        // second pipelineConfig load.
-        stageStatus: args.status,
-        // PR-5 — stamp session group membership so the dispatcher's
-        // runner-framework path + agent-session-link can find the prior
-        // session of the same (issue, group) without a second config load.
-        ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
-      },
-      // On unique-violation the error names the racing job id.
-      resolveRacingJobId: () => findActiveJob(args.issueId, skill.type),
-    });
-    logger.info(
-      { jobId: enqueued.jobId, type: skill.type, issueId: args.issueId },
-      `${args.logLabel}: enqueued`,
-    );
-  });
+  }
   return enqueued;
 }
 
