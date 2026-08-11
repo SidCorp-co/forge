@@ -341,8 +341,8 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
-    mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]); // resolveLinkedIssue fence
-    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // issue lookup
+    mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]); // cm:why resolveLinkedIssue fence
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // cm:why issue lookup
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: LINKED_ISSUE_ID },
     ]);
@@ -361,16 +361,14 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     expect(body.linkedIssueId).toBe(LINKED_ISSUE_ID);
   });
 
-  // A report is feedback ABOUT FORGE; the issue that fixes it normally lives in
-  // the Forge project, not the one the report was filed from. Must mirror the
-  // MCP `review` action exactly — see the cm:edge on the route.
+  // cm:why the issue that fixes a report normally lives in the Forge project, not the one it was filed from — this must mirror the MCP `review` action exactly (see the cm:edge on the route)
   it('links to an issue in ANOTHER visible project (the Forge project)', async () => {
     const FORGE_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
     mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]);
-    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // lives in OTHER_PROJECT_ID
+    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // cm:why lives in OTHER_PROJECT_ID
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: FORGE_ISSUE_ID },
     ]);
@@ -396,7 +394,7 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
     mockVisibleProjectIds([PROJECT_ID]);
-    selectLimit.mockResolvedValueOnce([]); // not among visible projects
+    selectLimit.mockResolvedValueOnce([]); // cm:why not among visible projects
 
     const app = buildApp();
     const res = await app.request(`/api/feedback-reports/${REPORT_ID}/reviewed`, {

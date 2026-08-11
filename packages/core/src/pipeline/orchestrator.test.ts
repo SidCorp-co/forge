@@ -113,9 +113,7 @@ vi.mock('./ci-fix-pattern-query.js', () => ({
 // insert. Stub it so orchestrator unit tests assert orchestration intent
 // (guard fired / device + status used) without modeling the comment insert.
 const postEmptyReopenCommentMock = vi.fn(async () => undefined);
-// Default: no unexplained reopen, so the pre-existing cases keep their old
-// path. The dedicated suite in `empty-reopen-guard.test.ts` covers detection;
-// here we only assert the orchestration branch it drives.
+// cm:why defaults to no unexplained reopen so the pre-existing cases keep their old path — detection itself is covered by empty-reopen-guard.test.ts; here we assert only the orchestration branch it drives
 const findUnexplainedReopenMock = vi.fn(async (): Promise<unknown> => null);
 const postUnexplainedReopenCommentMock = vi.fn(async () => undefined);
 vi.mock('./empty-reopen-guard.js', () => ({
@@ -845,14 +843,11 @@ describe('pipeline/orchestrator', () => {
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'fix-job' }));
   });
 
-  // ceo-dashboard + finance-automation ×2 — an issue that already shipped is
-  // reopened by hand with no comment saying what regressed. The ISS-635 guard
-  // above misses it (a prior code job DOES exist), so forge-fix dispatched with
-  // nothing to scope against and could only bounce to needs_info by hand.
+  // cm:why observed on ceo-dashboard + finance-automation ×2 — a shipped issue reopened by hand with no comment saying what regressed slips past the ISS-635 guard (a prior code job DOES exist), so forge-fix dispatched with nothing to scope against
   it('routes a reopen with no rationale since it shipped to needs_info instead of dispatching fix', async () => {
     cfgResolved({ enabled: true, autoFix: true });
     liveIssue('reopen');
-    nextSelect.mockResolvedValueOnce([{ id: 'prior-code-job' }]); // shipped once
+    nextSelect.mockResolvedValueOnce([{ id: 'prior-code-job' }]); // cm:why shipped once
     findUnexplainedReopenMock.mockResolvedValueOnce({
       from: 'released',
       since: new Date('2026-08-01T10:00:00Z'),

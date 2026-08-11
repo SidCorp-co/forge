@@ -561,8 +561,8 @@ describe('forge_feedback review', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveEffectiveProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // assertPrincipalIsMember
-    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // resolveLinkedIssue visibility fence
-    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // linkedIssueId lookup
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // cm:why resolveLinkedIssue visibility fence
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // cm:why linkedIssueId lookup
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt, linkedIssueId: LINKED_ISSUE_ID },
     ]);
@@ -585,10 +585,7 @@ describe('forge_feedback review', () => {
     });
   });
 
-  // A report is feedback ABOUT FORGE, filed from wherever the defect was seen —
-  // so the issue that fixes it normally lives in the Forge project, NOT the
-  // reporting one. Same-project made the field unusable for exactly the reports
-  // it exists to close (45 coolify-fanout reports across 4 projects, one fix).
+  // cm:why a report is filed from wherever the defect was seen, so the issue that fixes it normally lives in the Forge project, not the reporting one — same-project made the field unusable for exactly the reports it exists to close (45 coolify-fanout reports, 4 projects, one fix)
   it('links a report to an issue in ANOTHER visible project (the Forge project)', async () => {
     const tool = forgeFeedbackTool(makeCtx());
     const reviewedAt = new Date('2026-07-20T00:00:00Z');
@@ -597,7 +594,7 @@ describe('forge_feedback review', () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
-    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // lives in PROJECT_ID_2
+    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // cm:why lives in PROJECT_ID_2
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt, linkedIssueId: FORGE_ISSUE_ID },
     ]);
@@ -623,7 +620,7 @@ describe('forge_feedback review', () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     mockVisibleProjects([PROJECT_ID]);
-    selectLimit.mockResolvedValueOnce([]); // not among visible projects
+    selectLimit.mockResolvedValueOnce([]); // cm:why not among visible projects
 
     await expect(
       tool.handler({ action: 'review', reportId: REPORT_ID, linkedIssueId: HIDDEN_ISSUE_ID }),
@@ -699,15 +696,13 @@ describe('forge_feedback review', () => {
     expect(result).toEqual({ ok: true, count: 2, scope: 'all', linkedIssueId: null });
   });
 
-  // The workflow the field exists for: one Forge defect reported N times from N
-  // projects (coolify fan-out was 45 reports / 4 projects) folds into ONE issue
-  // in a single call. Before this, bulk could not carry a link at all.
+  // cm:why this is the workflow the field exists for — one Forge defect reported N times from N projects folds into ONE issue in a single call; before this, bulk could not carry a link at all
   it('signalKey + scope=all folds every duplicate into ONE cross-project issue', async () => {
     const tool = forgeFeedbackTool(makeCtx());
     const FORGE_ISSUE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
-    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // scope=all fence
-    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // resolveLinkedIssue fence
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // cm:why scope=all fence
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // cm:why resolveLinkedIssue fence
     selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]);
     updateReturning.mockResolvedValueOnce([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
 

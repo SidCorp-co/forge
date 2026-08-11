@@ -127,8 +127,7 @@ describe('isRunningBodyObserved', () => {
     ).toBe(true);
   });
 
-  // A device still on the previous body means the stored copy is NOT what runs there,
-  // so the bundle must not claim observation — C4 then refuses the run.
+  // cm:why a device still on the previous body means the stored copy is NOT what runs there, so the bundle must not claim observation and C4 refuses the run
   it('is false when any device observed a different body', () => {
     expect(
       isRunningBodyObserved(H, [

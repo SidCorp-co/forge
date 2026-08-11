@@ -72,8 +72,7 @@ describe('findUnexplainedReopen', () => {
     expect(await findUnexplainedReopen('iss-1')).toBeNull();
   });
 
-  // A review/QA reject reaches `reopen` from testing/tested/developed and its
-  // verdict comment IS the artifact forge-fix scopes against — never block it.
+  // cm:guard a review/QA reject reaches `reopen` from testing/tested/developed and its verdict comment IS what forge-fix scopes against — never block that path
   it.each(['testing', 'tested', 'developed', 'in_progress'])(
     'ignores a reopen arriving from %s',
     async (from) => {

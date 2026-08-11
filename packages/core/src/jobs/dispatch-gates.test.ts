@@ -268,8 +268,7 @@ describe('pickNextDispatchableJobForProject', () => {
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    // The reopen arm (sid-desk ISS-20/25) sits INSIDE the parens with merged_at;
-    // the closed bypass stays OUTSIDE so it still short-circuits the whole test.
+    // cm:guard the reopen arm (sid-desk ISS-20/25) must sit INSIDE the parens with merged_at, while the closed bypass stays OUTSIDE so it still short-circuits the whole test
     expect(text).toMatch(
       /\(\s*p\.merged_at\s+IS\s+NULL\s+OR\s+p\.status\s*=\s*'reopen'\s*\)\s+AND\s+p\.status\s*<>\s*'closed'/,
     );

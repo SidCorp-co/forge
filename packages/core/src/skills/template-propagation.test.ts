@@ -46,8 +46,7 @@ describe('sweepTemplateDrift', () => {
     await expect(sweepTemplateDrift(BUMP)).resolves.toEqual({ behind: 0 });
   });
 
-  // The whole point of the ISS-605 rewrite: a stale un-consumed rebase draft used
-  // to mute every later bump for that skill. No write, no mute.
+  // cm:why the whole point of the ISS-605 rewrite — a stale un-consumed rebase draft used to mute every later bump for that skill; no write, no mute
   it('never writes an issue', async () => {
     stubCopies([{ skillId: 's1', projectId: 'p1' }]);
     await sweepTemplateDrift(BUMP);

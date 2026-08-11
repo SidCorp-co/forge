@@ -66,7 +66,7 @@ describe('state-prompts — release terminal-exit invariant lives in the non-for
   it('orders the close BEFORE cleanup, and marks cleanup best-effort', () => {
     expect(release).toContain('best-effort');
     expect(release).toMatch(/AFTER the close/);
-    // The reason must survive rewording — it is why the order is not arbitrary.
+    // cm:why the reason must survive rewording — it is what makes the order non-arbitrary
     expect(release).toMatch(/only action that stops this stage being re-dispatched/);
   });
 

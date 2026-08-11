@@ -71,7 +71,7 @@ describe('GET /api/me/attention', () => {
     queryQueue.push([]); // awaitingInput
     queryQueue.push([]); // mentions
     queryQueue.push([]); // failedJobs
-    queryQueue.push([]); // pendingSkillUpdates
+    queryQueue.push([]); // cm:why 5th queued result feeds the pendingSkillUpdates query — the mock resolves positionally
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -151,7 +151,7 @@ describe('GET /api/me/attention', () => {
         projectSlug: 'alpha',
         projectName: 'Alpha',
       },
-    ]); // pendingSkillUpdates
+    ]); // cm:why pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -215,7 +215,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
-    queryQueue.push([]); // pendingSkillUpdates
+    queryQueue.push([]); // cm:why pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -259,7 +259,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
-    queryQueue.push([]); // pendingSkillUpdates
+    queryQueue.push([]); // cm:why pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -291,7 +291,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
-    queryQueue.push([]); // pendingSkillUpdates
+    queryQueue.push([]); // cm:why pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -303,11 +303,7 @@ describe('GET /api/me/attention', () => {
     expect(body.failedJobs[0]?.title).toContain('still failing');
   });
 
-  // ISS-807 — mirrors the disclaimer above: the mock resolves whatever is
-  // queued regardless of the WHERE clause, so this exercises the row→response
-  // mapping (decided/human OR escalated/escalate/unacknowledged → one item,
-  // `since` from decidedAt falling back to createdAt) and the `total` roll-up,
-  // not the admin-scoping or state-predicate SQL itself.
+  // cm:why ISS-807 — the mock resolves whatever is queued regardless of the WHERE clause, so this covers the row→response mapping and the `total` roll-up, NOT the admin-scoping or state-predicate SQL
   it('pendingSkillUpdates: an escalated run with no decidedAt falls back to createdAt for `since`', async () => {
     authVerified();
     queryQueue.push([]); // needsReview
@@ -325,7 +321,7 @@ describe('GET /api/me/attention', () => {
         projectSlug: 'beta',
         projectName: 'Beta',
       },
-    ]); // pendingSkillUpdates
+    ]); // cm:why pendingSkillUpdates
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },

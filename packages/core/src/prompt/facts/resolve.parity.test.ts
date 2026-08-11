@@ -19,8 +19,7 @@ vi.mock('../../logger.js', () => ({ logger: { warn: vi.fn() } }));
 const { renderStageFactsText } = await import('./resolve.js');
 
 // A realistic projectFacts fixture: two on-demand guides + one always-inject rule.
-// Keys stay literal (no index signature) so `FIXTURE_FACTS['contracts-rule']` is
-// a `string`, not `string | undefined`, under noUncheckedIndexedAccess.
+// cm:why keys stay literal (no index signature) so `FIXTURE_FACTS['contracts-rule']` is a `string`, not `string | undefined`, under noUncheckedIndexedAccess
 const FIXTURE_FACTS = {
   'build-test-commands': 'pnpm build && pnpm test',
   'deploy-guide': 'Use forge_coolify_deploy with serviceId from Coolify.',

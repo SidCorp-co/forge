@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { OPERATING_AFFORDANCES_TEXT, renderFact } from './registry.js';
 
-// packages/core/src/prompt/facts → repo root
+// cm:why five levels up from packages/core/src/prompt/facts reaches the repo root
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..');
 const ORIENTATION_RS = join(
   REPO_ROOT,

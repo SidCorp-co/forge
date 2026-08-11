@@ -263,7 +263,7 @@ describe('pipeline-rules — merged_at is caller-asserted, both directions', () 
     expect(text).toMatch(/the previous step said so/);
   });
 
-  // The owner's own case: closing an abandoned issue silently unblocks its dependents.
+  // cm:why the owner's own case — closing an abandoned issue silently unblocks its dependents
   it('warns that closing auto-stamps, and names the undo', () => {
     expect(text).toMatch(/[Cc]losing also auto-stamps/);
     expect(text).toContain('forge_issues.unmark');

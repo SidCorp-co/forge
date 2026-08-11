@@ -260,16 +260,16 @@ describe('skill-activity log integration (ISS-797)', () => {
 
     const { user, project, skill } = await seedProjectSkill('old-hash');
     const files = [{ path: 'GUIDE.md', content: '# Guide\nReference content.' }];
-    // give the skill reference files (the pattern that caused BLOCKER C)
+    // cm:why give the skill reference files — that is the pattern that caused BLOCKER C
     await harness.db.update(schema.skills).set({ files }).where(eq(schema.skills.id, skill.id));
 
     const candidateBody = 'updated skill body v2';
     const expectedHash = hashSkillBody(candidateBody, files);
-    // a files-less hash would differ — assert the test would catch the wrong formula
+    // cm:why a files-less hash would differ, so this asserts the test would catch the wrong formula
     const filesLessHash = hashSkillBody(candidateBody, null);
     expect(expectedHash).not.toBe(filesLessHash);
 
-    // seed a decided reconcile run for the skill
+    // cm:why the run must already be `decided` for apply to be reachable
     const [run] = await harness.db
       .insert(schema.reconcileRuns)
       .values({
@@ -280,7 +280,7 @@ describe('skill-activity log integration (ISS-797)', () => {
         gate: 'human',
         candidateBody,
         lastGoodHash: 'old-hash',
-        // bundle has a DB default of {} — omit to let the default apply
+        // cm:why bundle has a DB default of {}, so omit it to let the default apply
       })
       .returning();
     if (!run) throw new Error('reconcileRuns insert returned no row');
@@ -292,7 +292,7 @@ describe('skill-activity log integration (ISS-797)', () => {
     expect(changed).toBeDefined();
     expect(changed?.afterHash).toBe(expectedHash);
 
-    // verify contentHash on the skills row was also updated correctly
+    // cm:why apply must update contentHash on the skills row too, not just the body
     const [updatedSkill] = await harness.db
       .select({ contentHash: schema.skills.contentHash })
       .from(schema.skills)

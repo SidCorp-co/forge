@@ -86,12 +86,12 @@ describe('state machine', () => {
 
   it('isReopenEntry counts every entry into reopen, not just from closed (ISS-781)', () => {
     expect(isReopenEntry('closed', 'reopen')).toBe(true);
-    // The pipeline's own rejection paths — the ones that were silently free.
+    // cm:why these are the pipeline's own rejection paths — the ones that were silently free before ISS-781
     expect(isReopenEntry('developed', 'reopen')).toBe(true);
     expect(isReopenEntry('testing', 'reopen')).toBe(true);
     expect(isReopenEntry('tested', 'reopen')).toBe(true);
     expect(isReopenEntry('in_progress', 'reopen')).toBe(true);
-    // Not a reopen: already there, or not heading there at all.
+    // cm:why negative cases: already at reopen, or not heading there at all
     expect(isReopenEntry('reopen', 'reopen')).toBe(false);
     expect(isReopenEntry('closed', 'developed')).toBe(false);
   });
