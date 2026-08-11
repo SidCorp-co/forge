@@ -539,46 +539,49 @@ async function considerEnqueue(args: {
   const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
 
   // cm:why backstop for issues already at `approved` with a blank plan predating the transition-evidence writer guard — routes to `clarified` to get a plan written, or `needs_info` if a `plan` job already ran and it's still blank (else routing back would loop)
-  // cm:guard a decompose child is created at `approved` with `plan:null` by design (its own clarified/plan stage has not run yet) — must be exempt, or the cascade-approve kickoff silently reroutes every child to `clarified` (ISS-819 owner-flagged blocking collision)
+  // cm:why isPlanStageComplexitySkipped short-circuits BEFORE the DB checks — on a project that skips the plan stage for this complexity the blank plan is legitimate and rerouting would livelock against the auto-skip resolver (ISS-819 review r2 blocker)
   if (
     jobMap.type === 'code' &&
     isBlankPlan(liveIssue.plan) &&
-    !(await isDecompositionChild(args.issueId)) &&
+    !isPlanStageComplexitySkipped(cfg, liveIssue.complexity) &&
     (await isPlanStageLive(args.projectId, resolver))
   ) {
-    const device = resolveSkipDevice(args.actor, projectCreatedBy);
-    const routedTo: IssueStatus = (await hasDonePlanJob(args.issueId)) ? 'needs_info' : 'clarified';
-    let routed = false;
-    if (device) {
-      try {
-        await applyStatusTransition(liveIssue, routedTo, device, { skip: true });
-        routed = true;
-      } catch (err) {
+    const planJobRan = await hasDonePlanJob(args.issueId);
+    // cm:guard exempt ONLY the cascade kickoff — a decompose child created at `approved`/`plan:null` whose own clarified/plan stage has not run yet. Once a `plan` job HAS run done and the plan is still blank, the child is the same fabrication class as any other issue and must be routed, not exempted forever (ISS-819 review r2 finding 4)
+    const exemptCascadeKickoff = !planJobRan && (await isDecompositionChild(args.issueId));
+    if (!exemptCascadeKickoff) {
+      const device = resolveSkipDevice(args.actor, projectCreatedBy);
+      const routedTo: IssueStatus = planJobRan ? 'needs_info' : 'clarified';
+      // cm:edge ordering -> packages/core/src/pipeline/plan-gate-guard.ts — post BEFORE attempting the route, same convention as the needs_info guard below and the park-comment.ts precedent: a null-device or throwing transition must not silence the refusal (ISS-819 review r2 finding 2)
+      await postMissingPlanComment({ issueId: args.issueId, authorId: projectCreatedBy, routedTo });
+      if (device) {
+        try {
+          await applyStatusTransition(liveIssue, routedTo, device, { skip: true });
+        } catch (err) {
+          logger.warn(
+            { err, issueId: args.issueId, to: routedTo },
+            'orchestrator: plan-required guard failed to route',
+          );
+        }
+      } else {
         logger.warn(
-          { err, issueId: args.issueId, to: routedTo },
-          'orchestrator: plan-required guard failed to route',
+          { issueId: args.issueId },
+          'orchestrator: plan-required guard has no device principal for status transition',
         );
       }
-    } else {
-      logger.warn(
-        { issueId: args.issueId },
-        'orchestrator: plan-required guard has no device principal for status transition',
-      );
-    }
-    // cm:why gated on a successful route — otherwise the issue stays at `approved` and every later dispatch attempt (re-fired on the same live status) posts another identical comment (ISS-819 review finding 5)
-    if (routed) {
-      await postMissingPlanComment({ issueId: args.issueId, authorId: projectCreatedBy, routedTo });
       logger.info(
         { issueId: args.issueId, routedTo },
         'orchestrator: plan-required guard — approved with blank plan, routed',
       );
+      return;
     }
-    return;
   }
 
   // cm:why a reopen entered directly from needs_info must never dispatch fix — a fix cannot be scoped from an unanswered question, regardless of what re-triggered the reopen
   if (jobMap.type === 'fix' && (await reopenEnteredFromNeedsInfo(args.issueId))) {
     const device = resolveSkipDevice(args.actor, projectCreatedBy);
+    // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — post BEFORE the transition so the guard's own comment lands before the needs_info entry it routes to; posting after makes the next reopenEnteredFromNeedsInfo read it as an answer via hasInputSince and self-release on the second bounce (ISS-819 review r2 finding 3)
+    await postNeedsInfoReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
     if (device) {
       try {
         await applyStatusTransition(liveIssue, 'needs_info', device, { skip: true });
@@ -594,7 +597,6 @@ async function considerEnqueue(args: {
         'orchestrator: needs_info-reopen guard has no device principal for needs_info transition',
       );
     }
-    await postNeedsInfoReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
     logger.info(
       { issueId: args.issueId },
       'orchestrator: needs_info-reopen guard — reopen entered from needs_info, routed back to needs_info',
@@ -1005,6 +1007,25 @@ function chainMayUseComplexity(start: IssueStatus, cfg: PipelineConfig): boolean
     cursor = STAGE_FORWARD[cursor];
   }
   return false;
+}
+
+/**
+ * ISS-819 (review round 2) — is the plan stage (`clarified`) being
+ * auto-skipped for THIS issue's `complexity`? When `states.clarified` declares
+ * a matching `skipComplexities`, the plan step legitimately never runs and the
+ * issue reaches `approved` with a blank plan by design. The dispatch-side
+ * blank-plan backstop MUST treat the stage as not-live in that case: otherwise
+ * it reroutes `approved → clarified`, `autoSkipDisabledStages` skips straight
+ * back to `approved`, and the pair livelock forever (blank-plan comment on
+ * every cycle). Mirrors `complexityMatches` in `autoSkipDisabledStages`.
+ */
+// cm:edge lockstep -> packages/core/src/pipeline/state-machine.ts — same skipComplexities criterion resolveSkipTarget applies via complexityMatches; if that predicate changes, this must too
+function isPlanStageComplexitySkipped(
+  cfg: PipelineConfig | null,
+  complexity: IssueComplexity | null,
+): boolean {
+  if (!cfg || !complexity) return false;
+  return stageConfigFor(cfg, 'clarified')?.skipComplexities?.includes(complexity) === true;
 }
 
 function resolveSkipDevice(actor: Actor, projectCreatedBy: string | null): DeviceLite | null {

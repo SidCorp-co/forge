@@ -312,6 +312,7 @@ function liveIssue(
     projectId: string;
     reopenCount: number;
     plan: string | null;
+    complexity: string | null;
   }> = {},
 ) {
   nextSelect.mockResolvedValueOnce([
@@ -321,6 +322,7 @@ function liveIssue(
       status,
       reopenCount: 0,
       plan: 'an existing plan',
+      complexity: null,
       ...overrides,
     },
   ]);
@@ -968,9 +970,13 @@ describe('pipeline/orchestrator', () => {
       expect(postMissingPlanCommentMock).toHaveBeenCalledWith(
         expect.objectContaining({ issueId: 'iss-1', routedTo: 'clarified' }),
       );
+      // review r2 finding 2 — comment lands BEFORE the route is attempted
+      expect(postMissingPlanCommentMock.mock.invocationCallOrder[0]).toBeLessThan(
+        applyTransitionMock.mock.invocationCallOrder[0] as number,
+      );
     });
 
-    it('does not post the missing-plan comment when the routing transition throws', async () => {
+    it('posts the missing-plan comment even when the routing transition throws (post-before convention, review r2 finding 2)', async () => {
       cfgResolved({ enabled: true, autoCode: true });
       liveIssue('approved', { plan: null });
       nextSelect.mockResolvedValueOnce([]); // cm:why hasDonePlanJob → none
@@ -980,7 +986,34 @@ describe('pipeline/orchestrator', () => {
       await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
 
       expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+      // The comment is posted BEFORE the route is attempted, so a throwing
+      // transition can never silence the refusal (invisible-starvation guard).
+      expect(postMissingPlanCommentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ issueId: 'iss-1', routedTo: 'clarified' }),
+      );
+    });
+
+    it('dispatches code normally when the plan stage is skipped for this complexity (no reroute livelock, review r2 blocker)', async () => {
+      cfgResolved({
+        enabled: true,
+        autoCode: true,
+        states: { clarified: { skipComplexities: ['s'] } },
+      });
+      liveIssue('approved', { plan: null, complexity: 's' });
+      skillRegistered('forge-code', 'code', 'autoCode');
+      nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+      insertReturning.mockResolvedValueOnce([{ id: 'code-job' }]);
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
+
+      // Plan stage is auto-skipped for complexity `s`, so the blank plan is
+      // legitimate — the backstop must not reroute (that would livelock against
+      // autoSkipDisabledStages) and must not even reach the DB liveness check.
+      expect(applyTransitionMock).not.toHaveBeenCalled();
       expect(postMissingPlanCommentMock).not.toHaveBeenCalled();
+      expect(isPlanStageLiveMock).not.toHaveBeenCalled();
+      expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
     });
 
     it('routes approved+blank-plan with a prior done plan job to needs_info instead of looping', async () => {
@@ -1037,6 +1070,33 @@ describe('pipeline/orchestrator', () => {
       expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
     });
 
+    it('does NOT exempt a decompose child that already ran a plan job and is still blank (review r2 finding 4)', async () => {
+      findDecompositionParentMock.mockResolvedValueOnce({
+        id: 'parent-1',
+        status: 'waiting',
+        projectId: 'proj-1',
+        issSeq: 1,
+      });
+      cfgResolved({ enabled: true, autoCode: true });
+      liveIssue('approved', { plan: null });
+      nextSelect.mockResolvedValueOnce([{ id: 'prior-plan-job' }]); // cm:why hasDonePlanJob → found
+
+      const bus = makeBus();
+      await bus.emit('transition', transition({ from: 'waiting', to: 'approved' }) as never);
+
+      // A plan job ran for this child and left the plan blank — it is the same
+      // fabrication class every other issue is, so it must be routed (to
+      // needs_info, since a plan job already ran), not exempted forever. The
+      // cascade-kickoff exemption is short-circuited before the decompose check.
+      expect(findDecompositionParentMock).not.toHaveBeenCalled();
+      expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+      expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
+      expect(postMissingPlanCommentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ issueId: 'iss-1', routedTo: 'needs_info' }),
+      );
+      expect(enqueueMock).not.toHaveBeenCalled();
+    });
+
     it('never consults the plan-required backstop for a non-code stage', async () => {
       cfgResolved({ enabled: true, autoPlan: true });
       liveIssue('clarified', { plan: null });
@@ -1073,6 +1133,11 @@ describe('pipeline/orchestrator', () => {
       expect(applyTransitionMock.mock.calls[0]?.[3]).toEqual({ skip: true });
       expect(postNeedsInfoReopenCommentMock).toHaveBeenCalledWith(
         expect.objectContaining({ issueId: 'iss-1' }),
+      );
+      // review r2 finding 3 — comment lands BEFORE the needs_info entry it routes to,
+      // so the next reopenEnteredFromNeedsInfo can't read it as an answer and self-release
+      expect(postNeedsInfoReopenCommentMock.mock.invocationCallOrder[0]).toBeLessThan(
+        applyTransitionMock.mock.invocationCallOrder[0] as number,
       );
     });
 
