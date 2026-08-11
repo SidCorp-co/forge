@@ -121,15 +121,117 @@ Write 30/min and search 60/min per user (`RATE_LIMIT_MEMORY_*` env overrides) �
 
 ## Memory candidates (continuous learning, ISS-534/554)
 
-A confidence-accrual staging area **upstream** of `memories`: repeated pipeline signals accrue into a candidate before a human promotes it to a real memory. Signals never write straight to `memories` — they build evidence first.
+A confidence-accrual staging area **upstream** of both `memories` and `improvement_message_drafts`: repeated pipeline signals (and now agent self-reports, see the feedback bridge below) accrue into a candidate before a human accepts, rejects, or promotes it. Signals never write straight to `memories` — they build evidence first.
 
-- **Table** `memory_candidates` (`db/schema.ts`): `signal_type`, `signal_key`, `status` (`accruing` → `graduated` → reviewed/`archived`), `confidence` (default 0.30), `evidence_count`, `evidence` (jsonb), `summary`; unique `(project_id, signal_type, signal_key)`.
-- **Files** (`packages/core/src/memory/`): `candidates-observer.ts` (subscribes to pipeline signals), `candidates-accrual.ts` (read-modify-write confidence accrual / evidence merge), `candidates-decay.ts` (ages out stale candidates), `candidates-service.ts` (list graduated / accept / reject / promote), `candidates-routes.ts` (REST).
-- **Endpoints** (mounted `/api/memory`, auth = project `viewer`): `GET /api/memory/candidates` (graduated only, paginated) · `POST /api/memory/candidates/:id/accept` · `POST /api/memory/candidates/:id/reject` · `POST /api/memory/candidates/:id/promote` (graduated → new `draft` memory).
+- **Table** `memory_candidates` (`db/schema.ts:1652`): `signal_type`, `signal_key`, `status` — `memoryCandidateStatuses`: `accruing` → `graduated` → `accepted` \| `rejected` \| `promoted` (terminal), `confidence` (default 0.30), `evidence_count`, `evidence` (jsonb), `summary`; unique `(project_id, signal_type, signal_key)`.
+- **Files** (`packages/core/src/memory/`): `candidates-observer.ts` (subscribes to pipeline signals), `candidates-accrual.ts` (read-modify-write confidence accrual / evidence merge), `candidates-decay.ts` (ages out stale candidates), `candidates-service.ts` (list graduated / accept / reject / mark-promoted), `candidates-routes.ts` (REST).
+- **Endpoints** (mounted `/api/memory`, auth = project `viewer`): `GET /api/memory/candidates` (graduated only, paginated) · `POST /api/memory/candidates/:id/accept` · `POST /api/memory/candidates/:id/reject` (archives) · `POST /api/memory/candidates/:id/promote` (graduated-only, 409 otherwise — creates an `improvement_message_drafts` row, see the feedback bridge below, then flips status to `promoted`).
+
+## `knowledge_entries` — curated knowledge (separate from `memories`)
+
+**`knowledge_entries` is a distinct table from `memories`, not another name for
+`source:'knowledge'` rows.** Both are semantically searchable per-project text, but:
+
+| | `memories` (`source:'knowledge'`) | `knowledge_entries` |
+|---|---|---|
+| Written by | agents, mostly autonomously (extraction/consolidation) | curators — `authoredBy`: `human` \| `agent` (default) \| `imported` |
+| Lifecycle | decays, archives, semantic-dedups | persists until explicitly deleted; no decay job |
+| Shape | free-text fact + `metadata` | structured: `kind`, `title`, `body`, `injection`, `confidence`, `tags` |
+| Read path | pull (`forge_memory.search`) | pull (`forge_knowledge`) **or** always-inject into the system prompt (`injection:'always'`) |
+
+`schema.ts:1720`. `kind` enum `knowledgeKinds`: `overview` \| `scenario` \| `workflow` \| `rule`
+\| `guide` \| `reference` \| `glossary`. `injection` enum: `always` \| `on_demand` \| `none`.
+`confidence` enum: `verified` \| `inferred` \| `deprecated`. Unique on `(projectId, slug)`;
+same pgvector/FTS shape as `memories` (own HNSW + GIN indexes).
+
+### Injection tiers
+
+`prompt/facts/resolve.ts:261` gates the source of always-inject facts on
+**`KNOWLEDGE_INJECTION_ENABLED`** (`config/env.ts:142`, **defaults `false`**):
+
+- **OFF** (default) — always-inject facts and `{{project:key}}` keys come from
+  `agentConfig.projectFacts` / `projectFactsConfig`, as today.
+- **ON** — `selectAlwaysInjectFromKnowledge` / `selectOnDemandSlugsFromKnowledge` source the
+  same two things from `knowledge_entries` (`injection:'always'` rows; `on_demand` slugs)
+  instead. The `{{project:key}}` template resolver still reads `agentConfig` regardless, for a
+  deprecation window. Any DB error during the ON path falls back to the `agentConfig` read so
+  the prompt build never breaks.
+
+### API endpoints
+
+REST, `knowledge/routes.ts` (`/api/projects/:id/...`, member) + `knowledge/ingest-routes.ts`
+(`/api/knowledge/ingest`, member, rate-limited 100/min/project — bulk import, always
+`kind:'reference'`/`injection:'on_demand'`).
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| `GET` | `/api/projects/:id/knowledge` | list, optional `?kind=`/`?injection=` |
+| `GET` | `/api/projects/:id/knowledge/:slug` | full entry |
+| `PUT` | `/api/projects/:id/knowledge/:slug` | upsert |
+| `DELETE` | `/api/projects/:id/knowledge/:slug` | idempotent |
+| `POST` | `/api/knowledge/ingest` | bulk (≤20 docs/request, ≤50KB each) |
+
+MCP tool `forge_knowledge` (`mcp/tools/forge-knowledge.ts`) mirrors the same service functions:
+`list` / `get` / `upsert` / `delete` (member/writer) plus `search` — `scope: 'knowledge'`
+(default) \| `'memory'` \| `'all'` (both stores, each hit labeled `origin`), same
+semantic/keyword/hybrid strategies as `forge_memory.search`.
+
+## Feedback → candidate → improvement-message bridge
+
+A second signal path into `memory_candidates`, alongside the pipeline-signal observer already
+described above: agents can self-report friction directly, and a human-curated report can
+graduate into a shareable improvement message.
+
+```
+  forge_feedback (MCP, agent self-report)
+        │  kind/severity/target/summary; server stamps signalKey = self_report:<target>:<targetRef|'-'>:<kind>
+        ▼
+  feedback_reports  (schema.ts:3043)
+        │  jobCompleted/jobFailed hook (feedback/normalizer.ts, registerFeedbackNormalizer)
+        ▼
+  upsertCandidate(signalType:'agent_self_report', signalKey, evidence)  ──▶  memory_candidates
+        │  (report.candidateId back-set after upsert)
+        │  human reviews graduated candidates, POSTs .../promote
+        ▼
+  improvement_message_drafts  (schema.ts:3126)
+        │  key = draft-<slug(signalKey)>; status: pending_review → published/dismissed
+        │  human curator promotes into the static improvement-message registry (out of band)
+```
+
+- **`feedback_reports`** — one row per agent self-report. `kind` enum `feedbackKinds`:
+  `friction` \| `bug` \| `skill_gap` \| `unclear_step` \| `redundant_step` \| `learning` \|
+  `suggestion`. `target` enum `feedbackTargets`: `skill` \| `prompt` \| `tool` \| `doc` \|
+  `orientation` \| `pipeline` \| `other`. `issueId` is the SOURCE issue (where the agent was
+  working); `linkedIssueId` (ISS-712) is set only via the review action and is the issue the
+  report was curated INTO — a different issue, resolved against every project the reviewing
+  user can see (not just the report's own project).
+- **`improvement_message_drafts`** — one row per promoted candidate. `status` enum
+  `improvementMessageDraftStatuses`: `pending_review` \| `published` \| `dismissed`. `message`
+  is wrapped `⟦UNTRUSTED_DATA⟧` (agent-authored). `candidateId` traces back to the seeding
+  `memory_candidates` row.
+
+Read endpoints:
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| `GET` | `/api/feedback-reports` | list, project member; filters kind/severity/target/reviewed, `scope:'all'` rolls up every visible project |
+| `GET` | `/api/memory/candidates` | graduated candidates for a project (see Memory candidates above) |
+| `GET` | `/api/improvement-messages` | static catalog + per-project schedule enablement |
+| `GET` | `/api/improvement-messages/drafts` | `pending_review` drafts for a project |
+
+`POST /api/feedback-reports/:id/reviewed` marks a report reviewed and optionally links it.
+`POST /api/memory/candidates/:id/promote` requires `status:'graduated'`, creates the draft, then
+flips the candidate to `status:'promoted'` — it seeds an `improvement_message_drafts` row, not
+a new `memories` row.
 
 ## Known gaps (phase 5, future)
 
 Graph retrieval strategy over `knowledge_edges` (+ pagerank), `auto` strategy via intent classification, org-scoped memories (needs an authz story), MEMORY.md export for runner devices, cross-encoder reranking, contextual chunk prefixes for knowledge ingest. The 0.85 dedup threshold is inherited from forge-agents and should be re-validated against the configured embedding model.
+
+`ux-contract-recompile.ts` (see [ux-contract](../ux-contract/README.md#known-gaps)) does not
+write through `knowledge_entries` when `KNOWLEDGE_INJECTION_ENABLED` is on — it only ever
+writes `agentConfig.projectFacts`, so flipping the flag on a project using UX Contract would
+silently drop that project's compiled contract from agent prompts.
 
 ## Cross-Module Touchpoints
 
