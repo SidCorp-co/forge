@@ -84,13 +84,15 @@ type BatchSkipReason =
   | 'illegal_transition'
   | 'no_op'
   | 'reopen_cap_exceeded'
-  | 'stale';
+  | 'stale'
+  | 'plan_required';
 
 const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   NO_OP: 'no_op',
   ILLEGAL_TRANSITION: 'illegal_transition',
   REOPEN_CAP_EXCEEDED: 'reopen_cap_exceeded',
   STALE_TRANSITION: 'stale',
+  PLAN_REQUIRED: 'plan_required',
 };
 
 type BatchResult = {

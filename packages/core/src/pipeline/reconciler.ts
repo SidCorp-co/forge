@@ -260,7 +260,8 @@ export async function resetInFlightWedgesOnce(): Promise<number> {
         // Synthesise a device principal from the project owner (matches the
         // stuck-issue rescue pass above — no schema change needed).
         { id: actorId, ownerId: actorId },
-        { reason: 'reconciler_inflight_wedge_reset' },
+        // cm:why skip:true — this is a system rescue re-entering the trigger status after a wedged job, not an agent asserting a plan/evidence exists; without it PLAN_REQUIRED can strand a blank-plan issue mid-reset (ISS-819 review finding 3)
+        { reason: 'reconciler_inflight_wedge_reset', skip: true },
       );
       reset++;
       logger.warn(

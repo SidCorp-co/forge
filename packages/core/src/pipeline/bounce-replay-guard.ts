@@ -14,8 +14,11 @@
 // release its own bounce (that let a fabricated "the owner decided" comment
 // override a real human answer). needs_info release requires a HUMAN comment
 // — isAi=false AND authorDeviceId IS NULL — with no activity fallback.
+//
+// `reopenEnteredFromNeedsInfo` (ISS-819) answers a question about the same
+// status, so it obeys the same human-only rule.
 
-import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, activityLog, comments } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -74,6 +77,56 @@ export async function findUnansweredBounce(
   }
 }
 
+/**
+ * Did this `reopen` arrive directly from `needs_info` with the question still
+ * unanswered (ISS-819 requirement 5)? A fix cannot be scoped from an unanswered
+ * question. Only a HUMAN comment since the `needs_info` entry releases it — the
+ * same rule `findUnansweredBounce` applies to that status, so an agent's own
+ * note (including this guard's own comment) can never count as the answer.
+ */
+// cm:guard fail OPEN — a broken guard must let the pipeline run, never silently freeze every dispatch
+export async function reopenEnteredFromNeedsInfo(issueId: string): Promise<boolean> {
+  try {
+    const [entered] = await db
+      .select({ payload: activityLog.payload, createdAt: activityLog.createdAt })
+      .from(activityLog)
+      .where(
+        and(
+          eq(activityLog.issueId, issueId),
+          eq(activityLog.action, 'issue.statusChanged'),
+          sql`${activityLog.payload}->>'to' = 'reopen'`,
+        ),
+      )
+      .orderBy(desc(activityLog.createdAt))
+      .limit(1);
+    if (!entered) return false;
+    if ((entered.payload as { from?: string } | null)?.from !== 'needs_info') return false;
+
+    const [needsInfoEntry] = await db
+      .select({ createdAt: activityLog.createdAt })
+      .from(activityLog)
+      .where(
+        and(
+          eq(activityLog.issueId, issueId),
+          eq(activityLog.action, 'issue.statusChanged'),
+          sql`${activityLog.payload}->>'to' = 'needs_info'`,
+          lt(activityLog.createdAt, entered.createdAt),
+        ),
+      )
+      .orderBy(desc(activityLog.createdAt))
+      .limit(1);
+    const since = needsInfoEntry?.createdAt ?? entered.createdAt;
+    if (await hasHumanAnswerSince(issueId, since)) return false;
+    return true;
+  } catch (err) {
+    logger.warn(
+      { err, issueId },
+      'bounce-replay-guard: reopen-entered-from-needs_info check failed, allowing dispatch',
+    );
+    return false;
+  }
+}
+
 type Departure = { payload: unknown; createdAt: Date };
 
 const departureTarget = (row: Departure): string | undefined =>
@@ -125,7 +178,7 @@ async function hasAnyInputSince(issueId: string, since: Date): Promise<boolean> 
   return newActivity !== undefined;
 }
 
-// cm:guard ISS-820 — needs_info only: a HUMAN-authored comment, never an activity-log fallback. Activity is never a human answering a question, and an agent's own comment (isAi=true) must not release its own bounce — that is the exact fabrication mechanism this issue closes.
+// cm:guard ISS-820 — the two needs_info callers only (findUnansweredBounce + reopenEnteredFromNeedsInfo): a HUMAN-authored comment, never an activity-log fallback. Activity is never a human answering a question, and an agent's own comment (isAi=true) must not release its own bounce — that is the exact fabrication mechanism this issue closes.
 async function hasHumanAnswerSince(issueId: string, since: Date): Promise<boolean> {
   const [humanComment] = await db
     .select({ id: comments.id })

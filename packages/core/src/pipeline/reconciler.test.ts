@@ -209,7 +209,7 @@ describe('reconciler', () => {
         expect.objectContaining({ id: 'iss-w1', status: 'in_progress', reopenCount: 0 }),
         'approved',
         expect.objectContaining({ id: 'owner-w', ownerId: 'owner-w' }),
-        expect.objectContaining({ reason: 'reconciler_inflight_wedge_reset' }),
+        expect.objectContaining({ reason: 'reconciler_inflight_wedge_reset', skip: true }),
       );
       expect(sentryAddBreadcrumb).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -11,14 +11,16 @@ import {
 } from '../db/schema.js';
 import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
+import { isBlankPlan, isPlanStageLive } from '../issues/transition-evidence.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
-import { findUnansweredBounce } from './bounce-replay-guard.js';
+import { findUnansweredBounce, reopenEnteredFromNeedsInfo } from './bounce-replay-guard.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
+import { findDecompositionParent } from './decomposition.js';
 import {
   findUnexplainedReopen,
   postEmptyReopenComment,
@@ -35,6 +37,7 @@ import {
   type StageName,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
+import { postMissingPlanComment, postNeedsInfoReopenComment } from './plan-gate-guard.js';
 import { PIPELINE_STEPS } from './registry.js';
 import { openIssueRun } from './runs.js';
 import {
@@ -137,6 +140,50 @@ async function hasPriorImplementationJob(issueId: string): Promise<boolean> {
     .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, ['code', 'fix'])))
     .limit(1);
   return row != null;
+}
+
+/**
+ * ISS-819 requirement 4 — has a `plan` job already run to completion for this
+ * issue? Decides the blank-plan backstop's route: back to `clarified` (first
+ * time) vs `needs_info` (a plan job already ran and produced nothing —
+ * routing back to `clarified` again would loop). Fails open (false) on any
+ * query error: worst case is one extra `clarified` hop, never a freeze.
+ */
+async function hasDonePlanJob(issueId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.issueId, issueId), eq(jobs.type, 'plan'), eq(jobs.status, 'done')))
+      .limit(1);
+    return row != null;
+  } catch (err) {
+    logger.warn(
+      { err, issueId },
+      'orchestrator: hasDonePlanJob check failed, treating as no prior plan job',
+    );
+    return false;
+  }
+}
+
+/**
+ * ISS-819 owner-flagged blocking collision — decompose children land at
+ * `approved` with `plan:null` by design (their own `clarified`/`plan` stage
+ * has not run yet); the blank-plan backstop must not treat that as the
+ * fabrication it targets. Fails closed (not-a-child) on any query error, so
+ * a broken check costs one extra `clarified` hop rather than skipping the
+ * anti-fabrication guard it can't verify the exemption for.
+ */
+async function isDecompositionChild(issueId: string): Promise<boolean> {
+  try {
+    return (await findDecompositionParent(issueId)) !== null;
+  } catch (err) {
+    logger.warn(
+      { err, issueId },
+      'orchestrator: decompose-child check failed, treating as not a decompose child',
+    );
+    return false;
+  }
 }
 
 function resolveCreatedBy(actor: Actor, projectCreatedBy: string | null): string {
@@ -487,6 +534,76 @@ async function considerEnqueue(args: {
     return;
   }
 
+  // ISS-239 — reuse the resolver from autoSkipDisabledStages when available
+  // so we don't refetch skill_registrations a second time per hook fire.
+  const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
+
+  // cm:why backstop for issues already at `approved` with a blank plan predating the transition-evidence writer guard — routes to `clarified` to get a plan written, or `needs_info` if a `plan` job already ran and it's still blank (else routing back would loop)
+  // cm:why isPlanStageComplexitySkipped short-circuits BEFORE the DB checks — on a project that skips the plan stage for this complexity the blank plan is legitimate and rerouting would livelock against the auto-skip resolver (ISS-819 review r2 blocker)
+  if (
+    jobMap.type === 'code' &&
+    isBlankPlan(liveIssue.plan) &&
+    !isPlanStageComplexitySkipped(cfg, liveIssue.complexity) &&
+    (await isPlanStageLive(args.projectId, resolver))
+  ) {
+    const planJobRan = await hasDonePlanJob(args.issueId);
+    // cm:guard exempt ONLY the cascade kickoff — a decompose child created at `approved`/`plan:null` whose own clarified/plan stage has not run yet. Once a `plan` job HAS run done and the plan is still blank, the child is the same fabrication class as any other issue and must be routed, not exempted forever (ISS-819 review r2 finding 4)
+    const exemptCascadeKickoff = !planJobRan && (await isDecompositionChild(args.issueId));
+    if (!exemptCascadeKickoff) {
+      const device = resolveSkipDevice(args.actor, projectCreatedBy);
+      const routedTo: IssueStatus = planJobRan ? 'needs_info' : 'clarified';
+      // cm:edge ordering -> packages/core/src/pipeline/plan-gate-guard.ts — post BEFORE attempting the route, same convention as the needs_info guard below and the park-comment.ts precedent: a null-device or throwing transition must not silence the refusal (ISS-819 review r2 finding 2)
+      await postMissingPlanComment({ issueId: args.issueId, authorId: projectCreatedBy, routedTo });
+      if (device) {
+        try {
+          await applyStatusTransition(liveIssue, routedTo, device, { skip: true });
+        } catch (err) {
+          logger.warn(
+            { err, issueId: args.issueId, to: routedTo },
+            'orchestrator: plan-required guard failed to route',
+          );
+        }
+      } else {
+        logger.warn(
+          { issueId: args.issueId },
+          'orchestrator: plan-required guard has no device principal for status transition',
+        );
+      }
+      logger.info(
+        { issueId: args.issueId, routedTo },
+        'orchestrator: plan-required guard — approved with blank plan, routed',
+      );
+      return;
+    }
+  }
+
+  // cm:why a reopen entered directly from needs_info must never dispatch fix — a fix cannot be scoped from an unanswered question, regardless of what re-triggered the reopen
+  if (jobMap.type === 'fix' && (await reopenEnteredFromNeedsInfo(args.issueId))) {
+    const device = resolveSkipDevice(args.actor, projectCreatedBy);
+    // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — post BEFORE the transition so a failed or no-op route can never silence the refusal (ISS-819 review r2 finding 2). Self-release is separately impossible: the guard releases on hasHumanAnswerSince, which ignores this agent-authored comment (ISS-820)
+    await postNeedsInfoReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
+    if (device) {
+      try {
+        await applyStatusTransition(liveIssue, 'needs_info', device, { skip: true });
+      } catch (err) {
+        logger.warn(
+          { err, issueId: args.issueId },
+          'orchestrator: needs_info-reopen guard failed to route to needs_info',
+        );
+      }
+    } else {
+      logger.warn(
+        { issueId: args.issueId },
+        'orchestrator: needs_info-reopen guard has no device principal for needs_info transition',
+      );
+    }
+    logger.info(
+      { issueId: args.issueId },
+      'orchestrator: needs_info-reopen guard — reopen entered from needs_info, routed back to needs_info',
+    );
+    return;
+  }
+
   // ISS-635 Change B — a `reopen` (the only status mapping to `fix`) with no
   // prior `code`/`fix` job has no branch/commit for forge-fix to patch.
   // Route to `needs_info` instead of dispatching an empty fix.
@@ -569,9 +686,6 @@ async function considerEnqueue(args: {
     return;
   }
 
-  // ISS-239 — reuse the resolver from autoSkipDisabledStages when available
-  // so we don't refetch skill_registrations a second time per hook fire.
-  const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
   const skill = await resolver.resolve(args.status);
   if (!skill) {
     // ISS-238 — refuse + pause + comment instead of silently skipping. Loops
@@ -861,6 +975,7 @@ type SkipIssueRow = {
   status: IssueStatus;
   reopenCount: number;
   complexity: IssueComplexity | null;
+  plan: string | null;
 };
 
 async function loadIssueForSkip(issueId: string): Promise<SkipIssueRow | null> {
@@ -871,6 +986,7 @@ async function loadIssueForSkip(issueId: string): Promise<SkipIssueRow | null> {
       status: issues.status,
       reopenCount: issues.reopenCount,
       complexity: issues.complexity,
+      plan: issues.plan,
     })
     .from(issues)
     .where(eq(issues.id, issueId))
@@ -891,6 +1007,25 @@ function chainMayUseComplexity(start: IssueStatus, cfg: PipelineConfig): boolean
     cursor = STAGE_FORWARD[cursor];
   }
   return false;
+}
+
+/**
+ * ISS-819 (review round 2) — is the plan stage (`clarified`) being
+ * auto-skipped for THIS issue's `complexity`? When `states.clarified` declares
+ * a matching `skipComplexities`, the plan step legitimately never runs and the
+ * issue reaches `approved` with a blank plan by design. The dispatch-side
+ * blank-plan backstop MUST treat the stage as not-live in that case: otherwise
+ * it reroutes `approved → clarified`, `autoSkipDisabledStages` skips straight
+ * back to `approved`, and the pair livelock forever (blank-plan comment on
+ * every cycle). Mirrors `complexityMatches` in `autoSkipDisabledStages`.
+ */
+// cm:edge lockstep -> packages/core/src/pipeline/state-machine.ts — same skipComplexities criterion resolveSkipTarget applies via complexityMatches; if that predicate changes, this must too
+function isPlanStageComplexitySkipped(
+  cfg: PipelineConfig | null,
+  complexity: IssueComplexity | null,
+): boolean {
+  if (!cfg || !complexity) return false;
+  return stageConfigFor(cfg, 'clarified')?.skipComplexities?.includes(complexity) === true;
 }
 
 function resolveSkipDevice(actor: Actor, projectCreatedBy: string | null): DeviceLite | null {

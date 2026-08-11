@@ -6,11 +6,13 @@ vi.mock('../config/env.js', () => ({
 
 // cm:why queued by call order — the mock cannot see which table drizzle targeted, so the three selects are: last departure from the stage, comments since, non-status activity since
 const queue: unknown[][] = [];
+let selectCalls = 0;
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
       from: () => ({
         where: () => {
+          selectCalls += 1;
           const rows = queue.shift() ?? [];
           const chain = {
             limit: async () => rows,
@@ -23,13 +25,16 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { findUnansweredBounce, BOUNCE_STATUSES } = await import('./bounce-replay-guard.js');
+const { findUnansweredBounce, BOUNCE_STATUSES, reopenEnteredFromNeedsInfo } = await import(
+  './bounce-replay-guard.js'
+);
 
 const BOUNCED_AT = new Date('2026-08-01T10:00:00Z');
 const departure = (to: string) => [{ payload: { from: 'approved', to }, createdAt: BOUNCED_AT }];
 
 function setup(...batches: unknown[][]) {
   queue.length = 0;
+  selectCalls = 0;
   queue.push(...batches);
 }
 
@@ -140,6 +145,65 @@ describe('findUnansweredBounce', () => {
       throw new Error('db down');
     };
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    (db as any).select = original;
+  });
+});
+
+describe('reopenEnteredFromNeedsInfo', () => {
+  const enteredReopenFrom = (from: string) => [{ payload: { from, to: 'reopen' } }];
+
+  it('flags a reopen that arrived directly from needs_info with no input since', async () => {
+    setup(enteredReopenFrom('needs_info'), [], []);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(true);
+  });
+
+  it('releases the guard when a human comment followed the needs_info entry', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], [{ id: 'c1' }]);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+  });
+
+  // cm:guard ISS-820 — the release query is already filtered to human comments (isAi=false, no device), so an empty third batch models "only agent comments or bare activity landed". A fix must never be scoped from a question no human answered — this guard's OWN comment is agent-authored and lands right before the needs_info entry it routes to.
+  it('keeps blocking when only agent-authored input followed the needs_info entry', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], []);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(true);
+  });
+
+  // cm:guard the activity-log fallback must stay OUT of the needs_info path — three selects (reopen entry, needs_info entry, human comment) and no fourth, or bare activity silently answers the question again
+  it('issues no activity-log fallback query for the needs_info release check', async () => {
+    setup(enteredReopenFrom('needs_info'), [{ createdAt: BOUNCED_AT }], []);
+    await reopenEnteredFromNeedsInfo('iss-1');
+    expect(selectCalls).toBe(3);
+  });
+
+  it.each(['testing', 'tested', 'developed', 'released', 'closed'])(
+    'ignores a reopen arriving from %s',
+    async (from) => {
+      setup(enteredReopenFrom(from));
+      expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+    },
+  );
+
+  it('allows the dispatch when the issue never entered reopen', async () => {
+    setup([]);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+  });
+
+  it('allows the dispatch when the transition payload has no `from`', async () => {
+    setup([{ payload: { to: 'reopen' } }]);
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
+  });
+
+  // cm:guard fail OPEN — a broken guard must let the pipeline run, never silently freeze every dispatch
+  it('allows the dispatch when the check itself throws', async () => {
+    const { db } = await import('../db/client.js');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    const original = (db as any).select;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    (db as any).select = () => {
+      throw new Error('db down');
+    };
+    expect(await reopenEnteredFromNeedsInfo('iss-1')).toBe(false);
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
     (db as any).select = original;
   });
