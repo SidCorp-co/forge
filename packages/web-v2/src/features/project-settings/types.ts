@@ -92,6 +92,9 @@ export interface PreviewDeployConfig {
 	stagingApiUrl?: string | null;
 	testingUrls?: TestingUrl[];
 	testCredentials?: TestCredential[];
+	/** ISS-767 — how to use the resources above and, more importantly, what they
+	 *  CANNOT do. Read by agents before they plan a live walk. Never a secret. */
+	notes?: string | null;
 	[key: string]: unknown;
 }
 

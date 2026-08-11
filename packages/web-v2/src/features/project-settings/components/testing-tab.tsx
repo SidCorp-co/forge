@@ -7,7 +7,7 @@
 // pattern and the labels-tab add/remove-row UI. Passwords are masked by default
 // with a per-row reveal toggle; values are never logged.
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, CardContent, Field, IconButton, Input } from "@/design";
+import { Button, Card, CardContent, Field, IconButton, Input, Textarea } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { useUpdateProject } from "../hooks";
 import type { PreviewDeployConfig, TestCredential, TestingUrl } from "../types";
@@ -18,12 +18,14 @@ const LABEL_MAX = 80;
 const URL_MAX = 500;
 const USERNAME_MAX = 200;
 const PASSWORD_MAX = 500;
+const NOTES_MAX = 8000;
 
 interface Form {
   stagingUrl: string;
   stagingApiUrl: string;
   testingUrls: TestingUrl[];
   testCredentials: TestCredential[];
+  notes: string;
 }
 
 /** Read the stored jsonb blob into editable form state (defensive — jsonb is
@@ -46,6 +48,7 @@ function parse(raw: unknown): Form {
           password: String((c as TestCredential)?.password ?? ""),
         }))
       : [],
+    notes: typeof pd.notes === "string" ? pd.notes : "",
   };
 }
 
@@ -72,6 +75,7 @@ function canonical(form: Form): string {
     testCredentials: form.testCredentials
       .filter((c) => c.label.trim() !== "")
       .map((c) => ({ label: c.label.trim(), username: c.username.trim(), password: c.password })),
+    notes: form.notes.trim() === "" ? null : form.notes.trim(),
   });
 }
 
@@ -195,12 +199,45 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
       testCredentials: form.testCredentials
         .filter((c) => c.label.trim() !== "")
         .map((c) => ({ label: c.label.trim(), username: c.username.trim(), password: c.password })),
+      notes: form.notes.trim() === "" ? null : form.notes.trim(),
     };
     update.mutate({ previewDeploy });
   }
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardContent>
+          <h2 className="fg-h3 mb-1">How to use these — and what they can&rsquo;t do</h2>
+          <p className="fg-caption mb-4 text-muted">
+            The settings below say what exists. This says how to use them, and which limits
+            they have. Agents read it before planning a live test, so a limit written here is
+            caught while work is still being scoped instead of after the code is finished.
+            Everyone on the project can read it &mdash; never put a password here, use Test
+            credentials below.
+          </p>
+          <Field
+            label="Usage notes"
+            hint="What a test account can and cannot reach, states this environment never contains, anything that must not be faked."
+          >
+            <Textarea
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              disabled={!canEdit}
+              rows={8}
+              maxLength={NOTES_MAX}
+              aria-label="Testing usage notes"
+              placeholder={
+                "e.g.\n- The QA account is not a member of every project — check before promising a live walk.\n- No issue ever rests at the release gate here, so anything triggered by that state cannot be exercised.\n- Runner health must not be faked; it would break live work."
+              }
+            />
+          </Field>
+          <p className="fg-caption mt-2 text-muted">
+            {form.notes.length.toLocaleString()} / {NOTES_MAX.toLocaleString()}
+          </p>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent>
           <h2 className="fg-h3 mb-1">Staging</h2>
