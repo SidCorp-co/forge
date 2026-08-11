@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Fixed a bug where the pipeline could transition an issue to approved without first validating that the plan entry was established.
 - Jobs that hit a temporary per-account spend limit now automatically retry on another account instead of stalling, and budget-capped stages no longer leave a pipeline run stuck.
 - Forge now delivers every skill update through a unified 5-stage pipeline — from authoring through machine enforcement, per-project agent reconciliation, runner convergence, and observation — with a full activity log answering which runners have the update and which do not.
 - Closed a loophole where an automated pipeline step could impersonate a human decision or log an unverified claim as fact.
