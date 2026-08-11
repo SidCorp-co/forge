@@ -167,10 +167,12 @@ async function handleWatcherChildrenReady(payload: HookPayloads['transition']): 
     return;
   }
 
+  // cm:guard ISS-820 — automated system comment; isAi:true so it can't release a needs_info bounce
   await db.insert(comments).values({
     issueId: parent.id,
     authorId: device.ownerId,
     body: `All ${siblings.length} decomposition children reached staging — advancing parent to integration test on staging.`,
+    isAi: true,
   });
 
   try {

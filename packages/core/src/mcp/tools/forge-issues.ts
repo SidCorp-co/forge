@@ -102,6 +102,9 @@ const attachmentInputSchema = z
 const VERIFIED_KEY_RE = /^verified/i;
 const VERIFIED_CLAIM_MAX_NODES = 10_000;
 const VERIFIED_CLAIM_MAX_DEPTH = 64;
+// cm:why matches the ISO-8601 timestamp promised in the violation message — Date.parse alone also accepts non-ISO strings like "2026" or "March 5 2026"
+const ISO_8601_DATETIME_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 function isShapedVerifiedClaim(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -114,7 +117,7 @@ function isShapedVerifiedClaim(value: unknown): boolean {
       evidence.every((e) => typeof e === 'string' && e.length > 0));
   if (!evidenceOk) return false;
   const checkedAt = obj.checkedAt;
-  return typeof checkedAt === 'string' && !Number.isNaN(Date.parse(checkedAt));
+  return typeof checkedAt === 'string' && ISO_8601_DATETIME_RE.test(checkedAt);
 }
 
 interface VerifiedClaimViolation {
@@ -135,8 +138,13 @@ export function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolati
   function walk(node: unknown, path: string, depth: number): VerifiedClaimViolation | null {
     if (boundExceeded) return null;
     nodeCount++;
-    if (nodeCount > VERIFIED_CLAIM_MAX_NODES || depth > VERIFIED_CLAIM_MAX_DEPTH) {
+    if (nodeCount > VERIFIED_CLAIM_MAX_NODES) {
+      // cm:guard ISS-820 — node budget is global (CPU bound): fail-open the whole walk
       boundExceeded = true;
+      return null;
+    }
+    // cm:why depth prunes only this subtree (not global) — a sibling verified* key elsewhere must still be checked, or a one-key-deep decoy bypasses requirement 3
+    if (depth > VERIFIED_CLAIM_MAX_DEPTH) {
       return null;
     }
     if (Array.isArray(node)) {
@@ -1244,9 +1252,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const note = input.data?.note;
         const body = `mark_merged target=${target}${note ? ` — ${note}` : ''}`;
+        // cm:guard ISS-820 — this is an automated MCP-surface audit comment; isAi:true or it reads as a human answer and can release a needs_info bounce
         const [auditComment] = await db
           .insert(comments)
-          .values({ issueId, authorId: device.ownerId, body, parentId: null })
+          .values({ issueId, authorId: device.ownerId, body, parentId: null, isAi: true })
           .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
         if (auditComment) {
           await hooks.emit('commentCreated', {
@@ -1292,9 +1301,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const note = input.data?.note;
         const body = `unmark${note ? ` — ${note}` : ''}`;
+        // cm:guard ISS-820 — automated MCP-surface audit comment; isAi:true so it can't release a needs_info bounce
         const [auditComment] = await db
           .insert(comments)
-          .values({ issueId, authorId: device.ownerId, body, parentId: null })
+          .values({ issueId, authorId: device.ownerId, body, parentId: null, isAi: true })
           .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
         if (auditComment) {
           await hooks.emit('commentCreated', {

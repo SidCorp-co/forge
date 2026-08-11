@@ -289,6 +289,7 @@ export async function transitionIssueStatus(
   // not fail the caller.
   if (txResult?.stampedOnClose) {
     try {
+      // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,
@@ -296,6 +297,7 @@ export async function transitionIssueStatus(
           'merged_at auto-stamped on close — `closed` counts as done, so `blocks`-dependents can now dispatch. ' +
           'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.',
         parentId: null,
+        isAi: true,
       });
     } catch (err) {
       logger.warn(

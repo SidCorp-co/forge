@@ -121,6 +121,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
           body: comments.body,
           parentId: comments.parentId,
           createdAt: comments.createdAt,
+          isAi: comments.isAi,
         })
         .from(comments)
         .where(eq(comments.issueId, input.issueId))
