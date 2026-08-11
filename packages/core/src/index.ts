@@ -400,15 +400,12 @@ app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', uxContractProjectRoutes);
 app.route('/api/projects', projectActivityRoutes);
 app.route('/api/projects', jobProjectRoutes);
+// cm:guard issueAttachmentRoutes MUST mount before issueExtrasRoutes — extras carries `use('*', requireAuth(), assertEmailVerified())`, which covers every /api/issues path, so registered first it answers 401 for the PAT/device callers the attachment routes exist to serve (ISS-719). Disjoint paths do NOT save you; only registration order does. See middleware/route-mount-order.test.ts.
+app.route('/api/issues', issueAttachmentRoutes);
 // issueExtrasRoutes mounts /pipeline-timing (static) and must register before
 // issueRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "pipeline-timing" segment.
 app.route('/api/issues', issueExtrasRoutes);
-// issueAttachmentRoutes (POST/GET /:id/attachments) is mounted BEFORE issueRoutes
-// so its requireAnyAuth() middleware handles attachment requests instead of
-// issueRoutes' stricter requireAuth + assertEmailVerified. Both routers live
-// under /api/issues but cover disjoint paths, so Hono routes correctly.
-app.route('/api/issues', issueAttachmentRoutes);
 // Capability-authenticated attachment upload (presigned-URL pattern). On its own
 // /api/uploads prefix with NO auth middleware — the ticket id minted by
 // forge_uploads is the bearer-free capability. Kept off /api/issues so it is not

@@ -37,7 +37,8 @@ const attachmentIdParamSchema = z.object({ id: z.uuid() });
  * (MCP runners, automation scripts) reach this router directly.
  */
 export const issueAttachmentRoutes = new Hono<{ Variables: AnyAuthVars }>();
-issueAttachmentRoutes.use('*', requireAnyAuth());
+// cm:guard scope this to the attachment path, never `'*'` — mounted under the shared /api/issues prefix a wildcard guard runs on EVERY sibling router's path too, so it would put the weaker requireAnyAuth in front of issueRoutes and issueExtrasRoutes as well (ISS-719)
+issueAttachmentRoutes.use('/:id/attachments', requireAnyAuth());
 
 issueAttachmentRoutes.post(
   '/:id/attachments',
