@@ -349,6 +349,7 @@ adminAggregateRoutes.get(
         .where(sql`${pipelineRuns.startedAt} >= ${cutoff}`),
       db.select({ n: count() }).from(devices).where(eq(devices.status, 'online')),
       db.select({ n: count() }).from(devices),
+      // cm:edge contract -> packages/core/src/admin/alert-queries.ts — this is an independent approximation of A2 (stuck_jobs); Step 4 (thresholds config) unifies them
       db
         .select({ n: count() })
         .from(jobs)

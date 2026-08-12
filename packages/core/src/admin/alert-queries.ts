@@ -1,0 +1,420 @@
+/**
+ * ISS-652 — Tier 1 alert engine, single source of truth. `computeAlerts` is
+ * called by BOTH `admin/alert-routes.ts` (pull, GET /api/admin/alerts) and
+ * `admin/alert-sweeper.ts` (push, writes `notifications`) — neither side ever
+ * inlines its own alert query, so pull and push cannot drift apart.
+ *
+ * Every window cutoff is bound SQL-side (`now() - (n::int * interval ...)`);
+ * postgres-js cannot serialize a JS `Date` at Bind time (ISS-267). An id list
+ * is bound via `sql.join(...IN (...))`, never `= ANY(${jsArray}::uuid[])`,
+ * which drizzle expands as a malformed record tuple.
+ */
+
+import { sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+
+export type AdminAlertId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5';
+export type AdminAlertStatus = 'ok' | 'warn' | 'crit';
+export interface AdminAlertEntity {
+  ref: string;
+  kind: 'job' | 'project' | 'runner' | 'schedule' | 'integration_binding';
+  label: string;
+}
+
+export interface AdminAlert {
+  id: AdminAlertId;
+  key: string;
+  status: AdminAlertStatus;
+  /** True total, NOT entities.length — entities is capped at ENTITY_LIMIT. */
+  count: number;
+  detail: string;
+  /** ISO of the oldest contributing entity; null when status is 'ok'. */
+  since: string | null;
+  entities: AdminAlertEntity[];
+}
+
+export const ENTITY_LIMIT = 20;
+export const DEFAULT_STALE_SECONDS = 600;
+
+export interface AlertQueryOptions {
+  staleSeconds?: number;
+  now?: Date;
+}
+
+const CRIT_STUCK_JOBS = 3;
+
+const STARVED_GRACE_SECONDS = (() => {
+  const env = Number(process.env.FORGE_ALERT_STARVED_GRACE_SECONDS);
+  return Number.isFinite(env) && env > 0 ? env : 300;
+})();
+const CRIT_STARVED_PROJECTS = 3;
+
+// cm:hack ISS-649 until:admin-thresholds-config-lands — ratio-based spend-spike thresholds are a placeholder; Step 4 (admin thresholds config) replaces these env-overridable constants with a configurable ceiling
+const SPEND_WINDOW_HOURS = (() => {
+  const env = Number(process.env.FORGE_ALERT_SPEND_WINDOW_HOURS);
+  return Number.isFinite(env) && env > 0 ? env : 1;
+})();
+const SPEND_WARN_RATIO = (() => {
+  const env = Number(process.env.FORGE_ALERT_SPEND_WARN_RATIO);
+  return Number.isFinite(env) && env > 0 ? env : 2;
+})();
+const SPEND_CRIT_RATIO = (() => {
+  const env = Number(process.env.FORGE_ALERT_SPEND_CRIT_RATIO);
+  return Number.isFinite(env) && env > 0 ? env : 4;
+})();
+const SPEND_MIN_USD = (() => {
+  const env = Number(process.env.FORGE_ALERT_SPEND_MIN_USD);
+  return Number.isFinite(env) && env > 0 ? env : 5;
+})();
+
+const SCHEDULE_WARN_STREAK = 3;
+const SCHEDULE_CRIT_STREAK = 5;
+const DELIVERY_MIN_SAMPLE = 5;
+const DELIVERY_WARN_RATE = 0.5;
+const DELIVERY_CRIT_RATE = 0.8;
+
+export function opsAlertResolutionKey(id: AdminAlertId): string {
+  return `ops-alert:${id}`;
+}
+
+/** crit beats warn beats ok — for combining several contributors into one alert's overall status. */
+export function worstStatus(a: AdminAlertStatus, b: AdminAlertStatus): AdminAlertStatus {
+  const rank: Record<AdminAlertStatus, number> = { ok: 0, warn: 1, crit: 2 };
+  return rank[a] >= rank[b] ? a : b;
+}
+
+/** A2 classification: 'ok' when nothing is stuck; 'crit' at CRIT_STUCK_JOBS or when the oldest offender has waited 4x the stale threshold; 'warn' otherwise. */
+export function classifyStuck(
+  count: number,
+  oldestAgeSeconds: number,
+  staleSeconds: number,
+): AdminAlertStatus {
+  if (count === 0) return 'ok';
+  if (count >= CRIT_STUCK_JOBS || oldestAgeSeconds > staleSeconds * 4) return 'crit';
+  return 'warn';
+}
+
+/** A4 classification: ratio of current window vs the preceding window, gated by an absolute floor so a near-zero baseline can't fire on noise. */
+export function classifySpend(current: number, baseline: number): AdminAlertStatus {
+  if (current < SPEND_MIN_USD) return 'ok';
+  if (baseline <= 0) return 'warn';
+  const ratio = current / baseline;
+  if (ratio >= SPEND_CRIT_RATIO) return 'crit';
+  if (ratio >= SPEND_WARN_RATIO) return 'warn';
+  return 'ok';
+}
+
+/** A5 schedule contributor classification: consecutive trailing failures. */
+export function classifyScheduleStreak(streak: number): AdminAlertStatus {
+  if (streak >= SCHEDULE_CRIT_STREAK) return 'crit';
+  if (streak >= SCHEDULE_WARN_STREAK) return 'warn';
+  return 'ok';
+}
+
+/** A5 integration-delivery contributor classification: fail-rate over the minimum sample. */
+export function classifyDeliveryFailRate(failed: number, total: number): AdminAlertStatus {
+  if (total < DELIVERY_MIN_SAMPLE) return 'ok';
+  const rate = failed / total;
+  if (rate >= DELIVERY_CRIT_RATE) return 'crit';
+  if (rate >= DELIVERY_WARN_RATE) return 'warn';
+  return 'ok';
+}
+
+function pluralJobs(n: number): string {
+  return `${n} job${n === 1 ? '' : 's'}`;
+}
+
+type OrphanRow = { id: string; job_type: string; project_slug: string; queued_at: string };
+
+/** A1 — ISS-258 invariant: a non-terminal job under a terminal pipeline_run. Any count > 0 is crit; the invariant is 0. */
+async function alertOrphanJobs(): Promise<AdminAlert> {
+  const rows = await db.execute<OrphanRow & { total: number }>(sql`
+    SELECT j.id, j.type AS job_type, p.slug AS project_slug, j.queued_at,
+           count(*) OVER ()::int AS total
+    FROM jobs j
+    JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+    JOIN projects p ON p.id = j.project_id
+    WHERE j.status IN ('queued', 'dispatched', 'running')
+      AND r.status IN ('completed', 'failed', 'cancelled')
+    ORDER BY j.queued_at ASC
+    LIMIT ${ENTITY_LIMIT}
+  `);
+  const count = rows[0]?.total ?? 0;
+  return {
+    id: 'A1',
+    key: 'orphan_jobs',
+    status: count > 0 ? 'crit' : 'ok',
+    count,
+    detail:
+      count > 0 ? `${pluralJobs(count)} stuck under a terminal pipeline run` : 'No orphan jobs',
+    since: rows[0]?.queued_at ?? null,
+    entities: rows.map((r) => ({
+      ref: r.id,
+      kind: 'job',
+      label: `${r.job_type} · ${r.project_slug}`,
+    })),
+  };
+}
+
+type StuckRow = { id: string; job_type: string; dispatched_at: string; age_seconds: number };
+
+/** A2 — jobs dispatched or running past staleSeconds (AC 5: BOTH statuses, not dispatched alone). */
+async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
+  const rows = await db.execute<StuckRow & { total: number }>(sql`
+    SELECT j.id, j.type AS job_type, j.dispatched_at,
+           extract(epoch FROM (now() - j.dispatched_at))::int AS age_seconds,
+           count(*) OVER ()::int AS total
+    FROM jobs j
+    WHERE j.status IN ('dispatched', 'running')
+      AND j.dispatched_at IS NOT NULL
+      AND j.dispatched_at < now() - (${staleSeconds}::int * interval '1 second')
+    ORDER BY j.dispatched_at ASC
+    LIMIT ${ENTITY_LIMIT}
+  `);
+  const count = rows[0]?.total ?? 0;
+  const oldestAgeSeconds = rows[0]?.age_seconds ?? 0;
+  return {
+    id: 'A2',
+    key: 'stuck_jobs',
+    status: classifyStuck(count, oldestAgeSeconds, staleSeconds),
+    count,
+    detail:
+      count > 0
+        ? `${pluralJobs(count)} dispatched or running past ${staleSeconds}s`
+        : 'No stuck jobs',
+    since: rows[0]?.dispatched_at ?? null,
+    entities: rows.map((r) => ({
+      ref: r.id,
+      kind: 'job',
+      label: `${r.job_type} · ${Math.round(r.age_seconds / 60)}m`,
+    })),
+  };
+}
+
+type StarvedRow = {
+  project_id: string;
+  slug: string;
+  oldest_queued_at: string;
+  queued_count: number;
+};
+
+/** A3 — a project with jobs queued past the grace window but zero usable (online, not quarantined) runners. */
+async function alertRunnerStarved(): Promise<AdminAlert> {
+  const rows = await db.execute<StarvedRow & { total: number }>(sql`
+    SELECT p.id AS project_id, p.slug, min(j.queued_at) AS oldest_queued_at,
+           count(j.id)::int AS queued_count,
+           count(*) OVER ()::int AS total
+    FROM projects p
+    JOIN jobs j ON j.project_id = p.id
+    WHERE j.status = 'queued'
+      AND j.queued_at < now() - (${STARVED_GRACE_SECONDS}::int * interval '1 second')
+      AND NOT EXISTS (
+        SELECT 1 FROM runners r
+        WHERE r.project_id = p.id
+          AND r.status = 'online'
+          AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
+      )
+    GROUP BY p.id, p.slug
+    ORDER BY min(j.queued_at) ASC
+    LIMIT ${ENTITY_LIMIT}
+  `);
+  const count = rows[0]?.total ?? 0;
+  return {
+    id: 'A3',
+    key: 'runner_starved',
+    status: count >= CRIT_STARVED_PROJECTS ? 'crit' : count >= 1 ? 'warn' : 'ok',
+    count,
+    detail:
+      count > 0
+        ? `${count} project${count === 1 ? '' : 's'} queued with no usable runner`
+        : 'No starved projects',
+    since: rows[0]?.oldest_queued_at ?? null,
+    entities: rows.map((r) => ({
+      ref: r.project_id,
+      kind: 'project',
+      label: `${r.slug} · ${r.queued_count} queued`,
+    })),
+  };
+}
+
+type SpendRow = { project_id: string; slug: string; cur: number; base: number };
+
+/** A4 — current-window spend vs the preceding window of equal length, cross-tenant and per project. */
+async function alertSpendSpike(now: Date): Promise<AdminAlert> {
+  const w = SPEND_WINDOW_HOURS;
+  const [[global], projectRows] = await Promise.all([
+    db.execute<{ cur: number; base: number }>(sql`
+      SELECT
+        coalesce(sum(estimated_cost) FILTER (WHERE recorded_at >= now() - (${w}::int * interval '1 hour')), 0)::float AS cur,
+        coalesce(sum(estimated_cost) FILTER (
+          WHERE recorded_at >= now() - (${w * 2}::int * interval '1 hour')
+            AND recorded_at < now() - (${w}::int * interval '1 hour')
+        ), 0)::float AS base
+      FROM usage_records
+    `),
+    db.execute<SpendRow>(sql`
+      SELECT p.id AS project_id, p.slug,
+        coalesce(sum(u.estimated_cost) FILTER (WHERE u.recorded_at >= now() - (${w}::int * interval '1 hour')), 0)::float AS cur,
+        coalesce(sum(u.estimated_cost) FILTER (
+          WHERE u.recorded_at >= now() - (${w * 2}::int * interval '1 hour')
+            AND u.recorded_at < now() - (${w}::int * interval '1 hour')
+        ), 0)::float AS base
+      FROM projects p
+      JOIN usage_records u ON u.project_id = p.id
+        AND u.recorded_at >= now() - (${w * 2}::int * interval '1 hour')
+      GROUP BY p.id, p.slug
+    `),
+  ]);
+
+  const globalStatus = classifySpend(global?.cur ?? 0, global?.base ?? 0);
+  const overProjects = projectRows
+    .map((r) => ({ ...r, status: classifySpend(r.cur, r.base) }))
+    .filter((r) => r.status !== 'ok')
+    .sort((a, b) => b.cur - a.cur);
+
+  const status = overProjects.reduce((acc, r) => worstStatus(acc, r.status), globalStatus);
+  const windowStart = new Date(now.getTime() - w * 3_600_000).toISOString();
+
+  return {
+    id: 'A4',
+    key: 'spend_spike',
+    status,
+    count: overProjects.length,
+    detail:
+      status === 'ok'
+        ? 'No spend spike'
+        : `Spend is $${(global?.cur ?? 0).toFixed(2)} this window vs $${(global?.base ?? 0).toFixed(2)} baseline`,
+    since: status === 'ok' ? null : windowStart,
+    entities: overProjects.slice(0, ENTITY_LIMIT).map((r) => ({
+      ref: r.project_id,
+      kind: 'project',
+      label: `${r.slug} · $${r.cur.toFixed(2)} vs $${r.base.toFixed(2)}`,
+    })),
+  };
+}
+
+type ScheduleStreakRow = {
+  schedule_id: string;
+  name: string;
+  project_id: string;
+  project_slug: string;
+  streak: number;
+  streak_started_at: string | null;
+};
+
+type DeliveryFailRow = {
+  binding_id: string;
+  provider: string;
+  project_id: string;
+  project_slug: string;
+  failed: number;
+  total: number;
+  oldest_failed_at: string | null;
+};
+
+/** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
+async function alertAutomationFailing(): Promise<AdminAlert> {
+  const [scheduleRows, deliveryRows] = await Promise.all([
+    db.execute<ScheduleStreakRow>(sql`
+      WITH ranked AS (
+        SELECT schedule_id, status, created_at,
+               row_number() OVER (PARTITION BY schedule_id ORDER BY created_at DESC) AS rn
+        FROM schedule_runs
+        WHERE status IN ('success', 'failed')
+      ),
+      first_success AS (
+        SELECT schedule_id, min(rn) AS first_success_rn
+        FROM ranked
+        WHERE status = 'success'
+        GROUP BY schedule_id
+      ),
+      totals AS (
+        SELECT schedule_id, count(*) AS total_runs FROM ranked GROUP BY schedule_id
+      ),
+      streaks AS (
+        SELECT t.schedule_id, coalesce(fs.first_success_rn - 1, t.total_runs)::int AS streak
+        FROM totals t
+        LEFT JOIN first_success fs ON fs.schedule_id = t.schedule_id
+      )
+      SELECT s.id AS schedule_id, s.name, s.project_id, p.slug AS project_slug, st.streak,
+             (SELECT min(r2.created_at) FROM ranked r2 WHERE r2.schedule_id = s.id AND r2.rn <= st.streak) AS streak_started_at
+      FROM streaks st
+      JOIN schedules s ON s.id = st.schedule_id
+      JOIN projects p ON p.id = s.project_id
+      WHERE st.streak >= ${SCHEDULE_WARN_STREAK}
+      ORDER BY st.streak DESC
+      LIMIT ${ENTITY_LIMIT}
+    `),
+    db.execute<DeliveryFailRow>(sql`
+      SELECT b.id AS binding_id, b.provider, b.project_id, p.slug AS project_slug,
+             count(*) FILTER (WHERE d.status = 'failed')::int AS failed,
+             count(*)::int AS total,
+             min(d.created_at) FILTER (WHERE d.status = 'failed') AS oldest_failed_at
+      FROM integration_bindings b
+      JOIN integration_deliveries d ON d.binding_id = b.id
+      JOIN projects p ON p.id = b.project_id
+      WHERE d.status IN ('ok', 'failed')
+        AND d.created_at >= now() - interval '1 hour'
+      GROUP BY b.id, b.provider, b.project_id, p.slug
+      HAVING count(*) >= ${DELIVERY_MIN_SAMPLE}
+      ORDER BY count(*) FILTER (WHERE d.status = 'failed') DESC
+      LIMIT ${ENTITY_LIMIT}
+    `),
+  ]);
+
+  const scheduleContributors = scheduleRows.map((r) => ({
+    entity: {
+      ref: r.schedule_id,
+      kind: 'schedule' as const,
+      label: `${r.name} · ${r.streak} in a row`,
+    },
+    status: classifyScheduleStreak(r.streak),
+    since: r.streak_started_at,
+  }));
+  const deliveryContributors = deliveryRows
+    .map((r) => ({
+      entity: {
+        ref: r.binding_id,
+        kind: 'integration_binding' as const,
+        label: `${r.provider} · ${r.project_slug} · ${r.failed}/${r.total} failed`,
+      },
+      status: classifyDeliveryFailRate(r.failed, r.total),
+      since: r.oldest_failed_at,
+    }))
+    .filter((r) => r.status !== 'ok');
+
+  const contributors = [...scheduleContributors, ...deliveryContributors];
+  const status = contributors.reduce(
+    (acc, c) => worstStatus(acc, c.status),
+    'ok' as AdminAlertStatus,
+  );
+  const sinceTimes = contributors.map((c) => c.since).filter((s): s is string => s !== null);
+  const since = sinceTimes.length > 0 ? (sinceTimes.sort()[0] ?? null) : null;
+
+  return {
+    id: 'A5',
+    key: 'automation_failing',
+    status,
+    count: contributors.length,
+    detail:
+      contributors.length > 0
+        ? `${contributors.length} automation${contributors.length === 1 ? '' : 's'} failing (schedules or integration deliveries)`
+        : 'No automation failures',
+    since,
+    entities: contributors.slice(0, ENTITY_LIMIT).map((c) => c.entity),
+  };
+}
+
+/** Always returns exactly 5 items, ordered A1..A5. Shared by the pull route and the push sweeper. */
+export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<AdminAlert[]> {
+  const staleSeconds = opts.staleSeconds ?? DEFAULT_STALE_SECONDS;
+  const now = opts.now ?? new Date();
+  const [a1, a2, a3, a4, a5] = await Promise.all([
+    alertOrphanJobs(),
+    alertStuckJobs(staleSeconds),
+    alertRunnerStarved(),
+    alertSpendSpike(now),
+    alertAutomationFailing(),
+  ]);
+  return [a1, a2, a3, a4, a5];
+}

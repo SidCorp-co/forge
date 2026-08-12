@@ -8,25 +8,19 @@
  * three sweep passes this file used to own — `sweepZombieSessions`,
  * `reconcileOrphanedJobs`, `reconcileNeverClaimedDispatches` — are DEMOTED to
  * assertion/alarm (renamed `alarm*`): they keep their detection SELECTs but
- * perform NO terminal writes. Because they run in the same tick right AFTER
- * the loop, any row they still match is a row the loop should have handled
- * and didn't — a loop MISS, logged as `loop-miss` and surfaced as a
- * `pipeline_wedge` (coverage proof during the cutover; the alarm passes are
- * deleted at the ISS-442 parent integration once the loop is proven).
+ * perform NO terminal writes. A row they still match is a loop MISS, logged
+ * as `loop-miss` and surfaced as a `pipeline_wedge` (coverage proof during
+ * the cutover; deleted at the ISS-442 parent integration once the loop is
+ * proven).
  *
- * Still active here (not part of the demoted four):
- *
- *  - One-shot run reaper (ISS-445) — closes job-less system/interactive runs
- *    whose backing session is dead. Run-axis, not modeled by the job loop.
- *  - Dispatcher backstop — re-tick `dispatchTickForProject` for every project
- *    that has queued jobs. Event-driven triggers are best-effort and can miss
- *    under race conditions; the backstop guarantees queued jobs are
- *    re-evaluated at least once per minute. `pgboss-health` monitors the
- *    schedule and alerts when this tick stops firing.
- *  - Queue snapshots (ISS-381) — per-project queue-depth observability.
+ * Still active here (not part of the demoted four): the one-shot run reaper
+ * (ISS-445), the dispatcher backstop, queue snapshots (ISS-381), and the
+ * Tier 1 ops alert sweep (ISS-652, shares query logic with GET
+ * /api/admin/alerts via `admin/alert-queries.ts`).
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, agentSessions, comments, issues, jobs } from '../db/schema.js';
 import {
@@ -120,6 +114,8 @@ export interface SweepResult {
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
   retryRescueThresholds: RetryRescueAlertResult;
+  /** ISS-652 — Tier 1 ops alert engine push pass. */
+  alerts: AlertSweepResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -208,6 +204,8 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
     detectRetryRescueThresholds(now),
   );
+  // cm:why ISS-652 — placed before dispatcherBackstop so a slow A4/A5 query (usage_records/schedule_runs/integration_deliveries) cannot delay dispatch
+  const alerts = await runPass('alertSweep', () => runAlertSweep(now));
   const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
   // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
@@ -238,6 +236,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
+    alerts: alerts as AlertSweepResult,
     backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,
   };

@@ -2041,6 +2041,8 @@ export const notificationTypes = [
   // cm:why ISS-762 — `waiting` + merged code is the one issue state that contradicts itself, and nothing else surfaces it
   'issue_stranded',
   'retry_rescue_threshold',
+  // cm:why ISS-652 — one generic type for all 5 Tier 1 ops alerts; identity is carried in resolutionKey (ops-alert:A1..A5), not a per-alert type
+  'ops_alert',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

@@ -39,6 +39,16 @@ vi.mock('./retry-rescue-alert.js', () => ({
   detectRetryRescueThresholds: (now?: Date) => detectRetryRescueThresholdsMock(now),
 }));
 
+// cm:why ISS-652 — alertSweep issues its own real db.execute calls (alert-queries.ts); this suite's db.execute mock is a single shared mockResolvedValueOnce queue, so an unmocked pass would silently consume another pass's queued result
+const runAlertSweepMock = vi.fn(async (_now?: Date) => ({
+  evaluated: 0,
+  notified: 0,
+  resolved: 0,
+}));
+vi.mock('../admin/alert-sweeper.js', () => ({
+  runAlertSweep: (now?: Date) => runAlertSweepMock(now),
+}));
+
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
 // ISS-445 — db.select(...).from(...).where(...) result, used by
@@ -188,6 +198,8 @@ beforeEach(() => {
   emitWedgeMock.mockClear();
   detectRetryRescueThresholdsMock.mockClear();
   detectRetryRescueThresholdsMock.mockResolvedValue({ detected: 0, notified: 0 });
+  runAlertSweepMock.mockClear();
+  runAlertSweepMock.mockResolvedValue({ evaluated: 0, notified: 0, resolved: 0 });
   runLoopMonitorMock.mockClear();
   runLoopMonitorMock.mockResolvedValue({
     ackMisses: zeroAxis,
@@ -205,6 +217,17 @@ describe('runPipelineSweep — retry rescue thresholds', () => {
 
     expect(detectRetryRescueThresholdsMock).toHaveBeenCalledTimes(1);
     expect(result.retryRescueThresholds).toEqual({ detected: 1, notified: 1 });
+  });
+});
+
+describe('runPipelineSweep — alert sweep (ISS-652)', () => {
+  it('runs the alert sweep and exposes its result', async () => {
+    runAlertSweepMock.mockResolvedValueOnce({ evaluated: 5, notified: 2, resolved: 1 });
+
+    const result = await runPipelineSweep();
+
+    expect(runAlertSweepMock).toHaveBeenCalledTimes(1);
+    expect(result.alerts).toEqual({ evaluated: 5, notified: 2, resolved: 1 });
   });
 });
 
