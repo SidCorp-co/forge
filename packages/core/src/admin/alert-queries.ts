@@ -274,12 +274,14 @@ async function alertSpendSpike(now: Date): Promise<AdminAlert> {
 
   const status = overProjects.reduce((acc, r) => worstStatus(acc, r.status), globalStatus);
   const windowStart = new Date(now.getTime() - w * 3_600_000).toISOString();
+  // cm:guard count must stay >= 1 whenever status !== 'ok' — a global-only fire (no project individually crosses the ratio) still counts 1: the deployment. A consumer filtering on count > 0 must never silently drop a live spend spike.
+  const count = status === 'ok' ? 0 : Math.max(overProjects.length, 1);
 
   return {
     id: 'A4',
     key: 'spend_spike',
     status,
-    count: overProjects.length,
+    count,
     detail:
       status === 'ok'
         ? 'No spend spike'

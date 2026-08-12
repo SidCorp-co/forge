@@ -121,6 +121,19 @@ describe('admin alert routes (ISS-652)', () => {
     return id;
   }
 
+  async function insertUsage(args: {
+    projectId: string | null;
+    cost: number;
+    recordedAgoHours: number;
+  }): Promise<void> {
+    const id = randomUUID();
+    const recordedAt = new Date(Date.now() - args.recordedAgoHours * 3_600_000).toISOString();
+    await harness.db.execute(sql`
+      INSERT INTO usage_records (id, project_id, source, model, estimated_cost, recorded_at)
+      VALUES (${id}, ${args.projectId}, 'api', 'test-model', ${args.cost}, ${recordedAt})
+    `);
+  }
+
   describe('auth gate', () => {
     it('401s an unauthenticated request', async () => {
       const res = await app.request('/api/admin/alerts');
@@ -225,6 +238,42 @@ describe('admin alert routes (ISS-652)', () => {
       });
       const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
+    });
+
+    it('A4 fires crit for a project whose current-window spend ratio clears the crit threshold', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      await insertUsage({ projectId: project.id, cost: 20, recordedAgoHours: 0.5 });
+      await insertUsage({ projectId: project.id, cost: 2, recordedAgoHours: 1.5 });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const a4 = body.find((a) => a.id === 'A4');
+      expect(a4?.status).toBe('crit');
+      expect(a4?.count).toBeGreaterThanOrEqual(1);
+    });
+
+    // cm:guard regression guard for the plan-review fix: a global-only fire (no single project individually crosses the ratio — e.g. project_id-less system usage) must still report count >= 1, never 0, or a consumer filtering on count > 0 silently drops a live spend spike
+    it('A4 count stays >= 1 on a global-only fire with no per-project contributor', async () => {
+      await insertUsage({ projectId: null, cost: 20, recordedAgoHours: 0.5 });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+        entities: unknown[];
+      }>;
+      const a4 = body.find((a) => a.id === 'A4');
+      expect(a4?.status).not.toBe('ok');
+      expect(a4?.entities).toHaveLength(0);
+      expect(a4?.count).toBeGreaterThanOrEqual(1);
     });
 
     it('A1 is crit for a job orphaned under a terminal pipeline_run', async () => {
