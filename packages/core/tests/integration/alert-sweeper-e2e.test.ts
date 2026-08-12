@@ -135,18 +135,22 @@ describe('runAlertSweep E2E (ISS-652)', () => {
 
   async function opsAlertRows(resolutionKey = 'ops-alert:A1') {
     const rows = await harness.db.execute<{
+      id: string;
       user_id: string;
       severity: string | null;
       read: boolean;
+      resolved_at: Date | null;
       resolution_key: string;
     }>(sql`
-      SELECT user_id, severity, read, resolution_key FROM notifications
+      SELECT id, user_id, severity, read, resolved_at, resolution_key FROM notifications
       WHERE type = 'ops_alert' AND resolution_key = ${resolutionKey}
     `);
     return rows as unknown as Array<{
+      id: string;
       user_id: string;
       severity: string | null;
       read: boolean;
+      resolved_at: Date | null;
       resolution_key: string;
     }>;
   }
@@ -178,6 +182,26 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect((await opsAlertRows()).length).toBe(countAfterFirst);
   });
 
+  it('does not re-alert after an active notification is acknowledged', async () => {
+    await seedAdmin();
+    await seedOrphan();
+
+    await mods.runAlertSweep(nextNow());
+    const [created] = await opsAlertRows();
+    expect(created).toBeDefined();
+    await harness.db.execute(sql`
+      UPDATE notifications SET read = true WHERE id = ${created?.id}
+    `);
+
+    const repeated = await mods.runAlertSweep(nextNow());
+    const rows = await opsAlertRows();
+    expect(repeated.notified).toBe(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(created?.id);
+    expect(rows[0]?.read).toBe(true);
+    expect(rows[0]?.resolved_at).toBeNull();
+  });
+
   it('clears via resolveNotifications once the orphan is gone', async () => {
     await seedAdmin();
     const { jobId } = await seedOrphan();
@@ -188,7 +212,7 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     await clearOrphan(jobId);
     const cleared = await mods.runAlertSweep(nextNow());
     expect(cleared.resolved).toBeGreaterThan(0);
-    expect((await opsAlertRows()).every((r) => r.read)).toBe(true);
+    expect((await opsAlertRows()).every((r) => r.read && r.resolved_at !== null)).toBe(true);
   });
 
   // cm:why no seedAdmin() call — ADMIN_EMAILS is non-empty (set in beforeAll) but no users row matches it, so platformAdminUserIds() is empty

@@ -19,7 +19,7 @@ export interface AlertSweepResult {
   resolved: number;
 }
 
-// cm:why an in-process gate resets on restart, so re-running one extra sweep right after a deploy is harmless — dedup is DB-backed (the unread-row check below), not this gate
+// cm:why an in-process gate resets on restart, so re-running one extra sweep right after a deploy is harmless — dedup is DB-backed (the active-row claim below), not this gate
 const ALERT_SWEEP_INTERVAL_MS = (() => {
   const env = Number(process.env.FORGE_ALERT_SWEEP_INTERVAL_MS);
   return Number.isFinite(env) && env > 0 ? env : 5 * 60_000;
@@ -37,19 +37,19 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
 
 /**
  * Atomically claim (or escalate) this admin's ops-alert row. Backed by the
- * `notifications_user_resolution_key_unread_uq` partial unique index (one
- * unread `ops_alert` row per `(user_id, resolution_key)`), so this is safe
+ * `notifications_user_resolution_key_active_ops_alert_uq` partial unique index
+ * (one active `ops_alert` row per `(user_id, resolution_key)`), so this is safe
  * under concurrent sweepers (multiple core replicas) — unlike a
  * check-then-insert.
  *
- * - No unread row yet for this admin+key → `INSERT ... ON CONFLICT DO NOTHING`
+ * - No active row yet for this admin+key → `INSERT ... ON CONFLICT DO NOTHING`
  *   claims it; a losing race just no-ops (the winner already claimed it).
- * - An unread row already exists at a different severity (escalation, e.g.
+ * - An active row already exists at a different severity (escalation, e.g.
  *   warn -> crit) → updated in place; the unique index means there is never a
  *   second row to reconcile.
- * - An unread row exists at the same severity → no-op.
+ * - An active row exists at the same severity → no-op.
  */
-// cm:why escalation updates in place instead of the plan's resolve-then-re-emit — the unique index allows only one unread row per (user, key), and a resolved-then-recreated pair would report the live condition as both cleared and open
+// cm:why escalation updates the active row instead of resolving then re-emitting — the active-row index preserves one incident per recipient/key until the condition itself clears
 async function claimOrEscalate(input: {
   userId: string;
   title: string;
@@ -62,7 +62,7 @@ async function claimOrEscalate(input: {
   const claimed = await db.execute<{ id: string }>(sql`
     INSERT INTO notifications (user_id, project_id, type, title, body, severity, resolution_key, read, created_at)
     VALUES (${userId}, NULL, 'ops_alert', ${title}, ${body}, ${severity}, ${resolutionKey}, false, now())
-    ON CONFLICT (user_id, resolution_key) WHERE read = false AND resolution_key IS NOT NULL AND type = 'ops_alert' DO NOTHING
+    ON CONFLICT (user_id, resolution_key) WHERE resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert' DO NOTHING
     RETURNING id
   `);
   let notificationId = claimed[0]?.id;
@@ -72,7 +72,7 @@ async function claimOrEscalate(input: {
       UPDATE notifications
       SET severity = ${severity}, title = ${title}, body = ${body}
       WHERE user_id = ${userId} AND resolution_key = ${resolutionKey}
-        AND type = 'ops_alert' AND read = false AND severity IS DISTINCT FROM ${severity}
+        AND type = 'ops_alert' AND resolved_at IS NULL AND severity IS DISTINCT FROM ${severity}
       RETURNING id
     `);
     notificationId = escalated[0]?.id;

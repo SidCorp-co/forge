@@ -86,6 +86,9 @@ describe('admin alert routes (ISS-652)', () => {
     projectId: string;
     runId: string;
     status: string;
+    type?: string;
+    payload?: Record<string, unknown>;
+    runnerId?: string | null;
     dispatchedAgoMinutes?: number;
     queuedAgoMinutes?: number;
   }): Promise<string> {
@@ -99,9 +102,10 @@ describe('admin alert routes (ISS-652)', () => {
         ? new Date().toISOString()
         : new Date(Date.now() - args.queuedAgoMinutes * 60_000).toISOString();
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by, queued_at, dispatched_at)
+      INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, runner_id, created_by, queued_at, dispatched_at)
       VALUES (
-        ${id}, ${args.projectId}, 'code', ${args.status}, '{}'::jsonb, ${args.runId},
+        ${id}, ${args.projectId}, ${args.type ?? 'code'}, ${args.status},
+        ${JSON.stringify(args.payload ?? {})}::jsonb, ${args.runId}, ${args.runnerId ?? null},
         (SELECT created_by FROM projects WHERE id = ${args.projectId}), ${queuedAt}, ${dispatchedAt}
       )
     `);
@@ -111,6 +115,7 @@ describe('admin alert routes (ISS-652)', () => {
   async function insertRunner(args: {
     projectId: string;
     status: string;
+    capabilities?: Record<string, unknown>;
     quarantinedUntil?: string | null;
     // cm:why defaults to a fresh heartbeat (now), like a real 'online' runner; override to simulate the A3 staleness/rate-limit contributors
     lastSeenAt?: string | null;
@@ -118,10 +123,10 @@ describe('admin alert routes (ISS-652)', () => {
   }): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, name, status, quarantined_until, last_seen_at, rate_limited_until)
+      INSERT INTO runners (id, project_id, type, host, name, status, capabilities, quarantined_until, last_seen_at, rate_limited_until)
       VALUES (
         ${id}, ${args.projectId}, 'claude-code', 'remote', 'test-runner', ${args.status},
-        ${args.quarantinedUntil ?? null},
+        ${JSON.stringify(args.capabilities ?? {})}::jsonb, ${args.quarantinedUntil ?? null},
         ${args.lastSeenAt === undefined ? new Date().toISOString() : args.lastSeenAt},
         ${args.rateLimitedUntil ?? null}
       )
@@ -170,6 +175,38 @@ describe('admin alert routes (ISS-652)', () => {
     `);
   }
 
+  async function insertPromptSchedule(projectId: string): Promise<string> {
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO schedules (id, project_id, name, cron, kind, enabled)
+      VALUES (${id}, ${projectId}, 'prompt alert fixture', '0 * * * *', 'prompt', true)
+    `);
+    return id;
+  }
+
+  async function insertPromptSession(args: {
+    projectId: string;
+    scheduleId: string;
+    status: 'completed' | 'completed_via_recovery' | 'cancelled_stale' | 'failed';
+    createdAgoMinutes: number;
+  }): Promise<void> {
+    const runId = randomUUID();
+    const sessionId = randomUUID();
+    const createdAt = new Date(Date.now() - args.createdAgoMinutes * 60_000).toISOString();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at)
+      VALUES (${runId}, ${args.projectId}, 'system', 'completed', ${createdAt}, now())
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata, created_at, updated_at)
+      VALUES (
+        ${sessionId}, ${args.projectId}, ${runId}, ${args.status},
+        ${JSON.stringify({ source: 'schedule.run', scheduleId: args.scheduleId })}::jsonb,
+        ${createdAt}, ${createdAt}
+      )
+    `);
+  }
+
   describe('auth gate', () => {
     it('401s an unauthenticated request', async () => {
       const res = await app.request('/api/admin/alerts');
@@ -196,7 +233,11 @@ describe('admin alert routes (ISS-652)', () => {
       });
       expect(res.status).toBe(200);
       expect(res.headers.get('X-Total-Count')).toBe('5');
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       expect(body.map((a) => a.id)).toEqual(['A1', 'A2', 'A3', 'A4', 'A5']);
       for (const alert of body) expect(alert.status).toBe('ok');
       expect(body[0]?.count).toBe(0);
@@ -229,7 +270,11 @@ describe('admin alert routes (ISS-652)', () => {
       const res = await app.request('/api/admin/alerts?staleSeconds=600', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       const a2 = body.find((a) => a.id === 'A2');
       expect(a2?.count).toBe(3);
       expect(a2?.status).not.toBe('ok');
@@ -237,7 +282,10 @@ describe('admin alert routes (ISS-652)', () => {
       const clearRes = await app.request('/api/admin/alerts?staleSeconds=86400', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
+      const clearBody = (await clearRes.json()) as Array<{
+        id: string;
+        status: string;
+      }>;
       expect(clearBody.find((a) => a.id === 'A2')?.status).toBe('ok');
     });
 
@@ -261,7 +309,11 @@ describe('admin alert routes (ISS-652)', () => {
       const res = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       const a3 = body.find((a) => a.id === 'A3');
       expect(a3?.status).not.toBe('ok');
       expect(a3?.count).toBeGreaterThanOrEqual(1);
@@ -272,12 +324,14 @@ describe('admin alert routes (ISS-652)', () => {
       const clearRes = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
+      const clearBody = (await clearRes.json()) as Array<{
+        id: string;
+        status: string;
+      }>;
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
     });
 
-    // cm:guard regression guard for the review fix: A3's "usable runner" must mirror
-    // the actual dispatch gate — online + unquarantined is NOT sufficient on its own.
+    // cm:guard A3 must mirror the dispatch gate — online + unquarantined is insufficient when a runner is stale, rate-limited, full, or lacks the queued job's required capabilities
     it('A3 fires when the only runner is online but its heartbeat is stale', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
@@ -298,14 +352,21 @@ describe('admin alert routes (ISS-652)', () => {
       const res = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
 
       await harness.db.execute(sql`UPDATE runners SET last_seen_at = now() WHERE id = ${runnerId}`);
       const clearRes = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
+      const clearBody = (await clearRes.json()) as Array<{
+        id: string;
+        status: string;
+      }>;
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
     });
 
@@ -329,7 +390,11 @@ describe('admin alert routes (ISS-652)', () => {
       const res = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
 
       await harness.db.execute(
@@ -338,21 +403,101 @@ describe('admin alert routes (ISS-652)', () => {
       const clearRes = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
+      const clearBody = (await clearRes.json()) as Array<{
+        id: string;
+        status: string;
+      }>;
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
     });
 
-    it('A4 fires crit for a project whose current-window spend ratio clears the crit threshold', async () => {
+    it('A3 fires when the only capable runner is at capacity', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
-      await insertUsage({ projectId: project.id, cost: 20, recordedAgoHours: 0.5 });
-      await insertUsage({ projectId: project.id, cost: 2, recordedAgoHours: 1.5 });
+      const run = await insertRun(project.id, 'running');
+      const runnerId = await insertRunner({
+        projectId: project.id,
+        status: 'online',
+      });
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        status: 'running',
+        runnerId,
+        dispatchedAgoMinutes: 1,
+      });
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        status: 'queued',
+        queuedAgoMinutes: 10,
+      });
 
       const token = await adminToken();
       const res = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{ id: string; status: string }>;
+      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
+
+      await harness.db.execute(sql`UPDATE jobs SET status = 'done' WHERE runner_id = ${runnerId}`);
+      const clearRes = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const clearBody = (await clearRes.json()) as Array<{
+        id: string;
+        status: string;
+      }>;
+      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
+    });
+
+    it('A3 fires when no runner satisfies the queued job capabilities', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const run = await insertRun(project.id, 'running');
+      await insertRunner({
+        projectId: project.id,
+        status: 'online',
+        capabilities: { gpu: false },
+      });
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        status: 'queued',
+        queuedAgoMinutes: 10,
+        payload: { requiredCapabilities: { gpu: true } },
+      });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string }>;
+      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
+    });
+
+    it('A4 fires crit for a project whose current-window spend ratio clears the crit threshold', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      await insertUsage({
+        projectId: project.id,
+        cost: 20,
+        recordedAgoHours: 0.5,
+      });
+      await insertUsage({
+        projectId: project.id,
+        cost: 2,
+        recordedAgoHours: 1.5,
+      });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       const a4 = body.find((a) => a.id === 'A4');
       expect(a4?.status).toBe('crit');
       expect(a4?.count).toBeGreaterThanOrEqual(1);
@@ -388,7 +533,11 @@ describe('admin alert routes (ISS-652)', () => {
         await insertDelivery({ bindingId, direction: 'inbound', status: 'ok' });
       }
       for (let i = 0; i < 4; i++) {
-        await insertDelivery({ bindingId, direction: 'outbound', status: 'failed' });
+        await insertDelivery({
+          bindingId,
+          direction: 'outbound',
+          status: 'failed',
+        });
       }
       await insertDelivery({ bindingId, direction: 'outbound', status: 'ok' });
 
@@ -396,7 +545,11 @@ describe('admin alert routes (ISS-652)', () => {
       const res = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       const a5 = body.find((a) => a.id === 'A5');
       expect(a5?.status).not.toBe('ok');
       expect(a5?.count).toBeGreaterThanOrEqual(1);
@@ -408,10 +561,18 @@ describe('admin alert routes (ISS-652)', () => {
       const bindingId = await insertBinding(project.id);
 
       for (let i = 0; i < 5; i++) {
-        await insertDelivery({ bindingId, direction: 'inbound', status: 'failed' });
+        await insertDelivery({
+          bindingId,
+          direction: 'inbound',
+          status: 'failed',
+        });
       }
       for (let i = 0; i < 5; i++) {
-        await insertDelivery({ bindingId, direction: 'outbound', status: 'ok' });
+        await insertDelivery({
+          bindingId,
+          direction: 'outbound',
+          status: 'ok',
+        });
       }
 
       const token = await adminToken();
@@ -420,6 +581,48 @@ describe('admin alert routes (ISS-652)', () => {
       });
       const body = (await res.json()) as Array<{ id: string; status: string }>;
       expect(body.find((a) => a.id === 'A5')?.status).toBe('ok');
+    });
+
+    it('A5 catches a trailing failure streak from prompt schedule sessions', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const scheduleId = await insertPromptSchedule(project.id);
+      for (let i = 0; i < 3; i++) {
+        await insertPromptSession({
+          projectId: project.id,
+          scheduleId,
+          status: 'failed',
+          createdAgoMinutes: 3 - i,
+        });
+      }
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
+      const a5 = body.find((a) => a.id === 'A5');
+      expect(a5?.status).toBe('warn');
+      expect(a5?.count).toBe(1);
+
+      await insertPromptSession({
+        projectId: project.id,
+        scheduleId,
+        status: 'completed_via_recovery',
+        createdAgoMinutes: 0,
+      });
+      const clearRes = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const clearBody = (await clearRes.json()) as Array<{
+        id: string;
+        status: string;
+      }>;
+      expect(clearBody.find((a) => a.id === 'A5')?.status).toBe('ok');
     });
 
     it('A1 is crit for a job orphaned under a terminal pipeline_run', async () => {
@@ -440,7 +643,11 @@ describe('admin alert routes (ISS-652)', () => {
       const res = await app.request('/api/admin/alerts', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const body = (await res.json()) as Array<{
+        id: string;
+        status: string;
+        count: number;
+      }>;
       const a1 = body.find((a) => a.id === 'A1');
       expect(a1?.status).toBe('crit');
       expect(a1?.count).toBe(1);

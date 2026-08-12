@@ -12,6 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { RUNNER_CAP_PER_RUNNER } from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { NOT_DISABLED_DEVICE, NOT_QUARANTINED } from '../runners/select.js';
 
@@ -84,7 +85,11 @@ export function opsAlertResolutionKey(id: AdminAlertId): string {
   return `ops-alert:${id}`;
 }
 
-const STATUS_RANK: Record<AdminAlertStatus, number> = { ok: 0, warn: 1, crit: 2 };
+const STATUS_RANK: Record<AdminAlertStatus, number> = {
+  ok: 0,
+  warn: 1,
+  crit: 2,
+};
 
 /** crit beats warn beats ok — for combining several contributors into one alert's overall status. */
 export function worstStatus(a: AdminAlertStatus, b: AdminAlertStatus): AdminAlertStatus {
@@ -132,7 +137,12 @@ function pluralJobs(n: number): string {
   return `${n} job${n === 1 ? '' : 's'}`;
 }
 
-type OrphanRow = { id: string; job_type: string; project_slug: string; queued_at: string };
+type OrphanRow = {
+  id: string;
+  job_type: string;
+  project_slug: string;
+  queued_at: string;
+};
 
 /** A1 — ISS-258 invariant: a non-terminal job under a terminal pipeline_run. Any count > 0 is crit; the invariant is 0. */
 async function alertOrphanJobs(): Promise<AdminAlert> {
@@ -164,7 +174,12 @@ async function alertOrphanJobs(): Promise<AdminAlert> {
   };
 }
 
-type StuckRow = { id: string; job_type: string; dispatched_at: string; age_seconds: number };
+type StuckRow = {
+  id: string;
+  job_type: string;
+  dispatched_at: string;
+  age_seconds: number;
+};
 
 /** A2 — jobs dispatched or running past staleSeconds (AC 5: BOTH statuses, not dispatched alone). */
 async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
@@ -210,31 +225,49 @@ type StarvedRow = {
  * A3 — a project with jobs queued past the grace window but zero DISPATCHABLE
  * runners. "Usable" mirrors the actual dispatch gate (`fresh_capable_runners`
  * in jobs/dispatch-gates.ts + runners/select.ts), not just online+unquarantined:
- * a stale heartbeat, an active rate limit, or a disabled device all make a
- * runner just as unusable as being offline or quarantined.
+ * a stale heartbeat, active rate limit, disabled device, full slot, or missing
+ * per-job capability all make a runner unable to accept that queued job.
  */
 async function alertRunnerStarved(): Promise<AdminAlert> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const rows = await db.execute<StarvedRow & { total: number }>(sql`
-    SELECT p.id AS project_id, p.slug, min(j.queued_at) AS oldest_queued_at,
-           count(j.id)::int AS queued_count,
+    WITH runner_load AS (
+      SELECT j.runner_id, count(*)::int AS in_flight
+      FROM jobs j
+      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+      WHERE j.runner_id IS NOT NULL
+        AND j.status IN ('dispatched', 'running')
+        AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
+      GROUP BY j.runner_id
+    ),
+    starved_jobs AS (
+      SELECT j.id, j.project_id, j.queued_at
+      FROM jobs j
+      JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+      WHERE j.status = 'queued'
+        AND pr.status = 'running'
+        AND j.queued_at < now() - (${STARVED_GRACE_SECONDS}::int * interval '1 second')
+        AND NOT EXISTS (
+          SELECT 1 FROM runners r
+          LEFT JOIN runner_load rl ON rl.runner_id = r.id
+          WHERE r.project_id = j.project_id
+            AND r.status = 'online'
+            AND r.last_seen_at IS NOT NULL
+            AND r.last_seen_at > now() - (${livenessSeconds}::int * interval '1 second')
+            AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+            AND r.capabilities @> coalesce(j.payload -> 'requiredCapabilities', '{}'::jsonb)
+            AND coalesce(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
+            ${NOT_QUARANTINED}
+            ${NOT_DISABLED_DEVICE}
+        )
+    )
+    SELECT p.id AS project_id, p.slug, min(sj.queued_at) AS oldest_queued_at,
+           count(sj.id)::int AS queued_count,
            count(*) OVER ()::int AS total
     FROM projects p
-    JOIN jobs j ON j.project_id = p.id
-    WHERE j.status = 'queued'
-      AND j.queued_at < now() - (${STARVED_GRACE_SECONDS}::int * interval '1 second')
-      AND NOT EXISTS (
-        SELECT 1 FROM runners r
-        WHERE r.project_id = p.id
-          AND r.status = 'online'
-          AND r.last_seen_at IS NOT NULL
-          AND r.last_seen_at > now() - (${livenessSeconds}::int * interval '1 second')
-          AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
-          ${NOT_QUARANTINED}
-          ${NOT_DISABLED_DEVICE}
-      )
+    JOIN starved_jobs sj ON sj.project_id = p.id
     GROUP BY p.id, p.slug
-    ORDER BY min(j.queued_at) ASC
+    ORDER BY min(sj.queued_at) ASC
     LIMIT ${ENTITY_LIMIT}
   `);
   const count = rows[0]?.total ?? 0;
@@ -353,16 +386,28 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
     // cm:why no LIMIT here — `count` is documented as the true contributor total, so capping in SQL would understate it past ENTITY_LIMIT streaking schedules; only the display `entities` list is truncated
     // cm:why the enabled + last_run_at gate is what lets A5 reach 'ok' again — a streak on a schedule nobody runs any more never clears on its own
     db.execute<ScheduleStreakRow>(sql`
-      WITH ranked AS (
-        SELECT schedule_id, status, created_at,
-               row_number() OVER (PARTITION BY schedule_id ORDER BY created_at DESC) AS rn
+      WITH schedule_events AS (
+        SELECT schedule_id::text, status = 'success' AS succeeded, created_at
         FROM schedule_runs
         WHERE status IN ('success', 'failed')
+        UNION ALL
+        SELECT metadata ->> 'scheduleId' AS schedule_id,
+               status IN ('completed', 'completed_via_recovery', 'cancelled_stale') AS succeeded,
+               updated_at AS created_at
+        FROM agent_sessions
+        WHERE metadata ->> 'source' = 'schedule.run'
+          AND metadata ->> 'scheduleId' IS NOT NULL
+          AND status IN ('completed', 'completed_via_recovery', 'cancelled_stale', 'failed')
+      ),
+      ranked AS (
+        SELECT schedule_id, succeeded, created_at,
+               row_number() OVER (PARTITION BY schedule_id ORDER BY created_at DESC) AS rn
+        FROM schedule_events
       ),
       first_success AS (
         SELECT schedule_id, min(rn) AS first_success_rn
         FROM ranked
-        WHERE status = 'success'
+        WHERE succeeded
         GROUP BY schedule_id
       ),
       totals AS (
@@ -376,9 +421,9 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
         LEFT JOIN first_success fs ON fs.schedule_id = t.schedule_id
       )
       SELECT s.id AS schedule_id, s.name, s.project_id, p.slug AS project_slug, st.streak,
-             (SELECT min(r2.created_at) FROM ranked r2 WHERE r2.schedule_id = s.id AND r2.rn <= st.streak) AS streak_started_at
+             (SELECT min(r2.created_at) FROM ranked r2 WHERE r2.schedule_id = s.id::text AND r2.rn <= st.streak) AS streak_started_at
       FROM streaks st
-      JOIN schedules s ON s.id = st.schedule_id
+      JOIN schedules s ON s.id::text = st.schedule_id
       JOIN projects p ON p.id = s.project_id
       WHERE st.streak >= ${SCHEDULE_WARN_STREAK}
         AND s.enabled = true
