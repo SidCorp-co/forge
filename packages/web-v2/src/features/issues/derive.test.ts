@@ -440,9 +440,79 @@ describe("deriveBlockerState", () => {
     expect(b?.question).toBe("Which environment?");
   });
 
-  it("waiting → approve action", () => {
+  it("waiting → approve action (no waitingCause, e.g. pre-828 server)", () => {
     const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined);
     expect(b?.cta.kind).toBe("approve");
+  });
+
+  describe("waiting → waitingCause (ISS-828)", () => {
+    it("plan_approval → approve action, unchanged copy", () => {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "waiting" }),
+        { stage: "waiting", waitingCause: { kind: "plan_approval" } },
+        undefined,
+      );
+      expect(b?.cta.kind).toBe("approve");
+      expect(b?.reason).toContain("awaiting human approval");
+    });
+
+    it("decompose_parent → approve action verbatim (AC#2)", () => {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "waiting" }),
+        { stage: "waiting", waitingCause: { kind: "decompose_parent" } },
+        undefined,
+      );
+      expect(b?.cta.kind).toBe("approve");
+      expect(b?.reason).toContain("awaiting human approval");
+    });
+
+    it("reopen_cap → override-resume action, never a bare approve (AC#3)", () => {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "waiting" }),
+        { stage: "waiting", waitingCause: { kind: "reopen_cap" } },
+        undefined,
+      );
+      expect(b?.cta.kind).toBe("override-resume");
+      expect(b?.reason).toContain("reopen limit");
+    });
+
+    it("retry_exhausted → reopen action, not resume (AC#4)", () => {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "waiting" }),
+        { stage: "waiting", waitingCause: { kind: "retry_exhausted" } },
+        undefined,
+      );
+      expect(b?.cta.kind).toBe("reopen");
+      expect(b?.reason).toContain("retry budget");
+    });
+
+    it("merged_parked → no CTA, points at the comment thread", () => {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "waiting" }),
+        { stage: "waiting", waitingCause: { kind: "merged_parked" } },
+        undefined,
+      );
+      expect(b?.cta.kind).toBe("none");
+      expect(b?.reason).toContain("already merged");
+    });
+
+    it("a dependency closed-without-merging still wins over the generic plan_approval copy", () => {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "waiting" }),
+        {
+          stage: "waiting",
+          waitingCause: { kind: "plan_approval" },
+          waitingOn: {
+            reason: "waiting_on_dep",
+            since: "x",
+            details: { blockerIssueIds: ["blk-1"], closedUnmergedBlockerIssueIds: ["blk-1"] },
+          },
+        },
+        incomingBlocks({ fromStatus: "closed" }),
+      );
+      expect(b?.reason).toContain("closed without");
+      expect(b?.cta.kind).toBe("open-blocker");
+    });
   });
 
   it("on_hold status → resume action", () => {

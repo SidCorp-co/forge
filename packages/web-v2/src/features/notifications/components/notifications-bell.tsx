@@ -11,9 +11,8 @@
 // absolutely positioned against it).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { NotificationsMenu } from "@/design";
+import { ConfirmDialog, NotificationsMenu } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
-import { ConfirmDialog } from "@/features/orgs/components/confirm-dialog";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {

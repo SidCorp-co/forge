@@ -41,8 +41,10 @@ vi.mock('../jobs/park-comment.js', () => ({
 }));
 
 const pauseOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => null);
+const resumeOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => null);
 vi.mock('../pipeline/run-pause.js', () => ({
   pauseOpenRunForIssue: (...args: unknown[]) => pauseOpenRunForIssueMock(...args),
+  resumeOpenRunForIssue: (...args: unknown[]) => resumeOpenRunForIssueMock(...args),
 }));
 
 const recordReopenCapEscalatedMock = vi.fn();
@@ -139,6 +141,31 @@ describe('reopen cap escalation (ISS-766)', () => {
     expect(postReopenCapEscalationCommentMock).not.toHaveBeenCalled();
     const setArg = updateSet.mock.calls[0]?.[0] as { reopenCount: unknown };
     expect(setArg.reopenCount).not.toBe(issues.reopenCount);
+  });
+
+  it('overrideReopenCap out of a reopen-cap park resumes the issue run atomically (AC#5)', async () => {
+    queueUpdate('reopen', 6);
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'waiting', reopenCount: 5 },
+      'reopen',
+      { type: 'user', id: DEVICE_ID },
+      { overrideReopenCap: true },
+    );
+    expect(result.status).toBe('reopen');
+    expect(resumeOpenRunForIssueMock).toHaveBeenCalledTimes(1);
+    expect(resumeOpenRunForIssueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ issueId: ISSUE_ID }),
+    );
+  });
+
+  it('a plain reopen without override never resumes a run (only the cap-override unblock does)', async () => {
+    queueUpdate('reopen', 3);
+    await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'developed', reopenCount: 2 },
+      'reopen',
+      { type: 'device', id: DEVICE_ID, ownerId: OWNER_ID },
+    );
+    expect(resumeOpenRunForIssueMock).not.toHaveBeenCalled();
   });
 
   it('below the cap, a device reopen is unaffected', async () => {

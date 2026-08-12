@@ -15,6 +15,7 @@ import {
 	CardContent,
 	CardHeader,
 	CardTitle,
+	ConfirmDialog,
 	EmptyState,
 	ErrorState,
 	Field,
@@ -28,7 +29,6 @@ import {
 	Skeleton,
 	useNow,
 } from "@/design";
-import { ConfirmDialog } from "@/features/orgs/components/confirm-dialog";
 import { useUpdateProject } from "@/features/project-settings/hooks";
 import { useProject } from "@/features/projects/hooks";
 import { PrivateKeyCreateSlideOver } from "@/features/resources/components/private-key-create-slideover";

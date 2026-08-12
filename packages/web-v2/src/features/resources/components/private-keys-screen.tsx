@@ -11,6 +11,7 @@ import {
 	CardContent,
 	CardHeader,
 	CardTitle,
+	ConfirmDialog,
 	EmptyState,
 	ErrorState,
 	Input,
@@ -24,7 +25,6 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useState } from "react";
 import { keyInUseDetails, useDeleteSshKey, useOrgSshKeys, useTestSshKey } from "../hooks";
 import type { SshConnTestResult, WorkspaceSshKeyView } from "../types";
-import { ConfirmDialog } from "@/features/orgs/components/confirm-dialog";
 import { PrivateKeyCreateSlideOver } from "./private-key-create-slideover";
 
 /** Test a pool key's reachability against a caller-supplied SSH repo URL. */

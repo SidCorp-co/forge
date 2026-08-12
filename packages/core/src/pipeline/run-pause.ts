@@ -148,3 +148,30 @@ export async function pauseOpenRunForIssue(args: {
   if (!run) return null;
   return pauseRun({ runId: run.id, pauseReason: args.pauseReason, bus: args.bus });
 }
+
+/**
+ * Resume an issue's paused `pipeline_run` by issue id — the by-issue-id
+ * counterpart to `pauseOpenRunForIssue`, for callers that pause/resume
+ * across a status transition rather than already holding a run id (ISS-828
+ * — the reopen-cap override needs to resume the SAME run its own escalation
+ * paused, atomically with the reopen). Null when the issue has no `paused`
+ * issue-kind run.
+ */
+export async function resumeOpenRunForIssue(args: {
+  issueId: string;
+  bus?: HooksBus | undefined;
+}): Promise<PipelineRunRow | null> {
+  const [run] = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.issueId, args.issueId),
+        eq(pipelineRuns.kind, 'issue'),
+        eq(pipelineRuns.status, 'paused'),
+      ),
+    )
+    .limit(1);
+  if (!run) return null;
+  return resumeRun({ runId: run.id, bus: args.bus });
+}

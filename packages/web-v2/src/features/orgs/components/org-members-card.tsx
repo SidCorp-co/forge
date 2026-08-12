@@ -44,7 +44,7 @@ import {
   type OrgMemberRow,
   type OrgRole,
 } from "../types";
-import { ConfirmDialog } from "./confirm-dialog";
+import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
 
 /**
  * Per-member working-lens control (role-aware chat). Two toggle-chips — a

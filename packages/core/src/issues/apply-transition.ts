@@ -6,7 +6,7 @@ import { logger } from '../logger.js';
 import { recordReopenCapEscalated } from '../observability/hold-metrics.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
-import { pauseOpenRunForIssue } from '../pipeline/run-pause.js';
+import { pauseOpenRunForIssue, resumeOpenRunForIssue } from '../pipeline/run-pause.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { REOPEN_CAP, canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
@@ -354,6 +354,24 @@ export async function transitionIssueStatus(
       logger.warn(
         { err, issueId: issue.id },
         'transition: reopen-cap pauseRun failed (park + comment already committed)',
+      );
+    }
+  }
+
+  // ISS-828 — an admin's override-reopen out of a reopen-cap park must leave
+  // the run and issue mutually consistent in ONE call (never `reopen` under a
+  // still-paused run — the dispatch gate requires `status='running'`, so a
+  // reopen alone would silently never dispatch). `overrideReopenCap` is
+  // authorized admin-only by the REST route (`issues/transition.ts`) and has
+  // no caller other than this exact unblock, so it's safe to always resume
+  // the issue's paused run on this combination.
+  if (options.overrideReopenCap && reopening) {
+    try {
+      await resumeOpenRunForIssue({ issueId: issue.id });
+    } catch (err) {
+      logger.warn(
+        { err, issueId: issue.id },
+        'transition: override-reopen resumeRun failed (reopen already committed)',
       );
     }
   }

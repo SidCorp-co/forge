@@ -45,6 +45,7 @@ export { Badge, type BadgeProps } from "./primitives/badge";
 export { Divider, type DividerProps } from "./primitives/divider";
 export { Banner, type BannerProps } from "./primitives/banner";
 export { Tooltip, type TooltipProps } from "./primitives/tooltip";
+export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/confirm-dialog";
 export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
 export { ScreenTabs, type ScreenTabsProps } from "./patterns/screen-tabs";
 export { PageContainer, type PageContainerProps } from "./patterns/page-container";

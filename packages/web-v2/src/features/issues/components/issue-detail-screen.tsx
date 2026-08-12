@@ -9,6 +9,7 @@ import {
   CardTitle,
   Checkbox,
   Collapsible,
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   HelpButton,
@@ -119,8 +120,13 @@ export function IssueDetailScreen({
   // Viewer role is read-only: hide transition/edit/comment affordances (the
   // server 403s regardless — this is UX, not the gate).
   const projectsQ = useProjects();
-  const canWrite =
-    projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
+  const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
+  const canWrite = projectRole !== "viewer";
+  // ISS-828 AC#6 — the reopen-cap override is admin-only (the server 403s a
+  // non-admin regardless; this only decides whether the control renders
+  // disabled-with-explanation vs. working).
+  const canOverride = projectRole === "admin";
+  const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -192,6 +198,34 @@ export function IssueDetailScreen({
     transition.mutate({ id, toStatus });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id, body });
+
+  // ISS-828 AC#10 — every blocker-banner mutation toasts success (errors are
+  // already toasted by `useTransitionIssue`'s shared `onError`).
+  const runBlockerAction = (
+    toStatus: IssueStatus,
+    successMessage: string,
+    opts: { override?: boolean } = {},
+  ) =>
+    transition.mutate(
+      { id, toStatus, ...(opts.override ? { override: true } : {}) },
+      { onSuccess: () => toast({ title: successMessage, tone: "success" }) },
+    );
+  const onApprove = () => runBlockerAction("approved", "Issue approved");
+  const onBannerResume = () => runBlockerAction("reopen", "Issue resumed");
+  // AC#11 — the reopen-cap override forces past a safety cap; confirm first.
+  const onOverrideResume = () => setOverrideConfirmOpen(true);
+  const onConfirmOverride = () => {
+    transition.mutate(
+      { id, toStatus: "reopen", override: true },
+      {
+        onSuccess: () => {
+          setOverrideConfirmOpen(false);
+          toast({ title: "Reopen limit overridden — run resumed", tone: "success" });
+        },
+      },
+    );
+  };
+  const onReopen = () => runBlockerAction("reopen", "Issue reopened");
 
   // ISS-377 — these are pure derivations (not hooks), so they sit safely after
   // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
@@ -408,11 +442,25 @@ export function IssueDetailScreen({
               blocker={blocker}
               slug={slug}
               pending={pending || !canWrite}
-              onApprove={() => onTransition("approved")}
-              onResume={() => onTransition("reopen")}
+              onApprove={onApprove}
+              onResume={onBannerResume}
               onProvideInfo={focusComments}
+              onOverrideResume={onOverrideResume}
+              onReopen={onReopen}
+              canOverride={canOverride}
             />
           )}
+
+          <ConfirmDialog
+            open={overrideConfirmOpen}
+            title="Override the reopen limit?"
+            message="This issue hit the reopen limit and was parked to stop repeated expensive re-runs. Overriding forces it back to reopen and resumes the paused run immediately."
+            confirmLabel="Override & resume"
+            tone="danger"
+            loading={transition.isPending}
+            onConfirm={onConfirmOverride}
+            onClose={() => setOverrideConfirmOpen(false)}
+          />
 
           <Card>
             <CardContent>
