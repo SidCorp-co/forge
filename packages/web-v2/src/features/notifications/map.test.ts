@@ -13,6 +13,7 @@ function row(over: Partial<NotificationRow>): NotificationRow {
     read: false,
     severity: null,
     resolutionKey: null,
+    dedupeKey: null,
     resolvedAt: null,
     issueId: "i1",
     secondaryIssueId: null,

@@ -84,6 +84,69 @@ queued → dispatched → running → done / failed / cancelled
 - Append-only event log per job. `seq` monotonic per job — dashboard uses it for ordered rendering and reconnect replay.
 - Retention: **30 days after the parent Job reaches a terminal state.** Daily cron sweeps expired events.
 
+## From transition to queued job
+
+A status transition does NOT create a job directly. It fires a `transition` hook → `considerEnqueue`
+(`pipeline/orchestrator.ts`), which walks an ordered gauntlet. Every refuse path posts an
+operator-facing comment; a dispatch-gate skip is otherwise silent, so an unexplained refusal reads
+as invisible starvation.
+
+```mermaid
+flowchart TD
+  A([issues.status changed]) --> B{"leaving waiting / on_hold?"}
+  B -- "agent actor, no operator_unblock" --> X1["status moves, NO job dispatched<br/>(skipped-park-exit comment)"]
+  B -- "no · or user / operator_unblock" --> C["considerEnqueue"]
+  C --> D{"1–3 · jobType mapped? pipeline enabled?<br/>stage enabled, not manual, toggle on?"}
+  D -- no --> X2["stop — human-gated or disabled"]
+  D -- yes --> E{"4 · status still live in DB?"}
+  E -- "changed under us" --> X3["drop — lost the race"]
+  E -- yes --> F{"5–8 · evidence guards<br/>plan-required · needs_info-reopen<br/>empty-reopen · unexplained-reopen"}
+  F -- fail --> X4["route to clarified / needs_info<br/>+ comment"]
+  F -- pass --> G{"9 · bounce-replay<br/>stage already exited via a bounce?"}
+  G -- "unanswered" --> X5["route back to that bounce<br/>+ comment"]
+  G -- "answered · or capacity park cleared" --> H{"skill registered?"}
+  H -- no --> X6["open run + pause missing_skill:<br/>or soft-skip"]
+  H -- yes --> I{"active job of this type already?"}
+  I -- yes --> X7["dedup — drop"]
+  I -- no --> J(["jobs row = queued"])
+```
+
+| # | Guard | Refuses when | Routes to |
+|---|-------|--------------|-----------|
+| 1 | `resolveJobTypeForStatus` | status is one of the 5 no-auto-dispatch statuses | stop (not an error) |
+| 2 | `cfg.enabled` | project pipeline off (the default) | stop |
+| 3 | stage config | `states.<stage>.enabled:false` · `mode:'manual'` · `auto*` off | stop / gate |
+| 4 | live-status re-verify | issue status changed since the hook fired | drop |
+| 5 | plan-required | `approved` with blank `plan` | `clarified`, or `needs_info` if a `plan` job already ran |
+| 6 | needs_info-reopen | `fix` where `reopen` came straight from `needs_info` | `needs_info` |
+| 7 | empty-reopen | `fix` with no prior `code`/`fix` job | `needs_info` |
+| 8 | unexplained-reopen | `fix` where `reopen` left `released`/`closed` with no rationale | `needs_info` |
+| 9 | bounce-replay | stage was exited via a bounce and nothing new arrived | back to that bounce |
+
+Guards 5–8 + the `needs_info` release rule are the state-integrity family:
+[state-integrity-guards.md](../../architecture/state-integrity-guards.md). Guard 9's capacity-park
+exception: [failure-taxonomy-and-action-policy.md](../../architecture/failure-taxonomy-and-action-policy.md).
+
+### Dispatch gates (`jobs/dispatch-gates.ts`)
+
+**Stateless** — no gate signal is persisted on the job row. A job failing any gate is simply absent
+from the picker's SELECT, and the next tick recomputes from scratch. The picker and
+`assertDispatchable` share one `buildBarrierFragments` builder, so the two call sites cannot drift.
+
+| Layer | `GateSkipReason` | Passes when |
+|-------|------------------|-------------|
+| — | `pipeline_run_not_running` | parent run is `running` or `paused` — keeps terminal-parent orphans off the runner cap |
+| — | `retry_cooldown` | `retry_after_at` has elapsed |
+| L1 | `issue_busy` | at most one active session per issue |
+| L2 | `blocked_by` · `release_decompose_pending` | every `kind='blocks'` parent terminal; `release` jobs also wait on their `decomposes` parent |
+| L3 | `project_cap` | DISTINCT running issue ids < project cap (`maxConcurrentIssues`) |
+| L4 | `runner_full` | runner has free capacity — `RUNNER_CAP_PER_RUNNER = 1` |
+| L5 | `runner_stale` | runner `online` and heartbeat fresh within `dispatchLivenessMs()` |
+
+No temporal predicates beyond edge `valid_until`, runner heartbeat, runner load and
+`retry_after_at`; adding a `gate_at + N seconds` debouncer trips a regression assertion in
+`dispatch-gates.test.ts`.
+
 ## Key Business Flows
 
 ### Enqueue → dispatch → execute → complete

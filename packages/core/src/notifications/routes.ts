@@ -190,6 +190,12 @@ export async function createNotification(input: {
   // `notificationCreated` hook so the WS bridge can carry tone to clients.
   severity?: string | null;
   resolutionKey?: string | null;
+  /**
+   * ISS-849 — redelivery-dedup key (e.g. `transition:<outboxId>`), distinct
+   * from `resolutionKey`. Internal-only: not forwarded to `notificationCreated`
+   * — the WS bridge has no use for it.
+   */
+  dedupeKey?: string | null;
   // Set for `pm_escalation` so the project-room bridge can deep-link the
   // decision without re-reading the notification body (Epic 5 / ISS-21).
   decisionId?: string | null;
@@ -218,6 +224,7 @@ export async function createNotification(input: {
       body: input.body ?? null,
       severity: input.severity ?? null,
       resolutionKey: input.resolutionKey ?? null,
+      dedupeKey: input.dedupeKey ?? null,
       issueId: input.issueId ?? null,
       secondaryIssueId: input.secondaryIssueId ?? null,
       agentSessionId: input.agentSessionId ?? null,

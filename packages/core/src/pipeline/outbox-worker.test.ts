@@ -53,7 +53,7 @@ const dbExecute = vi.fn(async (q: unknown) => {
     });
     return [];
   }
-  if (/SET\s+claimed_at\s*=\s*NULL,\s*attempts/i.test(text)) {
+  if (/SET\s+claimed_at\s*=\s*now\(\),\s*last_error/i.test(text)) {
     updateCalls.push({
       kind: 'failed',
       chunks: (q as { queryChunks?: unknown[] }).queryChunks ?? [],
@@ -76,9 +76,17 @@ vi.mock('../db/client.js', () => ({
 // cm:why the regression guard: emitMock asserts no transaction is ever opened while a hook is in flight — fails against pre-ISS-678 code, which awaits hooks.emit from inside an open db.transaction
 const emitMock = vi.fn(async () => {
   expect(transactionMock).not.toHaveBeenCalled();
+  return { topic: 'transition', delivered: 1, failures: [] };
 });
-vi.mock('./hooks.js', () => ({
-  hooks: { emit: emitMock, on: vi.fn() },
+// cm:why importOriginal keeps assertHookDelivered/HookDeliveryError real — only emit/on need mocking, since drainOutboxOnce's failure path now runs through the real scoping logic
+vi.mock('./hooks.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./hooks.js')>();
+  return { ...actual, hooks: { emit: emitMock, on: vi.fn() } };
+});
+
+const wedgeMock = vi.fn(async () => {});
+vi.mock('./wedge.js', () => ({
+  emitPipelineWedge: wedgeMock,
 }));
 
 vi.mock('../observability/sentry.js', () => ({
@@ -115,8 +123,10 @@ beforeEach(() => {
   emitMock.mockClear();
   emitMock.mockImplementation(async () => {
     expect(transactionMock).not.toHaveBeenCalled();
+    return { topic: 'transition', delivered: 1, failures: [] };
   });
   transactionMock.mockClear();
+  wedgeMock.mockClear();
 });
 
 describe('outbox-worker', () => {
@@ -151,7 +161,7 @@ describe('outbox-worker', () => {
     expect(updateCalls).toEqual([expect.objectContaining({ kind: 'processed' })]);
   });
 
-  it('on subscriber failure, clears the lease, bumps attempts, and records last_error', async () => {
+  it('on a genuine emit crash, backs off the lease and records last_error, without stamping processed_at', async () => {
     const r = row({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' });
     claimQueue.push([r]);
     emitMock.mockImplementationOnce(async () => {
@@ -163,6 +173,39 @@ describe('outbox-worker', () => {
     expect(result.processed).toBe(0);
     expect(result.failed).toBe(1);
     expect(updateCalls).toEqual([expect.objectContaining({ kind: 'failed' })]);
+  });
+
+  it('on a pipeline-orchestrator failure reported via EmitResult.failures, backs off the lease and records last_error', async () => {
+    const r = row({ id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' });
+    claimQueue.push([r]);
+    emitMock.mockImplementationOnce(async () => ({
+      topic: 'transition',
+      delivered: 2,
+      failures: [{ subscriber: 'pipeline-orchestrator', error: new Error('dispatch failed') }],
+    }));
+
+    const result = await drainOutboxOnce();
+
+    expect(result.processed).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(updateCalls).toEqual([expect.objectContaining({ kind: 'failed' })]);
+  });
+
+  it('ignores a failure from a non-owned subscriber (e.g. pm) — delivery still counts as processed', async () => {
+    const r = row({ id: '00000000-0000-4000-8000-000000000000' });
+    claimQueue.push([r]);
+    emitMock.mockImplementationOnce(async () => ({
+      topic: 'transition',
+      delivered: 2,
+      failures: [{ subscriber: 'pm', error: new Error('pm boom') }],
+    }));
+
+    const result = await drainOutboxOnce();
+
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(updateCalls).toEqual([expect.objectContaining({ kind: 'processed' })]);
+    expect(wedgeMock).not.toHaveBeenCalled();
   });
 
   it('processes a batch of rows from a single claim call', async () => {
@@ -225,6 +268,18 @@ describe('outbox-worker', () => {
     );
   });
 
+  it('carries the outbox row id as outboxId so subscribers can dedupe redeliveries (ISS-849)', async () => {
+    const r = row({ id: 'ffeeddcc-bbaa-4988-8776-655443322110' });
+    claimQueue.push([r]);
+
+    await drainOutboxOnce();
+
+    expect(emitMock).toHaveBeenCalledWith(
+      'transition',
+      expect.objectContaining({ outboxId: r.id }),
+    );
+  });
+
   it('passes reason through when present', async () => {
     const r = row({ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', reason: 'manual override' });
     claimQueue.push([r]);
@@ -245,5 +300,49 @@ describe('outbox-worker', () => {
     expect(result.processed).toBe(0);
     expect(result.failed).toBe(0);
     expect(emitMock).not.toHaveBeenCalled();
+  });
+
+  it('claim query excludes dead-lettered rows via an attempts cap', async () => {
+    claimQueue.push([]);
+
+    await drainOutboxOnce();
+
+    const claimCall = dbExecute.mock.calls.find(([q]) => /RETURNING/i.test(sqlTextOf(q)));
+    expect(claimCall).toBeDefined();
+    const text = sqlTextOf(claimCall?.[0]);
+    expect(text).toMatch(/attempts\s*</i);
+  });
+
+  it('raises a pipeline_wedge when a row at the redelivery cap fails again', async () => {
+    // cm:why 3 == MAX_REDELIVERIES in outbox-worker.ts — the row's `attempts` here models claimBatch's RETURNING value (post-increment), i.e. this claim was the 3rd redelivery, the last one `attempts < MAX_REDELIVERIES` will ever admit
+    const r = row({ id: '11111111-2222-4333-8444-555555555555', attempts: 3 });
+    claimQueue.push([r]);
+    emitMock.mockImplementationOnce(async () => {
+      throw new Error('still failing');
+    });
+
+    await drainOutboxOnce();
+
+    expect(wedgeMock).toHaveBeenCalledTimes(1);
+    expect(wedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity: 'outbox',
+        entityId: r.id,
+        issueId: r.issue_id,
+        projectId: r.project_id,
+      }),
+    );
+  });
+
+  it('does not raise a wedge for a row still under the redelivery cap', async () => {
+    const r = row({ id: '66666666-7777-4888-8999-aaaaaaaaaaaa', attempts: 0 });
+    claimQueue.push([r]);
+    emitMock.mockImplementationOnce(async () => {
+      throw new Error('first failure');
+    });
+
+    await drainOutboxOnce();
+
+    expect(wedgeMock).not.toHaveBeenCalled();
   });
 });

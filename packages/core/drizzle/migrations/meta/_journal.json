@@ -1224,7 +1224,14 @@
       "idx": 176,
       "version": "7",
       "when": 1788652800000,
-      "tag": "0176_iss652_alert_notification_dedupe",
+      "tag": "0176_iss849_transition_dedupe",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1788739200000,
+      "tag": "0177_iss652_alert_notification_dedupe",
       "breakpoints": true
     }
   ]

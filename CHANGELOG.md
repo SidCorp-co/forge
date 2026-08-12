@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 - Pipeline rescue metrics now visible per project with configurable threshold alerts.
+- Stopped duplicate status-change notifications and activity entries from appearing when a status update had to be retried.
 - Fixed a bug where the release step could wrongly reopen an issue that had already passed testing, based on an outdated status snapshot.
 - Added comprehensive tests and documentation for state-integrity guards, validating the pipeline refuses false state transitions and fabricated evidence.
 - Fixed a bug where the pipeline could transition an issue to approved without first validating that the plan entry was established.

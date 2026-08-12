@@ -12,7 +12,7 @@ vi.mock('../db/client.js', () => ({
 // notify-transitions routes through emit.ts (ISS-510), which delegates to the
 // mocked createNotification — so assertions on createNotification still hold,
 // and we additionally see the severity/resolutionKey emit.ts/notify add.
-const createNotification = vi.fn(async () => ({ id: 'notif-1' }));
+const createNotification = vi.fn(async (_input: Record<string, unknown>) => ({ id: 'notif-1' }));
 vi.mock('./routes.js', () => ({ createNotification }));
 
 const resolveNotifications = vi.fn(async () => 0);
@@ -36,7 +36,16 @@ function queueIssue(row: Record<string, unknown> | null) {
   selectLimit.mockResolvedValueOnce(row ? [row] : []);
 }
 
-function transition(to: string, actorId: string | null = 'someone-else') {
+/**
+ * ISS-849 — the dedupe-check select (notifications.dedupeKey) runs BEFORE the
+ * issue lookup select, sharing the same select().from().where().limit() mock
+ * chain. Queue its result first when a transition carries an outboxId.
+ */
+function queueDedupe(exists: boolean) {
+  selectLimit.mockResolvedValueOnce(exists ? [{ id: 'existing-notif' }] : []);
+}
+
+function transition(to: string, actorId: string | null = 'someone-else', outboxId?: string) {
   return {
     issueId: ISSUE_ID,
     projectId: PROJECT_ID,
@@ -44,6 +53,7 @@ function transition(to: string, actorId: string | null = 'someone-else') {
     from: 'developed',
     to,
     reopenCount: 0,
+    ...(outboxId ? { outboxId } : {}),
   };
 }
 
@@ -161,10 +171,52 @@ describe('notify-transitions', () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 
+  it('ISS-849: a redelivery of the same outbox row yields exactly one notification', async () => {
+    const bus = makeBus();
+
+    queueDedupe(false);
+    queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 20, title: 'Once' });
+    await bus.emit('transition', transition('tested', 'someone-else', 'outbox-1') as never);
+
+    queueDedupe(true);
+    await bus.emit('transition', transition('tested', 'someone-else', 'outbox-1') as never);
+
+    expect(createNotification.mock.calls).toHaveLength(1);
+    expect(createNotification.mock.calls[0]?.[0]).toMatchObject({
+      dedupeKey: 'transition:outbox-1',
+    });
+  });
+
+  it('ISS-849: independent transitions with different outboxIds are NOT suppressed', async () => {
+    const bus = makeBus();
+
+    queueDedupe(false);
+    queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 21, title: 'A' });
+    await bus.emit('transition', transition('closed', 'someone-else', 'outbox-A') as never);
+
+    queueDedupe(false);
+    queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 21, title: 'A' });
+    await bus.emit('transition', transition('closed', 'someone-else', 'outbox-B') as never);
+
+    const dedupeKeys = createNotification.mock.calls.map(
+      (call) => (call[0] as { dedupeKey?: string }).dedupeKey,
+    );
+    expect(dedupeKeys).toEqual(['transition:outbox-A', 'transition:outbox-B']);
+  });
+
+  it('ISS-849: no outboxId skips the dedupe guard entirely (fail-open, unchanged behavior)', async () => {
+    queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 22, title: 'Open' });
+    const bus = makeBus();
+    await bus.emit('transition', transition('reopen') as never);
+    expect(createNotification.mock.calls[0]?.[0]).toMatchObject({ dedupeKey: null });
+  });
+
   it('does not throw when createNotification fails', async () => {
     queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 5, title: 'Boom' });
     createNotification.mockRejectedValueOnce(new Error('db down'));
     const bus = makeBus();
-    await expect(bus.emit('transition', transition('reopen') as never)).resolves.toBeUndefined();
+    const result = await bus.emit('transition', transition('reopen') as never);
+    // cm:why notify-transitions self-catches (best-effort by contract) — it never appears in EmitResult.failures even when its own createNotification call rejects
+    expect(result.failures).toEqual([]);
   });
 });

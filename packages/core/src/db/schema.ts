@@ -1243,9 +1243,17 @@ export const activityLog = pgTable(
     action: text('action').notNull(),
     payload: jsonb('payload').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * ISS-849 — redelivery-dedup key (e.g. `transition:<outboxId>`). Nullable:
+     * most rows have no natural redelivery source. Distinct from notifications'
+     * resolutionKey, which is a per-issue auto-resolve mechanism, not a
+     * per-delivery identity.
+     */
+    dedupeKey: text('dedupe_key'),
   },
   (t) => ({
     issueCreatedIdx: index('activity_log_issue_created_idx').on(t.issueId, t.createdAt),
+    dedupeKeyIdx: index('activity_log_dedupe_key_idx').on(t.dedupeKey),
   }),
 );
 
@@ -2079,6 +2087,12 @@ export const notifications = pgTable(
     // table lands in a later B2 migration — adding the FK then is additive.
     agentSessionId: uuid('agent_session_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * ISS-849 — redelivery-dedup key (e.g. `transition:<outboxId>`). Distinct
+     * from `resolutionKey`, which is the per-issue auto-resolve mechanism
+     * (ISS-510) and is already load-bearing for reopen/waiting notifications.
+     */
+    dedupeKey: text('dedupe_key'),
   },
   (t) => ({
     userReadCreatedIdx: index('notifications_user_read_created_idx').on(
@@ -2096,6 +2110,7 @@ export const notifications = pgTable(
     )
       .on(t.userId, t.resolutionKey)
       .where(sql`resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
+    dedupeKeyIdx: index('notifications_dedupe_key_idx').on(t.dedupeKey),
   }),
 );
 
