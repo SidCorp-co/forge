@@ -34,12 +34,18 @@ Open-source control plane for Claude Code — full-stack project management + an
 
 ## Comments & CodeMap (`codemap/1`)
 
-This repo is onboarded onto the `forge-codemap` plugin. Config: `.forge/codemap.json` (flow
-vocabulary + enforcement scope) · `.forge/codemap-baseline.json` (13,794 legacy comments across
-1,103 files frozen — a file fails only when its count **rises**). **Gate**: the `codemap` job in
-`.github/workflows/ci.yml` runs `cm verify` at tag `codemap-v0.2.1` and sits in `ci-passed`'s
-`needs` list, so a violation blocks the merge. Post-baseline prose is at 0, so anything it reports
-is something you just added. Spec: the plugin's `SPEC.md`.
+This repo **owns its checker**: `.forge/codemap/cm` is vendored (codemap 0.12.0) and is the
+authority — it wins over a `cm` on PATH, which wins over the plugin's bundled copy. Config:
+`.forge/codemap.json` (flow vocabulary + enforcement scope) · `.forge/codemap-baseline.json`
+(13,304 legacy comments across 1,080 files frozen by CONTENT — a comment is flagged only when its
+text is new, so a reflow or a move is not a violation). **Gate**: the `codemap` job in
+`.github/workflows/ci.yml` sits in `ci-passed`'s `needs` list, so a violation blocks the merge. It
+runs the prose tier scoped to the PR's changed lines (`--since $(git merge-base origin/main HEAD)`)
+plus the referential and structural tiers whole-tree — the second part is load-bearing: a scoped run
+attributes a dangling `cm:edge` to the annotated file and drops it when that file is outside the
+diff. Bump the checker with `cm install --upgrade`; `.github/workflows/codemap-upgrade.yml` opens
+that PR weekly, and `cm doctor` shows any skew. Post-baseline prose is at 0, so anything the gate
+reports is something you just added. Spec: `.forge/codemap/SPEC.md`.
 
 **Rule: if a tool can derive it, don't write it.** No `// Load the config` — the compiler already
 says that. No new `TODO`/`FIXME`: file an issue at `draft` instead. Orientation prose goes in the

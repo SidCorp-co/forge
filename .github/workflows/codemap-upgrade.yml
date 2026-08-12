@@ -1,0 +1,39 @@
+# Opens a PR when a newer codemap is tagged. It never floats the gate: CI keeps running the checker
+# committed under .forge/codemap/, and an upgrade arrives as a reviewable diff whose blast radius is
+# visible in that PR's own run.
+#
+# Adapted from the plugin's agent-setup/codemap-upgrade.yml: checkout pinned to v7 to match ci.yml,
+# and `git -C` instead of `cd /tmp/codemap` — the template's cd leaked into the next line, so
+# `cm install --upgrade` resolved its root to the CLONE (findRoot stops at its .git) and vendored
+# there, leaving this repo untouched and the PR empty. A silent no-op upgrade is worse than none.
+name: codemap upgrade
+on:
+  schedule: [{ cron: '0 6 * * 1' }]
+  workflow_dispatch:
+permissions: { contents: write, pull-requests: write }
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - id: latest
+        run: |
+          git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
+          git -C /tmp/codemap fetch --tags --depth 1 origin
+          echo "tag=$(git -C /tmp/codemap tag -l 'codemap-v*' | sort -V | tail -1)" >> "$GITHUB_OUTPUT"
+      - run: |
+          git -C /tmp/codemap checkout -q "${{ steps.latest.outputs.tag }}"
+          node /tmp/codemap/plugins/forge-codemap/scripts/cm.mjs install --upgrade
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          branch: codemap-upgrade
+          title: "chore: upgrade the committed codemap checker to ${{ steps.latest.outputs.tag }}"
+          body: |
+            The gate CI runs is the copy committed under `.forge/codemap/`. This bumps it.
+
+            Whatever this PR's own codemap job reports **is** the blast radius — if it is green, the
+            upgrade changes no verdict in this repo. Run `cm doctor` locally to see the same thing.
+          commit-message: "chore: upgrade committed codemap checker"

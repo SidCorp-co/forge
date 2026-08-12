@@ -1,0 +1,5 @@
+#!/bin/sh
+# Vendored codemap entrypoint — regenerate with: cm install
+# Resolves its own directory without readlink -f, which BSD/macOS did not always have.
+d=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+exec node "$d/cm.mjs" "$@"

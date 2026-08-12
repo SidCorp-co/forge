@@ -1,6 +1,7 @@
 {
   "specVersion": "codemap/1",
   "flows": [],
+  "externals": [],
   "enforce": {
     "grammar": true,
     "include": [

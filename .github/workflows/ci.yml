@@ -66,20 +66,31 @@ jobs:
       - run: node scripts/check-test-signal.mjs --all
 
   # codemap/1 declared-edge layer (.forge/codemap.json + .forge/codemap-baseline.json).
-  # Always-on and ungated by paths-filter: a cm:edge target can be left dangling by
-  # deleting or moving a file in any change set, not just in the annotated one.
-  # Zero-dep script pulled from a PINNED tag — bumping the tool is a deliberate edit
-  # here, so a grammar change in the plugin can never break this repo's CI on its own.
-  # ~1s on the whole tree.
+  # The checker is VENDORED at .forge/codemap/ (cm install) — the repo owns its own
+  # gate, so the rules hold with no plugin present and a plugin-side grammar change
+  # can never turn this red on its own. Bumping it is a commit here; the
+  # codemap-upgrade workflow opens that PR.
+  #
+  # Two steps on purpose, and the second is NOT redundant:
+  #   1. --since <merge-base>  scopes the PROSE tier to the lines this PR touched.
+  #   2. whole-tree graph tiers. On a scoped run cm attributes a dangling-edge error
+  #      to the file carrying the annotation and drops it when that file is outside
+  #      the diff — so deleting or moving a cm:edge TARGET would pass step 1 silently
+  #      whenever the annotated file is untouched. ~1s on the whole tree.
+  # fetch-depth: 0 because an unresolvable --since ref is exit 2 (gate could not run),
+  # and a shallow checkout has no origin/main to merge-base against.
   codemap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - run: git clone --depth 1 --branch codemap-v0.2.1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
-      - run: node /tmp/codemap/plugins/forge-codemap/scripts/cm.mjs verify
+      - run: .forge/codemap/cm verify --since $(git merge-base origin/main HEAD)
+      - run: .forge/codemap/cm verify --tier referential
+      - run: .forge/codemap/cm verify --tier structural
 
   changes:
     runs-on: ubuntu-latest
