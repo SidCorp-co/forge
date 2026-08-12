@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -11,7 +11,7 @@ import {
   recordResumeBoundFresh,
   recordRunnerDeathDetection,
 } from '../observability/hold-metrics.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
@@ -39,12 +39,11 @@ import {
   loadResumeBounds,
 } from './session-resume.js';
 import {
-  SKILL_MAINTENANCE_LABEL,
-  type StageOverrides,
   applySkillMaintenanceCarveout,
-  escalateModel,
   extractStageStatus,
   resolveStageOverrides,
+  SKILL_MAINTENANCE_LABEL,
+  type StageOverrides,
 } from './stage-overrides.js';
 
 interface DispatchMessage {
@@ -567,30 +566,10 @@ async function dispatchViaRunner(
   // onto that singleton process-wide, leaking it into the next EMPTY-path
   // dispatch for any other project (cross-tenant) and breaking the
   // active=false/deleted → drop-entry guarantee. (ISS-336 review blocker.)
+
+  // cm:edge contract -> packages/core/src/jobs/stage-overrides.ts — `.model` arrives fixed per stage status and must reach the runner unmodified; the ISS-535 reopenCount escalation that used to mutate it here was deleted with escalateModel
   const runnerStageOverrides = { ...preDispatchOverrides };
-  // ISS-535 — reopen-driven escalation. When an issue was reopened from
-  // review/test (`reopenCount >= 1`), bump the `fix`/`review` job up the model
-  // tier ladder so the retry runs on a stronger model (ECC upgrade-on-failure).
-  // Mutate ONLY the shallow copy (never preDispatchOverrides / EMPTY), and keep
-  // it best-effort: a DB hiccup must not crash dispatch (mirror loadStageMap).
-  if (job.issueId && (job.type === 'fix' || job.type === 'review')) {
-    try {
-      const [issueRow] = await db
-        .select({ reopenCount: issues.reopenCount })
-        .from(issues)
-        .where(eq(issues.id, job.issueId))
-        .limit(1);
-      const reopenCount = issueRow?.reopenCount ?? 0;
-      if (reopenCount > 0) {
-        runnerStageOverrides.model = escalateModel(runnerStageOverrides.model, reopenCount);
-      }
-    } catch (err) {
-      logger.warn(
-        { err, jobId: job.id, issueId: job.issueId, type: job.type },
-        'dispatcher: reopenCount escalation lookup failed, dispatching without model bump',
-      );
-    }
-  }
+
   // ISS-637 — skill-maintenance carve-out. Skill bodies are DB-canonical but
   // `.claude/skills/*` is a git-ignored sync mirror, so the standard git-based
   // ladder gives a skill-maintenance issue no way to persist its edit — every

@@ -18,7 +18,6 @@ const {
   resolveStageOverrides,
   resolveProjectDefaultMcpServers,
   resolveDefaultModel,
-  escalateModel,
   applySkillMaintenanceCarveout,
   SKILL_MAINTENANCE_TOOLS,
   DEFAULT_STAGE_MODELS,
@@ -149,52 +148,28 @@ describe('resolveStageOverrides', () => {
 describe('resolveDefaultModel (ISS-535)', () => {
   it('covers all 8 dispatchable statuses with the documented tiers', () => {
     expect(DEFAULT_STAGE_MODELS).toEqual({
-      open: 'haiku',
-      confirmed: 'sonnet',
+      open: 'sonnet',
+      confirmed: 'opus',
       clarified: 'opus',
-      approved: 'sonnet',
+      approved: 'opus',
       developed: 'opus',
-      testing: 'sonnet',
-      reopen: 'sonnet',
-      released: 'haiku',
+      testing: 'opus',
+      reopen: 'opus',
+      released: 'sonnet',
     });
   });
 
   it('returns the tier for a known status and null otherwise', () => {
     expect(resolveDefaultModel('clarified')).toBe('opus');
-    expect(resolveDefaultModel('released')).toBe('haiku');
+    expect(resolveDefaultModel('released')).toBe('sonnet');
     expect(resolveDefaultModel('staging')).toBeNull();
     expect(resolveDefaultModel('bogus')).toBeNull();
   });
-});
 
-describe('escalateModel (ISS-535)', () => {
-  // cm:why the FIRST reopen is deliberately free — one review bounce is ordinary, and escalating it would have jumped every bounce sonnet->opus the moment ISS-781 made reopenCount reachable (ISS-766: review-at-opus was 58% of a $1,207 week)
-  it('does NOT escalate on the first reopen', () => {
-    expect(escalateModel('haiku', 1)).toBe('haiku');
-    expect(escalateModel('sonnet', 1)).toBe('sonnet');
-  });
-
-  it('bumps a tier alias one step per reopen BEYOND the first', () => {
-    expect(escalateModel('haiku', 2)).toBe('sonnet');
-    expect(escalateModel('sonnet', 2)).toBe('opus');
-    expect(escalateModel('haiku', 3)).toBe('opus');
-  });
-
-  it('clamps at the top tier (opus)', () => {
-    expect(escalateModel('sonnet', 3)).toBe('opus');
-    expect(escalateModel('opus', 5)).toBe('opus');
-    expect(escalateModel('haiku', 99)).toBe('opus');
-  });
-
-  it('is a no-op for reopenCount <= 0', () => {
-    expect(escalateModel('sonnet', 0)).toBe('sonnet');
-    expect(escalateModel('sonnet', -1)).toBe('sonnet');
-  });
-
-  it('passes non-alias models and null through unchanged', () => {
-    expect(escalateModel('claude-opus-4-8', 3)).toBe('claude-opus-4-8');
-    expect(escalateModel(null, 2)).toBeNull();
+  // cm:why asserts the ABSENCE of a runtime tier bump — escalateModel (ISS-535) was deleted, and a re-add would silently reopen the ISS-766 cost loop that this fixed table exists to close
+  it('exports no tier-escalation helper', async () => {
+    const mod = await import('./stage-overrides.js');
+    expect('escalateModel' in mod).toBe(false);
   });
 });
 

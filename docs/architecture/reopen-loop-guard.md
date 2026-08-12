@@ -30,4 +30,6 @@ Considered making `REOPEN_CAP` scale with issue complexity (larger cap for `l`/`
 
 ## Deliberately out of scope
 
-Retuning `REOPEN_CAP` (5) or `ESCALATION_FREE_REOPENS` (1) — both are tuning knobs; ISS-766 makes the guard behave correctly at whatever value is set, not what that value should be.
+Retuning `REOPEN_CAP` (5) — a tuning knob; ISS-766 makes the guard behave correctly at whatever value is set, not what that value should be.
+
+`ESCALATION_FREE_REOPENS` is gone: the reopen-driven model escalation it gated (`escalateModel`) was deleted when per-stage tiers became fixed. `reopenCount` still drives this cap and the `maxResumeReopenCycles` resume bound — it no longer drives model choice. See `docs/modules/agents-jobs/prompt-config.md` § Default model-routing policy.
