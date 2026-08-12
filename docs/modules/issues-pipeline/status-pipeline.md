@@ -140,7 +140,7 @@ Device runners share one repo checkout per project → one agent per project at 
 
 ### Reopen cycle protection
 
-After repeated `reopen → fix` cycles for the same issue, auto-fix stops and the issue stays at `reopen` for human review. Manual triggers bypass this limit.
+After `REOPEN_CAP` = 5 `reopen → fix` cycles, a **device** actor's reopen is redirected to `waiting` (escalation comment + run paused `reopen_cap:<fromStatus>`), not left at `reopen` — `reopen` is an auto-dispatch trigger, so staying there re-enqueues a full-tier job every ~60s. A **user** actor gets the 422 `REOPEN_CAP_EXCEEDED` instead; only a project admin's `overrideReopenCap` bypasses the cap. Detail: [reopen-loop-guard.md](../../architecture/reopen-loop-guard.md).
 
 ## Project pipeline configuration
 

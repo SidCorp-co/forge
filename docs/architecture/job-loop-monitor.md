@@ -13,6 +13,23 @@ integration).
 
 ## Hops and their miss-handlers
 
+```mermaid
+flowchart LR
+  Q([queued]) -->|dispatch| D([dispatched])
+  D -->|"POST /jobs/:id/ack"| A(["ack recorded<br/>(ackedAt, not a status)"])
+  A -->|"worker claims the session"| R([running])
+  R -->|"result event"| T([done])
+  D -.->|"hop 1 · no ack, 0 events past grace"| M1["dispatch_unclaimed<br/>kind infra"]
+  A -.->|"hop 2 · session still queued past timeout"| M2["queue_timeout"]
+  R -.->|"hop 3 · heartbeat stale · no client · session terminal"| M3["heartbeat_timeout<br/>no_client_ack · session_lost"]
+  R -.->|"hop 4 · quiet RESULT_QUIET_MINUTES, never a result"| M4["stale<br/>kind timeout"]
+```
+
+Solid = the healthy path; dashed = the one miss-handler that owns that hop. `ack recorded` is a
+timestamp and `result` is a job event — neither is a value of `jobs.status` (`queued · dispatched ·
+running · done · failed · cancelled`). The loop watches finer milestones than the enum carries,
+which is exactly why a job can read `running` and still be dead.
+
 All terminal writes go via `applyKernelTransition`; all job reaps route through the SAME
 `finalizeFailedJob` tail as a runner-reported failure (verify-first retry or park-at-`waiting`).
 

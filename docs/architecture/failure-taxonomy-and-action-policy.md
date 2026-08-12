@@ -24,6 +24,57 @@ type FailureAction = 'terminal' | 'quarantine' | 'failover' | 'retry';
 
 *Kind = what happened. Action = what to do.* Persisted on `jobs.failure_action` (migration `0171`); a historical `NULL` row falls back to `deriveActionFromKind(kind)`, which reproduces the pre-ISS-823 behaviour byte-for-byte (`code`→terminal, `transient-cc`→failover, `infra`/`timeout`→retry). `jobs/retry.ts` now branches on `action` exclusively — `grep "failureKind === '"` across `packages/core/src` returns zero hits outside the classifier itself. Widening a pattern can no longer change retry behaviour by accident.
 
+## The decision, end to end
+
+```mermaid
+flowchart TD
+  F([job failed]) --> C{"cancellation requested?"}
+  C -- yes --> Z1["no retry — Cancel is a hard stop"]
+  C -- no --> V{"verify-first: did the work already land?"}
+  V -- advanced --> Z2["completed_via_recovery"]
+  V -- reverted --> Z3["cancelled_stale"]
+  V -- "cannot verify" --> P1["PARK verify_unavailable"]
+  V -- pending --> A{"jobs.failure_action"}
+  A -- terminal --> P2["PARK non_retryable_terminal"]
+  A -- "failover / quarantine" --> RO
+  A -- retry --> RO["rotation · 3 tries per device<br/>x 10 rounds · 60s flat cooldown"]
+  RO --> B{"round budget left?"}
+  B -- yes --> Q(["re-queued · unpinned if the fleet is capped"])
+  B -- "no · fleet was all-limited" --> P3["PARK all_devices_exhausted"]
+  B -- "no · fleet was healthy" --> P4["PARK retry_rounds_exhausted"]
+```
+
+The two structural guards run BEFORE any classification, because either can make a retry
+meaningless or destructive. Park reasons land on `pipeline_runs.metadata.parkReason` (see below).
+
+## Park semantics: capacity vs judgement
+
+A park at `waiting` means the STEP stopped, never that the work is undone. Two kinds hide behind
+that one status, and they differ on who may release them:
+
+| `RetryOutcome.reason` | Step reached a conclusion? | Release |
+|---|---|---|
+| `all_devices_exhausted` | No — cut off by provider quota | **capacity** · the fleet recovering releases it |
+| `retry_rounds_exhausted` | Yes — kept failing on its own merits | human |
+| `non_retryable_terminal` | Yes — terminal `failure_action` | human |
+| `verify_unavailable` | Yes — deliberately failed safe | human |
+| `monthly_budget_exhausted` | No, but the condition is a spend budget | human (see below) |
+| `cancellation_requested` | Yes — an operator stopped it | human |
+
+`pipeline/park-reasons.ts` owns that classification over `RetryOutcome.reason` values (NOT the
+derived `WaitingCause` vocabulary). `finalize-failure.ts` records the reason on the run it is giving
+up on — `metadata->>'parkReason'`, mirroring the existing `pauseReason` convention, before
+`closeOpenRunForIssue` flips that row terminal. `bounce-replay-guard.ts` then releases a `waiting`
+bounce when the reason is a capacity reason AND at least one healthy capable runner exists now; it
+fails CLOSED, unlike its callers' fail-open, so a broken check leaves the refusal standing.
+
+Deliberately narrow: **`waiting` only**, so a `parkReason` left by an earlier capacity park can never
+release a later `needs_info` bounce (ISS-820's human-answer rule stays intact — the fleet is not even
+consulted for it). `monthly_budget_exhausted` is excluded because its condition is a project spend
+budget this module cannot re-check; admitting it would let a re-dispatch fire straight back into the
+dispatcher's budget refusal and re-park on arrival. Parks predating the `parkReason` write carry no
+reason and still need the human-comment exit.
+
 ## Mechanisms
 
 | Face | Mechanism | Where |
