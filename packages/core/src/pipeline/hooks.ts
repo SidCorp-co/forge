@@ -1,3 +1,13 @@
+// ISS-831 — HooksBus.emit never throws: every subscriber runs, in registration
+// order, even when an earlier one fails. A subscriber that throws is logged
+// AND recorded in the returned EmitResult.failures; best-effort subscribers
+// (the majority — they already self-catch) never appear there. Callers that
+// can act on a failure inspect `result.failures` (today: only
+// `outbox-worker.ts`, via `assertHookDelivered`); every other one of the ~48
+// call sites ignores the return value and keeps today's fire-and-forget
+// behaviour, because most fire after their primary mutation already
+// committed and a throw here would turn a successful write into a 500.
+
 import type {
   IssueDependencyKind,
   IssueStatus,
@@ -283,36 +293,102 @@ export type HookHandler<T extends HookTopic> = (payload: HookPayloads[T]) => voi
 
 type AnyHandler = (payload: unknown) => void | Promise<void>;
 
+interface Subscription {
+  name: string;
+  fn: AnyHandler;
+}
+
+export interface HookSubscriberFailure {
+  /** Name passed to `on(..., { name })`, or `sub#<registration index>` when anonymous. */
+  subscriber: string;
+  error: unknown;
+}
+
+export interface EmitResult {
+  topic: HookTopic;
+  /** Subscribers invoked for this emit. */
+  delivered: number;
+  /** One entry per subscriber that threw. Empty ⇒ every subscriber succeeded. */
+  failures: HookSubscriberFailure[];
+}
+
+export class HookDeliveryError extends Error {
+  readonly topic: HookTopic;
+  readonly failures: HookSubscriberFailure[];
+
+  constructor(result: Pick<EmitResult, 'topic' | 'failures'>) {
+    const detail = result.failures
+      .map(
+        (f) => `${f.subscriber}: ${f.error instanceof Error ? f.error.message : String(f.error)}`,
+      )
+      .join('; ');
+    super(`${result.topic}: ${result.failures.length} subscriber(s) failed — ${detail}`);
+    this.name = 'HookDeliveryError';
+    this.topic = result.topic;
+    this.failures = result.failures;
+  }
+}
+
+/**
+ * Throws `HookDeliveryError` when a failure the caller owns is present;
+ * no-op otherwise. The bus itself never throws — this lets a specific caller
+ * (e.g. `drainOutboxOnce`) opt into treating a subscriber failure as its own.
+ *
+ * `opts.owned` scopes escalation to failures from the named subscribers only
+ * — e.g. `{ owned: ['pipeline-orchestrator'] }` ignores a failing best-effort
+ * subscriber that has no local guard (like `pm`) so it never blocks delivery
+ * or triggers a wedge meant for "the status change was not processed".
+ * Omitting `owned` escalates on any failure.
+ */
+export function assertHookDelivered(result: EmitResult, opts?: { owned?: string[] }): void {
+  const owned = opts?.owned;
+  const relevant = owned
+    ? result.failures.filter((f) => owned.includes(f.subscriber))
+    : result.failures;
+  if (relevant.length > 0) {
+    throw new HookDeliveryError({ topic: result.topic, failures: relevant });
+  }
+}
+
 export class HooksBus {
-  private readonly handlers = new Map<HookTopic, Set<AnyHandler>>();
+  private readonly handlers = new Map<HookTopic, Set<Subscription>>();
 
   /**
    * Subscribe to a hook topic. Handlers fire in registration order
-   * (deterministic — do not parallelise).
+   * (deterministic — do not parallelise). `opts.name` identifies this
+   * subscriber in `EmitResult.failures` / `pipeline_outbox.last_error`;
+   * defaults to the function's own name, falling back to `sub#<index>`.
    */
-  on<T extends HookTopic>(topic: T, handler: HookHandler<T>): () => void {
+  on<T extends HookTopic>(topic: T, handler: HookHandler<T>, opts?: { name?: string }): () => void {
     let set = this.handlers.get(topic);
     if (!set) {
       set = new Set();
       this.handlers.set(topic, set);
     }
-    const wrapped = handler as unknown as AnyHandler;
-    set.add(wrapped);
+    const fn = handler as unknown as AnyHandler;
+    const name = opts?.name || handler.name || `sub#${set.size}`;
+    const entry: Subscription = { name, fn };
+    set.add(entry);
     return () => {
-      set?.delete(wrapped);
+      set?.delete(entry);
     };
   }
 
-  async emit<T extends HookTopic>(topic: T, payload: HookPayloads[T]): Promise<void> {
+  // cm:guard emit MUST NOT throw on a subscriber error — ~48 call sites fire it after their primary mutation already committed; a rethrow here turns a successful write into a 500
+  // cm:edge contract -> packages/core/src/pipeline/outbox-worker.ts — drainOutboxOnce keys its processed-vs-failed decision on EmitResult.failures; changing this shape breaks the outbox retry path
+  async emit<T extends HookTopic>(topic: T, payload: HookPayloads[T]): Promise<EmitResult> {
     const set = this.handlers.get(topic);
-    if (!set || set.size === 0) return;
-    for (const handler of set) {
+    if (!set || set.size === 0) return { topic, delivered: 0, failures: [] };
+    const failures: HookSubscriberFailure[] = [];
+    for (const entry of set) {
       try {
-        await handler(payload);
+        await entry.fn(payload);
       } catch (err) {
-        logger.error({ err, topic }, 'hook subscriber threw — continuing');
+        logger.error({ err, topic, subscriber: entry.name }, 'hook subscriber threw — continuing');
+        failures.push({ subscriber: entry.name, error: err });
       }
     }
+    return { topic, delivered: set.size, failures };
   }
 
   /** Test-only: drop all handlers. Never call from production code. */

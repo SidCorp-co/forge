@@ -4,7 +4,8 @@ import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
-import { hooks } from './hooks.js';
+import { assertHookDelivered, hooks } from './hooks.js';
+import { emitPipelineWedge } from './wedge.js';
 
 /**
  * ISS-196 — drains the `pipeline_outbox` table and re-emits the `transition`
@@ -24,11 +25,33 @@ import { hooks } from './hooks.js';
  *
  * Concurrency: `FOR UPDATE SKIP LOCKED` makes multiple workers safe — each
  * picks a disjoint batch.
+ *
+ * ISS-831 — a subscriber failure (`EmitResult.failures`, scoped to
+ * `pipeline-orchestrator` via `assertHookDelivered`) is now a delivery
+ * failure, same as a thrown/rejected emit: the row is left `processed_at`
+ * NULL and `claimed_at = now()`, so it is not re-claimable until the
+ * `CLAIM_LEASE_MS` lease expires — a free ~120s backoff, no new column.
+ * `attempts` counts REdeliveries, not deliveries: it is bumped by
+ * `claimBatch`'s own `CASE WHEN claimed_at IS NOT NULL` only when a row is
+ * re-claimed after a failure, so the first delivery leaves it at 0. Capped at
+ * `MAX_REDELIVERIES` — a row that hits the cap stays `processed_at IS NULL`
+ * forever (VISION №10: never silently mark it done) and raises a
+ * `pipeline_wedge` naming the issue and the stuck status.
+ *
+ * Accepted tradeoff: a retry re-emits to EVERY subscriber, not just the one
+ * that failed (no per-subscriber redelivery targeting — that needs
+ * persisting subscriber identity per outbox row, out of scope). Bounded by
+ * `MAX_REDELIVERIES`: the orchestrator is idempotent under its per-issue
+ * `pg_advisory_xact_lock`, so its redelivery is a real retry; other
+ * subscribers may write up to `MAX_REDELIVERIES` duplicate rows (activity,
+ * notifications) — cosmetic, and notification dedupe is tracked separately.
  */
 
 const POLL_INTERVAL_MS = 1_000;
 const BATCH_LIMIT = 50;
 const CLAIM_LEASE_MS = 120_000;
+// cm:why counts REdeliveries (see module header) — the filter `attempts < MAX_REDELIVERIES` therefore allows 1 initial delivery + MAX_REDELIVERIES retries before dead-lettering
+const MAX_REDELIVERIES = 3;
 
 // Index signature lets this satisfy postgres-js's `Record<string, unknown>`
 // constraint on `db.execute<T>` without per-property TS noise.
@@ -58,6 +81,7 @@ async function claimBatch(): Promise<OutboxRow[]> {
       FROM (
         SELECT id FROM pipeline_outbox
          WHERE processed_at IS NULL
+           AND attempts < ${MAX_REDELIVERIES}
            AND (claimed_at IS NULL OR claimed_at < now() - interval '${sql.raw(String(CLAIM_LEASE_MS))} milliseconds')
          ORDER BY created_at
          FOR UPDATE SKIP LOCKED
@@ -83,7 +107,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
           ? { type: 'device', id: row.actor_id ?? '<system>' }
           : { type: 'user', id: row.actor_id ?? '<system>' };
     try {
-      await hooks.emit('transition', {
+      const result = await hooks.emit('transition', {
         issueId: row.issue_id,
         projectId: row.project_id,
         actor,
@@ -93,6 +117,8 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
         reopenCount: 0,
         ...(row.reason ? { reason: row.reason } : {}),
       });
+      // cm:edge contract -> packages/core/src/pipeline/hooks.ts — only a `pipeline-orchestrator` failure is escalated; a best-effort subscriber failing (e.g. pm, which has no local guard) must not block delivery or raise a wedge claiming the status change was unprocessed
+      assertHookDelivered(result, { owned: ['pipeline-orchestrator'] });
       await db.execute(sql`
         UPDATE pipeline_outbox SET processed_at = now(), claimed_at = NULL WHERE id = ${row.id}
       `);
@@ -112,7 +138,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
       const message = err instanceof Error ? err.message : String(err);
       await db.execute(sql`
         UPDATE pipeline_outbox
-        SET claimed_at = NULL, attempts = attempts + 1, last_error = ${message}
+        SET claimed_at = now(), last_error = ${message}
         WHERE id = ${row.id}
       `);
       failed++;
@@ -123,9 +149,26 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
           level: 'warning',
           data: {
             outboxId: row.id,
-            attempts: row.attempts + 1,
+            attempts: row.attempts,
             lastError: message,
           },
+        });
+      }
+      // cm:why this fires exactly once, on the final permitted delivery's failure: claimBatch's `attempts < MAX_REDELIVERIES` filter means a row with attempts === MAX_REDELIVERIES will never be re-claimed, so this is the last chance to surface it
+      if (row.attempts >= MAX_REDELIVERIES) {
+        await emitPipelineWedge({
+          projectId: row.project_id,
+          issueId: row.issue_id,
+          hop: 'dispatch',
+          entity: 'outbox',
+          entityId: row.id,
+          reason: `transition ${row.from_status} → ${row.to_status} failed after ${MAX_REDELIVERIES} redeliveries: ${message}`,
+          action:
+            'Inspect the pipeline_outbox row + subscriber logs; the issue may be sitting at its trigger status with no job.',
+          title: 'Status change not processed',
+          summary: `An issue's move to "${row.to_status}" could not be handed to the pipeline after ${MAX_REDELIVERIES} retries, so no next step was started.`,
+          nextStep:
+            'Open the issue and re-apply the status change, or check the server logs for the failing subscriber.',
         });
       }
     }

@@ -1442,9 +1442,12 @@ describe('pipeline/orchestrator advisory-lock timeout + retry (ISS-678)', () => 
     });
 
     const bus = makeBus();
-    await expect(
-      bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never),
-    ).resolves.toBeUndefined();
+    const result = await bus.emit(
+      'transition',
+      transition({ from: 'confirmed', to: 'clarified' }) as never,
+    );
+    // cm:why a 55P03-exhausted attempt returns null on the auto path without throwing (buildAndEnqueueStepJob's own retry/give-up), so the orchestrator subscriber sees no error and this delivery is a success
+    expect(result.failures).toEqual([]);
 
     // cm:why 3 attempts × 2 execute calls (SET LOCAL + advisory lock) each
     expect(txExecute.mock.calls.length).toBe(6);
@@ -1481,7 +1484,7 @@ describe('pipeline/orchestrator advisory-lock timeout + retry (ISS-678)', () => 
     expect(enqueueMock.mock.calls.at(-1)?.[0]).toMatchObject({ jobId: 'new-job' });
   });
 
-  it('rethrows a non-55P03 error on the first attempt without retrying', async () => {
+  it('rethrows a non-55P03 error on the first attempt without retrying, and it surfaces in EmitResult.failures', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');
     liveIssue('clarified');
@@ -1494,12 +1497,33 @@ describe('pipeline/orchestrator advisory-lock timeout + retry (ISS-678)', () => 
     });
 
     const bus = makeBus();
-    // cm:why HooksBus.emit swallows subscriber errors (hooks.ts), so the error never surfaces to the caller either way — the load-bearing assertion is the call count: exactly one attempt, no retry
-    await expect(
-      bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never),
-    ).resolves.toBeUndefined();
+    const result = await bus.emit(
+      'transition',
+      transition({ from: 'confirmed', to: 'clarified' }) as never,
+    );
 
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]?.subscriber).toBe('pipeline-orchestrator');
     expect(txExecute.mock.calls.length).toBe(2);
     expect(dbInsert.mock.calls.length).toBe(0);
+  });
+
+  it('rethrows a non-lock error from the issueCreated handler too, surfacing it in EmitResult.failures', async () => {
+    cfgResolved({ enabled: true, autoTriage: true });
+    skillRegistered('forge-triage', 'triage', 'autoTriage');
+    liveIssue('open');
+
+    let call = 0;
+    txExecute.mockImplementation(async () => {
+      call++;
+      if (call === 2) throw new Error('connection reset');
+      return undefined;
+    });
+
+    const bus = makeBus();
+    const result = await bus.emit('issueCreated', issueCreated() as never);
+
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]?.subscriber).toBe('pipeline-orchestrator');
   });
 });

@@ -165,6 +165,8 @@ describe('notify-transitions', () => {
     queueIssue({ assigneeId: ASSIGNEE_ID, createdById: CREATOR_ID, issSeq: 5, title: 'Boom' });
     createNotification.mockRejectedValueOnce(new Error('db down'));
     const bus = makeBus();
-    await expect(bus.emit('transition', transition('reopen') as never)).resolves.toBeUndefined();
+    const result = await bus.emit('transition', transition('reopen') as never);
+    // cm:why notify-transitions self-catches (best-effort by contract) — it never appears in EmitResult.failures even when its own createNotification call rejects
+    expect(result.failures).toEqual([]);
   });
 });
