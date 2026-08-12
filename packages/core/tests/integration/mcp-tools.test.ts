@@ -428,6 +428,16 @@ describe('F4 MCP tools integration', () => {
           data: { status: 'confirmed' },
         },
       });
+      // cm:why mark_merged refuses NO_WORK_EVIDENCE unless a branch or a code/fix handoff is recorded first; this probe is about read-after-write freshness of the list projection, not about the evidence gate, so it satisfies the gate through the public surface
+      // cm:edge contract -> packages/core/src/issues/transition-evidence.ts — the accepted evidence shapes live there; if sessionContext.branch stops counting, this probe silently stops stamping mergedAt and asserts null again
+      await ctx.client.callTool({
+        name: 'forge_issues',
+        arguments: {
+          action: 'update',
+          documentId: created.documentId,
+          data: { sessionContext: { branch: 'ISS-probe-read-after-write' } },
+        },
+      });
       await ctx.client.callTool({
         name: 'forge_issues',
         arguments: {

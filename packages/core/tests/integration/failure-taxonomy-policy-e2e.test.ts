@@ -120,7 +120,8 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       db: dbMod.db,
       jobs: schemaMod.jobs,
     };
-  }, 60_000);
+    // cm:why 120s not the config's 60s hookTimeout — this hook starts a testcontainer AND resolves 10 dynamic imports under pool:'forks'; 60s times out here, which is why 17 sibling suites already override to 120s
+  }, 120_000);
 
   afterAll(async () => {
     if (harness) await harness.cleanup();

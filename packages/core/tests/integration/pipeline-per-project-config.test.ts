@@ -266,6 +266,23 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     // cleanly so the test's explicit walk tolerates the eager soft-skip.
     const live = await readIssue(issue.id);
     if (orderOf(live.status) >= orderOf(to)) return live;
+    // cm:why this file drives the FULL status walk as a device actor, so it trips both transition-evidence rules in turn: planRequiredRule at `approved`, noWorkEvidenceRule at `developed`/`testing`. Neither plan text nor branch name is under test here — per-stage skill routing is — so each hop's precondition is seeded just before it.
+    // cm:edge contract -> packages/core/src/issues/transition-evidence.ts — the trigger statuses ('approved' for plan, NO_WORK_EVIDENCE_STATUSES for branch) and the accepted evidence shapes live there; widen that set without widening this and all three fixtures fail at a hop instead of at their assertion
+    if (to === 'approved') {
+      await harness.db.execute(sql`
+        UPDATE issues
+        SET plan = COALESCE(NULLIF(TRIM(plan), ''), 'fixture plan — see cm:why above')
+        WHERE id = ${live.id}
+      `);
+    }
+    if (to === 'developed' || to === 'testing') {
+      await harness.db.execute(sql`
+        UPDATE issues
+        SET session_context =
+          COALESCE(session_context, '{}'::jsonb) || jsonb_build_object('branch', 'ISS-fixture-' || ${live.id}::text)
+        WHERE id = ${live.id}
+      `);
+    }
     await mods.applyStatusTransition(live, to, { id: ownerId, ownerId });
     // ISS-196 — applyStatusTransition no longer emits `transition` inline; it
     // writes a pipeline_outbox row via the AFTER UPDATE trigger. Drain it so
