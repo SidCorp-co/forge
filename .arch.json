@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "modules": {
+    "core-admin": [
+      "packages/core/src/admin/**"
+    ],
+    "core-agent-sessions": [
+      "packages/core/src/agent-sessions/**"
+    ],
+    "core-agents": [
+      "packages/core/src/agents/**"
+    ],
+    "core-app-config": [
+      "packages/core/src/app-config/**"
+    ],
+    "core-auth": [
+      "packages/core/src/auth/**"
+    ],
+    "core-branches": [
+      "packages/core/src/branches/**"
+    ],
+    "core-chat": [
+      "packages/core/src/chat/**"
+    ],
+    "core-chat-logs": [
+      "packages/core/src/chat-logs/**"
+    ],
+    "core-comments": [
+      "packages/core/src/comments/**"
+    ],
+    "core-config": [
+      "packages/core/src/config/**"
+    ],
+    "core-db": [
+      "packages/core/src/db/**"
+    ],
+    "core-devices": [
+      "packages/core/src/devices/**"
+    ],
+    "core-domain-templates": [
+      "packages/core/src/domain-templates/**"
+    ],
+    "core-embeddings": [
+      "packages/core/src/embeddings/**"
+    ],
+    "core-feedback": [
+      "packages/core/src/feedback/**"
+    ],
+    "core-git": [
+      "packages/core/src/git/**"
+    ],
+    "core-guides": [
+      "packages/core/src/guides/**"
+    ],
+    "core-improvement-messages": [
+      "packages/core/src/improvement-messages/**"
+    ],
+    "core-install": [
+      "packages/core/src/install/**"
+    ],
+    "core-integrations": [
+      "packages/core/src/integrations/**"
+    ],
+    "core-issues": [
+      "packages/core/src/issues/**"
+    ],
+    "core-jobs": [
+      "packages/core/src/jobs/**"
+    ],
+    "core-knowledge": [
+      "packages/core/src/knowledge/**"
+    ],
+    "core-knowledge-edges": [
+      "packages/core/src/knowledge-edges/**"
+    ],
+    "core-labels": [
+      "packages/core/src/labels/**"
+    ],
+    "core-lib": [
+      "packages/core/src/lib/**"
+    ],
+    "core-lifecycle": [
+      "packages/core/src/lifecycle/**"
+    ],
+    "core-mcp": [
+      "packages/core/src/mcp/**"
+    ],
+    "core-me": [
+      "packages/core/src/me/**"
+    ],
+    "core-memory": [
+      "packages/core/src/memory/**"
+    ],
+    "core-metrics": [
+      "packages/core/src/metrics/**"
+    ],
+    "core-middleware": [
+      "packages/core/src/middleware/**"
+    ],
+    "core-notifications": [
+      "packages/core/src/notifications/**"
+    ],
+    "core-observability": [
+      "packages/core/src/observability/**"
+    ],
+    "core-orgs": [
+      "packages/core/src/orgs/**"
+    ],
+    "core-pat": [
+      "packages/core/src/pat/**"
+    ],
+    "core-pipeline": [
+      "packages/core/src/pipeline/**"
+    ],
+    "core-plugins": [
+      "packages/core/src/plugins/**"
+    ],
+    "core-pm": [
+      "packages/core/src/pm/**"
+    ],
+    "core-projects": [
+      "packages/core/src/projects/**"
+    ],
+    "core-prompt": [
+      "packages/core/src/prompt/**"
+    ],
+    "core-queue": [
+      "packages/core/src/queue/**"
+    ],
+    "core-release-batch": [
+      "packages/core/src/release-batch/**"
+    ],
+    "core-runners": [
+      "packages/core/src/runners/**"
+    ],
+    "core-schedules": [
+      "packages/core/src/schedules/**"
+    ],
+    "core-security": [
+      "packages/core/src/security/**"
+    ],
+    "core-skill-facts": [
+      "packages/core/src/skill-facts/**"
+    ],
+    "core-skills": [
+      "packages/core/src/skills/**"
+    ],
+    "core-storage": [
+      "packages/core/src/storage/**"
+    ],
+    "core-tasks": [
+      "packages/core/src/tasks/**"
+    ],
+    "core-update-packets": [
+      "packages/core/src/update-packets/**"
+    ],
+    "core-uploads": [
+      "packages/core/src/uploads/**"
+    ],
+    "core-usage-records": [
+      "packages/core/src/usage-records/**"
+    ],
+    "core-webhooks": [
+      "packages/core/src/webhooks/**"
+    ],
+    "core-ws": [
+      "packages/core/src/ws/**"
+    ]
+  },
+  "tests": {
+    "globs": [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/tests/**",
+      "**/__tests__/**"
+    ],
+    "relax": [
+      "boundary",
+      "forbidden"
+    ]
+  },
+  "generated": {
+    "globs": [
+      "**/*.gen.ts",
+      "**/*.generated.*",
+      "**/drizzle/**"
+    ]
+  },
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/coverage/**",
+    "**/.forge/**",
+    "**/.claude/**",
+    "**/*.d.ts",
+    "packages/web-v2/**",
+    "packages/dev/**",
+    "packages/tests/**",
+    "packages/web/**",
+    "packages/runner/**",
+    "packages/observability/**",
+    "packages/contracts/**"
+  ],
+  "contracts": [
+    {
+      "id": "branches-is-pure",
+      "type": "forbidden",
+      "from": "core-branches",
+      "to": "*",
+      "status": "locked",
+      "description": "branch naming and lookup answers from its inputs alone Measured: 0 outgoing cross-module edges today."
+    },
+    {
+      "id": "config-is-pure",
+      "type": "forbidden",
+      "from": "core-config",
+      "to": "*",
+      "status": "locked",
+      "description": "app config is read by 22 modules and must not reach back into any of them Measured: 0 outgoing cross-module edges today."
+    },
+    {
+      "id": "install-is-pure",
+      "type": "forbidden",
+      "from": "core-install",
+      "to": "*",
+      "status": "locked",
+      "description": "install describes a target; reaching outward would make it a second dispatcher Measured: 0 outgoing cross-module edges today."
+    },
+    {
+      "id": "plugins-is-pure",
+      "type": "forbidden",
+      "from": "core-plugins",
+      "to": "*",
+      "status": "locked",
+      "description": "plugin registry resolves by name only Measured: 0 outgoing cross-module edges today."
+    },
+    {
+      "id": "no-coordinator-blob",
+      "type": "fan-out",
+      "scope": "file",
+      "max_modules": 6,
+      "status": "draft",
+      "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files."
+    }
+  ]
+}

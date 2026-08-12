@@ -1,0 +1,5 @@
+#!/bin/sh
+# Vendored archmap. Resolves its own real location so the repo's copy wins over any
+# arch on PATH — the same precedence the CI job and the editor hook both rely on.
+d=$(dirname "$(readlink -f "$0")")
+exec node "$d/entry.mjs" "$@"
