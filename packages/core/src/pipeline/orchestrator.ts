@@ -1068,80 +1068,94 @@ function resolveSkipDevice(actor: Actor, projectCreatedBy: string | null): Devic
  * Register only in the main process boot block — it touches the DB and pg-boss.
  */
 export function registerPipelineOrchestrator(bus: HooksBus): void {
-  bus.on('transition', async (payload) => {
-    try {
-      // Guard: `needs_info → open` never re-triages (user answered a question).
-      if (payload.to === 'open' && payload.from === 'needs_info') return;
-      // cm:why ISS-411 — this is what makes an operator Cancel a HARD STOP: parking at `on_hold` (runs-control.ts) plus this guard means an aborted agent's termination-protocol status advance can never silently restart the run.
-      // cm:why ISS-596 — `operator_unblock` is the deliberate-unblock sentinel (forge_issues.update data.unblock:true); a stray agent advance never carries it, so the hard stop survives for every other path.
-      // cm:why ISS-702 widened this from `on_hold` to every park; reading PARKED_STATUSES instead of two literals is what stops a third park being added without a guard. Verdict-aware writes in finalize-failure.ts/retry.ts are the primary defence — this is the net under them.
-      if (
-        isParkedStatus(payload.from) &&
-        payload.actor.type !== 'user' &&
-        payload.reason !== 'operator_unblock'
-      ) {
-        logger.info(
-          {
-            issueId: payload.issueId,
-            from: payload.from,
-            to: payload.to,
-            actor: payload.actor.type,
-            reason: payload.reason,
-          },
-          'orchestrator: skip enqueue — non-user advance out of a parked status',
-        );
-        // cm:guard the issue now reads as sitting at `payload.to` with no job, so this comment is the only signal an operator or the next agent gets — returning silently is what made a parked issue indistinguishable from a running one (ISS-829 diagnosis)
-        // cm:why gated on the SAME predicate the dispatch short-circuit below uses: for a target no stage maps to (park→park, closed, needs_info, tested) nothing would have dispatched anyway, so the comment's "no job was dispatched" would be describing normal behaviour as a fault
-        if (resolveJobTypeForStatus(payload.to) || SKIPPABLE_STAGES.has(payload.to)) {
-          await postSkippedParkExitComment({
-            issueId: payload.issueId,
-            projectId: payload.projectId,
-            from: payload.from,
-            to: payload.to,
-            actorType: payload.actor.type,
-          });
+  bus.on(
+    'transition',
+    async (payload) => {
+      try {
+        // Guard: `needs_info → open` never re-triages (user answered a question).
+        if (payload.to === 'open' && payload.from === 'needs_info') return;
+        // cm:why ISS-411 — this is what makes an operator Cancel a HARD STOP: parking at `on_hold` (runs-control.ts) plus this guard means an aborted agent's termination-protocol status advance can never silently restart the run.
+        // cm:why ISS-596 — `operator_unblock` is the deliberate-unblock sentinel (forge_issues.update data.unblock:true); a stray agent advance never carries it, so the hard stop survives for every other path.
+        // cm:why ISS-702 widened this from `on_hold` to every park; reading PARKED_STATUSES instead of two literals is what stops a third park being added without a guard. Verdict-aware writes in finalize-failure.ts/retry.ts are the primary defence — this is the net under them.
+        if (
+          isParkedStatus(payload.from) &&
+          payload.actor.type !== 'user' &&
+          payload.reason !== 'operator_unblock'
+        ) {
+          logger.info(
+            {
+              issueId: payload.issueId,
+              from: payload.from,
+              to: payload.to,
+              actor: payload.actor.type,
+              reason: payload.reason,
+            },
+            'orchestrator: skip enqueue — non-user advance out of a parked status',
+          );
+          // cm:guard the issue now reads as sitting at `payload.to` with no job, so this comment is the only signal an operator or the next agent gets — returning silently is what made a parked issue indistinguishable from a running one (ISS-829 diagnosis)
+          // cm:why gated on the SAME predicate the dispatch short-circuit below uses: for a target no stage maps to (park→park, closed, needs_info, tested) nothing would have dispatched anyway, so the comment's "no job was dispatched" would be describing normal behaviour as a fault
+          if (resolveJobTypeForStatus(payload.to) || SKIPPABLE_STAGES.has(payload.to)) {
+            await postSkippedParkExitComment({
+              issueId: payload.issueId,
+              projectId: payload.projectId,
+              from: payload.from,
+              to: payload.to,
+              actorType: payload.actor.type,
+            });
+          }
+          return;
         }
-        return;
+        // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
+        // skill — saves a DB hit on human-gated transitions.
+        if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
+        const { cfg, projectCreatedBy } = await loadPipelineConfig(payload.projectId);
+        // ISS-239 — build the resolver once and thread it through both phases
+        // so skill_registrations is read exactly once per transition hook.
+        const resolver = createProjectSkillResolver(payload.projectId);
+        // When the skip chain advanced the issue, the re-emitted transition
+        // hook owns the new status — do NOT considerEnqueue for the stage the
+        // issue just left (it would enqueue a job for a stage already skipped).
+        const advanced = await autoSkipDisabledStages(payload, { cfg, projectCreatedBy, resolver });
+        if (advanced) return;
+        await considerEnqueue({
+          projectId: payload.projectId,
+          issueId: payload.issueId,
+          status: payload.to,
+          actor: payload.actor,
+          reason: { transition: { from: payload.from, to: payload.to } },
+          preloaded: { cfg, projectCreatedBy, resolver },
+        });
+      } catch (err) {
+        logger.error(
+          { err, issueId: payload.issueId, to: payload.to },
+          'orchestrator: transition handler failed',
+        );
+        // cm:edge contract -> packages/core/src/pipeline/hooks.ts — rethrow so HooksBus records this subscriber in EmitResult.failures and the outbox stops stamping the row processed; the bus still runs the remaining subscribers and never throws at the emitter, so the isolation this local catch used to provide is unchanged
+        throw err;
       }
-      // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
-      // skill — saves a DB hit on human-gated transitions.
-      if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
-      const { cfg, projectCreatedBy } = await loadPipelineConfig(payload.projectId);
-      // ISS-239 — build the resolver once and thread it through both phases
-      // so skill_registrations is read exactly once per transition hook.
-      const resolver = createProjectSkillResolver(payload.projectId);
-      // When the skip chain advanced the issue, the re-emitted transition
-      // hook owns the new status — do NOT considerEnqueue for the stage the
-      // issue just left (it would enqueue a job for a stage already skipped).
-      const advanced = await autoSkipDisabledStages(payload, { cfg, projectCreatedBy, resolver });
-      if (advanced) return;
-      await considerEnqueue({
-        projectId: payload.projectId,
-        issueId: payload.issueId,
-        status: payload.to,
-        actor: payload.actor,
-        reason: { transition: { from: payload.from, to: payload.to } },
-        preloaded: { cfg, projectCreatedBy, resolver },
-      });
-    } catch (err) {
-      logger.error(
-        { err, issueId: payload.issueId, to: payload.to },
-        'orchestrator: transition handler failed',
-      );
-    }
-  });
+    },
+    { name: 'pipeline-orchestrator' },
+  );
 
-  bus.on('issueCreated', async (payload) => {
-    try {
-      await considerEnqueue({
-        projectId: payload.projectId,
-        issueId: payload.issueId,
-        status: payload.status,
-        actor: payload.actor,
-        reason: { created: true },
-      });
-    } catch (err) {
-      logger.error({ err, issueId: payload.issueId }, 'orchestrator: issueCreated handler failed');
-    }
-  });
+  bus.on(
+    'issueCreated',
+    async (payload) => {
+      try {
+        await considerEnqueue({
+          projectId: payload.projectId,
+          issueId: payload.issueId,
+          status: payload.status,
+          actor: payload.actor,
+          reason: { created: true },
+        });
+      } catch (err) {
+        logger.error(
+          { err, issueId: payload.issueId },
+          'orchestrator: issueCreated handler failed',
+        );
+        throw err;
+      }
+    },
+    { name: 'pipeline-orchestrator' },
+  );
 }

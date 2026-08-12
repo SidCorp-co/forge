@@ -47,7 +47,7 @@ export interface PipelineWedgeEvent {
   issueId?: string | null;
   /** WHERE — which loop hop missed. */
   hop: WedgeHop;
-  entity: 'job' | 'session' | 'run';
+  entity: 'job' | 'session' | 'run' | 'outbox';
   entityId: string;
   /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
   reason: string;
