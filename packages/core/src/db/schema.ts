@@ -2089,10 +2089,11 @@ export const notifications = pgTable(
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
     // ISS-510 — resolver lookup: unread rows for a given resolution key.
     resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(t.resolutionKey, t.read),
-    // cm:edge contract -> packages/core/src/admin/alert-sweeper.ts — claims via `INSERT ... ON CONFLICT (user_id, resolution_key) WHERE read = false`, atomic under concurrent sweepers unlike a check-then-insert
+    // cm:edge contract -> packages/core/src/admin/alert-sweeper.ts — claims via `INSERT ... ON CONFLICT (user_id, resolution_key) WHERE read = false AND resolution_key IS NOT NULL AND type = 'ops_alert'`; the ON CONFLICT predicate must match this one verbatim or inference fails
+    // cm:guard keep this index scoped to type = 'ops_alert' — notify-transitions.ts legitimately leaves several unread rows under one `issue:<id>:status` key (waiting + reopen), so an unscoped unique index cannot be created on live data and would then silently drop those notifications
     userResolutionKeyUnreadUq: uniqueIndex('notifications_user_resolution_key_unread_uq')
       .on(t.userId, t.resolutionKey)
-      .where(sql`read = false AND resolution_key IS NOT NULL`),
+      .where(sql`read = false AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
   }),
 );
 

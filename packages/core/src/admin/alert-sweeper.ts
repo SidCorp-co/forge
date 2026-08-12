@@ -38,8 +38,9 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
 /**
  * Atomically claim (or escalate) this admin's ops-alert row. Backed by the
  * `notifications_user_resolution_key_unread_uq` partial unique index (one
- * unread row per `(user_id, resolution_key)`), so this is safe under
- * concurrent sweepers (multiple core replicas) — unlike a check-then-insert.
+ * unread `ops_alert` row per `(user_id, resolution_key)`), so this is safe
+ * under concurrent sweepers (multiple core replicas) — unlike a
+ * check-then-insert.
  *
  * - No unread row yet for this admin+key → `INSERT ... ON CONFLICT DO NOTHING`
  *   claims it; a losing race just no-ops (the winner already claimed it).
@@ -48,6 +49,7 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
  *   second row to reconcile.
  * - An unread row exists at the same severity → no-op.
  */
+// cm:why escalation updates in place instead of the plan's resolve-then-re-emit — the unique index allows only one unread row per (user, key), and a resolved-then-recreated pair would report the live condition as both cleared and open
 async function claimOrEscalate(input: {
   userId: string;
   title: string;
@@ -60,7 +62,7 @@ async function claimOrEscalate(input: {
   const claimed = await db.execute<{ id: string }>(sql`
     INSERT INTO notifications (user_id, project_id, type, title, body, severity, resolution_key, read, created_at)
     VALUES (${userId}, NULL, 'ops_alert', ${title}, ${body}, ${severity}, ${resolutionKey}, false, now())
-    ON CONFLICT (user_id, resolution_key) WHERE read = false AND resolution_key IS NOT NULL DO NOTHING
+    ON CONFLICT (user_id, resolution_key) WHERE read = false AND resolution_key IS NOT NULL AND type = 'ops_alert' DO NOTHING
     RETURNING id
   `);
   let notificationId = claimed[0]?.id;
@@ -70,7 +72,7 @@ async function claimOrEscalate(input: {
       UPDATE notifications
       SET severity = ${severity}, title = ${title}, body = ${body}
       WHERE user_id = ${userId} AND resolution_key = ${resolutionKey}
-        AND read = false AND severity IS DISTINCT FROM ${severity}
+        AND type = 'ops_alert' AND read = false AND severity IS DISTINCT FROM ${severity}
       RETURNING id
     `);
     notificationId = escalated[0]?.id;
@@ -104,6 +106,7 @@ export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepR
 
   try {
     const alerts = await computeAlerts({ now });
+    const adminIds = await platformAdminUserIds();
     let notified = 0;
     let resolved = 0;
 
@@ -117,7 +120,6 @@ export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepR
 
       const severity = alert.status === 'crit' ? 'error' : 'warning';
       const title = `${ALERT_TITLES[alert.id]} — ${alert.detail}`;
-      const adminIds = await platformAdminUserIds();
 
       for (const userId of adminIds) {
         const changed = await claimOrEscalate({

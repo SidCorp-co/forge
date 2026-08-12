@@ -51,7 +51,7 @@ const STARVED_GRACE_SECONDS = (() => {
 })();
 const CRIT_STARVED_PROJECTS = 3;
 
-// cm:hack ISS-649 until:admin-thresholds-config-lands — ratio-based spend-spike thresholds are a placeholder; Step 4 (admin thresholds config) replaces these env-overridable constants with a configurable ceiling
+// cm:hack ISS-654 until:admin-thresholds-config-lands — ratio-based spend-spike thresholds are a placeholder; measured on forge-beta they fire at 3.06x on ordinary hourly swings ($37-$194), so expect near-permanent warn until ISS-654 lands the configurable ceiling
 const SPEND_WINDOW_HOURS = (() => {
   const env = Number(process.env.FORGE_ALERT_SPEND_WINDOW_HOURS);
   return Number.isFinite(env) && env > 0 ? env : 1;
@@ -71,6 +71,11 @@ const SPEND_MIN_USD = (() => {
 
 const SCHEDULE_WARN_STREAK = 3;
 const SCHEDULE_CRIT_STREAK = 5;
+// cm:why a streak on a schedule that has stopped running (disabled, or simply abandoned) would pin A5 at warn forever with no path to resolveNotifications — the window is wide enough for a weekly cadence to still be caught
+const SCHEDULE_ACTIVE_WINDOW_HOURS = (() => {
+  const env = Number(process.env.FORGE_ALERT_SCHEDULE_ACTIVE_WINDOW_HOURS);
+  return Number.isFinite(env) && env > 0 ? env : 24 * 8;
+})();
 const DELIVERY_MIN_SAMPLE = 5;
 const DELIVERY_WARN_RATE = 0.5;
 const DELIVERY_CRIT_RATE = 0.8;
@@ -309,13 +314,16 @@ async function alertSpendSpike(now: Date): Promise<AdminAlert> {
   };
 }
 
+// cm:guard postgres-js hands `timestamptz` back as a JS Date, never a string — never compare one of these directly (a bare `.sort()` orders by weekday name); go through `oldestIso` below
+type PgTimestamp = string | Date;
+
 type ScheduleStreakRow = {
   schedule_id: string;
   name: string;
   project_id: string;
   project_slug: string;
   streak: number;
-  streak_started_at: string | null;
+  streak_started_at: PgTimestamp | null;
 };
 
 type DeliveryFailRow = {
@@ -325,12 +333,25 @@ type DeliveryFailRow = {
   project_slug: string;
   failed: number;
   total: number;
-  oldest_failed_at: string | null;
+  oldest_failed_at: PgTimestamp | null;
 };
+
+function oldestIso(values: Array<PgTimestamp | null>): string | null {
+  let oldest: number | null = null;
+  for (const value of values) {
+    if (value === null) continue;
+    const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+    if (!Number.isFinite(ms)) continue;
+    if (oldest === null || ms < oldest) oldest = ms;
+  }
+  return oldest === null ? null : new Date(oldest).toISOString();
+}
 
 /** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
 async function alertAutomationFailing(): Promise<AdminAlert> {
   const [scheduleRows, deliveryRows] = await Promise.all([
+    // cm:why no LIMIT here — `count` is documented as the true contributor total, so capping in SQL would understate it past ENTITY_LIMIT streaking schedules; only the display `entities` list is truncated
+    // cm:why the enabled + last_run_at gate is what lets A5 reach 'ok' again — a streak on a schedule nobody runs any more never clears on its own
     db.execute<ScheduleStreakRow>(sql`
       WITH ranked AS (
         SELECT schedule_id, status, created_at,
@@ -345,10 +366,12 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
         GROUP BY schedule_id
       ),
       totals AS (
-        SELECT schedule_id, count(*) AS total_runs FROM ranked GROUP BY schedule_id
+        SELECT schedule_id, count(*) AS total_runs, max(created_at) AS last_run_at
+        FROM ranked GROUP BY schedule_id
       ),
       streaks AS (
-        SELECT t.schedule_id, coalesce(fs.first_success_rn - 1, t.total_runs)::int AS streak
+        SELECT t.schedule_id, t.last_run_at,
+               coalesce(fs.first_success_rn - 1, t.total_runs)::int AS streak
         FROM totals t
         LEFT JOIN first_success fs ON fs.schedule_id = t.schedule_id
       )
@@ -358,8 +381,9 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
       JOIN schedules s ON s.id = st.schedule_id
       JOIN projects p ON p.id = s.project_id
       WHERE st.streak >= ${SCHEDULE_WARN_STREAK}
+        AND s.enabled = true
+        AND st.last_run_at >= now() - (${SCHEDULE_ACTIVE_WINDOW_HOURS}::int * interval '1 hour')
       ORDER BY st.streak DESC
-      LIMIT ${ENTITY_LIMIT}
     `),
     // cm:why no LIMIT here — classification (below) must see every qualifying binding, or a low-volume/high-rate binding can be excluded while a high-volume/low-rate one survives
     // cm:edge contract -> packages/core/src/integrations/deliveries.ts — direction='outbound' mirrors that module's outbound-only delivery health filtering; inbound webhook rows are recorded 'ok' by Coolify even on a reported deploy failure
@@ -407,8 +431,7 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
     (acc, c) => worstStatus(acc, c.status),
     'ok' as AdminAlertStatus,
   );
-  const sinceTimes = contributors.map((c) => c.since).filter((s): s is string => s !== null);
-  const since = sinceTimes.length > 0 ? (sinceTimes.sort()[0] ?? null) : null;
+  const since = oldestIso(contributors.map((c) => c.since));
 
   return {
     id: 'A5',

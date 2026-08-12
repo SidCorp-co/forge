@@ -114,7 +114,26 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     );
   }
 
-  async function opsAlertRows() {
+  /** Jobs dispatched `ageSeconds` ago under a still-running pipeline_run: A2 fodder, invisible to A1 and A3. */
+  async function seedStuckJobs(count: number, ageSeconds: number) {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+      VALUES (${runId}, ${project.id}, 'system', 'running', now())
+    `);
+    for (let i = 0; i < count; i++) {
+      await harness.db.execute(sql`
+        INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by, queued_at, dispatched_at)
+        VALUES (${randomUUID()}, ${project.id}, 'code', 'running', '{}'::jsonb, ${runId}, ${owner.id},
+                now() - (${ageSeconds}::int * interval '1 second'),
+                now() - (${ageSeconds}::int * interval '1 second'))
+      `);
+    }
+  }
+
+  async function opsAlertRows(resolutionKey = 'ops-alert:A1') {
     const rows = await harness.db.execute<{
       user_id: string;
       severity: string | null;
@@ -122,7 +141,7 @@ describe('runAlertSweep E2E (ISS-652)', () => {
       resolution_key: string;
     }>(sql`
       SELECT user_id, severity, read, resolution_key FROM notifications
-      WHERE type = 'ops_alert' AND resolution_key = 'ops-alert:A1'
+      WHERE type = 'ops_alert' AND resolution_key = ${resolutionKey}
     `);
     return rows as unknown as Array<{
       user_id: string;
@@ -193,6 +212,27 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     const rows = await opsAlertRows();
     const userIds = rows.map((r) => r.user_id).sort();
     expect(userIds).toEqual([admin1.id, admin2.id].sort());
+  });
+
+  // cm:guard escalation must stay in place on the ONE unread row (the unique index forbids a second) — a resolve-then-re-emit would leave a read row plus a new one for the same live condition
+  it('escalates warn -> crit on the same unread row', async () => {
+    const admin = await seedAdmin();
+    await seedStuckJobs(1, 700);
+
+    await mods.runAlertSweep(nextNow());
+    const warnRows = await opsAlertRows('ops-alert:A2');
+    expect(warnRows).toHaveLength(1);
+    expect(warnRows[0]?.severity).toBe('warning');
+
+    await seedStuckJobs(2, 700);
+    const escalated = await mods.runAlertSweep(nextNow());
+    expect(escalated.notified).toBeGreaterThan(0);
+
+    const critRows = await opsAlertRows('ops-alert:A2');
+    expect(critRows).toHaveLength(1);
+    expect(critRows[0]?.user_id).toBe(admin.id);
+    expect(critRows[0]?.severity).toBe('error');
+    expect(critRows[0]?.read).toBe(false);
   });
 
   // cm:guard platformAdminUserIds() must require a verified email — an allow-listed-but-unverified account must not receive cross-tenant alert details
