@@ -262,30 +262,50 @@ describe('applyUxScan', () => {
     expect(deleteWhereMock).not.toHaveBeenCalled();
   });
 
-  it('updates agentConfig.uxContractProfile.designSystem on every scan while preserving other profile + agentConfig keys', async () => {
-    profileRow = {
-      agentConfig: {
-        someOtherKey: 'x',
-        uxContractProfile: {
-          projectLabel: 'Foo',
-          bindingScope: 'foo/',
-          knownGaps: ['gap1'],
-          ruleOverrides: { 'ds-tokens': 'custom text' },
-        },
-      },
-    };
-
+  it('patches only agentConfig.uxContractProfile.designSystem in SQL on every scan', async () => {
     await applyUxScan(PROJECT_ID, EMPTY_SNAPSHOT);
 
     expect(updateSetMock).toHaveBeenCalledOnce();
-    const updated = updateSetMock.mock.calls[0]?.[0] as {
-      agentConfig: Record<string, unknown>;
-    };
-    expect(updated.agentConfig.someOtherKey).toBe('x');
-    const profile = updated.agentConfig.uxContractProfile as Record<string, unknown>;
-    expect(profile.projectLabel).toBe('Foo');
-    expect(profile.knownGaps).toEqual(['gap1']);
-    expect(profile.ruleOverrides).toEqual({ 'ds-tokens': 'custom text' });
-    expect(profile.designSystem).toEqual(detectDesignSystem(EMPTY_SNAPSHOT));
+    const updated = updateSetMock.mock.calls[0]?.[0] as { agentConfig: unknown };
+    expect(sqlTextOf(updated.agentConfig)).toMatch(/jsonb_set/);
+    expect(sqlTextOf(updated.agentConfig)).toMatch(/uxContractProfile/);
+  });
+
+  it('preserves identical detected proposals on an idempotent re-scan', async () => {
+    existingRulesRows = [
+      ...activeRowsFrom(baseGenerated),
+      {
+        id: 'matching-proposal-2',
+        text: driftedGenerated[2]?.text ?? '',
+        status: 'proposed',
+        source: 'detected',
+        orderIndex: 2,
+      },
+    ];
+
+    const result = await applyUxScan(PROJECT_ID, DRIFTED_SNAPSHOT);
+
+    expect(result.mode).toBe('proposed');
+    expect(result.proposed).toBe(0);
+    expect(insertValuesMock).not.toHaveBeenCalled();
+    expect(deleteWhereMock).not.toHaveBeenCalled();
+  });
+
+  it('performs proposal deletion and replacement inside the advisory-lock transaction', async () => {
+    existingRulesRows = [
+      ...activeRowsFrom(baseGenerated),
+      {
+        id: 'stale-proposal-2',
+        text: 'outdated',
+        status: 'proposed',
+        source: 'detected',
+        orderIndex: 2,
+      },
+    ];
+
+    await applyUxScan(PROJECT_ID, DRIFTED_SNAPSHOT);
+
+    expect(dbMock.delete).toHaveBeenCalledOnce();
+    expect(dbMock.insert).toHaveBeenCalledOnce();
   });
 });

@@ -51,6 +51,14 @@ vi.mock('../db/client.js', () => ({
 const resolveChatDeviceMock = vi.fn();
 const createChatSessionRowMock = vi.fn();
 const dispatchChatTurnMock = vi.fn();
+const applyKernelTransitionMock = vi.fn();
+const closeRunIfOneShotMock = vi.fn();
+vi.mock('../lifecycle/transition.js', () => ({
+  applyKernelTransition: (...args: unknown[]) => applyKernelTransitionMock(...args),
+}));
+vi.mock('../pipeline/runs.js', () => ({
+  closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
+}));
 vi.mock('../agent-sessions/chat-turn.js', () => ({
   resolveChatDevice: (...args: unknown[]) => resolveChatDeviceMock(...args),
   createChatSessionRow: (...args: unknown[]) => createChatSessionRowMock(...args),
@@ -93,8 +101,14 @@ beforeEach(() => {
     repoPath: '/repo',
     agentConfig: {},
   };
-  createChatSessionRowMock.mockResolvedValue({ id: SESSION_ID });
+  createChatSessionRowMock.mockResolvedValue({
+    id: SESSION_ID,
+    pipelineRunId: '55555555-5555-4555-8555-555555555555',
+    status: 'idle',
+  });
   dispatchChatTurnMock.mockResolvedValue({ id: SESSION_ID });
+  applyKernelTransitionMock.mockResolvedValue([]);
+  closeRunIfOneShotMock.mockResolvedValue(undefined);
 });
 
 describe('POST /api/projects/:id/ux-contract/scan', () => {
@@ -226,7 +240,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
     expect(dispatched.message).not.toContain('packages/web-v2');
   });
 
-  it('maps a dispatch failure to a 502, not a 500, and leaves the button retryable', async () => {
+  it('maps a dispatch failure to 502 after terminalizing its session and one-shot run', async () => {
     resolveChatDeviceMock.mockResolvedValue({
       deviceId: DEVICE_ID,
       isLocal: false,
@@ -238,5 +252,13 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
     expect(res.status).toBe(502);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('DISPATCH_FAILED');
+    expect(applyKernelTransitionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ entity: 'session', to: 'failed', source: 'ux-contract/scan' }),
+    );
+    expect(closeRunIfOneShotMock).toHaveBeenCalledWith(
+      '55555555-5555-4555-8555-555555555555',
+      'failed',
+    );
   });
 });

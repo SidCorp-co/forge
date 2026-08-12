@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,6 +11,7 @@ import {
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
 import {
+  agentSessions,
   projects,
   uxContractRules,
   uxFindings,
@@ -20,8 +21,10 @@ import {
   uxRuleStatuses,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { UX_PRESETS, type UxStackProfile, compilePresetToRules } from './ux-contract-presets.js';
 import { recompileAndPersistUxContract } from './ux-contract-recompile.js';
 
@@ -215,18 +218,21 @@ uxContractProjectRoutes.post(
       );
     }
 
-    // Persist the stack profile so recompile can build the scaffold from it.
+    // Persist only the profile subdocument so an overlapping agentConfig write
+    // from another settings surface cannot be reverted by this request.
     if (body.profile) {
-      const [row] = await db
-        .select({ agentConfig: projects.agentConfig })
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
-      const ac = {
-        ...((row?.agentConfig ?? {}) as Record<string, unknown>),
-        uxContractProfile: body.profile,
-      };
-      await db.update(projects).set({ agentConfig: ac }).where(eq(projects.id, projectId));
+      const profileJson = JSON.stringify(body.profile);
+      await db
+        .update(projects)
+        .set({
+          agentConfig: sql`jsonb_set(
+            COALESCE(${projects.agentConfig}, '{}'::jsonb),
+            '{uxContractProfile}',
+            ${profileJson}::jsonb,
+            true
+          )`,
+        })
+        .where(eq(projects.id, projectId));
     }
 
     await recompileAndPersistUxContract(projectId);
@@ -337,6 +343,24 @@ uxContractProjectRoutes.post(
         { err, sessionId: session.id, projectId: project.id },
         'ux-contract/scan: chat-turn dispatch failed',
       );
+      try {
+        await applyKernelTransition(db, {
+          entity: 'session',
+          to: 'failed',
+          set: { failureReason: 'ws-publish-failed' },
+          where: eq(agentSessions.id, session.id),
+          fromStatus: session.status,
+          reason: 'ws-publish-failed',
+          actor: { type: 'system' },
+          source: 'ux-contract/scan',
+        });
+        await closeRunIfOneShot(session.pipelineRunId, 'failed');
+      } catch (cleanupErr) {
+        logger.error(
+          { err: cleanupErr, sessionId: session.id, projectId: project.id },
+          'ux-contract/scan: failed to clean up after dispatch failure',
+        );
+      }
       throw new HTTPException(502, {
         message: 'failed to start the UX stack scan',
         cause: { code: 'DISPATCH_FAILED' },
@@ -354,12 +378,36 @@ uxContractRuleRoutes.use('*', requireAuth(), assertEmailVerified());
 
 async function loadRule(ruleId: string) {
   const [row] = await db
-    .select({ id: uxContractRules.id, projectId: uxContractRules.projectId })
+    .select({
+      id: uxContractRules.id,
+      projectId: uxContractRules.projectId,
+      group: uxContractRules.group,
+      source: uxContractRules.source,
+      status: uxContractRules.status,
+    })
     .from(uxContractRules)
     .where(eq(uxContractRules.id, ruleId))
     .limit(1);
   if (!row) throw notFound('ux contract rule not found');
   return row;
+}
+
+async function detectedApprovalWouldReplaceProseContract(
+  projectId: string,
+  rule: Awaited<ReturnType<typeof loadRule>>,
+) {
+  if (rule.group !== 'designSystem' || rule.source !== 'detected' || rule.status !== 'proposed') {
+    return false;
+  }
+  const [project] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const profile = (
+    project?.agentConfig as { uxContractProfile?: Record<string, unknown> } | undefined
+  )?.uxContractProfile;
+  return profile?.preserveProse === true;
 }
 
 uxContractRuleRoutes.patch(
@@ -378,6 +426,9 @@ uxContractRuleRoutes.patch(
     const rule = await loadRule(ruleId);
     const access = await loadProjectAccess(rule.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
+    const detectedApprovalWouldReplaceProse =
+      patch.status === 'active' &&
+      (await detectedApprovalWouldReplaceProseContract(rule.projectId, rule));
 
     const updates: Record<string, unknown> = {
       ...patch,
@@ -391,7 +442,10 @@ uxContractRuleRoutes.patch(
       .returning();
     if (!updated) throw notFound('ux contract rule not found');
 
-    await recompileAndPersistUxContract(rule.projectId);
+    // Detected design-system proposals are staged beside a prose-only contract.
+    // Do not replace that contract until a non-detected active rule establishes
+    // a compiled rule set explicitly.
+    if (!detectedApprovalWouldReplaceProse) await recompileAndPersistUxContract(rule.projectId);
 
     return c.json(updated);
   },
