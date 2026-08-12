@@ -6,13 +6,15 @@ vi.mock('../config/env.js', () => ({
 
 // cm:why queued by call order — the mock cannot see which table drizzle targeted, so the three selects are: last departure from the stage, comments since, non-status activity since
 const queue: unknown[][] = [];
+const wheres: unknown[][] = [];
 let selectCalls = 0;
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: () => {
+        where: (...conds: unknown[]) => {
           selectCalls += 1;
+          wheres.push(conds);
           const rows = queue.shift() ?? [];
           const chain = {
             limit: async () => rows,
@@ -34,8 +36,22 @@ const departure = (to: string) => [{ payload: { from: 'approved', to }, createdA
 
 function setup(...batches: unknown[][]) {
   queue.length = 0;
+  wheres.length = 0;
   selectCalls = 0;
   queue.push(...batches);
+}
+
+/** Does a captured drizzle condition tree reference this column? */
+function filtersOn(conds: unknown, column: string): boolean {
+  const seen = new Set<unknown>();
+  const walk = (node: unknown, depth: number): boolean => {
+    if (depth > 8 || node === null || typeof node !== 'object' || seen.has(node)) return false;
+    seen.add(node);
+    const rec = node as Record<string, unknown>;
+    if (rec.name === column) return true;
+    return Object.values(rec).some((v) => walk(v, depth + 1));
+  };
+  return walk(conds, 0);
 }
 
 describe('findUnansweredBounce', () => {
@@ -64,6 +80,18 @@ describe('findUnansweredBounce', () => {
   // cm:guard a human answering the bounce MUST release the guard — blocking after real input would strand the issue, which is far worse than the wasted run this guard exists to prevent
   it('allows the dispatch when a comment landed after the bounce', async () => {
     setup(departure('waiting'), [{ id: 'c1' }], []);
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
+  // cm:guard the park release query must stay filtered to isAi=false — postSkippedParkExitComment fires from the post-commit transition hook, AFTER the departure this window is anchored on, so an unfiltered query lets the park-exit explanation release the very bounce it describes and the reconciler then dispatches a full-tier job
+  it('excludes system (isAi) comments from the waiting/on_hold release query', async () => {
+    setup(departure('waiting'), [], []);
+    await findUnansweredBounce('iss-1', 'approved');
+    expect(filtersOn(wheres[1], 'is_ai')).toBe(true);
+  });
+
+  it('still releases a park on non-status activity, so a real environment change is not swallowed', async () => {
+    setup(departure('waiting'), [], [{ id: 'a1' }]);
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
   });
 

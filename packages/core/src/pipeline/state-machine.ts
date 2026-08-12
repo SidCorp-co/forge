@@ -62,8 +62,11 @@ export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft
  * no no-op (enforced by callers) and `draft` is never a runtime target.
  *
  * `merged_at` stays a side-effect of leaving the merge state (see
- * `markMergedIfLeavingBase`) — freeing transitions does NOT expose it to
- * direct writes, so the cross-issue blocked_by signal remains trustworthy.
+ * `markMergedIfLeavingBase`), so no caller writes it directly — but it is
+ * caller-asserted, not verified: ANY hop out of `mergeStates.baseBranch`
+ * stamps it, merge or not, and the stamp releases every `blocks` dependent.
+ * Verify before relying on one, and clear a wrong stamp with `forge_issues`
+ * `unmark`.
  *
  * Two guardrails survive (the "moderate" in moderately-strict):
  *   1. `draft` is never a target (issues only enter draft at creation).

@@ -27,7 +27,7 @@ exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=c
     { "what": <string>, "why": <string> },
     ...
   ],
-  "verificationCommands": [<string>, ...]   // max 10
+  "verificationCommands": [<string>, ...]   // max 10; each must run from the repo ROOT — carry your own \`cd <dir> &&\` when the tool resolves config from the cwd
   "knownLimitations": [<string>, ...]       // max 5
   "commitSha": <string, optional>
 }"
@@ -203,7 +203,7 @@ Required JSON shape for the \`payload\` (step="code"):
     { "what": <string>, "why": <string> },
     ...
   ],
-  "verificationCommands": [<string>, ...]   // max 10
+  "verificationCommands": [<string>, ...]   // max 10; each must run from the repo ROOT — carry your own \`cd <dir> &&\` when the tool resolves config from the cwd
   "knownLimitations": [<string>, ...]       // max 5
   "commitSha": <string, optional>
 }

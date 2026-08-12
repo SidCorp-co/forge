@@ -12,6 +12,7 @@ import {
 import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { isBlankPlan, isPlanStageLive } from '../issues/transition-evidence.js';
+import { postSkippedParkExitComment } from '../jobs/park-comment.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
@@ -30,6 +31,7 @@ import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js
 import { fetchHandoffPromptInputs } from './handoff-prefetch.js';
 import type { HookPayloads, HooksBus } from './hooks.js';
 import { pausePipelineRunMissingSkill, postMissingSkillComment } from './missing-skill-guard.js';
+import { isParkedStatus } from './park-states.js';
 import {
   type PipelineConfig,
   STAGE_NAMES,
@@ -1057,55 +1059,35 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
     try {
       // Guard: `needs_info → open` never re-triages (user answered a question).
       if (payload.to === 'open' && payload.from === 'needs_info') return;
-      // ISS-411 — operator hold is authoritative. When an issue leaves `on_hold`
-      // via a non-`user` actor (the aborted agent's termination-protocol
-      // `forge_issues.update`, or any system advance), do NOT re-dispatch — only
-      // a human Resume (REST `/transition`, actor.type==='user') may re-engage
-      // the pipeline. This is what makes an operator Cancel a HARD STOP: parking
-      // the issue at `on_hold` (runs-control.ts) plus this guard means a stray
-      // status advance can never silently restart the run.
-      // ISS-596 — escape hatch: an explicit `reason:'operator_unblock'` sentinel
-      // (set by forge_issues.update data.unblock:true) identifies a deliberate
-      // tooling-driven unblock. A stray agent termination advance never carries
-      // this reason, so the hard-stop guarantee remains intact for all other paths.
+      // cm:why ISS-411 — this is what makes an operator Cancel a HARD STOP: parking at `on_hold` (runs-control.ts) plus this guard means an aborted agent's termination-protocol status advance can never silently restart the run.
+      // cm:why ISS-596 — `operator_unblock` is the deliberate-unblock sentinel (forge_issues.update data.unblock:true); a stray agent advance never carries it, so the hard stop survives for every other path.
+      // cm:why ISS-702 widened this from `on_hold` to every park; reading PARKED_STATUSES instead of two literals is what stops a third park being added without a guard. Verdict-aware writes in finalize-failure.ts/retry.ts are the primary defence — this is the net under them.
       if (
-        payload.from === 'on_hold' &&
+        isParkedStatus(payload.from) &&
         payload.actor.type !== 'user' &&
         payload.reason !== 'operator_unblock'
       ) {
         logger.info(
           {
             issueId: payload.issueId,
+            from: payload.from,
             to: payload.to,
             actor: payload.actor.type,
             reason: payload.reason,
           },
-          'orchestrator: skip enqueue — non-user advance out of operator on_hold',
+          'orchestrator: skip enqueue — non-user advance out of a parked status',
         );
-        return;
-      }
-      // ISS-702 — defense-in-depth mirror of the `on_hold` guard above for
-      // `waiting`. Both are documented parking states (line 57-58) that
-      // nothing should silently redispatch out of via a non-user actor. This
-      // guard is the second net: the primary fix is verdict-aware writes in
-      // finalize-failure.ts/retry.ts so a stray `waiting → approved` write
-      // should no longer happen at all, but this stops the resulting
-      // redispatch even if some other path flips the status by mistake.
-      // Same `operator_unblock` escape hatch as on_hold.
-      if (
-        payload.from === 'waiting' &&
-        payload.actor.type !== 'user' &&
-        payload.reason !== 'operator_unblock'
-      ) {
-        logger.info(
-          {
+        // cm:guard the issue now reads as sitting at `payload.to` with no job, so this comment is the only signal an operator or the next agent gets — returning silently is what made a parked issue indistinguishable from a running one (ISS-829 diagnosis)
+        // cm:why gated on the SAME predicate the dispatch short-circuit below uses: for a target no stage maps to (park→park, closed, needs_info, tested) nothing would have dispatched anyway, so the comment's "no job was dispatched" would be describing normal behaviour as a fault
+        if (resolveJobTypeForStatus(payload.to) || SKIPPABLE_STAGES.has(payload.to)) {
+          await postSkippedParkExitComment({
             issueId: payload.issueId,
+            projectId: payload.projectId,
+            from: payload.from,
             to: payload.to,
-            actor: payload.actor.type,
-            reason: payload.reason,
-          },
-          'orchestrator: skip enqueue — non-user advance out of waiting',
-        );
+            actorType: payload.actor.type,
+          });
+        }
         return;
       }
       // Short-circuit BEFORE loading cfg if the target isn't even mapped to a

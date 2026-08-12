@@ -22,10 +22,12 @@ import { and, desc, eq, gt, isNull, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, activityLog, comments } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { PARKED_STATUSES } from './park-states.js';
 import { WORKING_STATUS_BY_STATUS } from './registry.js';
 
 /** Statuses that mean "a human must act before this issue can progress". */
-export const BOUNCE_STATUSES = ['waiting', 'needs_info', 'on_hold'] as const;
+// cm:why derived, not re-listed: a bounce is "a human must act before this can progress", so every park is one by definition — written as a second literal, a park added to park-states.ts would leave this guard blind to it
+export const BOUNCE_STATUSES = [...PARKED_STATUSES, 'needs_info'] as const;
 export type BounceStatus = (typeof BOUNCE_STATUSES)[number];
 
 function isBounce(status: string): status is BounceStatus {
@@ -155,11 +157,14 @@ async function lastDepartureFrom(
 }
 
 // cm:why used by waiting/on_hold only — a comment OR any activity counts, since the guard's job there is to catch true silence: anything a human or another step recorded since the bounce releases it
+// cm:guard ISS-820's rule extended to the parks: a SYSTEM comment (isAi) must not release the bounce it is explaining. postSkippedParkExitComment fires from the post-commit transition hook, i.e. AFTER the departure this window is anchored on, so counting it would let the park-exit explanation hand the issue straight back to the reconciler. Environment signals a step records still release the park through the activity leg below — this only excludes the machine narrating itself.
 async function hasAnyInputSince(issueId: string, since: Date): Promise<boolean> {
   const [newComment] = await db
     .select({ id: comments.id })
     .from(comments)
-    .where(and(eq(comments.issueId, issueId), gt(comments.createdAt, since)))
+    .where(
+      and(eq(comments.issueId, issueId), gt(comments.createdAt, since), eq(comments.isAi, false)),
+    )
     .limit(1);
   if (newComment) return true;
 

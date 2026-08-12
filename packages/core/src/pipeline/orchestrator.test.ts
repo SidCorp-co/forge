@@ -129,6 +129,14 @@ vi.mock('./empty-reopen-guard.js', () => ({
   postUnexplainedReopenComment: (...a: unknown[]) => postUnexplainedReopenCommentMock(...(a as [])),
 }));
 
+// cm:why stubbed at the module boundary like the sibling comment-posters above — these tests assert the park-exit guard fired with the right args, not park-comment's DB shape; the body and the insert are covered by park-comment.test.ts
+const postSkippedParkExitCommentMock = vi.fn(async () => undefined);
+vi.mock('../jobs/park-comment.js', () => ({
+  postParkReasonComment: async () => undefined,
+  postReopenCapEscalationComment: async () => undefined,
+  postSkippedParkExitComment: (...a: unknown[]) => postSkippedParkExitCommentMock(...(a as [])),
+}));
+
 // cm:why stubs only reopenEnteredFromNeedsInfo (detection covered by bounce-replay-guard.test.ts) — findUnansweredBounce stays real via importActual so existing bounce-replay orchestration tests are unaffected
 const reopenEnteredFromNeedsInfoMock = vi.fn<() => Promise<boolean>>(async () => false);
 vi.mock('./bounce-replay-guard.js', async () => {

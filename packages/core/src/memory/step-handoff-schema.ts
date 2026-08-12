@@ -198,7 +198,8 @@ export function renderHandoffSchemaPrompt(step: HandoffStep): string {
         '    { "what": <string>, "why": <string> },',
         '    ...',
         '  ],',
-        '  "verificationCommands": [<string>, ...]   // max 10',
+        // cm:why A later step re-runs these verbatim from the repo root, so a cwd-dependent command inverts its verdict there — ISS-829: bare `npx biome check <path>` passed in packages/core, failed at root, false-failing a mergeable branch.
+        '  "verificationCommands": [<string>, ...]   // max 10; each must run from the repo ROOT — carry your own `cd <dir> &&` when the tool resolves config from the cwd',
         '  "knownLimitations": [<string>, ...]       // max 5',
         '  "commitSha": <string, optional>',
         '}',

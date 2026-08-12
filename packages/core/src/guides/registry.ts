@@ -255,21 +255,22 @@ ${PARK_EXIT_RULE}
 
 Entering is free from anywhere; the exit is reserved. If you set a forward status from \`waiting\`/\`on_hold\` and no job appears, that is this rule — not a stuck runner. The issue then reads as sitting at a live stage with nothing working on it, which is the most expensive way to be wrong about pipeline state, so the skip now posts a comment saying so.
 
-**To resume:** a human moves it from the issue page, or any caller passes \`data.unblock: true\` to \`forge_issues.update\` (which threads the \`operator_unblock\` sentinel). A bare status write does not re-engage dispatch.
+**To resume:** a human moves it from the issue page, or an operator/pipeline agent passes \`data.unblock: true\` to \`forge_issues.update\` (which threads the \`operator_unblock\` sentinel — the chat bot is refused). A bare status write does not re-engage dispatch.
 
 \`needs_info\` is a bounce but NOT a park — its exit dispatches normally. What gates it instead is the replay guard: only a HUMAN comment posted since the bounce releases it.
 
-### \`waiting\` means four different things
-The status alone does not say which, so read the issue's newest park comment before acting — each of these posts its own reason:
+### \`waiting\` means five different things
+The status alone does not say which. The cause is **derived, never stored** — \`classifyWaitingCause\` computes it from the issue's \`merged_at\`, its decompose-child count and its latest run, and it rides on \`pipelineHealth.waitingCause\` for the UI. In precedence order:
 
-| Reason | Set by | What actually unblocks it |
+| Cause | What it means | What actually unblocks it |
 |---|---|---|
-| plan approval | forge-plan on a Complex issue | a human approving the plan |
-| reopen cap | the cap redirecting a \`reopen\` | an admin cap override or splitting the issue — and the paused run must be resumed too |
-| retry budget exhausted | the job finalizer after the last retry | fixing the mechanical cause, then resuming |
-| blocked evidence | a step that cannot verify a core AC (no fixture, no surface) | supplying the fixture, or agreeing a second form of evidence |
+| \`reopen_cap\` | the run is paused with a \`reopen_cap:\` reason — the cap redirected a \`reopen\` | an admin cap override, or splitting the issue — **and** the paused run must be resumed too |
+| \`decompose_parent\` | the issue has decompose children | a human approving the parent, which cascades the children |
+| \`merged_parked\` | \`merged_at\` is stamped: the code landed and the issue parked afterwards | a human deciding the remaining gate (downstream dependents are already unblocked) |
+| \`retry_exhausted\` | the latest run is terminal — the finalizer stopped retrying | fixing the mechanical cause, then resuming |
+| \`plan_approval\` | the default when none of the above hold | a human approving the plan |
 
-Re-approving a retry-exhausted or blocked-evidence park without changing anything just reproduces the cycle that parked it.
+Re-approving a \`retry_exhausted\` park without changing anything just reproduces the cycle that parked it. The issue's newest park comment names the specific failure.
 
 ### Leaving a state can stamp \`merged_at\` behind you
 Transitioning OUT of the project's \`mergeStates.baseBranch\` state stamps \`merged_at\` — including a hop you made for an unrelated reason, and including one where nothing was merged. That stamp is what releases every \`blocks\` dependent, so a diagnostic transition near the merge state can unblock work that should still be blocked. After any hand transition out of that state, check the field and clear it with \`forge_issues\` \`unmark\` if no merge landed.

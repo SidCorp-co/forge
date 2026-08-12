@@ -19,6 +19,7 @@
 // is pure.
 
 import type { IssueStatus, JobType } from '../../db/schema.js';
+import { LIFECYCLE_GUIDE_POINTER, PARK_EXIT_RULE } from '../../pipeline/park-states.js';
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
 export type FactTier = 'mandatory' | 'contextual';
@@ -85,6 +86,7 @@ const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Single-shot turn — never background-and-exit.** Your step is ONE headless turn; when you stop, the whole process group is killed. Any \`run_in_background\` task dies with it and you never see its result — so NEVER end your turn while still waiting on background output (the job reports \`done\` but the issue is left parked, the silent stall above). To wait on an async result (deploy / build / migration), poll in the FOREGROUND so the turn blocks until you have the answer, then verify and set status. If the wait would exceed your budget, set the handoff status and exit cleanly — do NOT background-poll-and-exit. Backgrounding is fine ONLY for a helper you consume within the SAME turn (e.g. a dev server you query before finishing).
 - **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along: \`open → confirmed → clarified → approved → developed → testing → tested → released → closed\` (intermediate states you don't own auto-advance).
 - **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision / can't proceed), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target. Reopens are capped: past the cap, a \`reopen\` you request lands the issue at \`waiting\` for a human instead — report that outcome and stop, do not retry the transition or pick another forward status.
+- **Leaving a park is NOT symmetric with entering one.** ${PARK_EXIT_RULE} Park semantics in full: \`${LIFECYCLE_GUIDE_POINTER}\`.
 - **You never self-rescue a crash.** If your job fails mechanically (process crash / non-zero exit), the SYSTEM reverts the issue to the stage's entry-status and re-dispatches automatically (retry budget + backoff); when the budget is exhausted it parks the issue at \`waiting\`. Do NOT set \`on_hold\` to "hold" a failure — \`on_hold\` is a deliberate pause only.
 - **Decompose is system-owned — do NOT hand-set parent/child statuses.** When you decompose a parent into children, core parks the parent at \`waiting\` (the review gate) and creates the children at \`draft\`. A human approving the parent (→ \`approved\`) auto-cascades the children to \`approved\`. The parent's own forward work is held by the dispatcher until ALL children's code is merged (each child's \`merged_at\` set, or \`closed\`), then the parent runs its integration LAST. The kickoff is anchored to these system transitions — manually moving a decompose parent or child breaks it.
 - **Status LAST**, after all other work (commits, comments, handoff). Don't hand-set system-owned derived fields — EXCEPT \`merged_at\` (next bullet).
@@ -180,7 +182,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 5,
+    version: 6,
     render: () => PIPELINE_RULES_TEXT,
   },
   {
@@ -278,7 +280,7 @@ Edges are directional \`fromIssue --kind--> toIssue\`. Allowed \`kind\` values:
       return `## Status ladder
 This project's happy-path forward ladder (enabled stages only) — OVERRIDES the default chain in Pipeline Rules:
 \`${ladder.join(' → ')}\`
-Advance one step at a time as the FINAL action. Bounce states (\`needs_info\`, \`reopen\`, \`on_hold\`) are reachable from anywhere; \`draft\` is never a valid target.
+Advance one step at a time as the FINAL action. Bounce states (\`needs_info\`, \`waiting\`, \`reopen\`, \`on_hold\`) are reachable from anywhere; \`draft\` is never a valid target.
 This ladder is also the authoritative set of statuses. **If your adopted skill's exit table names a status that is not on it, that step is stale — advance to the ladder's next rung instead.** \`deploying\` is the recurring case: retired platform-wide, no row can hold it, and \`forge_issues.update\` rejects it outright. Skills are copied per project and do not receive template fixes, so a stale exit status is expected; do not burn a retry discovering it.`;
     },
   },

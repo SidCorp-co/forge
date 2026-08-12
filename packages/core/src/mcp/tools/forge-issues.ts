@@ -36,6 +36,7 @@ import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-note
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
+import { isParkedStatus } from '../../pipeline/park-states.js';
 import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
@@ -267,10 +268,7 @@ const dataSchema = z
       )
       .max(20)
       .optional(),
-    // ISS-596 — explicit operator-unblock intent. When true on an update that
-    // also changes status away from `on_hold`, threads `reason:'operator_unblock'`
-    // through the outbox so the orchestrator's ISS-411 hard-stop allows the
-    // transition. A stray aborted-agent advance will never carry this flag.
+    // cm:why ISS-596 — explicit operator-unblock intent: set on an update that leaves a park (see PARKED_STATUSES) for a non-park status, it threads `reason:'operator_unblock'` so the orchestrator's hard stop lets the transition re-engage the pipeline. A stray aborted-agent advance never carries the flag, which is what keeps the stop honest.
     unblock: z.boolean().optional(),
     // ISS-633 — plain label attach/detach. Accepts label NAMES or UUIDs,
     // resolved server-side (strict: unknown -> BAD_REQUEST, no auto-create).
@@ -1174,18 +1172,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
-        // Status changes always route through the state machine so the
-        // transitions stay aligned with REST `/transition` (reopen-cap +
-        // illegal-transition guards). The hook + WS broadcast match too.
-        // ISS-596: when `data.unblock:true` is set on an `on_hold → *` update,
-        // thread `reason:'operator_unblock'` so the orchestrator's ISS-411
-        // hard-stop lets the transition re-engage the pipeline.
+        // cm:guard leaving one park for another (waiting → on_hold) must NOT consume the hatch — it is not a resume, and threading the sentinel there would let a later stray advance out of the second park re-engage the pipeline
         let transitionResult: StatusTransitionResult | undefined;
         if (input.data.status && input.data.status !== issue.status) {
           const useOperatorUnblock =
             input.data.unblock === true &&
-            issue.status === 'on_hold' &&
-            input.data.status !== 'on_hold';
+            isParkedStatus(issue.status) &&
+            !isParkedStatus(input.data.status);
           transitionResult = await applyStatusTransition(
             issue,
             input.data.status,

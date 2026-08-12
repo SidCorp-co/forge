@@ -33,7 +33,8 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { postParkReasonComment } = await import('./park-comment.js');
+const { postParkReasonComment, postSkippedParkExitComment } = await import('./park-comment.js');
+const { LIFECYCLE_GUIDE_POINTER, PARK_EXIT_RULE } = await import('../pipeline/park-states.js');
 
 function reset(opts?: {
   project?: Array<Record<string, unknown>>;
@@ -53,6 +54,43 @@ const BASE = {
   reason: 'retry_rounds_exhausted',
   failureKind: 'transient',
 };
+
+describe('postSkippedParkExitComment', () => {
+  it('names the park, the recorded status and the actor, and carries the rule + guide pointer', async () => {
+    reset();
+    await postSkippedParkExitComment({
+      issueId: 'iss-1',
+      projectId: 'proj-1',
+      from: 'waiting',
+      to: 'approved',
+      actorType: 'device',
+    });
+
+    expect(inserted).toHaveLength(1);
+    const body = String(inserted[0]?.body);
+    expect(body).toContain('`waiting`');
+    expect(body).toContain('`approved`');
+    expect(body).toContain('`device`');
+    expect(body).toContain(PARK_EXIT_RULE);
+    expect(body).toContain(LIFECYCLE_GUIDE_POINTER);
+    // cm:guard isAi must stay true — the waiting/on_hold bounce release counts any comment, and a system note attributed as human input would release a bounce it only describes
+    expect(inserted[0]?.isAi).toBe(true);
+  });
+
+  it('is best-effort: a missing project row posts nothing and does not throw', async () => {
+    reset({ project: [] });
+    await expect(
+      postSkippedParkExitComment({
+        issueId: 'iss-1',
+        projectId: 'proj-1',
+        from: 'on_hold',
+        to: 'developed',
+        actorType: 'device',
+      }),
+    ).resolves.toBeUndefined();
+    expect(inserted).toHaveLength(0);
+  });
+});
 
 describe('postParkReasonComment', () => {
   it('records the step, the no-retry reason and the attempt count', async () => {

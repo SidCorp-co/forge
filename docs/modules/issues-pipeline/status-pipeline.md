@@ -13,7 +13,7 @@ Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/d
 | 1 | `open` | New, untriaged | Issue created |
 | 2 | `confirmed` | Triaged — clarify validates/reproduces next | forge-triage |
 | 3 | `clarified` | Repro/UX validated (or auto-skipped), ready to plan | forge-clarify, or auto-skip |
-| 4 | `waiting` | Plan written, awaiting human approval (gate) | forge-plan (Complex) |
+| 4 | `waiting` | **Park.** The cause is derived, not stored — `classifyWaitingCause` (`issues/pipeline-health.ts`) returns `reopen_cap` \| `decompose_parent` \| `merged_parked` \| `retry_exhausted` \| `plan_approval`, in that precedence, onto `pipelineHealth.waitingCause` | forge-plan (Complex) · reopen-cap redirect · decompose · `jobs/finalize-failure.ts` |
 | 5 | `approved` | Plan approved, ready to code | forge-plan (Simple/Medium) or human |
 | 6 | `in_progress` | Being coded + built | forge-code start |
 | 7 | `developed` | Code pushed, awaiting review | forge-code |
@@ -64,7 +64,16 @@ Missing info (any stage)     ──▶ needs_info — human-gated bounce, no aut
   (missing-skill soft-skip) or set `states.confirmed.enabled: false`. The 0093
   migration backfilled `enabled: false` for every project without `autoClarify`.
 
-- `waiting` and `tested` are human GATES — no skill auto-runs there; a human advances them. `tested` is the production approval gate: `mode:'manual'` by default and **never auto-skipped** (ISS-502).
+- `waiting` and `tested` are human GATES — no skill auto-runs there. They differ on the way OUT, and that difference is what trips people: leaving `tested` dispatches normally, while leaving `waiting` re-engages the pipeline **only** for a `user` actor or a transition carrying `reason:'operator_unblock'` (`pipeline/orchestrator.ts`, set of parks in `pipeline/park-states.ts`). An agent that sets a forward status from `waiting` moves the status and dispatches nothing — see the `pipeline-and-issue-lifecycle` guide. `tested` is the production approval gate: `mode:'manual'` by default and **never auto-skipped** (ISS-502).
+
+```mermaid
+flowchart LR
+  S["any stage"] -->|"any actor — entering is free"| P["waiting / on_hold<br/>(park)"]
+  P -->|"user actor, or<br/>reason = operator_unblock"| R["target stage dispatches<br/>job runs"]
+  P -->|"agent sets a<br/>forward status"| D["status moves<br/><b>no job dispatched</b><br/>(skip posts a comment)"]
+  style R fill:#e8f5e9,stroke:#2e7d32
+  style D fill:#ffebee,stroke:#c62828
+```
 - `pass`/`staging`/`deploying` were **removed entirely** (unify gate model — no longer in the `issueStatuses` enum, the state machine, or `STAGE_NAMES`). The single pre-prod gate is `tested`; review now exits straight to `testing` (the old `developed → deploying → testing` hop is gone) and deploy-to-staging happens inside forge-code. One-shot migrations re-parked any stranded issue (`pass`/`staging` → `tested`, `deploying` → `testing`). The `staging` *jobType* is kept (inert) only for back-compat with historical `jobs.type='staging'` rows.
 
 ## Branching Model
@@ -116,7 +125,7 @@ Watches issue status changes, dispatches the matching skill. Mapping derived fro
 | `reopen` | forge-fix | `autoFix` |
 | `released` | forge-release | `autoRelease` |
 
-No-auto-dispatch statuses (`waiting`, `needs_info`, `tested`, `on_hold`, `draft`) are human gates (e.g. the `tested` release gate) or transit statuses the soft-skip resolver walks through.
+No-auto-dispatch statuses (`waiting`, `needs_info`, `tested`, `on_hold`, `draft`) are human gates (e.g. the `tested` release gate) or transit statuses the soft-skip resolver walks through. "No auto-dispatch" describes the status itself; the parks (`waiting`, `on_hold`) additionally restrict who may *leave* them — see the human-gates bullet above, and the `pipeline-and-issue-lifecycle` guide for the full rule.
 
 ### Execution modes
 

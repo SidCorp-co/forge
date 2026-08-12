@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PARK_EXIT_RULE } from '../pipeline/park-states.js';
 import { FORGE_GUIDES, getGuide, listGuides } from './registry.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -27,6 +28,11 @@ describe('FORGE_GUIDES registry', () => {
     for (const slug of slugs) {
       expect(slug).toMatch(SLUG_RE);
     }
+  });
+
+  // cm:why the rule lives in a constant the orchestrator guard reads; this pins the guide's copy of it, and prompt/facts/registry.test.ts pins the prompt's — editing one and forgetting the other is then a red test instead of silent drift
+  it('the lifecycle guide states the park-exit rule verbatim', () => {
+    expect(getGuide('pipeline-and-issue-lifecycle')?.body).toContain(PARK_EXIT_RULE);
   });
 
   it('every guide has a non-empty title, single-line summary, and body', () => {

@@ -5,6 +5,7 @@ import {
   SKILL_FACT_TIERS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
+import { PARK_EXIT_RULE } from '../../pipeline/park-states.js';
 import {
   FORGE_FACTS,
   OPERATING_AFFORDANCES_TEXT,
@@ -52,7 +53,9 @@ describe('forge facts registry', () => {
     expect(text).toContain('QUOTE that human');
     expect(text).toContain('NEW `needs_info`');
     const fact = getFact('pipeline-rules');
-    expect(fact?.version).toBe(5);
+    expect(fact?.version).toBe(6);
+    // cm:why pinned byte-for-byte against the constant the orchestrator guard reads — the guide's copy is pinned the same way in guides/registry.test.ts, so editing one and forgetting the other is a red test rather than silent drift
+    expect(text).toContain(PARK_EXIT_RULE);
   });
 
   // AC5 token evidence (measured via renderFact + estimateTokens, no new
