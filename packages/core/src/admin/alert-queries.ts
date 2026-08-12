@@ -12,6 +12,8 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { NOT_DISABLED_DEVICE, NOT_QUARANTINED } from '../runners/select.js';
 
 export type AdminAlertId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5';
 export type AdminAlertStatus = 'ok' | 'warn' | 'crit';
@@ -77,10 +79,11 @@ export function opsAlertResolutionKey(id: AdminAlertId): string {
   return `ops-alert:${id}`;
 }
 
+const STATUS_RANK: Record<AdminAlertStatus, number> = { ok: 0, warn: 1, crit: 2 };
+
 /** crit beats warn beats ok — for combining several contributors into one alert's overall status. */
 export function worstStatus(a: AdminAlertStatus, b: AdminAlertStatus): AdminAlertStatus {
-  const rank: Record<AdminAlertStatus, number> = { ok: 0, warn: 1, crit: 2 };
-  return rank[a] >= rank[b] ? a : b;
+  return STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
 }
 
 /** A2 classification: 'ok' when nothing is stuck; 'crit' at CRIT_STUCK_JOBS or when the oldest offender has waited 4x the stale threshold; 'warn' otherwise. */
@@ -198,8 +201,15 @@ type StarvedRow = {
   queued_count: number;
 };
 
-/** A3 — a project with jobs queued past the grace window but zero usable (online, not quarantined) runners. */
+/**
+ * A3 — a project with jobs queued past the grace window but zero DISPATCHABLE
+ * runners. "Usable" mirrors the actual dispatch gate (`fresh_capable_runners`
+ * in jobs/dispatch-gates.ts + runners/select.ts), not just online+unquarantined:
+ * a stale heartbeat, an active rate limit, or a disabled device all make a
+ * runner just as unusable as being offline or quarantined.
+ */
 async function alertRunnerStarved(): Promise<AdminAlert> {
+  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const rows = await db.execute<StarvedRow & { total: number }>(sql`
     SELECT p.id AS project_id, p.slug, min(j.queued_at) AS oldest_queued_at,
            count(j.id)::int AS queued_count,
@@ -212,7 +222,11 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         SELECT 1 FROM runners r
         WHERE r.project_id = p.id
           AND r.status = 'online'
-          AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
+          AND r.last_seen_at IS NOT NULL
+          AND r.last_seen_at > now() - (${livenessSeconds}::int * interval '1 second')
+          AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+          ${NOT_QUARANTINED}
+          ${NOT_DISABLED_DEVICE}
       )
     GROUP BY p.id, p.slug
     ORDER BY min(j.queued_at) ASC
@@ -347,20 +361,20 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
       ORDER BY st.streak DESC
       LIMIT ${ENTITY_LIMIT}
     `),
+    // cm:why no LIMIT here — classification (below) must see every qualifying binding, or a low-volume/high-rate binding can be excluded while a high-volume/low-rate one survives
+    // cm:edge contract -> packages/core/src/integrations/deliveries.ts — direction='outbound' mirrors that module's outbound-only delivery health filtering; inbound webhook rows are recorded 'ok' by Coolify even on a reported deploy failure
     db.execute<DeliveryFailRow>(sql`
       SELECT b.id AS binding_id, b.provider, b.project_id, p.slug AS project_slug,
              count(*) FILTER (WHERE d.status = 'failed')::int AS failed,
              count(*)::int AS total,
              min(d.created_at) FILTER (WHERE d.status = 'failed') AS oldest_failed_at
       FROM integration_bindings b
-      JOIN integration_deliveries d ON d.binding_id = b.id
+      JOIN integration_deliveries d ON d.binding_id = b.id AND d.direction = 'outbound'
       JOIN projects p ON p.id = b.project_id
       WHERE d.status IN ('ok', 'failed')
         AND d.created_at >= now() - interval '1 hour'
       GROUP BY b.id, b.provider, b.project_id, p.slug
       HAVING count(*) >= ${DELIVERY_MIN_SAMPLE}
-      ORDER BY count(*) FILTER (WHERE d.status = 'failed') DESC
-      LIMIT ${ENTITY_LIMIT}
     `),
   ]);
 
@@ -385,7 +399,10 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
     }))
     .filter((r) => r.status !== 'ok');
 
-  const contributors = [...scheduleContributors, ...deliveryContributors];
+  // cm:guard status/count are computed over ALL contributors before ENTITY_LIMIT truncation below; the sort keeps a truncation from ever dropping a more-severe row
+  const contributors = [...scheduleContributors, ...deliveryContributors].sort(
+    (a, b) => STATUS_RANK[b.status] - STATUS_RANK[a.status],
+  );
   const status = contributors.reduce(
     (acc, c) => worstStatus(acc, c.status),
     'ok' as AdminAlertStatus,

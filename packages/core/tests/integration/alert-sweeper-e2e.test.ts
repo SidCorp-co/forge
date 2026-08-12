@@ -25,6 +25,7 @@ describe('runAlertSweep E2E (ISS-652)', () => {
   let mods: Mods;
 
   const ADMIN_EMAIL = 'admin@test.forge.local';
+  const ADMIN_EMAIL_2 = 'admin2@test.forge.local';
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -39,7 +40,8 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    process.env.ADMIN_EMAILS = ADMIN_EMAIL;
+    // cm:why both addresses baked in up front — config/env.ts parses ADMIN_EMAILS once at import time, so it cannot be changed per-test; a test seeding only one of the two never triggers the other's row
+    process.env.ADMIN_EMAILS = `${ADMIN_EMAIL},${ADMIN_EMAIL_2}`;
 
     mods = (await import('../../src/admin/alert-sweeper.js')) as unknown as Mods;
   }, 60_000);
@@ -65,6 +67,19 @@ describe('runAlertSweep E2E (ISS-652)', () => {
       sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`,
     );
     return admin;
+  }
+
+  async function seedSecondAdmin() {
+    const admin = await createTestUser(harness.db, { email: ADMIN_EMAIL_2 });
+    await harness.db.execute(
+      sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`,
+    );
+    return admin;
+  }
+
+  /** On the ADMIN_EMAILS allow-list, but never verified — must not be notified. */
+  async function seedUnverifiedAdmin() {
+    return createTestUser(harness.db, { email: ADMIN_EMAIL });
   }
 
   async function seedOrphan() {
@@ -164,5 +179,29 @@ describe('runAlertSweep E2E (ISS-652)', () => {
       notified: 0,
       evaluated: 5,
     });
+  });
+
+  // cm:guard dedupe/claim must be per (userId, resolutionKey), not a single global check — two distinct admins must each get their own unread row
+  it('writes a distinct row per admin, not a single global row', async () => {
+    const admin1 = await seedAdmin();
+    const admin2 = await seedSecondAdmin();
+    await seedOrphan();
+
+    const result = await mods.runAlertSweep(nextNow());
+    expect(result.notified).toBe(2);
+
+    const rows = await opsAlertRows();
+    const userIds = rows.map((r) => r.user_id).sort();
+    expect(userIds).toEqual([admin1.id, admin2.id].sort());
+  });
+
+  // cm:guard platformAdminUserIds() must require a verified email — an allow-listed-but-unverified account must not receive cross-tenant alert details
+  it('does not notify an admin whose email is unverified', async () => {
+    await seedUnverifiedAdmin();
+    await seedOrphan();
+
+    const result = await mods.runAlertSweep(nextNow());
+    expect(result.notified).toBe(0);
+    expect(await opsAlertRows()).toHaveLength(0);
   });
 });

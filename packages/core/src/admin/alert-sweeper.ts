@@ -5,13 +5,12 @@
  * `notifications` rows when one crosses into warn/crit.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
-import { emitNotification } from '../notifications/emit.js';
 import { platformAdminUserIds } from '../notifications/platform-admins.js';
+import { hooks } from '../pipeline/hooks.js';
 import { type AdminAlert, computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
 
 export interface AlertSweepResult {
@@ -36,6 +35,66 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
   A5: 'Automation failing',
 };
 
+/**
+ * Atomically claim (or escalate) this admin's ops-alert row. Backed by the
+ * `notifications_user_resolution_key_unread_uq` partial unique index (one
+ * unread row per `(user_id, resolution_key)`), so this is safe under
+ * concurrent sweepers (multiple core replicas) — unlike a check-then-insert.
+ *
+ * - No unread row yet for this admin+key → `INSERT ... ON CONFLICT DO NOTHING`
+ *   claims it; a losing race just no-ops (the winner already claimed it).
+ * - An unread row already exists at a different severity (escalation, e.g.
+ *   warn -> crit) → updated in place; the unique index means there is never a
+ *   second row to reconcile.
+ * - An unread row exists at the same severity → no-op.
+ */
+async function claimOrEscalate(input: {
+  userId: string;
+  title: string;
+  body: string;
+  severity: 'warning' | 'error';
+  resolutionKey: string;
+}): Promise<boolean> {
+  const { userId, title, body, severity, resolutionKey } = input;
+
+  const claimed = await db.execute<{ id: string }>(sql`
+    INSERT INTO notifications (user_id, project_id, type, title, body, severity, resolution_key, read, created_at)
+    VALUES (${userId}, NULL, 'ops_alert', ${title}, ${body}, ${severity}, ${resolutionKey}, false, now())
+    ON CONFLICT (user_id, resolution_key) WHERE read = false AND resolution_key IS NOT NULL DO NOTHING
+    RETURNING id
+  `);
+  let notificationId = claimed[0]?.id;
+
+  if (!notificationId) {
+    const escalated = await db.execute<{ id: string }>(sql`
+      UPDATE notifications
+      SET severity = ${severity}, title = ${title}, body = ${body}
+      WHERE user_id = ${userId} AND resolution_key = ${resolutionKey}
+        AND read = false AND severity IS DISTINCT FROM ${severity}
+      RETURNING id
+    `);
+    notificationId = escalated[0]?.id;
+  }
+
+  if (!notificationId) return false;
+
+  await hooks.emit('notificationCreated', {
+    notificationId,
+    userId,
+    projectId: null,
+    type: 'ops_alert',
+    title,
+    body,
+    severity,
+    resolutionKey,
+    issueId: null,
+    secondaryIssueId: null,
+    agentSessionId: null,
+    decisionId: null,
+  });
+  return true;
+}
+
 /** Never throws — same contract as `detectStrandedIssues`. */
 export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepResult> {
   if (now.getTime() - lastSweepAt < ALERT_SWEEP_INTERVAL_MS) {
@@ -57,33 +116,18 @@ export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepR
       }
 
       const severity = alert.status === 'crit' ? 'error' : 'warning';
-      const [existing] = await db
-        .select({ id: notifications.id, severity: notifications.severity })
-        .from(notifications)
-        .where(
-          and(
-            eq(notifications.type, 'ops_alert'),
-            eq(notifications.read, false),
-            eq(notifications.resolutionKey, resolutionKey),
-          ),
-        )
-        .limit(1);
-
-      if (existing && existing.severity === severity) continue;
-      if (existing) resolved += await resolveNotifications(resolutionKey);
-
+      const title = `${ALERT_TITLES[alert.id]} — ${alert.detail}`;
       const adminIds = await platformAdminUserIds();
+
       for (const userId of adminIds) {
-        await emitNotification({
+        const changed = await claimOrEscalate({
           userId,
-          projectId: null,
-          type: 'ops_alert',
-          title: `${ALERT_TITLES[alert.id]} — ${alert.detail}`,
+          title,
           body: alert.detail,
           severity,
           resolutionKey,
         });
-        notified++;
+        if (changed) notified++;
       }
     }
 

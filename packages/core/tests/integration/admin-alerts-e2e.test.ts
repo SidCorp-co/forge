@@ -112,13 +112,49 @@ describe('admin alert routes (ISS-652)', () => {
     projectId: string;
     status: string;
     quarantinedUntil?: string | null;
+    // cm:why defaults to a fresh heartbeat (now), like a real 'online' runner; override to simulate the A3 staleness/rate-limit contributors
+    lastSeenAt?: string | null;
+    rateLimitedUntil?: string | null;
   }): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, name, status, quarantined_until)
-      VALUES (${id}, ${args.projectId}, 'claude-code', 'remote', 'test-runner', ${args.status}, ${args.quarantinedUntil ?? null})
+      INSERT INTO runners (id, project_id, type, host, name, status, quarantined_until, last_seen_at, rate_limited_until)
+      VALUES (
+        ${id}, ${args.projectId}, 'claude-code', 'remote', 'test-runner', ${args.status},
+        ${args.quarantinedUntil ?? null},
+        ${args.lastSeenAt === undefined ? new Date().toISOString() : args.lastSeenAt},
+        ${args.rateLimitedUntil ?? null}
+      )
     `);
     return id;
+  }
+
+  async function insertBinding(projectId: string): Promise<string> {
+    const owner = await createTestUser(harness.db);
+    const connectionId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider)
+      VALUES (${connectionId}, 'user', ${owner.id}, 'coolify')
+    `);
+    const bindingId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (id, connection_id, project_id, provider, environment)
+      VALUES (${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'prod')
+    `);
+    return bindingId;
+  }
+
+  async function insertDelivery(args: {
+    bindingId: string;
+    direction: 'outbound' | 'inbound';
+    status: 'ok' | 'failed';
+    createdAgoMinutes?: number;
+  }): Promise<void> {
+    const createdAt = new Date(Date.now() - (args.createdAgoMinutes ?? 1) * 60_000).toISOString();
+    await harness.db.execute(sql`
+      INSERT INTO integration_deliveries (id, binding_id, direction, event_name, status, created_at)
+      VALUES (${randomUUID()}, ${args.bindingId}, ${args.direction}, 'deploy', ${args.status}, ${createdAt})
+    `);
   }
 
   async function insertUsage(args: {
@@ -240,6 +276,72 @@ describe('admin alert routes (ISS-652)', () => {
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
     });
 
+    // cm:guard regression guard for the review fix: A3's "usable runner" must mirror
+    // the actual dispatch gate — online + unquarantined is NOT sufficient on its own.
+    it('A3 fires when the only runner is online but its heartbeat is stale', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const run = await insertRun(project.id, 'running');
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        status: 'queued',
+        queuedAgoMinutes: 10,
+      });
+      const runnerId = await insertRunner({
+        projectId: project.id,
+        status: 'online',
+        lastSeenAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+      });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
+
+      await harness.db.execute(sql`UPDATE runners SET last_seen_at = now() WHERE id = ${runnerId}`);
+      const clearRes = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
+      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
+    });
+
+    it('A3 fires when the only runner is online and fresh but rate-limited', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const run = await insertRun(project.id, 'running');
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        status: 'queued',
+        queuedAgoMinutes: 10,
+      });
+      const runnerId = await insertRunner({
+        projectId: project.id,
+        status: 'online',
+        rateLimitedUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+      });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
+
+      await harness.db.execute(
+        sql`UPDATE runners SET rate_limited_until = NULL WHERE id = ${runnerId}`,
+      );
+      const clearRes = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
+      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
+    });
+
     it('A4 fires crit for a project whose current-window spend ratio clears the crit threshold', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
@@ -274,6 +376,50 @@ describe('admin alert routes (ISS-652)', () => {
       expect(a4?.status).not.toBe('ok');
       expect(a4?.entities).toHaveLength(0);
       expect(a4?.count).toBeGreaterThanOrEqual(1);
+    });
+
+    // cm:guard inbound webhook deliveries (recorded 'ok' by Coolify even on a reported deploy failure) must not dilute a real outbound delivery fail-rate
+    it('A5 fires on an outbound fail-rate even when inbound deliveries are all ok', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const bindingId = await insertBinding(project.id);
+
+      for (let i = 0; i < 5; i++) {
+        await insertDelivery({ bindingId, direction: 'inbound', status: 'ok' });
+      }
+      for (let i = 0; i < 4; i++) {
+        await insertDelivery({ bindingId, direction: 'outbound', status: 'failed' });
+      }
+      await insertDelivery({ bindingId, direction: 'outbound', status: 'ok' });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string; count: number }>;
+      const a5 = body.find((a) => a.id === 'A5');
+      expect(a5?.status).not.toBe('ok');
+      expect(a5?.count).toBeGreaterThanOrEqual(1);
+    });
+
+    it('A5 stays ok when only inbound deliveries are failing', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const bindingId = await insertBinding(project.id);
+
+      for (let i = 0; i < 5; i++) {
+        await insertDelivery({ bindingId, direction: 'inbound', status: 'failed' });
+      }
+      for (let i = 0; i < 5; i++) {
+        await insertDelivery({ bindingId, direction: 'outbound', status: 'ok' });
+      }
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string }>;
+      expect(body.find((a) => a.id === 'A5')?.status).toBe('ok');
     });
 
     it('A1 is crit for a job orphaned under a terminal pipeline_run', async () => {

@@ -13,13 +13,14 @@ import type { RequiredCapabilities, Runner } from './types.js';
  * Remote/server runners (NULL device_id) have no matching device row → the
  * NOT EXISTS is satisfied and they stay eligible.
  */
-const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
+// cm:edge contract -> packages/core/src/admin/alert-queries.ts — A3's "usable runner" definition must mirror this dispatch gate or the alert reports ok while dispatch stays starved
+export const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
 
 // cm:why placed alongside rate_limited_until (not a bare column ref) so it
 // resolves correctly whether the enclosing query aliases `runners` as `r.` or not
-const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
+export const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
 
 /**
  * Decide the initial `capabilities` jsonb for a freshly-created runner row.

@@ -4,12 +4,12 @@
 // must not be told about — the recipients are the ADMIN_EMAILS allow-list,
 // the same set `requireAdmin()` gates the GET behind.
 
-import { inArray, sql } from 'drizzle-orm';
+import { and, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { parseAdminList } from '../middleware/require-admin.js';
 
-// cm:guard mirrors requireAdmin's ADMIN_EMAILS allow-list — the people who can act on an ops alert are exactly the people who can open the ops console
+// cm:guard mirrors requireAdmin's ADMIN_EMAILS allow-list AND the GET route's assertEmailVerified() gate — an unverified address on the allow-list must not receive cross-tenant alert details
 export async function platformAdminUserIds(): Promise<string[]> {
   const allowed = parseAdminList();
   if (allowed.length === 0) return [];
@@ -17,6 +17,6 @@ export async function platformAdminUserIds(): Promise<string[]> {
   const rows = await db
     .select({ id: users.id })
     .from(users)
-    .where(inArray(sql`lower(${users.email})`, allowed));
+    .where(and(inArray(sql`lower(${users.email})`, allowed), isNotNull(users.emailVerifiedAt)));
   return rows.map((r) => r.id);
 }
