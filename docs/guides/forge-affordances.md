@@ -126,6 +126,49 @@ move and no learning.
 
 ---
 
+## It turns out not to be work — route it yourself
+
+**Trigger:** you are working an issue (or just reading one) and it fails the
+admission test — it is a note, a question, a duplicate, or something already
+done. See [what-is-an-issue.md](what-is-an-issue.md) for the four gates.
+
+**Tool / semantics:** you are the cheapest person to fix it, because you have
+just read it. **Comment first** — name the gate it fails and where the content
+went (the memory entry, the `docs/proposals/` file, the issue it duplicates).
+**Then move it:** `needs_info` when a human owes you requirements and it could
+still become real work, or `closed` when it is not work at all. There is no
+route back into `draft` — nothing transitions into `draft`, by design.
+
+**Closing non-work needs `unmark`.** `closed` auto-stamps `merged_at`, and that
+stamp releases every `blocks` dependent as if the work had shipped. Call
+`forge_issues action=unmark` right after.
+
+**Red flag — `close-without-unmark`:** closing an abandoned or note-shaped issue
+and leaving the auto-stamp, silently unblocking work that is still blocked.
+
+---
+
+## A residual you cannot finish here — three homes, no fourth
+
+**Trigger:** a follow-up, a security residual, or an unanswered policy call that
+you cannot resolve inside the work you are doing.
+
+**Tool / semantics:** exactly one of — an **issue** that passes the four gates ·
+a **`blocks` edge** onto the issue that would otherwise ship without it · a line
+in **`docs/proposals/`** for a decision awaiting sign-off. If none of the three
+fit, say it in a comment on the issue you are already on.
+
+Both directions of this have cost real damage. Four stages once flagged an
+unauthenticated data leak, each asked for a follow-up, none was filed, and it
+shipped — so silence is not the safe option. And a new unowned `draft` is not a
+hand-off: nobody browses drafts, so filing one moves a residual from
+silently-lost to silently-parked.
+
+**Red flag — `silent-nonwork`:** dropping a residual entirely, or parking it as
+an unowned `draft` instead of one of the three homes.
+
+---
+
 ## See also
 
 - **Step handoffs** — `forge_step_handoff.write` passes structured context
@@ -149,3 +192,6 @@ affordance above instead:
 - **`skip-recall`** — designing/fixing without `forge_memory.search` for prior work.
 - **`on_hold-from-draft`** — `on_hold` on an issue that never started (use `draft`/`waiting`).
 - **`fix-by-hand-and-forget`** — a hand-fix with no status move and no captured learning.
+- **`draft-as-note`** — filing a note, log, question or record as an issue at all; `draft` hides it, it does not make it appropriate.
+- **`close-without-unmark`** — closing non-work and leaving the `merged_at` auto-stamp, which unblocks dependents as if it had shipped.
+- **`silent-nonwork`** — dropping a residual, or parking it as an unowned `draft` instead of an issue / a `blocks` edge / a `docs/proposals/` line.
