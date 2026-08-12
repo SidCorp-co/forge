@@ -319,6 +319,12 @@ export interface ApplyUxPresetInput {
 	profile?: UxStackProfile;
 }
 
+/** `POST /api/projects/:id/ux-contract/scan` response (202) — the chat session
+ *  dispatched on a bound runner to collect + submit the stack snapshot. */
+export interface UxScanDispatchResult {
+	sessionId: string;
+}
+
 /** `PATCH /api/ux-contract-rules/:ruleId` body — partial, at least one field. */
 export interface UxContractRulePatch {
 	group?: UxRuleGroup;

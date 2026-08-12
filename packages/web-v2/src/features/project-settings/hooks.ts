@@ -367,8 +367,30 @@ export function useApplyUxPreset(id: string | undefined) {
 	});
 }
 
-// cm:why the inbox deliberately exposes NO edit-text action (decided 2026-08-12,
-//   docs/modules/ux-contract) — `text` stays in the schema for the API, not for a UI affordance
+/** POST the auto-detect scan (admin). Dispatches on a bound runner; the
+ *  Detected-stack panel refreshes once the scan lands (the caller polls). */
+export function useRescanUxStack(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: () => projectSettingsApi.rescanUxStack(id as string),
+		onSuccess: () => {
+			toast({
+				title: "Scan started",
+				description: "The detected stack updates here when it finishes.",
+				tone: "success",
+			});
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't start the scan",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+// cm:why the inbox deliberately exposes NO edit-text action (decided 2026-08-12, docs/modules/ux-contract) — `text` stays in the schema for the API, not for a UI affordance
 /** PATCH a rule: severity toggle, or approve a proposal via status→active. */
 export function usePatchUxRule(id: string | undefined) {
 	const qc = useQueryClient();

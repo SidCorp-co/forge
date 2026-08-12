@@ -6,7 +6,8 @@
 // proposed-changes inbox, and preview the compiled prose the pipeline reads.
 // No backend change here — pure consumption of already-live endpoints.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	Badge,
 	Button,
@@ -28,6 +29,7 @@ import {
 	useDeleteUxRule,
 	usePatchUxRule,
 	useProjectFacts,
+	useRescanUxStack,
 	useUxContractRules,
 	useUxFindings,
 } from "../hooks";
@@ -47,6 +49,12 @@ function asAgentConfig(raw: unknown): ProjectAgentConfig {
 
 const PRESET_OPTIONS = UX_PRESETS.map((p) => ({ value: p, label: UX_PRESET_LABELS[p] }));
 
+// ISS-576 — the scan runs on a runner (core has no repo checkout), so the
+// button dispatches an agent turn rather than scanning synchronously. This
+// bounded poll turns that async completion into the panel refresh once it lands.
+const SCAN_POLL_WINDOW_MS = 2 * 60_000;
+const SCAN_POLL_INTERVAL_MS = 10_000;
+
 export function UxContractTab({
 	project,
 	canEdit,
@@ -61,13 +69,38 @@ export function UxContractTab({
 	const applyPreset = useApplyUxPreset(projectId);
 	const patchRule = usePatchUxRule(projectId);
 	const deleteRule = useDeleteUxRule(projectId);
+	const rescan = useRescanUxStack(projectId);
+	const qc = useQueryClient();
 
 	const [preset, setPreset] = useState<(typeof UX_PRESETS)[number]>("app-strict");
 	const [confirmApply, setConfirmApply] = useState(false);
 	const [rejectRuleId, setRejectRuleId] = useState<string | null>(null);
+	const [scanDeadline, setScanDeadline] = useState<number | null>(null);
 
 	const profile = asAgentConfig(project.agentConfig).uxContractProfile;
 	const designSystem = profile?.designSystem;
+
+	const designSystemRef = useRef(designSystem);
+	useEffect(() => {
+		designSystemRef.current = designSystem;
+	}, [designSystem]);
+	const scanBaselineRef = useRef(designSystem);
+
+	// Bounded poll while a dispatched scan is in flight — the panel refreshes
+	// once the scan lands, and the poll stops the moment it does (or after the
+	// window elapses, whichever comes first).
+	useEffect(() => {
+		if (scanDeadline === null) return;
+		const interval = setInterval(() => {
+			if (Date.now() >= scanDeadline || designSystemRef.current !== scanBaselineRef.current) {
+				setScanDeadline(null);
+				return;
+			}
+			qc.invalidateQueries({ queryKey: ["project", projectId, "ux-contract-rules"] });
+			qc.invalidateQueries({ queryKey: ["project", projectId] });
+		}, SCAN_POLL_INTERVAL_MS);
+		return () => clearInterval(interval);
+	}, [scanDeadline, qc, projectId]);
 
 	const activeRules = useMemo(
 		() => (rulesQ.data ?? []).filter((r) => r.status === "active"),
@@ -147,16 +180,33 @@ export function UxContractTab({
 				</CardContent>
 			</Card>
 
-			{/* Auto-detected stack panel — read-only, Re-scan disabled (ISS-576 not built). */}
+			{/* Auto-detected stack panel — Re-scan dispatches the repo scan (ISS-576). */}
 			<Card>
 				<CardContent>
 					<div className="flex items-center justify-between gap-3">
 						<h2 className="fg-h3">Detected stack</h2>
-						<Tooltip label="Auto-detect isn't built yet (ISS-576) — this can't run a real scan.">
-							<Button variant="ghost" size="sm" disabled icon="rerun">
+						{canEdit ? (
+							<Button
+								variant="ghost"
+								size="sm"
+								icon="rerun"
+								loading={rescan.isPending}
+								onClick={() => {
+									scanBaselineRef.current = designSystem;
+									rescan.mutate(undefined, {
+										onSuccess: () => setScanDeadline(Date.now() + SCAN_POLL_WINDOW_MS),
+									});
+								}}
+							>
 								Re-scan
 							</Button>
-						</Tooltip>
+						) : (
+							<Tooltip label="Requires org owner/admin">
+								<Button variant="ghost" size="sm" disabled icon="rerun">
+									Re-scan
+								</Button>
+							</Tooltip>
+						)}
 					</div>
 					{designSystem ? (
 						<dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">

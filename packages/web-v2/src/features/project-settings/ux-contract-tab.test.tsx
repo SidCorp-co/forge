@@ -4,9 +4,13 @@
 // (rules + inbox + preview) and the non-admin read-only gate. Mocks the
 // project-settings hooks module the same way agent-config-section.test.tsx
 // mocks `useProject`.
+// ISS-576 adds the Re-scan wiring — the component reads `useQueryClient()`
+// directly for the completion poll, so renders need a real QueryClientProvider.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UxContractTab } from "./components/ux-contract-tab";
 import type { ProjectDetail } from "@/features/projects/types";
@@ -20,6 +24,7 @@ const useProjectFacts = vi.fn();
 const useApplyUxPreset = vi.fn();
 const usePatchUxRule = vi.fn();
 const useDeleteUxRule = vi.fn();
+const useRescanUxStack = vi.fn();
 
 vi.mock("./hooks", () => ({
   useUxContractRules: (...args: unknown[]) => useUxContractRules(...args),
@@ -28,6 +33,7 @@ vi.mock("./hooks", () => ({
   useApplyUxPreset: (...args: unknown[]) => useApplyUxPreset(...args),
   usePatchUxRule: (...args: unknown[]) => usePatchUxRule(...args),
   useDeleteUxRule: (...args: unknown[]) => useDeleteUxRule(...args),
+  useRescanUxStack: (...args: unknown[]) => useRescanUxStack(...args),
 }));
 
 function project(agentConfig: unknown = {}): ProjectDetail {
@@ -36,6 +42,11 @@ function project(agentConfig: unknown = {}): ProjectDetail {
     slug: "forge-dev",
     agentConfig,
   } as unknown as ProjectDetail;
+}
+
+function renderTab(ui: ReactElement) {
+  const qc = new QueryClient();
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
 const NO_FINDINGS = { isLoading: false, isError: false, data: [], refetch: vi.fn() };
@@ -53,6 +64,7 @@ function mockDefaults() {
   useApplyUxPreset.mockReturnValue(IDLE_MUTATION);
   usePatchUxRule.mockReturnValue(IDLE_MUTATION);
   useDeleteUxRule.mockReturnValue(IDLE_MUTATION);
+  useRescanUxStack.mockReturnValue(IDLE_MUTATION);
 }
 
 describe("UxContractTab", () => {
@@ -60,7 +72,7 @@ describe("UxContractTab", () => {
     mockDefaults();
     useUxContractRules.mockReturnValue({ isLoading: true, isError: false, data: undefined, refetch: vi.fn() });
     useProjectFacts.mockReturnValue({ ...NO_FACTS, isLoading: true, data: undefined });
-    render(<UxContractTab project={project()} canEdit />);
+    renderTab(<UxContractTab project={project()} canEdit />);
     expect(document.querySelectorAll(".skeleton").length).toBeGreaterThan(0);
   });
 
@@ -74,14 +86,14 @@ describe("UxContractTab", () => {
       data: undefined,
       refetch,
     });
-    render(<UxContractTab project={project()} canEdit />);
+    renderTab(<UxContractTab project={project()} canEdit />);
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
   it("shows the first-run empty state for rules and a distinct empty state for the inbox", () => {
     mockDefaults();
     useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
-    render(<UxContractTab project={project()} canEdit />);
+    renderTab(<UxContractTab project={project()} canEdit />);
     expect(screen.getByText("No rules yet")).toBeInTheDocument();
     expect(screen.getByText("No proposed changes yet")).toBeInTheDocument();
     expect(screen.getByText("Nothing compiled yet")).toBeInTheDocument();
@@ -110,7 +122,7 @@ describe("UxContractTab", () => {
       ],
       refetch: vi.fn(),
     });
-    render(<UxContractTab project={project()} canEdit />);
+    renderTab(<UxContractTab project={project()} canEdit />);
     expect(screen.getByText("§4 Accessibility")).toBeInTheDocument();
     expect(screen.getByText("Every interactive element has a visible focus ring.")).toBeInTheDocument();
     expect(screen.getAllByText("Preset").length).toBeGreaterThanOrEqual(1);
@@ -140,7 +152,7 @@ describe("UxContractTab", () => {
       ],
       refetch: vi.fn(),
     });
-    render(<UxContractTab project={project()} canEdit />);
+    renderTab(<UxContractTab project={project()} canEdit />);
     expect(screen.getByText("Loading states use Skeleton, not a blank screen.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
@@ -181,22 +193,49 @@ describe("UxContractTab", () => {
       ],
       refetch: vi.fn(),
     });
-    render(<UxContractTab project={project()} canEdit={false} />);
+    renderTab(<UxContractTab project={project()} canEdit={false} />);
     expect(screen.getByRole("button", { name: "Apply preset" })).toBeDisabled();
     expect(screen.getByRole("switch")).toBeDisabled();
     expect(screen.getAllByText(/requires an org owner\/admin/i).length).toBeGreaterThan(0);
   });
 
-  it("shows the detected stack panel read-only with Re-scan disabled", () => {
+  it("shows the detected stack panel with an enabled, clickable Re-scan for admins (ISS-576)", () => {
     mockDefaults();
+    const mutate = vi.fn();
+    useRescanUxStack.mockReturnValue({ mutate, isPending: false });
     useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
-    render(
+    renderTab(
       <UxContractTab
-        project={project({ uxContractProfile: { projectLabel: "forge-dev", bindingScope: "web-v2", knownGaps: [], designSystem: { libraryName: "web-v2 DS", tokenSource: "tokens.css" } } })}
+        project={project({
+          uxContractProfile: {
+            projectLabel: "forge-dev",
+            bindingScope: "web-v2",
+            knownGaps: [],
+            designSystem: { libraryName: "web-v2 DS", tokenSource: "tokens.css" },
+          },
+        })}
         canEdit
       />,
     );
     expect(screen.getByText("web-v2 DS")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: /re-scan/i });
+    expect(button).not.toBeDisabled();
+    button.click();
+    expect(mutate).toHaveBeenCalledOnce();
+  });
+
+  it("disables Re-scan with a visible reason for non-admins", () => {
+    mockDefaults();
+    useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
+    renderTab(<UxContractTab project={project()} canEdit={false} />);
+    expect(screen.getByRole("button", { name: /re-scan/i })).toBeDisabled();
+  });
+
+  it("shows the pending state on Re-scan while the scan is in flight", () => {
+    mockDefaults();
+    useRescanUxStack.mockReturnValue({ mutate: vi.fn(), isPending: true });
+    useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
+    renderTab(<UxContractTab project={project()} canEdit />);
     expect(screen.getByRole("button", { name: /re-scan/i })).toBeDisabled();
   });
 
@@ -207,7 +246,7 @@ describe("UxContractTab", () => {
       ...NO_FACTS,
       data: { ...NO_FACTS.data, projectFacts: { "ux-contract": "# UX Contract\n\nMust use Skeleton." } },
     });
-    render(<UxContractTab project={project()} canEdit />);
+    renderTab(<UxContractTab project={project()} canEdit />);
     expect(screen.getByText(/Must use Skeleton\./)).toBeInTheDocument();
   });
 });

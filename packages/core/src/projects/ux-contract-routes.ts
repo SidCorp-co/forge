@@ -3,6 +3,12 @@ import { and, asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import {
+  createChatSessionRow,
+  dispatchChatTurn,
+  noClaudeClient,
+  resolveChatDevice,
+} from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
 import {
   projects,
@@ -14,6 +20,7 @@ import {
   uxRuleStatuses,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { UX_PRESETS, type UxStackProfile, compilePresetToRules } from './ux-contract-presets.js';
 import { recompileAndPersistUxContract } from './ux-contract-recompile.js';
@@ -222,6 +229,109 @@ uxContractProjectRoutes.post(
     await recompileAndPersistUxContract(projectId);
 
     return c.json({ applied: compiled.length, preset: body.preset });
+  },
+);
+
+// Repo-relative path, no leading '/', no '..' segments — interpolated into the
+// dispatched agent message below, so validate before it ever reaches a prompt.
+const PACKAGE_DIR_RE = /^[A-Za-z0-9._/-]{1,200}$/;
+
+function isSafePackageDir(dir: string): boolean {
+  return PACKAGE_DIR_RE.test(dir) && !dir.split('/').includes('..');
+}
+
+function uxScanMessage(packageDir: string): string {
+  return [
+    `Collect a UX stack snapshot for \`${packageDir}\` and submit it.`,
+    `1) Read \`${packageDir}/package.json\` and merge \`dependencies\` + \`devDependencies\` verbatim.`,
+    `2) Run \`git ls-files ${packageDir}\` and take the paths relative to \`${packageDir}\`.`,
+    '3) Call `forge_ux_scan` with {packageDir, dependencies, filePaths}.',
+    'Do not interpret the stack yourself and do not edit any file — the server does the detection.',
+    "Reply with the tool's `mode` and nothing else.",
+  ].join(' ');
+}
+
+const scanBodySchema = z
+  .object({ packageDir: z.string().trim().min(1).max(200).optional() })
+  .strict();
+
+// ISS-576 — dispatches the auto-detect scan on a bound runner (core has no
+// repo checkout). Modelled on `projects/onboard-routes.ts`'s dispatch
+// sequence, minus skillName/skill-sync: the procedure travels inline in the
+// message, so no `.claude/skills/**` file is needed on the runner.
+uxContractProjectRoutes.post(
+  '/:id/ux-contract/scan',
+  zValidator('param', projectIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'not a project admin');
+
+    // The body is optional (packageDir falls back to the stored profile's
+    // bindingScope, then '.'), so it is parsed by hand instead of
+    // zValidator('json'), which rejects a bodyless request.
+    const rawBody: unknown = await c.req.json().catch(() => ({}));
+    const parsedBody = scanBodySchema.safeParse(rawBody ?? {});
+    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+
+    const [project] = await db
+      .select({
+        id: projects.id,
+        slug: projects.slug,
+        repoPath: projects.repoPath,
+        agentConfig: projects.agentConfig,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!project) throw new HTTPException(404, { message: 'project not found' });
+
+    const ac = (project.agentConfig ?? {}) as { uxContractProfile?: UxStackProfile };
+    const bindingScope = ac.uxContractProfile?.bindingScope?.replace(/\/+$/, '');
+    const packageDir = bindingScope || parsedBody.data.packageDir || '.';
+
+    if (!isSafePackageDir(packageDir)) {
+      throw badRequest({ packageDir: 'must be a repo-relative path with no ".." segments' });
+    }
+
+    const client = await resolveChatDevice(
+      { projectId: project.id, deviceId: null, metadata: null },
+      undefined,
+    );
+    if (!client.deviceId) throw noClaudeClient('project');
+
+    const session = await createChatSessionRow({
+      projectId: project.id,
+      userId,
+      title: 'UX stack scan',
+      repoPath: project.repoPath,
+      metadata: { source: 'ux-scan' },
+    });
+
+    try {
+      await dispatchChatTurn({
+        session,
+        project,
+        client,
+        message: uxScanMessage(packageDir),
+        broadcastEvent: 'agent-session.created',
+      });
+    } catch (err) {
+      logger.error(
+        { err, sessionId: session.id, projectId: project.id },
+        'ux-contract/scan: chat-turn dispatch failed',
+      );
+      throw new HTTPException(502, {
+        message: 'failed to start the UX stack scan',
+        cause: { code: 'DISPATCH_FAILED' },
+      });
+    }
+
+    return c.json({ sessionId: session.id }, 202);
   },
 );
 

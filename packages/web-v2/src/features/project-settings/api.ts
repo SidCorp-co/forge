@@ -16,6 +16,7 @@ import type {
 	UxContractRule,
 	UxContractRulePatch,
 	UxFinding,
+	UxScanDispatchResult,
 } from "./types";
 
 export const projectSettingsApi = {
@@ -155,6 +156,13 @@ export const projectSettingsApi = {
 			`/projects/${id}/ux-contract/apply-preset`,
 			{ method: "POST", body: JSON.stringify(input) },
 		),
+
+	/** `POST /api/projects/:id/ux-contract/scan` (admin) — dispatches the repo
+	 *  scan on a bound runner; 202 with the chat session that runs it. */
+	rescanUxStack: (id: string) =>
+		apiClient<UxScanDispatchResult>(`/projects/${id}/ux-contract/scan`, {
+			method: "POST",
+		}),
 
 	/** `PATCH /api/ux-contract-rules/:ruleId` (admin, top-level route). */
 	patchUxRule: (ruleId: string, patch: UxContractRulePatch) =>
