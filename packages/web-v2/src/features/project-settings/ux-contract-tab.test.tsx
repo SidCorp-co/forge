@@ -9,11 +9,12 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UxContractTab } from "./components/ux-contract-tab";
 import type { ProjectDetail } from "@/features/projects/types";
+import { ToastProvider } from "@/providers/toast-provider";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -46,7 +47,11 @@ function project(agentConfig: unknown = {}): ProjectDetail {
 
 function renderTab(ui: ReactElement) {
   const qc = new QueryClient();
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      <ToastProvider>{ui}</ToastProvider>
+    </QueryClientProvider>,
+  );
 }
 
 const NO_FINDINGS = { isLoading: false, isError: false, data: [], refetch: vi.fn() };
@@ -248,5 +253,31 @@ describe("UxContractTab", () => {
     });
     renderTab(<UxContractTab project={project()} canEdit />);
     expect(screen.getByText(/Must use Skeleton\./)).toBeInTheDocument();
+  });
+
+  it("surfaces a toast if the scan's 2-minute poll window elapses with no visible change (ISS-576 review #2)", () => {
+    vi.useFakeTimers();
+    try {
+      mockDefaults();
+      const mutate = vi.fn((_input: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
+      useRescanUxStack.mockReturnValue({ mutate, isPending: false });
+      useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
+      renderTab(<UxContractTab project={project()} canEdit />);
+
+      act(() => {
+        screen.getByRole("button", { name: /re-scan/i }).click();
+      });
+      expect(screen.queryByText("No update yet")).not.toBeInTheDocument();
+
+      // SCAN_POLL_WINDOW_MS (2min) / SCAN_POLL_INTERVAL_MS (10s) — the profile
+      // never changes in this test, so every tick is a no-visible-change tick.
+      act(() => {
+        vi.advanceTimersByTime(2 * 60_000 + 10_000);
+      });
+
+      expect(screen.getByText("No update yet")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

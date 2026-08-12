@@ -237,7 +237,12 @@ uxContractProjectRoutes.post(
 const PACKAGE_DIR_RE = /^[A-Za-z0-9._/-]{1,200}$/;
 
 function isSafePackageDir(dir: string): boolean {
-  return PACKAGE_DIR_RE.test(dir) && !dir.split('/').includes('..');
+  return (
+    PACKAGE_DIR_RE.test(dir) &&
+    !dir.startsWith('/') &&
+    !dir.startsWith('-') &&
+    !dir.split('/').includes('..')
+  );
 }
 
 function uxScanMessage(packageDir: string): string {
@@ -292,7 +297,7 @@ uxContractProjectRoutes.post(
 
     const ac = (project.agentConfig ?? {}) as { uxContractProfile?: UxStackProfile };
     const bindingScope = ac.uxContractProfile?.bindingScope?.replace(/\/+$/, '');
-    const packageDir = bindingScope || parsedBody.data.packageDir || '.';
+    const packageDir = parsedBody.data.packageDir || bindingScope || '.';
 
     if (!isSafePackageDir(packageDir)) {
       throw badRequest({ packageDir: 'must be a repo-relative path with no ".." segments' });

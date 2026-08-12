@@ -24,6 +24,7 @@ import {
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
+import { useToast } from "@/providers/toast-provider";
 import {
 	useApplyUxPreset,
 	useDeleteUxRule,
@@ -71,6 +72,7 @@ export function UxContractTab({
 	const deleteRule = useDeleteUxRule(projectId);
 	const rescan = useRescanUxStack(projectId);
 	const qc = useQueryClient();
+	const { toast } = useToast();
 
 	const [preset, setPreset] = useState<(typeof UX_PRESETS)[number]>("app-strict");
 	const [confirmApply, setConfirmApply] = useState(false);
@@ -87,20 +89,32 @@ export function UxContractTab({
 	const scanBaselineRef = useRef(designSystem);
 
 	// Bounded poll while a dispatched scan is in flight — the panel refreshes
-	// once the scan lands, and the poll stops the moment it does (or after the
-	// window elapses, whichever comes first).
+	// once the scan lands, and the poll stops the moment it does. If the window
+	// elapses with no visible change, that's ambiguous (still running, offline
+	// runner, or a scan that legitimately found no drift) — surface it instead
+	// of leaving the "Scan started" toast as the last word (ISS-576 review #2).
 	useEffect(() => {
 		if (scanDeadline === null) return;
 		const interval = setInterval(() => {
-			if (Date.now() >= scanDeadline || designSystemRef.current !== scanBaselineRef.current) {
+			if (designSystemRef.current !== scanBaselineRef.current) {
 				setScanDeadline(null);
+				return;
+			}
+			if (Date.now() >= scanDeadline) {
+				setScanDeadline(null);
+				toast({
+					title: "No update yet",
+					description:
+						"The scan didn't change anything detectable within 2 minutes — it may still be running, or found no drift. Check back, or try again.",
+					tone: "info",
+				});
 				return;
 			}
 			qc.invalidateQueries({ queryKey: ["project", projectId, "ux-contract-rules"] });
 			qc.invalidateQueries({ queryKey: ["project", projectId] });
 		}, SCAN_POLL_INTERVAL_MS);
 		return () => clearInterval(interval);
-	}, [scanDeadline, qc, projectId]);
+	}, [scanDeadline, qc, projectId, toast]);
 
 	const activeRules = useMemo(
 		() => (rulesQ.data ?? []).filter((r) => r.status === "active"),

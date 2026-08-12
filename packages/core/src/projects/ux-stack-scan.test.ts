@@ -99,6 +99,19 @@ describe('detectDesignSystem', () => {
       'Toast',
     ]);
   });
+
+  it('detects state primitives named in PascalCase, not just kebab-case (ISS-576 review #6)', () => {
+    const snapshot: UxScanSnapshot = {
+      packageDir: 'apps/web',
+      dependencies: {},
+      filePaths: [
+        'src/design/index.ts',
+        'src/design/primitives/Skeleton.tsx',
+        'src/design/primitives/EmptyState.tsx',
+      ],
+    };
+    expect(detectDesignSystem(snapshot).statePrimitives).toEqual(['Skeleton', 'EmptyState']);
+  });
 });
 
 describe('designSystemRuleTexts', () => {

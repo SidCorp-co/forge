@@ -154,6 +154,41 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
     expect(dispatchChatTurnMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a packageDir with a leading "-" (git ls-files option injection, ISS-576 review #3)', async () => {
+    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+
+    const res = await postScan({ packageDir: '--upload-pack=evil' });
+
+    expect(res.status).toBe(400);
+    expect(dispatchChatTurnMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an absolute packageDir (leading "/", ISS-576 review #3)', async () => {
+    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+
+    const res = await postScan({ packageDir: '/etc' });
+
+    expect(res.status).toBe(400);
+    expect(dispatchChatTurnMock).not.toHaveBeenCalled();
+  });
+
+  it('an explicit request-body packageDir wins over a stored bindingScope profile (ISS-576 review #5)', async () => {
+    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    projectRow = {
+      id: PROJECT_ID,
+      slug: 'forge-dev',
+      repoPath: '/repo',
+      agentConfig: { uxContractProfile: { bindingScope: 'packages/web-v2/' } },
+    };
+
+    const res = await postScan({ packageDir: 'apps/other' });
+
+    expect(res.status).toBe(202);
+    const dispatched = dispatchChatTurnMock.mock.calls[0]?.[0] as { message: string };
+    expect(dispatched.message).toContain('apps/other');
+    expect(dispatched.message).not.toContain('packages/web-v2');
+  });
+
   it('maps a dispatch failure to a 502, not a 500, and leaves the button retryable', async () => {
     resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
     dispatchChatTurnMock.mockRejectedValue(new Error('ws publish failed'));

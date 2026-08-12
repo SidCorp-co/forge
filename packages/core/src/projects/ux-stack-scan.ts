@@ -117,14 +117,13 @@ function detectBreakpoints(deps: string[]): string | null {
 function detectStatePrimitives(designDir: string | null, filePaths: string[]): string[] {
   if (!designDir) return [];
   const prefix = `${designDir}/`;
+  // kebabOf() also normalizes an already-kebab-case stem (no-op, since it only
+  // inserts a hyphen at a lower→upper boundary), so this matches both
+  // `EmptyState.tsx` and `empty-state.tsx` against the same vocab entry.
   const stems = new Set(
     filePaths
       .filter((p) => p.startsWith(prefix))
-      .map((p) =>
-        basename(p)
-          .replace(/\.(tsx|ts|jsx|js)$/, '')
-          .toLowerCase(),
-      ),
+      .map((p) => kebabOf(basename(p).replace(/\.(tsx|ts|jsx|js)$/, ''))),
   );
   return STATE_PRIMITIVE_VOCAB.filter((name) => stems.has(kebabOf(name)));
 }
