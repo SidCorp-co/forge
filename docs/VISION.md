@@ -48,7 +48,7 @@ Direction (not built): **Idea → Spec → Design** as new stage types in the sa
 7. **Security & migration > features.**
 8. **Apache-2.0 core**; commercial stays in separate repos.
 9. **Provider-agnostic where cheap, Claude-Code-first where needed.**
-10. **State never lies** — a silent wedge, false failure, or unescalated stuck state is a kernel bug, above features. The state-integrity guard family (fabricated evidence, phantom advances, plan-less approvals, unverified diagnostics — ISS-786) is this principle's concrete enforcement layer: [docs/architecture/state-integrity-guards.md](architecture/state-integrity-guards.md).
+10. **State never lies** — a silent wedge, false failure, or unescalated stuck state is a kernel bug, above features. The state-integrity guard family (fabricated evidence, phantom advances, plan-less approvals, unverified diagnostics — ISS-786) is this principle's concrete enforcement layer: [docs/architecture/state-integrity-guards.md](architecture/state-integrity-guards.md). The failure-classification/action-policy family (retry storms, box faults rotated instead of quarantined, schedules that lie about their outcome — ISS-812) is the same principle applied to *why* a job failed: [docs/architecture/failure-taxonomy-and-action-policy.md](architecture/failure-taxonomy-and-action-policy.md).
 11. **Kernel hard, policy soft** — job/session/run lifecycle is strict and invariant-guarded; pipelines/skills/prompts are user-shaped and change freely.
 
 ## 6. Roadmap (ships when ready, no dates)
