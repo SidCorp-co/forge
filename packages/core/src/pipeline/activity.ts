@@ -12,6 +12,8 @@ export interface RecordActivityInput {
   before?: unknown;
   after?: unknown;
   payload?: Record<string, unknown>;
+  /** ISS-849 — redelivery-dedup key, e.g. `transition:<outboxId>`. */
+  dedupeKey?: string;
 }
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -31,6 +33,7 @@ function buildValues(input: RecordActivityInput) {
     actorId: input.actor.id,
     action: input.action,
     payload: buildPayload(input),
+    dedupeKey: input.dedupeKey ?? null,
   };
 }
 

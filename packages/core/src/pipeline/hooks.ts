@@ -55,6 +55,15 @@ export interface HookPayloads {
     to: IssueStatus;
     reason?: string;
     reopenCount: number;
+    /**
+     * ISS-849 — the `pipeline_outbox` row id this delivery came from, when the
+     * transition was emitted via the outbox drain. Optional/fail-open: absent
+     * for any other emitter, in which case redelivery-dedup is skipped and
+     * behavior is unchanged. Unique per logical transition, so it collapses
+     * redeliveries of the same row without suppressing two independent
+     * transitions through the same `from`/`to` states.
+     */
+    outboxId?: string;
   };
   // ISS-20 (Epic 4) — terminal job lifecycle events. PM subscribers branch on
   // `failureKind` so they react differently per class (ISS-450 taxonomy:

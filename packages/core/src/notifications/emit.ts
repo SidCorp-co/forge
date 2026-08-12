@@ -50,6 +50,8 @@ export interface EmitNotificationInput {
   severity?: string | null;
   /** Stable per-condition key so a later resolver can auto-clear this row. */
   resolutionKey?: string | null;
+  /** ISS-849 — redelivery-dedup key, e.g. `transition:<outboxId>`. */
+  dedupeKey?: string | null;
   /** Set for `pm_escalation` — forwarded to the project-room WS bridge. */
   decisionId?: string | null;
 }

@@ -49,6 +49,7 @@ describe('recordActivity', () => {
       actorId: USER_ID,
       action: 'issue.updated',
       payload: { before: { title: 'old' }, after: { title: 'new' }, fields: ['title'] },
+      dedupeKey: null,
     });
   });
 
@@ -65,7 +66,21 @@ describe('recordActivity', () => {
       actorId: DEVICE_ID,
       action: 'issue.created',
       payload: {},
+      dedupeKey: null,
     });
+  });
+
+  it('threads a caller-supplied dedupeKey through to the row', async () => {
+    await recordActivity({
+      issueId: ISSUE_ID,
+      actor: { type: 'user', id: USER_ID },
+      action: 'issue.statusChanged',
+      dedupeKey: 'transition:outbox-1',
+    });
+
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: 'transition:outbox-1' }),
+    );
   });
 });
 

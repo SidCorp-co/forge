@@ -268,6 +268,18 @@ describe('outbox-worker', () => {
     );
   });
 
+  it('carries the outbox row id as outboxId so subscribers can dedupe redeliveries (ISS-849)', async () => {
+    const r = row({ id: 'ffeeddcc-bbaa-4988-8776-655443322110' });
+    claimQueue.push([r]);
+
+    await drainOutboxOnce();
+
+    expect(emitMock).toHaveBeenCalledWith(
+      'transition',
+      expect.objectContaining({ outboxId: r.id }),
+    );
+  });
+
   it('passes reason through when present', async () => {
     const r = row({ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', reason: 'manual override' });
     claimQueue.push([r]);
