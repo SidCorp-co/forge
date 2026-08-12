@@ -77,6 +77,27 @@ function transitionDedupeKey(outboxId: string): string {
   return `transition:${outboxId}`;
 }
 
+/**
+ * True when an `issue_status_changed` notification already carries this
+ * dedupe key, i.e. this delivery is a redelivery already recorded.
+ * Best-effort, matching `subscribers.ts`'s `alreadyRecordedTransition`: a
+ * lookup failure is logged and treated as "not a duplicate" so a transient
+ * DB hiccup never suppresses the notification this subscriber exists to send.
+ */
+async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
+  try {
+    const [existing] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(eq(notifications.dedupeKey, dedupeKey))
+      .limit(1);
+    return Boolean(existing);
+  } catch (err) {
+    logger.error({ err, dedupeKey }, 'notify-transitions: transition dedupe lookup failed');
+    return false;
+  }
+}
+
 /** Per-status one-line body explaining why the recipient is being pinged. */
 function bodyForStatus(to: IssueStatus, reason?: string): string {
   if (reason && reason.trim().length > 0) return reason.trim();
@@ -124,18 +145,11 @@ export function registerTransitionNotifications(bus: HooksBus): void {
 
     if (!NOTIFY_ON_STATUS.has(p.to)) return;
 
-    try {
-      // cm:why ISS-849 — a redelivery of the same outbox row must not write a second notification; outboxId absent (any non-outbox emitter) skips this guard and leaves behavior unchanged
-      const dedupeKey = p.outboxId ? transitionDedupeKey(p.outboxId) : null;
-      if (dedupeKey) {
-        const [existing] = await db
-          .select({ id: notifications.id })
-          .from(notifications)
-          .where(eq(notifications.dedupeKey, dedupeKey))
-          .limit(1);
-        if (existing) return;
-      }
+    // cm:why ISS-849 — a redelivery of the same outbox row must not write a second notification; outboxId absent (any non-outbox emitter) skips this guard and leaves behavior unchanged
+    const dedupeKey = p.outboxId ? transitionDedupeKey(p.outboxId) : null;
+    if (dedupeKey && (await alreadyNotifiedTransition(dedupeKey))) return;
 
+    try {
       const [row] = await db
         .select({
           assigneeId: issues.assigneeId,

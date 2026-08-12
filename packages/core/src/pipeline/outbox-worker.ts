@@ -42,9 +42,11 @@ import { emitPipelineWedge } from './wedge.js';
  * that failed (no per-subscriber redelivery targeting — that needs
  * persisting subscriber identity per outbox row, out of scope). Bounded by
  * `MAX_REDELIVERIES`: the orchestrator is idempotent under its per-issue
- * `pg_advisory_xact_lock`, so its redelivery is a real retry; other
- * subscribers may write up to `MAX_REDELIVERIES` duplicate rows (activity,
- * notifications) — cosmetic, and notification dedupe is tracked separately.
+ * `pg_advisory_xact_lock`, so its redelivery is a real retry; the other two
+ * subscribers (activity, notifications) collapse redeliveries of the same
+ * row via `dedupeKey = transition:<outboxId>` (ISS-849, notify-transitions.ts
+ * / subscribers.ts) — `row.id` passed as `outboxId` below is what makes that
+ * collapse possible.
  */
 
 const POLL_INTERVAL_MS = 1_000;

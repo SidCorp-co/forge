@@ -12,7 +12,7 @@ vi.mock('../db/client.js', () => ({
 // notify-transitions routes through emit.ts (ISS-510), which delegates to the
 // mocked createNotification — so assertions on createNotification still hold,
 // and we additionally see the severity/resolutionKey emit.ts/notify add.
-const createNotification = vi.fn(async () => ({ id: 'notif-1' }));
+const createNotification = vi.fn(async (_input: Record<string, unknown>) => ({ id: 'notif-1' }));
 vi.mock('./routes.js', () => ({ createNotification }));
 
 const resolveNotifications = vi.fn(async () => 0);
