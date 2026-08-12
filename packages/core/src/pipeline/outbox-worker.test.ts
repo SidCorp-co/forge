@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EmitResult } from './hooks.js';
 
 // ---- mocks (must come before import of outbox-worker) ----
 
@@ -74,7 +75,9 @@ vi.mock('../db/client.js', () => ({
 }));
 
 // cm:why the regression guard: emitMock asserts no transaction is ever opened while a hook is in flight — fails against pre-ISS-678 code, which awaits hooks.emit from inside an open db.transaction
-const emitMock = vi.fn(async () => {
+// cm:guard the return type is annotated, not inferred: without it `failures: []` widens to never[]
+//   and every per-test override that reports a real subscriber failure stops type-checking
+const emitMock = vi.fn(async (): Promise<EmitResult> => {
   expect(transactionMock).not.toHaveBeenCalled();
   return { topic: 'transition', delivered: 1, failures: [] };
 });

@@ -828,9 +828,9 @@ describe('forge_issues tool', () => {
         callOrder.push('setDep');
         return { id: 'dep-id-1', created: true };
       });
-      vi.mocked(hooks.emit).mockImplementationOnce(async (..._args) => {
+      vi.mocked(hooks.emit).mockImplementationOnce(async (topic) => {
         callOrder.push('issueCreated');
-        return undefined;
+        return { topic, delivered: 1, failures: [] };
       });
 
       await tool.handler({
