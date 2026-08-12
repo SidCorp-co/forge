@@ -198,7 +198,135 @@ export interface StateContextEntry {
 export interface ProjectAgentConfig {
 	plugins?: PluginDesignation[];
 	stateContext?: Record<string, StateContextEntry> | null;
+	/** ISS-578 stack profile, persisted by `POST .../ux-contract/apply-preset`. */
+	uxContractProfile?: UxStackProfile;
 	[key: string]: unknown;
+}
+
+// ── UX Contract (ISS-574/578) — "choose, not write" rules + preset layer ───
+// Mirrors `packages/core/src/db/schema.ts` (uxContractRules/uxFindings enums)
+// and `packages/core/src/projects/ux-contract-presets.ts` (UxStackProfile).
+
+export const UX_RULE_GROUPS = [
+	"designSystem",
+	"states",
+	"flows",
+	"a11y",
+	"microcopy",
+	"responsive",
+] as const;
+export type UxRuleGroup = (typeof UX_RULE_GROUPS)[number];
+
+/** §1–6 display labels, in canonical contract order. */
+export const UX_RULE_GROUP_LABELS: Record<UxRuleGroup, string> = {
+	designSystem: "§1 Design system",
+	states: "§2 States",
+	flows: "§3 Flows & feedback",
+	a11y: "§4 Accessibility",
+	microcopy: "§5 Microcopy",
+	responsive: "§6 Responsive",
+};
+
+export type UxRuleSeverity = "must" | "should";
+export type UxRuleSource = "preset" | "detected" | "learned" | "manual";
+export type UxRuleStatus = "active" | "proposed" | "retired";
+
+export const UX_RULE_SOURCE_LABELS: Record<UxRuleSource, string> = {
+	preset: "Preset",
+	detected: "Detected",
+	learned: "Learned",
+	manual: "Manual",
+};
+
+export const UX_PRESETS = [
+	"app-strict",
+	"marketing",
+	"internal-tool",
+	"custom",
+] as const;
+export type UxPreset = (typeof UX_PRESETS)[number];
+
+export const UX_PRESET_LABELS: Record<UxPreset, string> = {
+	"app-strict": "App (strict)",
+	marketing: "Marketing site",
+	"internal-tool": "Internal tool",
+	custom: "Custom",
+};
+
+/** `GET /api/projects/:id/ux-contract-rules` row. */
+export interface UxContractRule {
+	id: string;
+	projectId: string;
+	group: UxRuleGroup;
+	text: string;
+	severity: UxRuleSeverity;
+	source: UxRuleSource;
+	status: UxRuleStatus;
+	evidenceIssueIds: string[];
+	orderIndex: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+/** `GET /api/projects/:id/ux-findings` row. */
+export interface UxFinding {
+	id: string;
+	projectId: string;
+	issueId: string;
+	runId: string | null;
+	stage: "review" | "verify-live";
+	ruleId: string | null;
+	kind: "missing-state" | "a11y" | "microcopy" | "responsive" | "design-system" | "other";
+	detail: string;
+	severity: UxRuleSeverity;
+	createdAt: string;
+}
+
+/** Structured knobs `apply-preset` accepts — mirrors `applyPresetSchema` in
+ *  core `ux-contract-routes.ts`. Optional: the pilot applies preset defaults
+ *  only (ISS-576 owns populating a real profile from auto-detect). */
+export interface UxToggleSettings {
+	emptySearchRequired: boolean;
+	destructiveConfirm: boolean;
+	a11yLevel: "basic" | "AA";
+	mobileResponsive: boolean;
+	optimisticUI: boolean;
+}
+
+/** Mirrors `UxStackProfile` in core `ux-contract-presets.ts`. Server-populated
+ *  today (persisted by apply-preset); this tab renders it read-only. */
+export interface UxStackProfile {
+	projectLabel: string;
+	bindingScope: string;
+	knownGaps: string[];
+	ruleOverrides?: Record<string, string>;
+	designSystem?: {
+		ownLibrary?: boolean;
+		libraryName?: string | null;
+		importRoot?: string | null;
+		tokenSource?: string | null;
+		toastMechanism?: string | null;
+		i18n?: boolean;
+		breakpoints?: string | null;
+		statePrimitives?: string[];
+	};
+}
+
+/** `POST /api/projects/:id/ux-contract/apply-preset` body. */
+export interface ApplyUxPresetInput {
+	preset: UxPreset;
+	toggles?: UxToggleSettings;
+	profile?: UxStackProfile;
+}
+
+/** `PATCH /api/ux-contract-rules/:ruleId` body — partial, at least one field. */
+export interface UxContractRulePatch {
+	group?: UxRuleGroup;
+	text?: string;
+	severity?: UxRuleSeverity;
+	source?: UxRuleSource;
+	status?: UxRuleStatus;
+	orderIndex?: number;
 }
 
 /**
