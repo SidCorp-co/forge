@@ -5,6 +5,7 @@ import type { ProjectDetail } from "@/features/projects/types";
 // feature (`projectApi.getById`) and is reused here via `useProject`.
 import { apiClient } from "@/lib/api/client";
 import type {
+	ApplyUxPresetInput,
 	PipelineConfig,
 	ProjectFactsPatch,
 	ProjectFactsResponse,
@@ -12,6 +13,9 @@ import type {
 	ProjectLabel,
 	ProjectMemberRow,
 	ProjectUpdateInput,
+	UxContractRule,
+	UxContractRulePatch,
+	UxFinding,
 } from "./types";
 
 export const projectSettingsApi = {
@@ -133,4 +137,33 @@ export const projectSettingsApi = {
 	/** `DELETE /api/labels/:labelId` — delete a label (note: top-level route). */
 	deleteLabel: (labelId: string) =>
 		apiClient<unknown>(`/labels/${labelId}`, { method: "DELETE" }),
+
+	/** `GET /api/projects/:id/ux-contract-rules[?status=]` — viewer-gated. */
+	listUxRules: (id: string, status?: string) =>
+		apiClient<UxContractRule[]>(
+			`/projects/${id}/ux-contract-rules${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+		),
+
+	/** `GET /api/projects/:id/ux-findings` — viewer-gated, for evidence links. */
+	listUxFindings: (id: string) =>
+		apiClient<UxFinding[]>(`/projects/${id}/ux-findings`),
+
+	/** `POST /api/projects/:id/ux-contract/apply-preset` (admin) — REPLACES the
+	 *  whole rule set + recompiles `projectFacts['ux-contract']`. */
+	applyUxPreset: (id: string, input: ApplyUxPresetInput) =>
+		apiClient<{ applied: number; preset: string }>(
+			`/projects/${id}/ux-contract/apply-preset`,
+			{ method: "POST", body: JSON.stringify(input) },
+		),
+
+	/** `PATCH /api/ux-contract-rules/:ruleId` (admin, top-level route). */
+	patchUxRule: (ruleId: string, patch: UxContractRulePatch) =>
+		apiClient<UxContractRule>(`/ux-contract-rules/${ruleId}`, {
+			method: "PATCH",
+			body: JSON.stringify(patch),
+		}),
+
+	/** `DELETE /api/ux-contract-rules/:ruleId` (admin, top-level route) — 204. */
+	deleteUxRule: (ruleId: string) =>
+		apiClient<unknown>(`/ux-contract-rules/${ruleId}`, { method: "DELETE" }),
 };

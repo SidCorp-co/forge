@@ -10,9 +10,11 @@ import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSettingsApi } from "./api";
 import type {
+	ApplyUxPresetInput,
 	PipelineConfig,
 	ProjectFactsPatch,
 	ProjectUpdateInput,
+	UxContractRulePatch,
 } from "./types";
 
 /** PATCH project basics/repo. Invalidates the detail + console list. */
@@ -313,6 +315,91 @@ export function useDeleteLabel(id: string | undefined) {
 		onError: (err) =>
 			toast({
 				title: "Couldn't delete label",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** GET the project's UX contract rules (active + proposed + retired). */
+export function useUxContractRules(id: string | undefined) {
+	return useQuery({
+		queryKey: ["project", id, "ux-contract-rules"],
+		queryFn: () => projectSettingsApi.listUxRules(id as string),
+		enabled: !!id,
+	});
+}
+
+/** GET the project's UX findings — resolves a rule's evidence links. */
+export function useUxFindings(id: string | undefined) {
+	return useQuery({
+		queryKey: ["project", id, "ux-findings"],
+		queryFn: () => projectSettingsApi.listUxFindings(id as string),
+		enabled: !!id,
+	});
+}
+
+/** Every UX-contract rule mutation invalidates both the rules list AND
+ *  `project-facts` (the compiled-prose preview reads `projectFacts['ux-contract']`,
+ *  which the server recompiles on every mutating call). */
+function invalidateUxContract(qc: ReturnType<typeof useQueryClient>, id: string | undefined) {
+	qc.invalidateQueries({ queryKey: ["project", id, "ux-contract-rules"] });
+	qc.invalidateQueries({ queryKey: ["project", id, "project-facts"] });
+}
+
+/** POST apply-preset — REPLACES the whole rule set (caller must confirm first). */
+export function useApplyUxPreset(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (input: ApplyUxPresetInput) =>
+			projectSettingsApi.applyUxPreset(id as string, input),
+		onSuccess: () => {
+			invalidateUxContract(qc, id);
+			toast({ title: "Preset applied", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't apply preset",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** PATCH a rule (severity toggle, approve a proposal via status→active, edit text). */
+export function usePatchUxRule(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: ({ ruleId, patch }: { ruleId: string; patch: UxContractRulePatch }) =>
+			projectSettingsApi.patchUxRule(ruleId, patch),
+		onSuccess: () => {
+			invalidateUxContract(qc, id);
+			toast({ title: "Rule updated", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't update rule",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** DELETE a rule (reject a proposal). Irreversible — caller must confirm first. */
+export function useDeleteUxRule(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (ruleId: string) => projectSettingsApi.deleteUxRule(ruleId),
+		onSuccess: () => {
+			invalidateUxContract(qc, id);
+			toast({ title: "Rule removed", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't remove rule",
 				description: formatApiError(err),
 				tone: "error",
 			}),
