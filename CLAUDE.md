@@ -128,6 +128,23 @@ plus `layers` / `forbidden` / `independence` / `fan-out` contracts, each `draft`
 file and function line limits live in `packages/core/biome.json`. Locking a contract means **no new
 violations**, not zero violations.
 
+### There is no "already red"
+
+Three axes, not three checks — `ci-passed` also needs `core`, `core-integration`, `install-check`,
+`lang-check`, `runner`, `docs`, `web`. The one that stayed red longest was an unnamed one.
+
+**A defect you have seen may not leave your hands labelled "not mine".** In reach and inside the
+ownership line (no merging or reverting a shared branch, no doing another issue's work, no silently
+overriding a human's decision) → **fix it**, whoever caused it and whether or not it is in your AC.
+Out of reach → it leaves as someone's work: an issue, a `blocks` edge, or a comment with evidence.
+
+"Pre-existing", "untouched", "out of scope" are reasons to **record**, never reasons to go quiet.
+Measured 2026-08-13: five `forge-test` runs wrote *"lint remains red only on pre-existing, untouched
+diagnostics"* and merged — `core` is a required check. `core-integration` was red on 5 tests at the
+same time, one of them ISS-812's own regression suite, which had never run anywhere: code wrote it
+without running it, review approved it, test could not run it, all three disclosed honestly and
+moved on. Nobody lied and nobody fixed it. "Already red" only means earlier steps dodged too.
+
 **`.forge/` is committed, all of it.** Both checkers are vendored there (`.forge/codemap/`,
 `.forge/archmap/`) and the CI jobs run those copies, so a contributor without a global install and
 the gate are held to the same reviewed version — bump with `cm install --upgrade` / `arch install
