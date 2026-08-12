@@ -140,9 +140,8 @@ export interface ImprovementMessageEntry extends ImprovementMessage {
   } | null;
 }
 
-// ISS-574 — UX Completeness Contract foundation types.
-export type UxContractRule = typeof schema.uxContractRules.$inferSelect;
-export type UxFinding = typeof schema.uxFindings.$inferSelect;
+export type UxContractRuleRow = typeof schema.uxContractRules.$inferSelect;
+export type UxFindingRow = typeof schema.uxFindings.$inferSelect;
 
 // ISS-554 — improvement message draft (bottom-up proposal from a graduated candidate).
 export interface ImprovementMessageDraft {

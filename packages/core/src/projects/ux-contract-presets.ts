@@ -1,3 +1,9 @@
+import type {
+  UxPreset,
+  UxRuleGroup,
+  UxStackProfile,
+  UxToggleSettings,
+} from '@forge/contracts';
 import type { UxContractRuleInput, UxContractScaffold } from './ux-contract-compiler.js';
 
 // ISS-578 — the "choose, not write" authoring layer. A PRESET + a project's
@@ -5,24 +11,9 @@ import type { UxContractRuleInput, UxContractScaffold } from './ux-contract-comp
 // ISS-574 compiler turns into the prose the pipeline reads. Users pick from
 // these instead of authoring a contract from a blank box.
 
-export const UX_PRESETS = ['app-strict', 'marketing', 'internal-tool', 'custom'] as const;
-export type UxPreset = (typeof UX_PRESETS)[number];
+export const UX_PRESETS = ['app-strict', 'marketing', 'internal-tool', 'custom'] as const satisfies readonly UxPreset[];
 
-export type UxRuleGroup = 'designSystem' | 'states' | 'flows' | 'a11y' | 'microcopy' | 'responsive';
-
-/** Structured knobs a user flips; each adjusts exactly which catalog rules emit. */
-export interface UxToggleSettings {
-  /** empty-search / filtered-empty state required (searchable surfaces). */
-  emptySearchRequired: boolean;
-  /** destructive actions require an explicit confirm step. */
-  destructiveConfirm: boolean;
-  /** accessibility bar: 'basic' = semantics + keyboard; 'AA' = + reduced-motion + contrast. */
-  a11yLevel: 'basic' | 'AA';
-  /** mobile responsive (375px) required. */
-  mobileResponsive: boolean;
-  /** optimistic UI expected where it helps perceived speed. */
-  optimisticUI: boolean;
-}
+export type { UxPreset, UxRuleGroup, UxStackProfile, UxToggleSettings } from '@forge/contracts';
 
 /**
  * Per-project design-system facts. ISS-576 (auto-detect) populates this by
@@ -32,24 +23,6 @@ export interface UxToggleSettings {
  * (projectLabel/bindingScope/knownGaps) feed the compiler at recompile time.
  * Stored at `agentConfig.uxContractProfile`.
  */
-export interface UxStackProfile {
-  projectLabel: string;
-  bindingScope: string;
-  knownGaps: string[];
-  /** catalog rule id → project-specific replacement text. */
-  ruleOverrides?: Record<string, string>;
-  /** Structured detection result (optional; filled by ISS-576). */
-  designSystem?: {
-    ownLibrary?: boolean;
-    libraryName?: string | null;
-    importRoot?: string | null;
-    tokenSource?: string | null;
-    toastMechanism?: string | null;
-    i18n?: boolean;
-    breakpoints?: string | null;
-    statePrimitives?: string[];
-  };
-}
 
 /** A compiled rule — assignable to UxContractRuleInput, plus DB/provenance fields. */
 export interface CompiledUxRule extends UxContractRuleInput {
