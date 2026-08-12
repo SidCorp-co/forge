@@ -27,9 +27,18 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+let healthyDevices: string[] = [];
+const onlineCapableDeviceIds = vi.fn(async () => healthyDevices);
+vi.mock('../runners/select.js', () => ({
+  onlineCapableDeviceIds: (...args: unknown[]) =>
+    (onlineCapableDeviceIds as unknown as (...a: unknown[]) => Promise<string[]>)(...args),
+}));
+
 const { findUnansweredBounce, BOUNCE_STATUSES, reopenEnteredFromNeedsInfo } = await import(
   './bounce-replay-guard.js'
 );
+
+const parkedRun = (parkReason: string) => [{ projectId: 'proj-1', parkReason }];
 
 const BOUNCED_AT = new Date('2026-08-01T10:00:00Z');
 const departure = (to: string) => [{ payload: { from: 'approved', to }, createdAt: BOUNCED_AT }];
@@ -38,6 +47,8 @@ function setup(...batches: unknown[][]) {
   queue.length = 0;
   wheres.length = 0;
   selectCalls = 0;
+  healthyDevices = [];
+  onlineCapableDeviceIds.mockClear();
   queue.push(...batches);
 }
 
@@ -175,6 +186,45 @@ describe('findUnansweredBounce', () => {
     expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
     (db as any).select = original;
+  });
+});
+
+describe('findUnansweredBounce — capacity parks', () => {
+  // cm:guard the whole point of ISS-163: a step cut off by provider quota reached NO conclusion, so once the fleet is healthy there is nothing to replay and demanding a human answer wedges the issue forever
+  it('releases a capacity park once the fleet has recovered', async () => {
+    setup(departure('waiting'), [], [], parkedRun('all_devices_exhausted'));
+    healthyDevices = ['dev-1'];
+    expect(await findUnansweredBounce('iss-1', 'approved')).toBeNull();
+  });
+
+  it('keeps the bounce while every runner is still limited', async () => {
+    setup(departure('waiting'), [], [], parkedRun('all_devices_exhausted'));
+    healthyDevices = [];
+    expect(await findUnansweredBounce('iss-1', 'approved')).toEqual({
+      bounced: 'waiting',
+      at: BOUNCED_AT,
+    });
+  });
+
+  // cm:guard a rounds-exhausted park DID reach a conclusion (the step kept failing on its own merits) — re-running it unchanged repeats the failure, so a healthy fleet must not release it
+  it('keeps the bounce for a non-capacity park reason even with a healthy fleet', async () => {
+    setup(departure('waiting'), [], [], parkedRun('retry_rounds_exhausted'));
+    healthyDevices = ['dev-1'];
+    expect((await findUnansweredBounce('iss-1', 'approved'))?.bounced).toBe('waiting');
+  });
+
+  it('keeps the bounce when the park reason was never recorded', async () => {
+    setup(departure('waiting'), [], [], []);
+    healthyDevices = ['dev-1'];
+    expect((await findUnansweredBounce('iss-1', 'approved'))?.bounced).toBe('waiting');
+  });
+
+  // cm:guard ISS-820 must survive this feature: a parkReason left on the latest run by an EARLIER capacity park must never release a LATER needs_info bounce, so the fleet is not even consulted for it
+  it('never consults the fleet for a needs_info bounce', async () => {
+    setup(departure('needs_info'), [], parkedRun('all_devices_exhausted'));
+    healthyDevices = ['dev-1'];
+    expect((await findUnansweredBounce('iss-1', 'approved'))?.bounced).toBe('needs_info');
+    expect(onlineCapableDeviceIds).not.toHaveBeenCalled();
   });
 });
 

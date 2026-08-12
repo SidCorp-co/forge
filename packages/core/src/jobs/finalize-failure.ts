@@ -26,9 +26,9 @@
  * released and the pipeline never wedges (ISS-268 / ISS-34 root cause).
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type jobs, projects } from '../db/schema.js';
+import { issues, type jobs, pipelineRuns, projects } from '../db/schema.js';
 import {
   type DeviceLite,
   type TransitionIssueRow,
@@ -105,6 +105,35 @@ export interface FinalizeFailedJobOptions {
    * so `finalizeFailedJob` skips `scheduleAutoRetryWithVerify`.
    */
   precomputedRetry?: RetryOutcome | undefined;
+}
+
+/**
+ * Record WHY this park happened on the run that gave up, so a later reader can
+ * tell a self-clearing capacity park from a park holding a human decision.
+ * Mirrors the `pauseReason` convention (`metadata->>'pauseReason'`) rather than
+ * adding a column. Best-effort: the park itself is the correctness-critical
+ * work and must not be lost to a metadata write.
+ */
+// cm:edge ordering -> packages/core/src/pipeline/runs.ts — MUST run before `closeOpenRunForIssue` flips the run out of running/paused, which is what this WHERE matches on
+// cm:edge contract -> packages/core/src/pipeline/bounce-replay-guard.ts — reads back `metadata->>'parkReason'` off the LATEST issue-run; that row describes the most recent park only because every park writes its own reason and then closes its own run
+async function recordParkReason(issueId: string, reason: string): Promise<void> {
+  try {
+    await db
+      .update(pipelineRuns)
+      .set({
+        metadata: sql`${pipelineRuns.metadata} || ${JSON.stringify({ parkReason: reason })}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(pipelineRuns.issueId, issueId),
+          eq(pipelineRuns.kind, 'issue'),
+          inArray(pipelineRuns.status, ['running', 'paused']),
+        ),
+      );
+  } catch (err) {
+    logger.warn({ err, issueId, reason }, 'finalize-failure: park-reason record failed');
+  }
 }
 
 /**
@@ -201,6 +230,7 @@ async function reconcileIssueStatusAfterFailure(
       failureKind: job.failureKind ?? null,
       failureReason: job.failureReason ?? null,
     });
+    await recordParkReason(row.id, retry.reason ?? 'unknown');
     try {
       await applyStatusTransition(issueRow, 'waiting', device, { skip: true });
     } catch (err) {

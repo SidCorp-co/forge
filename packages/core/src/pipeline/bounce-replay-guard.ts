@@ -1,27 +1,28 @@
 // Refuse to replay a step the issue already walked out of via a bounce state,
 // when nothing has changed since.
 //
-// ISS-158 (pixelight) needed a capability the project simply did not have. The
-// clarify step and the first code attempt both concluded that and set `waiting`.
-// A later run picked the issue back up at `approved` with no new comment, tool
-// or capability recorded in between — so the second code attempt could only
-// spend a full agent run re-deriving the identical blocked conclusion.
+// ISS-158 (pixelight): clarify and the first code attempt both concluded the
+// project lacked a capability and set `waiting`. A later run picked the issue
+// back up at `approved` with nothing recorded in between, so the second code
+// attempt could only re-derive the identical blocked conclusion.
 //
-// `waiting`/`on_hold` release rule stays deliberately generous: ANY comment or
-// activity after the bounce counts as new input — a tool being wired, even
-// another step's note. `needs_info` is different (ISS-820): its whole premise
-// is "a human must answer a question", so an agent's own comment must not
-// release its own bounce (that let a fabricated "the owner decided" comment
-// override a real human answer). needs_info release requires a HUMAN comment
-// — isAi=false AND authorDeviceId IS NULL — with no activity fallback.
+// `waiting`/`on_hold` release stays deliberately generous: ANY comment or
+// activity after the bounce counts as new input. `needs_info` is different
+// (ISS-820): its premise is "a human must answer a question", so an agent's own
+// comment must not release its own bounce (that let a fabricated "the owner
+// decided" note override a real human answer) — release needs a HUMAN comment
+// (isAi=false AND authorDeviceId IS NULL), with no activity fallback.
+// `reopenEnteredFromNeedsInfo` (ISS-819) obeys that same human-only rule.
 //
-// `reopenEnteredFromNeedsInfo` (ISS-819) answers a question about the same
-// status, so it obeys the same human-only rule.
+// A CAPACITY park is exempt from needing an answer at all: it never reached a
+// conclusion to replay (park-reasons.ts), so the fleet recovering releases it.
 
 import { and, desc, eq, gt, isNull, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, activityLog, comments } from '../db/schema.js';
+import { type IssueStatus, activityLog, comments, pipelineRuns } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { onlineCapableDeviceIds } from '../runners/select.js';
+import { isCapacityParkReason } from './park-reasons.js';
 import { PARKED_STATUSES } from './park-states.js';
 import { WORKING_STATUS_BY_STATUS } from './registry.js';
 
@@ -71,6 +72,14 @@ export async function findUnansweredBounce(
         ? await hasHumanAnswerSince(issueId, row.createdAt)
         : await hasAnyInputSince(issueId, row.createdAt);
     if (answered) return null;
+    // cm:guard `waiting` ONLY — finalize-failure is the sole writer of a capacity park, and it only ever parks at `waiting`. Without this narrowing, a parkReason left on the latest run by an EARLIER capacity park would release a LATER `needs_info` bounce, breaking ISS-820's human-answer rule (and `on_hold`, a deliberate user pause).
+    if (to === 'waiting' && (await capacityParkCleared(issueId))) {
+      logger.info(
+        { issueId, stage, bounced: to },
+        'bounce-guard: capacity park and the fleet recovered, allowing dispatch',
+      );
+      return null;
+    }
     return { bounced: to, at: row.createdAt };
   } catch (err) {
     // cm:guard fail OPEN — a broken guard must let the pipeline run, never silently freeze every dispatch
@@ -125,6 +134,36 @@ export async function reopenEnteredFromNeedsInfo(issueId: string): Promise<boole
       { err, issueId },
       'bounce-replay-guard: reopen-entered-from-needs_info check failed, allowing dispatch',
     );
+    return false;
+  }
+}
+
+/**
+ * Was this park a capacity park whose blocking condition has since cleared?
+ * A step cut off by provider quota reached no conclusion, so there is nothing
+ * to replay — the useful move is to run it, and only the fleet can say whether
+ * that is possible yet.
+ */
+// cm:edge contract -> packages/core/src/jobs/finalize-failure.ts — `recordParkReason` writes the key this reads; anchoring on the LATEST issue-run is only sound because each park writes its own reason and then closes its own run
+// cm:guard fail CLOSED here, unlike the callers' fail-open: an error must leave the existing refusal standing, never invent a release the fleet has not earned
+async function capacityParkCleared(issueId: string): Promise<boolean> {
+  try {
+    const [run] = await db
+      .select({
+        projectId: pipelineRuns.projectId,
+        parkReason: sql<string | null>`(${pipelineRuns.metadata}->>'parkReason')`,
+      })
+      .from(pipelineRuns)
+      .where(and(eq(pipelineRuns.issueId, issueId), eq(pipelineRuns.kind, 'issue')))
+      .orderBy(desc(pipelineRuns.startedAt))
+      .limit(1);
+    if (!run || !isCapacityParkReason(run.parkReason)) return false;
+
+    // cm:why checked WITHOUT the parked job's requiredCapabilities — those live on a job payload this guard does not load, so it asks the weaker "is ANY box healthy" question. Over-allowing is the safe direction: dispatch re-checks capability, and an all-limited fleet now defers to the rotation instead of re-parking (retry.ts).
+    const healthy = await onlineCapableDeviceIds(run.projectId);
+    return healthy.length > 0;
+  } catch (err) {
+    logger.warn({ err, issueId }, 'bounce-guard: capacity-park check failed, keeping the bounce');
     return false;
   }
 }

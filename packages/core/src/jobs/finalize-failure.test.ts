@@ -55,8 +55,25 @@ function selectChain() {
   };
   return chain;
 }
+const updateSetMock = vi.fn((_values: unknown) => undefined);
+
+// cm:why the jsonb-merge value is a drizzle `sql` fragment holding its interpolation as a Param, and the object graph is circular — so the payload is probed by walking it rather than by JSON.stringify
+function mentions(value: unknown, needle: string, seen = new Set<unknown>()): boolean {
+  if (typeof value === 'string') return value.includes(needle);
+  if (value === null || typeof value !== 'object' || seen.has(value)) return false;
+  seen.add(value);
+  return Object.values(value as Record<string, unknown>).some((v) => mentions(v, needle, seen));
+}
 vi.mock('../db/client.js', () => ({
-  db: { select: () => selectChain() },
+  db: {
+    select: () => selectChain(),
+    update: () => ({
+      set: (values: unknown) => {
+        updateSetMock(values);
+        return { where: async () => undefined };
+      },
+    }),
+  },
 }));
 
 const applyTransitionMock = vi.fn(async (..._args: unknown[]) => undefined);
@@ -348,6 +365,32 @@ describe('finalizeFailedJob', () => {
         nextStep: expect.any(String),
       }),
     );
+  });
+
+  // cm:guard ISS-163 — without this write the park reason survives only in comment prose, and bounce-replay-guard cannot tell a self-clearing capacity park from one holding a human decision
+  it('records the park reason on the run so the replay guard can classify the park', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+
+    const written = updateSetMock.mock.calls[0]?.[0];
+    expect(mentions(written, 'parkReason')).toBe(true);
+    expect(mentions(written, 'all_devices_exhausted')).toBe(true);
+  });
+
+  // cm:guard the write targets the run while it is still running/paused, so it MUST precede the close that flips it terminal
+  it('records the park reason before closing the run', async () => {
+    const order: string[] = [];
+    updateSetMock.mockImplementation(() => {
+      order.push('recordParkReason');
+      return undefined;
+    });
+    closeRunMock.mockImplementation(async () => {
+      order.push('closeOpenRunForIssue');
+    });
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+
+    expect(order).toEqual(['recordParkReason', 'closeOpenRunForIssue']);
   });
 
   it('wedge falls back to the technical template for a reason with no business-language mapping', async () => {
