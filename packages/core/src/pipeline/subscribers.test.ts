@@ -10,6 +10,14 @@ vi.mock('../logger.js', () => ({
   logger: { error: loggerError },
 }));
 
+// cm:why ISS-849 — mocks the transition dedupe guard's SELECT-before-insert lookup
+const selectLimit = vi.fn();
+const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+const selectFrom = vi.fn(() => ({ where: selectWhere }));
+vi.mock('../db/client.js', () => ({
+  db: { select: vi.fn(() => ({ from: selectFrom })) },
+}));
+
 const { HooksBus } = await import('./hooks.js');
 const { registerActivitySubscribers } = await import('./subscribers.js');
 
@@ -28,6 +36,7 @@ function newBus() {
 beforeEach(() => {
   safeRecordActivity.mockReset();
   safeRecordActivity.mockResolvedValue(undefined);
+  selectLimit.mockReset();
 });
 
 describe('registerActivitySubscribers', () => {
@@ -150,6 +159,68 @@ describe('registerActivitySubscribers', () => {
     });
     const call = safeRecordActivity.mock.calls[0]?.[0];
     expect(call?.payload).toEqual({ from: 'open', to: 'confirmed', reopenCount: 0 });
+  });
+
+  it('ISS-849: a redelivery of the same outbox row yields exactly one activity row', async () => {
+    const bus = newBus();
+    const base = {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      from: 'open' as const,
+      to: 'confirmed' as const,
+      reopenCount: 0,
+      outboxId: 'outbox-1',
+    };
+
+    selectLimit.mockResolvedValueOnce([]);
+    await bus.emit('transition', base);
+
+    selectLimit.mockResolvedValueOnce([{ id: 'existing-row' }]);
+    await bus.emit('transition', base);
+
+    expect(safeRecordActivity.mock.calls).toHaveLength(1);
+    expect(safeRecordActivity.mock.calls[0]?.[0]).toMatchObject({
+      dedupeKey: 'transition:outbox-1',
+    });
+  });
+
+  it('ISS-849: independent transitions with different outboxIds are NOT suppressed', async () => {
+    const bus = newBus();
+    const make = (outboxId: string) => ({
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      from: 'open' as const,
+      to: 'confirmed' as const,
+      reopenCount: 0,
+      outboxId,
+    });
+
+    selectLimit.mockResolvedValueOnce([]);
+    await bus.emit('transition', make('outbox-A'));
+    selectLimit.mockResolvedValueOnce([]);
+    await bus.emit('transition', make('outbox-B'));
+
+    const dedupeKeys = safeRecordActivity.mock.calls.map(
+      (call) => (call[0] as { dedupeKey?: string }).dedupeKey,
+    );
+    expect(dedupeKeys).toEqual(['transition:outbox-A', 'transition:outbox-B']);
+  });
+
+  it('ISS-849: no outboxId skips the dedupe lookup entirely (fail-open, unchanged behavior)', async () => {
+    const bus = newBus();
+    await bus.emit('transition', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      from: 'open',
+      to: 'confirmed',
+      reopenCount: 0,
+    });
+    expect(selectLimit.mock.calls).toHaveLength(0);
+    const call = safeRecordActivity.mock.calls[0]?.[0];
+    expect(call).not.toHaveProperty('dedupeKey');
   });
 
   it('commentCreated → records comment.created with 240-char snippet', async () => {

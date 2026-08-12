@@ -115,6 +115,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
         to: row.to_status as IssueStatus,
         // cm:why reopenCount is not carried on the outbox row (immutable event record) — subscribers that need it can read it from `issues`
         reopenCount: 0,
+        outboxId: row.id,
         ...(row.reason ? { reason: row.reason } : {}),
       });
       // cm:edge contract -> packages/core/src/pipeline/hooks.ts — only a `pipeline-orchestrator` failure is escalated; a best-effort subscriber failing (e.g. pm, which has no local guard) must not block delivery or raise a wedge claiming the status change was unprocessed
