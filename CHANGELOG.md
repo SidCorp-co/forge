@@ -187,6 +187,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Issues screen no longer shows a non-functional Assignee field — list, detail, and filters now show who created each issue, with pipeline/agent-generated issues labeled "Forge Agent".
 - Chat replies no longer show the "couldn't find a confident answer" fallback just because the first server tried was overloaded or logged out — the system now skips unhealthy runners and retries on a healthy one before giving up.
 - Status transitions to developed or testing now require code evidence — the pipeline validates that code has been merged before these transitions are allowed.
+- Project Settings now has a UX Contract tab where you can pick a preset, confirm your detected tech stack, adjust rule severities, and approve or reject proposed changes — all by choosing, never by writing free text.
 
 ## [0.3.0] - 2026-06-11
 
