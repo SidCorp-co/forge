@@ -7,7 +7,6 @@ import { WEB_V2_PROFILE } from './ux-contract-presets.js';
 import { type UxScanSnapshot, designSystemRuleTexts, detectDesignSystem } from './ux-stack-scan.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// packages/core/src/projects -> repo root
 const REPO_ROOT = resolve(__dirname, '../../../..');
 const PACKAGE_DIR = 'packages/web-v2';
 

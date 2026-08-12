@@ -342,7 +342,10 @@ export function useUxFindings(id: string | undefined) {
 /** Every UX-contract rule mutation invalidates both the rules list AND
  *  `project-facts` (the compiled-prose preview reads `projectFacts['ux-contract']`,
  *  which the server recompiles on every mutating call). */
-function invalidateUxContract(qc: ReturnType<typeof useQueryClient>, id: string | undefined) {
+function invalidateUxContract(
+	qc: ReturnType<typeof useQueryClient>,
+	id: string | undefined,
+) {
 	qc.invalidateQueries({ queryKey: ["project", id, "ux-contract-rules"] });
 	qc.invalidateQueries({ queryKey: ["project", id, "project-facts"] });
 }
@@ -392,11 +395,36 @@ export function useRescanUxStack(id: string | undefined) {
 
 // cm:why the inbox deliberately exposes NO edit-text action (decided 2026-08-12, docs/modules/ux-contract) — `text` stays in the schema for the API, not for a UI affordance
 /** PATCH a rule: severity toggle, or approve a proposal via status→active. */
+export function useAdoptDetectedStack(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: () => projectSettingsApi.adoptDetectedStack(id as string),
+		onSuccess: (data) => {
+			invalidateUxContract(qc, id);
+			toast({
+				title: "Detected stack adopted",
+				description: `${data.adopted} rules now define the UX contract.`,
+				tone: "success",
+			});
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't adopt the detected stack",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
 export function usePatchUxRule(id: string | undefined) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
-		mutationFn: ({ ruleId, patch }: { ruleId: string; patch: UxContractRulePatch }) =>
+		mutationFn: ({
+			ruleId,
+			patch,
+		}: { ruleId: string; patch: UxContractRulePatch }) =>
 			projectSettingsApi.patchUxRule(ruleId, patch),
 		onSuccess: () => {
 			invalidateUxContract(qc, id);

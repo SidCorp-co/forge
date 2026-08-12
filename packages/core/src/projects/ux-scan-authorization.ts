@@ -9,6 +9,7 @@ type UxScanAuthorizationClaims = {
   sessionId: string;
   authorizationId: string;
   userId: string;
+  generation: number;
 };
 
 const secret = () => new TextEncoder().encode(env.JWT_SECRET);
@@ -19,6 +20,7 @@ export async function signUxScanAuthorization(claims: UxScanAuthorizationClaims)
     projectId: claims.projectId,
     sessionId: claims.sessionId,
     authorizationId: claims.authorizationId,
+    generation: claims.generation,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.userId)
@@ -28,12 +30,15 @@ export async function signUxScanAuthorization(claims: UxScanAuthorizationClaims)
 }
 
 export async function verifyUxScanAuthorization(token: string): Promise<UxScanAuthorizationClaims> {
-  const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'] });
+  const { payload } = await jwtVerify(token, secret(), {
+    algorithms: ['HS256'],
+  });
   if (
     payload.typ !== UX_SCAN_AUTHORIZATION_TYPE ||
     typeof payload.projectId !== 'string' ||
     typeof payload.sessionId !== 'string' ||
     typeof payload.authorizationId !== 'string' ||
+    typeof payload.generation !== 'number' ||
     typeof payload.sub !== 'string'
   ) {
     throw new Error('invalid UX scan authorization');
@@ -43,5 +48,6 @@ export async function verifyUxScanAuthorization(token: string): Promise<UxScanAu
     sessionId: payload.sessionId,
     authorizationId: payload.authorizationId,
     userId: payload.sub,
+    generation: payload.generation,
   };
 }

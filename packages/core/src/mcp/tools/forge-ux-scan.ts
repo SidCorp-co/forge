@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { verifyUxScanAuthorization } from '../../projects/ux-scan-authorization.js';
-import { applyUxScan } from '../../projects/ux-stack-apply.js';
+import { applyUxScan, reserveUxScanGeneration } from '../../projects/ux-stack-apply.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
@@ -59,11 +59,13 @@ export const forgeUxScanTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { principal } = ctx;
 
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    if (input.authorization) {
+    const authorization = input.authorization
+      ? await verifyUxScanAuthorization(input.authorization)
+      : undefined;
+    if (authorization) {
       if (principal.kind !== 'device') {
         throw new Error('FORBIDDEN: delegated scan authorization requires its runner device');
       }
-      const authorization = await verifyUxScanAuthorization(input.authorization);
       if (authorization.projectId !== projectId) {
         throw new Error('FORBIDDEN: scan authorization is scoped to another project');
       }
@@ -90,11 +92,16 @@ export const forgeUxScanTool: ContextScopedMcpToolFactory = (ctx) => ({
       await assertPrincipalIsAdmin(principal, projectId);
     }
 
-    const result = await applyUxScan(projectId, {
-      packageDir: input.packageDir,
-      dependencies: input.dependencies,
-      filePaths: input.filePaths,
-    });
+    const generation = authorization?.generation ?? (await reserveUxScanGeneration(projectId));
+    const result = await applyUxScan(
+      projectId,
+      {
+        packageDir: input.packageDir,
+        dependencies: input.dependencies,
+        filePaths: input.filePaths,
+      },
+      generation,
+    );
 
     return {
       ok: true,

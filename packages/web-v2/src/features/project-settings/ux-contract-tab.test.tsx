@@ -1,12 +1,3 @@
-// @vitest-environment jsdom
-//
-// ISS-577 — UX Contract settings tab state matrix: loading/error/empty
-// (rules + inbox + preview) and the non-admin read-only gate. Mocks the
-// project-settings hooks module the same way agent-config-section.test.tsx
-// mocks `useProject`.
-// ISS-576 adds the Re-scan wiring — the component reads `useQueryClient()`
-// directly for the completion poll, so renders need a real QueryClientProvider.
-
 import type { ProjectDetail } from "@/features/projects/types";
 import { ToastProvider } from "@/providers/toast-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -395,8 +386,6 @@ describe("UxContractTab", () => {
 			});
 			expect(screen.queryByText("No update yet")).not.toBeInTheDocument();
 
-			// SCAN_POLL_WINDOW_MS (2min) / SCAN_POLL_INTERVAL_MS (10s) — the profile
-			// never changes in this test, so every tick is a no-visible-change tick.
 			act(() => {
 				vi.advanceTimersByTime(2 * 60_000 + 10_000);
 			});

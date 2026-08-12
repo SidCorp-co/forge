@@ -164,6 +164,12 @@ export const projectSettingsApi = {
 			method: "POST",
 		}),
 
+	adoptDetectedStack: (id: string) =>
+		apiClient<{ adopted: number }>(
+			`/projects/${id}/ux-contract/adopt-detected-stack`,
+			{ method: "POST" },
+		),
+
 	/** `PATCH /api/ux-contract-rules/:ruleId` (admin, top-level route). */
 	patchUxRule: (ruleId: string, patch: UxContractRulePatch) =>
 		apiClient<UxContractRule>(`/ux-contract-rules/${ruleId}`, {

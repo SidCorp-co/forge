@@ -161,7 +161,11 @@ export interface PipelineStateConfig {
 	mcpServers?: Record<string, unknown>;
 	systemPrompt?: { mode?: "append" | "replace"; extras?: string | null };
 	userPromptPolicy?: Record<string, unknown>;
-	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
+	budget?: {
+		perRunUsd?: number;
+		perMonthUsd?: number;
+		action?: "warn" | "pause";
+	};
 	sessionGroup?: string;
 	skipComplexities?: string[];
 	[key: string]: unknown;
@@ -184,7 +188,11 @@ export interface PluginDesignation {
  *  `stateContextEntrySchema` in core `projects/state-context.ts`. */
 export interface StateContextEntry {
 	modelOverride?: string | null;
-	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
+	budget?: {
+		perRunUsd?: number;
+		perMonthUsd?: number;
+		action?: "warn" | "pause";
+	};
 	blocks?: Record<string, unknown>;
 	[key: string]: unknown;
 }
@@ -276,7 +284,13 @@ export interface UxFinding {
 	runId: string | null;
 	stage: "review" | "verify-live";
 	ruleId: string | null;
-	kind: "missing-state" | "a11y" | "microcopy" | "responsive" | "design-system" | "other";
+	kind:
+		| "missing-state"
+		| "a11y"
+		| "microcopy"
+		| "responsive"
+		| "design-system"
+		| "other";
 	detail: string;
 	severity: UxRuleSeverity;
 	createdAt: string;
@@ -310,6 +324,7 @@ export interface UxStackProfile {
 		breakpoints?: string | null;
 		statePrimitives?: string[];
 	};
+	preserveProse?: boolean;
 }
 
 /** `POST /api/projects/:id/ux-contract/apply-preset` body. */
@@ -677,7 +692,10 @@ export function applyCheckpointMode(
 	}
 	// cm:guard Skip must drop `mode` but keep every other key — deriveCheckpointMode reads enabled:false as authoritative, but a replace-the-whole-entry approach (the prior bug) silently deletes sibling keys like disallowedTools
 	const { mode: _mode, ...rest } = statesOf(cfg)[status] ?? {};
-	return { ...cfg, states: { ...statesOf(cfg), [status]: { ...rest, enabled: false } } };
+	return {
+		...cfg,
+		states: { ...statesOf(cfg), [status]: { ...rest, enabled: false } },
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -803,7 +821,10 @@ export function validateSessionGroups(
 
 /** status → step label, for every `StageName` core accepts under `states`. */
 // cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — same 10 STAGE_NAMES keys, same order; add a stage there and add its row here
-export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [
+export const PIPELINE_STATUS_ROWS: ReadonlyArray<{
+	status: string;
+	label: string;
+}> = [
 	{ status: "open", label: "Triage" },
 	{ status: "needs_info", label: "Needs info" },
 	{ status: "confirmed", label: "Clarify" },
@@ -861,12 +882,21 @@ export function humanizeToolName(raw: string): HumanizedToolName {
 		const parts = raw.split("__");
 		const server = parts[1] ?? null;
 		let rest = parts.slice(2).join("__");
-		if (server && rest.startsWith(`${server}_`)) rest = rest.slice(server.length + 1);
+		if (server && rest.startsWith(`${server}_`))
+			rest = rest.slice(server.length + 1);
 		const words = rest.split("_").filter(Boolean);
-		return { label: words.length > 0 ? toSentenceCase(words) : rest, server, raw };
+		return {
+			label: words.length > 0 ? toSentenceCase(words) : rest,
+			server,
+			raw,
+		};
 	}
 	const words = splitPascalCase(raw);
-	return { label: words.length > 0 ? toSentenceCase(words) : raw, server: null, raw };
+	return {
+		label: words.length > 0 ? toSentenceCase(words) : raw,
+		server: null,
+		raw,
+	};
 }
 
 /** One stage row worth rendering on the Stage permissions section — carries
@@ -890,7 +920,9 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 /** Every `states[status]` that carries a permission-relevant override, in
  *  ladder order — a status outside `PIPELINE_STATUS_ROWS` still renders,
  *  labelled with its raw key, so a future `StageName` is never silently dropped. */
-export function summarizeStageConfig(cfg: PipelineConfig): StagePermissionRow[] {
+export function summarizeStageConfig(
+	cfg: PipelineConfig,
+): StagePermissionRow[] {
 	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
 	const rows: StagePermissionRow[] = [];
 	const seen = new Set<string>();
@@ -939,7 +971,12 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 		const tools = new Set(row.config.disallowedTools ?? []);
 		const missing = [...baseline].filter((t) => !tools.has(t));
 		const extra = [...tools].filter((t) => !baseline.has(t));
-		return { status: row.status, isOutlier: missing.length > 0 || extra.length > 0, extra, missing };
+		return {
+			status: row.status,
+			isOutlier: missing.length > 0 || extra.length > 0,
+			extra,
+			missing,
+		};
 	});
 }
 
@@ -959,7 +996,8 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 	{
 		key: "states[*].permissionMode",
-		reason: "Controls the Claude CLI's own approval mode — an operational lever, deferred to ISS-814.",
+		reason:
+			"Controls the Claude CLI's own approval mode — an operational lever, deferred to ISS-814.",
 	},
 	{
 		key: "states[*].timeoutSeconds",
@@ -967,19 +1005,23 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 	{
 		key: "states[*].budget",
-		reason: "Per-stage spend caps (perRunUsd/perMonthUsd) — deferred to ISS-814.",
+		reason:
+			"Per-stage spend caps (perRunUsd/perMonthUsd) — deferred to ISS-814.",
 	},
 	{
 		key: "states[*].systemPrompt",
-		reason: "Raw prompt override (append/replace) — high blast radius, deferred pending a dedicated review surface.",
+		reason:
+			"Raw prompt override (append/replace) — high blast radius, deferred pending a dedicated review surface.",
 	},
 	{
 		key: "states[*].userPromptPolicy",
-		reason: "Prompt field/truncation tuning — an advanced knob, deferred to ISS-814.",
+		reason:
+			"Prompt field/truncation tuning — an advanced knob, deferred to ISS-814.",
 	},
 	{
 		key: "maxResumeTokens / maxResumeReopenCycles",
-		reason: "Session-resume budget guards (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
+		reason:
+			"Session-resume budget guards (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
 	},
 	{
 		key: "recoveryMaxAttempts / recoveryWindowHours / recoveryByFailureKind",

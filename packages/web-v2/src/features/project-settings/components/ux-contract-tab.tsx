@@ -20,6 +20,7 @@ import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+	useAdoptDetectedStack,
 	useApplyUxPreset,
 	useDeleteUxRule,
 	usePatchUxRule,
@@ -62,6 +63,7 @@ export function UxContractTab({
 	const findingsQ = useUxFindings(projectId);
 	const factsQ = useProjectFacts(projectId);
 	const applyPreset = useApplyUxPreset(projectId);
+	const adoptDetectedStack = useAdoptDetectedStack(projectId);
 	const patchRule = usePatchUxRule(projectId);
 	const deleteRule = useDeleteUxRule(projectId);
 	const rescan = useRescanUxStack(projectId);
@@ -71,6 +73,7 @@ export function UxContractTab({
 	const [preset, setPreset] =
 		useState<(typeof UX_PRESETS)[number]>("app-strict");
 	const [confirmApply, setConfirmApply] = useState(false);
+	const [confirmDetectedAdoption, setConfirmDetectedAdoption] = useState(false);
 	const [rejectRuleId, setRejectRuleId] = useState<string | null>(null);
 	const [scanDeadline, setScanDeadline] = useState<number | null>(null);
 
@@ -120,6 +123,19 @@ export function UxContractTab({
 		() => (rulesQ.data ?? []).filter((r) => r.status === "proposed"),
 		[rulesQ.data],
 	);
+	const detectedStackProposals = useMemo(
+		() =>
+			proposedRules.filter(
+				(rule) => rule.group === "designSystem" && rule.source === "detected",
+			),
+		[proposedRules],
+	);
+	const otherProposedRules = useMemo(
+		() =>
+			proposedRules.filter((rule) => !detectedStackProposals.includes(rule)),
+		[detectedStackProposals, proposedRules],
+	);
+	const preserveProse = profile?.preserveProse === true;
 	const grouped = useMemo(() => {
 		const m = new Map<string, UxContractRule[]>();
 		for (const g of UX_RULE_GROUPS) m.set(g, []);
@@ -300,6 +316,28 @@ export function UxContractTab({
 						Rules an improver proposed. Approve to activate, or reject to
 						discard.
 					</p>
+					{preserveProse && detectedStackProposals.length > 0 && (
+						<div className="mb-3 rounded-md border border-line bg-surface p-3">
+							<p className="fg-body-sm text-fg">
+								Adopt all {detectedStackProposals.length} detected design-system
+								rules to replace the current compiled prose.
+							</p>
+							{canEdit ? (
+								<Button
+									className="mt-3"
+									variant="primary"
+									size="sm"
+									onClick={() => setConfirmDetectedAdoption(true)}
+								>
+									Adopt detected stack
+								</Button>
+							) : (
+								<p className="fg-caption mt-2 text-muted">
+									Read-only — adopting requires a project admin.
+								</p>
+							)}
+						</div>
+					)}
 					{proposedRules.length === 0 ? (
 						<EmptyState
 							title="No proposed changes yet"
@@ -308,52 +346,55 @@ export function UxContractTab({
 						/>
 					) : (
 						<div className="space-y-2">
-							{proposedRules.map((rule) => (
-								<div
-									key={rule.id}
-									className="rounded-md border border-line bg-surface p-3"
-								>
-									<div className="flex items-start justify-between gap-3">
-										<div className="min-w-0">
-											<div className="mb-1 flex items-center gap-2">
-												<Badge>{UX_RULE_GROUP_LABELS[rule.group]}</Badge>
-												<Badge tone="amber">
-													{UX_RULE_SOURCE_LABELS[rule.source]}
-												</Badge>
+							{(preserveProse ? otherProposedRules : proposedRules).map(
+								(rule) => (
+									<div
+										key={rule.id}
+										className="rounded-md border border-line bg-surface p-3"
+									>
+										<div className="flex items-start justify-between gap-3">
+											<div className="min-w-0">
+												<div className="mb-1 flex items-center gap-2">
+													<Badge>{UX_RULE_GROUP_LABELS[rule.group]}</Badge>
+													<Badge tone="amber">
+														{UX_RULE_SOURCE_LABELS[rule.source]}
+													</Badge>
+												</div>
+												<p className="fg-body-sm text-fg">{rule.text}</p>
 											</div>
-											<p className="fg-body-sm text-fg">{rule.text}</p>
 										</div>
+										{canEdit ? (
+											<div className="mt-3 flex justify-end gap-2">
+												<Button
+													variant="danger"
+													size="sm"
+													onClick={() => setRejectRuleId(rule.id)}
+												>
+													Reject
+												</Button>
+												<Button
+													variant="primary"
+													size="sm"
+													loading={patchRule.isPending}
+													onClick={() =>
+														patchRule.mutate({
+															ruleId: rule.id,
+															patch: { status: "active" },
+														})
+													}
+												>
+													Approve
+												</Button>
+											</div>
+										) : (
+											<p className="fg-caption mt-2 text-muted">
+												Read-only — approving/rejecting requires a project
+												admin.
+											</p>
+										)}
 									</div>
-									{canEdit ? (
-										<div className="mt-3 flex justify-end gap-2">
-											<Button
-												variant="danger"
-												size="sm"
-												onClick={() => setRejectRuleId(rule.id)}
-											>
-												Reject
-											</Button>
-											<Button
-												variant="primary"
-												size="sm"
-												loading={patchRule.isPending}
-												onClick={() =>
-													patchRule.mutate({
-														ruleId: rule.id,
-														patch: { status: "active" },
-													})
-												}
-											>
-												Approve
-											</Button>
-										</div>
-									) : (
-										<p className="fg-caption mt-2 text-muted">
-											Read-only — approving/rejecting requires a project admin.
-										</p>
-									)}
-								</div>
-							))}
+								),
+							)}
 						</div>
 					)}
 				</CardContent>
@@ -398,6 +439,21 @@ export function UxContractTab({
 					)
 				}
 				onClose={() => setConfirmApply(false)}
+			/>
+
+			<ConfirmDialog
+				open={confirmDetectedAdoption}
+				title="Adopt detected stack?"
+				message="This replaces the current UX contract prose with the complete detected design-system rule set."
+				confirmLabel="Adopt detected stack"
+				tone="danger"
+				loading={adoptDetectedStack.isPending}
+				onConfirm={() =>
+					adoptDetectedStack.mutate(undefined, {
+						onSuccess: () => setConfirmDetectedAdoption(false),
+					})
+				}
+				onClose={() => setConfirmDetectedAdoption(false)}
 			/>
 
 			<ConfirmDialog

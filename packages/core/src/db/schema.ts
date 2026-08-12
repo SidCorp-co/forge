@@ -3238,6 +3238,9 @@ export const uxContractRules = pgTable(
   (t) => ({
     projectStatusIdx: index('ux_contract_rules_project_status_idx').on(t.projectId, t.status),
     projectGroupIdx: index('ux_contract_rules_project_group_idx').on(t.projectId, t.group),
+    activeIdentityUq: uniqueIndex('ux_contract_rules_active_identity_uq')
+      .on(t.projectId, t.group, t.orderIndex)
+      .where(sql`status = 'active'`),
   }),
 );
 

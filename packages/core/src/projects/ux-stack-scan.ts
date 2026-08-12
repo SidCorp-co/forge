@@ -1,12 +1,6 @@
 import { basename, dirname } from 'node:path';
 import type { UxStackProfile } from './ux-contract-presets.js';
 
-// ISS-576 — deterministic §1 (design-system) detection. Pure function over a
-// {packageDir, dependencies, filePaths} snapshot (collected on the runner,
-// which has the checkout — core has none); total and order-independent so a
-// scan is reproducible and diffable across runs. See `ux-stack-apply.ts` for
-// the persistence/drift side.
-
 export interface UxScanSnapshot {
   /** repo-relative package dir, e.g. 'packages/web-v2' (no trailing slash). */
   packageDir: string;
@@ -73,7 +67,6 @@ const I18N_DEPS = [
   'vue-i18n',
 ];
 
-// Fixed emission order — determinism matters for the drift diff.
 const STATE_PRIMITIVE_VOCAB = ['Skeleton', 'Spinner', 'EmptyState', 'ErrorState', 'Toast'] as const;
 
 function kebabOf(pascalName: string): string {
@@ -126,9 +119,6 @@ function detectBreakpoints(deps: string[]): string | null {
 function detectStatePrimitives(designDir: string | null, filePaths: string[]): string[] {
   if (!designDir) return [];
   const prefix = `${designDir}/`;
-  // kebabOf() also normalizes an already-kebab-case stem (no-op, since it only
-  // inserts a hyphen at a lower→upper boundary), so this matches both
-  // `EmptyState.tsx` and `empty-state.tsx` against the same vocab entry.
   const stems = new Set(
     filePaths
       .filter((p) => p.startsWith(prefix))
@@ -173,7 +163,6 @@ export interface DesignSystemRuleText {
  * Derive the four §1 catalog rule texts (orderIndex 0..3) from a detection
  * result — real rule text a scan can persist, not just profile fields.
  */
-// cm:edge contract -> packages/core/src/projects/ux-contract-presets.ts — orderIndex 0..3 must stay aligned with the designSystem CATALOG entries; the drift diff matches rules by (group, orderIndex)
 export function designSystemRuleTexts(d: DetectedDesignSystem): DesignSystemRuleText[] {
   const noThirdParty = d.ownLibrary
     ? "Reuse the project's own design system — don't add a 3rd-party UI library or raw hex colors."

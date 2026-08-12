@@ -11,10 +11,6 @@ interface RuleRow {
 
 let profileRow: { agentConfig: unknown } | undefined;
 let existingRulesRows: RuleRow[] = [];
-// Overrides the "does any ux_contract_rules row exist for this project, in
-// ANY group" probe independently of `existingRulesRows` (which is always the
-// designSystem-group-scoped list) — needed to model a project that already
-// has rules in another group while designSystem is still empty.
 let anyRuleRowOverride: RuleRow[] | null = null;
 
 const updateSetMock = vi.fn((_v: unknown) => ({
@@ -24,11 +20,6 @@ const insertValuesMock = vi.fn().mockResolvedValue(undefined);
 const deleteWhereMock = vi.fn().mockResolvedValue(undefined);
 const executeMock = vi.fn().mockResolvedValue(undefined);
 
-// cm:why `select`'s field-spec shape (not call order) picks the response —
-// applyUxScan now issues a variable number of selects per run (profile,
-// designSystem-scoped rules, an any-group existence probe, and a second
-// profile read for the hand-authored-contract check), so an order-based
-// alternation would silently mis-serve as soon as a branch adds/drops a call.
 function selectMock(spec: Record<string, unknown>) {
   const keys = Object.keys(spec ?? {});
   return {
@@ -77,8 +68,6 @@ vi.mock('./ux-contract-recompile.js', () => ({
 
 const { applyUxScan } = await import('./ux-stack-apply.js');
 
-// cm:why drizzle's `sql` template objects don't stringify usefully — walk
-// queryChunks (mirrors pipeline/orchestrator.test.ts's helper of the same name)
 function sqlTextOf(q: unknown): string {
   const chunks = (q as { queryChunks?: unknown[] })?.queryChunks ?? [];
   let text = '';
@@ -102,7 +91,6 @@ const EMPTY_SNAPSHOT = {
   dependencies: {},
   filePaths: [],
 };
-// Differs from EMPTY_SNAPSHOT only by a tokenSource hit — drifts orderIndex 2 only.
 const DRIFTED_SNAPSHOT = {
   packageDir: 'packages/web-v2',
   dependencies: {},
@@ -177,9 +165,6 @@ describe('applyUxScan', () => {
     profileRow = {
       agentConfig: { projectFacts: { 'ux-contract': 'compiled prose' } },
     };
-    // designSystem group is still empty, but a row in another group means
-    // recompile has already run once — the hand-authored-only guard (which
-    // only fires when NO rule exists in ANY group) should not apply.
     anyRuleRowOverride = [
       {
         id: 'flows-1',
@@ -211,7 +196,6 @@ describe('applyUxScan', () => {
     expect(inserted[0]?.source).toBe('detected');
     expect(inserted[0]?.orderIndex).toBe(2);
     expect(inserted[0]?.text).toBe(driftedGenerated[2]?.text);
-    // Active rows are never deleted or updated.
     expect(deleteWhereMock).not.toHaveBeenCalled();
   });
 

@@ -8,7 +8,6 @@ import {
   createChatSessionRow,
   dispatchChatTurn,
   noClaudeClient,
-  resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
 import {
@@ -22,6 +21,7 @@ import {
   uxRuleStatuses,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { findRunnerDeviceForProjectOnly } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -33,6 +33,7 @@ import {
   withUxContractTransaction,
 } from './ux-contract-recompile.js';
 import { signUxScanAuthorization } from './ux-scan-authorization.js';
+import { reserveUxScanGeneration } from './ux-stack-apply.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const ruleIdParamSchema = z.object({ ruleId: z.uuid() });
@@ -272,7 +273,7 @@ function uxScanMessage(packageDir: string, authorization: string): string {
   return [
     `Collect a UX stack snapshot for \`${packageDir}\` and submit it.`,
     `1) Read \`${packageDir}/package.json\` and merge \`dependencies\` + \`devDependencies\` verbatim.`,
-    `2) Run \`git ls-files ${packageDir}\` and take the paths relative to \`${packageDir}\`.`,
+    `2) Run \`git ls-files -- ${packageDir} | head -n 4001\`; if it returns 4,001 paths, reply \`snapshot too large\` without calling a tool. Otherwise take paths relative to \`${packageDir}\`.`,
     `3) Call \`forge_ux_scan\` with {authorization:${JSON.stringify(authorization)}, packageDir, dependencies, filePaths}.`,
     'Do not interpret the stack yourself and do not edit any file — the server does the detection.',
     "Reply with the tool's `mode` and nothing else.",
@@ -323,16 +324,15 @@ uxContractProjectRoutes.post(
       });
     }
 
-    const client = await resolveChatDevice(
-      { projectId: project.id, deviceId: null, metadata: null },
-      undefined,
-    );
-    if (!client.deviceId) throw noClaudeClient('project');
+    const deviceId = await findRunnerDeviceForProjectOnly(project.id);
+    if (!deviceId) throw noClaudeClient('project');
 
     const authorizationId = randomUUID();
+    const generation = await reserveUxScanGeneration(project.id);
     const session = await createChatSessionRow({
       projectId: project.id,
       userId,
+      deviceId,
       title: 'UX stack scan',
       repoPath: project.repoPath,
       metadata: { source: 'ux-scan', authorizationId },
@@ -342,7 +342,9 @@ uxContractProjectRoutes.post(
       sessionId: session.id,
       authorizationId,
       userId,
+      generation,
     });
+    const client = { deviceId, isLocal: false, migrated: false };
 
     try {
       await dispatchChatTurn({
@@ -351,6 +353,7 @@ uxContractProjectRoutes.post(
         client,
         message: uxScanMessage(packageDir, authorization),
         broadcastEvent: 'agent-session.created',
+        requireRecipient: true,
       });
     } catch (err) {
       logger.error(
@@ -375,6 +378,7 @@ uxContractProjectRoutes.post(
           'ux-contract/scan: failed to clean up after dispatch failure',
         );
       }
+      if (err instanceof HTTPException) throw err;
       throw new HTTPException(502, {
         message: 'failed to start the UX stack scan',
         cause: { code: 'DISPATCH_FAILED' },
@@ -382,6 +386,86 @@ uxContractProjectRoutes.post(
     }
 
     return c.json({ sessionId: session.id }, 202);
+  },
+);
+
+uxContractProjectRoutes.post(
+  '/:id/ux-contract/adopt-detected-stack',
+  zValidator('param', projectIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'not a project admin');
+
+    const adopted = await withUxContractTransaction(projectId, async (tx) => {
+      if (!(await isPreservingProse(projectId, tx))) {
+        throw new HTTPException(409, {
+          message: 'there is no detected stack waiting for batch adoption',
+          cause: { code: 'NO_PENDING_BATCH' },
+        });
+      }
+      const staged = await tx
+        .select({
+          id: uxContractRules.id,
+          group: uxContractRules.group,
+          orderIndex: uxContractRules.orderIndex,
+        })
+        .from(uxContractRules)
+        .where(
+          and(
+            eq(uxContractRules.projectId, projectId),
+            eq(uxContractRules.group, 'designSystem'),
+            eq(uxContractRules.source, 'detected'),
+            eq(uxContractRules.status, 'proposed'),
+          ),
+        );
+      if (staged.length === 0) {
+        throw new HTTPException(409, {
+          message: 'there is no detected stack waiting for batch adoption',
+          cause: { code: 'NO_PENDING_BATCH' },
+        });
+      }
+      await tx
+        .update(uxContractRules)
+        .set({ status: 'retired', updatedAt: new Date() })
+        .where(
+          and(
+            eq(uxContractRules.projectId, projectId),
+            eq(uxContractRules.status, 'active'),
+            inArray(
+              uxContractRules.orderIndex,
+              staged.map((row) => row.orderIndex),
+            ),
+          ),
+        );
+      await tx
+        .update(uxContractRules)
+        .set({ status: 'active', updatedAt: new Date() })
+        .where(
+          inArray(
+            uxContractRules.id,
+            staged.map((row) => row.id),
+          ),
+        );
+      await tx
+        .update(projects)
+        .set({
+          agentConfig: sql`jsonb_set(
+            COALESCE(${projects.agentConfig}, '{}'::jsonb),
+            '{uxContractProfile,preserveProse}',
+            'false'::jsonb,
+            true
+          )`,
+        })
+        .where(eq(projects.id, projectId));
+      await recompileAndPersistUxContract(projectId, tx);
+      return staged.length;
+    });
+
+    return c.json({ adopted });
   },
 );
 
@@ -443,55 +527,21 @@ async function applyRulePatch(projectId: string, ruleId: string, patch: Record<s
     const preservingProse = await isPreservingProse(projectId, tx);
 
     if (approvingDetectedProposal && preservingProse) {
-      const staged = await tx
-        .select({ id: uxContractRules.id })
-        .from(uxContractRules)
-        .where(
-          and(
-            eq(uxContractRules.projectId, projectId),
-            eq(uxContractRules.group, 'designSystem'),
-            eq(uxContractRules.source, 'detected'),
-            eq(uxContractRules.status, 'proposed'),
-          ),
-        );
-      await tx
-        .update(uxContractRules)
-        .set({ status: 'active', updatedAt: new Date() })
-        .where(
-          inArray(
-            uxContractRules.id,
-            staged.map((row) => row.id),
-          ),
-        );
-      await tx
-        .update(projects)
-        .set({
-          agentConfig: sql`jsonb_set(
-            COALESCE(${projects.agentConfig}, '{}'::jsonb),
-            '{uxContractProfile,preserveProse}',
-            'false'::jsonb,
-            true
-          )`,
-        })
-        .where(eq(projects.id, projectId));
-      await recompileAndPersistUxContract(projectId, tx);
-      const [updated] = await tx
-        .select()
-        .from(uxContractRules)
-        .where(eq(uxContractRules.id, ruleId))
-        .limit(1);
-      if (!updated) throw notFound('ux contract rule not found');
-      return updated;
+      throw new HTTPException(409, {
+        message:
+          'adopt the detected design-system rules as a batch before approving individual rules',
+        cause: { code: 'BATCH_ADOPTION_REQUIRED' },
+      });
     }
 
     if (approvingDetectedProposal) {
       await tx
-        .delete(uxContractRules)
+        .update(uxContractRules)
+        .set({ status: 'retired', updatedAt: new Date() })
         .where(
           and(
             eq(uxContractRules.projectId, projectId),
             eq(uxContractRules.group, current.group),
-            eq(uxContractRules.source, 'detected'),
             eq(uxContractRules.status, 'active'),
             eq(uxContractRules.orderIndex, current.orderIndex),
           ),

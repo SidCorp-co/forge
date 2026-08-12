@@ -48,7 +48,7 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
 
-const resolveChatDeviceMock = vi.fn();
+const findRunnerDeviceForProjectOnlyMock = vi.fn();
 const createChatSessionRowMock = vi.fn();
 const dispatchChatTurnMock = vi.fn();
 const applyKernelTransitionMock = vi.fn();
@@ -63,8 +63,14 @@ vi.mock('../lifecycle/transition.js', () => ({
 vi.mock('../pipeline/runs.js', () => ({
   closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
 }));
+vi.mock('../lib/device-pool.js', () => ({
+  findRunnerDeviceForProjectOnly: (...args: unknown[]) =>
+    findRunnerDeviceForProjectOnlyMock(...args),
+}));
+vi.mock('./ux-stack-apply.js', () => ({
+  reserveUxScanGeneration: vi.fn(async () => 1),
+}));
 vi.mock('../agent-sessions/chat-turn.js', () => ({
-  resolveChatDevice: (...args: unknown[]) => resolveChatDeviceMock(...args),
   createChatSessionRow: (...args: unknown[]) => createChatSessionRowMock(...args),
   dispatchChatTurn: (...args: unknown[]) => dispatchChatTurnMock(...args),
   noClaudeClient: () =>
@@ -105,6 +111,7 @@ beforeEach(() => {
     repoPath: '/repo',
     agentConfig: {},
   };
+  findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
   createChatSessionRowMock.mockResolvedValue({
     id: SESSION_ID,
     pipelineRunId: '55555555-5555-4555-8555-555555555555',
@@ -137,7 +144,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('fails cleanly (no dead end) when no runner is bound/online', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: null, isLocal: false });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(null);
 
     const res = await postScan();
 
@@ -148,10 +155,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('202s with a sessionId on the happy path, dispatching a message that carries the resolved packageDir', async () => {
-    resolveChatDeviceMock.mockResolvedValue({
-      deviceId: DEVICE_ID,
-      isLocal: false,
-    });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
     projectRow = {
       id: PROJECT_ID,
       slug: 'forge-dev',
@@ -173,10 +177,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('falls back to the request body packageDir, then "." when no profile/body is given', async () => {
-    resolveChatDeviceMock.mockResolvedValue({
-      deviceId: DEVICE_ID,
-      isLocal: false,
-    });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
 
     const res = await postScan();
 
@@ -188,10 +189,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('rejects a packageDir with ".." segments before it ever reaches the dispatched message', async () => {
-    resolveChatDeviceMock.mockResolvedValue({
-      deviceId: DEVICE_ID,
-      isLocal: false,
-    });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
 
     const res = await postScan({ packageDir: '../../etc' });
 
@@ -200,10 +198,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('rejects a packageDir with a leading "-" (git ls-files option injection, ISS-576 review #3)', async () => {
-    resolveChatDeviceMock.mockResolvedValue({
-      deviceId: DEVICE_ID,
-      isLocal: false,
-    });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
 
     const res = await postScan({ packageDir: '--upload-pack=evil' });
 
@@ -212,10 +207,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('rejects an absolute packageDir (leading "/", ISS-576 review #3)', async () => {
-    resolveChatDeviceMock.mockResolvedValue({
-      deviceId: DEVICE_ID,
-      isLocal: false,
-    });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
 
     const res = await postScan({ packageDir: '/etc' });
 
@@ -224,10 +216,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('an explicit request-body packageDir wins over a stored bindingScope profile (ISS-576 review #5)', async () => {
-    resolveChatDeviceMock.mockResolvedValue({
-      deviceId: DEVICE_ID,
-      isLocal: false,
-    });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
     projectRow = {
       id: PROJECT_ID,
       slug: 'forge-dev',
@@ -246,10 +235,7 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('maps a dispatch failure to 502 after terminalizing its session and one-shot run', async () => {
-    resolveChatDeviceMock.mockResolvedValue({
-      deviceId: DEVICE_ID,
-      isLocal: false,
-    });
+    findRunnerDeviceForProjectOnlyMock.mockResolvedValue(DEVICE_ID);
     dispatchChatTurnMock.mockRejectedValue(new Error('ws publish failed'));
 
     const res = await postScan();

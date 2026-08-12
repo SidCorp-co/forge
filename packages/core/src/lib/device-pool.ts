@@ -24,21 +24,20 @@ import { dispatchLivenessMs } from './dispatch-liveness.js';
  * schedule cross-runner failover so a dead-on-arrival runner is not re-picked
  * on the retry. The default-device fallback honours the exclude list too.
  */
-export async function findAvailableDeviceForProject(
+async function findRunnerDeviceForProject(
   projectId: string,
-  opts: { excludeDeviceIds?: string[] } = {},
+  opts: { excludeDeviceIds?: string[]; requireRepoPath?: boolean } = {},
 ): Promise<string | null> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const exclude = (opts.excludeDeviceIds ?? []).filter((id): id is string => !!id);
-  // Build a parenthesised parameter list and use `NOT IN (...)`. Interpolating a
-  // JS array directly (`<> ALL(${exclude}::uuid[])`) expands as a record tuple
-  // ($1,$2,…) → malformed array literal at query time. Same idiom as
-  // mcp/tools/forge-metrics.ts.
   const excludeClause = exclude.length
     ? sql`AND r.device_id NOT IN (${sql.join(
         exclude.map((id) => sql`${id}`),
         sql`, `,
       )})`
+    : sql``;
+  const repoPathClause = opts.requireRepoPath
+    ? sql`AND NULLIF(btrim(r.repo_path), '') IS NOT NULL`
     : sql``;
   const rows = await db.execute<{ device_id: string }>(sql`
     SELECT r.device_id
@@ -48,6 +47,7 @@ export async function findAvailableDeviceForProject(
       AND r.host       = 'device'
       AND r.status     = 'online'
       AND r.device_id IS NOT NULL
+      ${repoPathClause}
       AND r.last_seen_at IS NOT NULL
       AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
       AND NOT EXISTS (
@@ -61,7 +61,19 @@ export async function findAvailableDeviceForProject(
       r.last_seen_at DESC
     LIMIT 1
   `);
-  if (rows[0]) return rows[0].device_id;
+  return rows[0]?.device_id ?? null;
+}
+
+export async function findRunnerDeviceForProjectOnly(projectId: string): Promise<string | null> {
+  return findRunnerDeviceForProject(projectId, { requireRepoPath: true });
+}
+
+export async function findAvailableDeviceForProject(
+  projectId: string,
+  opts: { excludeDeviceIds?: string[] } = {},
+): Promise<string | null> {
+  const runnerDeviceId = await findRunnerDeviceForProject(projectId, opts);
+  if (runnerDeviceId) return runnerDeviceId;
 
   const [project] = await db
     .select({ defaultDeviceId: projects.defaultDeviceId })
@@ -69,6 +81,7 @@ export async function findAvailableDeviceForProject(
     .where(eq(projects.id, projectId))
     .limit(1);
 
+  const exclude = (opts.excludeDeviceIds ?? []).filter((id): id is string => !!id);
   if (!project?.defaultDeviceId || exclude.includes(project.defaultDeviceId)) return null;
 
   const [defaultDevice] = await db

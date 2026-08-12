@@ -150,7 +150,11 @@ export async function resolveChatDevice(
     // Not eligible (offline / disabled / not a chat runner for this project) →
     // report no client so the caller can name the picked runner in the 409.
     if (!picked) return { deviceId: null, isLocal: false, migrated: false };
-    return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
+    return {
+      deviceId: picked,
+      isLocal: false,
+      migrated: !!pinned && picked !== pinned,
+    };
   }
   if (pinned) {
     // cm:why try the chat-capable (runners table) gate before devices.status — a live CLI runner can have devices.status stale offline, which would otherwise self-heal away from a just-picked runner
@@ -291,6 +295,7 @@ export interface DispatchChatTurnArgs {
    * follow-up (/send) wants `agent-session.updated`. Default: updated.
    */
   broadcastEvent?: 'agent-session.created' | 'agent-session.updated';
+  requireRecipient?: boolean;
   /**
    * ISS-733 — run an installed skill's slash-command as turn 1 of this chat
    * session (the "chat-runs-skill" mechanism). Only applied on the COLD-START
@@ -329,7 +334,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // Re-prepend the [Context: …] header only when the user switched page/issue
   // since the previous turn. A brand-new session has no prior context, so its
   // first turn always gets the header (matches the legacy /start behaviour).
-  const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & { pageContext?: unknown };
+  const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & {
+    pageContext?: unknown;
+  };
   const lastPageContext = readPersistedPageContext(prevMeta.pageContext);
   const shouldPrepend = !!args.pageContext && !samePageContext(lastPageContext, args.pageContext);
   const decoratedMessage = shouldPrepend
@@ -443,7 +450,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // awaited (must not block or slow the chat response). Covers both LOCAL
   // (desktop) and REMOTE turns since it runs before the isLocal branch.
   if (shouldAutoTitle && fallbackTitle) {
-    void applyAutoTitleAsync({ sessionId: updated.id, userMessage: args.message, fallbackTitle });
+    void applyAutoTitleAsync({
+      sessionId: updated.id,
+      userMessage: args.message,
+      fallbackTitle,
+    });
   }
 
   if (isLocal) {
@@ -501,7 +512,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (args.skillName) {
       prompt = `/${args.skillName}\n${prompt}`;
     }
-    roomManager.publish(deviceRoom(target), {
+    const delivered = roomManager.publish(deviceRoom(target), {
       event: 'agent:start',
       data: {
         sessionId: updated.id,
@@ -514,9 +525,12 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         ...(attachments.length ? { attachments } : {}),
       },
     });
+    if (args.requireRecipient && delivered === 0) {
+      throw noClaudeClient('project');
+    }
   } else {
     // Follow-up — `--resume` keeps the original system prompt + history.
-    roomManager.publish(deviceRoom(target), {
+    const delivered = roomManager.publish(deviceRoom(target), {
       event: 'agent:send',
       data: {
         sessionId: updated.id,
@@ -528,6 +542,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         ...(attachments.length ? { attachments } : {}),
       },
     });
+    if (args.requireRecipient && delivered === 0) {
+      throw noClaudeClient('project');
+    }
   }
   broadcastSession(updated, broadcastEvent);
   return updated;

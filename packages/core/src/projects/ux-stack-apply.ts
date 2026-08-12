@@ -18,9 +18,36 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface UxScanResult {
   detected: DetectedDesignSystem;
-  mode: 'created' | 'proposed' | 'unchanged';
+  mode: 'created' | 'proposed' | 'unchanged' | 'superseded';
   activeWritten: number;
   proposed: number;
+}
+
+export async function reserveUxScanGeneration(projectId: string): Promise<number> {
+  return withUxContractTransaction(projectId, async (tx) => {
+    const [project] = await tx
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const profile = (
+      project?.agentConfig as { uxContractProfile?: { scanGeneration?: unknown } } | undefined
+    )?.uxContractProfile;
+    const generation = typeof profile?.scanGeneration === 'number' ? profile.scanGeneration + 1 : 1;
+    await tx
+      .update(projects)
+      .set({
+        agentConfig: sql`jsonb_set(
+          COALESCE(${projects.agentConfig}, '{}'::jsonb),
+          '{uxContractProfile}',
+          COALESCE(${projects.agentConfig} -> 'uxContractProfile', '{}'::jsonb) ||
+            jsonb_build_object('scanGeneration', ${generation}),
+          true
+        )`,
+      })
+      .where(eq(projects.id, projectId));
+    return generation;
+  });
 }
 
 async function persistDetectionProfile(
@@ -100,11 +127,25 @@ function proposalMatchesGenerated(
 export async function applyUxScan(
   projectId: string,
   snapshot: UxScanSnapshot,
+  generation?: number,
 ): Promise<UxScanResult> {
   const detected = detectDesignSystem(snapshot);
   const generated = designSystemRuleTexts(detected);
 
   const outcome = await withUxContractTransaction(projectId, async (tx): Promise<ScanOutcome> => {
+    if (generation !== undefined) {
+      const [project] = await tx
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      const currentGeneration = (
+        project?.agentConfig as { uxContractProfile?: { scanGeneration?: unknown } } | undefined
+      )?.uxContractProfile?.scanGeneration;
+      if (currentGeneration !== generation) {
+        return { mode: 'superseded', activeWritten: 0, proposed: 0 };
+      }
+    }
     await persistDetectionProfile(tx, projectId, snapshot.packageDir, detected);
 
     const existingRows: ExistingRuleRow[] = await tx

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const applyUxScan = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+const reserveUxScanGeneration = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const assertPrincipalIsAdmin = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const verifyUxScanAuthorization = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const sessionReturning = vi.fn();
@@ -13,6 +14,7 @@ vi.mock('../../db/client.js', () => ({
 
 vi.mock('../../projects/ux-stack-apply.js', () => ({
   applyUxScan: (...args: unknown[]) => applyUxScan(...args),
+  reserveUxScanGeneration: (...args: unknown[]) => reserveUxScanGeneration(...args),
 }));
 
 vi.mock('../../projects/ux-scan-authorization.js', () => ({
@@ -55,7 +57,9 @@ describe('forge_ux_scan', () => {
       sessionId: SESSION_ID,
       authorizationId: 'authorization-1',
       userId: USER_ID,
+      generation: 2,
     });
+    reserveUxScanGeneration.mockResolvedValue(1);
     sessionReturning.mockResolvedValue([{ id: SESSION_ID }]);
     applyUxScan.mockResolvedValue({
       mode: 'created',
@@ -75,11 +79,15 @@ describe('forge_ux_scan', () => {
       { kind: 'pat', userId: USER_ID },
       PROJECT_ID,
     );
-    expect(applyUxScan).toHaveBeenCalledWith(PROJECT_ID, {
-      packageDir: 'packages/web-v2',
-      dependencies: { react: '^19.0.0' },
-      filePaths: ['src/app/page.tsx'],
-    });
+    expect(applyUxScan).toHaveBeenCalledWith(
+      PROJECT_ID,
+      {
+        packageDir: 'packages/web-v2',
+        dependencies: { react: '^19.0.0' },
+        filePaths: ['src/app/page.tsx'],
+      },
+      1,
+    );
   });
 
   it('refuses a member who is not an admin', async () => {

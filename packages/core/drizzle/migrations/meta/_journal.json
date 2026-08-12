@@ -1219,6 +1219,13 @@
       "when": 1788566400000,
       "tag": "0175_iss826_retry_rescues",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1788652800000,
+      "tag": "0176_ux_contract_active_rule_identity",
+      "breakpoints": true
     }
   ]
 }
