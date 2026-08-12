@@ -96,7 +96,22 @@ fixed: the resolver now matches job status `IN ('dispatched','running')` and ses
    `ux_findings.ruleId` (findings survive); an issue delete cascades and takes its findings
    with it.
 
-## Known gaps
+## Decided: the proposals inbox has no edit-text action
+
+ISS-577's AC #5 asked for three inbox actions — approve, reject, **edit text** — and the
+shipped tab has only approve + reject. That is deliberate, decided 2026-08-12: **do not build
+it**, and do not read the gap as unfinished work.
+
+The reason is the contract's own purpose. AC #20 makes the inbox a "choose, not write" surface,
+and an active rule compiles straight into `projectFacts['ux-contract']`, i.e. into every agent's
+prompt. A free-text box there lets an admin author a rule that never came from a preset,
+detection or a finding, so it carries no `evidence_issue_ids` — one more channel for unverified
+prose to reach the prompt. A wrong proposal is **rejected**, not reworded; the source that
+proposed it can propose again.
+
+The backend can technically do it (`rulePatchSchema` accepts `text`, used by the severity
+toggle and by approve-via-`status`), so this is a product decision, not a missing capability.
+If it is ever revisited, the safe shape is severity + group re-assignment only — still choosing.
 
 - **No promotion path.** `uxRuleSources` includes `'learned'` and findings exist to feed it,
   but no code reads `ux_findings` to create or propose a rule. The learning loop is designed,

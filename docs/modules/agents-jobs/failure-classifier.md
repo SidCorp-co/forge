@@ -95,8 +95,17 @@ the classifier on archived rows. Bump the version on any pattern change.
   only selection path that did NOT filter `rate_limited_until`, so the retry
   rotation could pin a device that selection would then refuse). `retry.ts` reads
   the health-gated set apart from the unfiltered set to tell "every online
-  box is exhausted" (→ terminal park, `all_devices_exhausted`) from "every
-  box is merely offline" (→ keep today's wait-for-a-runner behaviour).
+  box is exhausted" from "every box is merely offline".
+
+  Since 2026-08-12 neither case parks on entry (owner call). An all-limited
+  fleet **defers to the rotation**: `nextRotation` reads the health-gated set,
+  so it yields `target: null`, the clone enqueues unpinned, and dispatch — which
+  excludes limited runners — lands it on whichever box frees first. A
+  seconds-long provider throttle therefore self-heals instead of becoming a
+  human intervention. The round budget (10 × 60s) still bounds the wait, and a
+  give-up that happened with the whole fleet limited reports
+  `all_devices_exhausted` rather than the generic `retry_rounds_exhausted`, so
+  the wedge notification still names the cap.
 
   The pre-dispatch monthly-budget gate (`jobs/dispatcher.ts`) also stopped
   being a private terminal path: it now stamps `failureAction: 'terminal'`

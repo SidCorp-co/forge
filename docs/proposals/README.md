@@ -11,7 +11,6 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 | [rocketchat-bot.md](rocketchat-bot.md) | Draft (design capture, ISS-602) — not implemented | Phase 1 outbound → Phase 2 inbound |
 | [chat-provider-standardization.md](chat-provider-standardization.md) | Draft (design capture, ISS-604) — not implemented | P1 tool contract → P2 RC Lane A → P3 write tools |
 | [pm-lane-audit.md](pm-lane-audit.md) | Decision recorded (ISS-796) — hybrid: keep infrastructure, rebuild execution path | ISS-795 step 5 (Master agent) |
-| [open-policy-calls.md](open-policy-calls.md) | **Pending sign-off** — 4 questions raised by pipeline stages (ex-drafts ISS-832/834/842/817) | each answered section becomes an issue or a recorded decision |
 
 > Shipped proposals are **deleted** (git history is the design record); their live docs: memory v2 → [modules/memory-knowledge](../modules/memory-knowledge/README.md) · web-v2 redesign/parity (ISS-397) → web-v2 is simply the canonical UI · step-handoff → [../modules/memory-knowledge/step-handoffs.md](../modules/memory-knowledge/step-handoffs.md) · runner daemon → [../architecture/runner-daemon.md](../architecture/runner-daemon.md) · integration framework → [../integrations/framework.md](../integrations/framework.md) · prompt config → [../modules/agents-jobs/prompt-config.md](../modules/agents-jobs/prompt-config.md) · skill facts → [../modules/agents-jobs/skill-facts.md](../modules/agents-jobs/skill-facts.md).
 
