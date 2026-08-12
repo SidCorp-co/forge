@@ -14,8 +14,14 @@ const PACKAGE_DIR = 'packages/web-v2';
 function realWebV2Snapshot(): UxScanSnapshot {
   const pkgJson = JSON.parse(
     readFileSync(resolve(REPO_ROOT, PACKAGE_DIR, 'package.json'), 'utf8'),
-  ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  const dependencies = { ...(pkgJson.dependencies ?? {}), ...(pkgJson.devDependencies ?? {}) };
+  ) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const dependencies = {
+    ...(pkgJson.dependencies ?? {}),
+    ...(pkgJson.devDependencies ?? {}),
+  };
 
   const listing = execFileSync('git', ['ls-files', PACKAGE_DIR], {
     cwd: REPO_ROOT,
@@ -68,7 +74,11 @@ describe('detectDesignSystem', () => {
   });
 
   it('is total over an empty/garbage snapshot — no throw, all null/false/empty', () => {
-    const snapshot: UxScanSnapshot = { packageDir: '.', dependencies: {}, filePaths: [] };
+    const snapshot: UxScanSnapshot = {
+      packageDir: '.',
+      dependencies: {},
+      filePaths: [],
+    };
     expect(() => detectDesignSystem(snapshot)).not.toThrow();
     expect(detectDesignSystem(snapshot)).toEqual({
       ownLibrary: false,

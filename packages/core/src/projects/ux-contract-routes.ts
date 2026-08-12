@@ -52,7 +52,10 @@ const rulePatchSchema = z
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
 const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+  new HTTPException(400, {
+    message: 'Invalid input',
+    cause: { code: 'BAD_REQUEST', details },
+  });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -295,12 +298,16 @@ uxContractProjectRoutes.post(
       .limit(1);
     if (!project) throw new HTTPException(404, { message: 'project not found' });
 
-    const ac = (project.agentConfig ?? {}) as { uxContractProfile?: UxStackProfile };
+    const ac = (project.agentConfig ?? {}) as {
+      uxContractProfile?: UxStackProfile;
+    };
     const bindingScope = ac.uxContractProfile?.bindingScope?.replace(/\/+$/, '');
     const packageDir = parsedBody.data.packageDir || bindingScope || '.';
 
     if (!isSafePackageDir(packageDir)) {
-      throw badRequest({ packageDir: 'must be a repo-relative path with no ".." segments' });
+      throw badRequest({
+        packageDir: 'must be a repo-relative path with no ".." segments',
+      });
     }
 
     const client = await resolveChatDevice(
@@ -372,7 +379,10 @@ uxContractRuleRoutes.patch(
     const access = await loadProjectAccess(rule.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    const updates: Record<string, unknown> = { ...patch, updatedAt: new Date() };
+    const updates: Record<string, unknown> = {
+      ...patch,
+      updatedAt: new Date(),
+    };
 
     const [updated] = await db
       .update(uxContractRules)

@@ -18,13 +18,22 @@ export interface UxScanSnapshot {
 
 export type DetectedDesignSystem = NonNullable<UxStackProfile['designSystem']>;
 
-const THIRD_PARTY_UI_LIBS: Array<{ match: (deps: string[]) => boolean; name: string }> = [
-  { match: (deps) => deps.some((d) => d.startsWith('@radix-ui/')), name: 'Radix' },
+const THIRD_PARTY_UI_LIBS: Array<{
+  match: (deps: string[]) => boolean;
+  name: string;
+}> = [
+  {
+    match: (deps) => deps.some((d) => d.startsWith('@radix-ui/')),
+    name: 'Radix',
+  },
   { match: (deps) => deps.includes('@mui/material'), name: 'MUI' },
   { match: (deps) => deps.includes('@chakra-ui/react'), name: 'Chakra UI' },
   { match: (deps) => deps.includes('antd'), name: 'Ant Design' },
   { match: (deps) => deps.includes('@mantine/core'), name: 'Mantine' },
-  { match: (deps) => deps.includes('react-bootstrap'), name: 'React Bootstrap' },
+  {
+    match: (deps) => deps.includes('react-bootstrap'),
+    name: 'React Bootstrap',
+  },
 ];
 
 const IMPORT_ROOT_CANDIDATES = [

@@ -172,7 +172,10 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
   ['forge_pm.set_dependency', true],
 ]);
 
-function classifyError(err: unknown): { code: AuditResultCode; message: string } {
+function classifyError(err: unknown): {
+  code: AuditResultCode;
+  message: string;
+} {
   const message = err instanceof Error ? err.message : String(err);
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
@@ -273,7 +276,10 @@ export function createMcpServer(ctx: McpContext): Server {
 
   const server = new Server(
     { name: '@forge/core', version: pkg.version },
-    { capabilities: { tools: {}, prompts: {} }, instructions: FORGE_MCP_INSTRUCTIONS },
+    {
+      capabilities: { tools: {}, prompts: {} },
+      instructions: FORGE_MCP_INSTRUCTIONS,
+    },
   );
 
   // Managed META skills (forge-skills …) served live as MCP prompts — the
@@ -296,7 +302,12 @@ export function createMcpServer(ctx: McpContext): Server {
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
     const prompts = await resolveManagedMetaPrompts(await metaProjectId());
-    return { prompts: prompts.map((p) => ({ name: p.name, description: p.description })) };
+    return {
+      prompts: prompts.map((p) => ({
+        name: p.name,
+        description: p.description,
+      })),
+    };
   });
 
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
@@ -305,7 +316,12 @@ export function createMcpServer(ctx: McpContext): Server {
     if (!p) throw new Error(`unknown prompt: ${request.params.name}`);
     return {
       description: p.description,
-      messages: [{ role: 'user' as const, content: { type: 'text' as const, text: p.body } }],
+      messages: [
+        {
+          role: 'user' as const,
+          content: { type: 'text' as const, text: p.body },
+        },
+      ],
     };
   });
 
@@ -369,7 +385,12 @@ export function createMcpServer(ctx: McpContext): Server {
       if (allow !== null && target && !allow.includes(target)) {
         writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
         return {
-          content: [{ type: 'text', text: 'NOT_FOUND: project not found or not accessible' }],
+          content: [
+            {
+              type: 'text',
+              text: 'NOT_FOUND: project not found or not accessible',
+            },
+          ],
           isError: true,
         };
       }

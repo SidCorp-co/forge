@@ -156,10 +156,20 @@ export async function applyUxScan(
 
   if (outcome.firstRun) {
     if (outcome.handAuthored) {
-      return { detected, mode: 'proposed', activeWritten: 0, proposed: generated.length };
+      return {
+        detected,
+        mode: 'proposed',
+        activeWritten: 0,
+        proposed: generated.length,
+      };
     }
     await recompileAndPersistUxContract(projectId);
-    return { detected, mode: 'created', activeWritten: generated.length, proposed: 0 };
+    return {
+      detected,
+      mode: 'created',
+      activeWritten: generated.length,
+      proposed: 0,
+    };
   }
 
   const existingRows = outcome.existingRows;
@@ -194,5 +204,10 @@ export async function applyUxScan(
     })),
   );
 
-  return { detected, mode: 'proposed', activeWritten: 0, proposed: drifted.length };
+  return {
+    detected,
+    mode: 'proposed',
+    activeWritten: 0,
+    proposed: drifted.length,
+  };
 }

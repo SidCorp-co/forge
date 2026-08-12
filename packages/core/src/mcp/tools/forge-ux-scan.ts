@@ -42,10 +42,18 @@ export const forgeUxScanTool: ContextScopedMcpToolFactory = (ctx) => ({
     await assertPrincipalIsWriter(principal, projectId);
 
     if (Object.keys(input.dependencies).length > MAX_DEPENDENCIES) {
-      return { ok: false, reason: 'too_many_dependencies', limit: MAX_DEPENDENCIES };
+      return {
+        ok: false,
+        reason: 'too_many_dependencies',
+        limit: MAX_DEPENDENCIES,
+      };
     }
     if (input.filePaths.length > MAX_FILE_PATHS) {
-      return { ok: false, reason: 'too_many_file_paths', limit: MAX_FILE_PATHS };
+      return {
+        ok: false,
+        reason: 'too_many_file_paths',
+        limit: MAX_FILE_PATHS,
+      };
     }
 
     const result = await applyUxScan(projectId, {
@@ -54,6 +62,11 @@ export const forgeUxScanTool: ContextScopedMcpToolFactory = (ctx) => ({
       filePaths: input.filePaths,
     });
 
-    return { ok: true, mode: result.mode, detected: result.detected, proposed: result.proposed };
+    return {
+      ok: true,
+      mode: result.mode,
+      detected: result.detected,
+      proposed: result.proposed,
+    };
   },
 });

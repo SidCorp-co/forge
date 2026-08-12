@@ -17,7 +17,9 @@ let existingRulesRows: RuleRow[] = [];
 // has rules in another group while designSystem is still empty.
 let anyRuleRowOverride: RuleRow[] | null = null;
 
-const updateSetMock = vi.fn((_v: unknown) => ({ where: vi.fn().mockResolvedValue(undefined) }));
+const updateSetMock = vi.fn((_v: unknown) => ({
+  where: vi.fn().mockResolvedValue(undefined),
+}));
 const insertValuesMock = vi.fn().mockResolvedValue(undefined);
 const deleteWhereMock = vi.fn().mockResolvedValue(undefined);
 const executeMock = vi.fn().mockResolvedValue(undefined);
@@ -90,7 +92,11 @@ function sqlTextOf(q: unknown): string {
 }
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
-const EMPTY_SNAPSHOT = { packageDir: 'packages/web-v2', dependencies: {}, filePaths: [] };
+const EMPTY_SNAPSHOT = {
+  packageDir: 'packages/web-v2',
+  dependencies: {},
+  filePaths: [],
+};
 // Differs from EMPTY_SNAPSHOT only by a tokenSource hit — drifts orderIndex 2 only.
 const DRIFTED_SNAPSHOT = {
   packageDir: 'packages/web-v2',
@@ -144,7 +150,9 @@ describe('applyUxScan', () => {
 
   it('first run with a hand-authored contract and no rules at all: proposes instead of ' +
     'activating, and never recompiles (ISS-576 review blocker)', async () => {
-    profileRow = { agentConfig: { projectFacts: { 'ux-contract': 'hand-written prose' } } };
+    profileRow = {
+      agentConfig: { projectFacts: { 'ux-contract': 'hand-written prose' } },
+    };
 
     const result = await applyUxScan(PROJECT_ID, EMPTY_SNAPSHOT);
 
@@ -162,12 +170,20 @@ describe('applyUxScan', () => {
   });
 
   it('first run with a hand-authored contract but existing rules elsewhere: activates normally (already migrated off prose)', async () => {
-    profileRow = { agentConfig: { projectFacts: { 'ux-contract': 'compiled prose' } } };
+    profileRow = {
+      agentConfig: { projectFacts: { 'ux-contract': 'compiled prose' } },
+    };
     // designSystem group is still empty, but a row in another group means
     // recompile has already run once — the hand-authored-only guard (which
     // only fires when NO rule exists in ANY group) should not apply.
     anyRuleRowOverride = [
-      { id: 'flows-1', text: 'some flows rule', status: 'active', source: 'preset', orderIndex: 0 },
+      {
+        id: 'flows-1',
+        text: 'some flows rule',
+        status: 'active',
+        source: 'preset',
+        orderIndex: 0,
+      },
     ];
 
     const result = await applyUxScan(PROJECT_ID, EMPTY_SNAPSHOT);
@@ -262,7 +278,9 @@ describe('applyUxScan', () => {
     await applyUxScan(PROJECT_ID, EMPTY_SNAPSHOT);
 
     expect(updateSetMock).toHaveBeenCalledOnce();
-    const updated = updateSetMock.mock.calls[0]?.[0] as { agentConfig: Record<string, unknown> };
+    const updated = updateSetMock.mock.calls[0]?.[0] as {
+      agentConfig: Record<string, unknown>;
+    };
     expect(updated.agentConfig.someOtherKey).toBe('x');
     const profile = updated.agentConfig.uxContractProfile as Record<string, unknown>;
     expect(profile.projectLabel).toBe('Foo');

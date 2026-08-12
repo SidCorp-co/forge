@@ -18,7 +18,10 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const loggerStub = { warn: vi.fn(), info: vi.fn(), error: vi.fn() };
-vi.mock('../logger.js', () => ({ logger: loggerStub, getLogger: () => loggerStub }));
+vi.mock('../logger.js', () => ({
+  logger: loggerStub,
+  getLogger: () => loggerStub,
+}));
 
 vi.mock('../middleware/auth.js', () => ({
   requireAuth:
@@ -53,7 +56,10 @@ vi.mock('../agent-sessions/chat-turn.js', () => ({
   createChatSessionRow: (...args: unknown[]) => createChatSessionRowMock(...args),
   dispatchChatTurn: (...args: unknown[]) => dispatchChatTurnMock(...args),
   noClaudeClient: () =>
-    new HTTPException(409, { message: 'no client', cause: { code: 'NO_CLAUDE_CLIENT' } }),
+    new HTTPException(409, {
+      message: 'no client',
+      cause: { code: 'NO_CLAUDE_CLIENT' },
+    }),
 }));
 
 const { uxContractProjectRoutes } = await import('./ux-contract-routes.js');
@@ -61,7 +67,9 @@ const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 
 function buildApp() {
-  const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
+  const app = new Hono<{
+    Variables: import('../middleware/request-id.js').RequestIdVars;
+  }>();
   app.use('*', requestId());
   app.route('/api/projects', uxContractProjectRoutes);
   app.onError(errorHandler);
@@ -79,7 +87,12 @@ function postScan(body?: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks();
   assertProjectRoleMock.mockReset();
-  projectRow = { id: PROJECT_ID, slug: 'forge-dev', repoPath: '/repo', agentConfig: {} };
+  projectRow = {
+    id: PROJECT_ID,
+    slug: 'forge-dev',
+    repoPath: '/repo',
+    agentConfig: {},
+  };
   createChatSessionRowMock.mockResolvedValue({ id: SESSION_ID });
   dispatchChatTurnMock.mockResolvedValue({ id: SESSION_ID });
 });
@@ -116,7 +129,10 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('202s with a sessionId on the happy path, dispatching a message that carries the resolved packageDir', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    resolveChatDeviceMock.mockResolvedValue({
+      deviceId: DEVICE_ID,
+      isLocal: false,
+    });
     projectRow = {
       id: PROJECT_ID,
       slug: 'forge-dev',
@@ -130,23 +146,33 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
     const body = (await res.json()) as { sessionId: string };
     expect(body.sessionId).toBe(SESSION_ID);
     expect(dispatchChatTurnMock).toHaveBeenCalledOnce();
-    const dispatched = dispatchChatTurnMock.mock.calls[0]?.[0] as { message: string };
+    const dispatched = dispatchChatTurnMock.mock.calls[0]?.[0] as {
+      message: string;
+    };
     expect(dispatched.message).toContain('packages/web-v2');
     expect(dispatched.message).toContain('forge_ux_scan');
   });
 
   it('falls back to the request body packageDir, then "." when no profile/body is given', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    resolveChatDeviceMock.mockResolvedValue({
+      deviceId: DEVICE_ID,
+      isLocal: false,
+    });
 
     const res = await postScan();
 
     expect(res.status).toBe(202);
-    const dispatched = dispatchChatTurnMock.mock.calls[0]?.[0] as { message: string };
+    const dispatched = dispatchChatTurnMock.mock.calls[0]?.[0] as {
+      message: string;
+    };
     expect(dispatched.message).toContain('`.`');
   });
 
   it('rejects a packageDir with ".." segments before it ever reaches the dispatched message', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    resolveChatDeviceMock.mockResolvedValue({
+      deviceId: DEVICE_ID,
+      isLocal: false,
+    });
 
     const res = await postScan({ packageDir: '../../etc' });
 
@@ -155,7 +181,10 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('rejects a packageDir with a leading "-" (git ls-files option injection, ISS-576 review #3)', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    resolveChatDeviceMock.mockResolvedValue({
+      deviceId: DEVICE_ID,
+      isLocal: false,
+    });
 
     const res = await postScan({ packageDir: '--upload-pack=evil' });
 
@@ -164,7 +193,10 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('rejects an absolute packageDir (leading "/", ISS-576 review #3)', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    resolveChatDeviceMock.mockResolvedValue({
+      deviceId: DEVICE_ID,
+      isLocal: false,
+    });
 
     const res = await postScan({ packageDir: '/etc' });
 
@@ -173,7 +205,10 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
   });
 
   it('an explicit request-body packageDir wins over a stored bindingScope profile (ISS-576 review #5)', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    resolveChatDeviceMock.mockResolvedValue({
+      deviceId: DEVICE_ID,
+      isLocal: false,
+    });
     projectRow = {
       id: PROJECT_ID,
       slug: 'forge-dev',
@@ -184,13 +219,18 @@ describe('POST /api/projects/:id/ux-contract/scan', () => {
     const res = await postScan({ packageDir: 'apps/other' });
 
     expect(res.status).toBe(202);
-    const dispatched = dispatchChatTurnMock.mock.calls[0]?.[0] as { message: string };
+    const dispatched = dispatchChatTurnMock.mock.calls[0]?.[0] as {
+      message: string;
+    };
     expect(dispatched.message).toContain('apps/other');
     expect(dispatched.message).not.toContain('packages/web-v2');
   });
 
   it('maps a dispatch failure to a 502, not a 500, and leaves the button retryable', async () => {
-    resolveChatDeviceMock.mockResolvedValue({ deviceId: DEVICE_ID, isLocal: false });
+    resolveChatDeviceMock.mockResolvedValue({
+      deviceId: DEVICE_ID,
+      isLocal: false,
+    });
     dispatchChatTurnMock.mockRejectedValue(new Error('ws publish failed'));
 
     const res = await postScan();
