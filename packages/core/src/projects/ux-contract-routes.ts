@@ -15,7 +15,8 @@ import {
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { UX_PRESETS, type UxStackProfile, compilePresetToRules } from './ux-contract-presets.js';
+import type { UxStackProfile } from '@forge/contracts';
+import { UX_PRESETS, compilePresetToRules } from './ux-contract-presets.js';
 import { recompileAndPersistUxContract } from './ux-contract-recompile.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });

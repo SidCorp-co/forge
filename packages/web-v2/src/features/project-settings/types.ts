@@ -1,8 +1,18 @@
-// web-v2 feature module: project-settings. Per-project configuration surface
-// (ISS-316, web-v2 v1-parity epic ISS-313). Types match the exact `core` route
-// responses — verified against `packages/core/src/projects/routes.ts`,
-// `labels/routes.ts`, `projects/members-routes.ts`, and
-// `pipeline/pipeline-config-schema.ts`. Do not guess field names.
+import type { UxPreset, UxRuleGroup, UxRuleSource, UxStackProfile } from "@forge/contracts";
+
+export type {
+	ApplyUxPresetInput,
+	UxContractRule,
+	UxContractRulePatch,
+	UxFinding,
+	UxPreset,
+	UxRuleGroup,
+	UxRuleSeverity,
+	UxRuleSource,
+	UxRuleStatus,
+	UxStackProfile,
+	UxToggleSettings,
+} from "@forge/contracts";
 
 // ── Project facts (ISS-521) — the per-project "rules" layer ─────────────────
 // Mirrors `GET/PATCH /api/projects/:id/project-facts` in core routes.ts. The
@@ -214,8 +224,7 @@ export const UX_RULE_GROUPS = [
 	"a11y",
 	"microcopy",
 	"responsive",
-] as const;
-export type UxRuleGroup = (typeof UX_RULE_GROUPS)[number];
+] as const satisfies readonly UxRuleGroup[];
 
 /** §1–6 display labels, in canonical contract order. */
 export const UX_RULE_GROUP_LABELS: Record<UxRuleGroup, string> = {
@@ -226,10 +235,6 @@ export const UX_RULE_GROUP_LABELS: Record<UxRuleGroup, string> = {
 	microcopy: "§5 Microcopy",
 	responsive: "§6 Responsive",
 };
-
-export type UxRuleSeverity = "must" | "should";
-export type UxRuleSource = "preset" | "detected" | "learned" | "manual";
-export type UxRuleStatus = "active" | "proposed" | "retired";
 
 export const UX_RULE_SOURCE_LABELS: Record<UxRuleSource, string> = {
 	preset: "Preset",
@@ -243,8 +248,7 @@ export const UX_PRESETS = [
 	"marketing",
 	"internal-tool",
 	"custom",
-] as const;
-export type UxPreset = (typeof UX_PRESETS)[number];
+] as const satisfies readonly UxPreset[];
 
 export const UX_PRESET_LABELS: Record<UxPreset, string> = {
 	"app-strict": "App (strict)",
@@ -253,81 +257,8 @@ export const UX_PRESET_LABELS: Record<UxPreset, string> = {
 	custom: "Custom",
 };
 
-/** `GET /api/projects/:id/ux-contract-rules` row. */
-export interface UxContractRule {
-	id: string;
-	projectId: string;
-	group: UxRuleGroup;
-	text: string;
-	severity: UxRuleSeverity;
-	source: UxRuleSource;
-	status: UxRuleStatus;
-	evidenceIssueIds: string[];
-	orderIndex: number;
-	createdAt: string;
-	updatedAt: string;
-}
-
-/** `GET /api/projects/:id/ux-findings` row. */
-export interface UxFinding {
-	id: string;
-	projectId: string;
-	issueId: string;
-	runId: string | null;
-	stage: "review" | "verify-live";
-	ruleId: string | null;
-	kind: "missing-state" | "a11y" | "microcopy" | "responsive" | "design-system" | "other";
-	detail: string;
-	severity: UxRuleSeverity;
-	createdAt: string;
-}
-
-/** Structured knobs `apply-preset` accepts — mirrors `applyPresetSchema` in
- *  core `ux-contract-routes.ts`. Optional: the pilot applies preset defaults
- *  only (ISS-576 owns populating a real profile from auto-detect). */
-export interface UxToggleSettings {
-	emptySearchRequired: boolean;
-	destructiveConfirm: boolean;
-	a11yLevel: "basic" | "AA";
-	mobileResponsive: boolean;
-	optimisticUI: boolean;
-}
-
-/** Mirrors `UxStackProfile` in core `ux-contract-presets.ts`. Server-populated
- *  today (persisted by apply-preset); this tab renders it read-only. */
-export interface UxStackProfile {
-	projectLabel: string;
-	bindingScope: string;
-	knownGaps: string[];
-	ruleOverrides?: Record<string, string>;
-	designSystem?: {
-		ownLibrary?: boolean;
-		libraryName?: string | null;
-		importRoot?: string | null;
-		tokenSource?: string | null;
-		toastMechanism?: string | null;
-		i18n?: boolean;
-		breakpoints?: string | null;
-		statePrimitives?: string[];
-	};
-}
-
-/** `POST /api/projects/:id/ux-contract/apply-preset` body. */
-export interface ApplyUxPresetInput {
-	preset: UxPreset;
-	toggles?: UxToggleSettings;
-	profile?: UxStackProfile;
-}
-
-/** `PATCH /api/ux-contract-rules/:ruleId` body — partial, at least one field. */
-export interface UxContractRulePatch {
-	group?: UxRuleGroup;
-	text?: string;
-	severity?: UxRuleSeverity;
-	source?: UxRuleSource;
-	status?: UxRuleStatus;
-	orderIndex?: number;
-}
+/** `POST /api/projects/:id/ux-contract/apply-preset` body and rule transport
+ * shapes are imported from the shared `@forge/contracts` type-only boundary. */
 
 /**
  * Loosely-typed pipeline config. We only read/write the master `enabled` flag
