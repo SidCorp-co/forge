@@ -49,6 +49,11 @@ memory. The Forge MCP server is wired in `.mcp.json`; its instructions explain t
 Forge gives you a tool for things agents routinely do in prose. When you hit the trigger,\n\
 reach for the tool — and avoid the red flag.\n\
 \n\
+An issue is a unit of WORK with a named deliverable and an owner, whose completion someone\n\
+other than the author can verify. A note, a question, an audit finding and a record of\n\
+something already done are NOT issues — the four admission gates and where each of those goes\n\
+instead: guide `what-is-an-issue`.\n\
+\n\
 | When you need | Use | Red flag (DON'T) |\n\
 |---|---|---|\n\
 | Ordering between issues | `forge_project_pm action=set_dependency kind:blocks` (`from` = the blocker) | Describing the dependency in prose instead of setting the edge — only a `blocks` edge gates dispatch |\n\
@@ -59,8 +64,10 @@ reach for the tool — and avoid the red flag.\n\
 | Before you design / fix | `forge_memory_search` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |\n\
 | To park work that never started | leave it at `draft` | `on_hold` from `draft` — `on_hold` is a deliberate pause for ACTIVE work only |\n\
 | To finish a fix made by hand, outside the pipeline | drive it through `status` and/or capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded |\n\
+| An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN `needs_info` if a human owes you requirements, or `closed` + `forge_issues action=unmark` if it is not work at all | Leaving it filed for someone else to find · `closed` WITHOUT `unmark` — closing auto-stamps `merged_at`, which unblocks every `blocks` dependent as if the work had shipped · moving status with no comment, so the next reader cannot tell why |\n\
+| A residual you cannot finish here (a follow-up, an unanswered policy call) | ONE of: an issue that passes the gates · a `blocks` edge onto the issue that would ship without it · a line in `docs/proposals/` | A new unowned `draft` — it is not a hand-off, nobody browses drafts. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |\n\
 \n\
-**Forge red flags:** prose-deps · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.\n",
+**Forge red flags:** prose-deps · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork.\n",
     )
 }
 

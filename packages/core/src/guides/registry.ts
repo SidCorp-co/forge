@@ -195,6 +195,16 @@ So anything a stage or review wants to hand onward becomes exactly one of three 
 
 There is no fourth option. An unowned \`draft\` is not a hand-off, it is a place things go to be forgotten. If it fits none of the three, say it in a comment on the issue you are already working on.
 
+### When you find one that is not work — act on it, don't leave it
+
+Finding a filed item that fails the gates is not someone else's job. You are the cheapest person to fix it, because you have just read it.
+
+1. **Comment first** — which gate it fails, and where the content went (the memory entry, the proposals file, the issue it duplicates). A status move with no comment leaves the next reader unable to tell why.
+2. **Then move it**: \`needs_info\` when a human owes you requirements and it could become real work; \`closed\` when it is not work at all.
+3. **Closing non-work needs \`unmark\`.** \`closed\` auto-stamps \`merged_at\`, and that stamp releases every \`blocks\` dependent as if the work had shipped. Call \`forge_issues action=unmark\` right after, or you silently unblock work that is still genuinely blocked.
+
+Do not move it INTO \`draft\` — nothing may transition into \`draft\`, by design. \`closed\` + \`unmark\` is the exit for something that turned out not to be work.
+
 ### Then read
 Statuses, the three exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
 

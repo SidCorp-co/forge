@@ -58,6 +58,24 @@ of exactly three things:
 Never a fourth option — an unowned `draft`. If it fits none of the three, say it
 in a comment on the issue you are already working on.
 
+## When you find one that is not work
+
+Finding a filed item that fails the gates is not someone else's job. Whoever
+just read it is the cheapest person to fix it.
+
+1. **Comment first** — which gate it fails, and where the content went (the
+   memory entry, the proposals file, the issue it duplicates). A status move
+   with no comment leaves the next reader unable to tell why.
+2. **Then move it** — `needs_info` when a human owes you requirements and it
+   could still become real work; `closed` when it is not work at all.
+3. **Closing non-work needs `unmark`.** `closed` auto-stamps `merged_at`, and
+   that stamp releases every `blocks` dependent as if the work had shipped.
+   Clear it right after, or you silently unblock work that is still blocked.
+
+There is no route back into `draft` — nothing transitions into `draft`, by
+design. `closed` + `unmark` is the exit for something that turned out not to be
+work.
+
 ## draft or open?
 
 `open` auto-triages and immediately starts a pipeline run, which consumes a

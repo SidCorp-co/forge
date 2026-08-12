@@ -67,6 +67,8 @@ export interface ForgeFact {
 export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
 Forge gives you a tool for things agents routinely do in prose. When you hit the trigger, reach for the tool — and avoid the red flag.
 
+An issue is a unit of WORK with a named deliverable and an owner, whose completion someone other than the author can verify. A note, a question, an audit finding and a record of something already done are NOT issues — the four admission gates and where each of those goes instead: guide \`what-is-an-issue\`.
+
 | When you need | Use | Red flag (DON'T) |
 |---|---|---|
 | Ordering between issues | Blocker known **at create time** → \`forge_issues.create { data.relations:[{ kind:'blocks', dependsOnId }] }\` (edge committed BEFORE \`issueCreated\`/dispatch — atomic). Both issues already exist → \`forge_project_pm action=set_dependency kind:blocks\` (\`from\` = the blocker). | Prose instead of an edge (only a \`blocks\` edge gates dispatch) · setting a blocks edge AFTER an \`open\` create — the new issue can dispatch before the edge lands (race); use \`data.relations\` or create at \`draft\` first |
@@ -77,9 +79,11 @@ Forge gives you a tool for things agents routinely do in prose. When you hit the
 | Before you design / fix | \`forge_memory.search\` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |
 | To park work that never started | leave it at \`draft\` | \`on_hold\` from \`draft\` — \`on_hold\` is a deliberate pause for ACTIVE work only |
 | To finish a fix made by hand, outside the pipeline | drive it through \`status\` and/or capture a \`forge_memory\` learning | Fixing it and forgetting — no status move, no learning recorded |
+| An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN \`needs_info\` if a human owes you requirements, or \`closed\` + \`forge_issues action=unmark\` if it is not work at all | Leaving it filed for someone else to find · \`closed\` WITHOUT \`unmark\` — closing auto-stamps \`merged_at\`, which unblocks every \`blocks\` dependent as if the work had shipped · moving status with no comment, so the next reader cannot tell why |
+| A residual you cannot finish here (a follow-up, an unanswered policy call) | ONE of: an issue that passes the gates · a \`blocks\` edge onto the issue that would ship without it · a line in \`docs/proposals/\` | A new unowned \`draft\` — it is not a hand-off, nobody browses drafts. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |
 
-**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget.
-Full reference: \`docs/guides/forge-affordances.md\`.`;
+**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork.
+Full reference: \`docs/guides/forge-affordances.md\` · what counts as an issue: guide \`what-is-an-issue\`.`;
 
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.

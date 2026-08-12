@@ -71,6 +71,26 @@ const SHARED_AFFORDANCE_RULES: ReadonlyArray<{ rule: string; must: RegExp }> = [
     rule: 'plan/acceptanceCriteria belong to the clarify/plan steps',
     must: /Pre-filling `plan`\/`acceptanceCriteria` — those are written by the clarify\/plan steps/,
   },
+  {
+    rule: 'an issue is work with a deliverable and an owner, verifiable by someone else',
+    must: /An issue is a unit of WORK with a named deliverable and an owner/,
+  },
+  {
+    rule: 'a note / question / audit finding / done-record is not an issue',
+    must: /are NOT issues/,
+  },
+  {
+    rule: 'non-work an agent finds is routed by the agent itself, with a comment',
+    must: /`needs_info` if a human owes you requirements, or `closed` \+ `forge_issues action=unmark`/,
+  },
+  {
+    rule: 'closing non-work without unmark unblocks dependents as if it had shipped',
+    must: /closing auto-stamps `merged_at`, which unblocks every `blocks` dependent/,
+  },
+  {
+    rule: 'a residual becomes an issue, a blocks edge, or a proposals line — never an unowned draft',
+    must: /A new unowned `draft` — it is not a hand-off/,
+  },
 ];
 
 const SHARED_RED_FLAGS = [
@@ -82,6 +102,8 @@ const SHARED_RED_FLAGS = [
   'skip-recall',
   'on_hold-from-draft',
   'fix-by-hand-and-forget',
+  'close-without-unmark',
+  'silent-nonwork',
 ];
 
 describe('rule parity — operating affordances (prompt preamble vs runner orientation)', () => {

@@ -272,6 +272,8 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   }
 
   return (
+    // cm:edge contract -> packages/core/src/guides/registry.ts#what-is-an-issue — the caption below
+    //   states the same admission test as that guide and the job preamble; keep all three in step
     <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
       <form onSubmit={onSubmit} onPaste={onPaste} className="flex h-full flex-col gap-4">
         <Tabs
@@ -284,6 +286,20 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         />
 
         {errors.form && <Banner tone="danger">{errors.form}</Banner>}
+
+        <p className="fg-caption">
+          An issue is <strong>work</strong> with a deliverable someone else can verify. A note,
+          a question, or a record of something already done belongs in memory or docs —{" "}
+          <a
+            href="/api/guides/what-is-an-issue.md"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            what counts as an issue
+          </a>
+          .
+        </p>
 
         <Field label="Title" required error={errors.title}>
           <Input
