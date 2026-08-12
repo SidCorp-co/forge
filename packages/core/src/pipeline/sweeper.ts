@@ -49,6 +49,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
+import { type RetryRescueAlertResult, detectRetryRescueThresholds } from './retry-rescue-alert.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import { type StrandedIssuesResult, detectStrandedIssues } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
@@ -118,6 +119,7 @@ export interface SweepResult {
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
+  retryRescueThresholds: RetryRescueAlertResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -203,6 +205,9 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     reapStaleReleaseBatchClaims(),
   );
   const strandedIssues = await runPass('detectStrandedIssues', () => detectStrandedIssues(now));
+  const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
+    detectRetryRescueThresholds(now),
+  );
   const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
   // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
@@ -232,6 +237,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     parkedClosedUnmerged: parkedClosedUnmerged as ParkClosedUnmergedResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
+    retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
     backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,
   };

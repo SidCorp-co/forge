@@ -329,6 +329,53 @@ describe('GET /api/pipeline/step-durations', () => {
   });
 });
 
+describe('GET /api/pipeline/retry-rescues', () => {
+  it('returns an empty rollup without querying when no projects are visible', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    visibleIds.mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/retry-rescues', { token }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ total: 0, reasons: [] });
+    expect(dbExecute).not.toHaveBeenCalled();
+  });
+
+  it('groups rescued failures by the original failure reason', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    visibleIds.mockResolvedValueOnce(['p-1']);
+    dbExecute.mockResolvedValueOnce([
+      {
+        project_id: 'p-1',
+        failure_kind: 'infra',
+        failure_reason: 'hooks_path',
+        rescues: '46',
+        last_rescued_at: '2026-08-12T09:00:00Z',
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/retry-rescues?days=30', { token }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      total: 46,
+      reasons: [
+        {
+          projectId: 'p-1',
+          failureKind: 'infra',
+          failureReason: 'hooks_path',
+          rescues: 46,
+          lastRescuedAt: '2026-08-12T09:00:00Z',
+        },
+      ],
+    });
+  });
+});
+
 describe('GET /api/projects/:id/analytics/cost-summary', () => {
   it('401 without token', async () => {
     const app = buildApp();

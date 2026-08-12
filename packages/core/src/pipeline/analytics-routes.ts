@@ -227,6 +227,55 @@ pipelineAnalyticsRoutes.get(
  * (interventions per issue closed) is chartable. `issueId: null` groups the
  * project-scoped events (pm/system runs).
  */
+/**
+ * ISS-826 — retry failures that a later attempt rescued, reconstructed from
+ * the durable `retry_rescues` view. Grouping by the original failure reason
+ * makes repeated eventually-green failures observable as one operational signal.
+ */
+pipelineAnalyticsRoutes.get(
+  '/retry-rescues',
+  zValidator('query', querySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { days, projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+    const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
+    if (projectIds.length === 0) return c.json({ total: 0, reasons: [] });
+
+    const rows = await db.execute(sql`
+      SELECT project_id, failure_kind, failure_reason, count(*)::int AS rescues,
+             max(rescued_at) AS last_rescued_at
+      FROM retry_rescues
+      WHERE project_id IN ${projectIds}
+        AND rescued_at >= now() - (${days}::int * interval '1 day')
+      GROUP BY project_id, failure_kind, failure_reason
+      ORDER BY rescues DESC, last_rescued_at DESC
+      LIMIT 2000
+    `);
+    const reasons = (
+      rows as unknown as Array<{
+        project_id: string;
+        failure_kind: string | null;
+        failure_reason: string;
+        rescues: number | string;
+        last_rescued_at: string | Date;
+      }>
+    ).map((row) => ({
+      projectId: row.project_id,
+      failureKind: row.failure_kind,
+      failureReason: row.failure_reason,
+      rescues: Number(row.rescues),
+      lastRescuedAt:
+        row.last_rescued_at instanceof Date
+          ? row.last_rescued_at.toISOString()
+          : String(row.last_rescued_at),
+    }));
+
+    return c.json({ total: reasons.reduce((total, row) => total + row.rescues, 0), reasons });
+  },
+);
+
 pipelineAnalyticsRoutes.get(
   '/interventions',
   zValidator('query', querySchema, (r) => {
