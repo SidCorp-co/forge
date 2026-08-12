@@ -1,0 +1,14 @@
+# Everything in .forge/ is committed — the registry, the baselines, the vendored
+# checkers, and the orientation that CLAUDE.md imports on its first line. A fresh
+# clone must be held to the same rules as this one, so nothing here is machine-local
+# by default, and this file is the only place an exception may be declared.
+#
+# A trailing comment on a pattern line becomes part of the pattern, so each
+# exception gets its own line above it.
+
+# A stale cache of forge_knowledge; the MCP server is the source of truth
+# (see CLAUDE.local.md — there is no local knowledge file by design).
+knowledge.json
+
+# Anything a tool writes per machine.
+*.local.*

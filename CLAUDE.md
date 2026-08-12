@@ -70,6 +70,75 @@ references (derivable half) — neither is a substitute for the other. `cm verif
 The lockstep edges on `cascadeCancelChildJobs` are the machine-readable form of the orphan-hygiene
 table below — change one, check the other.
 
+### What earns an annotation
+
+An annotation earns its place when **deleting it would let the next editor make a wrong change**.
+Nothing validates the text, so this is the only test. Three things make one carry:
+
+1. **The rule AND the consequence.** `a broken rule check must never freeze a legitimate
+   transition` is 61 characters and complete — it says what must hold and what breaks otherwise.
+   Short is not the problem; a short rule gets a short line.
+2. **The mechanism that makes it non-obvious.** In `dispatch-gates.ts`, "write the identifiers
+   LITERALLY" only earns its place because the next sentence says *why*: Drizzle renders a column
+   reference inside a raw `sql` template unqualified. Without that, it reads as taste.
+3. **Evidence, when the rule came from an incident.** A date, a measured number, the `ISS-`.
+   `Measured on forge-beta 2026-08-11: 3 journal entries … have no bookkeeping row` can be
+   re-checked, and dates it.
+
+What does not earn one, with live examples from this repo: `cm:why issue lookup`,
+`cm:why pendingSkillUpdates`, `cm:why shipped once`. Those are labels, not reasons — the compiler
+already names the code. **Under ~30 characters, an annotation is almost always deletable.**
+
+Pick by consumer, not by taste. `cm:guard` is **injected into the agent's context before it edits
+the file**; `cm:edge` drives `cm impact`; **`cm:why` has no consumer at all** — nothing reads it,
+not even `cm impact`. So anything a future editor must *obey* belongs in `cm:guard`, never
+`cm:why`. Filler accumulates in `cm:why` precisely because nothing surfaces it.
+
+## Three gates, three axes
+
+Each sits in `ci-passed`'s `needs`, so a violation blocks the merge. **That, not this file, is why
+they hold.** Both of the gates that already exist drifted badly while documented and non-blocking —
+biome to 366 errors, `typecheck` to 84 — and stopped drifting the day they were cleared and gated
+(see the comments on the `core` job in `.github/workflows/ci.yml`).
+
+| Axis | Gate | Owns | Must not touch |
+|---|---|---|---|
+| format + lint | `biome check` — job `core` | whitespace, import order, recommended rules, file & function length | comment content |
+| knowledge | `cm verify` — job `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
+| relations | `arch check` — job `archmap` | which module may depend on which | how a file is written |
+
+Do not add a rule to one axis that another already owns:
+
+- **No ESLint.** biome ≥ 2 covers `noExcessiveLinesPerFunction` and `noExcessiveLinesPerFile`, which
+  is the whole reason ESLint would have been added. A second linter on the same axis means two
+  configs drifting apart.
+- **No comment rules outside codemap.** A density or run-length rule contradicts it outright: the
+  19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation codemap exempts
+  by form, and 19 comment lines to a counter.
+- **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
+  enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
+  commit message.
+
+`arch check` exit codes: `0` clean · `1` a new violation · `2` **the gate could not run** (bad flag,
+unreadable manifest, a scope matching no files). Never read `2` as a pass — the same 1-vs-2 split
+`cm verify` uses.
+
+Thresholds live in one place per axis. `.arch.json` declares the architecture (modules by path glob,
+plus `layers` / `forbidden` / `independence` / `fan-out` contracts, each `draft` or `locked`); the
+file and function line limits live in `packages/core/biome.json`. Locking a contract means **no new
+violations**, not zero violations.
+
+**`.forge/` is committed, all of it.** Both checkers are vendored there (`.forge/codemap/`,
+`.forge/archmap/`) and the CI jobs run those copies, so a contributor without a global install and
+the gate are held to the same reviewed version — bump with `cm install --upgrade` / `arch install
+--force` and commit the result. The registry, both baselines, and `orientation.md` (which this file
+imports on its first line) live there too. `.forge/.gitignore` is the only place an exception may be
+declared, and it carries the reason; a blanket `.forge/` in `.git/info/exclude` is a **local** rule
+teammates never see, and it is why `orientation.md` went uncommitted for months.
+
+Both vendored shims must stay mode `100755` — `git ls-files -s .forge/*/[ac]*` to check. A shim
+committed `100644` fails the job with permission denied, not with a violation.
+
 ## Commands
 
 From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm typecheck` / `pnpm lint`. Per package (from inside `packages/<pkg>/`):
