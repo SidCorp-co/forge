@@ -195,7 +195,10 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						<ProjectFactsTab projectId={project.id} canEdit={canEdit} />
 					)}
 					{tab === "ux-contract" && (
-						<UxContractTab project={project} canEdit={canManageUxContract(listItem)} />
+						<UxContractTab
+							project={project}
+							canEdit={canManageUxContract(listItem)}
+						/>
 					)}
 					{tab === "labels" && (
 						<LabelsTab

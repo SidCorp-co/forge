@@ -6,8 +6,6 @@
 // proposed-changes inbox, and preview the compiled prose the pipeline reads.
 // No backend change here — pure consumption of already-live endpoints.
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import {
 	Badge,
 	Button,
@@ -25,6 +23,8 @@ import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	useApplyUxPreset,
 	useDeleteUxRule,
@@ -36,19 +36,22 @@ import {
 } from "../hooks";
 import {
 	type ProjectAgentConfig,
-	type UxContractRule,
-	UX_PRESET_LABELS,
 	UX_PRESETS,
+	UX_PRESET_LABELS,
 	UX_RULE_GROUPS,
 	UX_RULE_GROUP_LABELS,
 	UX_RULE_SOURCE_LABELS,
+	type UxContractRule,
 } from "../types";
 
 function asAgentConfig(raw: unknown): ProjectAgentConfig {
 	return raw && typeof raw === "object" ? (raw as ProjectAgentConfig) : {};
 }
 
-const PRESET_OPTIONS = UX_PRESETS.map((p) => ({ value: p, label: UX_PRESET_LABELS[p] }));
+const PRESET_OPTIONS = UX_PRESETS.map((p) => ({
+	value: p,
+	label: UX_PRESET_LABELS[p],
+}));
 
 // ISS-576 — the scan runs on a runner (core has no repo checkout), so the
 // button dispatches an agent turn rather than scanning synchronously. This
@@ -74,7 +77,8 @@ export function UxContractTab({
 	const qc = useQueryClient();
 	const { toast } = useToast();
 
-	const [preset, setPreset] = useState<(typeof UX_PRESETS)[number]>("app-strict");
+	const [preset, setPreset] =
+		useState<(typeof UX_PRESETS)[number]>("app-strict");
 	const [confirmApply, setConfirmApply] = useState(false);
 	const [rejectRuleId, setRejectRuleId] = useState<string | null>(null);
 	const [scanDeadline, setScanDeadline] = useState<number | null>(null);
@@ -110,7 +114,9 @@ export function UxContractTab({
 				});
 				return;
 			}
-			qc.invalidateQueries({ queryKey: ["project", projectId, "ux-contract-rules"] });
+			qc.invalidateQueries({
+				queryKey: ["project", projectId, "ux-contract-rules"],
+			});
 			qc.invalidateQueries({ queryKey: ["project", projectId] });
 		}, SCAN_POLL_INTERVAL_MS);
 		return () => clearInterval(interval);
@@ -132,7 +138,8 @@ export function UxContractTab({
 	}, [activeRules]);
 	const findingsByIssue = useMemo(() => {
 		const m = new Map<string, number>();
-		for (const f of findingsQ.data ?? []) m.set(f.issueId, (m.get(f.issueId) ?? 0) + 1);
+		for (const f of findingsQ.data ?? [])
+			m.set(f.issueId, (m.get(f.issueId) ?? 0) + 1);
 		return m;
 	}, [findingsQ.data]);
 
@@ -154,7 +161,10 @@ export function UxContractTab({
 		return (
 			<Card>
 				<CardContent>
-					<ErrorState message={formatApiError(rulesQ.error)} onRetry={() => rulesQ.refetch()} />
+					<ErrorState
+						message={formatApiError(rulesQ.error)}
+						onRetry={() => rulesQ.refetch()}
+					/>
 				</CardContent>
 			</Card>
 		);
@@ -167,8 +177,8 @@ export function UxContractTab({
 				<CardContent>
 					<h2 className="fg-h3 mb-1">Preset</h2>
 					<p className="fg-body-sm mb-3 text-muted">
-						Pick a starting point. Applying a preset replaces every rule below with
-						the compiled set for that choice.
+						Pick a starting point. Applying a preset replaces every rule below
+						with the compiled set for that choice.
 					</p>
 					<div className="flex flex-wrap items-center gap-2">
 						<Select
@@ -208,7 +218,8 @@ export function UxContractTab({
 								onClick={() => {
 									scanBaselineRef.current = designSystem;
 									rescan.mutate(undefined, {
-										onSuccess: () => setScanDeadline(Date.now() + SCAN_POLL_WINDOW_MS),
+										onSuccess: () =>
+											setScanDeadline(Date.now() + SCAN_POLL_WINDOW_MS),
 									});
 								}}
 							>
@@ -225,9 +236,18 @@ export function UxContractTab({
 					{designSystem ? (
 						<dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
 							<Field label="Library" value={designSystem.libraryName ?? "—"} />
-							<Field label="Token source" value={designSystem.tokenSource ?? "—"} />
-							<Field label="Toast mechanism" value={designSystem.toastMechanism ?? "—"} />
-							<Field label="Breakpoints" value={designSystem.breakpoints ?? "—"} />
+							<Field
+								label="Token source"
+								value={designSystem.tokenSource ?? "—"}
+							/>
+							<Field
+								label="Toast mechanism"
+								value={designSystem.toastMechanism ?? "—"}
+							/>
+							<Field
+								label="Breakpoints"
+								value={designSystem.breakpoints ?? "—"}
+							/>
 							<Field label="i18n" value={designSystem.i18n ? "Yes" : "No"} />
 						</dl>
 					) : (
@@ -241,8 +261,8 @@ export function UxContractTab({
 				<CardContent>
 					<h2 className="fg-h3 mb-1">Rules</h2>
 					<p className="fg-body-sm mb-3 text-muted">
-						Toggle severity between must and should. Source shows where a rule came
-						from; evidence links to the issue that taught it.
+						Toggle severity between must and should. Source shows where a rule
+						came from; evidence links to the issue that taught it.
 					</p>
 					{activeRules.length === 0 ? (
 						<EmptyState
@@ -257,7 +277,9 @@ export function UxContractTab({
 								if (rows.length === 0) return null;
 								return (
 									<div key={group}>
-										<h3 className="fg-label mb-2 text-fg">{UX_RULE_GROUP_LABELS[group]}</h3>
+										<h3 className="fg-label mb-2 text-fg">
+											{UX_RULE_GROUP_LABELS[group]}
+										</h3>
 										<div className="space-y-2">
 											{rows.map((rule) => (
 												<RuleRow
@@ -267,7 +289,10 @@ export function UxContractTab({
 													findingsByIssue={findingsByIssue}
 													canEdit={canEdit}
 													onToggleSeverity={(next) =>
-														patchRule.mutate({ ruleId: rule.id, patch: { severity: next } })
+														patchRule.mutate({
+															ruleId: rule.id,
+															patch: { severity: next },
+														})
 													}
 													busy={patchRule.isPending}
 												/>
@@ -286,7 +311,8 @@ export function UxContractTab({
 				<CardContent>
 					<h2 className="fg-h3 mb-1">Proposed changes</h2>
 					<p className="fg-body-sm mb-3 text-muted">
-						Rules an improver proposed. Approve to activate, or reject to discard.
+						Rules an improver proposed. Approve to activate, or reject to
+						discard.
 					</p>
 					{proposedRules.length === 0 ? (
 						<EmptyState
@@ -305,7 +331,9 @@ export function UxContractTab({
 										<div className="min-w-0">
 											<div className="mb-1 flex items-center gap-2">
 												<Badge>{UX_RULE_GROUP_LABELS[rule.group]}</Badge>
-												<Badge tone="amber">{UX_RULE_SOURCE_LABELS[rule.source]}</Badge>
+												<Badge tone="amber">
+													{UX_RULE_SOURCE_LABELS[rule.source]}
+												</Badge>
 											</div>
 											<p className="fg-body-sm text-fg">{rule.text}</p>
 										</div>
@@ -324,7 +352,10 @@ export function UxContractTab({
 												size="sm"
 												loading={patchRule.isPending}
 												onClick={() =>
-													patchRule.mutate({ ruleId: rule.id, patch: { status: "active" } })
+													patchRule.mutate({
+														ruleId: rule.id,
+														patch: { status: "active" },
+													})
 												}
 											>
 												Approve
@@ -350,7 +381,10 @@ export function UxContractTab({
 						This is exactly what the pipeline sees.
 					</p>
 					{factsQ.isError ? (
-						<ErrorState message={formatApiError(factsQ.error)} onRetry={() => factsQ.refetch()} />
+						<ErrorState
+							message={formatApiError(factsQ.error)}
+							onRetry={() => factsQ.refetch()}
+						/>
 					) : factsQ.data?.projectFacts["ux-contract"] ? (
 						<pre className="max-h-[50vh] overflow-auto rounded-md border border-line bg-sunken p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
 							{factsQ.data.projectFacts["ux-contract"]}
@@ -373,7 +407,10 @@ export function UxContractTab({
 				tone="danger"
 				loading={applyPreset.isPending}
 				onConfirm={() =>
-					applyPreset.mutate({ preset }, { onSuccess: () => setConfirmApply(false) })
+					applyPreset.mutate(
+						{ preset },
+						{ onSuccess: () => setConfirmApply(false) },
+					)
 				}
 				onClose={() => setConfirmApply(false)}
 			/>
@@ -387,7 +424,9 @@ export function UxContractTab({
 				loading={deleteRule.isPending}
 				onConfirm={() => {
 					if (!rejectRuleId) return;
-					deleteRule.mutate(rejectRuleId, { onSuccess: () => setRejectRuleId(null) });
+					deleteRule.mutate(rejectRuleId, {
+						onSuccess: () => setRejectRuleId(null),
+					});
 				}}
 				onClose={() => setRejectRuleId(null)}
 			/>
@@ -423,7 +462,9 @@ function RuleRow({
 		<div className="flex items-start justify-between gap-3 rounded-md border border-line bg-surface p-3">
 			<div className="min-w-0 flex-1">
 				<div className="mb-1 flex flex-wrap items-center gap-2">
-					<Badge tone={rule.severity === "must" ? "red" : "neutral"}>{rule.severity}</Badge>
+					<Badge tone={rule.severity === "must" ? "red" : "neutral"}>
+						{rule.severity}
+					</Badge>
 					<Badge>{UX_RULE_SOURCE_LABELS[rule.source]}</Badge>
 					{rule.evidenceIssueIds.map((issueId) => (
 						<IssueRefBadge
