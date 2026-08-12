@@ -26,6 +26,9 @@
 // `prompt/facts/registry.ts` — the route, the MCP tool, and the tests all
 // import this module without a live DB.
 
+// cm:why the header's no-DB/env rule is kept: park-states.ts contributes nothing at runtime (its only import is `import type`, erased at compile), and importing the rule is what stops this guide's copy drifting from the orchestrator guard that enforces it
+import { PARK_EXIT_RULE } from '../pipeline/park-states.js';
+
 // cm:edge contract -> packages/core/src/guides/integration-guides.ts — that tier owns the `integration-<provider>` slug prefix; a code guide claiming it would be unreachable for any org that authored its own
 export interface ForgeGuide {
   /** Stable, URL-safe id: kebab-case, `/^[a-z0-9][a-z0-9-]*$/`. */
@@ -146,11 +149,63 @@ A pipeline step is a single, one-shot turn: when it ends, the whole process grou
 Verify liveness on the deployed environment before declaring success — a deploy that "succeeded" per the platform can still serve a broken app. On a failed deployment: report it, do not silently retry into a loop, and do not leave the issue in a state that implies success.`,
   },
   {
+    slug: 'what-is-an-issue',
+    title: 'What is an issue?',
+    summary:
+      'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
+    version: 1,
+    // cm:edge lockstep -> docs/guides/what-is-an-issue.md — the contributor-facing copy of this guide;
+    //   the four gates and the routing table must say the same thing on both surfaces
+    body: `## What is an issue?
+
+An issue is a unit of **work** — not a note, not a question, not a record of something already done.
+
+> An issue is a unit of work with a named deliverable and an owner, whose completion someone other than the author can verify.
+
+### The four gates — file it only if it passes all four
+
+| # | Gate | Ask | If it fails |
+|---|---|---|---|
+| 1 | **Deliverable** | When this is done, what *thing* exists? A diff, a merged branch, a changed config, a deleted file. | If "done" produces only TEXT — an answer, a note, a record — it is not an issue |
+| 2 | **Executable** | Can whoever picks it up finish it with what the description says? | If step one is "someone must decide X", the decision is the blocker and the issue does not exist yet |
+| 3 | **Verifiable exit** | Can a second person tell done from not-done by observing behaviour? | Clarify it first |
+| 4 | **Owner + due signal** | Who will look at it, and what makes it speak up if forgotten? | No owner and no aging signal means filing it BURIES it |
+
+Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on this* — never *not sure this is work*. A \`draft\` nobody owns and nothing ages is a write-only queue.
+
+### Where it goes instead
+
+| You have | It is | Put it |
+|---|---|---|
+| A session log or summary of what you did | a record | a handoff doc, or project memory |
+| A note, learning, or convention | knowledge | \`forge_memory_write\` (durable business logic → repo \`docs/\`) |
+| An open question needing a human decision | a decision | a comment on the issue that raised it + \`waiting\` if it blocks that issue; a standing policy question → \`docs/proposals/<topic>.md\` marked *pending sign-off* |
+| An audit or scan finding | an observation | memory, until it becomes work with a deliverable |
+| A fix you already made by hand | a record | move the status, capture the learning in memory |
+
+### Residuals — the opposite mistake is just as real
+
+Under-filing ships bugs. Measured case: four separate stages flagged an unauthenticated data leak, each asked for a follow-up to be filed, none was, and the leak shipped.
+
+So anything a stage or review wants to hand onward becomes exactly one of three things:
+
+1. **Work with a deliverable** → an issue.
+2. **A \`blocks\` edge** onto the issue that would otherwise ship without it.
+3. **A line in a decision doc** (\`docs/proposals/\`).
+
+There is no fourth option. An unowned \`draft\` is not a hand-off, it is a place things go to be forgotten. If it fits none of the three, say it in a comment on the issue you are already working on.
+
+### Then read
+Statuses, the three exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
+
+Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.md\`.`,
+  },
+  {
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, bounce states, and who owns which derived fields.',
-    version: 3,
+      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park needs a human or an operator sentinel, the four things `waiting` means, and who owns which derived fields.',
+    version: 4,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -194,6 +249,30 @@ Within a pipeline step: do your real work, post your findings/decision comment, 
 
 ### Bounce states, reachable from anywhere
 \`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision), \`reopen\` (regression or failed check), \`on_hold\` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. \`on_hold\` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at \`draft\`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
+
+### Leaving a park is not symmetric with entering one
+${PARK_EXIT_RULE}
+
+Entering is free from anywhere; the exit is reserved. If you set a forward status from \`waiting\`/\`on_hold\` and no job appears, that is this rule — not a stuck runner. The issue then reads as sitting at a live stage with nothing working on it, which is the most expensive way to be wrong about pipeline state, so the skip now posts a comment saying so.
+
+**To resume:** a human moves it from the issue page, or any caller passes \`data.unblock: true\` to \`forge_issues.update\` (which threads the \`operator_unblock\` sentinel). A bare status write does not re-engage dispatch.
+
+\`needs_info\` is a bounce but NOT a park — its exit dispatches normally. What gates it instead is the replay guard: only a HUMAN comment posted since the bounce releases it.
+
+### \`waiting\` means four different things
+The status alone does not say which, so read the issue's newest park comment before acting — each of these posts its own reason:
+
+| Reason | Set by | What actually unblocks it |
+|---|---|---|
+| plan approval | forge-plan on a Complex issue | a human approving the plan |
+| reopen cap | the cap redirecting a \`reopen\` | an admin cap override or splitting the issue — and the paused run must be resumed too |
+| retry budget exhausted | the job finalizer after the last retry | fixing the mechanical cause, then resuming |
+| blocked evidence | a step that cannot verify a core AC (no fixture, no surface) | supplying the fixture, or agreeing a second form of evidence |
+
+Re-approving a retry-exhausted or blocked-evidence park without changing anything just reproduces the cycle that parked it.
+
+### Leaving a state can stamp \`merged_at\` behind you
+Transitioning OUT of the project's \`mergeStates.baseBranch\` state stamps \`merged_at\` — including a hop you made for an unrelated reason, and including one where nothing was merged. That stamp is what releases every \`blocks\` dependent, so a diagnostic transition near the merge state can unblock work that should still be blocked. After any hand transition out of that state, check the field and clear it with \`forge_issues\` \`unmark\` if no merge landed.
 
 ### Derived fields you don't hand-set
 - \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.

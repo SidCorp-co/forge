@@ -12,6 +12,7 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 | [trunk-based-development.md](trunk-based-development.md) | Branching model, naming, pre-push hook, who ships how (contributors + maintainers; the pipeline has its own docs) |
 | [release.md](release.md) | Cutting a release |
 | [integrations.md](integrations.md) | Wiring external integrations |
+| [what-is-an-issue.md](what-is-an-issue.md) | What counts as an issue at all — the four gates, where a note / question / audit finding goes instead, draft vs open, and the description contract. Mirrors the public `what-is-an-issue` capability guide |
 | [forge-affordances.md](forge-affordances.md) | Operating affordances for connected agents — when to use Forge's own tools (`set_dependency`, draft-vs-open, config writes, memory recall) as trigger → tool → red-flag |
 | [skill-improve.md](skill-improve.md) | Skill self-evolution loop — enable improvement messages, how the agent evaluates and applies them per-project, how to write new messages for the registry |
 
