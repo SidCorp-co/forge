@@ -16,7 +16,7 @@
  * same event the heartbeat emits) so the web-v2 runners view refreshes live.
  */
 
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -71,8 +71,9 @@ export async function stampRunnerLimit(
 }
 
 /**
- * Clear any limit on the given runner (called on successful job completion).
- * Cheap guard: only writes when a limit is actually set.
+ * Clear any limit AND any recorded `lastError` on the given runner (called on
+ * successful job completion — a box that just succeeded is not faulted).
+ * Cheap guard: only writes when one of them is actually set.
  */
 export async function clearRunnerLimit(
   runnerId: string | null | undefined,
@@ -86,15 +87,20 @@ export async function clearRunnerLimit(
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
-        // Also clear the mirrored lastError, else the UI falls back to showing
-        // the stale limit text as a generic "Last error" banner after recovery.
+        // cm:why the mirrored limit text goes too, else the UI keeps rendering it as a generic "Last error" banner after recovery
         lastError: null,
         updatedAt: new Date(),
       })
-      .where(and(eq(runners.id, runnerId), isNotNull(runners.limitReason)))
+      // cm:why the guard covers lastError as well: attributeFailureToRunner and the dispatcher's adapter-failure write set it WITHOUT a limitReason, so a limit-only guard left those boxes quoting a preflight error through every later success — dev1·cx read faulted 24min after its next job passed
+      .where(
+        and(
+          eq(runners.id, runnerId),
+          or(isNotNull(runners.limitReason), isNotNull(runners.lastError)),
+        ),
+      )
       .returning({ id: runners.id });
     if (cleared) {
-      logger.info({ runnerId }, 'runner limit cleared');
+      logger.info({ runnerId }, 'runner limit / lastError cleared');
       broadcastRunnerChanged(projectId, runnerId);
     }
   } catch (err) {

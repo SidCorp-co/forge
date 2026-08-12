@@ -27,6 +27,7 @@ import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
+import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
 import { redeemPairingCode } from './pair.js';
 
 const badRequest = (details: unknown) =>
@@ -424,50 +425,9 @@ deviceAuthRoutes.post(
 
     if (!updated) throw unauth();
 
-    // Mirror the heartbeat onto any runners bound to this device so the
-    // stale-detector doesn't flip them offline. After ISS-172 Slice A a
-    // single device may have one runner per project, so this update fans
-    // out across every binding.
-    //
-    // ISS-381 (2.3) — change-gated audit: the `prev` CTE snapshots the status
-    // BEFORE the UPDATE, so we can record a runner_events row only for runners
-    // that were not already online (the offline→online transition). A
-    // steady-state heartbeat updates last_seen_at for all bindings but emits no
-    // event, keeping the audit table free of per-tick noise.
-    const transitioned = (await db.execute(sql`
-      WITH prev AS (
-        SELECT id, project_id, status AS old_status
-        FROM runners
-        WHERE device_id = ${device.id}
-      ),
-      upd AS (
-        UPDATE runners
-        SET last_seen_at = now(), status = 'online', updated_at = now(),
-            -- Clear a runner limit once it can no longer apply: an auth limit
-            -- (no reset time) clears on the next live heartbeat (operator
-            -- presumably fixed the credentials; if not, the next job re-stamps
-            -- it). A time-based limit clears only once its reset has passed; an
-            -- active throttle must persist so the dispatcher keeps skipping.
-            limit_reason = CASE
-              WHEN limit_reason = 'auth'
-                OR (rate_limited_until IS NOT NULL AND rate_limited_until <= now())
-              THEN NULL ELSE limit_reason END,
-            rate_limited_until = CASE
-              WHEN limit_reason = 'auth'
-                OR (rate_limited_until IS NOT NULL AND rate_limited_until <= now())
-              THEN NULL ELSE rate_limited_until END,
-            limit_detail = CASE
-              WHEN limit_reason = 'auth'
-                OR (rate_limited_until IS NOT NULL AND rate_limited_until <= now())
-              THEN NULL ELSE limit_detail END
-        WHERE device_id = ${device.id}
-        RETURNING id
-      )
-      SELECT id, project_id, old_status
-      FROM prev
-      WHERE old_status <> 'online'
-    `)) as unknown as Array<{ id: string; project_id: string; old_status: string }> | undefined;
-    for (const r of transitioned ?? []) {
+    // cm:why one device may hold a runner per project since ISS-172 Slice A, so a single heartbeat fans out across every binding
+    const transitioned = await mirrorHeartbeatToRunners(device.id);
+    for (const r of transitioned) {
       await insertRunnerEvent(db, {
         runnerId: r.id,
         projectId: r.project_id,

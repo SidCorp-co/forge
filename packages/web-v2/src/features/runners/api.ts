@@ -58,6 +58,18 @@ export const runnersApi = {
 			body: JSON.stringify(body),
 		}),
 
+	/**
+	 * `POST /api/projects/:projectId/runners/:runnerId/clear-error` — operator
+	 * reset of every recorded fault on a runner (last error, rate/usage/auth
+	 * limit, quarantine), followed by a dispatch tick so queued jobs get another
+	 * shot. `cleared: false` means the runner had nothing recorded. Admin only.
+	 */
+	clearRunnerError: (projectId: string, runnerId: string) =>
+		apiClient<{ runnerId: string; cleared: boolean }>(
+			`/projects/${projectId}/runners/${runnerId}/clear-error`,
+			{ method: "POST" },
+		),
+
 	/** `DELETE /api/projects/:projectId/runners/:runnerId` — unassign a project pool (idempotent). */
 	unbindRunner: (projectId: string, runnerId: string) =>
 		apiClient<void>(`/projects/${projectId}/runners/${runnerId}`, {

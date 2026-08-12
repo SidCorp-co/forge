@@ -371,6 +371,34 @@ export function useSetDefaultDevice(projectId: string) {
   });
 }
 
+/**
+ * Clear a runner's recorded faults (last error + limit + quarantine) and let
+ * dispatch retry it. Invalidates the project runner list plus `['runners']` so
+ * the dashboard health card drops the badge with the screen.
+ */
+export function useClearRunnerError(projectId: string) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (runnerId: string) =>
+			runnersApi.clearRunnerError(projectId, runnerId),
+		onSuccess: ({ cleared }) => {
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
+			qc.invalidateQueries({ queryKey: ["runners"] });
+			toast({
+				title: cleared ? "Error cleared — retrying" : "Nothing to clear",
+				tone: "success",
+			});
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't clear the error",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
 /** Re-provision a device (re-bind with same path re-queues provision). */
 export function useReprovision(projectId: string) {
 	const qc = useQueryClient();

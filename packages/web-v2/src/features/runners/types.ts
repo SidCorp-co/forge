@@ -84,7 +84,11 @@ export interface ProjectRunner {
 	 */
 	deviceDisabledAt: string | null;
 	runnerStatus: string;
-	/** Last health/heartbeat error string, cleared on a healthy heartbeat. */
+	/**
+	 * Last recorded fault: a limit mirror, a `preflight_failed:` box fault, or a
+	 * dispatch hand-over error. Cleared by a successful job, by the heartbeat once
+	 * a mirrored limit lapses, or by the operator's Clear & retry.
+	 */
 	lastError: string | null;
 	/** Why the runner is currently limited (rate/usage/auth), or null. */
 	limitReason: RunnerLimitReason | null;

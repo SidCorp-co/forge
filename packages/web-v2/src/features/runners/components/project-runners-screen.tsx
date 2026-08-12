@@ -41,6 +41,7 @@ import { useMemo, useState } from "react";
 import {
 	useActiveRunners,
 	useAssignDeviceToProject,
+	useClearRunnerError,
 	useDeleteGitCredential,
 	useDevices,
 	useGitCredential,
@@ -461,6 +462,7 @@ function RunnerRow({
 	const reprovision = useReprovision(projectId);
 	const unassign = useUnassignDeviceFromProject(projectId);
 	const setDisabled = useSetDeviceDisabled();
+	const clearError = useClearRunnerError(projectId);
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [showActivity, setShowActivity] = useState(false);
 	// A disabled device's runner keeps heartbeating (deviceStatus stays
@@ -474,6 +476,19 @@ function RunnerRow({
 	const now = useNow(1000, Boolean(runner.limitReason) || Boolean(current));
 	const limit = runnerLimitDisplay(runner, now);
 	const elapsed = current ? formatElapsed(current.startedAt, now) : null;
+
+	// cm:why offered on a LIVE cooldown too — an operator who raised the cap or fixed the box knows something the recorded fault does not, and a still-real fault re-stamps itself on the next failure
+	const clearFaultButton = canEdit ? (
+		<Button
+			variant="secondary"
+			size="sm"
+			icon="rerun"
+			loading={clearError.isPending}
+			onClick={() => clearError.mutate(runner.runnerId)}
+		>
+			Clear & retry
+		</Button>
+	) : undefined;
 
 	return (
 		<div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
@@ -639,7 +654,10 @@ function RunnerRow({
 			)}
 
 			{limit ? (
-				<Banner tone={limit.health === "down" ? "danger" : "attention"}>
+				<Banner
+					tone={limit.health === "down" ? "danger" : "attention"}
+					action={clearFaultButton}
+				>
 					<span className="font-semibold">
 						{limit.label}
 						{limit.reason === "auth"
@@ -657,7 +675,7 @@ function RunnerRow({
 				</Banner>
 			) : (
 				runner.lastError && (
-					<Banner tone="attention">
+					<Banner tone="attention" action={clearFaultButton}>
 						<span className="font-semibold">Last error.</span>{" "}
 						<code className="font-mono text-[12px]">{runner.lastError}</code>
 					</Banner>

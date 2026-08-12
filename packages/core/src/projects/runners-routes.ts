@@ -5,9 +5,11 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
 
@@ -254,6 +256,37 @@ projectRunnerRoutes.patch(
     }
 
     return c.json(runner);
+  },
+);
+
+projectRunnerRoutes.post(
+  '/:id/runners/:runnerId/clear-error',
+  zValidator('param', runnerParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id, runnerId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(id, userId);
+    assertProjectRole(access, 'admin', 'project admin required');
+
+    const [target] = await db
+      .select({ id: runners.id })
+      .from(runners)
+      .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)))
+      .limit(1);
+    if (!target) {
+      throw new HTTPException(404, {
+        message: 'runner not found',
+        cause: { code: 'RUNNER_NOT_FOUND' },
+      });
+    }
+
+    const cleared = await clearRunnerFaultFlags(runnerId, id);
+    // cm:why the tick is the point of the button: a box excluded by rate_limited_until or quarantine holds queued jobs that nothing re-examines until the next dispatch trigger, so clearing alone would look like a no-op to the operator
+    if (cleared) void dispatchTickForProject(id);
+    return c.json({ runnerId, cleared });
   },
 );
 
