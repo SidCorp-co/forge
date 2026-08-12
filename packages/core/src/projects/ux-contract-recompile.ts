@@ -1,6 +1,9 @@
 import { and, asc, eq } from 'drizzle-orm';
+import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { projects, uxContractRules } from '../db/schema.js';
+import { upsertKnowledgeEntry } from '../knowledge/service.js';
+import { logger } from '../logger.js';
 import { mergeProjectFacts } from './project-facts.js';
 import {
   DEFAULT_UX_SCAFFOLD,
@@ -53,4 +56,28 @@ export async function recompileAndPersistUxContract(projectId: string): Promise<
   const updatedAc = merged !== null ? { ...ac, projectFacts: merged } : { ...ac };
 
   await db.update(projects).set({ agentConfig: updatedAc }).where(eq(projects.id, projectId));
+
+  // cm:edge lockstep -> packages/core/src/projects/project-facts-routes.ts — same knowledge_entries write-through, keep guard/shape in sync
+  // cm:edge lockstep -> packages/core/src/mcp/tools/forge-config.ts — same knowledge_entries write-through, keep guard/shape in sync
+  if (env.KNOWLEDGE_INJECTION_ENABLED) {
+    const factsConfig =
+      (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {};
+    const alwaysInject = factsConfig['ux-contract']?.alwaysInject === true;
+    await upsertKnowledgeEntry({
+      projectId,
+      slug: 'ux-contract',
+      title: 'ux-contract',
+      body: prose,
+      kind: 'guide',
+      injection: alwaysInject ? 'always' : 'on_demand',
+      confidence: 'verified',
+      authoredBy: 'human',
+      orderIndex: merged !== null ? Object.keys(merged).indexOf('ux-contract') : -1,
+    }).catch((err: Error) => {
+      logger.warn(
+        { err: err.message, projectId },
+        'ux-contract recompile: knowledge write-through failed',
+      );
+    });
+  }
 }
