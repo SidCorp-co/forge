@@ -95,11 +95,17 @@ export const issuesApi = {
     }),
 
   /** `POST /api/issues/:id/transition` — state-machine guarded status change.
-   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). */
-  transition: (id: string, toStatus: IssueStatus, reason?: string) =>
+   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). `override` bypasses
+   *  the reopen cap — the server rejects it with 403 unless the caller is a
+   *  project admin (ISS-828 reopen-cap unblock). */
+  transition: (id: string, toStatus: IssueStatus, opts?: { reason?: string; override?: boolean }) =>
     apiClient<IssueRow>(`/issues/${id}/transition`, {
       method: "POST",
-      body: JSON.stringify(reason ? { toStatus, reason } : { toStatus }),
+      body: JSON.stringify({
+        toStatus,
+        ...(opts?.reason ? { reason: opts.reason } : {}),
+        ...(opts?.override ? { override: true } : {}),
+      }),
     }),
 
   /** `GET /api/issues/:id/cost-summary` — usage rollup for the issue. */

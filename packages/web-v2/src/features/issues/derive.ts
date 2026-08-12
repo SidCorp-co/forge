@@ -433,7 +433,14 @@ export function heartbeatState(
   return nowMs - t <= HEARTBEAT_STALE_MS ? "alive" : "stale";
 }
 
-export type BlockerCtaKind = "approve" | "provide-info" | "resume" | "open-blocker" | "none";
+export type BlockerCtaKind =
+  | "approve"
+  | "provide-info"
+  | "resume"
+  | "open-blocker"
+  | "none"
+  | "override-resume"
+  | "reopen";
 
 /** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
 export interface BlockingRef {
@@ -516,8 +523,18 @@ export function deriveBlockerState(
     };
   }
 
-  // 3. waiting — a plan is awaiting human approval before coding.
-  if (issue.status === "waiting") {
+  // 3. waiting — 5 distinct real causes (ISS-828), classified server-side
+  // (`pipelineHealth.waitingCause`, absent ⇒ treat as plan_approval so an
+  // older server still renders the pre-828 copy). Each cause gets its own
+  // reason + CTA so the banner never claims an action the pipeline doesn't
+  // actually offer (e.g. `Approve` re-dispatching a full `code` job on an
+  // issue parked specifically to stop that spend).
+  const waitingCause =
+    issue.status === "waiting" ? (pipelineHealth?.waitingCause?.kind ?? "plan_approval") : null;
+
+  if (waitingCause === "decompose_parent") {
+    // Verbatim (AC#2) — the one case where "Approve" already does the right
+    // thing (promotes every decomposed child); do not dilute or rebrand it.
     return {
       tone: "attention",
       reason: "The plan is written and awaiting human approval before coding starts.",
@@ -526,6 +543,42 @@ export function deriveBlockerState(
       ...(blockingRefs.length ? { blockingRefs } : {}),
     };
   }
+
+  if (waitingCause === "reopen_cap") {
+    return {
+      tone: "attention",
+      reason: "This issue hit the reopen limit and was parked to stop repeated expensive re-runs.",
+      whoMustAct: "A project admin can override the limit and resume the paused run.",
+      cta: { label: "Override & resume", kind: "override-resume" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  if (waitingCause === "retry_exhausted") {
+    return {
+      tone: "attention",
+      reason: "The pipeline exhausted its retry budget for this step and stopped.",
+      whoMustAct: "A maintainer can reopen it to try again.",
+      cta: { label: "Reopen", kind: "reopen" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  if (waitingCause === "merged_parked") {
+    return {
+      tone: "info",
+      reason: "The code is already merged; the issue is parked for manual review — see the comments.",
+      whoMustAct: "A maintainer must decide the next step.",
+      cta: { label: "", kind: "none" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // waitingCause === "plan_approval" (or unknown) falls through to the
+  // pipelineHealth check below — a dependency closed without merging
+  // (waitingOn.reason === "waiting_on_dep") gets its specific copy instead
+  // of the generic approval banner. The generic copy itself is the fallback
+  // a few branches down, once every richer signal has been ruled out.
 
   // 4. on_hold status — deliberately paused via the state machine.
   if (issue.status === "on_hold") {
@@ -582,6 +635,21 @@ export function deriveBlockerState(
         isDep && blockingRefs.length
           ? { label: "Open blocking issue", kind: "open-blocker" }
           : { label: "", kind: "none" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // 5b. waitingCause fell through to plan_approval and no richer waitingOn
+  // signal applied (e.g. a genuine plan-approval wait, or a server that
+  // predates `waitingCause`) — the original generic copy, unconditionally
+  // (never fall further to the raw "open blocks edge" wording in 6, which
+  // would misdescribe a plan-approval wait as a dependency block).
+  if (waitingCause !== null) {
+    return {
+      tone: "attention",
+      reason: "The plan is written and awaiting human approval before coding starts.",
+      whoMustAct: "A maintainer must approve (or reopen) the issue.",
+      cta: { label: "Approve", kind: "approve" },
       ...(blockingRefs.length ? { blockingRefs } : {}),
     };
   }

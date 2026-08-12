@@ -26,6 +26,16 @@ export type PipelineWaitingReason =
   | 'project_full'
   | 'runner_full';
 
+// ISS-828 — why an issue at `status='waiting'` actually got there. Mirrors
+// core `WaitingCause` (`issues/pipeline-health.ts`); see that doc comment for
+// why `missing_skill:`/`stage_stalled:` pause reasons are NOT modeled here.
+export type WaitingCause =
+  | 'plan_approval'
+  | 'decompose_parent'
+  | 'reopen_cap'
+  | 'retry_exhausted'
+  | 'merged_parked';
+
 export interface PipelineHealth {
   stage: schema.IssueStatus;
   activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
@@ -36,6 +46,8 @@ export interface PipelineHealth {
   };
   queuedAt?: string;
   lastTickAt?: string;
+  /** Only set when `stage === 'waiting'`. */
+  waitingCause?: { kind: WaitingCause };
 }
 
 export type ProjectMember = typeof schema.projectMembers.$inferSelect;

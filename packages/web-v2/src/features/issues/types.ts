@@ -221,6 +221,17 @@ export type WaitingReason =
   | "project_full"
   | "runner_full";
 
+/** Why an issue at `status === "waiting"` actually got there. Mirrors core
+ *  `WaitingCause` (`issues/pipeline-health.ts`) — `missing_skill:`/
+ *  `stage_stalled:` pause reasons are deliberately not modeled: those guards
+ *  only pause the pipeline_run, they never transition the issue to `waiting`. */
+export type WaitingCause =
+  | "plan_approval"
+  | "decompose_parent"
+  | "reopen_cap"
+  | "retry_exhausted"
+  | "merged_parked";
+
 /** Server-derived pipeline health for one issue. Mirrors core `PipelineHealth`
  *  (`issues/pipeline-health.ts:69-79`); `stage` is the single status→stage
  *  projection (do not re-derive a second mapping). */
@@ -230,6 +241,8 @@ export interface PipelineHealth {
   waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
   queuedAt?: string;
   lastTickAt?: string;
+  /** Only set when `stage === "waiting"`. */
+  waitingCause?: { kind: WaitingCause };
 }
 
 /** One step-handoff row from `GET /api/issue-step-contexts` (kind=handoff).

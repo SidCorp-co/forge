@@ -110,17 +110,25 @@ export function usePatchIssue() {
 export function useTransitionIssue() {
   const qc = useQueryClient();
   const mut = useIssueMutation(
-    (args: { id: string; toStatus: IssueStatus; reason?: string }) =>
-      issuesApi.transition(args.id, args.toStatus, args.reason),
+    (args: { id: string; toStatus: IssueStatus; reason?: string; override?: boolean }) =>
+      issuesApi.transition(args.id, args.toStatus, { reason: args.reason, override: args.override }),
   );
   // Also refresh the single-issue + activity caches (detail view) on success.
+  // `onSuccess` is an optional per-call passthrough (ISS-828 blocker-banner
+  // actions toast their own success copy on top of the shared invalidation).
+  // Errors are NOT passed through here — `useIssueMutation`'s own `onError`
+  // already toasts `formatApiError`; adding a second would double-toast.
   return {
     ...mut,
-    mutate: (args: { id: string; toStatus: IssueStatus; reason?: string }) =>
+    mutate: (
+      args: { id: string; toStatus: IssueStatus; reason?: string; override?: boolean },
+      options?: { onSuccess?: () => void },
+    ) =>
       mut.mutate(args, {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ["issue", args.id] });
           qc.invalidateQueries({ queryKey: ["activities", args.id] });
+          options?.onSuccess?.();
         },
       }),
   };
