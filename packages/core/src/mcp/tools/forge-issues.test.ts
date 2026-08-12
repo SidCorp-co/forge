@@ -1534,9 +1534,9 @@ describe('forge_issues tool', () => {
       const result = (await tool.handler({
         action: 'mark_merged',
         data: { issueId: ISSUE_ID, target: 'feature', note: 'merged @abc123' },
-      })) as { mergedAt: Date | null; status: string };
+      })) as { mergedAt: Date | null; action: string };
 
-      expect(result.status).toBe('merged');
+      expect(result.action).toBe('merged');
       expect(result.mergedAt).toEqual(STAMPED);
 
       // Idempotency rests on COALESCE — assert the SQL shape (mock can't run
@@ -1671,9 +1671,9 @@ describe('forge_issues tool', () => {
       const result = (await tool.handler({
         action: 'unmark',
         data: { issueId: ISSUE_ID, note: 'epic rolled back' },
-      })) as { mergedAt: Date | null; status: string };
+      })) as { mergedAt: Date | null; action: string };
 
-      expect(result.status).toBe('unmarked');
+      expect(result.action).toBe('unmarked');
       expect(result.mergedAt).toBeNull();
       expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ mergedAt: null }));
       expect(insertValues).toHaveBeenCalledWith(
@@ -1758,9 +1758,9 @@ describe('forge_issues tool', () => {
       const result = (await tool.handler({
         action: 'mark_merged',
         data: { issueId: ISSUE_ID, target: 'base' },
-      })) as { status: string };
+      })) as { action: string };
 
-      expect(result.status).toBe('merged');
+      expect(result.action).toBe('merged');
       expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
     });
 

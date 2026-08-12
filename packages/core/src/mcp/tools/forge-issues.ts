@@ -1291,7 +1291,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // instead of waiting for the 60s pg-boss backstop (AC3).
         void dispatchTickForProject(issue.projectId);
 
-        return { ...(await serializeWithAttachments(fresh)), status: 'merged' };
+        // cm:guard report the ACTION under `action`, never by overwriting `status` — `merged`/`unmarked`
+        //   are not `issueStatuses` members, so a caller read a lifecycle value that cannot exist (§10)
+        return { ...(await serializeWithAttachments(fresh)), action: 'merged' };
       }
 
       case 'unmark': {
@@ -1338,7 +1340,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         });
         // No dispatcher tick: clearing only adds a block, never unblocks.
 
-        return { ...(await serializeWithAttachments(fresh)), status: 'unmarked' };
+        return { ...(await serializeWithAttachments(fresh)), action: 'unmarked' };
       }
 
       case 'listTasks': {

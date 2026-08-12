@@ -20,7 +20,7 @@ Open-source control plane for Claude Code — full-stack project management + an
 | `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
-`packages/web` is retired (empty — web-v2 replaced it). The `nexus` entry in `pnpm-workspace.yaml` is vestigial (no package there).
+`packages/web` is retired (empty — web-v2 replaced it); `nexus` is gone from `pnpm-workspace.yaml`. Neither has tracked files, so a local `packages/web/` or `nexus/` is leftover build/`node_modules` residue and safe to delete.
 
 ## Key patterns
 
