@@ -201,7 +201,7 @@ describe("UxContractTab", () => {
     renderTab(<UxContractTab project={project()} canEdit={false} />);
     expect(screen.getByRole("button", { name: "Apply preset" })).toBeDisabled();
     expect(screen.getByRole("switch")).toBeDisabled();
-    expect(screen.getAllByText(/requires project admin/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/requires (a )?project admin/i).length).toBeGreaterThan(0);
   });
 
   it("shows the detected stack panel with an enabled, clickable Re-scan for admins (ISS-576)", () => {
