@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -26,7 +27,12 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { UX_PRESETS, type UxStackProfile, compilePresetToRules } from './ux-contract-presets.js';
-import { recompileAndPersistUxContract } from './ux-contract-recompile.js';
+import {
+  type UxContractExecutor,
+  recompileAndPersistUxContract,
+  withUxContractTransaction,
+} from './ux-contract-recompile.js';
+import { signUxScanAuthorization } from './ux-scan-authorization.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const ruleIdParamSchema = z.object({ ruleId: z.uuid() });
@@ -112,13 +118,15 @@ uxContractProjectRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    const [inserted] = await db
-      .insert(uxContractRules)
-      .values({ projectId, ...body })
-      .returning();
-    if (!inserted) throw new Error('ux-contract-rules: insert returned no row');
-
-    await recompileAndPersistUxContract(projectId);
+    const inserted = await withUxContractTransaction(projectId, async (tx) => {
+      const [row] = await tx
+        .insert(uxContractRules)
+        .values({ projectId, ...body })
+        .returning();
+      if (!row) throw new Error('ux-contract-rules: insert returned no row');
+      await recompileAndPersistUxContract(projectId, tx);
+      return row;
+    });
 
     return c.json(inserted, 201);
   },
@@ -178,8 +186,6 @@ const applyPresetSchema = z
   })
   .strict();
 
-// ISS-578 — "choose, not write": compile a preset + stack profile + toggles into
-// the project's rule set, persist the profile (scaffold source), recompile prose.
 uxContractProjectRoutes.post(
   '/:id/ux-contract/apply-preset',
   zValidator('param', projectIdParamSchema, (r) => {
@@ -202,47 +208,55 @@ uxContractProjectRoutes.post(
       body.toggles,
     );
 
-    // Replace the project's rule set with the compiled preset.
-    await db.delete(uxContractRules).where(eq(uxContractRules.projectId, projectId));
-    if (compiled.length > 0) {
-      await db.insert(uxContractRules).values(
-        compiled.map((r) => ({
-          projectId,
-          group: r.group,
-          text: r.text,
-          severity: r.severity,
-          source: r.source,
-          status: r.status,
-          orderIndex: r.orderIndex,
-        })),
-      );
-    }
+    await withUxContractTransaction(projectId, async (tx) => {
+      await tx.delete(uxContractRules).where(eq(uxContractRules.projectId, projectId));
+      if (compiled.length > 0) {
+        await tx.insert(uxContractRules).values(
+          compiled.map((r) => ({
+            projectId,
+            group: r.group,
+            text: r.text,
+            severity: r.severity,
+            source: r.source,
+            status: r.status,
+            orderIndex: r.orderIndex,
+          })),
+        );
+      }
 
-    // Persist only the profile subdocument so an overlapping agentConfig write
-    // from another settings surface cannot be reverted by this request.
-    if (body.profile) {
-      const profileJson = JSON.stringify(body.profile);
-      await db
+      if (body.profile) {
+        const profileJson = JSON.stringify(body.profile);
+        await tx
+          .update(projects)
+          .set({
+            agentConfig: sql`jsonb_set(
+              COALESCE(${projects.agentConfig}, '{}'::jsonb),
+              '{uxContractProfile}',
+              ${profileJson}::jsonb,
+              true
+            )`,
+          })
+          .where(eq(projects.id, projectId));
+      }
+
+      await tx
         .update(projects)
         .set({
           agentConfig: sql`jsonb_set(
             COALESCE(${projects.agentConfig}, '{}'::jsonb),
-            '{uxContractProfile}',
-            ${profileJson}::jsonb,
+            '{uxContractProfile,preserveProse}',
+            'false'::jsonb,
             true
           )`,
         })
         .where(eq(projects.id, projectId));
-    }
-
-    await recompileAndPersistUxContract(projectId);
+      await recompileAndPersistUxContract(projectId, tx);
+    });
 
     return c.json({ applied: compiled.length, preset: body.preset });
   },
 );
 
-// Repo-relative path, no leading '/', no '..' segments — interpolated into the
-// dispatched agent message below, so validate before it ever reaches a prompt.
 const PACKAGE_DIR_RE = /^[A-Za-z0-9._/-]{1,200}$/;
 
 function isSafePackageDir(dir: string): boolean {
@@ -254,12 +268,12 @@ function isSafePackageDir(dir: string): boolean {
   );
 }
 
-function uxScanMessage(packageDir: string): string {
+function uxScanMessage(packageDir: string, authorization: string): string {
   return [
     `Collect a UX stack snapshot for \`${packageDir}\` and submit it.`,
     `1) Read \`${packageDir}/package.json\` and merge \`dependencies\` + \`devDependencies\` verbatim.`,
     `2) Run \`git ls-files ${packageDir}\` and take the paths relative to \`${packageDir}\`.`,
-    '3) Call `forge_ux_scan` with {packageDir, dependencies, filePaths}.',
+    `3) Call \`forge_ux_scan\` with {authorization:${JSON.stringify(authorization)}, packageDir, dependencies, filePaths}.`,
     'Do not interpret the stack yourself and do not edit any file — the server does the detection.',
     "Reply with the tool's `mode` and nothing else.",
   ].join(' ');
@@ -269,10 +283,6 @@ const scanBodySchema = z
   .object({ packageDir: z.string().trim().min(1).max(200).optional() })
   .strict();
 
-// ISS-576 — dispatches the auto-detect scan on a bound runner (core has no
-// repo checkout). Modelled on `projects/onboard-routes.ts`'s dispatch
-// sequence, minus skillName/skill-sync: the procedure travels inline in the
-// message, so no `.claude/skills/**` file is needed on the runner.
 uxContractProjectRoutes.post(
   '/:id/ux-contract/scan',
   zValidator('param', projectIdParamSchema, (r) => {
@@ -285,9 +295,6 @@ uxContractProjectRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    // The body is optional (packageDir falls back to the stored profile's
-    // bindingScope, then '.'), so it is parsed by hand instead of
-    // zValidator('json'), which rejects a bodyless request.
     const rawBody: unknown = await c.req.json().catch(() => ({}));
     const parsedBody = scanBodySchema.safeParse(rawBody ?? {});
     if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
@@ -322,12 +329,19 @@ uxContractProjectRoutes.post(
     );
     if (!client.deviceId) throw noClaudeClient('project');
 
+    const authorizationId = randomUUID();
     const session = await createChatSessionRow({
       projectId: project.id,
       userId,
       title: 'UX stack scan',
       repoPath: project.repoPath,
-      metadata: { source: 'ux-scan' },
+      metadata: { source: 'ux-scan', authorizationId },
+    });
+    const authorization = await signUxScanAuthorization({
+      projectId: project.id,
+      sessionId: session.id,
+      authorizationId,
+      userId,
     });
 
     try {
@@ -335,7 +349,7 @@ uxContractProjectRoutes.post(
         session,
         project,
         client,
-        message: uxScanMessage(packageDir),
+        message: uxScanMessage(packageDir, authorization),
         broadcastEvent: 'agent-session.created',
       });
     } catch (err) {
@@ -392,14 +406,11 @@ async function loadRule(ruleId: string) {
   return row;
 }
 
-async function detectedApprovalWouldReplaceProseContract(
+async function isPreservingProse(
   projectId: string,
-  rule: Awaited<ReturnType<typeof loadRule>>,
-) {
-  if (rule.group !== 'designSystem' || rule.source !== 'detected' || rule.status !== 'proposed') {
-    return false;
-  }
-  const [project] = await db
+  executor: UxContractExecutor = db,
+): Promise<boolean> {
+  const [project] = await executor
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -408,6 +419,95 @@ async function detectedApprovalWouldReplaceProseContract(
     project?.agentConfig as { uxContractProfile?: Record<string, unknown> } | undefined
   )?.uxContractProfile;
   return profile?.preserveProse === true;
+}
+
+async function applyRulePatch(projectId: string, ruleId: string, patch: Record<string, unknown>) {
+  return withUxContractTransaction(projectId, async (tx) => {
+    const [current] = await tx
+      .select({
+        group: uxContractRules.group,
+        source: uxContractRules.source,
+        status: uxContractRules.status,
+        orderIndex: uxContractRules.orderIndex,
+      })
+      .from(uxContractRules)
+      .where(eq(uxContractRules.id, ruleId))
+      .limit(1);
+    if (!current) throw notFound('ux contract rule not found');
+
+    const approvingDetectedProposal =
+      patch.status === 'active' &&
+      current.group === 'designSystem' &&
+      current.source === 'detected' &&
+      current.status === 'proposed';
+    const preservingProse = await isPreservingProse(projectId, tx);
+
+    if (approvingDetectedProposal && preservingProse) {
+      const staged = await tx
+        .select({ id: uxContractRules.id })
+        .from(uxContractRules)
+        .where(
+          and(
+            eq(uxContractRules.projectId, projectId),
+            eq(uxContractRules.group, 'designSystem'),
+            eq(uxContractRules.source, 'detected'),
+            eq(uxContractRules.status, 'proposed'),
+          ),
+        );
+      await tx
+        .update(uxContractRules)
+        .set({ status: 'active', updatedAt: new Date() })
+        .where(
+          inArray(
+            uxContractRules.id,
+            staged.map((row) => row.id),
+          ),
+        );
+      await tx
+        .update(projects)
+        .set({
+          agentConfig: sql`jsonb_set(
+            COALESCE(${projects.agentConfig}, '{}'::jsonb),
+            '{uxContractProfile,preserveProse}',
+            'false'::jsonb,
+            true
+          )`,
+        })
+        .where(eq(projects.id, projectId));
+      await recompileAndPersistUxContract(projectId, tx);
+      const [updated] = await tx
+        .select()
+        .from(uxContractRules)
+        .where(eq(uxContractRules.id, ruleId))
+        .limit(1);
+      if (!updated) throw notFound('ux contract rule not found');
+      return updated;
+    }
+
+    if (approvingDetectedProposal) {
+      await tx
+        .delete(uxContractRules)
+        .where(
+          and(
+            eq(uxContractRules.projectId, projectId),
+            eq(uxContractRules.group, current.group),
+            eq(uxContractRules.source, 'detected'),
+            eq(uxContractRules.status, 'active'),
+            eq(uxContractRules.orderIndex, current.orderIndex),
+          ),
+        );
+    }
+
+    const [updated] = await tx
+      .update(uxContractRules)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(uxContractRules.id, ruleId))
+      .returning();
+    if (!updated) throw notFound('ux contract rule not found');
+
+    await recompileAndPersistUxContract(projectId, tx);
+    return updated;
+  });
 }
 
 uxContractRuleRoutes.patch(
@@ -426,26 +526,7 @@ uxContractRuleRoutes.patch(
     const rule = await loadRule(ruleId);
     const access = await loadProjectAccess(rule.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
-    const detectedApprovalWouldReplaceProse =
-      patch.status === 'active' &&
-      (await detectedApprovalWouldReplaceProseContract(rule.projectId, rule));
-
-    const updates: Record<string, unknown> = {
-      ...patch,
-      updatedAt: new Date(),
-    };
-
-    const [updated] = await db
-      .update(uxContractRules)
-      .set(updates)
-      .where(eq(uxContractRules.id, ruleId))
-      .returning();
-    if (!updated) throw notFound('ux contract rule not found');
-
-    // Detected design-system proposals are staged beside a prose-only contract.
-    // Do not replace that contract until a non-detected active rule establishes
-    // a compiled rule set explicitly.
-    if (!detectedApprovalWouldReplaceProse) await recompileAndPersistUxContract(rule.projectId);
+    const updated = await applyRulePatch(rule.projectId, ruleId, patch);
 
     return c.json(updated);
   },
@@ -464,9 +545,10 @@ uxContractRuleRoutes.delete(
     const access = await loadProjectAccess(rule.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    await db.delete(uxContractRules).where(eq(uxContractRules.id, ruleId));
-
-    await recompileAndPersistUxContract(rule.projectId);
+    await withUxContractTransaction(rule.projectId, async (tx) => {
+      await tx.delete(uxContractRules).where(eq(uxContractRules.id, ruleId));
+      await recompileAndPersistUxContract(rule.projectId, tx);
+    });
 
     return c.body(null, 204);
   },

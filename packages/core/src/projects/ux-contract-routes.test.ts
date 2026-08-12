@@ -53,6 +53,10 @@ const createChatSessionRowMock = vi.fn();
 const dispatchChatTurnMock = vi.fn();
 const applyKernelTransitionMock = vi.fn();
 const closeRunIfOneShotMock = vi.fn();
+const signUxScanAuthorizationMock = vi.fn();
+vi.mock('./ux-scan-authorization.js', () => ({
+  signUxScanAuthorization: (...args: unknown[]) => signUxScanAuthorizationMock(...args),
+}));
 vi.mock('../lifecycle/transition.js', () => ({
   applyKernelTransition: (...args: unknown[]) => applyKernelTransitionMock(...args),
 }));
@@ -106,6 +110,7 @@ beforeEach(() => {
     pipelineRunId: '55555555-5555-4555-8555-555555555555',
     status: 'idle',
   });
+  signUxScanAuthorizationMock.mockResolvedValue('signed-authorization');
   dispatchChatTurnMock.mockResolvedValue({ id: SESSION_ID });
   applyKernelTransitionMock.mockResolvedValue([]);
   closeRunIfOneShotMock.mockResolvedValue(undefined);

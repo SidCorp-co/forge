@@ -66,8 +66,13 @@ const dbMock = {
 vi.mock('../db/client.js', () => ({ db: dbMock }));
 
 const recompileMock = vi.fn().mockResolvedValue(undefined);
+const withUxContractTransactionMock = vi.fn(
+  async (_projectId: string, operation: (tx: typeof dbMock) => unknown) => operation(dbMock),
+);
 vi.mock('./ux-contract-recompile.js', () => ({
   recompileAndPersistUxContract: (...args: unknown[]) => recompileMock(...args),
+  withUxContractTransaction: (...args: Parameters<typeof withUxContractTransactionMock>) =>
+    withUxContractTransactionMock(...args),
 }));
 
 const { applyUxScan } = await import('./ux-stack-apply.js');
@@ -141,11 +146,10 @@ describe('applyUxScan', () => {
     expect(recompileMock).toHaveBeenCalledOnce();
   });
 
-  it('first run takes a per-project advisory lock before checking for existing rows (ISS-576 review #4)', async () => {
+  it('first run keeps its reads and writes in one project transaction', async () => {
     await applyUxScan(PROJECT_ID, EMPTY_SNAPSHOT);
 
-    expect(executeMock).toHaveBeenCalledOnce();
-    expect(sqlTextOf(executeMock.mock.calls[0]?.[0])).toMatch(/pg_advisory_xact_lock/);
+    expect(withUxContractTransactionMock).toHaveBeenCalledWith(PROJECT_ID, expect.any(Function));
   });
 
   it('first run with a hand-authored contract and no rules at all: proposes instead of ' +

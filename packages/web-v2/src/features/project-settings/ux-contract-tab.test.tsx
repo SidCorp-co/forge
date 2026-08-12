@@ -47,11 +47,14 @@ function project(agentConfig: unknown = {}): ProjectDetail {
 
 function renderTab(ui: ReactElement) {
 	const qc = new QueryClient();
-	return render(
-		<QueryClientProvider client={qc}>
-			<ToastProvider>{ui}</ToastProvider>
-		</QueryClientProvider>,
-	);
+	return {
+		qc,
+		...render(
+			<QueryClientProvider client={qc}>
+				<ToastProvider>{ui}</ToastProvider>
+			</QueryClientProvider>,
+		),
+	};
 }
 
 const NO_FINDINGS = {
@@ -311,6 +314,63 @@ describe("UxContractTab", () => {
 		});
 		renderTab(<UxContractTab project={project()} canEdit />);
 		expect(screen.getByText(/Must use Skeleton\./)).toBeInTheDocument();
+	});
+
+	it("keeps polling after an equivalent project refetch and refreshes compiled prose", () => {
+		vi.useFakeTimers();
+		try {
+			mockDefaults();
+			const mutate = vi.fn(
+				(_input: unknown, opts?: { onSuccess?: () => void }) =>
+					opts?.onSuccess?.(),
+			);
+			useRescanUxStack.mockReturnValue({ mutate, isPending: false });
+			useUxContractRules.mockReturnValue({
+				isLoading: false,
+				isError: false,
+				data: [],
+				refetch: vi.fn(),
+			});
+			const detected = { libraryName: "web-v2 DS", tokenSource: "tokens.css" };
+			const rendered = renderTab(
+				<UxContractTab
+					project={project({ uxContractProfile: { designSystem: detected } })}
+					canEdit
+				/>,
+			);
+
+			const invalidateQueries = vi.spyOn(rendered.qc, "invalidateQueries");
+			act(() => {
+				screen.getByRole("button", { name: /re-scan/i }).click();
+			});
+			rendered.rerender(
+				<QueryClientProvider client={rendered.qc}>
+					<ToastProvider>
+						<UxContractTab
+							project={project({
+								uxContractProfile: {
+									designSystem: {
+										libraryName: "web-v2 DS",
+										tokenSource: "tokens.css",
+									},
+								},
+							})}
+							canEdit
+						/>
+					</ToastProvider>
+				</QueryClientProvider>,
+			);
+
+			act(() => {
+				vi.advanceTimersByTime(10_000);
+			});
+
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["project", "proj-1", "project-facts"],
+			});
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("surfaces a toast if the scan's 2-minute poll window elapses with no visible change (ISS-576 review #2)", () => {

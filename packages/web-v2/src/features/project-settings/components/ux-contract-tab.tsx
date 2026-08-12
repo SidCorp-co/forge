@@ -1,11 +1,5 @@
 "use client";
 
-// Project settings → "UX Contract" (ISS-577). The user-facing "choose, not
-// write" surface for the ISS-574/578 rules + preset REST: apply a preset,
-// confirm the auto-detected stack, tune rule severities, work the
-// proposed-changes inbox, and preview the compiled prose the pipeline reads.
-// No backend change here — pure consumption of already-live endpoints.
-
 import {
 	Badge,
 	Button,
@@ -53,9 +47,6 @@ const PRESET_OPTIONS = UX_PRESETS.map((p) => ({
 	label: UX_PRESET_LABELS[p],
 }));
 
-// ISS-576 — the scan runs on a runner (core has no repo checkout), so the
-// button dispatches an agent turn rather than scanning synchronously. This
-// bounded poll turns that async completion into the panel refresh once it lands.
 const SCAN_POLL_WINDOW_MS = 2 * 60_000;
 const SCAN_POLL_INTERVAL_MS = 10_000;
 
@@ -86,17 +77,13 @@ export function UxContractTab({
 	const profile = asAgentConfig(project.agentConfig).uxContractProfile;
 	const designSystem = profile?.designSystem;
 
-	const designSystemRef = useRef(designSystem);
+	const designSystemFingerprint = JSON.stringify(designSystem ?? null);
+	const designSystemRef = useRef(designSystemFingerprint);
 	useEffect(() => {
-		designSystemRef.current = designSystem;
-	}, [designSystem]);
-	const scanBaselineRef = useRef(designSystem);
+		designSystemRef.current = designSystemFingerprint;
+	}, [designSystemFingerprint]);
+	const scanBaselineRef = useRef(designSystemFingerprint);
 
-	// Bounded poll while a dispatched scan is in flight — the panel refreshes
-	// once the scan lands, and the poll stops the moment it does. If the window
-	// elapses with no visible change, that's ambiguous (still running, offline
-	// runner, or a scan that legitimately found no drift) — surface it instead
-	// of leaving the "Scan started" toast as the last word (ISS-576 review #2).
 	useEffect(() => {
 		if (scanDeadline === null) return;
 		const interval = setInterval(() => {
@@ -116,6 +103,9 @@ export function UxContractTab({
 			}
 			qc.invalidateQueries({
 				queryKey: ["project", projectId, "ux-contract-rules"],
+			});
+			qc.invalidateQueries({
+				queryKey: ["project", projectId, "project-facts"],
 			});
 			qc.invalidateQueries({ queryKey: ["project", projectId] });
 		}, SCAN_POLL_INTERVAL_MS);
@@ -172,7 +162,6 @@ export function UxContractTab({
 
 	return (
 		<div className="space-y-4">
-			{/* Preset selector — apply-preset REPLACES the whole rule set. */}
 			<Card>
 				<CardContent>
 					<h2 className="fg-h3 mb-1">Preset</h2>
@@ -204,7 +193,6 @@ export function UxContractTab({
 				</CardContent>
 			</Card>
 
-			{/* Auto-detected stack panel — Re-scan dispatches the repo scan (ISS-576). */}
 			<Card>
 				<CardContent>
 					<div className="flex items-center justify-between gap-3">
@@ -216,7 +204,7 @@ export function UxContractTab({
 								icon="rerun"
 								loading={rescan.isPending}
 								onClick={() => {
-									scanBaselineRef.current = designSystem;
+									scanBaselineRef.current = designSystemFingerprint;
 									rescan.mutate(undefined, {
 										onSuccess: () =>
 											setScanDeadline(Date.now() + SCAN_POLL_WINDOW_MS),
@@ -256,7 +244,6 @@ export function UxContractTab({
 				</CardContent>
 			</Card>
 
-			{/* Rules list, grouped §1–6. */}
 			<Card>
 				<CardContent>
 					<h2 className="fg-h3 mb-1">Rules</h2>
@@ -306,7 +293,6 @@ export function UxContractTab({
 				</CardContent>
 			</Card>
 
-			{/* Proposed-changes inbox. */}
 			<Card>
 				<CardContent>
 					<h2 className="fg-h3 mb-1">Proposed changes</h2>
@@ -373,7 +359,6 @@ export function UxContractTab({
 				</CardContent>
 			</Card>
 
-			{/* Compiled-prose preview. */}
 			<Card>
 				<CardContent>
 					<h2 className="fg-h3 mb-1">Compiled prose</h2>

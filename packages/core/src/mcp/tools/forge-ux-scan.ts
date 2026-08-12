@@ -1,4 +1,8 @@
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { db } from '../../db/client.js';
+import { agentSessions } from '../../db/schema.js';
+import { verifyUxScanAuthorization } from '../../projects/ux-scan-authorization.js';
 import { applyUxScan } from '../../projects/ux-stack-apply.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -6,11 +10,6 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
-
-// ISS-576 — the runner→core seam for the UX Contract auto-detect scan. Core
-// has no repo checkout (see `projects/ux-stack-scan.ts` header), so an agent
-// turn on a runner collects the snapshot (package.json deps + `git ls-files`)
-// and posts it here; core does the deterministic detection + persistence.
 
 const MAX_FILE_PATHS = 4000;
 const MAX_FILE_PATH_CHARS = 400;
@@ -34,6 +33,7 @@ const packageDirSchema = z
 
 const inputSchema = z
   .object({
+    authorization: z.string().min(1).max(4096).optional(),
     projectId: z.uuid().optional(),
     packageDir: packageDirSchema,
     dependencies: z
@@ -59,7 +59,36 @@ export const forgeUxScanTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { principal } = ctx;
 
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await assertPrincipalIsAdmin(principal, projectId);
+    if (input.authorization) {
+      if (principal.kind !== 'device') {
+        throw new Error('FORBIDDEN: delegated scan authorization requires its runner device');
+      }
+      const authorization = await verifyUxScanAuthorization(input.authorization);
+      if (authorization.projectId !== projectId) {
+        throw new Error('FORBIDDEN: scan authorization is scoped to another project');
+      }
+      const [session] = await db
+        .update(agentSessions)
+        .set({
+          metadata: sql`COALESCE(${agentSessions.metadata}, '{}'::jsonb) - 'authorizationId'`,
+        })
+        .where(
+          and(
+            eq(agentSessions.id, authorization.sessionId),
+            eq(agentSessions.projectId, projectId),
+            eq(agentSessions.userId, authorization.userId),
+            eq(agentSessions.deviceId, principal.device.id),
+            sql`${agentSessions.metadata} @> ${JSON.stringify({
+              source: 'ux-scan',
+              authorizationId: authorization.authorizationId,
+            })}::jsonb`,
+          ),
+        )
+        .returning({ id: agentSessions.id });
+      if (!session) throw new Error('FORBIDDEN: scan authorization is no longer valid');
+    } else {
+      await assertPrincipalIsAdmin(principal, projectId);
+    }
 
     const result = await applyUxScan(projectId, {
       packageDir: input.packageDir,
