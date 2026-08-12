@@ -63,7 +63,7 @@ export async function recompileAndPersistUxContract(projectId: string): Promise<
     const factsConfig =
       (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {};
     const alwaysInject = factsConfig['ux-contract']?.alwaysInject === true;
-    upsertKnowledgeEntry({
+    await upsertKnowledgeEntry({
       projectId,
       slug: 'ux-contract',
       title: 'ux-contract',

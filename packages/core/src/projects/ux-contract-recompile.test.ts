@@ -14,7 +14,9 @@ let selectCallIndex = 0;
 let rulesRows: Array<{ group: string; text: string; status: string; orderIndex: number }> = [];
 let projectRows: Array<{ agentConfig: unknown }> = [];
 const updateWhereMock = vi.fn().mockResolvedValue(undefined);
-const updateSetMock = vi.fn(() => ({ where: updateWhereMock }));
+const updateSetMock = vi.fn((_ac: { agentConfig: Record<string, unknown> }) => ({
+  where: updateWhereMock,
+}));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -50,8 +52,9 @@ describe('recompileAndPersistUxContract — knowledge_entries write-through pari
     await recompileAndPersistUxContract(PROJECT_ID);
 
     expect(upsertMock).not.toHaveBeenCalled();
-    const updatedAc = updateSetMock.mock.calls[0]?.[0] as { agentConfig: Record<string, unknown> };
-    const facts = updatedAc.agentConfig.projectFacts as Record<string, string>;
+    const updatedAc = updateSetMock.mock.calls[0]?.[0];
+    expect(updatedAc).toBeDefined();
+    const facts = updatedAc?.agentConfig.projectFacts as Record<string, string>;
     expect(facts['ux-contract']).toContain('UX Completeness Contract');
   });
 
