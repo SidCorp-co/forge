@@ -202,6 +202,34 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(rows[0]?.resolved_at).toBeNull();
   });
 
+  // cm:guard an acknowledged (read) active alert MUST still be resolved on the healthy pass — otherwise resolved_at stays NULL, the partial unique index keeps blocking, and a later recurrence is silently dropped (ISS-652 review blocker: resolveNotifications includeRead)
+  it('resolves an acknowledged alert on the healthy pass so a recurrence re-fires', async () => {
+    await seedAdmin();
+    const { jobId } = await seedOrphan();
+
+    await mods.runAlertSweep(nextNow());
+    const [created] = await opsAlertRows();
+    expect(created).toBeDefined();
+    await harness.db.execute(sql`UPDATE notifications SET read = true WHERE id = ${created?.id}`);
+
+    // cm:why the healthy pass must stamp resolved_at on the acknowledged (read) row, not skip it
+    await clearOrphan(jobId);
+    const cleared = await mods.runAlertSweep(nextNow());
+    expect(cleared.resolved).toBeGreaterThan(0);
+    const afterClear = await opsAlertRows();
+    expect(afterClear).toHaveLength(1);
+    expect(afterClear[0]?.resolved_at).not.toBeNull();
+
+    // cm:why recurrence must claim a fresh unread row, not be swallowed by the now-resolved prior row
+    await seedOrphan();
+    const recurred = await mods.runAlertSweep(nextNow());
+    expect(recurred.notified).toBeGreaterThan(0);
+    const active = (await opsAlertRows()).filter((r) => r.resolved_at === null);
+    expect(active).toHaveLength(1);
+    expect(active[0]?.id).not.toBe(created?.id);
+    expect(active[0]?.read).toBe(false);
+  });
+
   it('clears via resolveNotifications once the orphan is gone', async () => {
     await seedAdmin();
     const { jobId } = await seedOrphan();

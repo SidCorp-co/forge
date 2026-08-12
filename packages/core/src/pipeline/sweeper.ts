@@ -204,9 +204,9 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
     detectRetryRescueThresholds(now),
   );
-  // cm:why ISS-652 — placed before dispatcherBackstop so a slow A4/A5 query (usage_records/schedule_runs/integration_deliveries) cannot delay dispatch
-  const alerts = await runPass('alertSweep', () => runAlertSweep(now));
   const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
+  // cm:why ISS-652 — the alert sweep runs AFTER runDispatcherBackstop: passes are awaited sequentially, so a slow A4/A5 aggregation (usage_records/schedule_runs/agent_sessions/integration_deliveries) must never sit in front of the only per-minute queued-job re-evaluation
+  const alerts = await runPass('alertSweep', () => runAlertSweep(now));
   // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
 

@@ -114,7 +114,8 @@ export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepR
       const resolutionKey = opsAlertResolutionKey(alert.id);
 
       if (alert.status === 'ok') {
-        resolved += await resolveNotifications(resolutionKey);
+        // cm:why includeRead — an acknowledged (read) ops_alert keeps resolved_at NULL, so it stays active under the partial unique index and would block a later recurrence from re-firing; the healthy pass ends the episode
+        resolved += await resolveNotifications(resolutionKey, { includeRead: true });
         continue;
       }
 

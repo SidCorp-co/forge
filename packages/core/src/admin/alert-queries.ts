@@ -12,7 +12,11 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { RUNNER_CAP_PER_RUNNER } from '../jobs/dispatch-gates.js';
+import {
+  RUNNER_CAP_PER_RUNNER,
+  buildBarrierFragments,
+  resolveGateSettings,
+} from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { NOT_DISABLED_DEVICE, NOT_QUARANTINED } from '../runners/select.js';
 
@@ -214,63 +218,117 @@ async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
   };
 }
 
-type StarvedRow = {
-  project_id: string;
+type StarvedProject = {
+  projectId: string;
   slug: string;
-  oldest_queued_at: string;
-  queued_count: number;
+  queuedCount: number;
+  oldest: PgTimestamp | null;
 };
 
 /**
- * A3 — a project with jobs queued past the grace window but zero DISPATCHABLE
- * runners. "Usable" mirrors the actual dispatch gate (`fresh_capable_runners`
- * in jobs/dispatch-gates.ts + runners/select.ts), not just online+unquarantined:
+ * A3 — a project with jobs that WOULD dispatch except no runner can accept them.
+ *
+ * Starvation is defined as passing every dispatch barrier EXCEPT runner
+ * availability. A job held by project concurrency (project_cap), a `blocks`/
+ * `decomposes` dependency, issue-busy, or a retry cooldown is NOT starved — the
+ * dispatcher is correctly holding it and it dispatches on its own once the
+ * upstream gate clears. Counting those as "no usable runner" is a false positive
+ * (e.g. at the default cap of 1, a second issue's job queued behind an actively
+ * running one).
+ *
+ * To stay drift-free with the real dispatcher, this replays the SSOT gate
+ * fragments (`buildBarrierFragments`, the same builder the picker/asserter use)
+ * per candidate project, then flags only jobs left unplaceable by runner state:
  * a stale heartbeat, active rate limit, disabled device, full slot, or missing
- * per-job capability all make a runner unable to accept that queued job.
+ * per-job capability. The candidate pre-filter is a cheap cross-tenant scan, so
+ * on healthy data (no old queued jobs) the per-project replay never runs.
  */
 async function alertRunnerStarved(): Promise<AdminAlert> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
-  const rows = await db.execute<StarvedRow & { total: number }>(sql`
-    WITH runner_load AS (
-      SELECT j.runner_id, count(*)::int AS in_flight
+
+  const candidates = await db.execute<{ project_id: string; slug: string }>(sql`
+    SELECT DISTINCT j.project_id, p.slug
+    FROM jobs j
+    JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+    JOIN projects p ON p.id = j.project_id
+    WHERE j.status = 'queued'
+      AND j.type <> 'pm'
+      AND pr.status = 'running'
+      AND j.queued_at < now() - (${STARVED_GRACE_SECONDS}::int * interval '1 second')
+  `);
+
+  const starved: StarvedProject[] = [];
+  for (const c of candidates) {
+    const { cap, baseStampable } = await resolveGateSettings(c.project_id);
+    const { ctes, predicates } = buildBarrierFragments({
+      projectIdRef: sql`${c.project_id}`,
+      livenessSeconds,
+      baseStampable,
+    });
+    // cm:why mirrors pickNextDispatchableJobForProject's WHERE with runner availability INVERTED — a job passing every other gate yet with no fresh/capable/unloaded/un-rate-limited/unquarantined/enabled-device runner is genuine starvation (runner_load comes from the shared CTEs)
+    const rows = await db.execute<{
+      queued_count: number;
+      oldest_queued_at: PgTimestamp | null;
+    }>(sql`
+      WITH ${ctes}
+      SELECT count(*)::int AS queued_count, min(j.queued_at) AS oldest_queued_at
       FROM jobs j
-      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      WHERE j.runner_id IS NOT NULL
-        AND j.status IN ('dispatched', 'running')
-        AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
-      GROUP BY j.runner_id
-    ),
-    starved_jobs AS (
-      SELECT j.id, j.project_id, j.queued_at
-      FROM jobs j
-      JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      WHERE j.status = 'queued'
-        AND pr.status = 'running'
+      LEFT JOIN issues i ON i.id = j.issue_id
+      JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+      WHERE j.project_id = ${c.project_id}
+        AND j.status = 'queued'
+        AND j.type <> 'pm'
+        AND r.status = 'running'
         AND j.queued_at < now() - (${STARVED_GRACE_SECONDS}::int * interval '1 second')
+        AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
+        AND NOT (${predicates.issueBusySession})
+        AND NOT (${predicates.issueBusyJob})
+        AND NOT (${predicates.blockedBy})
+        AND NOT (${predicates.decomposeChildrenPending})
+        AND (
+          j.issue_id::text IN (SELECT issue_id FROM running_ids)
+          OR (SELECT COUNT(*) FROM running_ids) < ${cap}
+        )
         AND NOT EXISTS (
-          SELECT 1 FROM runners r
-          LEFT JOIN runner_load rl ON rl.runner_id = r.id
-          WHERE r.project_id = j.project_id
-            AND r.status = 'online'
-            AND r.last_seen_at IS NOT NULL
-            AND r.last_seen_at > now() - (${livenessSeconds}::int * interval '1 second')
-            AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
-            AND r.capabilities @> coalesce(j.payload -> 'requiredCapabilities', '{}'::jsonb)
+          SELECT 1 FROM runners rr
+          LEFT JOIN runner_load rl ON rl.runner_id = rr.id
+          WHERE rr.project_id = j.project_id
+            AND rr.status = 'online'
+            AND rr.last_seen_at IS NOT NULL
+            AND rr.last_seen_at > now() - (${livenessSeconds}::int * interval '1 second')
+            AND (rr.rate_limited_until IS NULL OR rr.rate_limited_until <= now())
+            AND rr.capabilities @> coalesce(j.payload -> 'requiredCapabilities', '{}'::jsonb)
             AND coalesce(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
             ${NOT_QUARANTINED}
             ${NOT_DISABLED_DEVICE}
         )
-    )
-    SELECT p.id AS project_id, p.slug, min(sj.queued_at) AS oldest_queued_at,
-           count(sj.id)::int AS queued_count,
-           count(*) OVER ()::int AS total
-    FROM projects p
-    JOIN starved_jobs sj ON sj.project_id = p.id
-    GROUP BY p.id, p.slug
-    ORDER BY min(sj.queued_at) ASC
-    LIMIT ${ENTITY_LIMIT}
-  `);
-  const count = rows[0]?.total ?? 0;
+    `);
+    const row = rows[0];
+    if (row && row.queued_count > 0) {
+      starved.push({
+        projectId: c.project_id,
+        slug: c.slug,
+        queuedCount: row.queued_count,
+        oldest: row.oldest_queued_at,
+      });
+    }
+  }
+
+  starved.sort((a, b) => {
+    const am = a.oldest
+      ? a.oldest instanceof Date
+        ? a.oldest.getTime()
+        : Date.parse(a.oldest)
+      : 0;
+    const bm = b.oldest
+      ? b.oldest instanceof Date
+        ? b.oldest.getTime()
+        : Date.parse(b.oldest)
+      : 0;
+    return am - bm;
+  });
+
+  const count = starved.length;
   return {
     id: 'A3',
     key: 'runner_starved',
@@ -280,11 +338,11 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
       count > 0
         ? `${count} project${count === 1 ? '' : 's'} queued with no usable runner`
         : 'No starved projects',
-    since: rows[0]?.oldest_queued_at ?? null,
-    entities: rows.map((r) => ({
-      ref: r.project_id,
+    since: oldestIso(starved.map((s) => s.oldest)),
+    entities: starved.slice(0, ENTITY_LIMIT).map((s) => ({
+      ref: s.projectId,
       kind: 'project',
-      label: `${r.slug} · ${r.queued_count} queued`,
+      label: `${s.slug} · ${s.queuedCount} queued`,
     })),
   };
 }

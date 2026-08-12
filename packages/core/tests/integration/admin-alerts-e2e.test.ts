@@ -82,6 +82,21 @@ describe('admin alert routes (ISS-652)', () => {
     return id;
   }
 
+  async function insertIssue(args: {
+    projectId: string;
+    createdById: string;
+    seq: number;
+    status?: string;
+  }): Promise<string> {
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq)
+      VALUES (${id}, ${args.projectId}, 'alert fixture', ${args.status ?? 'approved'},
+              ${args.createdById}, ${args.seq})
+    `);
+    return id;
+  }
+
   async function insertJob(args: {
     projectId: string;
     runId: string;
@@ -89,6 +104,7 @@ describe('admin alert routes (ISS-652)', () => {
     type?: string;
     payload?: Record<string, unknown>;
     runnerId?: string | null;
+    issueId?: string | null;
     dispatchedAgoMinutes?: number;
     queuedAgoMinutes?: number;
   }): Promise<string> {
@@ -102,9 +118,9 @@ describe('admin alert routes (ISS-652)', () => {
         ? new Date().toISOString()
         : new Date(Date.now() - args.queuedAgoMinutes * 60_000).toISOString();
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, runner_id, created_by, queued_at, dispatched_at)
+      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, pipeline_run_id, runner_id, created_by, queued_at, dispatched_at)
       VALUES (
-        ${id}, ${args.projectId}, ${args.type ?? 'code'}, ${args.status},
+        ${id}, ${args.projectId}, ${args.issueId ?? null}, ${args.type ?? 'code'}, ${args.status},
         ${JSON.stringify(args.payload ?? {})}::jsonb, ${args.runId}, ${args.runnerId ?? null},
         (SELECT created_by FROM projects WHERE id = ${args.projectId}), ${queuedAt}, ${dispatchedAt}
       )
@@ -410,17 +426,23 @@ describe('admin alert routes (ISS-652)', () => {
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
     });
 
-    it('A3 fires when the only capable runner is at capacity', async () => {
+    it('A3 fires when a job past project_cap still has no free runner slot', async () => {
+      // cm:why cap=2 so the queued job's issue PASSES project_cap, yet the sole runner is full — genuine capacity starvation the dispatcher cannot place until more runner capacity exists
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
+      await harness.db.execute(sql`
+        UPDATE projects
+        SET agent_config = '{"pipelineConfig":{"maxConcurrentIssues":2}}'::jsonb
+        WHERE id = ${project.id}
+      `);
       const run = await insertRun(project.id, 'running');
-      const runnerId = await insertRunner({
-        projectId: project.id,
-        status: 'online',
-      });
+      const runnerId = await insertRunner({ projectId: project.id, status: 'online' });
+      const issueA = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 1 });
+      const issueB = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 2 });
       await insertJob({
         projectId: project.id,
         runId: run,
+        issueId: issueA,
         status: 'running',
         runnerId,
         dispatchedAgoMinutes: 1,
@@ -428,6 +450,7 @@ describe('admin alert routes (ISS-652)', () => {
       await insertJob({
         projectId: project.id,
         runId: run,
+        issueId: issueB,
         status: 'queued',
         queuedAgoMinutes: 10,
       });
@@ -448,6 +471,39 @@ describe('admin alert routes (ISS-652)', () => {
         status: string;
       }>;
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
+    });
+
+    // cm:guard A3 must NOT fire for a job the dispatcher correctly holds at an upstream barrier — project_cap is evaluated BEFORE runner capacity, so a second issue queued behind a running one under the default cap of 1 is not runner starvation (it dispatches when the first completes)
+    it('A3 stays ok when a second issue is held by project_cap, not the runner (cap=1)', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const run = await insertRun(project.id, 'running');
+      // cm:why one runner, busy with issue A (pool has NO free slot) — the discriminating case: were project_cap dropped, the full runner would make A3 fire, so a passing test proves project_cap is respected
+      const busyRunner = await insertRunner({ projectId: project.id, status: 'online' });
+      const issueA = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 1 });
+      const issueB = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 2 });
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        issueId: issueA,
+        status: 'running',
+        runnerId: busyRunner,
+        dispatchedAgoMinutes: 1,
+      });
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        issueId: issueB,
+        status: 'queued',
+        queuedAgoMinutes: 10,
+      });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string }>;
+      expect(body.find((a) => a.id === 'A3')?.status).toBe('ok');
     });
 
     it('A3 fires when no runner satisfies the queued job capabilities', async () => {

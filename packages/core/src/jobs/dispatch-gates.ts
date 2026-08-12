@@ -341,7 +341,7 @@ export async function claimRunnerSlot(args: {
 
 type JobRow = typeof jobs.$inferSelect;
 
-interface BarrierFragments {
+export interface BarrierFragments {
   /** Shared CTE chunk: `running_ids`, `runner_load`, `fresh_capable_runners`.
    *  Caller prefixes with `WITH ${ctes}` (and may comma-append more CTEs). */
   ctes: SQL;
@@ -388,7 +388,8 @@ interface BarrierFragments {
  * without extending the other will flip a recorded scenario from
  * `ok:false` ⇔ "picker would not pick".
  */
-function buildBarrierFragments(args: {
+// cm:edge contract -> packages/core/src/admin/alert-queries.ts — A3 (alertRunnerStarved) replays these fragments per project so a job held by project_cap / a dependency / issue-busy / retry-cooldown is NOT miscounted as runner starvation; keep the two in lockstep
+export function buildBarrierFragments(args: {
   projectIdRef: SQL;
   livenessSeconds: number;
   baseStampable: boolean;

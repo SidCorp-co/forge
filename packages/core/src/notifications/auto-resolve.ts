@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -13,20 +13,35 @@ import { hooks } from '../pipeline/hooks.js';
  * tracks (e.g. `issue:<issueId>:status`), so clearing by key alone scopes to the
  * right rows across all affected users without a per-user filter.
  *
- * Idempotent: only unread rows match, so a repeat call after the condition has
- * already cleared updates nothing and emits nothing. Best-effort by contract —
- * failures are logged, never thrown, so the originating transition still
- * succeeds.
+ * Idempotent: by default only unread rows match, so a repeat call after the
+ * condition has already cleared updates nothing and emits nothing. Best-effort
+ * by contract — failures are logged, never thrown, so the originating
+ * transition still succeeds.
+ *
+ * `opts.includeRead` (ISS-652): also stamp `resolvedAt` on already-READ rows
+ * still active (`resolved_at IS NULL`). Ops-alert dedup uses a partial unique
+ * index scoped to `resolved_at IS NULL`, so an acknowledged (read) alert that
+ * kept `resolved_at NULL` would block a later same-severity recurrence from
+ * inserting — the incident would clear from the bell but never re-fire. Clearing
+ * read rows on the healthy pass ends the episode so a recurrence can claim a
+ * fresh row. Acknowledgement still suppresses re-notification WHILE the condition
+ * is active (this path runs only when the alert has returned to `ok`).
  *
  * @returns the number of rows cleared.
  */
-export async function resolveNotifications(resolutionKey: string): Promise<number> {
+export async function resolveNotifications(
+  resolutionKey: string,
+  opts: { includeRead?: boolean } = {},
+): Promise<number> {
   if (!resolutionKey) return 0;
   try {
+    const activeFilter = opts.includeRead
+      ? isNull(notifications.resolvedAt)
+      : eq(notifications.read, false);
     const cleared = await db
       .update(notifications)
       .set({ read: true, resolvedAt: new Date() })
-      .where(and(eq(notifications.resolutionKey, resolutionKey), eq(notifications.read, false)))
+      .where(and(eq(notifications.resolutionKey, resolutionKey), activeFilter))
       .returning({ id: notifications.id, userId: notifications.userId });
 
     for (const row of cleared) {
