@@ -6,6 +6,7 @@
  */
 
 import { db } from '../db/client.js';
+import type { BounceStatus } from './bounce-replay-guard.js';
 import { comments } from '../db/schema.js';
 import { logger } from '../logger.js';
 
@@ -31,6 +32,19 @@ export function buildNeedsInfoFixCommentBody(): string {
     '',
     'Routed back to `needs_info` instead of dispatching `fix`. Add a comment answering the',
     'open question, then set the issue back to `reopen` to dispatch the fix.',
+  ].join('\n');
+}
+
+export function buildBounceReplayCommentBody(args: { bounced: BounceStatus }): string {
+  return [
+    `🛑 **Routed back to \`${args.bounced}\` — the earlier bounce is still unanswered**`,
+    '',
+    'This stage was already exited via a bounce, and nothing new has arrived since, so',
+    're-dispatching it would repeat the same refusal.',
+    '',
+    args.bounced === 'needs_info'
+      ? 'A field edit does not release the bounce — **answer in a comment**, then move the status forward.'
+      : 'Add the decision as a comment, then move the status forward.',
   ].join('\n');
 }
 
@@ -70,4 +84,16 @@ export async function postNeedsInfoReopenComment(args: {
   authorId: string | null;
 }): Promise<void> {
   await postGuardComment(args.issueId, args.authorId, buildNeedsInfoFixCommentBody());
+}
+
+export async function postBounceReplayComment(args: {
+  issueId: string;
+  authorId: string | null;
+  bounced: BounceStatus;
+}): Promise<void> {
+  await postGuardComment(
+    args.issueId,
+    args.authorId,
+    buildBounceReplayCommentBody({ bounced: args.bounced }),
+  );
 }

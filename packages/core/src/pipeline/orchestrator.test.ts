@@ -169,11 +169,14 @@ vi.mock('./decomposition.js', () => ({
 
 const postMissingPlanCommentMock = vi.fn(async () => undefined);
 const postNeedsInfoReopenCommentMock = vi.fn(async () => undefined);
+const postBounceReplayCommentMock = vi.fn(async () => undefined);
 vi.mock('./plan-gate-guard.js', () => ({
   buildMissingPlanCommentBody: () => 'body',
   buildNeedsInfoFixCommentBody: () => 'body',
   postMissingPlanComment: (...a: unknown[]) => postMissingPlanCommentMock(...(a as [])),
   postNeedsInfoReopenComment: (...a: unknown[]) => postNeedsInfoReopenCommentMock(...(a as [])),
+  buildBounceReplayCommentBody: () => 'body',
+  postBounceReplayComment: (...a: unknown[]) => postBounceReplayCommentMock(...(a as [])),
 }));
 
 // ISS-108 — orchestrator resolves skillName from the DB via
@@ -383,6 +386,7 @@ beforeEach(() => {
   isPlanStageLiveMock.mockResolvedValue(true);
   postMissingPlanCommentMock.mockReset();
   postNeedsInfoReopenCommentMock.mockReset();
+  postBounceReplayCommentMock.mockReset();
   findDecompositionParentMock.mockReset();
   findDecompositionParentMock.mockResolvedValue(null);
 });

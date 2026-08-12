@@ -283,8 +283,9 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: 'non_retryable_terminal' };
   }
 
-  // cm:why an empty health-gated set alongside a non-empty unfiltered set means the fleet is up but every box is rate-limited — park instead of blindly rotating
+  // cm:why an empty health-gated set alongside a non-empty unfiltered set means the fleet is up but every box is rate-limited — distinguishable from all-offline, and it decides which reason a give-up reports
   const isFailoverAction = effectiveAction === 'failover' || effectiveAction === 'quarantine';
+  let allRunnersLimited = false;
   if (isFailoverAction) {
     const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
       ?.requiredCapabilities;
@@ -292,12 +293,16 @@ export async function scheduleAutoRetryWithVerify(
       onlineCapableDeviceIds(job.projectId, required),
       onlineCapableDeviceIds(job.projectId, required, { includeLimited: true }),
     ]);
-    if (healthyDevices.length === 0 && allDevices.length > 0) {
+    // cm:why owner call 2026-08-12: an all-limited fleet DEFERS to the rotation instead of parking —
+    //   a seconds-long provider throttle self-heals where parking made it a human intervention
+    // cm:guard the reason is only reported once the ROUND BUDGET runs out, never on entry — parking on
+    //   entry is what this call reversed, and it is what turns a 2-minute throttle into an intervention
+    allRunnersLimited = healthyDevices.length === 0 && allDevices.length > 0;
+    if (allRunnersLimited) {
       logger.info(
         { jobId: job.id, failureAction: effectiveAction, reason },
-        'retry: every online device is rate-limited, parking',
+        'retry: every online device is rate-limited, deferring to the rotation',
       );
-      return { scheduled: false, reason: 'all_devices_exhausted' };
     }
   }
 
@@ -315,10 +320,15 @@ export async function scheduleAutoRetryWithVerify(
   }
   if (next === null) {
     logger.info(
-      { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, reason },
+      { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, allRunnersLimited, reason },
       'retry: round budget exhausted',
     );
-    return { scheduled: false, reason: 'retry_rounds_exhausted' };
+    // cm:why a fleet that was limited the whole way gets the business-language wedge that names the
+    //   cap (finalize-failure's all_devices_exhausted copy), not the generic rounds-exhausted one
+    return {
+      scheduled: false,
+      reason: allRunnersLimited ? 'all_devices_exhausted' : 'retry_rounds_exhausted',
+    };
   }
 
   const immediateFailover =

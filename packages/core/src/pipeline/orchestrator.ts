@@ -39,7 +39,11 @@ import {
   type StageName,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
-import { postMissingPlanComment, postNeedsInfoReopenComment } from './plan-gate-guard.js';
+import {
+  postBounceReplayComment,
+  postMissingPlanComment,
+  postNeedsInfoReopenComment,
+} from './plan-gate-guard.js';
 import { PIPELINE_STEPS } from './registry.js';
 import { openIssueRun } from './runs.js';
 import {
@@ -666,6 +670,15 @@ async function considerEnqueue(args: {
   const unanswered = await findUnansweredBounce(args.issueId, args.status);
   if (unanswered) {
     const device = resolveSkipDevice(args.actor, projectCreatedBy);
+    // cm:edge ordering -> packages/core/src/pipeline/plan-gate-guard.ts — post BEFORE the transition, same
+    //   reason as the two guards above: a null device or a throwing route must not silence the refusal
+    // cm:why owner call 2026-08-12: this route-back was log-only, so from the UI the issue silently
+    //   flipped back and repeating the move repeated the bounce with no explanation anywhere (ex-§2b)
+    await postBounceReplayComment({
+      issueId: args.issueId,
+      authorId: projectCreatedBy,
+      bounced: unanswered.bounced,
+    });
     if (device) {
       try {
         await applyStatusTransition(liveIssue, unanswered.bounced, device, { skip: true });

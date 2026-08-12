@@ -11,8 +11,10 @@ vi.mock('../logger.js', () => ({
 }));
 
 const {
+  buildBounceReplayCommentBody,
   buildMissingPlanCommentBody,
   buildNeedsInfoFixCommentBody,
+  postBounceReplayComment,
   postMissingPlanComment,
   postNeedsInfoReopenComment,
 } = await import('./plan-gate-guard.js');
@@ -66,5 +68,32 @@ describe('postMissingPlanComment / postNeedsInfoReopenComment', () => {
     await expect(
       postMissingPlanComment({ issueId: 'iss-1', authorId: 'owner-1', routedTo: 'needs_info' }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('buildBounceReplayCommentBody', () => {
+  it('tells a needs_info bounce to answer in a COMMENT — a field edit does not release it', () => {
+    const body = buildBounceReplayCommentBody({ bounced: 'needs_info' });
+    expect(body).toContain('`needs_info`');
+    expect(body).toContain('answer in a comment');
+    expect(body).toContain('field edit does not release');
+  });
+
+  it('asks for the decision as a comment on a park', () => {
+    const body = buildBounceReplayCommentBody({ bounced: 'waiting' });
+    expect(body).toContain('`waiting`');
+    expect(body).toContain('comment');
+  });
+});
+
+describe('postBounceReplayComment', () => {
+  // cm:why isAi:true is what stops this refusal reading as the human answer the guard waits for
+  it('writes an isAi comment, and no-ops without a resolvable author', async () => {
+    await postBounceReplayComment({ issueId: 'i1', authorId: 'u1', bounced: 'needs_info' });
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'i1', isAi: true }));
+
+    insertValues.mockClear();
+    await postBounceReplayComment({ issueId: 'i1', authorId: null, bounced: 'needs_info' });
+    expect(insertValues).not.toHaveBeenCalled();
   });
 });

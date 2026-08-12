@@ -461,7 +461,31 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
   });
 
   describe('ISS-823 — all-devices-exhausted vs all-offline (failover)', () => {
-    it('parks as all_devices_exhausted when every online device is rate-limited', async () => {
+    it('DEFERS to the rotation (does not park on entry) when every online device is rate-limited', async () => {
+      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
+        const opts = _args[2] as { includeLimited?: boolean } | undefined;
+        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
+      });
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      const result = await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          error: "You've hit your org's monthly spend limit",
+        } as never,
+        'spend-limit',
+      );
+      // cm:why the clone must be UNPINNED — dispatch excludes limited runners, so target:null is what
+      //   lets it land on whichever box frees first instead of waiting on the one that just failed
+      expect(result.scheduled).toBe(true);
+      const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(
+        ((inserted.payload as Record<string, unknown>)._autoRetry as { target: string | null }).target,
+      ).toBeNull();
+      expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
+    });
+
+    it('reports all_devices_exhausted (not the generic reason) once the budget runs out while limited', async () => {
       onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
         const opts = _args[2] as { includeLimited?: boolean } | undefined;
         return opts?.includeLimited ? ['device-A', 'device-B'] : [];
@@ -471,6 +495,14 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
           ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
+          payload: {
+            _autoRetry: {
+              round: RETRY_MAX_ROUNDS,
+              target: 'device-A',
+              tries: 3,
+              done: ['device-A', 'device-B'],
+            },
+          },
         } as never,
         'spend-limit',
       );
