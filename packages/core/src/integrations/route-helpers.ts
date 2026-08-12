@@ -15,11 +15,11 @@ import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
 import {
   type BindingWithConnection,
-  type IntegrationConnectionRow,
   buildContextFromBinding,
   effectiveConfig,
   findActiveBinding,
   findBindingWithConnectionById,
+  type IntegrationConnectionRow,
 } from './store.js';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';

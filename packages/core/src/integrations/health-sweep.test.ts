@@ -24,11 +24,7 @@ vi.mock('./store.js', async (importOriginal) => {
 
 const { runIntegrationsHealthSweep } = await import('./health-sweep.js');
 
-function pair(over: {
-  connectionId: string;
-  provider?: string;
-  lastHealthAt?: Date | null;
-}) {
+function pair(over: { connectionId: string; provider?: string; lastHealthAt?: Date | null }) {
   return {
     binding: {
       id: `bind-${over.connectionId}`,

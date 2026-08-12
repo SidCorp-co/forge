@@ -1,7 +1,7 @@
 import type {
   CoolifyApplicationLogsResponse,
-  CoolifyDeployResponse,
   CoolifyDeploymentResponse,
+  CoolifyDeployResponse,
   CoolifyResourceResponse,
 } from './types.js';
 

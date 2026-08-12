@@ -1,9 +1,4 @@
-import type {
-  UxPreset,
-  UxRuleGroup,
-  UxStackProfile,
-  UxToggleSettings,
-} from '@forge/contracts';
+import type { UxPreset, UxRuleGroup, UxStackProfile, UxToggleSettings } from '@forge/contracts';
 import type { UxContractRuleInput, UxContractScaffold } from './ux-contract-compiler.js';
 
 // ISS-578 — the "choose, not write" authoring layer. A PRESET + a project's
@@ -11,7 +6,12 @@ import type { UxContractRuleInput, UxContractScaffold } from './ux-contract-comp
 // ISS-574 compiler turns into the prose the pipeline reads. Users pick from
 // these instead of authoring a contract from a blank box.
 
-export const UX_PRESETS = ['app-strict', 'marketing', 'internal-tool', 'custom'] as const satisfies readonly UxPreset[];
+export const UX_PRESETS = [
+  'app-strict',
+  'marketing',
+  'internal-tool',
+  'custom',
+] as const satisfies readonly UxPreset[];
 
 export type { UxPreset, UxRuleGroup, UxStackProfile, UxToggleSettings } from '@forge/contracts';
 

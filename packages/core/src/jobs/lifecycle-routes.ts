@@ -20,7 +20,7 @@ import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { JobCancelError, cancelJob } from './cancel-job.js';
+import { cancelJob, JobCancelError } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';

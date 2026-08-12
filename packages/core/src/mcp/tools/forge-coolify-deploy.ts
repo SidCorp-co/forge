@@ -40,10 +40,10 @@ import {
 } from '../../pipeline/release-coolify.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';

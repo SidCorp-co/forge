@@ -5,7 +5,7 @@
 // message (used for idempotency write-back at session completion).
 
 import type { ScheduleMode } from '../../db/schema.js';
-import { type ImprovementMessage, getImprovementMessage } from './registry.js';
+import { getImprovementMessage, type ImprovementMessage } from './registry.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -35,8 +35,8 @@ vi.mock('../../lib/authz.js', () => ({
 
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import {
-  type McpContext,
   assertPrincipalIsMember,
+  type McpContext,
   patEffectiveProjectIds,
   resolveEffectiveProjectId,
 } from './lib.js';

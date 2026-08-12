@@ -20,7 +20,7 @@
  * run an operator had re-paused for an unrelated cause.
  */
 
-import { type SQL, and, eq, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { projectRoom } from '../ws/rooms.js';

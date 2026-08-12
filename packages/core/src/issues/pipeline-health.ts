@@ -24,12 +24,12 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  type IssueStatus,
-  type PipelineRunStatus,
   agentSessions,
+  type IssueStatus,
   issueDependencies,
   issues,
   jobs,
+  type PipelineRunStatus,
   pipelineRuns,
   runners,
 } from '../db/schema.js';

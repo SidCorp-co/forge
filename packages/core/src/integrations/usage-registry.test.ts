@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FORGE_GUIDES } from '../guides/registry.js';
-import { INTEGRATION_USAGE, getIntegrationGuide, getIntegrationUsage } from './usage-registry.js';
+import { getIntegrationGuide, getIntegrationUsage, INTEGRATION_USAGE } from './usage-registry.js';
 
 describe('usage-registry', () => {
   it('getIntegrationUsage falls back for an unconnected/unknown provider', () => {

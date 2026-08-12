@@ -5,6 +5,7 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const { createLiteLLMProvider } = await import('./litellm.js');
+
 import type { ChatStreamEvent } from './types.js';
 
 function sseBody(events: string[]): ReadableStream<Uint8Array> {

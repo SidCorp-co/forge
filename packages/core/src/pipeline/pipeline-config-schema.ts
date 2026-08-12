@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { issueComplexities } from '../db/schema.js';
 import {
   INTEGRATION_SERVER_NAMES,
-  MCP_CATALOG_NAMES,
   isKnownMcpServerName,
+  MCP_CATALOG_NAMES,
 } from './mcp-catalog.js';
 import { PIPELINE_STEPS, type StepToggleKey } from './registry.js';
 

@@ -24,9 +24,9 @@ import {
   loadReleaseBatchContext,
 } from '../../release-batch/service.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
   zodToMcpSchema,
 } from './lib.js';
 

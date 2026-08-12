@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  ddpUrl,
+  parseStreamMessage,
   RocketChatDdpClient,
   type RocketChatIncomingMessage,
   type WsLike,
-  ddpUrl,
-  parseStreamMessage,
 } from './ddp-client.js';
 
 describe('ddpUrl', () => {

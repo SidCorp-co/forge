@@ -6,7 +6,7 @@ import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
 import { listActiveBindingsForProjectProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { setCurrentStepForce } from './runs.js';
 
 /**

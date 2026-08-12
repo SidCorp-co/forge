@@ -5,7 +5,7 @@ import {
   formatConversationLines,
 } from './context.js';
 import { parseStreamMessage } from './ddp-client.js';
-import { type RocketChatRestMessage, extractMessageText } from './rest-client.js';
+import { extractMessageText, type RocketChatRestMessage } from './rest-client.js';
 
 const msg = (over: Partial<RocketChatRestMessage>): RocketChatRestMessage => ({
   id: 'm1',

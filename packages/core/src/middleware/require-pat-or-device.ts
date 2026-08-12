@@ -18,8 +18,8 @@
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
-import { isPatLike } from '../auth/pat-format.js';
 import { forceRevokePat, touchPatUsage, verifyPat } from '../auth/pat.js';
+import { isPatLike } from '../auth/pat-format.js';
 import { RULES } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';

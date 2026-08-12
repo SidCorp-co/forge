@@ -14,18 +14,18 @@ import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
 import {
-  type ProjectProgress,
   buildProgressFactsBlock,
   computeProjectProgress,
+  type ProjectProgress,
 } from '../issues/progress.js';
 import { logger } from '../logger.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
 import { runTurnEvents } from './run-turn-core.js';
 import {
-  type ChatSessionSource,
   appendAssistantMessage,
   appendUserMessage,
+  type ChatSessionSource,
   loadOrCreateSession,
   persistMessages,
   toProviderMessages,

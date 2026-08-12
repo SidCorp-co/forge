@@ -90,7 +90,9 @@ describe('postBounceReplayComment', () => {
   // cm:why isAi:true is what stops this refusal reading as the human answer the guard waits for
   it('writes an isAi comment, and no-ops without a resolvable author', async () => {
     await postBounceReplayComment({ issueId: 'i1', authorId: 'u1', bounced: 'needs_info' });
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'i1', isAi: true }));
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ issueId: 'i1', isAi: true }),
+    );
 
     insertValues.mockClear();
     await postBounceReplayComment({ issueId: 'i1', authorId: null, bounced: 'needs_info' });

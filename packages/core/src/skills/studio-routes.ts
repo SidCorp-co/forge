@@ -9,7 +9,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { globalEffectiveMd } from './effective.js';
 import { MetaSkillReservedError } from './meta-skills.js';
-import { SkillAlreadyShadowedError, applyGlobalSkillDefault } from './service.js';
+import { applyGlobalSkillDefault, SkillAlreadyShadowedError } from './service.js';
 
 /**
  * Skill Studio listing + apply-default (ISS-388). Global skills are immutable

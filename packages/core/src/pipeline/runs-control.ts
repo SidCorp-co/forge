@@ -25,13 +25,13 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
-import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
+import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { pauseRun, resumeRun } from './run-pause.js';
-import { type JobRow, cascadeCancelChildJobs, requestKillsForCascade } from './runs-cascade.js';
+import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './runs-cascade.js';
 
 /**
  * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is

@@ -19,7 +19,7 @@
 
 import { and, desc, eq, gt, isNull, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, activityLog, comments, pipelineRuns } from '../db/schema.js';
+import { activityLog, comments, type IssueStatus, pipelineRuns } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { isCapacityParkReason } from './park-reasons.js';

@@ -21,7 +21,7 @@ import { notFound, toIso } from './route-helpers.js';
 import { resolveSentryTargets } from './sentry/targets.js';
 import type { SentryConfig } from './sentry/types.js';
 import { effectiveConfig, listBindingsForProject } from './store.js';
-import { type IntegrationProvider, capabilitiesFor } from './types.js';
+import { capabilitiesFor, type IntegrationProvider } from './types.js';
 
 const pExecFile = promisify(execFile);
 

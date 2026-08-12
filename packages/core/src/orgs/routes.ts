@@ -7,10 +7,10 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
   memberLenses,
-  orgInvitations,
-  orgMemberRoles,
   organizationMembers,
   organizations,
+  orgInvitations,
+  orgMemberRoles,
   projects,
   users,
 } from '../db/schema.js';

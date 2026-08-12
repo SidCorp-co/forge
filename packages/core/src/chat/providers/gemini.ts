@@ -23,7 +23,9 @@ export interface GeminiConfig {
 
 export interface GeminiSdk {
   /** Constructor for `GoogleGenAI`-shaped client. */
-  GoogleGenAI: new (init: { apiKey: string }) => GeminiClient;
+  GoogleGenAI: new (init: {
+    apiKey: string;
+  }) => GeminiClient;
 }
 
 export interface GeminiClient {

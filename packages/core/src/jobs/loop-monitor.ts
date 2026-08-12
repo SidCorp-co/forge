@@ -16,19 +16,18 @@
  * docs/architecture/job-loop-monitor.md
  */
 
-import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
-import { or } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { type WedgeHop, emitPipelineWedge } from '../pipeline/wedge.js';
+import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import {
-  type KillableJobRef,
   isKillEpisodeLive,
+  type KillableJobRef,
   killGraceMs,
   requestJobKill,
   resolveKillConfirmation,

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type JobType, comments, issues, knowledgeEdges, memories } from '../db/schema.js';
+import { comments, issues, type JobType, knowledgeEdges, memories } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { indexMemory } from './indexer.js';

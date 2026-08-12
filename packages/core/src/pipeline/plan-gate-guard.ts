@@ -6,9 +6,9 @@
  */
 
 import { db } from '../db/client.js';
-import type { BounceStatus } from './bounce-replay-guard.js';
 import { comments } from '../db/schema.js';
 import { logger } from '../logger.js';
+import type { BounceStatus } from './bounce-replay-guard.js';
 
 export function buildMissingPlanCommentBody(args: {
   routedTo: 'clarified' | 'needs_info';

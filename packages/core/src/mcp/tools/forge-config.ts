@@ -21,17 +21,17 @@ import {
   readPluginDesignations,
 } from '../../plugins/designation.js';
 import {
-  RESERVED_PROJECT_FACT_KEYS,
   mergeProjectFacts,
   mergeProjectFactsConfig,
   projectFactsConfigPatchSchema,
   projectFactsPatchSchema,
+  RESERVED_PROJECT_FACT_KEYS,
 } from '../../projects/project-facts.js';
 import { mergeStateContext, stateContextSchema } from '../../projects/state-context.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
+  type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';

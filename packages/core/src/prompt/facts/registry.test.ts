@@ -8,9 +8,9 @@ import { describe, expect, it } from 'vitest';
 import { PARK_EXIT_RULE } from '../../pipeline/park-states.js';
 import {
   FORGE_FACTS,
-  OPERATING_AFFORDANCES_TEXT,
   getFact,
   listFacts,
+  OPERATING_AFFORDANCES_TEXT,
   renderFact,
 } from './registry.js';
 

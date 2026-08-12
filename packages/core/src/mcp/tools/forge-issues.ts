@@ -2,8 +2,8 @@ import { and, asc, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql } from
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
-  type IssueStatus,
   comments,
+  type IssueStatus,
   issueComplexities,
   issueLabels,
   issuePriorities,
@@ -14,8 +14,8 @@ import {
   tasks,
 } from '../../db/schema.js';
 import {
-  type StatusTransitionResult,
   applyStatusTransition,
+  type StatusTransitionResult,
 } from '../../issues/apply-transition.js';
 import {
   AttachmentError,
@@ -28,9 +28,9 @@ import { claimDetectorKey, isValidDetectorKey } from '../../issues/detector-key.
 import { applyIntakeGate, finalizeIntake } from '../../issues/intake-gate.js';
 import { listIssueLabels } from '../../issues/label-service.js';
 import {
+  collectIssueFieldUpdates,
   MCP_ONLY_ISSUE_PATCH_FIELDS,
   SHARED_ISSUE_PATCH_FIELDS,
-  collectIssueFieldUpdates,
 } from '../../issues/patch-fields.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
@@ -41,10 +41,10 @@ import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';

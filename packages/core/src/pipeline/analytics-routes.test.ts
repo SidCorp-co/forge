@@ -60,11 +60,7 @@ const ISSUE_UUID = '44444444-4444-4444-8444-444444444444';
 // Queue the effectiveProjectRole resolution assertProjectMember performs after
 // the email-verify pre-check. `ownerId: 'u-1'` (legacy shorthand for "caller
 // has access") and `memberOf: true` both resolve to an effective member role.
-function mockMembership(opts: {
-  ownerId?: string;
-  memberOf?: boolean;
-  projectExists?: boolean;
-}) {
+function mockMembership(opts: { ownerId?: string; memberOf?: boolean; projectExists?: boolean }) {
   selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
   if (opts.projectExists === false) {
     effectiveRole.mockResolvedValueOnce(null);

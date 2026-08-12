@@ -23,6 +23,7 @@ vi.mock('../logger.js', () => {
 const { requestLogger } = await import('./logger.js');
 const { errorHandler } = await import('./error.js');
 const { requestId } = await import('./request-id.js');
+
 import type { RequestIdVars } from './request-id.js';
 
 function makeApp() {

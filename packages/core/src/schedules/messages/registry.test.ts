@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  RETIRED_STRATEGY_INPUTS,
   getImprovementMessage,
   improvementMessages,
   listImprovementMessages,
+  RETIRED_STRATEGY_INPUTS,
 } from './registry.js';
 
 describe('improvementMessages registry', () => {

@@ -26,9 +26,9 @@ import type { JobType } from '../db/schema.js';
 import {
   type HandoffScope,
   type HandoffStep,
-  type StepHandoffPayload,
   isHandoffStep,
   renderTerminationBlock,
+  type StepHandoffPayload,
 } from '../memory/step-handoff-schema.js';
 import { resolveHandoffsPolicy } from '../pipeline/handoff-policy.js';
 import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';

@@ -5,8 +5,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
-  type DeviceStatus,
   activityLog,
+  type DeviceStatus,
   deviceStatuses,
   devices,
   projectMembers,

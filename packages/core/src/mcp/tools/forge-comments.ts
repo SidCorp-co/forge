@@ -2,8 +2,8 @@ import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   AttachmentError,
-  type PersistedCommentAttachment,
   listCommentAttachmentsForIssue,
+  type PersistedCommentAttachment,
   persistCommentAttachment,
 } from '../../comments/attachment-service.js';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
@@ -15,9 +15,9 @@ import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
   zodToMcpSchema,
 } from './lib.js';
 

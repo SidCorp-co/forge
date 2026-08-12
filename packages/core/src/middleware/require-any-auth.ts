@@ -26,8 +26,8 @@ import { HTTPException } from 'hono/http-exception';
 import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
-import { isPatLike } from '../auth/pat-format.js';
 import { verifyPat } from '../auth/pat.js';
+import { isPatLike } from '../auth/pat-format.js';
 
 export type AnyAuthVars = { userId: string };
 

@@ -19,11 +19,11 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type TestDatabase,
   createTestProject,
   createTestProjectMember,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -125,9 +125,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
   }
 
   async function seedProject(
-    args: {
-      statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
-    } = {},
+    args: { statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }> } = {},
   ) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);

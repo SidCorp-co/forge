@@ -2,18 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type MockDevice,
-  type TestDatabase,
-  type TestServer,
-  type WebObserver,
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  type MockDevice,
   pairMockDevice,
   setupTestDatabase,
   startTestServer,
   startWebObserver,
+  type TestDatabase,
+  type TestServer,
   truncateAll,
+  type WebObserver,
 } from '../helpers/index.js';
 
 // Phase 2.7-F2 (ISS-218) — full device-runner happy path E2E.

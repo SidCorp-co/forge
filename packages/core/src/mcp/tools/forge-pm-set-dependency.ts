@@ -28,9 +28,9 @@ import { safeRecordActivity } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { deprecationFor } from '../deprecation.js';
 import {
+  assertDeviceOwnerIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  assertDeviceOwnerIsMember,
   zodToMcpSchema,
 } from './lib.js';
 

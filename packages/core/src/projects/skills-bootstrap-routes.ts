@@ -6,11 +6,11 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import {
   type BootstrapSelection,
+  bootstrapProjectSkills,
+  resolveBootstrapSelection,
   SkillSeedMissingError,
   UnknownPipelinePresetError,
   UnknownTemplateSetError,
-  bootstrapProjectSkills,
-  resolveBootstrapSelection,
 } from '../skills/bootstrap-service.js';
 
 // ISS-2A: idempotent first-run bootstrap. Thin HTTP delegate — the template

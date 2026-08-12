@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SKILL_IMPROVE_REPORT_SENTINEL,
   buildSkillImprovePrompt,
   extractReportFromMessages,
   parseSkillImproveReport,
+  SKILL_IMPROVE_REPORT_SENTINEL,
 } from './skill-improve-prompt.js';
 
 // ── buildSkillImprovePrompt ───────────────────────────────────────────────────

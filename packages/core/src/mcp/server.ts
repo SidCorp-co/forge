@@ -92,9 +92,9 @@ import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
-import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
-import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
+import { forgeVersionTool, type McpTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';
+import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
 
 /**
  * Build an MCP server wired to the per-request {@link McpContext}. Tool

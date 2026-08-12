@@ -11,9 +11,9 @@ import {
 import { markUntrusted } from '../../prompt/sanitize.js';
 import { resolveActiveJobContext } from './active-job-context.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';

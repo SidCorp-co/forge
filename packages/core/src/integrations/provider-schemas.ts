@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { integrationEnvironments } from '../db/schema.js';
-import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
+import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
 
 export const environmentSchema = z.enum(integrationEnvironments);

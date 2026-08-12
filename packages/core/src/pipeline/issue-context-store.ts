@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
   type IssueStepContextKind,
-  type StepVerdict,
   issueStepContextKinds,
   issueStepContexts,
+  type StepVerdict,
 } from '../db/schema.js';
 import { type StepHandoffPayload, stepHandoffSchema } from '../memory/step-handoff-schema.js';
 

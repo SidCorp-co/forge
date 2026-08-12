@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_LIMIT_COOLDOWN_MS,
-  SPEND_LIMIT_COOLDOWN_MS,
   detectRunnerLimit,
   isAuthError,
   isRateLimitError,
   isSpendLimitError,
   isUsageLimitError,
   parseUsageLimitReset,
+  SPEND_LIMIT_COOLDOWN_MS,
 } from './limit-detect.js';
 
 describe('isUsageLimitError', () => {

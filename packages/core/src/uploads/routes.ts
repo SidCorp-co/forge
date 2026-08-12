@@ -4,8 +4,8 @@ import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
-  SessionAttachmentError,
   persistSessionAttachment,
+  SessionAttachmentError,
 } from '../agent-sessions/attachment-service.js';
 import {
   AttachmentError as CommentAttachmentError,

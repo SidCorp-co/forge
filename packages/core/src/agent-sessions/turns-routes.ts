@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessionTurns, agentSessions, projects } from '../db/schema.js';
+import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { assertProjectRole } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';

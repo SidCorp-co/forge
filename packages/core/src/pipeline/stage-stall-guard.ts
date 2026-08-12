@@ -27,7 +27,7 @@
 
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
+import { comments, type IssueStatus, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { type DeviceSkillStatusValue, loadDeviceSkillStatus } from '../skills/effective.js';
 import { pauseRun } from './run-pause.js';

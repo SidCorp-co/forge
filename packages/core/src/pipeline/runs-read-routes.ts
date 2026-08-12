@@ -15,7 +15,7 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { type SQL, and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';

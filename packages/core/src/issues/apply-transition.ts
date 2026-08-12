@@ -1,14 +1,14 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues } from '../db/schema.js';
+import { comments, type IssueStatus, issues } from '../db/schema.js';
 import { postReopenCapEscalationComment } from '../jobs/park-comment.js';
 import { logger } from '../logger.js';
 import { recordReopenCapEscalated } from '../observability/hold-metrics.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { pauseOpenRunForIssue, resumeOpenRunForIssue } from '../pipeline/run-pause.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { REOPEN_CAP, canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
+import { canTransitionFree, isReopenEntry, REOPEN_CAP } from '../pipeline/state-machine.js';
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';

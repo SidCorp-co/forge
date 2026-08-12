@@ -6,10 +6,6 @@ import {
 } from '../../skills/effective.js';
 import { MetaSkillReservedError } from '../../skills/meta-skills.js';
 import {
-  SkillAlreadyShadowedError,
-  SkillDeleteBlockedError,
-  SkillNotProjectScopedError,
-  type SkillRow,
   applyGlobalSkillDefault,
   createProjectSkill,
   deleteProjectSkill,
@@ -18,9 +14,14 @@ import {
   listSkillRegistrations,
   registerSkillForProject,
   requestSkillSync,
+  SkillAlreadyShadowedError,
+  SkillDeleteBlockedError,
+  SkillNotProjectScopedError,
+  type SkillRow,
   setSkillPinned,
   updateProjectSkill,
 } from '../../skills/service.js';
+import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
 import {
   assertDeviceOwnerIsAdmin,
   assertDeviceOwnerIsMember,
@@ -29,7 +30,6 @@ import {
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
-import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
 
 const listInputSchema = z.object({ projectId: z.uuid() });
 const getInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });

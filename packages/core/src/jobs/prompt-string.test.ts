@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type IssueSnapshot, buildJobPromptString } from './prompt-string.js';
+import { buildJobPromptString, type IssueSnapshot } from './prompt-string.js';
 
 const SAMPLE: IssueSnapshot = {
   title: 'Add rate limiting to /api/agents',

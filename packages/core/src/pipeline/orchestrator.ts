@@ -4,18 +4,18 @@ import { db } from '../db/client.js';
 import {
   type IssueComplexity,
   type IssueStatus,
-  type JobType,
   issues,
+  type JobType,
   jobs,
   projects,
 } from '../db/schema.js';
-import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
+import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { isBlankPlan, isPlanStageLive } from '../issues/transition-evidence.js';
 import { postSkippedParkExitComment } from '../jobs/park-comment.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
@@ -34,10 +34,10 @@ import { pausePipelineRunMissingSkill, postMissingSkillComment } from './missing
 import { isParkedStatus } from './park-states.js';
 import {
   type PipelineConfig,
+  pipelineConfigSchema,
   STAGE_NAMES,
   type StageConfig,
   type StageName,
-  pipelineConfigSchema,
 } from './pipeline-config-schema.js';
 import {
   postBounceReplayComment,
@@ -47,18 +47,18 @@ import {
 import { PIPELINE_STEPS } from './registry.js';
 import { openIssueRun } from './runs.js';
 import {
-  type ProjectSkillResolver,
-  type ResolvedSkill,
   createProjectSkillResolver,
   inverseJobTypeToStatus,
+  type ProjectSkillResolver,
+  type ResolvedSkill,
   resolveJobTypeForStatus,
 } from './skill-mapping.js';
 import { appendSkipChainEntry, postSkipChainCappedComment } from './skip-chain-log.js';
 import {
   MAX_SKIP_CHAIN,
+  resolveSkipTarget,
   SKIPPABLE_STAGES,
   STAGE_FORWARD,
-  resolveSkipTarget,
 } from './state-machine.js';
 
 export { ActiveJobConflictError } from './enqueue-helper.js';

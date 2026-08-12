@@ -3,8 +3,8 @@ import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
-  type ProjectMemberRole,
   agentSessions,
+  type ProjectMemberRole,
   projectMembers,
   projects,
 } from '../../db/schema.js';
@@ -16,8 +16,8 @@ import {
 } from '../../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
+  type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   principalUserId,
   zodToMcpSchema,

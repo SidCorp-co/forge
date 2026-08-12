@@ -4,9 +4,9 @@ import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import {
-  type MemoryHit,
   hybridSearchMemories,
   keywordSearchMemories,
+  type MemoryHit,
   searchMemories,
   touchMemories,
 } from './search.js';

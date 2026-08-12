@@ -11,7 +11,7 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues, pipelineRuns, projects } from '../db/schema.js';
+import { comments, type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { PIPELINE_STEPS } from './registry.js';
 import { pauseRun } from './run-pause.js';

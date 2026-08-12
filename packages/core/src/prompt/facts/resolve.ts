@@ -29,8 +29,8 @@ import {
 } from '../../projects/project-facts.js';
 import {
   CANONICAL_LADDER,
-  FORGE_FACTS,
   type FactRenderContext,
+  FORGE_FACTS,
   type ForgeFact,
   getFact,
 } from './registry.js';

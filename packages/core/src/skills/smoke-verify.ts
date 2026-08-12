@@ -12,7 +12,7 @@ import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { PIPELINE_STEPS } from '../pipeline/registry.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { selectRunnerForJob } from '../runners/select.js';
-import { type ProjectSkillSyncStatus, loadProjectSkillSyncStatus } from './effective.js';
+import { loadProjectSkillSyncStatus, type ProjectSkillSyncStatus } from './effective.js';
 
 /**
  * ISS-455 (Onboarding C2) — per-project skill smoke-verify.

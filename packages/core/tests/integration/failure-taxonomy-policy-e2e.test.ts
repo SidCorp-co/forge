@@ -40,11 +40,11 @@ import type * as RunnersQuarantine from '../../src/runners/quarantine.js';
 import type * as RunnersSelect from '../../src/runners/select.js';
 import type * as SchedulesService from '../../src/schedules/service.js';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 

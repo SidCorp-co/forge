@@ -6,13 +6,13 @@
  * Existing callers importing from `lib/chat-preamble.ts` continue to work.
  */
 export {
+  type BuiltPreamble,
   buildChatPreamble,
   buildPipelinePreamble,
   buildPipelinePreambleStructured,
   PIPELINE_RULES,
-  TOOL_REFERENCE,
-  type BuiltPreamble,
   type PreambleBlock,
   type PreambleBlockId,
   type SystemPromptOverride,
+  TOOL_REFERENCE,
 } from '../prompt/system.js';

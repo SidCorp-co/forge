@@ -30,15 +30,15 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type jobs, pipelineRuns, projects } from '../db/schema.js';
 import {
+  applyStatusTransition,
   type DeviceLite,
   type TransitionIssueRow,
-  applyStatusTransition,
 } from '../issues/apply-transition.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
-import { JOB_TYPE_ENTRY_STATUS, classifyVerdict } from '../pipeline/recovery-verifier.js';
+import { classifyVerdict, JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';

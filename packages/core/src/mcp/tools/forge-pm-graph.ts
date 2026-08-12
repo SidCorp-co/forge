@@ -26,9 +26,9 @@ import { db } from '../../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../../db/schema.js';
 import { deprecationFor } from '../deprecation.js';
 import {
+  assertDeviceOwnerIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  assertDeviceOwnerIsMember,
   zodToMcpSchema,
 } from './lib.js';
 

@@ -223,12 +223,7 @@ const appendSkipChainEntryMock = vi.fn<
   (runId: string, entry: { from: string; to: string; reason: string; at: string }) => Promise<void>
 >(async () => undefined);
 const postSkipChainCappedCommentMock = vi.fn<
-  (args: {
-    projectId: string;
-    issueId: string;
-    from: string;
-    visited: string[];
-  }) => Promise<void>
+  (args: { projectId: string; issueId: string; from: string; visited: string[] }) => Promise<void>
 >(async () => undefined);
 // Default-on handoff prefetch (proposal Y) — orchestrator now calls this
 // before buildJobPromptString. Stub to no-op so unit tests stay focused on

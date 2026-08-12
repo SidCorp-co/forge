@@ -68,6 +68,7 @@ vi.mock('../notifications/auto-resolve.js', () => ({
   resolveNotifications: resolveMock.resolveNotifications,
 }));
 
+import type { ReconcileBundleSnapshot } from '../db/schema.js';
 import {
   deviceSkills,
   divergenceCharters,
@@ -84,7 +85,6 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
-import type { ReconcileBundleSnapshot } from '../db/schema.js';
 import {
   acknowledgeReconcileRun,
   applyReconcileRun,

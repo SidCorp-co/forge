@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
 import { assertHookDelivered, hooks } from './hooks.js';
 import { emitPipelineWedge } from './wedge.js';

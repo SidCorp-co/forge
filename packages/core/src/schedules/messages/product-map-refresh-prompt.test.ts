@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_NEW_ENTRIES_PER_RUN,
   buildProductMapRefreshPrompt,
+  MAX_NEW_ENTRIES_PER_RUN,
 } from './product-map-refresh-prompt.js';
 
 const PROJECT_ID = '9f6cd30a-c93a-43de-b171-56e5ef716388';

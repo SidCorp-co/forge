@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { readFile, readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { and, eq, sql } from 'drizzle-orm';

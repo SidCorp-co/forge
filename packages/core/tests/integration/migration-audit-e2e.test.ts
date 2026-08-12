@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type TestDatabase, setupTestDatabase } from '../helpers/index.js';
+import { setupTestDatabase, type TestDatabase } from '../helpers/index.js';
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)

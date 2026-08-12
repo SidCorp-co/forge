@@ -7,7 +7,7 @@
 
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type ActorType, type IssueStatus, comments, jobs, projects } from '../db/schema.js';
+import { type ActorType, comments, type IssueStatus, jobs, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import {
   LIFECYCLE_GUIDE_POINTER,

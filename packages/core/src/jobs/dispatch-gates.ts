@@ -36,10 +36,10 @@
  *   - No writes from the picker / asserter. Both are read-only.
  */
 
-import { type SQL, and, eq, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { jobs, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,

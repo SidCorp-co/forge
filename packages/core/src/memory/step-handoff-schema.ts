@@ -267,10 +267,7 @@ export interface HandoffScope {
  * prompt. Stable per (step, scope) pair so snapshot tests give meaningful
  * diffs when prompt logic evolves.
  */
-export function renderTerminationBlock(opts: {
-  step: HandoffStep;
-  scope: HandoffScope;
-}): string {
+export function renderTerminationBlock(opts: { step: HandoffStep; scope: HandoffScope }): string {
   const { step, scope } = opts;
   return [
     '## Termination protocol',

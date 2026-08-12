@@ -1,8 +1,8 @@
 import { logger } from '../logger.js';
 import {
+  classifyFailure,
   type FailureAction,
   type FailureKind,
-  classifyFailure,
 } from '../pipeline/failure-classifier.js';
 import { parseUsageLimitReset } from '../runners/limit-detect.js';
 import { extractPromptString } from './turns-helpers.js';

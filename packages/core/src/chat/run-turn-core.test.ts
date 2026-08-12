@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
-import { type TurnCoreResult, runTurnEvents } from './run-turn-core.js';
+import { runTurnEvents, type TurnCoreResult } from './run-turn-core.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
 async function drain(gen: AsyncGenerator<ChatStreamEvent, TurnCoreResult>) {

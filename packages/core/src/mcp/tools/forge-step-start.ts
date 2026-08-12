@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
 import { listCommentAttachmentsForIssue } from '../../comments/attachment-service.js';
 import { db } from '../../db/client.js';
-import { type IssueStatus, type JobType, comments, jobTypes, projects } from '../../db/schema.js';
+import { comments, type IssueStatus, type JobType, jobTypes, projects } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
 import { getIssueContexts } from '../../pipeline/issue-context-store.js';
 import {
@@ -12,14 +12,14 @@ import {
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../../pipeline/registry.js';
 import {
-  type IssueRow,
   heavyFieldChars,
+  type IssueRow,
   loadIssue,
   serializeManifestWithAttachments,
   serializeWithAttachments,
 } from './forge-issues.js';
-import { assertPrincipalIsMember, assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
+import { assertPrincipalIsMember, assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
 
 /**
  * `forge_step_start` — the check-in an agent makes as its FIRST action on a

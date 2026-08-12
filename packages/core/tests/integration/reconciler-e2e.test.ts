@@ -19,10 +19,10 @@ process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
 import {
-  type TestDatabase,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type PostgresJsDatabase, drizzle } from 'drizzle-orm/postgres-js';
+import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
 import { startPostgresContainer } from './container.js';
 import { runMigrations } from './migrate.js';

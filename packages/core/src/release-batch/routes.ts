@@ -12,10 +12,10 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   BatchInFlightError,
   ClaimConflictError,
-  NoReleaseGateError,
-  NoRunnerOnlineError,
   createReleaseBatch,
   getActiveReleaseBatch,
+  NoReleaseGateError,
+  NoRunnerOnlineError,
 } from './service.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });

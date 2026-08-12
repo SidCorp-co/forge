@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import { Sentry, initSentry } from '../observability/sentry.js';
+import { initSentry, Sentry } from '../observability/sentry.js';
 import {
-  type JournalEntry,
   describeUnrecorded,
   findUnrecordedMigrations,
+  type JournalEntry,
   unrecordedSentryEvent,
 } from './migration-audit.js';
 

@@ -37,9 +37,9 @@ import {
   projects,
 } from '../db/schema.js';
 import {
-  IntegrationBranchError,
   createIntegrationBranch,
   gitRemoteHasBranch,
+  IntegrationBranchError,
 } from '../git/branches.js';
 import { logger } from '../logger.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';

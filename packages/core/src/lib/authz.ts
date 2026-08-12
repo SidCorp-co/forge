@@ -3,9 +3,9 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import {
   type OrgMemberRole,
-  type ProjectMemberRole,
   organizationMembers,
   organizations,
+  type ProjectMemberRole,
   projectMembers,
   projects,
 } from '../db/schema.js';

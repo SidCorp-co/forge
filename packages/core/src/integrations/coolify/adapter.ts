@@ -1,6 +1,6 @@
 import { scrubLogText } from '@forge/observability';
 import { logger } from '../../logger.js';
-import { Sentry, isSentryEnabled } from '../../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import { closeRun, setCurrentStepForce } from '../../pipeline/runs.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import {
@@ -45,10 +45,7 @@ interface DeployPayload extends Record<string, unknown> {
   resourceUuid: string;
 }
 
-function buildClient(ctx: {
-  config: CoolifyConfig;
-  secrets: CoolifySecrets;
-}): CoolifyClient {
+function buildClient(ctx: { config: CoolifyConfig; secrets: CoolifySecrets }): CoolifyClient {
   // Honour the 24h rotation window: include previousApiToken only if it
   // hasn't expired yet (validity guard lives in the shared rotation helper).
   const opts: ConstructorParameters<typeof CoolifyClient>[0] = {

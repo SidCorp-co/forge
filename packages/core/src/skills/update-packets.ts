@@ -1,8 +1,11 @@
 import type { CreateUpdatePacketInput } from '@forge/contracts';
 import { z } from 'zod';
 import type { Db } from '../db/client.js';
-import { type SkillActivityTrigger, updatePacketIntentClasses } from '../db/schema.js';
-import { updatePackets } from '../db/schema.js';
+import {
+  type SkillActivityTrigger,
+  updatePacketIntentClasses,
+  updatePackets,
+} from '../db/schema.js';
 import { recordSkillActivityEvent } from './activity.js';
 
 export interface CreateUpdatePacketOptions {

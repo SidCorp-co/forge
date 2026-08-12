@@ -17,8 +17,8 @@ import { pipelineRuns } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
-  type PipelineRunRow,
   cancelPipelineRun,
+  type PipelineRunRow,
   pausePipelineRun,
   resumePipelineRun,
 } from './runs-control.js';

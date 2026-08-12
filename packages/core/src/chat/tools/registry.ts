@@ -25,7 +25,7 @@ import { forgeProjectsGetTool } from '../../mcp/tools/forge-projects.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
 import { guardIssueWrites } from './guards.js';
 import { findDuplicateIssue } from './issue-dedup.js';
-import { type ChatToolSpec, type ChatToolset, buildToolset } from './mcp-adapter.js';
+import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter.js';
 
 /**
  * ISS-687 — wrap the pure `guardIssueWrites` (draft-force + thin-issue floor)

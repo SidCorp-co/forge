@@ -22,22 +22,22 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
-import { issues, jobTypes, jobs, modelTiers, pipelineRuns, projects } from '../../db/schema.js';
+import { issues, jobs, jobTypes, modelTiers, pipelineRuns, projects } from '../../db/schema.js';
 import { enqueueJob } from '../../jobs/enqueue.js';
 import { buildJobPromptString } from '../../jobs/prompt-string.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { logger } from '../../logger.js';
 import { openIssueRun } from '../../pipeline/runs.js';
 import {
-  STATUS_TO_JOB_TYPE,
   createProjectSkillResolver,
   inverseJobTypeToStatus,
+  STATUS_TO_JOB_TYPE,
 } from '../../pipeline/skill-mapping.js';
 import { deprecationFor } from '../deprecation.js';
 import {
+  assertPmActor,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  assertPmActor,
   zodToMcpSchema,
 } from './lib.js';
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDriftCheckPrompt,
   LOOKBACK_WINDOW_DAYS,
   MAX_DRAFT_PROPOSALS_PER_RUN,
   STALENESS_AGE_DAYS,
   UNDOCUMENTED_ISSUE_THRESHOLD,
-  buildDriftCheckPrompt,
 } from './drift-check-prompt.js';
 
 const PROJECT_ID = 'da368b0a-8e21-4763-9d90-8f7b9d0c7115';

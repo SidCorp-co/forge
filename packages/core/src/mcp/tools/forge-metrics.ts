@@ -4,8 +4,8 @@ import { db } from '../../db/client.js';
 import { jobTypes } from '../../db/schema.js';
 import { BUCKETS, METRICS, runTimeseries } from '../../metrics/queries.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
+  type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   zodToMcpSchema,
 } from './lib.js';

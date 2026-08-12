@@ -12,12 +12,12 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  type PipelineRunKind,
-  type PipelineRunStatus,
   agentSessions,
   devices,
   issues,
   jobs,
+  type PipelineRunKind,
+  type PipelineRunStatus,
   pipelineRuns,
   usageRecords,
 } from '../db/schema.js';

@@ -26,8 +26,8 @@ import { buildIssueOrderBy, issueSortValues } from './sort.js';
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
   v === undefined ? undefined : Array.isArray(v) ? v : [v];
 
-export { issueSortValues } from './sort.js';
 export type { IssueSort } from './sort.js';
+export { issueSortValues } from './sort.js';
 
 const searchQuerySchema = z
   .object({

@@ -14,7 +14,7 @@
 
 import { eq, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { type IssueStatus, activityLog, issueStatuses, issues, projects } from '../db/schema.js';
+import { activityLog, type IssueStatus, issueStatuses, issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveMergeStates } from './merged-at.js';
 

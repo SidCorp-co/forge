@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import type { IssueStatus, JobType } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { reEnqueueForIssue } from './orchestrator.js';
 import {
   AUTO_DISPATCH_STATUSES,

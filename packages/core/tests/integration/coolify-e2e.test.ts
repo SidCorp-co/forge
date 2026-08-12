@@ -29,10 +29,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { CoolifyConfig, CoolifySecrets } from '../../src/integrations/coolify/types.js';
 import { signHmacSha256 } from '../../src/webhooks/hmac.js';
 import {
-  type TestDatabase,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -80,10 +80,7 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
     vi.restoreAllMocks();
   });
 
-  async function seedIntegration(opts: {
-    environment: 'staging' | 'prod';
-    secret?: string;
-  }) {
+  async function seedIntegration(opts: { environment: 'staging' | 'prod'; secret?: string }) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
 

@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { type SQL, and, asc, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { skillRegistrations, skillTargets, skills } from '../db/schema.js';
+import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { SkillContentBlockedError } from '../security/findings.js';

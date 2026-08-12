@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { issueStatuses } from '../db/schema.js';
 import {
-  MAX_SKIP_CHAIN,
-  REOPEN_CAP,
-  SKIPPABLE_STAGES,
-  STAGE_FORWARD,
-  type StagesConfig,
   canTransition,
   canTransitionFree,
   getAllowedTransitions,
   isReopenEntry,
+  MAX_SKIP_CHAIN,
+  REOPEN_CAP,
   resolveSkipTarget,
+  SKIPPABLE_STAGES,
+  STAGE_FORWARD,
+  type StagesConfig,
   transitions,
   validateStatesConfig,
 } from './state-machine.js';

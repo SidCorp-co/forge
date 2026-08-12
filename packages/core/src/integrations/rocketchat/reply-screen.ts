@@ -17,12 +17,12 @@ import { issues } from '../../db/schema.js';
 import { computeProjectProgress } from '../../issues/progress.js';
 import { logger } from '../../logger.js';
 import {
-  type ProgressFacts,
   checkProgressClaims,
   detectEmptyPromise,
   extractIssueClaims,
   judgeIssueClaims,
   lintStakeholderReply,
+  type ProgressFacts,
 } from './reply-guard.js';
 
 export interface ReplyScreenVerdict {

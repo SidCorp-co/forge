@@ -11,9 +11,9 @@ import { db } from '../db/client.js';
 import { projects, skillActivityEvents } from '../db/schema.js';
 import { logger } from '../logger.js';
 import {
-  type PlatformInvariantEntry,
   buildPlatformInvariantSet,
   describeInvariantDelta,
+  type PlatformInvariantEntry,
 } from '../prompt/facts/invariant-set.js';
 import { recordSkillActivityEvent } from './activity.js';
 

@@ -12,12 +12,12 @@
 import type { ChatTool } from '../../chat/providers/types.js';
 import type { ChatToolset } from '../../chat/tools/mcp-adapter.js';
 import {
-  type RocketChatRestAuth,
-  type RocketChatRestMessage,
   buildMessagePermalink,
   fetchMessage,
   fetchRoomHistory,
   fetchThreadMessages,
+  type RocketChatRestAuth,
+  type RocketChatRestMessage,
 } from './rest-client.js';
 
 export const SEED_MESSAGE_COUNT = 20;

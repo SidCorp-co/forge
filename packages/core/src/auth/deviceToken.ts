@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
-import { type InferSelectModel, and, eq, ne } from 'drizzle-orm';
+import { and, eq, type InferSelectModel, ne } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type DevicePlatform, devices } from '../db/schema.js';

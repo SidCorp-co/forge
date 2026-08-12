@@ -2,9 +2,9 @@ import { and, eq, isNotNull, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
-  type SkillTarget,
   projects,
   runners,
+  type SkillTarget,
   skillRegistrations,
   skills,
 } from '../db/schema.js';
@@ -15,7 +15,7 @@ import { SkillContentBlockedError } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { recordSkillActivityEvent } from './activity.js';
 import { hashSkillBody } from './hash.js';
-import { MetaSkillReservedError, isMetaSkillName } from './meta-skills.js';
+import { isMetaSkillName, MetaSkillReservedError } from './meta-skills.js';
 
 export interface SkillFileInput {
   path: string;

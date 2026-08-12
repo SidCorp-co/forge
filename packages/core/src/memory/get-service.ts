@@ -1,4 +1,4 @@
-import { type SQL, and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';

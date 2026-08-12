@@ -1,4 +1,5 @@
 import {
+  pipelineRegistryResponseSchema,
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
   REGISTRY_ISSUE_STATUSES,
@@ -7,7 +8,6 @@ import {
   REGISTRY_PIPELINE_RUN_STATUSES,
   REGISTRY_RUNNER_TYPES,
   REGISTRY_STEP_TOGGLE_KEYS,
-  pipelineRegistryResponseSchema,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
 import {
@@ -21,6 +21,7 @@ import {
 } from '../db/schema.js';
 import { STEP_TOGGLE_KEYS } from './pipeline-config-schema.js';
 import {
+  getPipelineRegistry,
   MANUAL_ONLY_JOB_TYPES,
   PIPELINE_REGISTRY_VERSION,
   PIPELINE_STEPS,
@@ -28,7 +29,6 @@ import {
   STATUS_TO_JOB_TYPE,
   STATUS_TO_SKILL,
   WORKING_STATUS_BY_JOB_TYPE,
-  getPipelineRegistry,
 } from './registry.js';
 import { STATUS_TO_JOB_TYPE as MAPPING_RE_EXPORT } from './skill-mapping.js';
 import { transitions } from './state-machine.js';

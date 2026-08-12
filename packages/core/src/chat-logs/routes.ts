@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { type SQL, and, count, desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type ProjectMemberRole, chatLogs, projects, qaRatings } from '../db/schema.js';
+import { chatLogs, type ProjectMemberRole, projects, qaRatings } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';

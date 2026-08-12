@@ -15,8 +15,8 @@ import {
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import { resolveActiveJobContext } from './active-job-context.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
+  type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   resolveEffectiveProjectId,
   zodToMcpSchema,

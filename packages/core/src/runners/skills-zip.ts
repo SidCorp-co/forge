@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { logger } from '../logger.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { getStorage } from '../storage/index.js';
-import { type ZipEntry, buildZip } from './zip.js';
+import { buildZip, type ZipEntry } from './zip.js';
 
 /**
  * ISS-387 — build the project's skill bundle for `host='remote'` runners that

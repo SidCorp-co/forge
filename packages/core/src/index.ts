@@ -7,7 +7,9 @@ import { cors } from 'hono/cors';
 // Sentry init runs before any other module that might throw at import time —
 // see observability/sentry.ts for the opt-in / scrubbing contract.
 import { initSentry } from './observability/sentry.js';
+
 initSentry();
+
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
@@ -27,10 +29,10 @@ import { reauthRoutes } from './auth/reauth.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
-import { chatLogRoutes } from './chat-logs/routes.js';
 import { bootstrapChatProviders } from './chat/providers/bootstrap.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatSessionRoutes } from './chat/sessions-routes.js';
+import { chatLogRoutes } from './chat-logs/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
@@ -88,9 +90,9 @@ import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
-import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { knowledgeRoutes } from './knowledge/routes.js';
+import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';

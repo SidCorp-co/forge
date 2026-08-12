@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../store.js', () => ({ updateConnection: async () => undefined }));
 
 const { rocketChatAdapter } = await import('./adapter.js');
+
 import type { AdapterContext } from '../types.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 

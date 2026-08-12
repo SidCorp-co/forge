@@ -12,9 +12,9 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import {
-  SessionAttachmentError,
   loadSessionAttachment,
   persistSessionAttachment,
+  SessionAttachmentError,
 } from './attachment-service.js';
 
 function attachmentErrorToHttp(err: SessionAttachmentError): HTTPException {

@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { runnerTypes, runners } from '../db/schema.js';
+import { runners, runnerTypes } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { logger } from '../logger.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';

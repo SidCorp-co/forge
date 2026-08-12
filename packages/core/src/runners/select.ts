@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type RunnerType, projects } from '../db/schema.js';
+import { projects, type RunnerType } from '../db/schema.js';
 import { RUNNER_CAP_PER_RUNNER } from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';

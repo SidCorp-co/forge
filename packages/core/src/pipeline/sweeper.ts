@@ -28,30 +28,30 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, agentSessions, comments, issues, jobs } from '../db/schema.js';
+import { agentSessions, comments, type IssueStatus, issues, jobs } from '../db/schema.js';
 import {
+  applyStatusTransition,
   type DeviceLite,
   type TransitionIssueRow,
-  applyStatusTransition,
 } from '../issues/apply-transition.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
+  getLoopThresholds,
   type LoopMonitorResult,
   type LoopScope,
-  getLoopThresholds,
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
-import { type RetryRescueAlertResult, detectRetryRescueThresholds } from './retry-rescue-alert.js';
+import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
-import { type StrandedIssuesResult, detectStrandedIssues } from './stranded-issues.js';
+import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';

@@ -29,7 +29,6 @@ import {
 } from './provider-schemas.js';
 import { getAdapter } from './registry.js';
 import {
-  TEST_PROBE_TIMEOUT_MS,
   alreadyExists,
   assertAdmin,
   assertNoActiveBindingClash,
@@ -42,13 +41,14 @@ import {
   reloadRocketChatIfNeeded,
   summarizeBinding,
   summarizeConnection,
+  TEST_PROBE_TIMEOUT_MS,
 } from './route-helpers.js';
 import {
-  type IntegrationConnectionRow,
   buildContextFromBinding,
   createBinding,
   createConnection,
   findConnectionById,
+  type IntegrationConnectionRow,
   listBindingsForConnection,
   listConnectionsForPrincipalUser,
   softDeleteConnection,

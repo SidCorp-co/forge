@@ -257,10 +257,7 @@ describe('promotion constants', () => {
 });
 
 describe('proposeKnowledgePromotions', () => {
-  function queuePromotion(opts: {
-    projectRow?: unknown[];
-    candidates?: unknown[];
-  }) {
+  function queuePromotion(opts: { projectRow?: unknown[]; candidates?: unknown[] }) {
     selectResults.push(opts.projectRow ?? [{ createdBy: 'user-creator' }]);
     selectResults.push(
       opts.candidates ?? [

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EmbeddingUnavailableError, EmbeddingsClient } from './client.js';
+import { EmbeddingsClient, EmbeddingUnavailableError } from './client.js';
 
 function mockFetchOnce(status: number, body: unknown): typeof fetch {
   return vi.fn(

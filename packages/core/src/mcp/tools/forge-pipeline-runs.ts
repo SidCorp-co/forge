@@ -15,7 +15,7 @@
  * closes (≥ 1 release after v0.1.x consolidates).
  */
 
-import { type SQL, and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
@@ -28,11 +28,11 @@ import {
 } from '../../pipeline/runs-control.js';
 import { deprecationFor } from '../deprecation.js';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  type McpContext,
   zodToMcpSchema,
 } from './lib.js';
 

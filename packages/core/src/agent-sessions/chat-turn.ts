@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { type MemberLens, agentSessions, devices, memberLenses } from '../db/schema.js';
+import { agentSessions, devices, type MemberLens, memberLenses } from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
-import { TOOL_REFERENCE, buildChatPreamble } from '../lib/chat-preamble.js';
+import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
@@ -12,13 +12,13 @@ import {
 import { openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { type SessionAttachmentRef, listSessionAttachmentsByIds } from './attachment-service.js';
+import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
 import { stripSystemNoise } from './content-filter.js';
 import {
-  type PageContext,
   formatPageContextLine,
+  type PageContext,
   readPersistedPageContext,
   samePageContext,
 } from './page-context.js';

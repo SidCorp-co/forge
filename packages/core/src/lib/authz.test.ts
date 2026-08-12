@@ -8,7 +8,6 @@ const dbMock = vi.hoisted(() => ({}) as { select?: unknown });
 vi.mock('../db/client.js', () => ({ db: dbMock }));
 
 import {
-  type ProjectAccess,
   assertOrgRoleOnProject,
   assertProjectRole,
   effectiveProjectRole,
@@ -18,6 +17,7 @@ import {
   maxProjectRole,
   orgDerivedProjectRole,
   orgRoleAtLeast,
+  type ProjectAccess,
   projectRoleAtLeast,
 } from './authz.js';
 

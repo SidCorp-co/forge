@@ -15,8 +15,8 @@ import { issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
 import {
-  type ProjectSkillResolver,
   createProjectSkillResolver,
+  type ProjectSkillResolver,
 } from '../pipeline/skill-mapping.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';

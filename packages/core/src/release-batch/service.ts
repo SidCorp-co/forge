@@ -8,7 +8,7 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues, pipelineRuns, projects } from '../db/schema.js';
+import { comments, type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import {
   type TransitionActor,
   TransitionError,

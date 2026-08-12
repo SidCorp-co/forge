@@ -27,8 +27,8 @@ import {
   listActiveBindingsForProjectProvider,
 } from '../../integrations/store.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
+  type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';

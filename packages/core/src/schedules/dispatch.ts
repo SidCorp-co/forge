@@ -6,10 +6,10 @@ import {
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
 import {
-  type ScheduleKind,
-  type ScheduleMode,
   agentSessions,
   projects,
+  type ScheduleKind,
+  type ScheduleMode,
   scheduleRuns,
   schedules,
 } from '../db/schema.js';

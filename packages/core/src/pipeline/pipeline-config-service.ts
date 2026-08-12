@@ -7,13 +7,12 @@ import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
   type PipelineConfigPatchInput,
-  STAGE_NAMES,
   pipelineConfigSchema,
+  STAGE_NAMES,
 } from './pipeline-config-schema.js';
 import { PIPELINE_STEPS } from './registry.js';
 import type { StagesConfig } from './state-machine.js';
-import { validateStatesConfig } from './state-machine.js';
-import { STAGE_FORWARD } from './state-machine.js';
+import { STAGE_FORWARD, validateStatesConfig } from './state-machine.js';
 
 /**
  * Typed errors thrown by {@link updatePipelineConfig}. REST and MCP callers

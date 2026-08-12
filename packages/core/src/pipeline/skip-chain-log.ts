@@ -8,7 +8,7 @@
 
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues, projects } from '../db/schema.js';
+import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { SkipReason } from './state-machine.js';
 

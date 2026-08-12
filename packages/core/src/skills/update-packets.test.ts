@@ -1,4 +1,4 @@
-import { UPDATE_PACKET_INTENT_CLASSES, createUpdatePacketInputSchema } from '@forge/contracts';
+import { createUpdatePacketInputSchema, UPDATE_PACKET_INTENT_CLASSES } from '@forge/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { updatePacketIntentClasses, updatePackets } from '../db/schema.js';
 

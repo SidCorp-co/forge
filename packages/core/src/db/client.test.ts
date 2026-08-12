@@ -46,6 +46,6 @@ describe('db/client', () => {
     const mod = await import('./client.js');
 
     // The module must export `db` — the drizzle client singleton.
-    expect(Object.prototype.hasOwnProperty.call(mod, 'db')).toBe(true);
+    expect(Object.hasOwn(mod, 'db')).toBe(true);
   });
 });

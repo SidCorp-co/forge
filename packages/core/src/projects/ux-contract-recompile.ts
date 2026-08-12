@@ -6,9 +6,9 @@ import { upsertKnowledgeEntry } from '../knowledge/service.js';
 import { logger } from '../logger.js';
 import { mergeProjectFacts } from './project-facts.js';
 import {
+  compileUxContract,
   DEFAULT_UX_SCAFFOLD,
   type UxContractScaffold,
-  compileUxContract,
 } from './ux-contract-compiler.js';
 
 // The project's UX-contract profile lives at `agentConfig.uxContractProfile`
