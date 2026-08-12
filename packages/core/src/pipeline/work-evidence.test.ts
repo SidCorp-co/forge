@@ -6,9 +6,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why queued by call order: `isDecomposeParent`'s edge read (when invoked
-// via `findMissingWorkEvidence`), then `collectWorkEvidence`'s 3 parallel
-// reads in source order — jobs, handoffs, issue.sessionContext.
+// cm:why queued by call order: `isDecomposeParent`'s edge read (via `findMissingWorkEvidence`), then
+//   `collectWorkEvidence`'s 3 parallel reads in source order — jobs, handoffs, issue.sessionContext
 const queue: unknown[][] = [];
 vi.mock('../db/client.js', () => ({
   db: {
