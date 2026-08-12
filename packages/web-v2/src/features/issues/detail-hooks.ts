@@ -2,13 +2,15 @@
 
 // web-v2 feature module: issues — detail React Query hooks (Part B).
 //
-// Query-key contract (must match `lib/ws/event-router.ts`):
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts#routeEvent — these keys MUST match the
+//   ones that router invalidates; a key it does not name simply never refreshes on a WS event
 //   issue     → ['issue', id]                 (issue.* events)
 //   comments  → ['comments', id]              (comment.* events)
 //   activity  → ['activities', id]            (issue.* / comment.* / dep events)
 //   tasks     → ['tasks', id]                 (no WS event → invalidate on mutate)
 //   attachments → ['issue', id, 'attachments']
 // Reuse `useIssueDeps`/`useIssueCost`/`useProjectMembers` from `./hooks`.
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";

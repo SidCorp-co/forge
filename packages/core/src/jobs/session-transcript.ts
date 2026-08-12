@@ -26,8 +26,8 @@ import { agentSessions, jobEvents } from '../db/schema.js';
 import { buildSessionFromEvents } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 
-// Mirror the desktop SessionTracker thresholds (session-tracker.ts): flush at
-// most every ~30s, or sooner once a burst of stream lines has accumulated.
+// cm:edge lockstep -> packages/dev/src/lib/session-tracker.ts#SessionTracker — these two thresholds
+//   mirror the desktop tracker's; diverge and the same run flushes at two different cadences per client
 const INCREMENTAL_FLUSH_INTERVAL_MS = 30_000;
 const INCREMENTAL_FLUSH_STDOUT_THRESHOLD = 8;
 

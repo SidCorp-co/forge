@@ -159,7 +159,8 @@ const ISSUE_STAGES: readonly JobType[] = [
   'custom',
 ];
 
-// ── Per-step handoff payload keys (mirror memory/step-handoff-schema.ts) ────
+// cm:edge lockstep -> packages/core/src/memory/step-handoff-schema.ts#stepHandoffSchema — these key
+//   lists are what the prompt TELLS the agent to send; drift and the agent is briefed on a stale shape
 const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   triage: 'summary, suggestedApproach, complexity, risks, affectedAreas',
   clarify: 'outcome, environment, stepsVerified[], rootCauseHypothesis, openQuestions',

@@ -2,12 +2,14 @@
 
 // web-v2 feature module: issues — React Query hooks (Part A list + shared).
 //
-// Query-key contract (ISS-293) — keys MUST match `lib/ws/event-router.ts`:
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts#routeEvent — these keys MUST match the
+//   ones that router invalidates (ISS-293); any other prefix makes WS-driven invalidation a silent no-op
 //   list   → ['issues','search', projectId, opts]   (issue.* events)
 //   cost   → ['issue', id, 'cost']                  (lazy; no WS event)
 //   deps   → ['issue', id, 'dependencies']          (dependencyChanged)
 //   members→ ['project', projectId, 'members']
 // Any other prefix → WS-driven invalidation silently no-ops.
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";

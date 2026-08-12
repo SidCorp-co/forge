@@ -109,9 +109,8 @@ const relayBodySchema = z
   })
   .strict();
 
-// ISS-675 — mirrors lifecycle/transition.ts's SessionTransitionArgs['to'] enum;
-// gates the escalation completion-bridge hook below to genuinely terminal
-// PATCHes only.
+// cm:edge contract -> packages/core/src/lifecycle/transition.ts#SessionTransitionArgs — mirrors that
+//   type's `to` enum (ISS-675); a terminal status added there but not here never fires the bridge below
 const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set([
   'completed',
   'failed',

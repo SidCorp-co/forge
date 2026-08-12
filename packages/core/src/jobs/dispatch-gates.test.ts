@@ -407,10 +407,10 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).not.toMatch(/CASE\s+r\.type/);
   });
 
-  // Divergence fix — fresh_capable_runners MUST exclude runners on a disabled
-  // device, mirroring `runners/select.ts` (NOT_DISABLED_DEVICE). Otherwise the
-  // picker declares a job DISPATCHABLE while `selectRunnerForJob` (which does
-  // filter disabled devices) returns null → the job spins queued forever.
+  // cm:edge lockstep -> packages/core/src/runners/select.ts#NOT_DISABLED_DEVICE — fresh_capable_runners
+  //   must exclude disabled-device runners the same way; this test pins that parity
+  // cm:why without it the picker calls a job dispatchable while selectRunnerForJob returns null for it,
+  //   and the job spins queued forever
   it('fresh_capable_runners CTE excludes runners on a disabled device (selector parity)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);

@@ -331,7 +331,8 @@ export interface Notification {
   createdAt: string;
 }
 
-// Mirror of packages/core's jobEventKinds enum (packages/core/src/db/schema.ts).
+// cm:edge contract -> packages/core/src/db/schema.ts#jobEventKinds — hand-copied mirror of that DB
+//   enum; a kind added there and not here arrives at the desktop as an unhandled event
 export type JobEventKind = "stdout" | "stderr" | "tool_call" | "tool_result" | "progress" | "result";
 
 export type JobType = "plan" | "code" | "review" | "fix" | "triage";

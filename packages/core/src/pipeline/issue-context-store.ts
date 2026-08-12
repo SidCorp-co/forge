@@ -104,10 +104,10 @@ export async function writeIssueContext(
         verdict,
       })
       .onConflictDoUpdate({
-        // Match the partial unique index defined in db/schema.ts. Drizzle
-        // does not surface partial-unique targets directly; this works
-        // because Postgres resolves the conflict by index when target
-        // columns match the unique index's columns.
+        // cm:edge contract -> packages/core/src/db/schema.ts#issue_step_contexts_handoff_uq — target
+        //   columns + targetWhere must match that partial unique index or the upsert finds no arbiter
+        // cm:why drizzle cannot express a partial-unique target; Postgres still resolves the conflict
+        //   by index when the target columns match the index's
         target: [issueStepContexts.issueId, issueStepContexts.step, issueStepContexts.attempt],
         targetWhere: sql`${issueStepContexts.kind} = 'handoff'`,
         set: {

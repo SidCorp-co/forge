@@ -51,9 +51,10 @@ export const REGISTRY_JOB_TYPES = [
 
 export const REGISTRY_RUNNER_TYPES = ['claude-code', 'antigravity'] as const;
 
-// Client-facing mirrors of the remaining issue/run enums so web-v2/dev derive
-// their unions from here instead of hand-copying `db/schema.ts`. Kept in sync
-// by the same parity suite (`core/src/pipeline/registry.test.ts`).
+// cm:edge contract -> packages/core/src/db/schema.ts#issuePriorities — client-facing mirror of the
+//   issue/run enums, so web-v2/dev derive their unions from here instead of hand-copying the DB enum
+// cm:edge contract -> packages/core/src/pipeline/registry.test.ts#REGISTRY_ISSUE_PRIORITIES — the
+//   parity suite that fails when the two sides drift; adding a value here without it there is silent
 export const REGISTRY_ISSUE_PRIORITIES = ['critical', 'high', 'medium', 'low', 'none'] as const;
 
 export const REGISTRY_ISSUE_COMPLEXITIES = ['xs', 's', 'm', 'l', 'xl'] as const;

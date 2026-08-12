@@ -261,13 +261,10 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  // Mirror the gate's satisfaction rule exactly (dispatch-gates.ts
-  // `blockedBy`): a blocker satisfies the edge when `merged_at` is stamped,
-  // or — ONLY under a structurally-unstampable base — when it is `closed`.
-  // The previous status-based check (`released|closed` = satisfied) drifted
-  // from the ISS-639 gate fix, so a dependent wedged on a closed-unmerged
-  // blocker showed NO waitingOn reason at all (getcontent 2026-07-13: 40min
-  // of silent starvation with the blocker banner blank).
+  // cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts#blockedBy — must mirror that gate's
+  //   satisfaction rule EXACTLY, or the gate holds an issue while this reports no waitingOn reason
+  // cm:why a status check (`released|closed` = satisfied) drifted from the ISS-639 gate fix and starved
+  //   a dependent 40min with a blank blocker banner — hence merged_at, with closed only when unstampable
   const depSatisfied = (status: string, mergedAt: Date | null): boolean =>
     mergedAt !== null || (!baseStampable && status === 'closed');
 
