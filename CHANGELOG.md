@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Pipeline rescue metrics now visible per project with configurable threshold alerts.
 - Fixed a bug where the release step could wrongly reopen an issue that had already passed testing, based on an outdated status snapshot.
 - Added comprehensive tests and documentation for state-integrity guards, validating the pipeline refuses false state transitions and fabricated evidence.
 - Fixed a bug where the pipeline could transition an issue to approved without first validating that the plan entry was established.
