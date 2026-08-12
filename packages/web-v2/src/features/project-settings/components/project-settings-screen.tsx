@@ -24,6 +24,7 @@ import {
 import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
 import { formatApiError } from "@/lib/api/error";
 import { useTabParam } from "@/lib/utils/use-tab-param";
+import { canManageUxContract } from "../permissions";
 import { AdvancedTab } from "./advanced-tab";
 import { BasicsTab } from "./basics-tab";
 import { IntegrationsTab } from "./integrations-tab";
@@ -194,7 +195,10 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						<ProjectFactsTab projectId={project.id} canEdit={canEdit} />
 					)}
 					{tab === "ux-contract" && (
-						<UxContractTab project={project} canEdit={canEdit} />
+						<UxContractTab
+							project={project}
+							canEdit={canManageUxContract(listItem)}
+						/>
 					)}
 					{tab === "labels" && (
 						<LabelsTab
