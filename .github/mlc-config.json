@@ -3,7 +3,11 @@
     { "pattern": "^http://localhost" },
     { "pattern": "^https?://localhost" },
     { "pattern": "^http://127\\.0\\.0\\.1" },
-    { "pattern": "^https?://github\\.com/SidCorp-co/forge" }
+    { "pattern": "^https?://github\\.com/SidCorp-co/forge" },
+    {
+      "comment": "GitHub's advisory pages answer an unauthenticated CI request with no response at all — `Status: 0`, not 404 — so every CHANGELOG entry citing the GHSA it closed reads as a dead link. A GHSA id is an immutable identifier; the risk this mutes is a typo in one, which the advisory text beside it already makes visible.",
+      "pattern": "^https://github\\.com/advisories/GHSA-"
+    }
   ],
   "replacementPatterns": [
     {
