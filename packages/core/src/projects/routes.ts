@@ -700,6 +700,7 @@ projectRoutes.patch(
           case 'OPEN_LOCKED_ON':
           case 'DEAD_END_CONFIG':
           case 'MERGE_STATE_DISABLED':
+          case 'STAGE_POOL_UNKNOWN_RUNNER':
             throw new HTTPException(400, {
               message: err.message,
               cause: { code: err.code, details: err.details },

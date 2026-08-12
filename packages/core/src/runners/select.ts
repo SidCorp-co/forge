@@ -22,6 +22,20 @@ const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
 const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
 
 /**
+ * Per-state runner pool (`pipelineConfig.states[x].deviceIds`) as a candidate
+ * filter. `null`/empty pool → no fragment, so the fleet stays fully eligible.
+ * Remote/server runners (NULL `device_id`) drop out of a non-empty pool by
+ * construction — a pool names devices, and `NULL = ANY(...)` is never true.
+ *
+ * `column` lets a caller that aliases `runners` pass `sql`r.device_id``.
+ */
+// cm:guard this belongs in the same WHERE as rate_limited_until, NOT in excludeDeviceIds — selectRunnerForJob's two wrap-arounds re-run with the exclude set EMPTIED, so a pool expressed as an exclusion evaporates exactly when every pool member is tripped
+function poolClause(deviceIds: string[] | null | undefined, column = sql`device_id`) {
+  if (!deviceIds || deviceIds.length === 0) return sql``;
+  return sql`AND ${column} = ANY(${deviceIds}::uuid[])`;
+}
+
+/**
  * Decide the initial `capabilities` jsonb for a freshly-created runner row.
  *
  * Dev-mode (`NODE_ENV !== 'production'`) defaults `claude-code` runners with
@@ -147,6 +161,13 @@ interface SelectInput {
    * regardless of cap. Defaults to 1 when omitted.
    */
   projectCap?: number;
+  /**
+   * Per-state runner pool — the ONLY devices this job may land on
+   * (`pipelineConfig.states[<stage>].deviceIds`, resolved by the dispatcher).
+   * Null/empty = whole fleet. Every rule below (pin, primary, standby,
+   * load-aware, wrap-around) operates strictly inside the pool.
+   */
+  allowDeviceIds?: string[] | null;
 }
 
 type RunnerRow = {
@@ -224,12 +245,14 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   const excludeDeviceIds = input.excludeDeviceIds ?? [];
   const skipPrimary = input.skipPrimary ?? false;
   const projectCap = input.projectCap ?? 1;
+  const allowDeviceIds = input.allowDeviceIds ?? null;
 
   const picked = await pickRunner(projectId, required, livenessSeconds, {
     pinDeviceId: pinDeviceId ?? null,
     excludeDeviceIds,
     skipPrimary,
     projectCap,
+    allowDeviceIds,
   });
   if (picked) return picked;
 
@@ -242,6 +265,8 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       excludeDeviceIds: [],
       skipPrimary,
       projectCap,
+      // cm:guard the wrap-around clears the EXCLUDE set only — `allowDeviceIds` must be forwarded intact, or an all-tripped pool silently probes a box the operator excluded from the stage
+      allowDeviceIds,
     });
   }
   // Retry-specific last-resort wrap-around (ISS-596): when a retry rotation's
@@ -256,6 +281,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       excludeDeviceIds: [],
       skipPrimary,
       projectCap,
+      allowDeviceIds,
     });
   }
   return null;
@@ -270,6 +296,7 @@ async function pickRunner(
     excludeDeviceIds: string[];
     skipPrimary: boolean;
     projectCap: number;
+    allowDeviceIds: string[] | null;
   },
 ): Promise<Runner | null> {
   // Step 1 — pin. For a session-group resume this is the prior device; for a
@@ -282,6 +309,7 @@ async function pickRunner(
       opts.pinDeviceId,
       required,
       livenessSeconds,
+      opts.allowDeviceIds,
     );
     if (pinned) return pinned;
     // Pin stale → fall through (retry rotation: to standby; first dispatch:
@@ -307,6 +335,7 @@ async function pickRunner(
     return pickLeastLoadedFreeRunner(projectId, required, livenessSeconds, {
       excludeDeviceIds: opts.excludeDeviceIds,
       preferDeviceId: defaultDeviceId,
+      allowDeviceIds: opts.allowDeviceIds,
     });
   }
 
@@ -316,6 +345,7 @@ async function pickRunner(
       defaultDeviceId,
       required,
       livenessSeconds,
+      opts.allowDeviceIds,
     );
     if (primary) return primary;
     // Primary offline / stale / lacks capability → fallthrough to standby.
@@ -333,7 +363,7 @@ async function pickRunner(
     opts.skipPrimary ? null : defaultDeviceId,
     required,
     livenessSeconds,
-    { excludeDeviceIds: opts.excludeDeviceIds },
+    { excludeDeviceIds: opts.excludeDeviceIds, allowDeviceIds: opts.allowDeviceIds },
   );
   return standby;
 }
@@ -350,6 +380,7 @@ async function findHealthyByDevice(
   deviceId: string,
   required: string,
   livenessSeconds: number,
+  allowDeviceIds: string[] | null = null,
 ): Promise<Runner | null> {
   const rows = await db.execute<RunnerRow>(
     sql`
@@ -367,6 +398,7 @@ async function findHealthyByDevice(
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
         ${NOT_QUARANTINED}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(allowDeviceIds)}
       ORDER BY last_seen_at DESC, id ASC
       LIMIT 1
     `,
@@ -388,7 +420,9 @@ async function findStandby(
   excludeDeviceId: string | null,
   required: string,
   livenessSeconds: number,
-  extra: { excludeDeviceIds: string[] } = { excludeDeviceIds: [] },
+  extra: { excludeDeviceIds: string[]; allowDeviceIds?: string[] | null } = {
+    excludeDeviceIds: [],
+  },
 ): Promise<Runner | null> {
   // Exclusion uses `IS DISTINCT FROM` so NULL device_ids (remote/server
   // runners) participate correctly: `NULL <> 'd1'` is NULL, which fails
@@ -426,6 +460,7 @@ async function findStandby(
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
         ${NOT_QUARANTINED}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(extra.allowDeviceIds)}
         ${exclusionClause}
         ${retryExclusionClause}
       ORDER BY last_seen_at DESC, id ASC
@@ -451,7 +486,11 @@ async function pickLeastLoadedFreeRunner(
   projectId: string,
   required: string,
   livenessSeconds: number,
-  opts: { excludeDeviceIds: string[]; preferDeviceId: string | null },
+  opts: {
+    excludeDeviceIds: string[];
+    preferDeviceId: string | null;
+    allowDeviceIds?: string[] | null;
+  },
 ): Promise<Runner | null> {
   const retryExclusionClause =
     opts.excludeDeviceIds.length > 0
@@ -486,6 +525,7 @@ async function pickLeastLoadedFreeRunner(
         ${NOT_QUARANTINED}
         AND COALESCE(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(opts.allowDeviceIds, sql`r.device_id`)}
         ${retryExclusionClause}
       ORDER BY
         CASE WHEN r.device_id IS NOT DISTINCT FROM ${opts.preferDeviceId} THEN 0 ELSE 1 END,
@@ -518,7 +558,7 @@ async function pickLeastLoadedFreeRunner(
 export async function onlineCapableDeviceIds(
   projectId: string,
   requiredCapabilities?: RequiredCapabilities,
-  opts?: { includeLimited?: boolean },
+  opts?: { includeLimited?: boolean; allowDeviceIds?: string[] | null },
 ): Promise<string[]> {
   const required = JSON.stringify(requiredCapabilities ?? {});
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
@@ -537,6 +577,7 @@ export async function onlineCapableDeviceIds(
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         ${limitClause}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC
     `,
   );

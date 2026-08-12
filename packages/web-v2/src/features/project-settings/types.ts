@@ -174,6 +174,8 @@ export interface PipelineStateConfig {
 	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
 	sessionGroup?: string;
 	skipComplexities?: string[];
+	/** Runner pool — the only devices this stage's jobs may land on. Empty/absent = whole fleet. */
+	deviceIds?: string[];
 	[key: string]: unknown;
 }
 
@@ -808,7 +810,9 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 		(sc.disallowedTools?.length ?? 0) > 0 ||
 		Object.keys(sc.mcpServers ?? {}).length > 0 ||
 		(sc.skipComplexities?.length ?? 0) > 0 ||
-		Boolean(sc.sessionGroup)
+		Boolean(sc.sessionGroup) ||
+		// cm:why a stage whose ONLY override is its runner pool must still render — otherwise pinning a stage to a box makes that stage vanish from the one screen an operator checks it on
+		(sc.deviceIds?.length ?? 0) > 0
 	);
 }
 

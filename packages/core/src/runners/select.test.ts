@@ -503,4 +503,81 @@ describe('onlineCapableDeviceIds (retry round-robin candidate set)', () => {
     expect(ids).toEqual(['dev-healthy']);
     expect(ids).not.toContain('dev-quarantined');
   });
+
+  it('scopes the candidate set to the stage runner pool when one is given', async () => {
+    execute.mockResolvedValueOnce([]);
+    await onlineCapableDeviceIds(PROJECT_A, undefined, { allowDeviceIds: ['dev-pool'] });
+    const q = JSON.stringify(execute.mock.calls.at(-1)?.[0]);
+    expect(q).toContain('ANY(');
+    expect(q).toContain('dev-pool');
+  });
+});
+
+describe('selectRunnerForJob — per-state runner pool', () => {
+  const PROJECT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const DEVICE_X = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const POOL = ['dddddddd-dddd-4ddd-8ddd-dddddddddddd'];
+
+  it('applies the pool inside every candidate query shape (pin, primary, standby, cap>1)', async () => {
+    const captured: string[] = [];
+    execute.mockImplementation(async (q: unknown) => {
+      captured.push(JSON.stringify(q));
+      return [];
+    });
+    limit.mockResolvedValue([{ defaultDeviceId: DEVICE_X }]);
+    await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: DEVICE_X,
+      allowDeviceIds: POOL,
+    });
+    await selectRunnerForJob({ projectId: PROJECT_A, projectCap: 2, allowDeviceIds: POOL });
+    expect(captured.length).toBeGreaterThan(0);
+    for (const sql of captured) {
+      expect(sql).toContain('ANY(');
+      expect(sql).toContain(POOL[0]);
+    }
+  });
+
+  // cm:why the load-bearing case: both wrap-arounds re-run with the exclude set EMPTIED, so a pool expressed as an exclusion would evaporate exactly when every pool member is tripped and place the job on a box the operator excluded from the stage
+  it('keeps the pool through both wrap-arounds (exclude set is cleared, pool is not)', async () => {
+    const captured: string[] = [];
+    execute.mockImplementation(async (q: unknown) => {
+      captured.push(JSON.stringify(q));
+      return [];
+    });
+    limit.mockResolvedValue([{ defaultDeviceId: DEVICE_X }]);
+
+    const first = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      excludeDeviceIds: [DEVICE_X],
+      allowDeviceIds: POOL,
+    });
+    expect(first).toBeNull();
+    const firstDispatchQueries = captured.length;
+    expect(firstDispatchQueries).toBeGreaterThan(2);
+
+    const retry = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      excludeDeviceIds: [DEVICE_X],
+      skipPrimary: true,
+      allowDeviceIds: POOL,
+    });
+    expect(retry).toBeNull();
+    expect(captured.length).toBeGreaterThan(firstDispatchQueries);
+
+    for (const sql of captured) expect(sql).toContain(POOL[0]);
+  });
+
+  it('adds no filter when the pool is unset or empty (fleet-wide behaviour unchanged)', async () => {
+    const captured: string[] = [];
+    execute.mockImplementation(async (q: unknown) => {
+      captured.push(JSON.stringify(q));
+      return [];
+    });
+    limit.mockResolvedValue([{ defaultDeviceId: null }]);
+    await selectRunnerForJob({ projectId: PROJECT_A, allowDeviceIds: [] });
+    await selectRunnerForJob({ projectId: PROJECT_A, allowDeviceIds: null });
+    expect(captured.length).toBeGreaterThan(0);
+    for (const sql of captured) expect(sql).not.toContain('ANY(');
+  });
 });

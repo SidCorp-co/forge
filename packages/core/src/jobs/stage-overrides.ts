@@ -39,6 +39,12 @@ export interface StageOverrides {
   budget: BudgetConfig | null;
   sessionGroup: string | null;
   /**
+   * Per-state runner pool. Null (or an empty list, normalized to null here)
+   * means the whole project fleet is eligible — the dispatcher passes this
+   * straight to `selectRunnerForJob` as `allowDeviceIds`.
+   */
+  deviceIds: string[] | null;
+  /**
    * ISS-623 W2 — truthy `mcpServers` keys declared on THIS stage (pre-merge,
    * pre-expansion), so the dispatcher can diff them against the final
    * resolved server set and surface any name that silently failed to
@@ -58,6 +64,7 @@ const EMPTY: StageOverrides = {
   mcpServers: null,
   budget: null,
   sessionGroup: null,
+  deviceIds: null,
   declaredNames: null,
 };
 
@@ -301,6 +308,8 @@ export async function resolveStageOverrides(
     mcpServers: stage.mcpServers ? { ...(stage.mcpServers as Record<string, unknown>) } : null,
     budget: stage.budget ? { ...stage.budget } : null,
     sessionGroup: stage.sessionGroup ?? null,
+    // cm:why an empty array normalizes to null so `[]` cannot read as "no device is eligible" and silently wedge every job on the stage
+    deviceIds: stage.deviceIds && stage.deviceIds.length > 0 ? [...stage.deviceIds] : null,
     declaredNames: stage.mcpServers
       ? [...collectDeclaredMcpNames({ mcpServers: stage.mcpServers as Record<string, unknown> })]
       : null,

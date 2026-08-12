@@ -43,6 +43,7 @@ import {
   type StageOverrides,
   applySkillMaintenanceCarveout,
   escalateModel,
+  extractStageStatus,
   resolveStageOverrides,
 } from './stage-overrides.js';
 
@@ -309,6 +310,7 @@ async function dispatchViaRunner(
   const preDispatchOverrides = await resolveStageOverrides(job.projectId, job.payload);
   let priorClaudeSessionId: string | null = null;
   let pinDeviceId: string | null = null;
+  const stagePool = preDispatchOverrides.deviceIds;
   if (preDispatchOverrides.sessionGroup && job.issueId) {
     const prior = await findPriorSessionInGroup({
       issueId: job.issueId,
@@ -318,6 +320,16 @@ async function dispatchViaRunner(
       priorClaudeSessionId = prior.claudeSessionId;
       pinDeviceId = prior.deviceId;
     }
+  }
+
+  // cm:why the stage pool outranks the session-group resume pin: a resume is an optimisation, but "this stage ran on the box the operator pinned" is the guarantee the pool exists to make — so a prior session on an out-of-pool box loses BOTH the pin and the --resume (same shape as the stale-pin path below)
+  if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) {
+    logger.info(
+      { jobId: job.id, pinDeviceId, stagePool, stageStatus: extractStageStatus(job.payload) },
+      'dispatcher: session-group resume pin is outside the stage runner pool — dispatching fresh inside the pool',
+    );
+    pinDeviceId = null;
+    priorClaudeSessionId = null;
   }
 
   // Compute isRetry here so the bound check below can skip the 3-query block
@@ -409,6 +421,8 @@ async function dispatchViaRunner(
     // Rotation moves devices on purpose → never resume a prior session.
     pinDeviceId = autoRetry.target;
     priorClaudeSessionId = null;
+    // cm:why a rotation target computed before the pool was configured (or from a wider fleet) is dropped rather than honoured — selection then picks a standby INSIDE the pool instead of returning null and stalling the retry chain
+    if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) pinDeviceId = null;
   } else {
     skipPrimary = false;
     const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
@@ -439,6 +453,7 @@ async function dispatchViaRunner(
     excludeDeviceIds,
     skipPrimary,
     projectCap,
+    allowDeviceIds: stagePool,
   });
   if (!runner) {
     // ISS-198 — selectRunnerForJob filters runners with stale heartbeats
@@ -448,9 +463,12 @@ async function dispatchViaRunner(
     // simply has no runners at all there's nothing to observe; that's a
     // configuration condition rather than a worker death.
     await maybeRecordL5Skip(job.projectId, job.id, fallbackChain);
+    // cm:why the pool is named in the log because the two conditions are operationally different: an empty fleet is an outage, a busy/limited POOL is the configured price of pinning a stage — VISION No.10 forbids the second one reading as the first
     logger.warn(
-      { jobId: job.id, projectId: job.projectId, fallbackChain },
-      'dispatcher: no runner online, leaving queued',
+      { jobId: job.id, projectId: job.projectId, fallbackChain, stagePool },
+      stagePool
+        ? 'dispatcher: no runner available inside the stage runner pool, leaving queued'
+        : 'dispatcher: no runner online, leaving queued',
     );
     return 'skipped';
   }

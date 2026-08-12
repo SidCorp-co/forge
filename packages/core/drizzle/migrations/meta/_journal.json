@@ -1226,6 +1226,13 @@
       "when": 1788652800000,
       "tag": "0176_iss849_transition_dedupe",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1788739200000,
+      "tag": "0177_step_durations_device_and_model",
+      "breakpoints": true
     }
   ]
 }

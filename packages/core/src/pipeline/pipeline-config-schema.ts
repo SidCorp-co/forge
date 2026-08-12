@@ -251,6 +251,10 @@ export const stageConfigSchema = z.object({
   // Session-group membership (PR-5). Joins this stage to a named group whose
   // members share a Claude CLI session via --resume across the group.
   sessionGroup: z.string().min(1).max(64).optional(),
+  // cm:why per-state runner pool: unset/empty = whole fleet (pre-pool behaviour), one element = a hard pin, and every other selection rule still applies WITHIN the pool rather than being replaced by it
+  // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate queries next to rate_limited_until, never as an exclude set: both wrap-arounds in selectRunnerForJob deliberately clear excludeDeviceIds
+  // cm:guard an all-busy/all-limited pool leaves the job queued — never widen the pool to place it, or the operator loses the guarantee that a stage ran where they pinned it
+  deviceIds: z.array(z.uuid()).max(20).optional(),
   // Complexity-based auto-skip. When the issue landing on this stage has a
   // `complexity` in this list, the soft-skip resolver treats the stage as
   // skippable (reason `complexity_skip`) instead of dispatching its job —

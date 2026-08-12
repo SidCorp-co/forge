@@ -36,6 +36,7 @@ import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
 import { enqueueJob, enqueueReconcileJob } from './enqueue.js';
+import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -107,6 +108,7 @@ export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
 async function nextRotation(
   job: JobRow,
   state: AutoRetryPayload,
+  allowDeviceIds: string[] | null,
 ): Promise<AutoRetryPayload | null> {
   const ranOn = job.deviceId ?? null;
   // First failure has no prior target: the device that just ran IS this
@@ -123,7 +125,8 @@ async function nextRotation(
   );
   const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
     ?.requiredCapabilities;
-  const online = await onlineCapableDeviceIds(job.projectId, required);
+  // cm:why the sweep is scoped to the stage's runner pool: an out-of-pool target would be dropped at dispatch, so counting it here burns rounds of the RETRY_MAX_ROUNDS budget on boxes this stage can never use
+  const online = await onlineCapableDeviceIds(job.projectId, required, { allowDeviceIds });
   const remaining = online.filter((d) => !done.includes(d));
 
   if (remaining.length > 0) {
@@ -285,13 +288,19 @@ export async function scheduleAutoRetryWithVerify(
 
   // cm:why an empty health-gated set alongside a non-empty unfiltered set means the fleet is up but every box is rate-limited — distinguishable from all-offline, and it decides which reason a give-up reports
   const isFailoverAction = effectiveAction === 'failover' || effectiveAction === 'quarantine';
+  // cm:why resolved once and threaded into BOTH the limited-fleet check and the rotation: reading the pool twice could straddle a config edit and let the two disagree about which boxes exist
+  const stagePool = (await resolveStageOverrides(job.projectId, job.payload)).deviceIds;
   let allRunnersLimited = false;
   if (isFailoverAction) {
     const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
       ?.requiredCapabilities;
+    // cm:guard scope BOTH reads to the pool — an unscoped "healthy" set makes a fully-limited pool look survivable and the rotation then spends its whole budget on boxes dispatch will refuse
     const [healthyDevices, allDevices] = await Promise.all([
-      onlineCapableDeviceIds(job.projectId, required),
-      onlineCapableDeviceIds(job.projectId, required, { includeLimited: true }),
+      onlineCapableDeviceIds(job.projectId, required, { allowDeviceIds: stagePool }),
+      onlineCapableDeviceIds(job.projectId, required, {
+        includeLimited: true,
+        allowDeviceIds: stagePool,
+      }),
     ]);
     // cm:why owner call 2026-08-12: an all-limited fleet DEFERS to the rotation instead of parking —
     //   a seconds-long provider throttle self-heals where parking made it a human intervention
@@ -310,17 +319,27 @@ export async function scheduleAutoRetryWithVerify(
   const state = readAutoRetryPayload(job.payload);
   let next: AutoRetryPayload | null;
   if (isFailoverAction) {
-    next = await nextRotation(job, {
-      ...state,
-      target: state.target ?? job.deviceId ?? null,
-      tries: RETRY_TRIES_PER_DEVICE,
-    });
+    next = await nextRotation(
+      job,
+      {
+        ...state,
+        target: state.target ?? job.deviceId ?? null,
+        tries: RETRY_TRIES_PER_DEVICE,
+      },
+      stagePool,
+    );
   } else {
-    next = await nextRotation(job, state);
+    next = await nextRotation(job, state, stagePool);
   }
   if (next === null) {
     logger.info(
-      { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, allRunnersLimited, reason },
+      {
+        jobId: job.id,
+        attempts: job.attempts,
+        rounds: RETRY_MAX_ROUNDS,
+        allRunnersLimited,
+        reason,
+      },
       'retry: round budget exhausted',
     );
     // cm:why a fleet that was limited the whole way gets the business-language wedge that names the

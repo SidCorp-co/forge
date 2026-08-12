@@ -256,3 +256,42 @@ describe('isBaseBranchStampable', () => {
     ).toBe(true);
   });
 });
+
+describe('updatePipelineConfig — STAGE_POOL_UNKNOWN_RUNNER (per-state runner pool)', () => {
+  const PROJECT = '00000000-0000-0000-0000-000000000001';
+  const DEVICE_OK = '11111111-1111-4111-8111-111111111111';
+  const DEVICE_MISSING = '22222222-2222-4222-8222-222222222222';
+
+  // cm:why a pool naming a device with no runner on the project produces a job nothing can place — queued forever while the fleet reads healthy — so the write is the only moment an operator can be told about the typo
+  it('rejects a pool naming a device with no runner on this project', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    pushSelect([{ deviceId: DEVICE_OK }]);
+
+    await expect(
+      updatePipelineConfig({
+        projectId: PROJECT,
+        patch: { states: { developed: { deviceIds: [DEVICE_OK, DEVICE_MISSING] } } } as never,
+      }),
+    ).rejects.toMatchObject({
+      name: 'PipelineConfigError',
+      code: 'STAGE_POOL_UNKNOWN_RUNNER',
+      details: {
+        stagesWithUnknownDevices: [{ stage: 'developed', deviceIds: [DEVICE_MISSING] }],
+      },
+    });
+  });
+
+  it('accepts a pool whose every device has a runner on this project', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    pushSelect([{ deviceId: DEVICE_OK }]);
+    pushSelect([
+      { agentConfig: { pipelineConfig: { states: { developed: { deviceIds: [DEVICE_OK] } } } } },
+    ]);
+
+    const result = await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { states: { developed: { deviceIds: [DEVICE_OK] } } } as never,
+    });
+    expect(result.pipelineConfig.states?.developed?.deviceIds).toEqual([DEVICE_OK]);
+  });
+});

@@ -828,6 +828,77 @@ describe('jobs/dispatcher', () => {
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
 
+  const agentConfigWithPool = {
+    pipelineConfig: {
+      sessionGroups: { build: ['approved'] },
+      states: { approved: { sessionGroup: 'build', deviceIds: ['d-pool'] } },
+    },
+  };
+
+  // cm:why asserts the precedence chosen for the pool: "the stage ran where the operator pinned it" outranks a resume, so an out-of-pool prior session loses the pin AND the --resume rather than dragging the job off the pool
+  it('drops the session-group pin and the resume when the prior session is outside the stage pool', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-pool-miss',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-pool-1',
+        type: 'code',
+        payload: { stageStatus: 'approved' },
+      },
+    ]);
+    mockSelectOnce([{ agentConfig: agentConfigWithPool }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigWithPool }]); // preDispatch loadStageMap
+    (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      claudeSessionId: 'cli-elsewhere',
+      deviceId: 'd-outside-pool',
+    });
+    const dispatchSpy = mockRunnerDispatch({ deviceId: 'd-pool' });
+    mockUpdateReturn([{ id: 'j-pool-miss' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+
+    const result = await handleDispatch({ jobId: 'j-pool-miss' });
+    expect(result).toBe('dispatched');
+    expect(selectRunnerForJob).toHaveBeenCalledWith(
+      expect.objectContaining({ pinDeviceId: null, allowDeviceIds: ['d-pool'] }),
+    );
+    expect(estimateGroupContextTokens).not.toHaveBeenCalled();
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the session-group pin when the prior session is inside the stage pool', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-pool-hit',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-pool-2',
+        type: 'code',
+        payload: { stageStatus: 'approved' },
+      },
+    ]);
+    mockSelectOnce([{ agentConfig: agentConfigWithPool }]); // budget-check loadStageMap
+    mockSelectOnce([{ agentConfig: null }]); // fallback chain
+    mockSelectOnce([{ agentConfig: agentConfigWithPool }]); // preDispatch loadStageMap
+    (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      claudeSessionId: 'cli-in-pool',
+      deviceId: 'd-pool',
+    });
+    (estimateGroupContextTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce(10_000);
+    mockSelectOnce([{ reopenCount: 0 }]); // reopenCount lookup
+    const dispatchSpy = mockRunnerDispatch({ deviceId: 'd-pool' });
+    mockUpdateReturn([{ id: 'j-pool-hit' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
+
+    const result = await handleDispatch({ jobId: 'j-pool-hit' });
+    expect(result).toBe('dispatched');
+    expect(selectRunnerForJob).toHaveBeenCalledWith(
+      expect.objectContaining({ pinDeviceId: 'd-pool', allowDeviceIds: ['d-pool'] }),
+    );
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('ISS-580: no sessionGroup → bound check is a no-op (no prior session lookup)', async () => {
     // Job without stageStatus → resolveStageOverrides returns EMPTY (sessionGroup=null).
     mockSelectOnce([
@@ -1070,6 +1141,7 @@ describe('jobs/dispatcher PM path', () => {
       excludeDeviceIds: [],
       skipPrimary: false,
       projectCap: 1,
+      allowDeviceIds: null,
     });
 
     // ISS-186 — snapshot must persist on runner path too, before adapter.dispatch.
@@ -1107,6 +1179,7 @@ describe('jobs/dispatcher PM path', () => {
       excludeDeviceIds: [],
       skipPrimary: false,
       projectCap: 1,
+      allowDeviceIds: null,
     });
   });
 

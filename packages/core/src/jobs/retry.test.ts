@@ -52,6 +52,13 @@ vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: (...a: unknown[]) => onlineDevicesMock(...(a as [never])),
 }));
 
+const stagePoolMock = vi.fn(
+  async (..._a: unknown[]) => ({ deviceIds: null }) as { deviceIds: string[] | null },
+);
+vi.mock('./stage-overrides.js', () => ({
+  resolveStageOverrides: (...a: unknown[]) => stagePoolMock(...(a as [never])),
+}));
+
 const incrementRecoveryStatsMock = vi.fn(async (..._args: unknown[]) => undefined);
 const incrementAutoRetryCountMock = vi.fn(async (..._args: unknown[]) => undefined);
 const markSessionTerminalMock = vi.fn(async (..._args: unknown[]) => undefined);
@@ -111,6 +118,7 @@ beforeEach(() => {
   insertReturning.mockReset();
   verifyRecoveryMock.mockResolvedValue('pending');
   onlineDevicesMock.mockResolvedValue(['device-A', 'device-B', 'device-C']);
+  stagePoolMock.mockResolvedValue({ deviceIds: null });
   ccSignalRow = { total: 0, toolCalls: 0, messages: 0 };
 });
 afterEach(() => {
@@ -256,6 +264,28 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(auto.target).toBe('device-A');
       expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
       expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 60 });
+    });
+
+    // cm:why an out-of-pool rotation target would be dropped at dispatch, so an unscoped sweep spends the RETRY_MAX_ROUNDS budget on boxes this stage can never use
+    it('scopes the rotation sweep to the stage runner pool', async () => {
+      ccSignalRow = { total: 2, toolCalls: 0, messages: 1 };
+      stagePoolMock.mockResolvedValue({ deviceIds: ['device-B'] });
+      onlineDevicesMock.mockResolvedValue(['device-B']);
+      insertReturning.mockResolvedValueOnce([{ id: 'j-pool' }]);
+      const result = await scheduleAutoRetryWithVerify(
+        { ...baseJob, deviceId: 'device-A', error: 'Agent completed with errors' } as never,
+        'cc-died',
+      );
+      expect(result.scheduled).toBe(true);
+      for (const call of onlineDevicesMock.mock.calls) {
+        expect(call[2]).toEqual(expect.objectContaining({ allowDeviceIds: ['device-B'] }));
+      }
+      const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+      const auto = (inserted.payload as Record<string, unknown>)._autoRetry as Record<
+        string,
+        unknown
+      >;
+      expect(auto.target).toBe('device-B');
     });
 
     it('still respects the RETRY_MAX_ROUNDS budget', async () => {
@@ -480,7 +510,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(result.scheduled).toBe(true);
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
       expect(
-        ((inserted.payload as Record<string, unknown>)._autoRetry as { target: string | null }).target,
+        ((inserted.payload as Record<string, unknown>)._autoRetry as { target: string | null })
+          .target,
       ).toBeNull();
       expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
     });

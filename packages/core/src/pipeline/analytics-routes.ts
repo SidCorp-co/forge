@@ -182,7 +182,7 @@ pipelineAnalyticsRoutes.get(
     const stepFilter = step ? sql`AND step = ${step}` : sql``;
     const rows = await db.execute(sql`
       SELECT run_id, issue_id, project_id, step, started_at, finished_at,
-             duration_seconds, cost_usd
+             duration_seconds, cost_usd, device_id, model_used
       FROM pipeline_run_step_durations
       WHERE project_id IN ${projectIds}
         AND started_at >= now() - (${days}::int * interval '1 day')
@@ -202,6 +202,8 @@ pipelineAnalyticsRoutes.get(
         finished_at: string;
         duration_seconds: number;
         cost_usd: number;
+        device_id: string | null;
+        model_used: string | null;
       }>
     ).map((r) => ({
       runId: r.run_id,
@@ -212,6 +214,9 @@ pipelineAnalyticsRoutes.get(
       finishedAt: r.finished_at,
       durationSeconds: Number(r.duration_seconds),
       costUsd: Number(r.cost_usd),
+      // cm:why per-state runner pools mean one step's rows can span several boxes and model tiers; without these two the per-box comparison the pool exists to enable cannot be read back out
+      deviceId: r.device_id,
+      modelUsed: r.model_used,
     }));
     return c.json(out);
   },

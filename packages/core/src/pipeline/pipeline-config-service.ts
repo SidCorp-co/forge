@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, projects, skillRegistrations } from '../db/schema.js';
+import { type IssueStatus, issues, projects, runners, skillRegistrations } from '../db/schema.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { logger } from '../logger.js';
 import {
@@ -24,6 +24,7 @@ export type PipelineConfigErrorCode =
   | 'OPEN_LOCKED_ON'
   | 'STAGE_HAS_ISSUES'
   | 'AUTO_STAGE_NEEDS_SKILL'
+  | 'STAGE_POOL_UNKNOWN_RUNNER'
   | 'MISSING_SKILL_FOR_ENABLED_STAGE'
   | 'DEAD_END_CONFIG'
   | 'MERGE_STATE_DISABLED'
@@ -127,6 +128,31 @@ export async function updatePipelineConfig(
                 blockingIssueIds: blocking.map((b) => b.id),
                 stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
               },
+            );
+          }
+        }
+
+        // cm:why validated at WRITE time because the runtime failure is invisible: a pool naming a device with no runner on this project produces an unplaceable job that sits `queued` while the fleet reads healthy — rejecting the patch is the only place an operator learns about the typo
+        const pooledStages = (
+          Object.entries(patchStates) as Array<[string, { deviceIds?: string[] } | undefined]>
+        ).filter((entry): entry is [string, { deviceIds: string[] }] =>
+          Boolean(entry[1]?.deviceIds?.length),
+        );
+        if (pooledStages.length > 0) {
+          const wanted = Array.from(new Set(pooledStages.flatMap(([, v]) => v.deviceIds)));
+          const bound = await db
+            .select({ deviceId: runners.deviceId })
+            .from(runners)
+            .where(and(eq(runners.projectId, projectId), inArray(runners.deviceId, wanted)));
+          const have = new Set(bound.map((r) => r.deviceId));
+          const unknown = pooledStages
+            .map(([stage, v]) => ({ stage, deviceIds: v.deviceIds.filter((d) => !have.has(d)) }))
+            .filter((e) => e.deviceIds.length > 0);
+          if (unknown.length > 0) {
+            throw new PipelineConfigError(
+              'STAGE_POOL_UNKNOWN_RUNNER',
+              'stage runner pool names a device with no runner on this project',
+              { stagesWithUnknownDevices: unknown },
             );
           }
         }
