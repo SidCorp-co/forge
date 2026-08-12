@@ -27,6 +27,13 @@ const projectInputSchema = z
   })
   .strict();
 
+const retryRescuesInputSchema = z
+  .object({
+    projectId: z.uuid(),
+    days: z.number().int().min(1).max(90).optional().default(30),
+  })
+  .strict();
+
 type AggRow = {
   project_id: string;
   project_slug: string | null;
@@ -93,6 +100,49 @@ export const forgeMetricsStepDurationsTool: ContextScopedMcpToolFactory = (ctx) 
       n: num(r.n),
     }));
     return { rows, windowDays: input.days };
+  },
+});
+
+export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_metrics.project_retry_rescues',
+  description:
+    'Retry failures later rescued by a successful retry, reconstructed from historical job chains. Requires project membership. Groups results by the original failure reason. Params: `projectId` and `days` (1..90, default 30). Returns `{ rows: [{ failureKind, failureReason, rescues, lastRescuedAt }], total, windowDays, projectId }`.',
+  inputSchema: zodToMcpSchema(retryRescuesInputSchema),
+  handler: async (args) => {
+    const input = retryRescuesInputSchema.parse(args);
+    await assertPrincipalIsMember(ctx.principal, input.projectId);
+
+    const result = await db.execute(sql`
+      SELECT failure_kind, failure_reason, count(*)::int AS rescues,
+             max(rescued_at) AS last_rescued_at
+      FROM retry_rescues
+      WHERE project_id = ${input.projectId}
+        AND rescued_at >= now() - (${input.days}::int * interval '1 day')
+      GROUP BY failure_kind, failure_reason
+      ORDER BY rescues DESC, last_rescued_at DESC
+    `);
+    const rows = (
+      result as unknown as Array<{
+        failure_kind: string | null;
+        failure_reason: string;
+        rescues: number | string;
+        last_rescued_at: string | Date;
+      }>
+    ).map((row) => ({
+      failureKind: row.failure_kind,
+      failureReason: row.failure_reason,
+      rescues: num(row.rescues),
+      lastRescuedAt:
+        row.last_rescued_at instanceof Date
+          ? row.last_rescued_at.toISOString()
+          : String(row.last_rescued_at),
+    }));
+    return {
+      rows,
+      total: rows.reduce((total, row) => total + row.rescues, 0),
+      windowDays: input.days,
+      projectId: input.projectId,
+    };
   },
 });
 

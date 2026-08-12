@@ -18,6 +18,7 @@ const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   schedule_report: 'info',
   reconcile_gate_pending: 'warning',
   issue_stranded: 'warning',
+  retry_rescue_threshold: 'warning',
 };
 
 function defaultSeverityForType(type: NotificationType): string {

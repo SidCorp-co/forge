@@ -31,6 +31,14 @@ vi.mock('./wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...(args as [])),
 }));
 
+const detectRetryRescueThresholdsMock = vi.fn(async (_now?: Date) => ({
+  detected: 0,
+  notified: 0,
+}));
+vi.mock('./retry-rescue-alert.js', () => ({
+  detectRetryRescueThresholds: (now?: Date) => detectRetryRescueThresholdsMock(now),
+}));
+
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
 // ISS-445 — db.select(...).from(...).where(...) result, used by
@@ -178,12 +186,25 @@ beforeEach(() => {
   applyStatusTransitionMock.mockClear();
   applyStatusTransitionMock.mockResolvedValue(undefined);
   emitWedgeMock.mockClear();
+  detectRetryRescueThresholdsMock.mockClear();
+  detectRetryRescueThresholdsMock.mockResolvedValue({ detected: 0, notified: 0 });
   runLoopMonitorMock.mockClear();
   runLoopMonitorMock.mockResolvedValue({
     ackMisses: zeroAxis,
     sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
     sessionLostJobs: zeroAxis,
     resultMisses: zeroAxis,
+  });
+});
+
+describe('runPipelineSweep — retry rescue thresholds', () => {
+  it('runs the detector and exposes its result', async () => {
+    detectRetryRescueThresholdsMock.mockResolvedValueOnce({ detected: 1, notified: 1 });
+
+    const result = await runPipelineSweep();
+
+    expect(detectRetryRescueThresholdsMock).toHaveBeenCalledTimes(1);
+    expect(result.retryRescueThresholds).toEqual({ detected: 1, notified: 1 });
   });
 });
 

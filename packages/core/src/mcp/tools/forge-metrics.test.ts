@@ -9,16 +9,20 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectDistinctImpl = vi.fn();
+const selectImpl = vi.fn();
 const executeImpl = vi.fn();
 
 vi.mock('../../db/client.js', () => ({
   db: {
+    select: (...a: unknown[]) => selectImpl(...a),
     selectDistinct: (...a: unknown[]) => selectDistinctImpl(...a),
     execute: (...a: unknown[]) => executeImpl(...a),
   },
 }));
 
-const { forgeMetricsStepDurationsTool } = await import('./forge-metrics.js');
+const { forgeMetricsProjectRetryRescuesTool, forgeMetricsStepDurationsTool } = await import(
+  './forge-metrics.js'
+);
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
@@ -89,6 +93,7 @@ function collectSqlFragments(sqlArg: unknown): string {
 beforeEach(() => {
   vi.clearAllMocks();
   selectDistinctImpl.mockReset();
+  selectImpl.mockReset();
   executeImpl.mockReset();
 });
 
@@ -113,5 +118,46 @@ describe('forge_metrics.step_durations', () => {
     expect(sqlText).toContain('IN (');
     expect(sqlText).not.toContain('ANY(');
     expect(sqlText).not.toContain('::uuid[]');
+  });
+});
+
+describe('forge_metrics.project_retry_rescues', () => {
+  it('returns per-reason rescues for a project member', async () => {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        leftJoin: () => ({
+          leftJoin: () => ({
+            where: () => ({
+              limit: () =>
+                Promise.resolve([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]),
+            }),
+          }),
+        }),
+      }),
+    }));
+    executeImpl.mockResolvedValueOnce([
+      {
+        failure_kind: 'infra',
+        failure_reason: 'hooks_path',
+        rescues: '46',
+        last_rescued_at: '2026-08-12T09:00:00Z',
+      },
+    ]);
+
+    const tool = forgeMetricsProjectRetryRescuesTool(buildCtx());
+    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+      total: number;
+      rows: Array<{ failureReason: string; rescues: number }>;
+    };
+
+    expect(res.total).toBe(46);
+    expect(res.rows).toEqual([
+      {
+        failureKind: 'infra',
+        failureReason: 'hooks_path',
+        rescues: 46,
+        lastRescuedAt: '2026-08-12T09:00:00Z',
+      },
+    ]);
   });
 });

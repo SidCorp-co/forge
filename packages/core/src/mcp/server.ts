@@ -38,6 +38,7 @@ import {
   forgeMemoryWriteTool,
 } from './tools/forge-memory.js';
 import {
+  forgeMetricsProjectRetryRescuesTool,
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
   forgeMetricsStepDurationsTool,
@@ -221,6 +222,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillFactsListTool(ctx),
     forgeSkillFactsGetTool(ctx),
     forgeMetricsStepDurationsTool(ctx),
+    forgeMetricsProjectRetryRescuesTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
     forgeMetricsProjectTimeseriesTool(ctx),
     forgeRunnersTool(ctx),

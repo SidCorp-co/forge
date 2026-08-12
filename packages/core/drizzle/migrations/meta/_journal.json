@@ -1212,6 +1212,13 @@
       "when": 1788480000000,
       "tag": "0174_iss825_runner_quarantine",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1788566400000,
+      "tag": "0175_iss826_retry_rescues",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,8 @@ function typeLabel(type: string): string {
       return "SKILL";
     case "issue_stranded":
       return "STRANDED";
+    case "retry_rescue_threshold":
+      return "RETRY";
     default:
       return "EVENT";
   }

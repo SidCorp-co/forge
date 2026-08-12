@@ -23,6 +23,7 @@ export const NOTIFICATION_TYPES = [
   'schedule_report',
   'reconcile_gate_pending',
   'issue_stranded',
+  'retry_rescue_threshold',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -54,6 +55,7 @@ export const NOTIFICATION_CONTRACT: Record<NotificationType, NotificationTypeCon
   reconcile_gate_pending: { severity: 'warning', channels: ['bell', 'toast'] },
   // cm:why ISS-762 — browser-channel because this one is defined by nobody looking: the three known cases sat 7–12 days precisely because a bell nobody opened was the only surface. A type that fires only when a human already stopped watching has to reach past the app.
   issue_stranded: { severity: 'warning', channels: ['bell', 'toast', 'browser'] },
+  retry_rescue_threshold: { severity: 'warning', channels: ['bell', 'toast', 'browser'] },
 };
 
 /** Channels a type targets; defaults to bell-only for an unknown/legacy type. */
