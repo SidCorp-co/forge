@@ -10,8 +10,11 @@
  * `selectRunnerForJob`) rather than merely passing in isolation.
  *
  * The five faces, one test each:
- *   - ISS-757 — org spend-cap storm (classification + immediate park, not 60
- *     dispatches).
+ *   - ISS-757 — org spend-cap storm: classified as per-account exhaustion, so
+ *     it rotates immediately and the round budget ends it, instead of 60
+ *     same-device dispatches. (NOT an immediate park — that policy was
+ *     reversed 2026-08-12; see the guard on `allRunnersLimited` in
+ *     `src/jobs/retry.ts`.)
  *   - ISS-806 — box-scoped deterministic failure quarantines its runner
  *     instead of rotating the fault across the fleet.
  *   - ISS-760 — schedule terminal path records an honest reason + status,
@@ -52,6 +55,9 @@ type Mods = {
   classifyFailure: typeof PipelineFailureClassifier.classifyFailure;
   CLASSIFIER_VERSION: typeof PipelineFailureClassifier.CLASSIFIER_VERSION;
   scheduleAutoRetryWithVerify: typeof JobsRetry.scheduleAutoRetryWithVerify;
+  AUTO_RETRY_PAYLOAD_KEY: typeof JobsRetry.AUTO_RETRY_PAYLOAD_KEY;
+  RETRY_MAX_ROUNDS: typeof JobsRetry.RETRY_MAX_ROUNDS;
+  RETRY_TRIES_PER_DEVICE: typeof JobsRetry.RETRY_TRIES_PER_DEVICE;
   maybeQuarantineRunner: typeof RunnersQuarantine.maybeQuarantineRunner;
   RUNNER_QUARANTINE_STREAK: typeof RunnersQuarantine.RUNNER_QUARANTINE_STREAK;
   selectRunnerForJob: typeof RunnersSelect.selectRunnerForJob;
@@ -82,33 +88,25 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const [
-      classifierMod,
-      retryMod,
-      quarantineMod,
-      selectMod,
-      sessionFailureMod,
-      scheduleServiceMod,
-      dispatcherMod,
-      hooksMod,
-      dbMod,
-      schemaMod,
-    ] = await Promise.all([
-      import('../../src/pipeline/failure-classifier.js'),
-      import('../../src/jobs/retry.js'),
-      import('../../src/runners/quarantine.js'),
-      import('../../src/runners/select.js'),
-      import('../../src/agent-sessions/session-failure.js'),
-      import('../../src/schedules/service.js'),
-      import('../../src/jobs/dispatcher.js'),
-      import('../../src/pipeline/hooks.js'),
-      import('../../src/db/client.js'),
-      import('../../src/db/schema.js'),
-    ]);
+    // cm:guard import these SEQUENTIALLY, never with Promise.all. Resolving these ten graphs concurrently deadlocks the module runner — measured 2026-08-13: the hook never returned at 120s OR at 600s, so all 6 tests reported `skipped` and this suite had never once executed anywhere since it was written. Awaiting them one at a time runs the whole file in ~10s. The graphs overlap heavily (db/client, config/env, logger, schema) and a cycle between two concurrent evaluations is what wedges.
+    // cm:edge protocol -> packages/core/vitest.integration.config.ts — `pool: 'forks'` is what makes this reachable; a hook that hangs here is invisible as a FAILURE (vitest reports the tests as skipped and the suite as timed out), so a green-looking `core-integration` is not evidence this file ran
+    const classifierMod = await import('../../src/pipeline/failure-classifier.js');
+    const retryMod = await import('../../src/jobs/retry.js');
+    const quarantineMod = await import('../../src/runners/quarantine.js');
+    const selectMod = await import('../../src/runners/select.js');
+    const sessionFailureMod = await import('../../src/agent-sessions/session-failure.js');
+    const scheduleServiceMod = await import('../../src/schedules/service.js');
+    const dispatcherMod = await import('../../src/jobs/dispatcher.js');
+    const hooksMod = await import('../../src/pipeline/hooks.js');
+    const dbMod = await import('../../src/db/client.js');
+    const schemaMod = await import('../../src/db/schema.js');
     mods = {
       classifyFailure: classifierMod.classifyFailure,
       CLASSIFIER_VERSION: classifierMod.CLASSIFIER_VERSION,
       scheduleAutoRetryWithVerify: retryMod.scheduleAutoRetryWithVerify,
+      AUTO_RETRY_PAYLOAD_KEY: retryMod.AUTO_RETRY_PAYLOAD_KEY,
+      RETRY_MAX_ROUNDS: retryMod.RETRY_MAX_ROUNDS,
+      RETRY_TRIES_PER_DEVICE: retryMod.RETRY_TRIES_PER_DEVICE,
       maybeQuarantineRunner: quarantineMod.maybeQuarantineRunner,
       RUNNER_QUARANTINE_STREAK: quarantineMod.RUNNER_QUARANTINE_STREAK,
       selectRunnerForJob: selectMod.selectRunnerForJob,
@@ -120,7 +118,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       db: dbMod.db,
       jobs: schemaMod.jobs,
     };
-    // cm:why 120s not the config's 60s hookTimeout — this hook starts a testcontainer AND resolves 10 dynamic imports under pool:'forks'; 60s times out here, which is why 17 sibling suites already override to 120s
+    // cm:why 120s covers a cold testcontainer pull on a CI runner, matching the 17 sibling suites. It was previously blamed for the hang and raised from 60s to 120s as the fix — it was never the cause (600s hung identically); the concurrent imports above were.
   }, 120_000);
 
   afterAll(async () => {
@@ -248,10 +246,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     expect(classified.action).toBe('failover');
 
     const { owner, project } = await seedProject();
-    // A single-runner fleet whose only device already carries the spend-cap
-    // stamp (as `finalize-failure.ts` would have written it before the retry
-    // decision runs — ISS-823 review round 1's ordering fix). With no other
-    // device to fail over to, the storm must stop at the first attempt.
+    // cm:why the fleet's only device is seeded ALREADY rate-limited because finalize-failure.ts stamps the spend cap BEFORE the retry decision reads it (ISS-823 review round 1's ordering fix); seeding it clean would test a fleet state that cannot occur at this point in the real sequence
     const { deviceId, runnerId } = await seedRunner(project.id, owner.id, {
       rateLimitedUntil: new Date(Date.now() + 60 * 60_000),
     });
@@ -264,9 +259,26 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     });
     const job = await getJobRow(jobId);
 
-    const outcome = await mods.scheduleAutoRetryWithVerify(job, spendCapText);
-    expect(outcome.scheduled).toBe(false);
-    expect(outcome.reason).toBe('all_devices_exhausted');
+    // cm:why this assertion was inverted on 2026-08-13, and the inversion is the POINT: it used to demand `{scheduled:false, reason:'all_devices_exhausted'}` on the FIRST attempt, which is the policy the owner reversed on 2026-08-12 (see the cm:why + cm:guard on `allRunnersLimited` in src/jobs/retry.ts — an all-limited fleet now DEFERS to the rotation, because parking a seconds-long provider throttle turns it into a human intervention). The test was authored the same day and never executed, so nothing caught that it contradicted the guard.
+    // cm:edge lockstep -> packages/core/src/jobs/retry.ts — `allRunnersLimited` is computed but deliberately NOT acted on at entry; if that entry-park is ever restored, this first-attempt expectation flips back
+    const firstAttempt = await mods.scheduleAutoRetryWithVerify(job, spendCapText);
+    expect(firstAttempt.scheduled).toBe(true);
+
+    // cm:why the ISS-757 face is the 60-dispatch STORM, and what stops it now is the round budget plus an immediate rotation, so proving the face is closed needs BOTH halves: the first attempt rotates, and the last permitted sweep parks. Asserting only the park would pass even if entry-parking came back, which is the reversed policy.
+    const exhausted = {
+      ...job,
+      payload: {
+        [mods.AUTO_RETRY_PAYLOAD_KEY]: {
+          round: mods.RETRY_MAX_ROUNDS,
+          target: deviceId,
+          tries: mods.RETRY_TRIES_PER_DEVICE,
+          done: [deviceId],
+        },
+      },
+    };
+    const lastAttempt = await mods.scheduleAutoRetryWithVerify(exhausted, spendCapText);
+    expect(lastAttempt.scheduled).toBe(false);
+    expect(lastAttempt.reason).toBe('all_devices_exhausted');
   });
 
   // ---------- ISS-806 — box-scoped deterministic failure quarantines -----
