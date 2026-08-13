@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T15:15:05.718Z",
+  "generatedAt": "2026-08-13T16:13:10.417Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -14,12 +14,12 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/agent-sessions/routes.test.ts": {
-      "fileLines": 1490,
+      "fileLines": 1587,
       "maxFunctionLines": 164
     },
     "packages/core/src/agent-sessions/routes.ts": {
-      "fileLines": 885,
-      "maxFunctionLines": 174
+      "fileLines": 897,
+      "maxFunctionLines": 180
     },
     "packages/core/src/chat/providers/litellm.test.ts": {
       "fileLines": 0,
@@ -238,11 +238,11 @@
       "maxFunctionLines": 180
     },
     "packages/core/src/pipeline/sweeper.test.ts": {
-      "fileLines": 737,
+      "fileLines": 781,
       "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/sweeper.ts": {
-      "fileLines": 654,
+      "fileLines": 706,
       "maxFunctionLines": 0
     },
     "packages/core/src/pm/routes.ts": {
