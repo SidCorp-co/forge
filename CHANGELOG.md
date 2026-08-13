@@ -192,6 +192,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Project Settings now has a UX Contract tab where you can pick a preset, confirm your detected tech stack, adjust rule severities, and approve or reject proposed changes — all by choosing, never by writing free text.
 - A runner box that fails the same preflight check repeatedly is now quarantined (taken out of dispatch rotation) instead of being retried forever across the fleet; quarantine self-heals on expiry, clears on the next success, is operator-clearable, and shows up with its reason in the runners list.
 - Fixed a pipeline reliability gap where a failed automatic step dispatch could silently leave an issue stuck instead of being retried or reported.
+- The support chat bot now reports project progress using the same authoritative numbers as the dashboard, and stays within its intended product-support role.
 
 ## [0.3.0] - 2026-06-11
 
