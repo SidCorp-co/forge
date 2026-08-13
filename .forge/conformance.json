@@ -18,8 +18,8 @@
     },
     "behaviour": {
       "level": 2,
-      "gate": "check-test-signal",
-      "owns": "whether a test asserts behaviour or restates a declaration"
+      "gate": "check-test-signal + check-flow-coverage",
+      "owns": "whether a test asserts behaviour or restates a declaration; whether every declared flow step is executed end-to-end"
     },
     "language": {
       "level": 3,
@@ -82,6 +82,24 @@
       "declarationPattern": "\\.(columnType|notNull|hasDefault|primary|isUnique|dataType|foreignKeys|indexes)\\b|withTimezone\\(|names\\.sort\\(\\)",
       "mockPattern": "toHaveBeenCalled[A-Za-z]*\\(",
       "assertPattern": "expect\\("
+    },
+    "flow-coverage": {
+      "cm": ".forge/codemap/cm",
+      "codemapConfig": ".forge/codemap.json",
+      "sources": [
+        {
+          "label": "e2e",
+          "path": "packages/core/coverage/integration/coverage-final.json",
+          "authoritative": true,
+          "produce": "pnpm --filter @forge/core test:integration:coverage"
+        },
+        {
+          "label": "unit",
+          "path": "packages/core/coverage/unit/coverage-final.json",
+          "authoritative": false,
+          "produce": "pnpm --filter @forge/core test:coverage"
+        }
+      ]
     }
   }
 }

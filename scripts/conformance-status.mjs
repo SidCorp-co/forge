@@ -46,10 +46,17 @@ const PROBES = {
     baseline: '.arch.json',
     probe: ['./.forge/archmap/arch', 'check'],
   },
+  // cm:guard an axis with several checkers measures at the WEAKEST of them. Reporting the strongest would let one locked checker hide a sibling that stopped blocking, which is the drift this whole script exists to catch.
   behaviour: {
-    gate: 'check-test-signal',
+    gate: 'check-test-signal + check-flow-coverage',
     baseline: '.forge/test-signal-baseline.json',
     probe: ['node', 'scripts/check-test-signal.mjs', '--all'],
+    also: [
+      {
+        baseline: '.forge/flow-coverage-baseline.json',
+        probe: ['node', 'scripts/check-flow-coverage.mjs', '--all'],
+      },
+    ],
   },
   language: {
     gate: 'check-source-language',
@@ -68,7 +75,7 @@ function readManifest() {
 }
 
 // cm:guard measure by RUNNING the checker, never by reading the manifest. Reading the declaration and printing it back is what every drifted gate already did.
-function measure(axis, spec) {
+function measureOne(spec) {
   const r = spawnSync(spec.probe[0], spec.probe.slice(1), {
     cwd: ROOT,
     encoding: 'utf8',
@@ -81,6 +88,12 @@ function measure(axis, spec) {
   if (r.status === 1) return { level: 2, note: 'blocking, violations present' };
   if (hasBaseline) return { level: 2, note: 'blocking, baseline frozen' };
   return { level: 3, note: 'blocking, no baseline' };
+}
+
+function measure(_axis, spec) {
+  return [spec, ...(spec.also ?? [])]
+    .map(measureOne)
+    .reduce((weakest, m) => (m.level < weakest.level ? m : weakest));
 }
 
 function ciGates() {

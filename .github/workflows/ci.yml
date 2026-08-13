@@ -288,7 +288,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
-      - run: pnpm --filter @forge/core test:integration:ci
+      # The coverage variant of test:integration:ci — same suite, same container
+      # mode, plus the v8 report that check-flow-coverage reads. Coverage costs a
+      # couple of seconds on an 85s run, and it is the ONLY place the e2e report
+      # is produced, so the flow gate below has evidence to work from.
+      - run: TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage
+      # --require-sources turns "no coverage report" from a local skip into a
+      # failure. `pnpm verify` skips this check when the report is absent; that
+      # skip is only honest because this step exists and ci-parity proves it does.
+      - run: node scripts/check-flow-coverage.mjs --all --require-sources
 
   # Merge gate for the Rust runner. Mirrors the runner-ci gates on ubuntu only
   # (runner-ci keeps the 3-OS matrix for platform visibility, but as a separate

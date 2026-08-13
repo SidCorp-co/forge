@@ -24,5 +24,12 @@ export default defineConfig({
         singleFork: false,
       },
     },
+    // cm:edge contract -> scripts/check-flow-coverage.mjs — that checker reads this report as the AUTHORITATIVE source: a cm:flow step counts as defended only when the integration suite executed it. Narrowing `include` here silently turns settled steps into out-of-scope faults.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts'],
+    },
   },
 });

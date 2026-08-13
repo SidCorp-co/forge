@@ -97,6 +97,38 @@ so can only fail on an intended change. FK `.onDelete` is deliberately not flagg
 Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the codemap
 baseline. Wired into the commit path.
 
+## check-flow-coverage.mjs — every declared flow step must be walked
+
+The join between the knowledge axis and the behaviour axis. codemap says *"this line is step 4 of
+the dispatch flow"*; a v8 coverage report says which lines a test executed. A step named in the map
+and executed by nothing is a step the next editor believes is defended.
+
+It is measured, never declared — a `// covers dispatch/tick` comment in a test file would be exactly
+the claim-instead-of-measurement that `conformance-status.mjs` exists to catch.
+
+**Authoritative vs not.** A step reached only by unit tests is printed as `UNIT` and does **not**
+count. With 974 `vi.mock` calls in `packages/core`, a unit test can execute a step's function with
+every neighbour stubbed out — that proves the function runs, not that the flow connects. Only
+sources marked `authoritative` in `.forge/conformance.json` (today: the integration suite) settle a
+step.
+
+The step list comes from a grep, but the step **count** comes from `cm flow <name>`; a disagreement
+exits `2`. Deleting the last annotation of a declared flow, or declaring a flow nobody annotated,
+also exits `2` — never `0`.
+
+```bash
+pnpm --filter @forge/core test:integration:coverage   # produces the authoritative report
+pnpm --filter @forge/core test:coverage               # optional, adds the UNIT column
+node scripts/check-flow-coverage.mjs --all
+```
+
+`--require-sources` (CI) turns a missing report from a skip into a failure. `pnpm verify` skips this
+check locally when no report is on disk; that skip is honest only because `core-integration` runs it
+with `--require-sources`, and `--ci-parity` proves that step exists.
+
+Uncovered steps freeze into `.forge/flow-coverage-baseline.json` via `--update-baseline`, so
+declaring a flow is never punished — the debt just shows up in the diff. Today the baseline is empty.
+
 ## upload-image.sh — attach images from a runner
 
 Uploads screenshots/images to a Forge issue or comment over REST. Exists because the MCP

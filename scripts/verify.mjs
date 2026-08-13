@@ -43,6 +43,15 @@ const CHECKS = [
     scanned: /^test-signal: (\d+) test file/m,
   },
   {
+    axis: 'behaviour',
+    label: 'flow-coverage',
+    cmd: ['node', 'scripts/check-flow-coverage.mjs', '--all'],
+    scanned: /: (\d+) step\(s\) across/,
+    unit: 'flow steps',
+    // cm:guard the skip is only legitimate because CI runs this WITH --require-sources after producing the reports, and ci-parity proves that step exists. Drop it there and this becomes a check that never runs anywhere.
+    skipIf: /skipped — no coverage report/,
+  },
+  {
     axis: 'knowledge',
     label: 'codemap prose',
     cmd: ['.forge/codemap/cm', 'verify', '--since', '@@MERGE_BASE@@'],
@@ -114,7 +123,9 @@ const CI_COVERAGE = {
   'pnpm --filter forge-beta exec vitest run --passWithNoTests': 'pnpm test',
   'pnpm --filter @forge/core test': 'pnpm test',
   'pnpm --filter @forge/core build': 'pnpm build',
-  'pnpm --filter @forge/core test:integration:ci': 'pnpm --filter @forge/core test:integration',
+  'TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage':
+    'pnpm --filter @forge/core test:integration',
+  'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
   'Validate bundle.active=true': 'dev-bundle-smoke, Tauri-only',
   'Install Linux deps for Tauri': 'dev-bundle-smoke, Tauri-only',
   'Generate throwaway updater signing key': 'dev-bundle-smoke, Tauri-only',
@@ -147,6 +158,9 @@ function runCheck(check, base) {
   if (r.error) return { ...check, code: 2, out, why: `could not spawn: ${r.error.message}` };
   if (r.status === 2) return { ...check, code: 2, out, why: 'checker reported it could not run' };
 
+  if (check.skipIf && check.skipIf.test(out)) {
+    return { ...check, code: r.status ?? 0, out, note: 'skipped — prerequisite absent locally, CI runs it' };
+  }
   if (check.scanned) {
     const m = out.match(check.scanned);
     if (!m) return { ...check, code: 2, out, why: 'no file count in output — cannot prove it ran' };
@@ -241,7 +255,7 @@ function report(results, adv, parity) {
   console.log('');
   for (const r of results) {
     const mark = r.code === 0 ? 'ok  ' : r.code === 2 ? 'FAIL' : 'red ';
-    const files = r.files === undefined ? '' : `${r.files} files`;
+    const files = r.files === undefined ? '' : `${r.files} ${r.unit ?? 'files'}`;
     const aside = r.why ?? r.note;
     console.log(
       `  ${mark}  ${r.axis.padEnd(10)} ${r.label.padEnd(width)}  ${files}${aside ? `  ${aside}` : ''}`,

@@ -94,14 +94,20 @@ the file**; `cm:edge` drives `cm impact`; **`cm:why` has no consumer at all** �
 not even `cm impact`. So anything a future editor must *obey* belongs in `cm:guard`, never
 `cm:why`. Filler accumulates in `cm:why` precisely because nothing surfaces it.
 
-## Six gates, six axes
+## Seven gates, five axes
 
 Each sits in `ci-passed`'s `needs`, so a violation blocks the merge. **That, not this file, is why
 they hold.** Every gate that drifted did so while documented and non-blocking — biome to 366 errors,
 `typecheck` to 84, and the two length rules to 143 — and each stopped drifting the day it was
 baselined and gated (see the comments on the `core` job in `.github/workflows/ci.yml`).
 
-All six run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify` neither runs nor
+Seven gates over five axes: `form` is gated twice (biome for the rules, `check-size-budget` for the
+baseline biome cannot hold) and `behaviour` is gated twice (`check-test-signal` for whether a test
+asserts anything, `check-flow-coverage` for whether the flows are walked). **An axis measures at its
+weakest gate** — reporting the strongest would let one locked checker hide a sibling that stopped
+blocking, which is the whole failure mode here.
+
+All seven run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify` neither runs nor
 declares fails `verify --ci-parity`, which is itself a CI step — so the local command and the
 workflow cannot drift apart.
 
@@ -118,7 +124,18 @@ relations 2 · behaviour 2 · language 3.
 | knowledge | `cm verify` — job `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
 | relations | `arch check` — job `archmap` | which module may depend on which | how a file is written |
 | behaviour | `check-test-signal` — job `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
+| flows | `check-flow-coverage` — job `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
 | language | `check-source-language` — job `lang-check` | English-only source policy | everything else |
+
+The flows row is the only place the two axes meet. codemap says *which line is step 4 of the
+dispatch flow*; the integration suite's v8 report says *which lines ran*. A step named in the map
+and executed by nothing is a step the next editor believes is defended. **A step reached only by
+unit tests does not count** — with 974 `vi.mock` calls in `packages/core`, a unit test can run a
+step's function with every neighbour stubbed, which proves the function runs, not that the flow
+connects. Nothing is self-reported: a `// covers dispatch/tick` comment in a test file would be the
+claim-instead-of-measurement the manifest exists to catch. All 6 steps of `dispatch` are settled
+end-to-end today and `.forge/flow-coverage-baseline.json` is empty; freeze into it with
+`--update-baseline` so declaring a new flow is never punished, only visible.
 
 Size is its own row because biome **declares** the two length rules but cannot gate them: it has no
 baseline, so the only choices were `warn` (143 violations, `biome check` exits 0, nothing held) and
