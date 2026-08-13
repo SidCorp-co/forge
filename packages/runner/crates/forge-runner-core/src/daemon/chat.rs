@@ -19,7 +19,7 @@
 //! so it cannot consume the pipeline `job.assigned` cap. It has its own
 //! `chat_max_concurrent` budget (a semaphore owned by the daemon).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -34,6 +34,7 @@ use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::{JobSpec, Runner, RunnerEvent};
 use crate::transport::agent_sessions::{self, SessionPatch};
 use crate::transport::CoreClient;
+use crate::workspace::refresh;
 
 /// Cadence for streaming assistant turns back to core while a turn runs.
 /// Mirrors the desktop incremental-flush feel; core tail-debounces the
@@ -329,6 +330,20 @@ async fn run_turn(
         turn.resume_id.is_some()
     );
 
+    // cm:guard refresh HERE and not in handle_start / handle_send — both funnel through this function, and a per-caller refresh is exactly how the resume lane got forgotten. Session 228cdf03 idled 28h and answered from the checkout it was created with.
+    let git_state = refresh::refresh(Path::new(&turn.repo_path), None).await;
+    tracing::info!("[chat {session_id}] {}", refresh::describe(&git_state));
+    // cm:why the agent cannot detect staleness on its own, so telling it is the only mitigation — a stale checkout makes file content and `git log` agree WITH EACH OTHER, which makes "I verified by reading the files, not just history" the one check that cannot catch it.
+    let prompt = if git_state.refreshed {
+        turn.prompt.clone()
+    } else {
+        format!(
+            "[workspace notice] {}\nWhile this holds, do not state what is or is not on the base branch from local files — check the remote before any such claim.\n\n{}",
+            refresh::describe(&git_state),
+            turn.prompt
+        )
+    };
+
     // Session key = sessionId so `agent:abort` → `runner.abort(sessionId)` hits
     // the right process. step="chat" / job_id=sessionId only label the run.
     let spec = JobSpec {
@@ -338,7 +353,7 @@ async fn run_turn(
         issue_id: None,
         step: "chat".into(),
         repo_path: turn.repo_path.clone().into(),
-        prompt: Some(turn.prompt.clone()),
+        prompt: Some(prompt),
         system_prompt: turn.system_prompt.clone(),
         model: turn.model.clone(),
         allowed_tools: None,

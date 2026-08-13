@@ -27,6 +27,7 @@ pub async fn create(repo: &str, branch: &str) -> Result<PathBuf> {
     ensure_gitignore(repo).await;
     let rel = format!(".worktrees/{}", sanitize(branch));
 
+    // cm:edge ordering -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — no start-point is passed, so the new branch is cut from the main worktree's HEAD. That is only correct because dispatch fast-forwards the main worktree to `origin/<base>` before this runs; drop that step and every ISS-* branch is cut from a stale base again.
     // Try to create a new branch; if it already exists, attach without -b.
     let out = git(repo, &["worktree", "add", &rel, "-b", branch]).await?;
     if !out.status.success() {

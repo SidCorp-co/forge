@@ -18,7 +18,7 @@ use crate::transport::events::{post_job_events, JobEventInput};
 use crate::transport::frames::JobAssigned;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
-use crate::workspace::skill_sync;
+use crate::workspace::{refresh, skill_sync};
 
 /// Resolved working dir for one assigned project. The server (`/me/runners`)
 /// is the source of truth for `repo_path`; `config.toml` is only a local
@@ -27,6 +27,10 @@ use crate::workspace::skill_sync;
 pub(crate) struct Resolved {
     pub slug: String,
     pub repo_path: PathBuf,
+    /// The project's base branch per the server, when it has one. Only the
+    /// refresh reads it — the fast-forward target must be the base, not
+    /// whatever the folder currently sits on.
+    pub base_branch: Option<String>,
 }
 
 /// Merge server assignments with local config bindings for one project id.
@@ -56,8 +60,18 @@ pub(crate) fn resolve_repo(
         .map(PathBuf::from);
     let repo_path = server_path.or_else(|| config_match.map(|(_, b)| b.repo_path.clone()));
 
+    let base_branch = server_match
+        .and_then(|r| r.base_branch.as_deref())
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .map(str::to_string);
+
     match repo_path {
-        Some(repo_path) => Ok(Resolved { slug, repo_path }),
+        Some(repo_path) => Ok(Resolved {
+            slug,
+            repo_path,
+            base_branch,
+        }),
         None => Err(slug),
     }
 }
@@ -209,6 +223,19 @@ pub async fn handle(
     if requires_preflight(&ja.job_type) {
         if let Err(err) = preflight::preflight(&resolved.repo_path).await {
             let msg = format!("preflight_failed: {err}");
+            tracing::error!("[job {job_id}] {msg}");
+            let _ = lifecycle::fail(client, &job_id, &msg).await;
+            return Ok(());
+        }
+        // cm:guard a job must NOT run on a workspace this runner could not bring up to date. Preflight already proves the remote is reachable (`ls-remote`) and then declined to read it, which is how a stage judged current code against a checkout days old. `workspace_refresh` rides the load-bearing `preflight_failed:` prefix so core's classifier and the box-scoped quarantine extractor both keep working.
+        let git_state =
+            refresh::refresh(&resolved.repo_path, resolved.base_branch.as_deref()).await;
+        tracing::info!("[job {job_id}] {}", refresh::describe(&git_state));
+        if !git_state.refreshed {
+            let msg = format!(
+                "preflight_failed: workspace_refresh: {}",
+                git_state.detail.as_deref().unwrap_or("no reason recorded")
+            );
             tracing::error!("[job {job_id}] {msg}");
             let _ = lifecycle::fail(client, &job_id, &msg).await;
             return Ok(());
