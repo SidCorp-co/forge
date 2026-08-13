@@ -96,8 +96,12 @@ not even `cm impact`. So anything a future editor must *obey* belongs in `cm:gua
 
 ## Seven gates, five axes
 
-Each sits in `ci-passed`'s `needs`, so a violation blocks the merge. **That, not this file, is why
-they hold.** Every gate that drifted did so while documented and non-blocking — biome to 366 errors,
+Each sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks the
+merge. **That, not this file, is why they hold.** Both halves are load-bearing: `ci-passed` runs
+`if: always()`, so a job listed in `needs` but absent from the loop completes, is ignored, and
+cannot fail the gate. `archmap` was in exactly that state — measured 2026-08-13, listed here as the
+relations gate the whole time it could not block anything. `verify --ci-parity` now fails on the
+mismatch, which is why this sentence can be trusted. Every gate that drifted did so while documented and non-blocking — biome to 366 errors,
 `typecheck` to 84, and the two length rules to 143 — and each stopped drifting the day it was
 baselined and gated (see the comments on the `core` job in `.github/workflows/ci.yml`).
 

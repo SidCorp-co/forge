@@ -227,6 +227,18 @@ function ciSteps() {
   return steps;
 }
 
+// cm:guard `ci-passed` runs `if: always()`, so a job in its `needs` that the assertion loop never names CANNOT block a merge — listing a job is not gating it, only the loop gates. Measured 2026-08-13: archmap sat in `needs` and out of the loop while CLAUDE.md called it the relations gate.
+function ciGateParity() {
+  const text = readFileSync(CI_PATH, 'utf8');
+  const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
+  if (!needs) return { code: 2, why: 'cannot find ci-passed.needs — the parser, not the workflow, is wrong' };
+  const declared = needs[1].split(',').map((s) => s.trim()).filter(Boolean);
+  const asserted = [...text.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.result\s*\}\}"/g)].map((m) => m[1]);
+  const unasserted = declared.filter((j) => j !== 'changes' && !asserted.includes(j));
+  if (unasserted.length === 0) return { code: 0, count: declared.length };
+  return { code: 1, unasserted };
+}
+
 function ciParity(quiet) {
   const steps = ciSteps();
   if (steps === null) {
@@ -237,9 +249,21 @@ function ciParity(quiet) {
     console.error('ci-parity: parsed 0 steps out of ci.yml — the parser, not the workflow, is wrong');
     return 2;
   }
+  const gate = ciGateParity();
+  if (gate.code !== 0) {
+    console.error(`\nci-parity: ${gate.why ?? `${gate.unasserted.length} job(s) in ci-passed.needs that ci-passed never asserts:`}`);
+    for (const j of gate.unasserted ?? []) console.error(`  ${j}`);
+    console.error('\n`ci-passed` runs `if: always()`. A job it needs but never names in the result');
+    console.error('loop completes, is ignored, and cannot block the merge — the gate reads as');
+    console.error('enforced and is not. Add it to the loop in .github/workflows/ci.yml.\n');
+    return gate.code;
+  }
+
   const missing = steps.filter((s) => !(s in CI_COVERAGE));
   if (missing.length === 0) {
-    if (!quiet) console.log(`ci-parity: ${steps.length} CI step(s), all declared`);
+    if (!quiet) {
+      console.log(`ci-parity: ${steps.length} CI step(s) declared, ${gate.count} gate job(s) asserted`);
+    }
     return 0;
   }
   console.error(`\nci-parity: ${missing.length} CI step(s) not declared in CI_COVERAGE:`);

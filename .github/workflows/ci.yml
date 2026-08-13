@@ -64,6 +64,24 @@ jobs:
       # declaration-restating or mock-only assertions than its frozen baseline
       # (.forge/test-signal-baseline.json). Same contract as the codemap baseline.
       - run: node scripts/check-test-signal.mjs --all
+      # CI-parity: proves every step in this file is either run by `pnpm verify`
+      # or declared as covered by another root script. Without it the local
+      # command and this workflow drift, and a green `pnpm verify` stops meaning
+      # anything. Lives here because lang-check is always-on and needs no install.
+      - run: node scripts/verify.mjs --ci-parity
+
+  # The two checks that need node_modules. They are NOT in lang-check because
+  # that job deliberately installs nothing, so it keeps gating language and
+  # test-signal even on a PR that breaks the install. Putting these there made
+  # check-size-budget exit 2 with "biome output was not JSON" — the checker
+  # behaving correctly (a checker that cannot run must never report clean) in a
+  # job that could not give it biome. Always-on: a PR touching only
+  # .forge/conformance.json must still be measured, so no paths filter.
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
       # Size budget: biome OWNS the two length rules; what it lacks is a
       # baseline, so both sit at `warn` and `biome check` exits 0 with 143
       # violations. This freezes today's 102 offenders (.forge/size-baseline.json)
@@ -74,11 +92,6 @@ jobs:
       # for it. Every gate this repo lost was lost by staying documented while
       # it stopped blocking; this is the check that notices.
       - run: node scripts/conformance-status.mjs
-      # CI-parity: proves every step in this file is either run by `pnpm verify`
-      # or declared as covered by another root script. Without it the local
-      # command and this workflow drift, and a green `pnpm verify` stops meaning
-      # anything. Lives here because lang-check is always-on and needs no install.
-      - run: node scripts/verify.mjs --ci-parity
 
   # codemap/1 declared-edge layer (.forge/codemap.json + .forge/codemap-baseline.json).
   # The checker is VENDORED at .forge/codemap/ (cm install) — the repo owns its own
@@ -369,6 +382,7 @@ jobs:
         docs,
         codemap,
         archmap,
+        conformance,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -385,7 +399,9 @@ jobs:
             "core-integration:${{ needs.core-integration.result }}" \
             "runner:${{ needs.runner.result }}" \
             "docs:${{ needs.docs.result }}" \
-            "codemap:${{ needs.codemap.result }}"; do
+            "codemap:${{ needs.codemap.result }}" \
+            "archmap:${{ needs.archmap.result }}" \
+            "conformance:${{ needs.conformance.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

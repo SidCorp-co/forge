@@ -15,7 +15,10 @@ Four contracts:
 
 1. **CI parity** — every `- run:` and named step in `.github/workflows/ci.yml` is either run here or
    declared in `CI_COVERAGE` as covered by another root script. `--ci-parity` proves it and is itself
-   a CI step, so the two cannot drift.
+   a CI step, so the two cannot drift. It also proves the second half: every job in `ci-passed`'s
+   `needs` is named in its result loop. `ci-passed` runs `if: always()`, so a job it needs but never
+   asserts completes, is ignored, and cannot block a merge — `archmap` sat there while this repo
+   called it the relations gate.
 2. **Fail-closed** — each checker must emit a file count that this script can read, and a count of
    zero exits `2`, not `0`. A checker whose scope matched nothing reports "clean"; forwarding that as
    a pass is the failure mode this guards.
