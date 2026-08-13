@@ -51,6 +51,7 @@ const MAX_DISPATCH_PER_TICK = 50;
  *
  * Always resolves; never rejects (errors are logged, not propagated).
  */
+// cm:flow dispatch/tick after:emit — coalesces every trigger for one project into a single sweep; ~8 call sites fire it with `void`, which is why the harness has to drain it
 export function dispatchTickForProject(
   projectId: string,
   options?: { triggerBlockerIssueId?: string },

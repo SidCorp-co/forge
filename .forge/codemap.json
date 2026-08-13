@@ -1,6 +1,11 @@
 {
   "specVersion": "codemap/1",
-  "flows": [],
+  "flows": [
+    {
+      "name": "dispatch",
+      "description": "An issue status change reaching a runner: apply-transition commits, a DB trigger writes the outbox row in the same transaction, the outbox worker re-emits it on the hooks bus, a subscriber fires a coalesced per-project sweep, the gates pick a job, the dispatcher hands it to a runner."
+    }
+  ],
   "externals": [],
   "enforce": {
     "grammar": true,

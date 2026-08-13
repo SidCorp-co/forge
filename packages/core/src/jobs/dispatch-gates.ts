@@ -560,6 +560,7 @@ function buildBarrierFragments(args: {
  * in depth on top of the terminal-issue cascade that already moves jobs out
  * of `queued`.
  */
+// cm:flow dispatch/gate after:tick — the four layers decide whether ANY queued job may go out now; returning null is the normal answer, not a fault
 export async function pickNextDispatchableJobForProject(
   projectId: string,
   opts?: { excludeJobIds?: string[] },

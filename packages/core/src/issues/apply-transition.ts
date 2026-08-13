@@ -238,14 +238,11 @@ export async function transitionIssueStatus(
 
   const reopening = isReopenEntry(fromStatus, effectiveToStatus);
 
-  // Conditional UPDATE gates on current status so concurrent transitions
-  // can't both win. activity_log write is owned by F5; do not insert here.
-  //
-  // ISS-196 — the AFTER UPDATE trigger on issues.status writes a row into
-  // pipeline_outbox inside this transaction, so the outbox worker re-emits
-  // the `transition` hook out-of-band. We wrap the UPDATE in
-  // `withActorContext` so the trigger captures actor metadata via SET LOCAL
-  // session settings.
+  // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
+  // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
+  // cm:guard never insert into activity_log here — F5 owns that write, and a second one double-counts every transition
+  // cm:edge sideeffect -> packages/core/drizzle/migrations/0070_pipeline_outbox.sql — trg_issues_status_outbox fires on this UPDATE and writes pipeline_outbox; no call site references it, so a reader of this file cannot see the row being produced
+  // cm:why withActorContext wraps the UPDATE because the trigger reads actor metadata off SET LOCAL session settings — outside the wrapper the outbox row is written with no actor at all
   const txResult = await db.transaction((tx) =>
     withActorContext(tx, { type: actor.type, id: actor.id }, options.reason ?? null, async (t) => {
       const [row] = await t

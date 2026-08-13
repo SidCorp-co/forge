@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T15:05:59.426Z",
+  "generatedAt": "2026-08-13T15:15:05.718Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -106,7 +106,7 @@
       "maxFunctionLines": 588
     },
     "packages/core/src/jobs/dispatcher.ts": {
-      "fileLines": 871,
+      "fileLines": 872,
       "maxFunctionLines": 259
     },
     "packages/core/src/jobs/events-routes.test.ts": {

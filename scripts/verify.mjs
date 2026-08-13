@@ -181,7 +181,12 @@ function advisory(base) {
         ...(d.hacks ?? []).map((x) => ['hack ', x.text ?? x.raw]),
         ...(d.outgoing ?? []).map((x) => ['edge ', `${x.kind} -> ${x.target} — ${x.text ?? ''}`]),
         ...(d.incoming ?? []).map((x) => ['edge←', `${x.kind} from ${x.file} — ${x.text ?? ''}`]),
-        ...(d.flows ?? []).map((x) => ['flow ', x.id ?? x.raw]),
+        ...(d.flows ?? []).flatMap((f) =>
+          (f.steps ?? []).map((s) => [
+            'flow ',
+            `${f.name}/${s.step}${s.after ? ` after:${s.after}` : ''} — ${s.text ?? ''}`,
+          ]),
+        ),
       ];
       if (rows.length) hits.push({ file: f, rows });
     } catch {}

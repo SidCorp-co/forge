@@ -72,6 +72,7 @@ function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
   return out;
 }
 
+// cm:flow dispatch/handoff after:gate — last step: builds the prompt, claims the job, and hands it to a runner over WS. Everything before this is reversible; this is not
 export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched' | 'skipped'> {
   const { jobId } = msg;
 

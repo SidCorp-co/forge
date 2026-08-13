@@ -95,6 +95,7 @@ async function claimBatch(): Promise<OutboxRow[]> {
   `);
 }
 
+// cm:flow dispatch/outbox after:transition — claims the row the trigger wrote and re-emits it on the hooks bus, out of band from the transaction that produced it
 export async function drainOutboxOnce(): Promise<{ processed: number; failed: number }> {
   let processed = 0;
   let failed = 0;
