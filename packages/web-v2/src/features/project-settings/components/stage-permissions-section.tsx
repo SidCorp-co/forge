@@ -55,7 +55,14 @@ function namesOf(names: string[]): string {
   return names.map((raw) => humanizeToolName(raw).label).join(", ");
 }
 
-export function StagePermissionsSection({ config }: { config: PipelineConfig }) {
+export function StagePermissionsSection({
+  config,
+  deviceNames,
+}: {
+  config: PipelineConfig;
+  /** deviceId → runner name, so a pinned pool reads as boxes, not UUIDs. Optional: the component stays query-free. */
+  deviceNames?: Record<string, string>;
+}) {
   const rows = summarizeStageConfig(config);
   const diffs = denylistBaseline(rows);
   const diffByStatus = new Map(diffs.map((d) => [d.status, d]));
@@ -172,7 +179,7 @@ export function StagePermissionsSection({ config }: { config: PipelineConfig }) 
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {pool.map((d) => (
-                          <MonoTag key={d}>{d}</MonoTag>
+                          <MonoTag key={d}>{deviceNames?.[d] ?? d}</MonoTag>
                         ))}
                       </div>
                     </div>

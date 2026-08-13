@@ -47,6 +47,10 @@ vi.mock("@/features/skills/hooks", () => ({
   useAdoptSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+vi.mock("@/features/runners/hooks", () => ({
+  useProjectRunners: () => ({ data: [], isPending: false }),
+}));
+
 vi.mock("@/features/projects/hooks", () => ({
   useProject: () => ({ data: { agentConfig: {} }, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
