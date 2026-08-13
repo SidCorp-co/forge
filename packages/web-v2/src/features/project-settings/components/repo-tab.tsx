@@ -27,6 +27,10 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
     norm(baseBranch) !== (project.baseBranch ?? null) ||
     norm(productionBranch) !== (project.productionBranch ?? null);
 
+  // cm:why single-env is a legal, deliberate configuration (owner decision 2026-08-13), so this states the consequence and never gates the save — a project whose base IS production simply has no staging buffer between a merge and a deploy
+  const singleEnv =
+    norm(baseBranch) !== null && norm(baseBranch) === norm(productionBranch);
+
   function save() {
     const patch: Record<string, unknown> = {};
     if (norm(repoPath) !== (project.repoPath ?? null)) patch.repoPath = norm(repoPath);
@@ -69,6 +73,13 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
               maxLength={100}
             />
           </Field>
+          {singleEnv && (
+            <p className="fg-caption text-subtle">
+              Base and production are the same branch, so every merge lands straight on the
+              deployed branch — there is no staging buffer to catch a bad merge. Supported; just
+              worth knowing.
+            </p>
+          )}
           {canEdit && (
             <div>
               <Button
