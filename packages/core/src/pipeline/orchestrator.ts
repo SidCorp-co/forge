@@ -499,6 +499,7 @@ export async function triggerPipelineStepManual(args: {
   return { jobId: enqueued.jobId, type: skill.type };
 }
 
+// cm:flow release/enqueue after:stamp — maps the new status to a step via PIPELINE_STEPS; `released` is the only trigger that enqueues the release job, so a project whose registry drops that entry silently never releases
 async function considerEnqueue(args: {
   projectId: string;
   issueId: string;

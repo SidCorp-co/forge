@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T16:13:10.417Z",
+  "generatedAt": "2026-08-13T16:30:11.163Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -222,7 +222,7 @@
       "maxFunctionLines": 539
     },
     "packages/core/src/pipeline/orchestrator.ts": {
-      "fileLines": 1047,
+      "fileLines": 1048,
       "maxFunctionLines": 152
     },
     "packages/core/src/pipeline/pipeline-config-schema.test.ts": {

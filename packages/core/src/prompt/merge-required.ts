@@ -32,6 +32,7 @@ export interface BuildMergeRequiredBlockArgs {
  * require a merge (every stage except `mergeStates.baseBranch` /
  * `.productionBranch`).
  */
+// cm:flow release/instruct after:enqueue — the merge is the agent's to perform; this block is the ONLY place the server states which branches must move, and it verifies nothing afterwards
 export function buildMergeRequiredBlock(args: BuildMergeRequiredBlockArgs): string | null {
   if (!args.stageStatus) return null;
   const matchedBase = args.stageStatus === args.mergeStates.baseBranch;

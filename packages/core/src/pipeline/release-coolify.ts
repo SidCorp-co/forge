@@ -54,6 +54,7 @@ async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
   }
 }
 
+// cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;

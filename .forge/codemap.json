@@ -4,6 +4,10 @@
     {
       "name": "dispatch",
       "description": "An issue status change reaching a runner: apply-transition commits, a DB trigger writes the outbox row in the same transaction, the outbox worker re-emits it on the hooks bus, a subscriber fires a coalesced per-project sweep, the gates pick a job, the dispatcher hands it to a runner."
+    },
+    {
+      "name": "release",
+      "description": "An issue reaching released and ending closed: the hop out of the base branch stamps merged_at and releases every blocks dependent, the orchestrator enqueues the release job, the prompt carries the merge instructions the server will never verify, the agent's close stamps merged_at if it is still null, closing the run reaps the child jobs, and job completion dispatches the deploy."
     }
   ],
   "externals": [],

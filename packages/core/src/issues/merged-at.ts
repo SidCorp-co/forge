@@ -83,6 +83,7 @@ export function resolveMergeStates(pipelineConfigOrAgentConfig: unknown): MergeS
  * Caller must invoke this inside the same transaction as the
  * `UPDATE issues.status` so a rollback drops both writes together.
  */
+// cm:flow release/stamp — the hop OUT of the base branch stamps merged_at, and that stamp is what unblocks every kind='blocks' dependent; nothing here verifies a merge actually happened
 export async function markMergedIfLeavingBase(
   tx: DrizzleTx,
   args: {
@@ -139,6 +140,7 @@ export async function markMergedIfLeavingBase(
  * Idempotent via `WHERE merged_at IS NULL`; call inside the same tx as the
  * status UPDATE so a rollback drops both writes together.
  */
+// cm:flow release/close after:instruct — closing stamps merged_at when it is still null, which is why closing an issue that was never work unblocks its dependents as if it had shipped; unmark is the only reversal
 export async function markMergedOnClose(
   tx: DrizzleTx,
   args: { issueId: string; toStatus: IssueStatus },
