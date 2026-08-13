@@ -1,32 +1,21 @@
 /**
  * ISS-812 [Epic] — composed walk of the failure-taxonomy/action-policy family
- * against real Postgres. Each mechanism below already has its own unit/
- * integration coverage from the child issue that built it (ISS-823/824/825/
- * 826); this file does not re-derive those suites. It exists for the same
- * reason state-integrity-guards-e2e.test.ts exists for VISION №10: to prove
- * the ORIGINAL five incident shapes are actually closed on the real DB
- * schema + real query shapes, and that two children's mechanisms compose
- * correctly through the ONE shared seam (`onlineCapableDeviceIds` /
+ * against real Postgres. The children (ISS-823/824/825/826) each carry their own
+ * suite; this file does not re-derive them. It proves the ORIGINAL five incident
+ * shapes are closed on the real schema + query shapes, and that two children
+ * compose through the ONE shared seam (`onlineCapableDeviceIds` /
  * `selectRunnerForJob`) rather than merely passing in isolation.
  *
- * The five faces, one test each:
- *   - ISS-757 — org spend-cap storm: classified as per-account exhaustion, so
- *     it rotates immediately and the round budget ends it, instead of 60
- *     same-device dispatches. (NOT an immediate park — that policy was
- *     reversed 2026-08-12; see the guard on `allRunnersLimited` in
- *     `src/jobs/retry.ts`.)
- *   - ISS-806 — box-scoped deterministic failure quarantines its runner
- *     instead of rotating the fault across the fleet.
- *   - ISS-760 — schedule terminal path records an honest reason + status,
- *     never a silent NULL/success.
- *   - ISS-811 — a rescued (eventually-succeeded) retry chain is countable,
- *     attributed to its original failure reason.
- *   - ISS-630/804 — the per-pipeline-state budget gate produces a real
- *     terminal outcome (park + close), not a stranded job/run.
- * A sixth test proves the composition: quarantine (ISS-825) and per-account
- * exhaustion (ISS-823) both ride `onlineCapableDeviceIds`'s health gate, and
- * a fleet exhausted by a MIX of the two reasons is still told apart from a
- * fleet that is merely offline.
+ * One test per face:
+ *   - ISS-757 org spend-cap storm → per-account exhaustion, rotates immediately,
+ *     the round budget ends it (NOT an immediate park — reversed 2026-08-12, see
+ *     the `allRunnersLimited` guard in `src/jobs/retry.ts`).
+ *   - ISS-806 box-scoped deterministic failure → quarantine, no fleet rotation.
+ *   - ISS-760 schedule terminal path → honest reason + status, never NULL/success.
+ *   - ISS-811 rescued retry chain → countable, attributed to its first reason.
+ *   - ISS-630/804 per-state budget gate → real terminal outcome (park + close).
+ * A sixth proves the composition: a fleet exhausted by a MIX of quarantine and
+ * per-account exhaustion is still told apart from one merely offline.
  */
 
 import { randomUUID } from 'node:crypto';
