@@ -86,6 +86,10 @@ export interface IssueRunReapResult {
   reaped: number;
 }
 
+export interface IdleChatCloseResult {
+  closed: number;
+}
+
 export interface StallDetectResult {
   // pipeline_wedge notifications emitted for never-clearing dependency deadlocks.
   detected: number;
@@ -109,6 +113,8 @@ export interface SweepResult {
   orphanedJobs: OrphanReconcileResult;
   neverClaimedDispatches: OrphanReconcileResult;
   orphanedOneShotRuns: OneShotRunReapResult;
+  /** Chat sessions closed after CHAT_IDLE_CLOSE_MS of quiet (reaps). */
+  idleChatSessions: IdleChatCloseResult;
   /** ISS-461 — issue runs closed because their backing issue is terminal (reaps). */
   orphanedIssueRuns: IssueRunReapResult;
   /** ISS-442 — dependency deadlocks surfaced (a gate that will never clear). */
@@ -171,6 +177,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedOneShotRuns = await runPass('reapOrphanedOneShotRuns', () =>
     reapOrphanedOneShotRuns(now),
   );
+  const idleChatSessions = await runPass('closeIdleChatSessions', () => closeIdleChatSessions(now));
   // ISS-461 — close `issue`-kind runs whose backing issue already reached the
   // run-closing status (`closed`) but whose run never closed. closeOpenRunForIssue
   // fires only via applyTransition; a close that bypasses it (or predates that
@@ -232,6 +239,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedJobs: orphanedJobs as OrphanReconcileResult,
     neverClaimedDispatches: neverClaimedDispatches as OrphanReconcileResult,
     orphanedOneShotRuns: orphanedOneShotRuns as OneShotRunReapResult,
+    idleChatSessions: idleChatSessions as IdleChatCloseResult,
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
     stalledDependencies: stalledDependencies as StallDetectResult,
     parkedClosedUnmerged: parkedClosedUnmerged as ParkClosedUnmergedResult,
@@ -861,6 +869,76 @@ export async function reapOrphanedOneShotRuns(
   }
 
   return { reaped };
+}
+
+/**
+ * Close chat sessions that have gone quiet, instead of leaving them live.
+ *
+ * Resuming is free — the row keeps `claude_session_id`, so the next turn revives
+ * the session and `--resume` carries the conversation — while a session left
+ * live for many hours answers from a workspace nothing refreshed. Measured on
+ * session `228cdf03` (ceo-dashboard): live for 28h, then produced a release
+ * advisory in which 6 of 7 claims were false, because its checkout predated by
+ * 2.5h the merge it was asked about.
+ *
+ * Deliberately independent of the run's status, so a quiet session under a run
+ * that never closed is covered too — `reapOrphanedOneShotRuns` only looks at
+ * runs still `running`/`paused`, and the terminal-run trigger only labels.
+ */
+export const CHAT_IDLE_CLOSE_MS = 2 * 60 * 60_000;
+
+export async function closeIdleChatSessions(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<IdleChatCloseResult> {
+  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  const cutoffIso = new Date(now.getTime() - CHAT_IDLE_CLOSE_MS).toISOString();
+  const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
+
+  // cm:guard never widen this SELECT to job-linked or `schedule.run` sessions. A job-linked session belongs to the loop monitor, and closing one here races its owner. A hung `schedule.run` closed `completed` makes the next terminal report write `schedules.lastStatus='success'` (schedules/service.ts) — a lie about an audit that never ran, which is the exact class this pass exists to prevent.
+  // cm:guard `started_at IS NOT NULL` — a row that never ran has nothing to close honestly; `idle` is also the DEFAULT status of a fresh session, so without this the pass would settle never-dispatched rows as `completed`.
+  const candidates = await db.execute<{ id: string }>(sql`
+    SELECT s.id
+    FROM agent_sessions s
+    WHERE s.status IN ('queued', 'running', 'idle')
+      AND s.started_at IS NOT NULL
+      AND COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) < ${cutoffIso}
+      AND COALESCE(s.metadata->>'source', '') <> 'schedule.run'
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs j WHERE j.agent_session_id = s.id
+      )
+      ${projectClause}
+    ORDER BY s.updated_at ASC
+    LIMIT 200
+  `);
+
+  const ids = candidates.map((row) => row.id);
+  if (ids.length === 0) return { closed: 0 };
+
+  // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — fourth writer of the completed-carries-no-reason contract (ISS-759)
+  const flipped = await applyKernelTransition(db, {
+    entity: 'session',
+    to: 'completed',
+    set: { failureReason: null, updatedAt: now },
+    where: and(
+      inArray(agentSessions.id, ids),
+      inArray(agentSessions.status, ['queued', 'running', 'idle']),
+    ),
+    fromStatus: 'active',
+    reason: 'chat_idle_timeout',
+    actor: { type: 'sweeper' },
+    source: 'sweeper',
+  });
+
+  for (const s of flipped) {
+    broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
+      status: 'completed',
+    });
+  }
+  if (flipped.length > 0) {
+    logger.info({ closed: flipped.length }, 'pipeline-sweeper: idle chat sessions closed');
+  }
+  return { closed: flipped.length };
 }
 
 /**

@@ -138,6 +138,8 @@ const {
   alarmNeverClaimedDispatches,
   reapOrphanedOneShotRuns,
   reapOrphanedIssueRuns,
+  closeIdleChatSessions,
+  CHAT_IDLE_CLOSE_MS,
   detectStalledDependencies,
   parkClosedUnmergedBlockedDependents,
 } = await import('./sweeper.js');
@@ -452,6 +454,48 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
     const result = await runPipelineSweep();
     expect(result).toHaveProperty('orphanedOneShotRuns');
     expect(result.orphanedOneShotRuns.reaped).toBe(0); // default mock: no candidates
+  });
+});
+
+describe('closeIdleChatSessions — quiet chat sessions are closed, not left live', () => {
+  it('is a 2h threshold', () => {
+    expect(CHAT_IDLE_CLOSE_MS).toBe(2 * 60 * 60_000);
+  });
+
+  it('excludes job-linked and schedule.run sessions, and rows that never started', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    const result = await closeIdleChatSessions(new Date('2026-08-13T00:00:00Z'));
+
+    expect(result.closed).toBe(0);
+    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/s\.status\s+IN\s*\(\s*'queued'\s*,\s*'running'\s*,\s*'idle'\s*\)/);
+    expect(text).toMatch(/s\.started_at\s+IS\s+NOT\s+NULL/);
+    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*FROM\s+jobs\s+j/);
+    expect(text).toMatch(/schedule\.run/);
+    expect(sessionsWhere).not.toHaveBeenCalled();
+  });
+
+  it('settles a quiet session completed with no failure reason and broadcasts it', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'sess-idle' }]);
+    sessionsWhere.mockResolvedValueOnce([
+      { id: 'sess-idle', projectId: 'p1', deviceId: 'd1', status: 'completed' },
+    ]);
+
+    const result = await closeIdleChatSessions(new Date('2026-08-13T00:00:00Z'));
+
+    expect(result.closed).toBe(1);
+    expect(broadcastSessionEventMock).toHaveBeenCalledWith(
+      'sess-idle',
+      'p1',
+      'd1',
+      'agent-session.status',
+      expect.objectContaining({ status: 'completed' }),
+    );
+  });
+
+  it('runs as part of runPipelineSweep and reports the count', async () => {
+    const result = await runPipelineSweep();
+    expect(result.idleChatSessions).toEqual({ closed: 0 });
   });
 });
 
