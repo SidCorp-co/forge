@@ -237,7 +237,16 @@ describe('db/schema — desktop_pairing_codes', () => {
 
 describe('db/schema — jobs', () => {
   it('exports the status, type, and model tier enum values', () => {
-    expect(jobStatuses).toEqual(['queued', 'dispatched', 'running', 'done', 'failed', 'cancelled']);
+    // cm:guard `held` sits between `running` and the terminal three ON PURPOSE (RFC 0002) — every predicate that splits this enum reads it positionally in review, so a `held` appended after `cancelled` would look terminal to the next reader even though nothing in code treats order as semantic
+    expect(jobStatuses).toEqual([
+      'queued',
+      'dispatched',
+      'running',
+      'held',
+      'done',
+      'failed',
+      'cancelled',
+    ]);
     expect(jobTypes).toEqual([
       'triage',
       'clarify',

@@ -492,11 +492,13 @@ function buildBarrierFragments(args: {
         AND (s.metadata->>'issueId') = j.issue_id::text
         AND (j.agent_session_id IS NULL OR s.id <> j.agent_session_id)
     )`,
+    // cm:guard `held` belongs HERE and in NEITHER `running_ids` nor `runner_load` — the asymmetry is the whole design (RFC 0002): absent from those two it consumes no project-serial or runner-cap slot and may wait indefinitely, present here it stops the reconciler enqueueing a second job for the same issue while the first waits
+    // cm:edge lockstep -> packages/core/src/db/schema.ts — the `jobs_active_unique` partial index is the DB-level twin of this predicate; a status listed in one must be listed in the other or `enqueue` inserts the duplicate this gate refuses to dispatch
     issueBusyJob: sql`EXISTS (
       SELECT 1 FROM jobs other
       WHERE other.issue_id = j.issue_id
         AND other.id <> j.id
-        AND other.status IN ('dispatched','running')
+        AND other.status IN ('dispatched','running','held')
     )`,
     // ISS-232 — Layer 2 is git-aware: a `blocks` parent is satisfied when its
     // `merged_at` is stamped (transition out of `pipelineConfig.mergeStates

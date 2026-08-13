@@ -18,7 +18,8 @@ import { type DeviceScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 
 const inputSchema = z.object({}).strict();
 
-const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
+// cm:why `held` counts as active here (RFC 0002) — it is a live job that runs once its mechanical condition clears, so an operator asking "what is in flight" must see it; the stuck-job scan keys on dispatchedAt age instead and so can never flag one
+const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'] as const;
 
 export const forgeHealthTool: DeviceScopedMcpToolFactory = (_device) => ({
   name: 'forge_health',

@@ -43,6 +43,38 @@ Reopening requires a `reason`. It is posted as a comment before the status write
 
 Waiting for a runner can last forever, and that is an accepted state, not a wedge: it is visible, it asks nothing, and it resolves itself the moment capacity returns.
 
+The whole design in one picture — three axes, one step:
+
+```mermaid
+flowchart LR
+  subgraph ISSUES["issues.status"]
+    direction LR
+    IE["entry-status<br/>reopen · approved…"]
+    IP["in_progress<br/>in-flight marker"]
+    IW["waiting — a human is needed<br/>needs_decision · needs_resource"]
+    IN["next stage<br/>developed · testing…"]
+    IP -->|"agent concludes it is blocked"| IW
+    IW -->|"any actor · no gate"| IN
+  end
+  subgraph JOBS["jobs.status"]
+    direction LR
+    JQ["queued"] --> JR["running"]
+    JR -->|"mechanical failure"| JH["held<br/>no slot · backoff<br/>auto re-dispatch on clear"]
+    JR --> JD["done"]
+  end
+  subgraph RUNS["pipeline_runs.status"]
+    RR["running — one row, never reaped<br/>currentStep = issues.status · closes only at closed"]
+  end
+  IE -->|"enqueue"| JQ
+  JR -->|"step start"| IP
+  JD -->|"sets next"| IN
+  JH -.->|"REMOVED — this used to park the issue"| IW
+  style IW fill:#e3f2fd,stroke:#1565c0
+  style JH fill:#e8f5e9,stroke:#2e7d32
+```
+
+Three things to read off it: the `jobs` lane has **no** arrow into the `issues` lane (the dashed one is the path this RFC deletes); `waiting` is entered only from an agent's conclusion and left with no condition attached; and the `runs` lane is a single row, because a held job consumes no slot and the run therefore never needs to die to release one.
+
 Who may write `waiting`, and what it takes to leave:
 
 ```mermaid
@@ -96,7 +128,7 @@ What changes, per axis:
 |---|---|---|
 | INV-1 | No failure-handling path writes `issues.status`. | `jobs/finalize-failure.ts` — delete outcome 2 of ISS-393 |
 | INV-2 | An issue never rests at `in_progress` with no live job; it reverts to `JOB_TYPE_ENTRY_STATUS`. | `reconcileIssueStatusAfterFailure` |
-| INV-3 | `held` is alive but slotless: excluded from the runner cap, from the project serial gate, and from orphan reaping. | `jobs/dispatch-gates.ts` · `jobs/loop-monitor.ts` · `pipeline/sweeper.ts` |
+| INV-3 | `held` is alive but slotless: excluded from the runner cap (`runner_load`) and the project serial gate (`running_ids`), included in L1 issue-busy (`issueBusyJob`) so no duplicate job is enqueued for the same issue, and never reaped. | `jobs/dispatch-gates.ts:499` · `jobs/loop-monitor.ts` · `pipeline/sweeper.ts` |
 | INV-4 | While any of its jobs is `held`, the issue's run stays non-terminal. | `pipeline/runs.ts` + the "no non-terminal job under a terminal run" invariant |
 | INV-5 | `waiting` is written **only** by an agent or a human — core has zero writers. Two authored kinds: `needs_decision`, `needs_resource`. | `issues/apply-transition.ts`, plus a test asserting core has no writer |
 | INV-6 | Entering and leaving a park are symmetric. No actor gate anywhere — MCP, REST and UI behave identically. | delete `pipeline/park-states.ts` and its consumers |

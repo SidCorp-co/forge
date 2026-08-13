@@ -130,6 +130,16 @@ describe('checkLayer4RunnerFull', () => {
     expect(text).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);
     expect(text).toMatch(/pr\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
   });
+
+  // cm:guard the runner cap counts only jobs that occupy a runner, so `held` must stay out of it (RFC 0002) — a held job has released its slot and may wait for hours, and counting it would let one stalled job exhaust a cap=1 runner for the whole project
+  it('does not count `held` toward the runner cap (RFC 0002)', async () => {
+    runnerCapsOnce({ type: 'claude-code', capabilities: {} });
+    dbExecute.mockResolvedValueOnce([{ count: '0' }]);
+    await checkLayer4RunnerFull('r1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
+    expect(text).not.toContain("'held'");
+  });
 });
 
 describe('countInFlightForRunner', () => {
@@ -219,7 +229,9 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).toMatch(/FROM\s+agent_sessions\s+s/);
     expect(text).toMatch(/s\.metadata->>'issueId'/);
     expect(text).toMatch(/FROM\s+jobs\s+other/);
-    expect(text).toMatch(/other\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
+    expect(text).toMatch(
+      /other\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*,\s*'held'\s*\)/,
+    );
 
     // L2 — git-aware (ISS-232). Replaces the prior status-based check with
     // `merged_at IS NULL` so the gate defers to the state-machine writer
@@ -421,6 +433,33 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).toMatch(
       /NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+devices\s+d\s+WHERE\s+d\.id\s*=\s*r\.device_id\s+AND\s+d\.disabled_at\s+IS\s+NOT\s+NULL/,
     );
+  });
+});
+
+describe('the `held` asymmetry (RFC 0002)', () => {
+  // cm:guard assert all three arms together, never one alone — `held` in `issueBusyJob` only stops a duplicate job for the same issue, while `held` absent from `running_ids` and `runner_load` is the entire reason it may wait indefinitely; add it to either CTE and one held job wedges the whole project, which is the `waiting` park RFC 0002 deletes, moved one axis down
+  it('sits in L1 issue_busy but in NEITHER running_ids NOR runner_load', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+
+    const issueBusy = text.match(
+      /FROM\s+jobs\s+other[\s\S]*?other\.status\s+IN\s*\(([^)]*)\)/,
+    )?.[1];
+    const runningIds = text.match(/running_ids\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
+    const runnerLoad = text.match(/runner_load\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
+
+    // cm:guard keep these five positive assertions — a regex that stopped matching leaves the slice `undefined`, and every `not.toContain` below then passes on nothing, so the test would go green precisely when the SQL it guards was rewritten
+    expect(issueBusy).toBeTruthy();
+    expect(runningIds).toBeTruthy();
+    expect(runnerLoad).toBeTruthy();
+    expect(runningIds).toContain("'dispatched'");
+    expect(runnerLoad).toContain("'dispatched'");
+
+    expect(issueBusy).toContain("'held'");
+    expect(runningIds).not.toContain("'held'");
+    expect(runnerLoad).not.toContain("'held'");
   });
 });
 

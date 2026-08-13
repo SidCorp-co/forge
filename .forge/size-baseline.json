@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T16:30:11.163Z",
+  "generatedAt": "2026-08-13T17:06:50.060Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -34,11 +34,11 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.test.ts": {
-      "fileLines": 753,
+      "fileLines": 762,
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.ts": {
-      "fileLines": 3424,
+      "fileLines": 3427,
       "maxFunctionLines": 0
     },
     "packages/core/src/devices/routes.test.ts": {
@@ -86,7 +86,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/pipeline-health.ts": {
-      "fileLines": 569,
+      "fileLines": 570,
       "maxFunctionLines": 192
     },
     "packages/core/src/issues/routes.ts": {
@@ -98,7 +98,7 @@
       "maxFunctionLines": 163
     },
     "packages/core/src/jobs/dispatch-gates.test.ts": {
-      "fileLines": 695,
+      "fileLines": 734,
       "maxFunctionLines": 0
     },
     "packages/core/src/jobs/dispatcher.test.ts": {
@@ -122,7 +122,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/jobs/loop-monitor.test.ts": {
-      "fileLines": 518,
+      "fileLines": 527,
       "maxFunctionLines": 0
     },
     "packages/core/src/jobs/loop-monitor.ts": {

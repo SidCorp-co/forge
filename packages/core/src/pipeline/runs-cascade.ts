@@ -87,7 +87,7 @@ export async function cascadeCancelChildJobs(
         },
     where: and(
       eq(jobs.pipelineRunId, runId),
-      inArray(jobs.status, ['queued', 'dispatched', 'running']),
+      inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
     ),
     fromStatus: 'active',
     reason,

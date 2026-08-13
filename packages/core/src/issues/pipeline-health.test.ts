@@ -122,6 +122,15 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.blockingJobId).toBe('job-dispatched');
   });
 
+  // cm:guard the `held` arm of issue_busy is the anti-lie half of RFC 0002 — L1 `issueBusyJob` refuses to dispatch a second job while a sibling is held, so if this reported no waitingOn the UI would show a queued job with no reason it is not moving, which is exactly what VISION №10 forbids
+  it('classifies issue_busy when a sibling job is held (RFC 0002)', () => {
+    const held = job({ id: 'job-held', status: 'held', type: 'code' });
+    const queued = job({ id: 'job-queued', type: 'review' });
+    const out = classifyPipelineHealthForIssue(baseInput({ jobs: [held, queued] }));
+    expect(out.waitingOn?.reason).toBe('issue_busy');
+    expect(out.waitingOn?.details.blockingJobId).toBe('job-held');
+  });
+
   it('classifies waiting_on_dep for an unmerged blocks parent', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({

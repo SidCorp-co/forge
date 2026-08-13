@@ -563,10 +563,13 @@ export const pairingCodes = pgTable(
   }),
 );
 
+// cm:guard `held` is NON-TERMINAL and slotless — a job blocked on a mechanical condition (no runner, provider quota, project budget) waits HERE, never on issues.status (RFC 0002); being absent from runner_load/running_ids is exactly what makes it slotless, but it MUST appear in both `jobs_active_unique` partial indexes below and in L1 issueBusyJob or a duplicate job is enqueued for the same issue
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `issueBusyJob` must list `held`; `runner_load` and `running_ids` must NOT
 export const jobStatuses = [
   'queued',
   'dispatched',
   'running',
+  'held',
   'done',
   'failed',
   'cancelled',
@@ -758,12 +761,12 @@ export const jobs = pgTable(
       .where(sql`kill_requested_at IS NOT NULL`),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
-      .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
+      .where(sql`status IN ('queued','dispatched','running','held') AND issue_id IS NOT NULL`),
     // PM jobs may have a NULL issue_id (project-scoped coordinator), so the
     // existing per-issue index does not cover them. ISS-17.
     pmActiveUniqueIdx: uniqueIndex('jobs_pm_per_project_unique_idx')
       .on(t.projectId)
-      .where(sql`type = 'pm' AND status IN ('queued','dispatched','running')`),
+      .where(sql`type = 'pm' AND status IN ('queued','dispatched','running','held')`),
     pipelineRunIdx: index('jobs_pipeline_run_idx').on(t.pipelineRunId),
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)

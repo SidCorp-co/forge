@@ -43,6 +43,7 @@ vi.mock('../jobs/kill-gate.js', () => ({
 interface UpdateCapture {
   table: unknown;
   set: Record<string, unknown>;
+  where?: unknown;
 }
 
 /**
@@ -66,7 +67,8 @@ function makeTx(cancelledJobRows: Array<Record<string, unknown>>) {
         // always calls `.returning()`. The jobs chain returns the cancelled
         // rows (so the session branch + audit run); the session chain returns
         // the same ids so its audit insert fires too.
-        where() {
+        where(arg: unknown) {
+          capture.where = arg;
           return {
             returning: async () =>
               isJobs ? cancelledJobRows : cancelledJobRows.map((r) => ({ id: r.agentSessionId })),
@@ -148,6 +150,15 @@ describe('cascadeCancelChildJobs — session-status mapping (ISS-352)', () => {
     const { tx, captures } = makeTx([]);
     await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_completed');
     expect(sessionUpdate(captures)).toBeUndefined();
+  });
+
+  // cm:guard `held` must stay in this CAS list (RFC 0002) — it is the one non-terminal status no reaper ever visits, so if the cascade skips it too, a held job under a closed run has no cleanup path left at all and survives as an orphan forever
+  it('the CAS WHERE covers held alongside queued/dispatched/running', async () => {
+    const { tx, captures } = makeTx(jobRows);
+    await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_cancelled');
+    const where = JSON.stringify(captures.find((c) => c.table === 'jobs-table')?.where);
+    expect(where).toContain('queued');
+    expect(where).toContain('held');
   });
 
   it('reasonForOutcome maps outcomes to cascade reasons', () => {

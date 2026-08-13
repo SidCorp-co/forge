@@ -440,7 +440,8 @@ export async function hydratePipelineHealthForIssues(
       and(
         eq(jobs.projectId, projectId),
         inArray(jobs.issueId, ids),
-        inArray(jobs.status, ['queued', 'dispatched', 'running']),
+        // cm:guard `held` MUST be loaded here but MUST NOT be counted at the runner-in-flight query below — this loader feeds the `issue_busy` reason, which mirrors L1 `issueBusyJob` (held blocks a duplicate), while that query mirrors `runner_load` (held burns no cap). Drop it here and the gate refuses to dispatch while this reports no waitingOn at all — the exact lie this file's lockstep edge exists to prevent.
+        inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
       ),
     );
   const jobsByIssue = new Map<string, PipelineHealthJob[]>();
