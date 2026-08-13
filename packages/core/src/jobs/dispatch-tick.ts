@@ -26,6 +26,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { pickNextDispatchableJobForProject } from './dispatch-gates.js';
 import { handleDispatch } from './dispatcher.js';
+import { releaseHeldJobs } from './hold.js';
 
 /** Per-project promise tail. */
 const projectLocks = new Map<string, Promise<unknown>>();
@@ -90,6 +91,13 @@ export function dispatchTickForProject(
 async function runTickInner(projectId: string, triggerBlockerIssueId?: string): Promise<void> {
   // ISS-164 — record per-project dispatcher heartbeat for pipelineHealth.lastTickAt.
   recordTickAt(projectId);
+
+  // cm:guard release BEFORE the picker runs, never after (RFC 0002) — a runner coming back online fires this tick, and a release that landed after the pick would leave the freshly-queued job waiting for the NEXT trigger, which on a quiet project can be the 5-minute backstop
+  try {
+    await releaseHeldJobs(projectId);
+  } catch (err) {
+    logger.warn({ err, projectId }, 'dispatch-tick: hold release failed');
+  }
 
   // ISS-164 — issues with queued work at sweep start; the post-sweep
   // pipelineHealth broadcast unions these with any issues whose jobs we end

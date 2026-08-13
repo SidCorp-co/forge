@@ -122,13 +122,23 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.blockingJobId).toBe('job-dispatched');
   });
 
-  // cm:guard the `held` arm of issue_busy is the anti-lie half of RFC 0002 — L1 `issueBusyJob` refuses to dispatch a second job while a sibling is held, so if this reported no waitingOn the UI would show a queued job with no reason it is not moving, which is exactly what VISION №10 forbids
-  it('classifies issue_busy when a sibling job is held (RFC 0002)', () => {
+  // cm:guard `job_held` must OUTRANK issue_busy for a held sibling (RFC 0002) — both are true, but only job_held names the machine condition and tells the reader no action is needed; reporting issue_busy instead sends them looking for an active run that does not exist
+  it('reports job_held, not issue_busy, when the sibling blocking a queued job is held', () => {
     const held = job({ id: 'job-held', status: 'held', type: 'code' });
     const queued = job({ id: 'job-queued', type: 'review' });
     const out = classifyPipelineHealthForIssue(baseInput({ jobs: [held, queued] }));
-    expect(out.waitingOn?.reason).toBe('issue_busy');
-    expect(out.waitingOn?.details.blockingJobId).toBe('job-held');
+    expect(out.waitingOn?.reason).toBe('job_held');
+    expect(out.waitingOn?.details.heldJobId).toBe('job-held');
+  });
+
+  // cm:guard a held job with NO queued sibling is the common case and the one the old code reported as nothing at all — keep this test even though it looks like a duplicate of the one above; they exercise opposite sides of the `queuedJobs.length === 0` return
+  it("reports job_held when the held job is the issue's only job", () => {
+    const held = job({ id: 'job-solo', status: 'held', type: 'code' });
+    const out = classifyPipelineHealthForIssue(
+      baseInput({ jobs: [{ ...held, failureReason: 'all_devices_exhausted' }] }),
+    );
+    expect(out.waitingOn?.reason).toBe('job_held');
+    expect(out.waitingOn?.details.holdReason).toBe('all_devices_exhausted');
   });
 
   it('classifies waiting_on_dep for an unmerged blocks parent', () => {

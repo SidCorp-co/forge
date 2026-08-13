@@ -16,6 +16,12 @@ vi.mock('./dispatch-gates.js', () => ({
   pickNextDispatchableJobForProject: pickFn,
 }));
 
+// cm:edge contract -> packages/core/src/jobs/hold.ts — stubbed only because its import chain validates DB env at load time via enqueue.js; hold.test.ts owns the release behaviour
+const releaseHeldJobsMock = vi.fn(async (..._args: unknown[]) => 0);
+vi.mock('./hold.js', () => ({
+  releaseHeldJobs: (...args: unknown[]) => releaseHeldJobsMock(...args),
+}));
+
 // dispatch-tick statically imports `handleDispatch` from './dispatcher.js'.
 // vi.mock hoists above the static import so the mocked module is in place
 // before runTickInner ever runs.
@@ -187,5 +193,33 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
       (c) => (c[1] as { event: string }).event === 'dependency.unblocked',
     );
     expect(matched).toBeUndefined();
+  });
+
+  // cm:guard ordering, not just presence (RFC 0002) — a runner coming back online triggers exactly one tick, so a release that runs after the pick leaves the freshly-queued job waiting for the next trigger, which on a quiet project is the backstop sweep minutes later
+  it('releases held jobs BEFORE the first pick', async () => {
+    const order: string[] = [];
+    releaseHeldJobsMock.mockImplementation(async () => {
+      order.push('releaseHeldJobs');
+      return 0;
+    });
+    pickFn.mockImplementation(async () => {
+      order.push('pick');
+      return null;
+    });
+
+    await dispatchTickForProject('p1');
+
+    expect(releaseHeldJobsMock).toHaveBeenCalledWith('p1');
+    expect(order).toEqual(['releaseHeldJobs', 'pick']);
+  });
+
+  it('a throwing release does not stop the sweep', async () => {
+    releaseHeldJobsMock.mockRejectedValueOnce(new Error('db blip'));
+    pickFn.mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID }).mockResolvedValueOnce(null);
+    handleDispatch.mockResolvedValue('dispatched');
+
+    await dispatchTickForProject('p1');
+
+    expect(handleDispatch).toHaveBeenCalledWith({ jobId: 'j1' });
   });
 });

@@ -9,16 +9,18 @@
  * mirror the linked agent_session, broadcast, emit hooks, and re-tick
  * dispatch so the freed runner slot refills.
  *
- * ISS-393 — the legacy `setManualHoldBlock` fallback is gone. A failed job
- * with an issueId now resolves in exactly one of two ways (never a no-op):
- *   - retry scheduled  → revert issue.status to the stage entry-status so the
- *     issue reflects "work re-queued" instead of the misleading `in_progress`
- *     in-flight marker (the retry row itself drives re-dispatch);
- *   - no retry (budget exhausted / non-retryable / resume-abort) → park the
- *     issue at `waiting` (single human-review state) and reap the stuck
- *     `running` pipeline_run so its serial slot frees.
- * `on_hold`/`manualHold` are no longer failure targets — `on_hold` is now a
- * deliberate user pause only.
+ * ISS-393 — the legacy `setManualHoldBlock` fallback is gone. RFC 0002 then
+ * removed the second of its two outcomes. A failed job with an issueId now
+ * always reverts `issues.status` to the stage entry-status, and the difference
+ * between "retry" and "no retry" is which JOB row carries the wait:
+ *   - retry scheduled  → the queued retry row drives re-dispatch;
+ *   - no retry, mechanical reason → a `held` successor row (`jobs/hold.ts`)
+ *     waits for the condition to clear; the run stays open because a held job
+ *     holds no slot;
+ *   - no retry, a conclusion (`cancellation_requested`, `completed_via_*`) →
+ *     nothing waits; the run closes.
+ * `on_hold`/`manualHold`/`waiting` are no longer failure targets — a failure
+ * path never writes `issues.status` anything but the stage entry-status.
  *
  * Keeping this in one place is the anti-drift guarantee: a silently-reaped
  * orphan (runner died without calling `/complete`) recovers identically to a
@@ -26,9 +28,9 @@
  * released and the pipeline never wedges (ISS-268 / ISS-34 root cause).
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type jobs, pipelineRuns, projects } from '../db/schema.js';
+import { issues, type jobs, projects } from '../db/schema.js';
 import {
   applyStatusTransition,
   type DeviceLite,
@@ -51,46 +53,47 @@ import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
-import { postParkReasonComment } from './park-comment.js';
+import { holdJobForReason } from './hold.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
-// cm:why ISS-823 review #4 — business-language wedge copy per no-retry reason; reasons absent here (e.g. cancellation_requested) fall back to emitPipelineWedge's technical hop/entity/reason/action template
-const PARK_WEDGE_CONTENT: Partial<
+// cm:guard every key here MUST also be in `HOLD_REASONS` (jobs/hold.ts) and the copy must say the work RESUMES BY ITSELF where it does — this text is the operator's only notification for a hold, and copy that asks them to "clear the park" re-teaches the intervention the hold exists to remove
+const HOLD_WEDGE_CONTENT: Partial<
   Record<string, { title: string; summary: string; nextStep: string }>
 > = {
   monthly_budget_exhausted: {
-    title: 'Pipeline paused: monthly budget exhausted',
+    title: 'Step held: monthly budget exhausted',
     summary:
-      'This project hit its monthly spend budget, so the pipeline stopped dispatching new work.',
-    nextStep: 'Raise the budget or wait for the next billing cycle, then clear the park to resume.',
+      'This project hit its monthly spend budget, so the step is held instead of dispatching. The issue itself is untouched.',
+    nextStep: 'Raise the budget or wait for the next billing cycle — the held step resumes itself.',
   },
   all_devices_exhausted: {
-    title: 'Pipeline paused: every runner is rate-limited',
+    title: 'Step held: every runner is rate-limited',
     summary:
-      'The job failed and every online, capable runner is currently rate-limited or over its spend cap.',
-    nextStep: 'Wait for a runner to recover or add capacity, then clear the park to resume.',
+      'Every online, capable runner is rate-limited or over its spend cap, so the step is held. The issue itself is untouched.',
+    nextStep: 'Wait for a runner to recover or add capacity — the held step resumes itself.',
   },
   non_retryable_terminal: {
-    title: 'Pipeline paused: non-retryable failure',
-    summary: 'The job failed in a way the pipeline will not retry automatically.',
+    title: 'Step held: non-retryable failure',
+    summary:
+      'The step failed in a way the pipeline will not retry, so it is held rather than parked. Nothing is being asked of the issue.',
     nextStep:
-      'Review the park-reason comment, fix the underlying issue, then clear the park to resume.',
+      'Fix the underlying cause, then move the issue on — this hold does not clear on its own.',
   },
   retry_rounds_exhausted: {
-    title: 'Pipeline paused: retry budget exhausted',
-    summary: 'The job kept failing across every retry round without succeeding.',
+    title: 'Step held: retry budget exhausted',
+    summary:
+      'The step failed across every retry round. It is held, not parked: the issue stays at its stage.',
     nextStep:
-      'Review the park-reason comment and either fix the underlying issue or clear it manually.',
+      'Fix the underlying cause, then move the issue on — this hold does not clear on its own.',
   },
   verify_unavailable: {
-    title: 'Pipeline paused: recovery check unavailable',
+    title: 'Step held: recovery check unavailable',
     summary:
-      'The job failed and the pipeline could not verify whether the work already completed, so it stopped rather than risk a wrong retry.',
-    nextStep:
-      'Review the park-reason comment, confirm the issue state, then clear the park to resume.',
+      'The pipeline could not verify whether the work already completed, so it held the step rather than risk a wrong retry.',
+    nextStep: 'No action needed — the hold retries the check by itself.',
   },
 };
 
@@ -105,35 +108,6 @@ export interface FinalizeFailedJobOptions {
    * so `finalizeFailedJob` skips `scheduleAutoRetryWithVerify`.
    */
   precomputedRetry?: RetryOutcome | undefined;
-}
-
-/**
- * Record WHY this park happened on the run that gave up, so a later reader can
- * tell a self-clearing capacity park from a park holding a human decision.
- * Mirrors the `pauseReason` convention (`metadata->>'pauseReason'`) rather than
- * adding a column. Best-effort: the park itself is the correctness-critical
- * work and must not be lost to a metadata write.
- */
-// cm:edge ordering -> packages/core/src/pipeline/runs.ts — MUST run before `closeOpenRunForIssue` flips the run out of running/paused, which is what this WHERE matches on
-// cm:edge contract -> packages/core/src/pipeline/bounce-replay-guard.ts — reads back `metadata->>'parkReason'` off the LATEST issue-run; that row describes the most recent park only because every park writes its own reason and then closes its own run
-async function recordParkReason(issueId: string, reason: string): Promise<void> {
-  try {
-    await db
-      .update(pipelineRuns)
-      .set({
-        metadata: sql`${pipelineRuns.metadata} || ${JSON.stringify({ parkReason: reason })}::jsonb`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(pipelineRuns.issueId, issueId),
-          eq(pipelineRuns.kind, 'issue'),
-          inArray(pipelineRuns.status, ['running', 'paused']),
-        ),
-      );
-  } catch (err) {
-    logger.warn({ err, issueId, reason }, 'finalize-failure: park-reason record failed');
-  }
 }
 
 /**
@@ -186,75 +160,48 @@ async function reconcileIssueStatusAfterFailure(
     reopenCount: row.reopenCount,
   };
 
-  if (retry.scheduled) {
-    // Revert the in-flight marker back to the stage entry-status (code →
-    // approved, fix → reopen, …). Skip when the issue is already at entry
-    // (clarify/plan/review/test never leave their entry status mid-job).
-    //
-    // ISS-702 — a bare `row.status !== entry` check isn't enough: a later
-    // step can have already parked the issue at `waiting`/`on_hold` or moved
-    // it to `developed`/`tested`/`released`/`closed`/a fix-owned `reopen`
-    // between when this now-stale job was dispatched and when its
-    // finalize-failure runs. Only revert when the verifier still calls the
-    // issue `pending` for THIS job's stage (still at entry, or at the
-    // in-flight marker) — never clobber a status the verifier calls
-    // `advanced`/`reverted`.
-    const entry = JOB_TYPE_ENTRY_STATUS[job.type];
-    if (entry && row.status !== entry && classifyVerdict(row.status, job.type) === 'pending') {
-      try {
-        await applyStatusTransition(issueRow, entry, device, { skip: true });
-      } catch (err) {
-        logger.warn(
-          { err, issueId: row.id, to: entry },
-          'finalize-failure: entry-status revert failed',
-        );
-      }
-    }
-    return;
-  }
-
   // Verify-first recovery (issue already advanced or moved to another step's
   // territory) — the work is effectively done; leave the issue untouched.
   if (recoveredViaVerify) return;
 
-  // Budget exhausted / non-retryable kind / resume-abort: park the issue at
-  // `waiting` for human review and reap the still-`running` pipeline_run.
-  if (row.status !== 'waiting') {
-    // cm:edge ordering -> packages/core/src/jobs/park-comment.ts — post the reason BEFORE the transition, so a watcher woken by the status change already finds the explanation rather than a bare `waiting`
-    await postParkReasonComment({
-      issueId: row.id,
-      projectId: row.projectId,
-      jobType: job.type,
-      stageStatus: JOB_TYPE_ENTRY_STATUS[job.type] ?? null,
-      reason: retry.reason ?? 'unknown',
-      failureKind: job.failureKind ?? null,
-      failureReason: job.failureReason ?? null,
-    });
-    await recordParkReason(row.id, retry.reason ?? 'unknown');
+  const reason = retry.reason ?? 'unknown';
+  const heldJobId = retry.scheduled ? null : await holdJobForReason(job, reason);
+
+  // cm:guard this revert is the ONLY issues.status write left on the failure path (RFC 0002 INV-1/INV-2) — re-adding a `waiting` write here restores the exact lie the RFC deleted: a board saying a human is needed when nothing is being asked
+  // cm:guard keep the `classifyVerdict === 'pending'` arm (ISS-702) — a bare `row.status !== entry` test also fires for an issue a LATER step already moved to on_hold/developed/tested/released/closed, and reverting then drags a finished issue back to its stage entry because this job's finalize ran late
+  const entry = JOB_TYPE_ENTRY_STATUS[job.type];
+  if (entry && row.status !== entry && classifyVerdict(row.status, job.type) === 'pending') {
     try {
-      await applyStatusTransition(issueRow, 'waiting', device, { skip: true });
+      await applyStatusTransition(issueRow, entry, device, { skip: true });
     } catch (err) {
-      logger.warn({ err, issueId: row.id }, 'finalize-failure: park-to-waiting failed');
+      logger.warn(
+        { err, issueId: row.id, to: entry },
+        'finalize-failure: entry-status revert failed',
+      );
     }
-    const content = PARK_WEDGE_CONTENT[retry.reason ?? ''];
+  }
+  if (retry.scheduled) return;
+
+  if (heldJobId) {
+    const content = HOLD_WEDGE_CONTENT[reason];
+    // cm:guard the wedge is the ONLY escalation a hold gets (RFC 0002 INV-7) — it must never grow into a status change or a dispatch block, which is what made the mechanical park cost an intervention per occurrence
     await emitPipelineWedge({
       projectId: row.projectId,
       issueId: row.id,
       hop: 'dispatch',
       entity: 'job',
-      entityId: job.id,
-      reason: retry.reason ?? 'unknown',
-      action:
-        'Review the park-reason comment and either fix the underlying issue or clear it manually.',
+      entityId: heldJobId,
+      reason,
+      action: 'No action needed unless this hold outlives the condition that caused it.',
       ...(content
         ? { title: content.title, summary: content.summary, nextStep: content.nextStep }
         : {}),
     });
+    return;
   }
-  // Issue-kind runs are not closed by `syncAgentSessionLifecycle`
-  // (`closeRunIfOneShot` only touches pm/interactive runs); close it here so
-  // an exhausted issue does not leave its run `running` and wedge the serial
-  // slot (CLAUDE.md orphan-hygiene — routes through cascadeCancelChildJobs).
+
+  // cm:why reached only when nothing waits for this issue any more (a cancel, or a reason with no successor); `syncAgentSessionLifecycle` will not close an issue-kind run — `closeRunIfOneShot` covers pm/interactive only — so without this call the run stays `running` and wedges the project's serial slot
+  // cm:guard NEVER close the run when a job was held (RFC 0002 INV-4) — the cascade would cancel the held successor on the way out and the hold would silently become a dead end, which is strictly worse than the park it replaced
   try {
     await closeOpenRunForIssue(row.id, 'failed');
   } catch (err) {

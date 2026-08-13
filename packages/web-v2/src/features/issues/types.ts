@@ -216,6 +216,7 @@ export interface IssueDetail extends IssueRow {
  *  `PipelineWaitingReason` (`issues/pipeline-health.ts`). */
 export type WaitingReason =
   | "issue_busy"
+  | "job_held"
   | "waiting_on_dep"
   | "waiting_on_decomp_children"
   | "project_full"

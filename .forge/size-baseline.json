@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T17:06:50.060Z",
+  "generatedAt": "2026-08-13T17:42:54.207Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -86,8 +86,8 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/pipeline-health.ts": {
-      "fileLines": 570,
-      "maxFunctionLines": 192
+      "fileLines": 606,
+      "maxFunctionLines": 164
     },
     "packages/core/src/issues/routes.ts": {
       "fileLines": 802,

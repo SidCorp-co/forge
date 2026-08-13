@@ -57,8 +57,10 @@ export function resetLastTickAtForTest(): void {
   lastTickAtByProject.clear();
 }
 
+// cm:guard `job_held` is the ONLY thing that makes RFC 0002 honest — a held job leaves the issue at its stage entry-status, so without this reason the board shows an issue that looks idle and actionable while a step is in fact waiting on a machine. Delete it and you have rebuilt the ambiguity the RFC removed, on the other axis.
 export type PipelineWaitingReason =
   | 'issue_busy'
+  | 'job_held'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_children'
   | 'project_full'
@@ -116,6 +118,8 @@ export interface PipelineHealthJob {
   queuedAt: Date;
   runnerId: string | null;
   agentSessionId: string | null;
+  /** The hold reason when `status === 'held'` (`jobs/hold.ts`). */
+  failureReason?: string | null;
 }
 
 export interface PipelineHealthDep {
@@ -193,6 +197,66 @@ export function classifyWaitingCause(input: {
   return 'plan_approval';
 }
 
+/** The `job_held` waitingOn for an issue with a held job, or `null`. */
+function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['waitingOn'] {
+  const held = issueJobs.find((j) => j.status === 'held');
+  if (!held) return undefined;
+  return {
+    reason: 'job_held',
+    since: held.queuedAt.toISOString(),
+    details: {
+      heldJobId: held.id,
+      heldJobType: held.type,
+      holdReason: held.failureReason ?? null,
+    },
+  };
+}
+
+/**
+ * Q3 — the issue's live jobs, bucketed by issue id.
+ */
+// cm:guard `held` MUST be loaded here but MUST NOT be counted at the runner-in-flight query in the loader below — this feeds the `issue_busy` and `job_held` reasons, which mirror L1 `issueBusyJob` (held blocks a duplicate), while that query mirrors `runner_load` (held burns no cap). Drop it here and the gate refuses to dispatch while pipelineHealth reports no waitingOn at all — the exact lie this file's lockstep edge exists to prevent.
+async function loadActiveJobsByIssue(
+  projectId: string,
+  ids: string[],
+): Promise<Map<string, PipelineHealthJob[]>> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      type: jobs.type,
+      status: jobs.status,
+      queuedAt: jobs.queuedAt,
+      runnerId: jobs.runnerId,
+      agentSessionId: jobs.agentSessionId,
+      issueId: jobs.issueId,
+      failureReason: jobs.failureReason,
+    })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.projectId, projectId),
+        inArray(jobs.issueId, ids),
+        inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
+      ),
+    );
+  const byIssue = new Map<string, PipelineHealthJob[]>();
+  for (const r of rows) {
+    if (!r.issueId) continue;
+    const bucket = byIssue.get(r.issueId) ?? [];
+    bucket.push({
+      id: r.id,
+      type: r.type,
+      status: r.status,
+      queuedAt: r.queuedAt,
+      runnerId: r.runnerId,
+      agentSessionId: r.agentSessionId,
+      failureReason: r.failureReason,
+    });
+    byIssue.set(r.issueId, bucket);
+  }
+  return byIssue;
+}
+
 /**
  * Pure classifier — given pre-fetched rows for a single issue, decide its
  * `PipelineHealth`. Kept separate from the SQL loader so unit tests can
@@ -237,6 +301,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
         latestRun,
       }),
     };
+  }
+
+  // cm:guard this call MUST stay above the `queuedJobs.length === 0` return — a held job is usually the issue's ONLY job, so deriving it from inside the queued-candidate block below reports nothing at all in exactly the case that matters
+  const held = heldWaitingOn(issueJobs);
+  if (held) {
+    out.waitingOn = held;
+    return out;
   }
 
   if (queuedJobs.length === 0) return out;
@@ -424,40 +495,7 @@ export async function hydratePipelineHealthForIssues(
     sessionsByIssue.set(r.issueId, bucket);
   }
 
-  // Q3 — live jobs (queued/dispatched/running) for these issues.
-  const jobRows = await db
-    .select({
-      id: jobs.id,
-      type: jobs.type,
-      status: jobs.status,
-      queuedAt: jobs.queuedAt,
-      runnerId: jobs.runnerId,
-      agentSessionId: jobs.agentSessionId,
-      issueId: jobs.issueId,
-    })
-    .from(jobs)
-    .where(
-      and(
-        eq(jobs.projectId, projectId),
-        inArray(jobs.issueId, ids),
-        // cm:guard `held` MUST be loaded here but MUST NOT be counted at the runner-in-flight query below — this loader feeds the `issue_busy` reason, which mirrors L1 `issueBusyJob` (held blocks a duplicate), while that query mirrors `runner_load` (held burns no cap). Drop it here and the gate refuses to dispatch while this reports no waitingOn at all — the exact lie this file's lockstep edge exists to prevent.
-        inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
-      ),
-    );
-  const jobsByIssue = new Map<string, PipelineHealthJob[]>();
-  for (const r of jobRows) {
-    if (!r.issueId) continue;
-    const bucket = jobsByIssue.get(r.issueId) ?? [];
-    bucket.push({
-      id: r.id,
-      type: r.type,
-      status: r.status,
-      queuedAt: r.queuedAt,
-      runnerId: r.runnerId,
-      agentSessionId: r.agentSessionId,
-    });
-    jobsByIssue.set(r.issueId, bucket);
-  }
+  const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
 
   // Q4 — incoming `blocks` edges pointing AT these issues, with the
   // blocker's merged_at (the gate's actual satisfaction key).

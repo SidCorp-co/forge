@@ -21,6 +21,7 @@ export type Project = typeof schema.projects.$inferSelect;
 // `packages/core/src/issues/pipeline-health.ts` for the loader.
 export type PipelineWaitingReason =
   | 'issue_busy'
+  | 'job_held'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_children'
   | 'project_full'

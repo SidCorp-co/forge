@@ -486,6 +486,8 @@ export function openBlockingRefs(deps: IssueDependencies | undefined): BlockingR
 
 const WAITING_REASON_COPY: Record<WaitingReason, { reason: string; who: string }> = {
   issue_busy: { reason: "Another job is already active on this issue.", who: "Wait for the active run to finish." },
+  // cm:guard the `who` half must stay "no action" (RFC 0002) — a held step is the pipeline waiting on a MACHINE, and copy that asks the reader to do something re-creates, in the UI, the intervention the RFC removed from the state machine
+  job_held: { reason: "A step is held: it could not run and is waiting for the condition to clear.", who: "No action — it resumes itself, or alerts if the hold outlives the condition." },
   waiting_on_dep: { reason: "Blocked by a dependency that hasn't merged to the base branch yet.", who: "Finish (and merge) the blocking issue first." },
   waiting_on_decomp_children: { reason: "Waiting for its decomposed child issues to merge.", who: "The child issues must land on the base branch first." },
   project_full: { reason: "The project's concurrency cap is reached.", who: "No action — dispatches when a slot frees." },
