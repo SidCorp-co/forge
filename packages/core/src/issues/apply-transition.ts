@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues } from '../db/schema.js';
+import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
@@ -97,6 +97,12 @@ export interface ApplyStatusTransitionOptions {
    */
   // cm:guard required, not advisory (RFC 0002 INV-8) — the reason is what the fix step scopes against, and the guards deleted with the reopen cap were all attempts to detect its absence AFTER the fact; rejecting the write is the only version that cannot strand an issue
   reopenReason?: string | undefined;
+  /**
+   * Which flavour of "a human is needed" this park is. Only meaningful when
+   * `toStatus === 'waiting'`.
+   */
+  // cm:guard core must never DEFAULT this (RFC 0002 INV-5) — an unstated kind stays NULL and renders as generic copy, which is honest; picking one on the author's behalf re-invents the derivation this replaced, and the derivation was wrong on ISS-163
+  waitingKind?: WaitingKind | undefined;
 }
 
 export interface StatusTransitionResult {
@@ -217,6 +223,8 @@ export async function transitionIssueStatus(
         .set({
           status: toStatus,
           reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
+          // cm:guard the CLEAR arm is the load-bearing half — a kind left behind on an issue that has moved on renders a live "a human is needed" banner on work already in flight, and nothing else in the system would ever clear it
+          waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
           updatedAt: sql`now()`,
         })
         .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))

@@ -22,22 +22,16 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(), execute: vi.fn() },
 }));
 
-const {
-  classifyPipelineHealthForIssue,
-  classifyWaitingCause,
-  recordTickAt,
-  getLastTickAt,
-  resetLastTickAtForTest,
-} = await import('./pipeline-health.js');
+const { classifyPipelineHealthForIssue, recordTickAt, getLastTickAt, resetLastTickAtForTest } =
+  await import('./pipeline-health.js');
 type ClassifyInput = import('./pipeline-health.js').ClassifyInput;
-type PipelineHealthLatestRun = import('./pipeline-health.js').PipelineHealthLatestRun;
 
 const QUEUED_AT = new Date('2026-05-17T08:00:00.000Z');
 const TICK_AT = new Date('2026-05-17T08:01:00.000Z');
 
 function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
   return {
-    issue: { id: 'iss-1', status: 'approved', mergedAt: null },
+    issue: { id: 'iss-1', status: 'approved', mergedAt: null, waitingKind: null },
     sessions: [],
     jobs: [],
     deps: [],
@@ -48,7 +42,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     baseStampable: true,
     runnerInFlight: new Map(),
     lastTickAt: null,
-    latestRun: null,
     ...over,
   };
 }
@@ -286,165 +279,39 @@ describe('classifyPipelineHealthForIssue', () => {
   });
 });
 
-function run(over: Partial<PipelineHealthLatestRun> = {}): PipelineHealthLatestRun {
-  return {
-    id: over.id ?? 'run-1',
-    status: over.status ?? 'paused',
-    pauseReason: over.pauseReason ?? null,
-  };
-}
-
-describe('classifyWaitingCause (ISS-828)', () => {
-  it('reopen_cap: paused run with a `reopen_cap:` pause reason', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: null,
-        decompChildCount: 0,
-        latestRun: run({ pauseReason: 'reopen_cap:developed' }),
-      }),
-    ).toBe('reopen_cap');
-  });
-
-  it('decompose_parent: outgoing decompose edges exist', () => {
-    expect(classifyWaitingCause({ mergedAt: null, decompChildCount: 2, latestRun: null })).toBe(
-      'decompose_parent',
-    );
-  });
-
-  it('merged_parked: mergedAt is stamped (stranded / BLOCKED-FIXTURE fold)', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 0,
-        latestRun: null,
-      }),
-    ).toBe('merged_parked');
-  });
-
-  it('retry_exhausted: the run is terminal (finalize-failure closed it)', () => {
-    for (const status of ['completed', 'failed', 'cancelled'] as const) {
-      expect(
-        classifyWaitingCause({ mergedAt: null, decompChildCount: 0, latestRun: run({ status }) }),
-      ).toBe('retry_exhausted');
+describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)', () => {
+  it('reports the authored kind verbatim', () => {
+    for (const kind of ['needs_decision', 'needs_resource'] as const) {
+      const out = classifyPipelineHealthForIssue(
+        baseInput({ issue: { id: 'i', status: 'waiting', mergedAt: null, waitingKind: kind } }),
+      );
+      expect(out.waitingCause).toEqual({ kind });
     }
   });
 
-  it('plan_approval: default — no run, or a plain running/paused run', () => {
-    expect(classifyWaitingCause({ mergedAt: null, decompChildCount: 0, latestRun: null })).toBe(
-      'plan_approval',
-    );
-    expect(
-      classifyWaitingCause({
-        mergedAt: null,
-        decompChildCount: 0,
-        latestRun: run({ status: 'running' }),
-      }),
-    ).toBe('plan_approval');
-    // A paused run with an unrecognized/absent reason is not `reopen_cap` —
-    // missing_skill/stage_stalled never transition the issue to `waiting` in
-    // the first place (see the `WaitingCause` doc comment), so this is the
-    // safe generic fallback for anything else.
-    expect(
-      classifyWaitingCause({
-        mergedAt: null,
-        decompChildCount: 0,
-        latestRun: run({ pauseReason: null }),
-      }),
-    ).toBe('plan_approval');
-  });
-
-  it('precedence: a paused reopen_cap run wins over decompChildren/merged/terminal', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 3,
-        latestRun: run({ pauseReason: 'reopen_cap:developed' }),
-      }),
-    ).toBe('reopen_cap');
-  });
-
-  // cm:why this assertion was inverted on 2026-08-13. It previously demanded `decompose_parent`, which is what put the plan-approval copy and a live `Approve` button on ISS-812 — an epic merged 2026-08-12T05:38 whose code was already on main and deployed. The test locked the defect in, so fixing the classifier meant fixing the test that ratified it.
-  it('precedence: merged_parked wins over decompose_parent — a merged epic is not awaiting approval to START coding', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 1,
-        latestRun: run({ status: 'failed' }),
-      }),
-    ).toBe('merged_parked');
-  });
-
-  it('decompose_parent still wins over a terminal run while the parent is UNmerged', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: null,
-        decompChildCount: 1,
-        latestRun: run({ status: 'failed' }),
-      }),
-    ).toBe('decompose_parent');
-  });
-
-  it('precedence: merged_parked wins over a terminal run', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 0,
-        latestRun: run({ status: 'failed' }),
-      }),
-    ).toBe('merged_parked');
-  });
-});
-
-describe('classifyPipelineHealthForIssue — waitingCause wiring', () => {
-  it('attaches waitingCause only when issue.status is `waiting`', () => {
-    const notWaiting = classifyPipelineHealthForIssue(
-      baseInput({ issue: { id: 'i', status: 'approved', mergedAt: null } }),
-    );
-    expect(notWaiting.waitingCause).toBeUndefined();
-
-    const waiting = classifyPipelineHealthForIssue(
-      baseInput({ issue: { id: 'i', status: 'waiting', mergedAt: null } }),
-    );
-    expect(waiting.waitingCause).toEqual({ kind: 'plan_approval' });
-  });
-
-  it('reflects the reopen-cap park end to end', () => {
+  // cm:guard the five-way derivation this replaced inferred `merged_parked` from exactly this row shape (waiting + a merged_at) — a re-introduced inference is what put an override button on the wrong park on ISS-163
+  it('reports NO cause when the kind was never authored, whatever else the row says', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: null },
-        latestRun: run({ pauseReason: 'reopen_cap:developed' }),
-      }),
-    );
-    expect(out.waitingCause).toEqual({ kind: 'reopen_cap' });
-  });
-
-  it('reflects a decompose-parent park even with no active run', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: null },
+        issue: {
+          id: 'i',
+          status: 'waiting',
+          mergedAt: new Date('2026-08-11T00:00:00.000Z'),
+          waitingKind: null,
+        },
         decompChildren: [{ childIssueId: 'child-1', status: 'draft', mergedAt: null }],
       }),
     );
-    expect(out.waitingCause).toEqual({ kind: 'decompose_parent' });
+    expect(out.waitingCause).toBeUndefined();
   });
 
-  it('reflects a merged-but-parked (stranded / BLOCKED-FIXTURE) park', () => {
+  it('drops a stale kind on an issue that is no longer waiting', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: new Date('2026-08-11T00:00:00.000Z') },
+        issue: { id: 'i', status: 'in_progress', mergedAt: null, waitingKind: 'needs_decision' },
       }),
     );
-    expect(out.waitingCause).toEqual({ kind: 'merged_parked' });
-  });
-
-  it('reflects a retry-exhausted park (closed run, no queued jobs)', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: null },
-        latestRun: run({ status: 'failed', pauseReason: null }),
-      }),
-    );
-    expect(out.waitingCause).toEqual({ kind: 'retry_exhausted' });
+    expect(out.waitingCause).toBeUndefined();
   });
 });
 

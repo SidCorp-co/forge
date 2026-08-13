@@ -997,6 +997,10 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
   jobs: many(jobs),
 }));
 
+// cm:guard the two kinds are AUTHORED, never derived (RFC 0002 INV-5) — an agent or a human writes one alongside `status='waiting'`, and core has no writer of either. Adding a third kind means teaching the prompt, the guide and the UI copy in the same change, or agents author a value nothing renders.
+export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
+export type WaitingKind = (typeof waitingKinds)[number];
+
 export const issueStatuses = [
   'open',
   'confirmed',
@@ -1081,6 +1085,8 @@ export const issues = pgTable(
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),
+    // cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — set on entry to `waiting` and CLEARED on every exit; a stale kind on a non-waiting issue is a lie the UI renders as a live banner
+    waitingKind: text('waiting_kind', { enum: waitingKinds }),
     source: text('source', { enum: issueSources }).notNull().default('manual'),
     externalId: text('external_id'),
     // ISS-293: extension fields used by the autonomous /forge-* skill pipeline

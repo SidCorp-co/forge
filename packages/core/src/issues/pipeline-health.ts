@@ -29,9 +29,8 @@ import {
   issueDependencies,
   issues,
   jobs,
-  type PipelineRunStatus,
-  pipelineRuns,
   runners,
+  type WaitingKind,
 } from '../db/schema.js';
 import { resolveGateSettings, runnerSupportsJobType } from '../jobs/dispatch-gates.js';
 import { logger } from '../logger.js';
@@ -67,29 +66,12 @@ export type PipelineWaitingReason =
   | 'runner_full';
 
 /**
- * ISS-828 — why an issue sitting at `status='waiting'` actually got there.
- * `waiting` has 5 real producers today (verified against origin/main, not
- * assumed): a plan awaiting human approval (`plan_approval`), the decompose
- * review gate (`decompose_parent`, `issues/decompose.ts`), the reopen-cap
- * escalation (`reopen_cap`, `issues/apply-transition.ts`), a job's retry
- * budget being exhausted (`retry_exhausted`, `jobs/finalize-failure.ts` —
- * closes the run, so no pause to resume), and code already merged but parked
- * for manual review (`merged_parked` — folds the forge-test BLOCKED-FIXTURE
- * park and the stranded/closed-unmerged-blocker park together; both mean
- * "code is in, a human must decide", the actual sub-reason lives in comments).
- *
- * `missing_skill:`/`stage_stalled:` pause reasons (`missing-skill-guard.ts`,
- * `stage-stall-guard.ts`) are deliberately NOT modeled here: those guards only
- * pause the `pipeline_run` — they never transition `issues.status`, so an
- * issue paused for either reason keeps its normal actionable status (e.g.
- * `approved`), never reaches `waiting`. Modeling them here would be dead code.
+ * Why an issue is at `status='waiting'` — AUTHORED by whoever parked it, never
+ * derived. Both values mean "a human is needed"; they differ in what the human
+ * has to supply.
  */
-export type WaitingCause =
-  | 'plan_approval'
-  | 'decompose_parent'
-  | 'reopen_cap'
-  | 'retry_exhausted'
-  | 'merged_parked';
+// cm:guard this is now a pass-through of `issues.waiting_kind`, and it must stay one (RFC 0002 INV-5) — the five-way derivation it replaced read `merged_at`, the decompose-child count and a best-effort jsonb `pauseReason`, and on ISS-163 that jsonb write had silently failed, so a reopen-cap park read back as `merged_parked` and the UI rendered no override button at all. A NULL kind renders generic copy; inferring one is how that bug returns.
+export type WaitingCause = WaitingKind;
 
 export interface PipelineHealth {
   stage: IssueStatus;
@@ -145,17 +127,8 @@ export interface PipelineHealthRunnerSat {
   inFlight: number;
 }
 
-/** The issue's latest `kind='issue'` `pipeline_runs` row — only looked up by
- *  the loader for issues actually at `status='waiting'` (cheap: gated query,
- *  see `hydratePipelineHealthForIssues`). `null` when no run exists yet. */
-export interface PipelineHealthLatestRun {
-  id: string;
-  status: PipelineRunStatus;
-  pauseReason: string | null;
-}
-
 export interface ClassifyInput {
-  issue: { id: string; status: string; mergedAt: Date | null };
+  issue: { id: string; status: string; mergedAt: Date | null; waitingKind: WaitingKind | null };
   sessions: PipelineHealthSession[];
   jobs: PipelineHealthJob[];
   deps: PipelineHealthDep[];
@@ -168,33 +141,6 @@ export interface ClassifyInput {
   baseStampable: boolean;
   runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
   lastTickAt: Date | null;
-  /** Only consulted when `issue.status === 'waiting'`. */
-  latestRun?: PipelineHealthLatestRun | null;
-}
-
-const RUN_TERMINAL_STATUSES = new Set<PipelineRunStatus>(['completed', 'failed', 'cancelled']);
-
-/**
- * Pure sub-classifier for `waitingCause`. Precedence is load-bearing and the
- * reason for each ordering is on the guard inside the body. Exported so
- * `derive.ts`-style callers (and tests) can exercise it without constructing a
- * full `ClassifyInput`.
- */
-export function classifyWaitingCause(input: {
-  mergedAt: Date | null;
-  decompChildCount: number;
-  latestRun: PipelineHealthLatestRun | null | undefined;
-}): WaitingCause {
-  const { mergedAt, decompChildCount, latestRun } = input;
-  if (latestRun?.status === 'paused' && latestRun.pauseReason?.startsWith('reopen_cap:')) {
-    return 'reopen_cap';
-  }
-  // cm:guard `mergedAt` outranks `decompChildCount`, and the order is the whole point: `decompose_parent` renders the plan-approval copy plus an `Approve` CTA verbatim, so a MERGED epic that still has decompose children was told "the plan is awaiting approval before coding starts" and offered a button that re-dispatches a full `code` job on code already merged and live. Walked live on ISS-812 (merged 2026-08-12T05:38, banner read exactly that) — a merged parent is `merged_parked`, never awaiting approval to start.
-  // cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — deriveBlockerState maps `decompose_parent` to the Approve CTA and `merged_parked` to no CTA at all; swapping these two lines back silently restores the destructive button
-  if (mergedAt !== null) return 'merged_parked';
-  if (decompChildCount > 0) return 'decompose_parent';
-  if (latestRun && RUN_TERMINAL_STATUSES.has(latestRun.status)) return 'retry_exhausted';
-  return 'plan_approval';
 }
 
 /** The `job_held` waitingOn for an issue with a held job, or `null`. */
@@ -276,7 +222,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     baseStampable,
     runnerInFlight,
     lastTickAt,
-    latestRun,
   } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
@@ -293,14 +238,8 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   }
   if (lastTickAt) out.lastTickAt = lastTickAt.toISOString();
 
-  if (issue.status === 'waiting') {
-    out.waitingCause = {
-      kind: classifyWaitingCause({
-        mergedAt: issue.mergedAt,
-        decompChildCount: decompChildren.length,
-        latestRun,
-      }),
-    };
+  if (issue.status === 'waiting' && issue.waitingKind) {
+    out.waitingCause = { kind: issue.waitingKind };
   }
 
   // cm:guard this call MUST stay above the `queuedJobs.length === 0` return — a held job is usually the issue's ONLY job, so deriving it from inside the queued-candidate block below reports nothing at all in exactly the case that matters
@@ -439,32 +378,11 @@ export async function hydratePipelineHealthForIssues(
       status: issues.status,
       projectId: issues.projectId,
       mergedAt: issues.mergedAt,
+      waitingKind: issues.waitingKind,
     })
     .from(issues)
     .where(inArray(issues.id, ids));
   const issuesById = new Map(issueRows.map((r) => [r.id, r]));
-
-  // Q1b — latest issue-run per issue, ONLY for issues actually at `waiting`
-  // (ISS-828 `waitingCause`) — gated so list-view health hydration for the
-  // common (non-waiting) case never pays this extra query.
-  const waitingIds = issueRows.filter((r) => r.status === 'waiting').map((r) => r.id);
-  const latestRunByIssue = new Map<string, PipelineHealthLatestRun>();
-  if (waitingIds.length > 0) {
-    const latestRunRows = await db
-      .selectDistinctOn([pipelineRuns.issueId], {
-        issueId: pipelineRuns.issueId,
-        id: pipelineRuns.id,
-        status: pipelineRuns.status,
-        pauseReason: sql<string | null>`(${pipelineRuns.metadata}->>'pauseReason')`,
-      })
-      .from(pipelineRuns)
-      .where(and(inArray(pipelineRuns.issueId, waitingIds), eq(pipelineRuns.kind, 'issue')))
-      .orderBy(pipelineRuns.issueId, desc(pipelineRuns.startedAt));
-    for (const r of latestRunRows) {
-      if (!r.issueId) continue;
-      latestRunByIssue.set(r.issueId, { id: r.id, status: r.status, pauseReason: r.pauseReason });
-    }
-  }
 
   // Q2 — non-idle agent_sessions linked to these issues via metadata.issueId.
   const sessionRows = await db
@@ -629,6 +547,7 @@ export async function hydratePipelineHealthForIssues(
         id: issueRow.id,
         status: issueRow.status,
         mergedAt: issueRow.mergedAt,
+        waitingKind: issueRow.waitingKind,
       },
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
@@ -640,7 +559,6 @@ export async function hydratePipelineHealthForIssues(
       baseStampable,
       runnerInFlight,
       lastTickAt,
-      latestRun: latestRunByIssue.get(issueId) ?? null,
     });
     map.set(issueId, health);
   }

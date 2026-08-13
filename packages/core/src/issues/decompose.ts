@@ -481,6 +481,8 @@ export async function decomposeParent(
           },
           'waiting',
           { id: project.createdBy, ownerId: project.createdBy },
+          // cm:guard the ONLY `waiting` write left in core, and it MUST carry a kind (RFC 0002 INV-5) — a human really is being asked to review the split, and without the kind the board renders generic copy on the one park core creates by itself
+          { waitingKind: 'needs_decision' },
         );
       }
     } catch (err) {

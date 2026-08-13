@@ -4,7 +4,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type IssueStatus, issueDependencies, issueStatuses, issues } from '../db/schema.js';
+import {
+  type IssueStatus,
+  issueDependencies,
+  issueStatuses,
+  issues,
+  waitingKinds,
+} from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -20,6 +26,8 @@ const transitionBodySchema = z
   .object({
     toStatus: z.enum(issueStatuses),
     reason: z.string().trim().min(1).max(2000).optional(),
+    // cm:guard optional here on purpose (RFC 0002 INV-5) — a UI that cannot ask the user which kind must send nothing rather than a default, because a wrong kind renders a wrong banner and only a human can correct it
+    waitingKind: z.enum(waitingKinds).optional(),
   })
   .strict();
 
@@ -155,7 +163,7 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason } = c.req.valid('json');
+    const { toStatus, reason, waitingKind } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -187,7 +195,7 @@ transitionRoutes.post(
         },
         toStatus,
         { type: 'user', id: userId },
-        { reason, reopenReason: reason },
+        { reason, reopenReason: reason, waitingKind },
       );
     } catch (err) {
       if (err instanceof TransitionError) throw transitionErrorToHttp(err);

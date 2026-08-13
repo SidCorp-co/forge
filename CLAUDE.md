@@ -248,6 +248,7 @@ All payloads pass through a scrubber that replaces Authorization, X-Device-Token
 
 - Cascade effects: jobs → `cancelled` (`failureKind='transient'`, `failureReason='pipeline_*'`); linked `agent_sessions` → `failed`; broadcasts `agent:abort`.
 - New code that flips `pipeline_runs.status` terminal MUST route through a cascade-calling helper — no second mechanism cleans up after you.
+- **`held` is a fourth, deliberate shape and is NOT an orphan** (RFC 0002). A `held` job is alive and non-terminal *under a run that is also non-terminal* — the invariant above still holds, because INV-4 forbids closing a run while any of its jobs is held. It is excluded from defence 3's `runner_load` and from the project serial gate (`running_ids`), so it burns no slot, and defence 2 never reaps it. It IS counted by L1 `issueBusyJob`, so no duplicate job is enqueued for the same issue. Do not "clean up" a held job: `jobs/hold.ts` `releaseHeldJobs` re-queues the two condition-checked reasons and the other three wait for a human on purpose.
 
 ## Pipeline-step analytics
 

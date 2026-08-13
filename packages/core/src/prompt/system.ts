@@ -31,6 +31,7 @@ import {
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
+import { DEFAULT_NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
 import { OPERATING_AFFORDANCES_TEXT, renderFact } from './facts/registry.js';
 import {
   loadActiveIntegrationRows,
@@ -173,10 +174,15 @@ function formatProjectContext(projectId: string): string {
 Call \`forge_projects.get\` with this id to retrieve repo paths, branches, staging URLs, and test credentials. Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
-function formatProjectConfig(baseBranch: string | null, productionBranch: string | null): string {
+function formatProjectConfig(
+  baseBranch: string | null,
+  productionBranch: string | null,
+  noProgressRounds: number = DEFAULT_NO_PROGRESS_ROUNDS,
+): string {
   const b = baseBranch ?? BRANCH_SENTINEL;
   const p = productionBranch ?? BRANCH_SENTINEL;
-  let out = `## Project Config\n- baseBranch: ${b}\n- productionBranch: ${p}`;
+  // cm:guard the "no movement" qualifier is the whole line (RFC 0002 INV-8) — printing the bare number teaches the deleted cap back, and an agent that reads it as a cap stops at round 5 on work that is progressing fine
+  let out = `## Project Config\n- baseBranch: ${b}\n- productionBranch: ${p}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`waiting\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
   if (!baseBranch || !productionBranch) {
     out += `\n\nBranch detection: any value shown as \`${BRANCH_SENTINEL}\` is not configured. Before any git operation, run \`git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'\` and use the result instead. If detection fails, abort and ask the user via \`forge_config\`.`;
   }
@@ -355,7 +361,11 @@ export async function buildPipelinePreambleStructured(
   if (project) {
     sections.push({
       id: 'project-config',
-      body: formatProjectConfig(project.baseBranch, project.productionBranch),
+      body: formatProjectConfig(
+        project.baseBranch,
+        project.productionBranch,
+        factInputs?.noProgressRounds ?? DEFAULT_NO_PROGRESS_ROUNDS,
+      ),
     });
   }
   // ISS-225 — inline the projectId so agents can call forge_projects.get

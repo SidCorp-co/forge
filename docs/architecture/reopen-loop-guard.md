@@ -1,6 +1,7 @@
 # ADR: Reopen loop guard
 
-**Status:** Accepted · 2026-08-11 · ISS-766
+**Status:** SUPERSEDED by [RFC 0002 — Park axis separation](../rfcs/0002-park-axis-separation.md) · 2026-08-14. Mechanism #2 (the cap) is deleted; #1 and #3 are unchanged and still live. The ISS-801 measurements below are the evidence RFC 0002 argues from — keep them.
+**Was:** Accepted · 2026-08-11 · ISS-766
 **Scope:** what stops a `developed`/`testing` reopen→fix→review cycle from looping indefinitely on one issue, and what happens when it hits the ceiling.
 
 ## Problem
@@ -12,7 +13,7 @@ Review/test rejections reopen an issue for another fix pass. Nothing bounded how
 | # | Mechanism | Where | What it does |
 |---|-----------|-------|---------------|
 | 1 | Counted-reopen predicate | `isReopenEntry` — `packages/core/src/pipeline/state-machine.ts` | Which `from → reopen` hops count against the cap. Counts genuine rejections (`developed→reopen`, `testing→reopen`, `tested→reopen`, `closed→reopen`); excludes `reopen→reopen` (already there) and `in_progress→reopen` (a system revert — finalize-failure's retry revert, the reconciler's in-flight wedge reset — not an agent rejection; ISS-766). |
-| 2 | Cap escalation | `REOPEN_CAP = 5` + `transitionIssueStatus` — `packages/core/src/pipeline/state-machine.ts`, `packages/core/src/issues/apply-transition.ts` | At the cap, a **user** actor still gets the REST 422 `REOPEN_CAP_EXCEEDED` contract (with the project-admin `overrideReopenCap` escape). A **device** actor (every pipeline agent) is redirected to `waiting` instead of throwing: an escalation comment is posted (before the status write), the issue's open run is paused with `pauseReason: reopen_cap:<fromStatus>`, a `pipeline.reopen_cap_escalated` Sentry breadcrumb + `recordReopenCapEscalated()` counter fire, and the MCP result carries `capEscalated`/`requestedStatus` so the calling agent is told the truth instead of believing it set `reopen`. |
+| 2 | ~~Cap escalation~~ **(deleted — RFC 0002 INV-8)** — replaced by a required `reason` on every reopen entry plus an advisory `noProgressRounds` alert. The cap counted reopens, but the thing worth stopping is a reopen that changes nothing, and no counter can tell those apart: on the run below, five rounds each fixed a different blocker. | `REOPEN_CAP = 5` + `transitionIssueStatus` — `packages/core/src/pipeline/state-machine.ts`, `packages/core/src/issues/apply-transition.ts` | At the cap, a **user** actor still gets the REST 422 `REOPEN_CAP_EXCEEDED` contract (with the project-admin `overrideReopenCap` escape). A **device** actor (every pipeline agent) is redirected to `waiting` instead of throwing: an escalation comment is posted (before the status write), the issue's open run is paused with `pauseReason: reopen_cap:<fromStatus>`, a `pipeline.reopen_cap_escalated` Sentry breadcrumb + `recordReopenCapEscalated()` counter fire, and the MCP result carries `capEscalated`/`requestedStatus` so the calling agent is told the truth instead of believing it set `reopen`. |
 | 3 | Model escalation | `escalateModel` — `packages/core/src/jobs/stage-overrides.ts` | Independent of the cap: bumps `fix`/`review` from sonnet toward opus as `reopenCount` climbs past `ESCALATION_FREE_REOPENS = 1`, on the theory that a harder issue benefits from a stronger model. Shares mechanism #1's predicate, so it no longer escalates on infra flakes either. |
 
 ## Before ISS-766
@@ -30,6 +31,6 @@ Considered making `REOPEN_CAP` scale with issue complexity (larger cap for `l`/`
 
 ## Deliberately out of scope
 
-Retuning `REOPEN_CAP` (5) — a tuning knob; ISS-766 makes the guard behave correctly at whatever value is set, not what that value should be.
+Retuning `REOPEN_CAP` — deleted; the knob is now `pipelineConfig.reopenPolicy.noProgressRounds` (advisory) — a tuning knob; ISS-766 makes the guard behave correctly at whatever value is set, not what that value should be.
 
 `ESCALATION_FREE_REOPENS` is gone: the reopen-driven model escalation it gated (`escalateModel`) was deleted when per-stage tiers became fixed. `reopenCount` still drives this cap and the `maxResumeReopenCycles` resume bound — it no longer drives model choice. See `docs/modules/agents-jobs/prompt-config.md` § Default model-routing policy.

@@ -1240,6 +1240,13 @@
       "when": 1788825600000,
       "tag": "0178_rfc0002_held_job_status",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1788912000000,
+      "tag": "0179_rfc0002_waiting_kind",
+      "breakpoints": true
     }
   ]
 }

@@ -95,16 +95,14 @@ export const issuesApi = {
     }),
 
   /** `POST /api/issues/:id/transition` — state-machine guarded status change.
-   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). `override` bypasses
-   *  the reopen cap — the server rejects it with 403 unless the caller is a
-   *  project admin (ISS-828 reopen-cap unblock). */
-  transition: (id: string, toStatus: IssueStatus, opts?: { reason?: string; override?: boolean }) =>
+   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). */
+  // cm:guard `reason` is REQUIRED when `toStatus === "reopen"` (RFC 0002 INV-8) — the server answers 422 REOPEN_REASON_REQUIRED without it, so a caller that cannot collect one must not offer the action
+  transition: (id: string, toStatus: IssueStatus, opts?: { reason?: string }) =>
     apiClient<IssueRow>(`/issues/${id}/transition`, {
       method: "POST",
       body: JSON.stringify({
         toStatus,
         ...(opts?.reason ? { reason: opts.reason } : {}),
-        ...(opts?.override ? { override: true } : {}),
       }),
     }),
 

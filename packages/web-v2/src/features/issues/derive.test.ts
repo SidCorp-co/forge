@@ -440,68 +440,40 @@ describe("deriveBlockerState", () => {
     expect(b?.question).toBe("Which environment?");
   });
 
-  it("waiting → approve action (no waitingCause, e.g. pre-828 server)", () => {
-    const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined);
-    expect(b?.cta.kind).toBe("approve");
-  });
-
-  describe("waiting → waitingCause (ISS-828)", () => {
-    it("plan_approval → approve action, unchanged copy", () => {
+  describe("waiting → the authored kind (RFC 0002 INV-5)", () => {
+    it("names the decision when the kind is needs_decision", () => {
       const b = deriveBlockerState(
         blockerIssue({ status: "waiting" }),
-        { stage: "waiting", waitingCause: { kind: "plan_approval" } },
+        { stage: "waiting", waitingCause: { kind: "needs_decision" } },
         undefined,
       );
       expect(b?.cta.kind).toBe("approve");
-      expect(b?.reason).toContain("awaiting human approval");
+      expect(b?.reason).toContain("decision");
     });
 
-    it("decompose_parent → approve action verbatim (AC#2)", () => {
+    it("names the missing resource when the kind is needs_resource", () => {
       const b = deriveBlockerState(
         blockerIssue({ status: "waiting" }),
-        { stage: "waiting", waitingCause: { kind: "decompose_parent" } },
+        { stage: "waiting", waitingCause: { kind: "needs_resource" } },
         undefined,
       );
       expect(b?.cta.kind).toBe("approve");
-      expect(b?.reason).toContain("awaiting human approval");
+      expect(b?.reason).toContain("only a person can supply");
     });
 
-    it("reopen_cap → override-resume action, never a bare approve (AC#3)", () => {
-      const b = deriveBlockerState(
-        blockerIssue({ status: "waiting" }),
-        { stage: "waiting", waitingCause: { kind: "reopen_cap" } },
-        undefined,
-      );
-      expect(b?.cta.kind).toBe("override-resume");
-      expect(b?.reason).toContain("reopen limit");
+    // cm:guard the generic arm is what makes the nullable column safe — an issue parked before `waiting_kind` existed has no kind, and a banner that guessed one is the ISS-163 failure the RFC deleted
+    it("falls back to generic human-needed copy when no kind was authored", () => {
+      const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined);
+      expect(b?.cta.kind).toBe("approve");
+      expect(b?.reason).toContain("A human is needed");
+      expect(b?.reason).not.toContain("decision");
     });
 
-    it("retry_exhausted → reopen action, not resume (AC#4)", () => {
-      const b = deriveBlockerState(
-        blockerIssue({ status: "waiting" }),
-        { stage: "waiting", waitingCause: { kind: "retry_exhausted" } },
-        undefined,
-      );
-      expect(b?.cta.kind).toBe("reopen");
-      expect(b?.reason).toContain("retry budget");
-    });
-
-    it("merged_parked → no CTA, points at the comment thread", () => {
-      const b = deriveBlockerState(
-        blockerIssue({ status: "waiting" }),
-        { stage: "waiting", waitingCause: { kind: "merged_parked" } },
-        undefined,
-      );
-      expect(b?.cta.kind).toBe("none");
-      expect(b?.reason).toContain("already merged");
-    });
-
-    it("a dependency closed-without-merging still wins over the generic plan_approval copy", () => {
+    it("a dependency closed-without-merging still wins over the generic copy", () => {
       const b = deriveBlockerState(
         blockerIssue({ status: "waiting" }),
         {
           stage: "waiting",
-          waitingCause: { kind: "plan_approval" },
           waitingOn: {
             reason: "waiting_on_dep",
             since: "x",

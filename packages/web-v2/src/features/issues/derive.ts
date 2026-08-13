@@ -439,7 +439,6 @@ export type BlockerCtaKind =
   | "resume"
   | "open-blocker"
   | "none"
-  | "override-resume"
   | "reopen";
 
 /** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
@@ -525,62 +524,29 @@ export function deriveBlockerState(
     };
   }
 
-  // 3. waiting — 5 distinct real causes (ISS-828), classified server-side
-  // (`pipelineHealth.waitingCause`, absent ⇒ treat as plan_approval so an
-  // older server still renders the pre-828 copy). Each cause gets its own
-  // reason + CTA so the banner never claims an action the pipeline doesn't
-  // actually offer (e.g. `Approve` re-dispatching a full `code` job on an
-  // issue parked specifically to stop that spend).
-  const waitingCause =
-    issue.status === "waiting" ? (pipelineHealth?.waitingCause?.kind ?? "plan_approval") : null;
+  // cm:guard the kind is read, never inferred (RFC 0002 INV-5) — a NULL kind must fall through to the generic copy below, because the five-way inference this replaced showed an "Override & resume" button on a park that had nothing to override
+  const isWaiting = issue.status === "waiting";
+  const waitingKind = isWaiting ? (pipelineHealth?.waitingCause?.kind ?? null) : null;
 
-  if (waitingCause === "decompose_parent") {
-    // Verbatim (AC#2) — the one case where "Approve" already does the right
-    // thing (promotes every decomposed child); do not dilute or rebrand it.
+  if (waitingKind === "needs_decision") {
     return {
       tone: "attention",
-      reason: "The plan is written and awaiting human approval before coding starts.",
-      whoMustAct: "A maintainer must approve (or reopen) the issue.",
+      reason: "A human decision is needed before the pipeline can continue.",
+      whoMustAct: "A maintainer must decide — the agent left the question in the comments — then move the issue on.",
       cta: { label: "Approve", kind: "approve" },
       ...(blockingRefs.length ? { blockingRefs } : {}),
     };
   }
 
-  if (waitingCause === "reopen_cap") {
+  if (waitingKind === "needs_resource") {
     return {
       tone: "attention",
-      reason: "This issue hit the reopen limit and was parked to stop repeated expensive re-runs.",
-      whoMustAct: "A project admin can override the limit and resume the paused run.",
-      cta: { label: "Override & resume", kind: "override-resume" },
+      reason: "A step needs something only a person can supply — an account, credentials, or third-party data.",
+      whoMustAct: "Supply it (see the comments for what is missing), then approve to resume.",
+      cta: { label: "Approve", kind: "approve" },
       ...(blockingRefs.length ? { blockingRefs } : {}),
     };
   }
-
-  if (waitingCause === "retry_exhausted") {
-    return {
-      tone: "attention",
-      reason: "The pipeline exhausted its retry budget for this step and stopped.",
-      whoMustAct: "A maintainer can reopen it to try again.",
-      cta: { label: "Reopen", kind: "reopen" },
-      ...(blockingRefs.length ? { blockingRefs } : {}),
-    };
-  }
-
-  if (waitingCause === "merged_parked") {
-    return {
-      tone: "info",
-      reason: "The code is already merged; the issue is parked for manual review — see the comments.",
-      whoMustAct: "A maintainer must decide the next step.",
-      cta: { label: "", kind: "none" },
-      ...(blockingRefs.length ? { blockingRefs } : {}),
-    };
-  }
-
-  // waitingCause === "plan_approval" (or unknown) falls through to the
-  // pipelineHealth check below — a dependency closed without merging
-  // (waitingOn.reason === "waiting_on_dep") gets its specific copy instead
-  // of the generic approval banner. The generic copy itself is the fallback
-  // a few branches down, once every richer signal has been ruled out.
 
   // 4. on_hold status — deliberately paused via the state machine.
   if (issue.status === "on_hold") {
@@ -641,16 +607,12 @@ export function deriveBlockerState(
     };
   }
 
-  // 5b. waitingCause fell through to plan_approval and no richer waitingOn
-  // signal applied (e.g. a genuine plan-approval wait, or a server that
-  // predates `waitingCause`) — the original generic copy, unconditionally
-  // (never fall further to the raw "open blocks edge" wording in 6, which
-  // would misdescribe a plan-approval wait as a dependency block).
-  if (waitingCause !== null) {
+  // cm:guard this arm must stay unconditional for `waiting` (never fall through to 6) — an issue parked at `waiting` with no authored kind is still a human wait, and 6 would describe it as a dependency block
+  if (isWaiting) {
     return {
       tone: "attention",
-      reason: "The plan is written and awaiting human approval before coding starts.",
-      whoMustAct: "A maintainer must approve (or reopen) the issue.",
+      reason: "A human is needed before the pipeline can continue.",
+      whoMustAct: "A maintainer must act — the reason is in the comments — then move the issue on.",
       cta: { label: "Approve", kind: "approve" },
       ...(blockingRefs.length ? { blockingRefs } : {}),
     };

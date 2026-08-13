@@ -9,7 +9,6 @@ import {
   CardTitle,
   Checkbox,
   Collapsible,
-  ConfirmDialog,
   EmptyState,
   ErrorState,
   HelpButton,
@@ -68,6 +67,7 @@ import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AttachmentList } from "./attachment-list";
 import { BlockerBanner } from "./blocker-banner";
+import { ReopenReasonDialog } from "./reopen-reason-dialog";
 import { CommentThread } from "./comment-thread";
 import { LiveAgentPanel } from "./live-agent-panel";
 import { PropertiesRail } from "./properties-rail";
@@ -122,11 +122,8 @@ export function IssueDetailScreen({
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
-  // ISS-828 AC#6 — the reopen-cap override is admin-only (the server 403s a
-  // non-admin regardless; this only decides whether the control renders
-  // disabled-with-explanation vs. working).
-  const canOverride = projectRole === "admin";
-  const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
+  // cm:guard every reopen surface on this screen MUST route through this dialog (RFC 0002 INV-8) — the server rejects a reason-less `reopen` with 422, so a direct `transition.mutate({ toStatus: "reopen" })` added here reads to the user as a broken button
+  const [reopenPrompt, setReopenPrompt] = useState<{ successMessage: string } | null>(null);
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -194,38 +191,38 @@ export function IssueDetailScreen({
   }
 
   const stage = statusToStage(issue.status);
-  const onTransition = (toStatus: IssueStatus) =>
+  const onTransition = (toStatus: IssueStatus) => {
+    if (toStatus === "reopen") {
+      setReopenPrompt({ successMessage: "Issue reopened" });
+      return;
+    }
     transition.mutate({ id, toStatus });
+  };
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id, body });
 
   // ISS-828 AC#10 — every blocker-banner mutation toasts success (errors are
   // already toasted by `useTransitionIssue`'s shared `onError`).
-  const runBlockerAction = (
-    toStatus: IssueStatus,
-    successMessage: string,
-    opts: { override?: boolean } = {},
-  ) =>
+  const runBlockerAction = (toStatus: IssueStatus, successMessage: string) =>
     transition.mutate(
-      { id, toStatus, ...(opts.override ? { override: true } : {}) },
+      { id, toStatus },
       { onSuccess: () => toast({ title: successMessage, tone: "success" }) },
     );
   const onApprove = () => runBlockerAction("approved", "Issue approved");
-  const onBannerResume = () => runBlockerAction("reopen", "Issue resumed");
-  // AC#11 — the reopen-cap override forces past a safety cap; confirm first.
-  const onOverrideResume = () => setOverrideConfirmOpen(true);
-  const onConfirmOverride = () => {
+  const onBannerResume = () => setReopenPrompt({ successMessage: "Issue resumed" });
+  const onReopen = () => setReopenPrompt({ successMessage: "Issue reopened" });
+  const onConfirmReopen = (reason: string) => {
+    const successMessage = reopenPrompt?.successMessage ?? "Issue reopened";
     transition.mutate(
-      { id, toStatus: "reopen", override: true },
+      { id, toStatus: "reopen", reason },
       {
         onSuccess: () => {
-          setOverrideConfirmOpen(false);
-          toast({ title: "Reopen limit overridden — run resumed", tone: "success" });
+          setReopenPrompt(null);
+          toast({ title: successMessage, tone: "success" });
         },
       },
     );
   };
-  const onReopen = () => runBlockerAction("reopen", "Issue reopened");
 
   // ISS-377 — these are pure derivations (not hooks), so they sit safely after
   // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
@@ -445,21 +442,15 @@ export function IssueDetailScreen({
               onApprove={onApprove}
               onResume={onBannerResume}
               onProvideInfo={focusComments}
-              onOverrideResume={onOverrideResume}
               onReopen={onReopen}
-              canOverride={canOverride}
             />
           )}
 
-          <ConfirmDialog
-            open={overrideConfirmOpen}
-            title="Override the reopen limit?"
-            message="This issue hit the reopen limit and was parked to stop repeated expensive re-runs. Overriding forces it back to reopen and resumes the paused run immediately."
-            confirmLabel="Override & resume"
-            tone="danger"
+          <ReopenReasonDialog
+            open={reopenPrompt !== null}
             loading={transition.isPending}
-            onConfirm={onConfirmOverride}
-            onClose={() => setOverrideConfirmOpen(false)}
+            onConfirm={onConfirmReopen}
+            onClose={() => setReopenPrompt(null)}
           />
 
           <Card>

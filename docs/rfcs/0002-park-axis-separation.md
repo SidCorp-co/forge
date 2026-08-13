@@ -1,9 +1,8 @@
 # RFC 0002 — Park axis separation
 
-- Status: **Draft** — design decided by the owner 2026-08-13, not yet implemented
+- Status: **Implemented** — decided by the owner 2026-08-13, shipped 2026-08-14 in three commits (`held` primitive · delete the mechanical park · reopen). See "As shipped" below for the three places the code deviates from this document.
 - Author: owner + agent session 2026-08-13
-- Tracking: implementation issues to be cut per the ship order below
-- Supersedes on acceptance: [`docs/architecture/reopen-loop-guard.md`](../architecture/reopen-loop-guard.md) (ADR, ISS-766) — keep the file and mark it superseded; its ISS-801 cost data is the evidence behind the drawbacks section here.
+- Supersedes: [`docs/architecture/reopen-loop-guard.md`](../architecture/reopen-loop-guard.md) (ADR, ISS-766) — keep the file and mark it superseded; its ISS-801 cost data is the evidence behind the drawbacks section here.
 
 ## Summary
 
@@ -189,6 +188,16 @@ This change removes more than it adds.
 1. **`held` primitive.** Add the state; make it slotless in the runner cap, the serial gate and the reapers (INV-3, INV-4). Nothing produces it yet — this phase is capability plus tests, and it is the only phase that can wedge a project if it is wrong.
 2. **Delete the mechanical park.** Route every no-retry outcome to `held` (INV-1, INV-2); authored waiting kinds (INV-5); remove the actor gates (INV-6) and the guards they served.
 3. **Reopen.** Required `reason` (INV-8), `noProgressRounds` in config, the churn ledger, delete the cap. Alerts (INV-7) land here.
+
+## As shipped
+
+Three deviations from the design above, each a deliberate call made during implementation:
+
+1. **A hold is a successor row, not the failed row re-labelled.** The figure shows the failed job becoming `held`. `holdJobForReason` instead inserts a NEW job at `held` with `retryOf` pointing at the failed attempt, matching the retry engine's existing clone-per-attempt shape. Reusing the row would have overwritten the failed attempt's error, `agent_session_id` and timings — the forensics for the very failure being held on.
+2. **Auto-release is bounded to once per lineage, and only for two reasons.** The RFC left "what re-dispatches a held job" open. `CONDITION_CHECKED_REASONS` = `all_devices_exhausted` · `monthly_budget_exhausted`: both name a condition `releaseHeldJobs` can re-check before re-queueing. The other three (`retry_rounds_exhausted`, `non_retryable_terminal`, `verify_unavailable`) never auto-release — a re-dispatch would fail identically and burn a runner slot per pass — and `autoRelease` is set only when the held job has no prior hold in its chain, so a flapping fleet cannot loop.
+3. **One mechanical park survived the deletion map and had to be demoted.** `pipeline/sweeper.ts` parked a dependent at `waiting` when its blocker closed unmerged, and its comment told the reader to "move this issue back to its stage" — an intervention per occurrence, and an INV-5 violation the map missed. It is now `alarmClosedUnmergedBlockedDependents`: a wedge notification only. `pipelineHealth.waitingOn` already reports `waiting_on_dep` naming the closed-unmerged blocker, so the state does not lie without the park, and once the blocker is fixed the dependent dispatches with no manual move.
+
+One accepted regression, beyond the drawbacks table: ISS-635's guard refused a `reopen` on an issue with no prior implementation job before dispatching. That judgement now belongs to the fix agent, which reads the required reason and can conclude `needs_info` itself — one dispatch where the kernel used to spend none, in exchange for no false refusals.
 
 ## Drawbacks
 

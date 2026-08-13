@@ -222,16 +222,8 @@ export type WaitingReason =
   | "project_full"
   | "runner_full";
 
-/** Why an issue at `status === "waiting"` actually got there. Mirrors core
- *  `WaitingCause` (`issues/pipeline-health.ts`) — `missing_skill:`/
- *  `stage_stalled:` pause reasons are deliberately not modeled: those guards
- *  only pause the pipeline_run, they never transition the issue to `waiting`. */
-export type WaitingCause =
-  | "plan_approval"
-  | "decompose_parent"
-  | "reopen_cap"
-  | "retry_exhausted"
-  | "merged_parked";
+// cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`, the AUTHORED kind an agent or human writes alongside `status='waiting'`; it is never derived, so an absent kind must render the generic copy rather than a guessed one
+export type WaitingCause = "needs_decision" | "needs_resource";
 
 /** Server-derived pipeline health for one issue. Mirrors core `PipelineHealth`
  *  (`issues/pipeline-health.ts:69-79`); `stage` is the single status→stage

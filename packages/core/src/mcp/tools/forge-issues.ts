@@ -12,6 +12,7 @@ import {
   labels,
   taskStatuses,
   tasks,
+  waitingKinds,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
 import {
@@ -266,6 +267,8 @@ const dataSchema = z
       .optional(),
     // cm:guard REQUIRED on any status write that enters `reopen` (RFC 0002 INV-8) — it is posted as a comment before the flip and is what the fix step scopes its patch against; `note` is accepted as a fallback so a caller that already explains itself there is not rejected
     reason: z.string().trim().min(1).max(10_000).optional(),
+    // cm:guard say WHICH kind whenever you write `waiting` (RFC 0002 INV-5) — core never derives it, so an omitted kind leaves the board rendering "a human is needed" with no hint of what is being asked; it is cleared automatically on any exit
+    waitingKind: z.enum(waitingKinds).optional(),
     // ISS-633 — plain label attach/detach. Accepts label NAMES or UUIDs,
     // resolved server-side (strict: unknown -> BAD_REQUEST, no auto-create).
     // REPLACE-SET semantics mirroring REST: this is the full desired label
@@ -1160,6 +1163,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (input.data.status && input.data.status !== issue.status) {
           await applyStatusTransition(issue, input.data.status, device, {
             reopenReason: input.data.reason ?? input.data.note,
+            waitingKind: input.data.waitingKind,
           });
         }
 
@@ -1181,6 +1185,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsWriter(principal, issue.projectId);
         await applyStatusTransition(issue, target, device, {
           reopenReason: input.data?.reason ?? input.data?.note,
+          waitingKind: input.data?.waitingKind,
         });
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);

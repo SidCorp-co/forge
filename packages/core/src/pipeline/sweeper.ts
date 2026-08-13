@@ -28,12 +28,7 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, comments, type IssueStatus, issues, jobs } from '../db/schema.js';
-import {
-  applyStatusTransition,
-  type DeviceLite,
-  type TransitionIssueRow,
-} from '../issues/apply-transition.js';
+import { agentSessions, type IssueStatus, jobs } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
@@ -49,6 +44,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
+import { alarmAgedHolds, alarmChurningIssues, type Inv7AlarmResult } from './inv7-alarms.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
@@ -95,9 +91,9 @@ export interface StallDetectResult {
   detected: number;
 }
 
-export interface ParkClosedUnmergedResult {
-  // dependent issues parked at `waiting` because their blocker was closed without merging.
-  parked: number;
+export interface ClosedUnmergedAlarmResult {
+  /** Dependents alarmed because their blocker closed without merging. */
+  alerted: number;
 }
 
 export interface StaleReleaseBatchClaimsResult {
@@ -119,8 +115,12 @@ export interface SweepResult {
   orphanedIssueRuns: IssueRunReapResult;
   /** ISS-442 — dependency deadlocks surfaced (a gate that will never clear). */
   stalledDependencies: StallDetectResult;
-  /** ISS-639 — dependents parked because their blocker closed without merging. */
-  parkedClosedUnmerged: ParkClosedUnmergedResult;
+  /** ISS-639 — dependents alarmed because their blocker closed without merging. */
+  closedUnmergedAlarms: ClosedUnmergedAlarmResult;
+  /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
+  agedHolds: Inv7AlarmResult;
+  /** RFC 0002 INV-7 — issues at or past `noProgressRounds` (alarm only). */
+  churningIssues: Inv7AlarmResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
@@ -198,14 +198,12 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const stalledDependencies = await runPass('detectStalledDependencies', () =>
     detectStalledDependencies(now),
   );
-  // ISS-639 — active counterpart to the blocks-gate `closed` bypass fix: a
-  // dependent whose blocker closed WITHOUT merging (under a stampable base)
-  // now simply sits queued past the gate rather than dispatching onto a base
-  // branch missing the blocker's code. Park it at `waiting` so a human picks
-  // the base, instead of leaving it silently stuck forever.
-  const parkedClosedUnmerged = await runPass('parkClosedUnmergedBlockedDependents', () =>
-    parkClosedUnmergedBlockedDependents(now),
+  // cm:why alarm, not a reap (RFC 0002 demoted it from a park): the dependent sits queued because its blocker closed without merging, and once a human fixes the blocker it dispatches by itself
+  const closedUnmergedAlarms = await runPass('alarmClosedUnmergedBlockedDependents', () =>
+    alarmClosedUnmergedBlockedDependents(now),
   );
+  const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
+  const churningIssues = await runPass('alarmChurningIssues', () => alarmChurningIssues());
 
   // cm:edge sideeffect -> packages/core/src/release-batch/claim-subscriber.ts — backstop for the pipelineRunStatusChanged hook: releases release_batch_run_id claims left behind if the subscriber threw or was skipped
   const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
@@ -242,7 +240,9 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     idleChatSessions: idleChatSessions as IdleChatCloseResult,
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
     stalledDependencies: stalledDependencies as StallDetectResult,
-    parkedClosedUnmerged: parkedClosedUnmerged as ParkClosedUnmergedResult,
+    closedUnmergedAlarms: closedUnmergedAlarms as ClosedUnmergedAlarmResult,
+    agedHolds: agedHolds as Inv7AlarmResult,
+    churningIssues: churningIssues as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
@@ -406,11 +406,10 @@ type ClosedUnmergedRow = {
  * blocker as satisfying `blockedBy`/`decomposeChildrenPending`, so a
  * dependent whose blocker closed without merging now just sits `queued`
  * forever instead of silently dispatching onto a base branch missing the
- * blocker's code (devbox ISS-2/ISS-4). This pass actively unwedges it: past
+ * blocker's code (devbox ISS-2/ISS-4). This pass raises an ALARM on it: past
  * {@link STALL_GRACE_MS} (same grace window as `detectStalledDependencies` —
  * long enough for the ordinary close→`mark_merged` race to resolve on its
- * own), park the dependent issue at `waiting`, comment naming the unmerged
- * blocker, and reap its stuck run so the project's serial slot frees.
+ * own), emit a wedge naming the unmerged blocker.
  * Skips projects whose base is structurally unstampable (manual/toggle-off)
  * — that is the legitimate `OR status='closed'` bypass the gate still
  * honors, so those dependents are left alone. Best-effort: never throws
@@ -423,10 +422,10 @@ type ClosedUnmergedRow = {
  * can no longer arise from normal operation. This pass stays as the backstop
  * for pre-existing rows and direct DB writes that bypass both paths.
  */
-export async function parkClosedUnmergedBlockedDependents(
+export async function alarmClosedUnmergedBlockedDependents(
   now: Date = new Date(),
   scope: SweepScope = {},
-): Promise<ParkClosedUnmergedResult> {
+): Promise<ClosedUnmergedAlarmResult> {
   try {
     const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();
     const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
@@ -451,7 +450,6 @@ export async function parkClosedUnmergedBlockedDependents(
         AND j.issue_id IS NOT NULL
         AND j.queued_at < ${cutoffIso}
         AND r.status = 'running'
-        AND wi.status <> 'waiting'
         AND (d.valid_until IS NULL OR d.valid_until > now())
         AND p.status = 'closed'
         AND p.merged_at IS NULL
@@ -460,7 +458,7 @@ export async function parkClosedUnmergedBlockedDependents(
       LIMIT 100
     `);
 
-    let parked = 0;
+    let alerted = 0;
     const stampableCache = new Map<string, boolean>();
     for (const row of rows) {
       try {
@@ -475,24 +473,21 @@ export async function parkClosedUnmergedBlockedDependents(
         // comments.author_id is non-nullable; nothing to attribute the park to.
         if (!row.created_by) continue;
 
-        const device: DeviceLite = { id: row.created_by, ownerId: row.created_by };
-        const issueRow: TransitionIssueRow = {
-          id: row.issue_id,
+        // cm:guard alarm ONLY — this pass must never write issues.status (RFC 0002 INV-5). It used to park the dependent at `waiting`, comment, and close the run; the comment then told the reader to "move this issue back to its stage", which is the intervention per occurrence the RFC removes. `pipelineHealth.waitingOn` already reports `waiting_on_dep` with the closed-unmerged blocker named, so the state does not lie without the park — and once the blocker is fixed the dependent dispatches with no manual move at all.
+        await emitPipelineWedge({
           projectId: row.project_id,
-          status: row.issue_status,
-          reopenCount: row.issue_reopen_count,
-        };
-        await applyStatusTransition(issueRow, 'waiting', device, { skip: true });
-
-        await db.insert(comments).values({
           issueId: row.issue_id,
-          authorId: row.created_by,
-          isAi: true,
-          body: `⛔ Blocked: ISS-${row.blocker_seq} "${row.blocker_title}" was closed without merging its code to the base branch (merged_at is empty). Pipeline can't build on it. Decide the base: reopen/merge the blocker, or \`mark_merged\` it if the code is genuinely in, then move this issue back to its stage.`,
+          hop: 'dispatch',
+          entity: 'job',
+          entityId: row.job_id,
+          reason: 'blocker_closed_unmerged',
+          title: 'Blocked on a blocker that closed without merging',
+          summary: `ISS-${row.blocker_seq} "${row.blocker_title}" is closed but its code never landed on the base branch (merged_at is empty), so this issue cannot dispatch.`,
+          nextStep:
+            'Reopen and merge the blocker, or `mark_merged` it if the code is genuinely in — this issue then dispatches by itself.',
+          action: 'Fix the blocker; no action is needed on this issue.',
         });
-
-        await closeOpenRunForIssue(row.issue_id, 'failed');
-        parked++;
+        alerted++;
       } catch (err) {
         logger.warn(
           { err, issueId: row.issue_id },
@@ -500,16 +495,16 @@ export async function parkClosedUnmergedBlockedDependents(
         );
       }
     }
-    if (parked > 0) {
+    if (alerted > 0) {
       logger.warn(
-        { parked },
-        'pipeline-sweeper: parked dependents blocked on closed-unmerged blocker',
+        { alerted },
+        'pipeline-sweeper: alarmed dependents blocked on closed-unmerged blocker',
       );
     }
-    return { parked };
+    return { alerted };
   } catch (err) {
     logger.error({ err }, 'pipeline-sweeper: park-closed-unmerged pass failed (skipped)');
-    return { parked: 0 };
+    return { alerted: 0 };
   }
 }
 

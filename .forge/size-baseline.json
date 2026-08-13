@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T17:42:54.207Z",
+  "generatedAt": "2026-08-13T18:57:37.213Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -38,7 +38,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.ts": {
-      "fileLines": 3427,
+      "fileLines": 3433,
       "maxFunctionLines": 0
     },
     "packages/core/src/devices/routes.test.ts": {
@@ -74,7 +74,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/decompose.ts": {
-      "fileLines": 543,
+      "fileLines": 545,
       "maxFunctionLines": 249
     },
     "packages/core/src/issues/extras-routes-batch.test.ts": {
@@ -86,16 +86,12 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/pipeline-health.ts": {
-      "fileLines": 606,
-      "maxFunctionLines": 164
+      "fileLines": 544,
+      "maxFunctionLines": 0
     },
     "packages/core/src/issues/routes.ts": {
       "fileLines": 802,
       "maxFunctionLines": 0
-    },
-    "packages/core/src/issues/transition.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 163
     },
     "packages/core/src/jobs/dispatch-gates.test.ts": {
       "fileLines": 734,
@@ -174,12 +170,12 @@
       "maxFunctionLines": 215
     },
     "packages/core/src/mcp/tools/forge-issues.test.ts": {
-      "fileLines": 2493,
-      "maxFunctionLines": 1426
+      "fileLines": 2465,
+      "maxFunctionLines": 1413
     },
     "packages/core/src/mcp/tools/forge-issues.ts": {
-      "fileLines": 1410,
-      "maxFunctionLines": 514
+      "fileLines": 1373,
+      "maxFunctionLines": 503
     },
     "packages/core/src/mcp/tools/forge-projects.test.ts": {
       "fileLines": 873,
@@ -218,12 +214,12 @@
       "maxFunctionLines": 219
     },
     "packages/core/src/pipeline/orchestrator.test.ts": {
-      "fileLines": 1524,
-      "maxFunctionLines": 539
+      "fileLines": 1363,
+      "maxFunctionLines": 460
     },
     "packages/core/src/pipeline/orchestrator.ts": {
-      "fileLines": 1048,
-      "maxFunctionLines": 152
+      "fileLines": 877,
+      "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/pipeline-config-schema.test.ts": {
       "fileLines": 523,
@@ -238,11 +234,11 @@
       "maxFunctionLines": 180
     },
     "packages/core/src/pipeline/sweeper.test.ts": {
-      "fileLines": 781,
+      "fileLines": 785,
       "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/sweeper.ts": {
-      "fileLines": 706,
+      "fileLines": 703,
       "maxFunctionLines": 0
     },
     "packages/core/src/pm/routes.ts": {

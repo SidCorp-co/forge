@@ -112,8 +112,8 @@ export function usePatchIssue() {
 export function useTransitionIssue() {
   const qc = useQueryClient();
   const mut = useIssueMutation(
-    (args: { id: string; toStatus: IssueStatus; reason?: string; override?: boolean }) =>
-      issuesApi.transition(args.id, args.toStatus, { reason: args.reason, override: args.override }),
+    (args: { id: string; toStatus: IssueStatus; reason?: string }) =>
+      issuesApi.transition(args.id, args.toStatus, { reason: args.reason }),
   );
   // Also refresh the single-issue + activity caches (detail view) on success.
   // `onSuccess` is an optional per-call passthrough (ISS-828 blocker-banner
@@ -123,7 +123,7 @@ export function useTransitionIssue() {
   return {
     ...mut,
     mutate: (
-      args: { id: string; toStatus: IssueStatus; reason?: string; override?: boolean },
+      args: { id: string; toStatus: IssueStatus; reason?: string },
       options?: { onSuccess?: () => void },
     ) =>
       mut.mutate(args, {
