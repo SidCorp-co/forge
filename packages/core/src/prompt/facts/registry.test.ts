@@ -5,7 +5,6 @@ import {
   SKILL_FACT_TIERS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
-import { PARK_EXIT_RULE } from '../../pipeline/park-states.js';
 import {
   FORGE_FACTS,
   getFact,
@@ -53,9 +52,18 @@ describe('forge facts registry', () => {
     expect(text).toContain('QUOTE that human');
     expect(text).toContain('NEW `needs_info`');
     const fact = getFact('pipeline-rules');
-    expect(fact?.version).toBe(6);
-    // cm:why pinned byte-for-byte against the constant the orchestrator guard reads — the guide's copy is pinned the same way in guides/registry.test.ts, so editing one and forgetting the other is a red test rather than silent drift
-    expect(text).toContain(PARK_EXIT_RULE);
+    expect(fact?.version).toBe(7);
+  });
+
+  // cm:guard the prompt and the lifecycle guide must agree about `waiting`, and guides/registry.test.ts asserts the same three things — an agent reads the prompt, a human reads the guide, and the two disagreeing about who may write a status is how ISS-163 became six interventions
+  it('pipeline-rules teaches the RFC 0002 park model and nothing of the deleted one', () => {
+    const text = renderFact('pipeline-rules') ?? '';
+    expect(text).toContain('a human is needed');
+    expect(text).toContain('needs_decision');
+    expect(text).toContain('needs_resource');
+    expect(text).toContain('held');
+    expect(text).not.toContain('operator_unblock');
+    expect(text).not.toContain('Reopens are capped');
   });
 
   // AC5 token evidence (measured via renderFact + estimateTokens, no new

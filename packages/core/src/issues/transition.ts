@@ -6,9 +6,8 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueDependencies, issueStatuses, issues } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { isReopenEntry } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import {
@@ -21,7 +20,6 @@ const transitionBodySchema = z
   .object({
     toStatus: z.enum(issueStatuses),
     reason: z.string().trim().min(1).max(2000).optional(),
-    override: z.boolean().optional().default(false),
   })
   .strict();
 
@@ -33,7 +31,7 @@ const badRequest = (details: unknown) =>
 const notFound = () =>
   new HTTPException(404, { message: 'issue not found', cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string, code = 'FORBIDDEN') =>
+const _forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
 
 /**
@@ -45,7 +43,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
   switch (err.code) {
     case 'NO_OP':
       return new HTTPException(409, { message: 'issue already in toStatus', cause });
-    case 'REOPEN_CAP_EXCEEDED':
+    case 'REOPEN_REASON_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'PLAN_REQUIRED':
       return new HTTPException(409, { message: err.detail, cause });
@@ -157,7 +155,7 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, override } = c.req.valid('json');
+    const { toStatus, reason } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -178,16 +176,6 @@ transitionRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
 
-    // `override` bypasses the reopen cap; requesting it on a reopen entry
-    // requires project admin, checked before any write.
-    if (
-      override &&
-      isReopenEntry(fromStatus, toStatus) &&
-      !projectRoleAtLeast(access.role, 'admin')
-    ) {
-      throw forbidden('override requires project admin', 'OVERRIDE_DENIED');
-    }
-
     let result: StatusTransitionResult;
     try {
       result = await transitionIssueStatus(
@@ -199,7 +187,7 @@ transitionRoutes.post(
         },
         toStatus,
         { type: 'user', id: userId },
-        { reason, overrideReopenCap: override },
+        { reason, reopenReason: reason },
       );
     } catch (err) {
       if (err instanceof TransitionError) throw transitionErrorToHttp(err);

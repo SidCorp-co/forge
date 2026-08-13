@@ -26,9 +26,6 @@
 // `prompt/facts/registry.ts` — the route, the MCP tool, and the tests all
 // import this module without a live DB.
 
-// cm:why the header's no-DB/env rule is kept: park-states.ts contributes nothing at runtime (its only import is `import type`, erased at compile), and importing the rule is what stops this guide's copy drifting from the orchestrator guard that enforces it
-import { PARK_EXIT_RULE } from '../pipeline/park-states.js';
-
 // cm:edge contract -> packages/core/src/guides/integration-guides.ts — that tier owns the `integration-<provider>` slug prefix; a code guide claiming it would be unreachable for any org that authored its own
 export interface ForgeGuide {
   /** Stable, URL-safe id: kebab-case, `/^[a-z0-9][a-z0-9-]*$/`. */
@@ -260,27 +257,25 @@ Within a pipeline step: do your real work, post your findings/decision comment, 
 ### Bounce states, reachable from anywhere
 \`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision), \`reopen\` (regression or failed check), \`on_hold\` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. \`on_hold\` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at \`draft\`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
 
-### Leaving a park is not symmetric with entering one
-${PARK_EXIT_RULE}
+### Leaving a park is symmetric with entering one
+Entering \`waiting\`/\`on_hold\` is free from anywhere, and so is leaving. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no \`unblock\` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read \`pipelineHealth.waitingOn\`.
 
-Entering is free from anywhere; the exit is reserved. If you set a forward status from \`waiting\`/\`on_hold\` and no job appears, that is this rule — not a stuck runner. The issue then reads as sitting at a live stage with nothing working on it, which is the most expensive way to be wrong about pipeline state, so the skip now posts a comment saying so.
+An earlier version of this pipeline refused every non-human exit from a park. It cost four refused resume attempts on one issue (ISS-163) and produced no work; RFC 0002 removed it.
 
-**To resume:** a human moves it from the issue page, or an operator/pipeline agent passes \`data.unblock: true\` to \`forge_issues.update\` (which threads the \`operator_unblock\` sentinel — the chat bot is refused). A bare status write does not re-engage dispatch.
+### \`waiting\` means one thing, in two flavours
+**A human is needed.** Only an agent or a human ever writes it — no failure path, no gate, nothing in core. Two authored kinds:
 
-\`needs_info\` is a bounce but NOT a park — its exit dispatches normally. What gates it instead is the replay guard: only a HUMAN comment posted since the bounce releases it.
-
-### \`waiting\` means five different things
-The status alone does not say which. The cause is **derived, never stored** — \`classifyWaitingCause\` computes it from the issue's \`merged_at\`, its decompose-child count and its latest run, and it rides on \`pipelineHealth.waitingCause\` for the UI. In precedence order:
-
-| Cause | What it means | What actually unblocks it |
+| Kind | What it means | What unblocks it |
 |---|---|---|
-| \`reopen_cap\` | the run is paused with a \`reopen_cap:\` reason — the cap redirected a \`reopen\` | an admin cap override, or splitting the issue — **and** the paused run must be resumed too |
-| \`decompose_parent\` | the issue has decompose children | a human approving the parent, which cascades the children |
-| \`merged_parked\` | \`merged_at\` is stamped: the code landed and the issue parked afterwards | a human deciding the remaining gate (downstream dependents are already unblocked) |
-| \`retry_exhausted\` | the latest run is terminal — the finalizer stopped retrying | fixing the mechanical cause, then resuming |
-| \`plan_approval\` | the default when none of the above hold | a human approving the plan |
+| \`needs_decision\` | a person must decide something the agent cannot (a tradeoff, a scope call, an approval) | the decision, then any status write |
+| \`needs_resource\` | a person must supply something the agent cannot create (a test account, credentials, third-party data) | the resource, then any status write |
 
-Re-approving a \`retry_exhausted\` park without changing anything just reproduces the cycle that parked it. The issue's newest park comment names the specific failure.
+The agent says which in a comment before it sets the status. A plan awaiting approval and a decompose parent awaiting review are both \`needs_decision\`.
+
+**A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
+
+### Reopening requires a reason
+A \`reopen\` is rejected without one. Pass \`reason\` on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so the fix step reads why it is running. There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
 
 ### Leaving a state can stamp \`merged_at\` behind you
 Transitioning OUT of the project's \`mergeStates.baseBranch\` state stamps \`merged_at\` — including a hop you made for an unrelated reason, and including one where nothing was merged. That stamp is what releases every \`blocks\` dependent, so a diagnostic transition near the merge state can unblock work that should still be blocked. After any hand transition out of that state, check the field and clear it with \`forge_issues\` \`unmark\` if no merge landed.

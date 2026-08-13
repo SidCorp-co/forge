@@ -1,19 +1,16 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus, issues } from '../db/schema.js';
-import { postReopenCapEscalationComment } from '../jobs/park-comment.js';
 import { logger } from '../logger.js';
-import { recordReopenCapEscalated } from '../observability/hold-metrics.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
-import { pauseOpenRunForIssue, resumeOpenRunForIssue } from '../pipeline/run-pause.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { canTransitionFree, isReopenEntry, REOPEN_CAP } from '../pipeline/state-machine.js';
+import { canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
+import { postReopenReasonComment } from './reopen-reason.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 
 /**
@@ -45,7 +42,7 @@ export type TransitionActor = { type: 'user'; id: string } | ({ type: 'device' }
 export type TransitionErrorCode =
   | 'NO_OP'
   | 'ILLEGAL_TRANSITION'
-  | 'REOPEN_CAP_EXCEEDED'
+  | 'REOPEN_REASON_REQUIRED'
   | 'STALE_TRANSITION'
   | 'PLAN_REQUIRED'
   | 'NO_WORK_EVIDENCE';
@@ -81,9 +78,9 @@ export interface ApplyStatusTransitionOptions {
    * cascade needs to promote children straight to `approved`. The soft-skip
    * resolver (ISS-110) also passes it while walking `STAGE_FORWARD`.
    *
-   * It is NOT a general safety override: NO_OP, the reopen cap, stale-
-   * transition detection and every content guard still run. Callers are the
-   * orchestrator and the decomposition subscriber.
+   * It is NOT a general safety override: NO_OP, stale-transition detection and
+   * every content guard still run. Callers are the orchestrator and the
+   * decomposition subscriber.
    */
   skip?: boolean;
   /**
@@ -95,10 +92,11 @@ export interface ApplyStatusTransitionOptions {
    */
   reason?: string | undefined;
   /**
-   * Bypass the reopen cap. Authorization is the CALLER's job — the REST
-   * route gates this on project-admin role before passing it through.
+   * Why this issue is being reopened, in the actor's own words. REQUIRED on a
+   * reopen entry and posted as a comment before the status write.
    */
-  overrideReopenCap?: boolean | undefined;
+  // cm:guard required, not advisory (RFC 0002 INV-8) — the reason is what the fix step scopes against, and the guards deleted with the reopen cap were all attempts to detect its absence AFTER the fact; rejecting the write is the only version that cannot strand an issue
+  reopenReason?: string | undefined;
 }
 
 export interface StatusTransitionResult {
@@ -114,16 +112,6 @@ export interface StatusTransitionResult {
    * is in `RUN_CLOSING_STATUSES` (ISS-669 — `released` no longer closes it).
    */
   terminal: boolean;
-  /**
-   * A device-actor reopen at the cap was redirected to `waiting` instead of
-   * throwing `REOPEN_CAP_EXCEEDED` — `status` above is `waiting`, not the
-   * `reopen` the caller asked for. Callers surfacing this to an agent (MCP
-   * `forge_issues` update/transition) MUST say so explicitly — the agent
-   * otherwise believes it set `reopen` and may retry the same call forever.
-   */
-  capEscalated: boolean;
-  /** What the actor actually requested when `capEscalated` is true (always `reopen` today). */
-  requestedStatus: IssueStatus | undefined;
 }
 
 /**
@@ -158,7 +146,7 @@ export function publishIssueStatusChange(
  * broadcast, pipeline-health refresh and run close cannot drift apart.
  *
  * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
- * REOPEN_CAP_EXCEEDED / STALE_TRANSITION / PLAN_REQUIRED); callers map it
+ * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED); callers map it
  * onto their own error surface.
  */
 export async function transitionIssueStatus(
@@ -185,50 +173,29 @@ export async function transitionIssueStatus(
     );
   }
 
-  const wantsReopen = isReopenEntry(fromStatus, toStatus);
-  let effectiveToStatus = toStatus;
-  let capEscalated = false;
-  let requestedStatus: IssueStatus | undefined;
-
-  if (wantsReopen && issue.reopenCount >= REOPEN_CAP && !options.overrideReopenCap) {
-    if (actor.type === 'user') {
-      throw new TransitionError('REOPEN_CAP_EXCEEDED', `reopen cap reached (${REOPEN_CAP})`, {
-        reopenCount: issue.reopenCount,
-        max: REOPEN_CAP,
-      });
+  // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a reopen whose rationale is missing is exactly the state the deleted bounce/empty-reopen guards existed to detect afterwards, and every one of them detected it by stranding the issue at `needs_info`
+  if (isReopenEntry(fromStatus, toStatus) && options.skip !== true) {
+    const reopenReason = options.reopenReason?.trim();
+    if (!reopenReason) {
+      throw new TransitionError(
+        'REOPEN_REASON_REQUIRED',
+        'a reopen must carry a reason describing what regressed or what is still wrong',
+        { from: fromStatus, to: toStatus },
+      );
     }
-    // cm:why ISS-766 — device actors (every pipeline agent) used to hit the same throw here, leaving the issue at `fromStatus` (an auto-dispatch trigger) so the reconciler re-enqueued full-tier jobs every ~60s until the stage-stall guard mispublished the cause as a missing skill. Redirecting to `waiting` is a real, honestly-reported stop instead — see docs/architecture/reopen-loop-guard.md.
-    requestedStatus = toStatus;
-    effectiveToStatus = 'waiting';
-    capEscalated = true;
-    // cm:edge ordering -> packages/core/src/jobs/park-comment.ts — post BEFORE the transition below, same contract as the finalize-failure park-to-waiting precedent
-    await postReopenCapEscalationComment({
+    await postReopenReasonComment({
       issueId: issue.id,
-      projectId: issue.projectId,
+      authorId: actor.type === 'user' ? actor.id : actor.ownerId,
       fromStatus,
-      reopenCount: issue.reopenCount,
-      requestedStatus,
+      reason: reopenReason,
+      isAi: actor.type !== 'user',
     });
-    recordReopenCapEscalated();
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'pipeline.reopen_cap_escalated',
-        level: 'warning',
-        data: {
-          issueId: issue.id,
-          projectId: issue.projectId,
-          reopenCount: issue.reopenCount,
-          fromStatus,
-          requestedStatus,
-        },
-      });
-    }
   }
 
   // cm:why skip exempts auto-skip/failover (both pass {skip:true} into `approved`) — only an unskipped device write is the fabrication class this guards against
   const violation = await checkTransitionEvidence({
     issue: { id: issue.id, projectId: issue.projectId },
-    toStatus: effectiveToStatus,
+    toStatus,
     actorType: actor.type,
     skip: options.skip === true,
   });
@@ -236,7 +203,7 @@ export async function transitionIssueStatus(
     throw new TransitionError(violation.code, violation.detail, violation.details);
   }
 
-  const reopening = isReopenEntry(fromStatus, effectiveToStatus);
+  const reopening = isReopenEntry(fromStatus, toStatus);
 
   // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
   // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
@@ -248,7 +215,7 @@ export async function transitionIssueStatus(
       const [row] = await t
         .update(issues)
         .set({
-          status: effectiveToStatus,
+          status: toStatus,
           reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
           updatedAt: sql`now()`,
         })
@@ -267,13 +234,13 @@ export async function transitionIssueStatus(
           issueId: issue.id,
           projectId: issue.projectId,
           fromStatus,
-          toStatus: effectiveToStatus,
+          toStatus: toStatus,
         });
         // closed = done: a close from ANY surface satisfies the L2 blocks
         // gate. No-op when merged_at is already stamped (pipeline path).
         const closeStamp = await markMergedOnClose(t, {
           issueId: issue.id,
-          toStatus: effectiveToStatus,
+          toStatus: toStatus,
         });
         stampedOnClose = closeStamp.stamped;
       }
@@ -284,14 +251,14 @@ export async function transitionIssueStatus(
   if (!updated) {
     throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
       from: fromStatus,
-      to: effectiveToStatus,
+      to: toStatus,
     });
   }
 
   publishIssueStatusChange(issue.projectId, {
     issueId: updated.id,
     from: fromStatus,
-    to: effectiveToStatus,
+    to: toStatus,
     reopenCount: updated.reopenCount,
     actorId: actor.type === 'user' ? actor.id : actor.ownerId,
     reason: options.reason ?? null,
@@ -338,39 +305,10 @@ export async function transitionIssueStatus(
   // ISS-101 — keep run timeline in sync with issue status, then close it on
   // RUN_CLOSING_STATUSES entries. No-ops when no open run exists (e.g. an
   // issue that transitions before any job is queued).
-  await setCurrentStepForOpenIssueRun(issue.id, effectiveToStatus);
-  const terminal = TERMINAL_FOR_DISPATCH.has(effectiveToStatus);
-  if (RUN_CLOSING_STATUSES.has(effectiveToStatus)) {
+  await setCurrentStepForOpenIssueRun(issue.id, toStatus);
+  const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
+  if (RUN_CLOSING_STATUSES.has(toStatus)) {
     await closeOpenRunForIssue(issue.id, 'completed');
-  }
-
-  if (capEscalated) {
-    try {
-      await pauseOpenRunForIssue({ issueId: issue.id, pauseReason: `reopen_cap:${fromStatus}` });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: reopen-cap pauseRun failed (park + comment already committed)',
-      );
-    }
-  }
-
-  // ISS-828 — an admin's override-reopen out of a reopen-cap park must leave
-  // the run and issue mutually consistent in ONE call (never `reopen` under a
-  // still-paused run — the dispatch gate requires `status='running'`, so a
-  // reopen alone would silently never dispatch). `overrideReopenCap` is
-  // authorized admin-only by the REST route (`issues/transition.ts`) and has
-  // no caller other than this exact unblock, so it's safe to always resume
-  // the issue's paused run on this combination.
-  if (options.overrideReopenCap && reopening) {
-    try {
-      await resumeOpenRunForIssue({ issueId: issue.id });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: override-reopen resumeRun failed (reopen already committed)',
-      );
-    }
   }
 
   return {
@@ -379,8 +317,6 @@ export async function transitionIssueStatus(
     reopenCount: updated.reopenCount,
     updatedAt: updated.updatedAt,
     terminal,
-    capEscalated,
-    requestedStatus,
   };
 }
 

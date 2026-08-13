@@ -114,41 +114,6 @@ vi.mock('./ci-fix-pattern-query.js', () => ({
   queryPreventivePatterns: (...a: unknown[]) => queryPreventiveMock(...(a as [])),
 }));
 
-// ISS-635 Change B — empty-reopen guard posts a comment via its own DB
-// insert. Stub it so orchestrator unit tests assert orchestration intent
-// (guard fired / device + status used) without modeling the comment insert.
-const postEmptyReopenCommentMock = vi.fn(async () => undefined);
-// cm:why defaults to no unexplained reopen so the pre-existing cases keep their old path — detection itself is covered by empty-reopen-guard.test.ts; here we assert only the orchestration branch it drives
-const findUnexplainedReopenMock = vi.fn(async (): Promise<unknown> => null);
-const postUnexplainedReopenCommentMock = vi.fn(async () => undefined);
-vi.mock('./empty-reopen-guard.js', () => ({
-  buildEmptyReopenCommentBody: () => 'body',
-  buildUnexplainedReopenCommentBody: () => 'body',
-  postEmptyReopenComment: (...a: unknown[]) => postEmptyReopenCommentMock(...(a as [])),
-  findUnexplainedReopen: (...a: unknown[]) => findUnexplainedReopenMock(...(a as [])),
-  postUnexplainedReopenComment: (...a: unknown[]) => postUnexplainedReopenCommentMock(...(a as [])),
-}));
-
-// cm:why stubbed at the module boundary like the sibling comment-posters above — these tests assert the park-exit guard fired with the right args, not park-comment's DB shape; the body and the insert are covered by park-comment.test.ts
-const postSkippedParkExitCommentMock = vi.fn(async () => undefined);
-vi.mock('../jobs/park-comment.js', () => ({
-  postParkReasonComment: async () => undefined,
-  postReopenCapEscalationComment: async () => undefined,
-  postSkippedParkExitComment: (...a: unknown[]) => postSkippedParkExitCommentMock(...(a as [])),
-}));
-
-// cm:why stubs only reopenEnteredFromNeedsInfo (detection covered by bounce-replay-guard.test.ts) — findUnansweredBounce stays real via importActual so existing bounce-replay orchestration tests are unaffected
-const reopenEnteredFromNeedsInfoMock = vi.fn<() => Promise<boolean>>(async () => false);
-vi.mock('./bounce-replay-guard.js', async () => {
-  const actual = await vi.importActual<typeof import('./bounce-replay-guard.js')>(
-    './bounce-replay-guard.js',
-  );
-  return {
-    ...actual,
-    reopenEnteredFromNeedsInfo: (...a: unknown[]) => reopenEnteredFromNeedsInfoMock(...(a as [])),
-  };
-});
-
 // cm:why stubs only isPlanStageLive (detection covered by transition-evidence.test.ts) — isBlankPlan is pure so stays real via importActual
 const isPlanStageLiveMock = vi.fn<() => Promise<boolean>>(async () => true);
 vi.mock('../issues/transition-evidence.js', async () => {
@@ -168,15 +133,9 @@ vi.mock('./decomposition.js', () => ({
 }));
 
 const postMissingPlanCommentMock = vi.fn(async () => undefined);
-const postNeedsInfoReopenCommentMock = vi.fn(async () => undefined);
-const postBounceReplayCommentMock = vi.fn(async () => undefined);
 vi.mock('./plan-gate-guard.js', () => ({
   buildMissingPlanCommentBody: () => 'body',
-  buildNeedsInfoFixCommentBody: () => 'body',
   postMissingPlanComment: (...a: unknown[]) => postMissingPlanCommentMock(...(a as [])),
-  postNeedsInfoReopenComment: (...a: unknown[]) => postNeedsInfoReopenCommentMock(...(a as [])),
-  buildBounceReplayCommentBody: () => 'body',
-  postBounceReplayComment: (...a: unknown[]) => postBounceReplayCommentMock(...(a as [])),
 }));
 
 // ISS-108 — orchestrator resolves skillName from the DB via
@@ -367,21 +326,13 @@ beforeEach(() => {
   pauseMissingSkillMock.mockReset();
   pauseMissingSkillMock.mockResolvedValue({ paused: true, alreadyPaused: false });
   postMissingSkillCommentMock.mockReset();
-  postEmptyReopenCommentMock.mockReset();
-  findUnexplainedReopenMock.mockReset();
-  findUnexplainedReopenMock.mockResolvedValue(null);
-  postUnexplainedReopenCommentMock.mockReset();
   appendSkipChainEntryMock.mockReset();
   appendSkipChainEntryMock.mockResolvedValue(undefined);
   postSkipChainCappedCommentMock.mockReset();
   postSkipChainCappedCommentMock.mockResolvedValue(undefined);
-  reopenEnteredFromNeedsInfoMock.mockReset();
-  reopenEnteredFromNeedsInfoMock.mockResolvedValue(false);
   isPlanStageLiveMock.mockReset();
   isPlanStageLiveMock.mockResolvedValue(true);
   postMissingPlanCommentMock.mockReset();
-  postNeedsInfoReopenCommentMock.mockReset();
-  postBounceReplayCommentMock.mockReset();
   findDecompositionParentMock.mockReset();
   findDecompositionParentMock.mockResolvedValue(null);
 });
@@ -519,10 +470,14 @@ describe('pipeline/orchestrator', () => {
     expect(nextSelect).not.toHaveBeenCalled();
   });
 
-  // ISS-411 — operator-hold guard: an issue leaving `on_hold` via a NON-user
-  // actor (the aborted agent's termination-protocol advance) must NOT
-  // re-dispatch. Only a human Resume (actor.type==='user') re-engages.
-  it('does NOT enqueue on a non-user advance out of on_hold (agent termination override)', async () => {
+  // cm:guard the three park-exit cases below are the ones RFC 0002 INVERTED — they asserted for two years that a non-user exit from a park dispatches NOTHING. Re-introducing that gate is a one-line change in orchestrator.ts, so these tests exist to fail when someone does it, whatever incident motivates them.
+  it('DOES enqueue on a non-user advance out of on_hold — no actor gate (RFC 0002 INV-6)', async () => {
+    cfgResolved({ enabled: true, autoReview: true });
+    skillRegistered('forge-review', 'review', 'autoReview');
+    liveIssue('developed');
+    nextSelect.mockResolvedValueOnce([]);
+    insertReturning.mockResolvedValueOnce([{ id: 'agent-resume-job' }]);
+
     const bus = makeBus();
     await bus.emit(
       'transition',
@@ -532,11 +487,9 @@ describe('pipeline/orchestrator', () => {
         actor: { type: 'device', id: 'dev-1' },
       }) as never,
     );
-    expect(dbInsert).not.toHaveBeenCalled();
-    expect(enqueueMock).not.toHaveBeenCalled();
-    // Short-circuits before any cfg/skill resolution.
-    expect(nextSelect).not.toHaveBeenCalled();
-    expect(resolverResolve).not.toHaveBeenCalled();
+    expect(enqueueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'agent-resume-job' }),
+    );
   });
 
   it('DOES enqueue on a human Resume out of on_hold (user actor)', async () => {
@@ -580,7 +533,13 @@ describe('pipeline/orchestrator', () => {
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'unblock-job' }));
   });
 
-  it('ISS-596: does NOT enqueue on non-user on_hold advance without reason (hard-stop intact)', async () => {
+  it('DOES enqueue on a non-user on_hold advance carrying NO reason — the sentinel is gone', async () => {
+    cfgResolved({ enabled: true, autoTriage: true });
+    skillRegistered('forge-triage', 'triage', 'autoTriage');
+    liveIssue('open');
+    nextSelect.mockResolvedValueOnce([]);
+    insertReturning.mockResolvedValueOnce([{ id: 'no-sentinel-job' }]);
+
     const bus = makeBus();
     await bus.emit(
       'transition',
@@ -588,18 +547,19 @@ describe('pipeline/orchestrator', () => {
         from: 'on_hold',
         to: 'open',
         actor: { type: 'device', id: 'dev-1' },
-        // no reason field → stale agent advance
       }) as never,
     );
-    expect(dbInsert).not.toHaveBeenCalled();
-    expect(enqueueMock).not.toHaveBeenCalled();
-    expect(nextSelect).not.toHaveBeenCalled();
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'no-sentinel-job' }));
   });
 
-  // ISS-702 — defense-in-depth mirror of the ISS-411 on_hold guard for
-  // `waiting`: a non-user advance out of `waiting` (e.g. a stale zombie job's
-  // finalize-failure clobbering the park) must NOT re-dispatch.
-  it('ISS-702: does NOT enqueue on a non-user advance out of waiting (stale finalize-failure write)', async () => {
+  // cm:why the stale-write case this used to defend is gone at the source: no failure path writes `waiting` any more (RFC 0002 INV-1), so there is no zombie park-clobber for an actor gate here to catch
+  it('DOES enqueue on a non-user advance out of waiting', async () => {
+    cfgResolved({ enabled: true, autoCode: true });
+    skillRegistered('forge-code', 'code', 'autoCode');
+    liveIssue('approved');
+    nextSelect.mockResolvedValueOnce([]);
+    insertReturning.mockResolvedValueOnce([{ id: 'agent-waiting-exit-job' }]);
+
     const bus = makeBus();
     await bus.emit(
       'transition',
@@ -609,10 +569,9 @@ describe('pipeline/orchestrator', () => {
         actor: { type: 'device', id: 'dev-1' },
       }) as never,
     );
-    expect(dbInsert).not.toHaveBeenCalled();
-    expect(enqueueMock).not.toHaveBeenCalled();
-    expect(nextSelect).not.toHaveBeenCalled();
-    expect(resolverResolve).not.toHaveBeenCalled();
+    expect(enqueueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'agent-waiting-exit-job' }),
+    );
   });
 
   it('ISS-702: DOES enqueue on a human Resume out of waiting (user actor)', async () => {
@@ -870,90 +829,13 @@ describe('pipeline/orchestrator', () => {
 
     expect(resolverResolve).not.toHaveBeenCalled();
     expect(applyTransitionMock).not.toHaveBeenCalled();
-    expect(postEmptyReopenCommentMock).not.toHaveBeenCalled();
     expect(dbInsert).not.toHaveBeenCalled();
     expect(enqueueMock).not.toHaveBeenCalled();
-  });
-
-  // ISS-635 Change B — a reopen with zero prior code/fix job has nothing for
-  // forge-fix to patch. Route to needs_info instead of dispatching an empty
-  // fix job.
-  it('ISS-635: reopen with no prior code/fix job routes to needs_info instead of dispatching fix', async () => {
-    cfgResolved({ enabled: true, autoFix: true });
-    liveIssue('reopen');
-    nextSelect.mockResolvedValueOnce([]); // hasPriorImplementationJob → none
-
-    const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'testing', to: 'reopen' }) as never);
-
-    // Guard intercepts before the skill resolver / job insert.
-    expect(resolverResolve).not.toHaveBeenCalled();
-    expect(dbInsert).not.toHaveBeenCalled();
-    expect(enqueueMock).not.toHaveBeenCalled();
-    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
-    expect(applyTransitionMock.mock.calls[0]?.[0]).toMatchObject({ id: 'iss-1', status: 'reopen' });
-    expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
-    expect(postEmptyReopenCommentMock).toHaveBeenCalledTimes(1);
-    expect(postEmptyReopenCommentMock).toHaveBeenCalledWith(
-      expect.objectContaining({ issueId: 'iss-1' }),
-    );
-  });
-
-  it('ISS-635: reopen WITH a prior code job still dispatches fix (regression)', async () => {
-    cfgResolved({ enabled: true, autoFix: true });
-    liveIssue('reopen');
-    nextSelect.mockResolvedValueOnce([{ id: 'prior-code-job' }]); // hasPriorImplementationJob → found
-    skillRegistered('forge-fix', 'fix', 'autoFix');
-    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
-    insertReturning.mockResolvedValueOnce([{ id: 'fix-job' }]);
-
-    const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'testing', to: 'reopen' }) as never);
-
-    expect(applyTransitionMock).not.toHaveBeenCalled();
-    expect(postEmptyReopenCommentMock).not.toHaveBeenCalled();
-    expect(dbInsert).toHaveBeenCalledTimes(1);
-    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'fix-job' }));
   });
 
   // cm:why observed on ceo-dashboard + finance-automation ×2 — a shipped issue reopened by hand with no comment saying what regressed slips past the ISS-635 guard (a prior code job DOES exist), so forge-fix dispatched with nothing to scope against
-  it('routes a reopen with no rationale since it shipped to needs_info instead of dispatching fix', async () => {
-    cfgResolved({ enabled: true, autoFix: true });
-    liveIssue('reopen');
-    nextSelect.mockResolvedValueOnce([{ id: 'prior-code-job' }]); // cm:why shipped once
-    findUnexplainedReopenMock.mockResolvedValueOnce({
-      from: 'released',
-      since: new Date('2026-08-01T10:00:00Z'),
-    });
-
-    const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'released', to: 'reopen' }) as never);
-
-    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
-    expect(applyTransitionMock.mock.calls[0]?.[0]).toMatchObject({ id: 'iss-1', status: 'reopen' });
-    expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
-    expect(postUnexplainedReopenCommentMock).toHaveBeenCalledWith(
-      expect.objectContaining({ issueId: 'iss-1', from: 'released' }),
-    );
-    expect(resolverResolve).not.toHaveBeenCalled();
-    expect(dbInsert).not.toHaveBeenCalled();
-    expect(enqueueMock).not.toHaveBeenCalled();
-  });
 
   // cm:guard the guard must never touch a stage other than fix — a released→reopen shape can only reach forge-fix, but the branch is cheap to mis-scope
-  it('never consults the unexplained-reopen guard for a non-fix stage', async () => {
-    cfgResolved({ enabled: true, autoCode: true });
-    liveIssue('approved');
-    skillRegistered('forge-code', 'code', 'autoCode');
-    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
-    insertReturning.mockResolvedValueOnce([{ id: 'code-job' }]);
-
-    const bus = makeBus();
-    await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
-
-    expect(findUnexplainedReopenMock).not.toHaveBeenCalled();
-    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
-  });
 
   describe('ISS-819: plan-required dispatch backstop', () => {
     it('routes approved+blank-plan with no prior plan job back to clarified', async () => {
@@ -1109,49 +991,6 @@ describe('pipeline/orchestrator', () => {
 
       expect(isPlanStageLiveMock).not.toHaveBeenCalled();
       expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'plan-job' }));
-    });
-  });
-
-  describe('ISS-819: needs_info-reopen guard', () => {
-    it('routes a reopen entered from needs_info back to needs_info instead of dispatching fix', async () => {
-      cfgResolved({ enabled: true, autoFix: true });
-      liveIssue('reopen');
-      reopenEnteredFromNeedsInfoMock.mockResolvedValueOnce(true);
-
-      const bus = makeBus();
-      await bus.emit('transition', transition({ from: 'needs_info', to: 'reopen' }) as never);
-
-      expect(resolverResolve).not.toHaveBeenCalled();
-      expect(dbInsert).not.toHaveBeenCalled();
-      expect(enqueueMock).not.toHaveBeenCalled();
-      expect(applyTransitionMock).toHaveBeenCalledTimes(1);
-      expect(applyTransitionMock.mock.calls[0]?.[0]).toMatchObject({
-        id: 'iss-1',
-        status: 'reopen',
-      });
-      expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('needs_info');
-      expect(applyTransitionMock.mock.calls[0]?.[3]).toEqual({ skip: true });
-      expect(postNeedsInfoReopenCommentMock).toHaveBeenCalledWith(
-        expect.objectContaining({ issueId: 'iss-1' }),
-      );
-      // cm:guard post-before-route keeps the refusal visible when the transition fails; the guard's own comment can no longer be mistaken for the answer either, since hasHumanAnswerSince ignores isAi=true (ISS-819 review r2 finding 3 + ISS-820)
-      expect(postNeedsInfoReopenCommentMock.mock.invocationCallOrder[0]).toBeLessThan(
-        applyTransitionMock.mock.invocationCallOrder[0] as number,
-      );
-    });
-
-    it('never consults the needs_info-reopen guard for a non-fix stage', async () => {
-      cfgResolved({ enabled: true, autoCode: true });
-      liveIssue('approved');
-      skillRegistered('forge-code', 'code', 'autoCode');
-      nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
-      insertReturning.mockResolvedValueOnce([{ id: 'code-job' }]);
-
-      const bus = makeBus();
-      await bus.emit('transition', transition({ from: 'clarified', to: 'approved' }) as never);
-
-      expect(reopenEnteredFromNeedsInfoMock).not.toHaveBeenCalled();
-      expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'code-job' }));
     });
   });
 });

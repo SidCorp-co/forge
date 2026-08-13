@@ -82,7 +82,7 @@ type BatchSkipReason =
   | 'not_found'
   | 'illegal_transition'
   | 'no_op'
-  | 'reopen_cap_exceeded'
+  | 'reopen_reason_required'
   | 'stale'
   | 'plan_required'
   | 'no_work_evidence';
@@ -90,7 +90,7 @@ type BatchSkipReason =
 const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   NO_OP: 'no_op',
   ILLEGAL_TRANSITION: 'illegal_transition',
-  REOPEN_CAP_EXCEEDED: 'reopen_cap_exceeded',
+  REOPEN_REASON_REQUIRED: 'reopen_reason_required',
   STALE_TRANSITION: 'stale',
   PLAN_REQUIRED: 'plan_required',
   NO_WORK_EVIDENCE: 'no_work_evidence',
@@ -469,9 +469,9 @@ issueExtrasRoutes.get(
 
     let cursor = 0;
     while (cursor < rows.length) {
-      const issueId = rows[cursor]!.issueId;
+      const issueId = rows[cursor]?.issueId;
       const group: Row[] = [];
-      while (cursor < rows.length && rows[cursor]!.issueId === issueId) {
+      while (cursor < rows.length && rows[cursor]?.issueId === issueId) {
         group.push(rows[cursor]!);
         cursor++;
       }

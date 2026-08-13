@@ -47,6 +47,8 @@ vi.mock('../db/client.js', () => {
     db: {
       select: vi.fn(() => ({ from: selectFrom })),
       update: dbUpdate,
+      // cm:why the reopen-reason comment (RFC 0002 INV-8) is a real insert on the reopen path, and postReopenReasonComment deliberately does not swallow its error — an unmocked insert therefore turns every reopen test into a 500
+      insert: vi.fn(() => ({ values: async () => undefined })),
       transaction: vi.fn(async (cb: (tx: typeof txStub) => unknown) => cb(txStub)),
     },
   };
@@ -194,49 +196,27 @@ describe('POST /api/issues/:id/transition', () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  it('422 REOPEN_CAP_EXCEEDED at 5 without override', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5 });
-    const res = await req({ toStatus: 'reopen' }, token);
-    expect(res.status).toBe(422);
-    const body = (await res.json()) as { code: string; details: { max: number } };
-    expect(body.code).toBe('REOPEN_CAP_EXCEEDED');
-    expect(body.details.max).toBe(5);
-  });
-
-  it('403 OVERRIDE_DENIED when non-admin requests override', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5, role: 'member' });
-    const res = await req({ toStatus: 'reopen', override: true }, token);
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('OVERRIDE_DENIED');
-  });
-
-  it('200 when project admin overrides the reopen cap', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5, role: 'admin' });
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'reopen', reopenCount: 6, updatedAt: new Date() },
-    ]);
-    const res = await req({ toStatus: 'reopen', override: true }, token);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; reopenCount: number };
-    expect(body.status).toBe('reopen');
-    expect(body.reopenCount).toBe(6);
-    expect(publish).toHaveBeenCalledOnce();
-  });
-
-  it('200 closed → reopen increments reopen_count', async () => {
+  // cm:guard the three cap tests deleted from this spot asserted a 422 at reopenCount>=5 and an admin-only override. RFC 0002 removed the cap outright — reopenCount still increments (ISS-535 model escalation reads it), it just gates nothing. A returning 422 here means someone re-added the ceiling.
+  it('422 REOPEN_REASON_REQUIRED when a reopen carries no reason', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'closed', reopenCount: 0 });
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'reopen', reopenCount: 1, updatedAt: new Date() },
-    ]);
     const res = await req({ toStatus: 'reopen' }, token);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('REOPEN_REASON_REQUIRED');
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('200 closed → reopen with a reason increments reopen_count, at any count', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'closed', reopenCount: 9 });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'reopen', reopenCount: 10, updatedAt: new Date() },
+    ]);
+    const res = await req({ toStatus: 'reopen', reason: 'the 500 is back on prod' }, token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reopenCount: number };
-    expect(body.reopenCount).toBe(1);
+    expect(body.reopenCount).toBe(10);
   });
 
   it('200 non-reopen transition does not touch reopen_count', async () => {

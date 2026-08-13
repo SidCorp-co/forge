@@ -1175,86 +1175,58 @@ describe('forge_issues tool', () => {
     ).rejects.toThrow(/ILLEGAL_TRANSITION/);
   });
 
-  // ISS-596: data.unblock:true threads reason:'operator_unblock' through the
-  // outbox so the orchestrator's ISS-411 hard-stop allows the transition.
-  it('ISS-596: update with unblock:true on on_hold issue threads operator_unblock reason', async () => {
+  // cm:guard `unblock` is GONE from the schema (RFC 0002 INV-6) — the three tests deleted from this spot asserted that a park exit needs a sentinel to dispatch. `.strict()` is what makes this fail loudly instead of ignoring the field, which is how the same flag was silently dropped by the `transition` action for two days (ISS-671/813/825/831, one stranded 48h).
+  it('rejects the removed data.unblock flag instead of ignoring it', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
       projectSlug: PROJECT_SLUG,
     });
-    const onHoldRow = { ...baseIssueRow, status: 'on_hold' as const };
-    // loadIssue (on_hold)
-    selectLimit.mockResolvedValueOnce([onHoldRow]);
-    // membership check
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // conditional UPDATE returning the new row (inside transaction)
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
-    ]);
-    // re-load fresh
-    selectLimit.mockResolvedValueOnce([{ ...onHoldRow, status: 'open' }]);
-
-    await tool.handler({
-      action: 'update',
-      documentId: ISSUE_ID,
-      data: { status: 'open', unblock: true },
-    });
-
-    // withActorContext calls tx.execute with SET LOCAL pipeline.reason = '...'
-    // Verify the executed SQL contains 'operator_unblock' as a bound param.
-    const executeArgs = txExecute.mock.calls.map((c: unknown[]) => JSON.stringify(c[0]));
-    expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(true);
+    await expect(
+      tool.handler({
+        action: 'transition',
+        documentId: ISSUE_ID,
+        data: { status: 'tested', unblock: true },
+      }),
+    ).rejects.toThrow();
   });
 
-  // cm:why the sentinel used to be computed inline in `update` only, so this exact call — the one whose action is NAMED `transition` — accepted `unblock` from the schema and dropped it, writing the status while dispatch stayed parked (ISS-671/813/825/831, up to 48h each)
-  it('ISS-596: transition with unblock:true out of waiting threads operator_unblock reason', async () => {
+  // cm:guard a reopen through MCP must be REJECTED without a reason (INV-8) — this is the only enforcement point an agent meets, and the three dispatch-side guards that used to detect a reasonless reopen afterwards are all deleted
+  it('rejects a reopen with no reason and no note', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
       projectSlug: PROJECT_SLUG,
     });
-    const waitingRow = { ...baseIssueRow, status: 'waiting' as const };
-    selectLimit.mockResolvedValueOnce([waitingRow]);
+    const testedRow = { ...baseIssueRow, status: 'tested' as const };
+    selectLimit.mockResolvedValueOnce([testedRow]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
-    ]);
-    selectLimit.mockResolvedValueOnce([{ ...waitingRow, status: 'tested' }]);
 
-    await tool.handler({
-      action: 'transition',
-      documentId: ISSUE_ID,
-      data: { status: 'tested', unblock: true },
-    });
-
-    const executeArgs = txExecute.mock.calls.map((c: unknown[]) => JSON.stringify(c[0]));
-    expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(true);
+    await expect(
+      tool.handler({ action: 'transition', documentId: ISSUE_ID, data: { status: 'reopen' } }),
+    ).rejects.toThrow(/REOPEN_REASON_REQUIRED/);
   });
 
-  // cm:guard park → park is not a resume: threading the sentinel here would let a later stray advance out of the SECOND park re-engage the pipeline, which is the whole hard stop
-  it('ISS-596: transition with unblock:true from one park to another does NOT thread the sentinel', async () => {
+  it('accepts a reopen whose rationale arrives as `note`', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
       projectSlug: PROJECT_SLUG,
     });
-    const waitingRow = { ...baseIssueRow, status: 'waiting' as const };
-    selectLimit.mockResolvedValueOnce([waitingRow]);
+    const testedRow = { ...baseIssueRow, status: 'tested' as const };
+    selectLimit.mockResolvedValueOnce([testedRow]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
+      { id: ISSUE_ID, reopenCount: 1, updatedAt: new Date() },
     ]);
-    selectLimit.mockResolvedValueOnce([{ ...waitingRow, status: 'on_hold' }]);
+    selectLimit.mockResolvedValueOnce([{ ...testedRow, status: 'reopen' }]);
 
-    await tool.handler({
+    const out = (await tool.handler({
       action: 'transition',
       documentId: ISSUE_ID,
-      data: { status: 'on_hold', unblock: true },
-    });
-
-    const executeArgs = txExecute.mock.calls.map((c: unknown[]) => JSON.stringify(c[0]));
-    expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(false);
+      data: { status: 'reopen', note: 'live checkout 500s on the payment step' },
+    })) as Record<string, unknown>;
+    expect(out.status).toBe('reopen');
   });
 
   it('transition open→confirmed updates status and emits hook', async () => {

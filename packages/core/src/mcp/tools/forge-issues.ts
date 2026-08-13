@@ -13,10 +13,7 @@ import {
   taskStatuses,
   tasks,
 } from '../../db/schema.js';
-import {
-  applyStatusTransition,
-  type StatusTransitionResult,
-} from '../../issues/apply-transition.js';
+import { applyStatusTransition } from '../../issues/apply-transition.js';
 import {
   AttachmentError,
   type DecodedAttachment,
@@ -36,7 +33,6 @@ import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-note
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
-import { isParkedStatus } from '../../pipeline/park-states.js';
 import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
@@ -268,8 +264,8 @@ const dataSchema = z
       )
       .max(20)
       .optional(),
-    // cm:why ISS-596 — explicit operator-unblock intent: set on an `update` OR a `transition` that leaves a park (see PARKED_STATUSES) for a non-park status, it threads `reason:'operator_unblock'` so the orchestrator's hard stop lets the transition re-engage the pipeline. A stray aborted-agent advance never carries the flag, which is what keeps the stop honest.
-    unblock: z.boolean().optional(),
+    // cm:guard REQUIRED on any status write that enters `reopen` (RFC 0002 INV-8) — it is posted as a comment before the flip and is what the fix step scopes its patch against; `note` is accepted as a fallback so a caller that already explains itself there is not rejected
+    reason: z.string().trim().min(1).max(10_000).optional(),
     // ISS-633 — plain label attach/detach. Accepts label NAMES or UUIDs,
     // resolved server-side (strict: unknown -> BAD_REQUEST, no auto-create).
     // REPLACE-SET semantics mirroring REST: this is the full desired label
@@ -464,34 +460,6 @@ type IssueListProjection = Pick<
  * token cap. Heavy fields stay reachable per-issue via `action=get`. Do NOT
  * widen this back to `serialize()`.
  */
-// cm:why ISS-766 — without this the tool result says `status: 'updated'`/echoes the fresh issue with nothing marking the redirect, so an agent that asked for `reopen` believes it got `reopen` and may retry the identical call forever
-function applyReopenCapEscalationNote(
-  output: Record<string, unknown>,
-  result: StatusTransitionResult,
-): void {
-  output.capEscalated = true;
-  output.requestedStatus = result.requestedStatus;
-  output.note =
-    `Reopen cap reached (reopenCount=${result.reopenCount}) — the issue was parked at \`waiting\` ` +
-    `instead of \`${result.requestedStatus}\`. Do not retry the reopen; report this outcome and stop.`;
-}
-
-/**
- * Options for `applyStatusTransition` carrying the `operator_unblock` sentinel
- * when `data.unblock: true` accompanies a genuine park exit.
- */
-// cm:guard leaving one park for another (waiting → on_hold) must NOT consume the hatch — it is not a resume, and threading the sentinel there would let a later stray advance out of the second park re-engage the pipeline
-// cm:guard EVERY action that writes a status must route through this — `transition` accepted `data.unblock` from the schema and dropped it on the floor for 2 days (measured 2026-08-13: ISS-671, ISS-813, ISS-825, ISS-831 stranded at `tested` with no release job, one of them for 48h), because the sentinel was computed inline in `update` only
-// cm:edge contract -> packages/core/src/pipeline/orchestrator.ts — the park-exit hard stop reads exactly this reason string; drop it and the status still writes while dispatch silently does not re-engage
-function operatorUnblockOpts(
-  from: IssueStatus,
-  to: IssueStatus,
-  unblock: boolean | undefined,
-): { reason: 'operator_unblock' } | Record<string, never> {
-  return unblock === true && isParkedStatus(from) && !isParkedStatus(to)
-    ? { reason: 'operator_unblock' }
-    : {};
-}
 
 function serializeListRow(row: IssueListProjection): Record<string, unknown> {
   return {
@@ -1189,14 +1157,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
-        let transitionResult: StatusTransitionResult | undefined;
         if (input.data.status && input.data.status !== issue.status) {
-          transitionResult = await applyStatusTransition(
-            issue,
-            input.data.status,
-            device,
-            operatorUnblockOpts(issue.status, input.data.status, input.data.unblock),
-          );
+          await applyStatusTransition(issue, input.data.status, device, {
+            reopenReason: input.data.reason ?? input.data.note,
+          });
         }
 
         const fresh = await loadIssue(issue.id);
@@ -1204,9 +1168,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...(await serializeWithAttachments(fresh)),
           status: 'updated',
         };
-        if (transitionResult?.capEscalated) {
-          applyReopenCapEscalationNote(updateResult, transitionResult);
-        }
         return updateResult;
       }
 
@@ -1218,17 +1179,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
-        const transitionResult = await applyStatusTransition(
-          issue,
-          target,
-          device,
-          operatorUnblockOpts(issue.status, target, input.data?.unblock),
-        );
+        await applyStatusTransition(issue, target, device, {
+          reopenReason: input.data?.reason ?? input.data?.note,
+        });
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
-        if (transitionResult.capEscalated) {
-          applyReopenCapEscalationNote(transitionOutput, transitionResult);
-        }
         return transitionOutput;
       }
 

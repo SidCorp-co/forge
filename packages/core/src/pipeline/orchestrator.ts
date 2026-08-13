@@ -12,26 +12,18 @@ import {
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { isBlankPlan, isPlanStageLive } from '../issues/transition-evidence.js';
-import { postSkippedParkExitComment } from '../jobs/park-comment.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
-import { findUnansweredBounce, reopenEnteredFromNeedsInfo } from './bounce-replay-guard.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
 import { findDecompositionParent } from './decomposition.js';
-import {
-  findUnexplainedReopen,
-  postEmptyReopenComment,
-  postUnexplainedReopenComment,
-} from './empty-reopen-guard.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
 import { fetchHandoffPromptInputs } from './handoff-prefetch.js';
 import type { HookPayloads, HooksBus } from './hooks.js';
 import { pausePipelineRunMissingSkill, postMissingSkillComment } from './missing-skill-guard.js';
-import { isParkedStatus } from './park-states.js';
 import {
   type PipelineConfig,
   pipelineConfigSchema,
@@ -39,11 +31,7 @@ import {
   type StageConfig,
   type StageName,
 } from './pipeline-config-schema.js';
-import {
-  postBounceReplayComment,
-  postMissingPlanComment,
-  postNeedsInfoReopenComment,
-} from './plan-gate-guard.js';
+import { postMissingPlanComment } from './plan-gate-guard.js';
 import { PIPELINE_STEPS } from './registry.js';
 import { openIssueRun } from './runs.js';
 import {
@@ -132,20 +120,6 @@ async function findActiveJob(issueId: string, type: JobType): Promise<string | n
     )
     .limit(1);
   return row?.id ?? null;
-}
-
-/**
- * ISS-635 Change B — does this issue have any prior `code` or `fix` job
- * (any status)? A `reopen` with no prior implementation job has no
- * branch/commit for forge-fix to patch.
- */
-async function hasPriorImplementationJob(issueId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, ['code', 'fix'])))
-    .limit(1);
-  return row != null;
 }
 
 /**
@@ -584,124 +558,6 @@ async function considerEnqueue(args: {
     }
   }
 
-  // cm:why a reopen entered directly from needs_info must never dispatch fix — a fix cannot be scoped from an unanswered question, regardless of what re-triggered the reopen
-  if (jobMap.type === 'fix' && (await reopenEnteredFromNeedsInfo(args.issueId))) {
-    const device = resolveSkipDevice(args.actor, projectCreatedBy);
-    // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — post BEFORE the transition so a failed or no-op route can never silence the refusal (ISS-819 review r2 finding 2). Self-release is separately impossible: the guard releases on hasHumanAnswerSince, which ignores this agent-authored comment (ISS-820)
-    await postNeedsInfoReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
-    if (device) {
-      try {
-        await applyStatusTransition(liveIssue, 'needs_info', device, { skip: true });
-      } catch (err) {
-        logger.warn(
-          { err, issueId: args.issueId },
-          'orchestrator: needs_info-reopen guard failed to route to needs_info',
-        );
-      }
-    } else {
-      logger.warn(
-        { issueId: args.issueId },
-        'orchestrator: needs_info-reopen guard has no device principal for needs_info transition',
-      );
-    }
-    logger.info(
-      { issueId: args.issueId },
-      'orchestrator: needs_info-reopen guard — reopen entered from needs_info, routed back to needs_info',
-    );
-    return;
-  }
-
-  // ISS-635 Change B — a `reopen` (the only status mapping to `fix`) with no
-  // prior `code`/`fix` job has no branch/commit for forge-fix to patch.
-  // Route to `needs_info` instead of dispatching an empty fix.
-  if (jobMap.type === 'fix' && !(await hasPriorImplementationJob(args.issueId))) {
-    const device = resolveSkipDevice(args.actor, projectCreatedBy);
-    if (device) {
-      try {
-        await applyStatusTransition(liveIssue, 'needs_info', device);
-      } catch (err) {
-        logger.warn(
-          { err, issueId: args.issueId },
-          'orchestrator: empty-reopen guard failed to route to needs_info',
-        );
-      }
-    } else {
-      logger.warn(
-        { issueId: args.issueId },
-        'orchestrator: empty-reopen guard has no device principal for needs_info transition',
-      );
-    }
-    await postEmptyReopenComment({ issueId: args.issueId, authorId: projectCreatedBy });
-    logger.info(
-      { issueId: args.issueId },
-      'orchestrator: empty-reopen guard — no prior code/fix job, routed to needs_info',
-    );
-    return;
-  }
-
-  // cm:why a reopen straight out of released/closed with no rationale leaves forge-fix nothing to scope against, so it can only re-derive "already shipped, no feedback" and bounce; runs after the cheap job-existence check above, which already covers the never-implemented case
-  if (jobMap.type === 'fix') {
-    const unexplained = await findUnexplainedReopen(args.issueId);
-    if (unexplained) {
-      const device = resolveSkipDevice(args.actor, projectCreatedBy);
-      if (device) {
-        try {
-          await applyStatusTransition(liveIssue, 'needs_info', device);
-        } catch (err) {
-          logger.warn(
-            { err, issueId: args.issueId },
-            'orchestrator: unexplained-reopen guard failed to route to needs_info',
-          );
-        }
-      }
-      await postUnexplainedReopenComment({
-        issueId: args.issueId,
-        authorId: projectCreatedBy,
-        from: unexplained.from,
-      });
-      logger.info(
-        { issueId: args.issueId, from: unexplained.from, since: unexplained.since },
-        'orchestrator: unexplained-reopen guard — no rationale since the issue shipped, routed to needs_info',
-      );
-      return;
-    }
-  }
-
-  // cm:edge ordering -> packages/core/src/pipeline/bounce-replay-guard.ts — checked AFTER the live-status re-verify (so we know the issue really is at this stage) and BEFORE skill resolution, since resolving a skill for a step we are about to refuse is wasted work
-  const unanswered = await findUnansweredBounce(args.issueId, args.status);
-  if (unanswered) {
-    const device = resolveSkipDevice(args.actor, projectCreatedBy);
-    // cm:edge ordering -> packages/core/src/pipeline/plan-gate-guard.ts — post BEFORE the transition, same
-    //   reason as the two guards above: a null device or a throwing route must not silence the refusal
-    // cm:why owner call 2026-08-12: this route-back was log-only, so from the UI the issue silently
-    //   flipped back and repeating the move repeated the bounce with no explanation anywhere (ex-§2b)
-    await postBounceReplayComment({
-      issueId: args.issueId,
-      authorId: projectCreatedBy,
-      bounced: unanswered.bounced,
-    });
-    if (device) {
-      try {
-        await applyStatusTransition(liveIssue, unanswered.bounced, device, { skip: true });
-      } catch (err) {
-        logger.warn(
-          { err, issueId: args.issueId, to: unanswered.bounced },
-          'orchestrator: bounce-replay guard failed to route back',
-        );
-      }
-    }
-    logger.info(
-      {
-        issueId: args.issueId,
-        stage: args.status,
-        bounced: unanswered.bounced,
-        bouncedAt: unanswered.at,
-      },
-      'orchestrator: bounce-replay guard — stage already exited via bounce with no new input, not re-dispatching',
-    );
-    return;
-  }
-
   const skill = await resolver.resolve(args.status);
   if (!skill) {
     // ISS-238 — refuse + pause + comment instead of silently skipping. Loops
@@ -1075,39 +931,8 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
       try {
         // Guard: `needs_info → open` never re-triages (user answered a question).
         if (payload.to === 'open' && payload.from === 'needs_info') return;
-        // cm:why ISS-411 — this is what makes an operator Cancel a HARD STOP: parking at `on_hold` (runs-control.ts) plus this guard means an aborted agent's termination-protocol status advance can never silently restart the run.
-        // cm:why ISS-596 — `operator_unblock` is the deliberate-unblock sentinel (forge_issues.update data.unblock:true); a stray agent advance never carries it, so the hard stop survives for every other path.
-        // cm:why ISS-702 widened this from `on_hold` to every park; reading PARKED_STATUSES instead of two literals is what stops a third park being added without a guard. Verdict-aware writes in finalize-failure.ts/retry.ts are the primary defence — this is the net under them.
-        if (
-          isParkedStatus(payload.from) &&
-          payload.actor.type !== 'user' &&
-          payload.reason !== 'operator_unblock'
-        ) {
-          logger.info(
-            {
-              issueId: payload.issueId,
-              from: payload.from,
-              to: payload.to,
-              actor: payload.actor.type,
-              reason: payload.reason,
-            },
-            'orchestrator: skip enqueue — non-user advance out of a parked status',
-          );
-          // cm:guard the issue now reads as sitting at `payload.to` with no job, so this comment is the only signal an operator or the next agent gets — returning silently is what made a parked issue indistinguishable from a running one (ISS-829 diagnosis)
-          // cm:why gated on the SAME predicate the dispatch short-circuit below uses: for a target no stage maps to (park→park, closed, needs_info, tested) nothing would have dispatched anyway, so the comment's "no job was dispatched" would be describing normal behaviour as a fault
-          if (resolveJobTypeForStatus(payload.to) || SKIPPABLE_STAGES.has(payload.to)) {
-            await postSkippedParkExitComment({
-              issueId: payload.issueId,
-              projectId: payload.projectId,
-              from: payload.from,
-              to: payload.to,
-              actorType: payload.actor.type,
-            });
-          }
-          return;
-        }
-        // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
-        // skill — saves a DB hit on human-gated transitions.
+        // cm:guard leaving a park dispatches like any other transition (RFC 0002 INV-6) — do NOT re-add an actor or reason gate here. The guard deleted from this spot refused every non-user exit from `waiting`/`on_hold`; on ISS-163 it refused four legitimate resume attempts in a row and produced no work at all. Entering a park is free from anywhere, so leaving one is too.
+        // cm:why the short-circuit runs BEFORE loadPipelineConfig so a human-gated transition costs no DB hit
         if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
         const { cfg, projectCreatedBy } = await loadPipelineConfig(payload.projectId);
         // ISS-239 — build the resolver once and thread it through both phases
