@@ -35,6 +35,9 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
   });
 
   afterAll(async () => {
+    // cm:guard close the app pool BEFORE the container. This file imports the src/db/client singleton to drive a real subscriber and nothing else ever closes it, so a pool still holding sockets when the testcontainer dies emits `write CONNECTION_CLOSED` as an UNHANDLED rejection — vitest then reports THIS file as failed (measured 2026-08-13: red in the full parallel suite, green 3/3 alone).
+    const { closeDb } = await import('../../src/db/client.js');
+    await closeDb();
     if (harness) await harness.cleanup();
   });
 
@@ -79,6 +82,19 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  // cm:guard poll with a PLAIN select, never `FOR UPDATE`: the drain claims with SKIP LOCKED, so a probe holding the row lock at that moment makes the drain skip the row and `processed` comes back 0 — a probe that breaks the very thing it measures.
+  //   visibility of `claimed_at` IS the ISS-678 signal, because the old code claimed inside the outer transaction it never committed until its subscriber returned; returning at the deadline instead of throwing is deliberate, so the single NOWAIT probe below still reports the historical 55P03 for old code.
+  async function waitForClaimCommitted(issueId: string, deadlineMs = 10_000): Promise<void> {
+    const started = Date.now();
+    do {
+      const rows = await harness.db.execute<{ claimed: boolean }>(
+        sql`SELECT claimed_at IS NOT NULL AS claimed FROM pipeline_outbox WHERE issue_id = ${issueId}`,
+      );
+      if (rows.some((r) => (r as { claimed: boolean }).claimed)) return;
+      await sleep(25);
+    } while (Date.now() - started < deadlineMs);
+  }
+
   it('does not hold a pipeline_outbox row lock while a subscriber blocks on a contended advisory lock', async () => {
     const { issueId } = await seedIssue('open');
     await harness.db.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}`);
@@ -112,12 +128,16 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     const drainPromise = drainOutboxOnce();
 
     // cm:why load-bearing: proves the claim already committed (row lock released) before hooks.emit ran — pre-ISS-678 code would raise 55P03 here since the outer db.transaction still held the row lock for the whole subscriber wait
-    await sleep(100);
-    await harness.client.begin(async (tx) => {
-      await tx`SELECT id FROM pipeline_outbox WHERE issue_id = ${issueId} FOR UPDATE NOWAIT`;
-    });
+    await waitForClaimCommitted(issueId);
+    try {
+      await harness.client.begin(async (tx) => {
+        await tx`SELECT id FROM pipeline_outbox WHERE issue_id = ${issueId} FOR UPDATE NOWAIT`;
+      });
+    } finally {
+      // cm:guard release even when the probe fails: the drain is blocked on this lock, so throwing without releasing leaves the drain and the contending transaction in flight until afterAll closes the pool under them, and the resulting `CONNECTION_CLOSED` unhandled rejection buries the assertion that actually failed.
+      releaseContendingLock();
+    }
 
-    releaseContendingLock();
     await contendingTx;
     const result = await drainPromise;
     const elapsedMs = Date.now() - start;
@@ -130,6 +150,34 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     expect(rows[0]?.processed_at).not.toBeNull();
     expect(rows[0]?.claimed_at).toBeNull();
   }, 20_000);
+
+  // cm:guard this locks the DISCRIMINATING POWER of the wait+probe above, which nothing else can falsify: it proves the pair still reports 55P03 against the pre-ISS-678 observable — claim stamped but never committed, row lock still held.
+  //   delete it and a future rewrite of the probe into something that merely WAITS turns the regression above into a no-op that stays green forever.
+  it('the wait+probe pair still reports 55P03 when a claim is stamped but never committed (pre-ISS-678 shape)', async () => {
+    const { issueId } = await seedIssue('open');
+    await harness.db.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}`);
+
+    let releaseHeldClaim: () => void = () => undefined;
+    const heldSignal = new Promise<void>((resolve) => {
+      releaseHeldClaim = resolve;
+    });
+    const uncommittedClaim = harness.client.begin(async (tx) => {
+      await tx`UPDATE pipeline_outbox SET claimed_at = now() WHERE issue_id = ${issueId}`;
+      await heldSignal;
+    });
+
+    try {
+      await waitForClaimCommitted(issueId, 300);
+      await expect(
+        harness.client.begin(async (tx) => {
+          await tx`SELECT id FROM pipeline_outbox WHERE issue_id = ${issueId} FOR UPDATE NOWAIT`;
+        }),
+      ).rejects.toThrow(/could not obtain lock/);
+    } finally {
+      releaseHeldClaim();
+      await uncommittedClaim;
+    }
+  });
 
   it('re-claims and re-emits a row whose lease expired (crash recovery)', async () => {
     const { issueId } = await seedIssue('open');

@@ -27,6 +27,18 @@ function hotVector(hotIdx: number, mag = 1): number[] {
   return v;
 }
 
+// cm:guard wait on something the indexer DID do with this, never a bare setTimeout — the write is queueMicrotask-detached, so a fixed sleep races it plus a DB round trip (measured 2026-08-13: `setTimeout(r, 50)` read count '0' under the full parallel suite, green 11/11 alone)
+//   a wait on something the indexer must NOT have done is the opposite case and stays a fixed sleep: polling a never-true predicate only returns at the deadline, and a short sleep there can only false-PASS
+async function waitFor(predicate: () => Promise<boolean> | boolean, label: string) {
+  const deadline = 5000;
+  const step = 25;
+  for (let waited = 0; waited < deadline; waited += step) {
+    if (await predicate()) return;
+    await new Promise((r) => setTimeout(r, step));
+  }
+  throw new Error(`waitFor timed out after ${deadline}ms: ${label}`);
+}
+
 describe('F3 memory search + indexer integration', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
@@ -324,13 +336,14 @@ describe('F3 memory search + indexer integration', () => {
       },
     });
 
-    // queueMicrotask detaches — allow the microtask to run.
-    await new Promise((r) => setTimeout(r, 50));
-
-    const rows = await harness.db.execute<{ count: string }>(
-      sql`SELECT count(*)::text AS count FROM memories WHERE project_id = ${projectId} AND source = 'issue' AND source_ref = ${issueId}`,
-    );
-    expect((rows[0] as { count: string }).count).toBe('1');
+    const countRow = async () => {
+      const rows = await harness.db.execute<{ count: string }>(
+        sql`SELECT count(*)::text AS count FROM memories WHERE project_id = ${projectId} AND source = 'issue' AND source_ref = ${issueId}`,
+      );
+      return (rows[0] as { count: string }).count;
+    };
+    await waitFor(async () => (await countRow()) === '1', 'issueCreated upserts a memory row');
+    expect(await countRow()).toBe('1');
   });
 
   it('indexer: issueUpdated only re-embeds when title/description change', async () => {
@@ -374,7 +387,7 @@ describe('F3 memory search + indexer integration', () => {
       before: { title: 'old' },
       after: { title: 'new', description: '' },
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await waitFor(() => embedCalls === 1, 'indexer re-embeds exactly once');
     expect(embedCalls).toBe(1);
   });
 
@@ -459,7 +472,7 @@ describe('F3 memory search + indexer integration', () => {
         labels: [],
       },
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await waitFor(() => embedCalls === 1, 'indexer re-embeds exactly once');
     expect(embedCalls).toBe(1);
   });
 });
