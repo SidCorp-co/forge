@@ -94,18 +94,32 @@ the file**; `cm:edge` drives `cm impact`; **`cm:why` has no consumer at all** �
 not even `cm impact`. So anything a future editor must *obey* belongs in `cm:guard`, never
 `cm:why`. Filler accumulates in `cm:why` precisely because nothing surfaces it.
 
-## Three gates, three axes
+## Six gates, six axes
 
 Each sits in `ci-passed`'s `needs`, so a violation blocks the merge. **That, not this file, is why
-they hold.** Both of the gates that already exist drifted badly while documented and non-blocking —
-biome to 366 errors, `typecheck` to 84 — and stopped drifting the day they were cleared and gated
-(see the comments on the `core` job in `.github/workflows/ci.yml`).
+they hold.** Every gate that drifted did so while documented and non-blocking — biome to 366 errors,
+`typecheck` to 84, and the two length rules to 143 — and each stopped drifting the day it was
+baselined and gated (see the comments on the `core` job in `.github/workflows/ci.yml`).
+
+All six run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify` neither runs nor
+declares fails `verify --ci-parity`, which is itself a CI step — so the local command and the
+workflow cannot drift apart.
 
 | Axis | Gate | Owns | Must not touch |
 |---|---|---|---|
-| format + lint | `biome check` — job `core` | whitespace, import order, recommended rules, file & function length | comment content |
+| format + lint | `biome check` — job `core` | whitespace, import order, recommended rules | comment content |
+| size | `check-size-budget` — job `lang-check` | file & function length, frozen per file | which rules exist — biome declares them |
 | knowledge | `cm verify` — job `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
 | relations | `arch check` — job `archmap` | which module may depend on which | how a file is written |
+| behaviour | `check-test-signal` — job `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
+| language | `check-source-language` — job `lang-check` | English-only source policy | everything else |
+
+Size is its own row because biome **declares** the two length rules but cannot gate them: it has no
+baseline, so the only choices were `warn` (143 violations, `biome check` exits 0, nothing held) and
+`error` (143 violations, every build red). `check-size-budget.mjs` reads biome's own JSON, freezes
+today's 102 offenders per file, and fails only on growth. It adds no rule — `packages/core/biome.json`
+still owns the thresholds. This row is why the format row no longer claims file & function length:
+for most of this repo's life that claim was false.
 
 Do not add a rule to one axis that another already owns:
 

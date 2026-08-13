@@ -78,6 +78,13 @@ const CHECKS = [
   },
   {
     axis: 'form',
+    label: 'size-budget',
+    cmd: ['node', 'scripts/check-size-budget.mjs', '--all'],
+    // cm:edge naming -> scripts/check-size-budget.mjs — parses that script's success line
+    scanned: /^size-budget: (\d+) file/m,
+  },
+  {
+    axis: 'form',
     label: 'core typecheck',
     cmd: ['pnpm', '--filter', '@forge/core', 'typecheck'],
   },
@@ -87,6 +94,7 @@ const CHECKS = [
 const CI_COVERAGE = {
   'node scripts/check-source-language.mjs --all': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',
+  'node scripts/check-size-budget.mjs --all': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',
   '.forge/codemap/cm verify --since $(git merge-base origin/main HEAD)': 'verify',
   '.forge/codemap/cm verify --tier referential': 'verify',

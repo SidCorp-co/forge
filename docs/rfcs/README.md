@@ -7,6 +7,7 @@ Request for Comments — long-form design proposals for significant changes. Eac
 | RFC | Title | Status |
 |---|---|---|
 | [0001](0001-skill-delta-override.md) | Skill delta-override composition | Draft |
+| [0002](0002-park-axis-separation.md) | Park axis separation — mechanical failure holds the job, `waiting` means a human is needed | Draft |
 
 Write the next one as `NNNN-kebab-case-title.md` (numbering restarted at 0001 — the previous archive was retired as outdated).
 

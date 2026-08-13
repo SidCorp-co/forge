@@ -64,6 +64,11 @@ jobs:
       # declaration-restating or mock-only assertions than its frozen baseline
       # (.forge/test-signal-baseline.json). Same contract as the codemap baseline.
       - run: node scripts/check-test-signal.mjs --all
+      # Size budget: biome OWNS the two length rules; what it lacks is a
+      # baseline, so both sit at `warn` and `biome check` exits 0 with 143
+      # violations. This freezes today's 102 offenders (.forge/size-baseline.json)
+      # and fails only when a file gets longer or a new one lands over budget.
+      - run: node scripts/check-size-budget.mjs --all
       # CI-parity: proves every step in this file is either run by `pnpm verify`
       # or declared as covered by another root script. Without it the local
       # command and this workflow drift, and a green `pnpm verify` stops meaning
