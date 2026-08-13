@@ -268,7 +268,7 @@ const dataSchema = z
       )
       .max(20)
       .optional(),
-    // cm:why ISS-596 — explicit operator-unblock intent: set on an update that leaves a park (see PARKED_STATUSES) for a non-park status, it threads `reason:'operator_unblock'` so the orchestrator's hard stop lets the transition re-engage the pipeline. A stray aborted-agent advance never carries the flag, which is what keeps the stop honest.
+    // cm:why ISS-596 — explicit operator-unblock intent: set on an `update` OR a `transition` that leaves a park (see PARKED_STATUSES) for a non-park status, it threads `reason:'operator_unblock'` so the orchestrator's hard stop lets the transition re-engage the pipeline. A stray aborted-agent advance never carries the flag, which is what keeps the stop honest.
     unblock: z.boolean().optional(),
     // ISS-633 — plain label attach/detach. Accepts label NAMES or UUIDs,
     // resolved server-side (strict: unknown -> BAD_REQUEST, no auto-create).
@@ -474,6 +474,23 @@ function applyReopenCapEscalationNote(
   output.note =
     `Reopen cap reached (reopenCount=${result.reopenCount}) — the issue was parked at \`waiting\` ` +
     `instead of \`${result.requestedStatus}\`. Do not retry the reopen; report this outcome and stop.`;
+}
+
+/**
+ * Options for `applyStatusTransition` carrying the `operator_unblock` sentinel
+ * when `data.unblock: true` accompanies a genuine park exit.
+ */
+// cm:guard leaving one park for another (waiting → on_hold) must NOT consume the hatch — it is not a resume, and threading the sentinel there would let a later stray advance out of the second park re-engage the pipeline
+// cm:guard EVERY action that writes a status must route through this — `transition` accepted `data.unblock` from the schema and dropped it on the floor for 2 days (measured 2026-08-13: ISS-671, ISS-813, ISS-825, ISS-831 stranded at `tested` with no release job, one of them for 48h), because the sentinel was computed inline in `update` only
+// cm:edge contract -> packages/core/src/pipeline/orchestrator.ts — the park-exit hard stop reads exactly this reason string; drop it and the status still writes while dispatch silently does not re-engage
+function operatorUnblockOpts(
+  from: IssueStatus,
+  to: IssueStatus,
+  unblock: boolean | undefined,
+): { reason: 'operator_unblock' } | Record<string, never> {
+  return unblock === true && isParkedStatus(from) && !isParkedStatus(to)
+    ? { reason: 'operator_unblock' }
+    : {};
 }
 
 function serializeListRow(row: IssueListProjection): Record<string, unknown> {
@@ -1172,18 +1189,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
-        // cm:guard leaving one park for another (waiting → on_hold) must NOT consume the hatch — it is not a resume, and threading the sentinel there would let a later stray advance out of the second park re-engage the pipeline
         let transitionResult: StatusTransitionResult | undefined;
         if (input.data.status && input.data.status !== issue.status) {
-          const useOperatorUnblock =
-            input.data.unblock === true &&
-            isParkedStatus(issue.status) &&
-            !isParkedStatus(input.data.status);
           transitionResult = await applyStatusTransition(
             issue,
             input.data.status,
             device,
-            useOperatorUnblock ? { reason: 'operator_unblock' } : {},
+            operatorUnblockOpts(issue.status, input.data.status, input.data.unblock),
           );
         }
 
@@ -1206,7 +1218,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
-        const transitionResult = await applyStatusTransition(issue, target, device);
+        const transitionResult = await applyStatusTransition(
+          issue,
+          target,
+          device,
+          operatorUnblockOpts(issue.status, target, input.data?.unblock),
+        );
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
         if (transitionResult.capEscalated) {

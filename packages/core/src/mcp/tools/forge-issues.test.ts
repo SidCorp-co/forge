@@ -1207,6 +1207,56 @@ describe('forge_issues tool', () => {
     expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(true);
   });
 
+  // cm:why the sentinel used to be computed inline in `update` only, so this exact call — the one whose action is NAMED `transition` — accepted `unblock` from the schema and dropped it, writing the status while dispatch stayed parked (ISS-671/813/825/831, up to 48h each)
+  it('ISS-596: transition with unblock:true out of waiting threads operator_unblock reason', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    const waitingRow = { ...baseIssueRow, status: 'waiting' as const };
+    selectLimit.mockResolvedValueOnce([waitingRow]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
+    ]);
+    selectLimit.mockResolvedValueOnce([{ ...waitingRow, status: 'tested' }]);
+
+    await tool.handler({
+      action: 'transition',
+      documentId: ISSUE_ID,
+      data: { status: 'tested', unblock: true },
+    });
+
+    const executeArgs = txExecute.mock.calls.map((c: unknown[]) => JSON.stringify(c[0]));
+    expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(true);
+  });
+
+  // cm:guard park → park is not a resume: threading the sentinel here would let a later stray advance out of the SECOND park re-engage the pipeline, which is the whole hard stop
+  it('ISS-596: transition with unblock:true from one park to another does NOT thread the sentinel', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    const waitingRow = { ...baseIssueRow, status: 'waiting' as const };
+    selectLimit.mockResolvedValueOnce([waitingRow]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
+    ]);
+    selectLimit.mockResolvedValueOnce([{ ...waitingRow, status: 'on_hold' }]);
+
+    await tool.handler({
+      action: 'transition',
+      documentId: ISSUE_ID,
+      data: { status: 'on_hold', unblock: true },
+    });
+
+    const executeArgs = txExecute.mock.calls.map((c: unknown[]) => JSON.stringify(c[0]));
+    expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(false);
+  });
+
   it('transition open→confirmed updates status and emits hook', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
