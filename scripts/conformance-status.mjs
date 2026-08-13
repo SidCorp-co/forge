@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+// Report each conformance axis at the level it MEASURES, not the level a
+// document claims for it.
+//
+// Every gate this repo has lost was lost the same way: it stayed documented
+// while it stopped blocking. biome drifted to 366 errors, typecheck to 84, and
+// the two length rules to 143 — each of them described in CLAUDE.md as gating
+// something the whole time it gated nothing. A written level is a claim; this
+// runs the checker and reports what came back.
+//
+// Levels, shared by every axis:
+//   0  no checker
+//   1  measure — runs, prints, does not block
+//   2  freeze — baseline the old, block the new
+//   3  lock — zero violations, no baseline
+//
+// The declared level lives in .forge/conformance.json. This compares it against
+// what the checkers actually do and fails when the two disagree, so the manifest
+// cannot quietly become the next thing that lies.
+//
+// Exit: 0 declared matches measured · 1 they disagree · 2 could not run.
+
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
+
+// cm:edge lockstep -> .forge/conformance.json — one entry per axis declared there; an axis in the manifest with no probe here, or a probe with no manifest entry, fails this check rather than going unreported
+const PROBES = {
+  form: {
+    gate: 'check-size-budget + biome',
+    baseline: '.forge/size-baseline.json',
+    probe: ['node', 'scripts/check-size-budget.mjs', '--all'],
+  },
+  knowledge: {
+    gate: 'cm verify',
+    baseline: '.forge/codemap-baseline.json',
+    probe: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
+  },
+  relations: {
+    gate: 'arch check',
+    // cm:why archmap carries its baseline INSIDE .arch.json as each contract's draft/locked status rather than in a separate frozen file — `locked` already means "no new violations", not "zero violations", which is level 2 by the same definition the other axes use
+    baseline: '.arch.json',
+    probe: ['./.forge/archmap/arch', 'check'],
+  },
+  behaviour: {
+    gate: 'check-test-signal',
+    baseline: '.forge/test-signal-baseline.json',
+    probe: ['node', 'scripts/check-test-signal.mjs', '--all'],
+  },
+  language: {
+    gate: 'check-source-language',
+    baseline: null,
+    probe: ['node', 'scripts/check-source-language.mjs', '--all'],
+  },
+};
+
+function readManifest() {
+  if (!existsSync(CONFIG_PATH)) return { error: `${CONFIG_PATH} not found` };
+  try {
+    return { manifest: JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) };
+  } catch (err) {
+    return { error: `${CONFIG_PATH} is unreadable — ${err.message}` };
+  }
+}
+
+// cm:guard measure by RUNNING the checker, never by reading the manifest. Reading the declaration and printing it back is what every drifted gate already did.
+function measure(axis, spec) {
+  const r = spawnSync(spec.probe[0], spec.probe.slice(1), {
+    cwd: ROOT,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (r.error) return { level: 0, note: `cannot run: ${r.error.message}` };
+  if (r.status === 2) return { level: 0, note: 'checker reported it could not run' };
+
+  const hasBaseline = spec.baseline === null ? false : existsSync(join(ROOT, spec.baseline));
+  if (r.status === 1) return { level: 2, note: 'blocking, violations present' };
+  if (hasBaseline) return { level: 2, note: 'blocking, baseline frozen' };
+  return { level: 3, note: 'blocking, no baseline' };
+}
+
+function ciGates() {
+  const ci = join(ROOT, '.github', 'workflows', 'ci.yml');
+  if (!existsSync(ci)) return null;
+  const text = readFileSync(ci, 'utf8');
+  const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
+  return needs ? needs[1].split(',').map((s) => s.trim()).filter(Boolean) : null;
+}
+
+const { manifest, error } = readManifest();
+if (error) {
+  console.error(`conformance-status: ${error}`);
+  process.exit(2);
+}
+
+const declared = manifest.axes ?? {};
+const axes = [...new Set([...Object.keys(PROBES), ...Object.keys(declared)])].sort();
+const rows = [];
+let disagreements = 0;
+
+for (const axis of axes) {
+  const spec = PROBES[axis];
+  if (!spec) {
+    rows.push({ axis, gate: '—', declared: declared[axis]?.level ?? '?', measured: '?', note: 'declared with no probe' });
+    disagreements++;
+    continue;
+  }
+  if (!(axis in declared)) {
+    rows.push({ axis, gate: spec.gate, declared: '—', measured: '?', note: 'probed but not declared' });
+    disagreements++;
+    continue;
+  }
+  const m = measure(axis, spec);
+  const d = declared[axis].level;
+  if (d !== m.level) disagreements++;
+  rows.push({ axis, gate: spec.gate, declared: d, measured: m.level, note: m.note });
+}
+
+const w = Math.max(...rows.map((r) => r.gate.length), 10);
+console.log('\n  axis        gate' + ' '.repeat(w - 4) + 'declared  measured');
+for (const r of rows) {
+  const flag = r.declared === r.measured ? ' ' : '!';
+  console.log(
+    `${flag} ${r.axis.padEnd(11)} ${String(r.gate).padEnd(w)}  ${String(r.declared).padEnd(8)}  ${String(r.measured).padEnd(8)}  ${r.note}`,
+  );
+}
+
+const gates = ciGates();
+if (gates) console.log(`\n  ci-passed needs ${gates.length} job(s): ${gates.join(' ')}`);
+
+if (disagreements === 0) {
+  console.log('\nconformance: declared levels match measured\n');
+  process.exit(0);
+}
+console.error(
+  `\nconformance: ${disagreements} axis/axes where the manifest and the checkers disagree.\n` +
+    'Fix the axis or fix the claim — a manifest that overstates a level is the\n' +
+    'failure mode it exists to prevent.\n',
+);
+process.exit(1);

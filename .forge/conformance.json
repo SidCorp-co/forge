@@ -1,13 +1,65 @@
 {
   "$comment": "Per-checker configuration for this repo. Each checker falls back to its own defaults when its key is absent, so deleting a block degrades to the built-in behaviour rather than to an empty scope. What lives here is what changes between repos: layout, thresholds, and the regexes that name one stack's idioms. What stays in code is the rule itself.",
+  "axes": {
+    "form": {
+      "level": 2,
+      "gate": "check-size-budget + biome",
+      "owns": "file & function length; whitespace, import order, recommended rules"
+    },
+    "knowledge": {
+      "level": 2,
+      "gate": "cm verify",
+      "owns": "cm: couplings, prose discipline, module headers"
+    },
+    "relations": {
+      "level": 2,
+      "gate": "arch check",
+      "owns": "which module may depend on which"
+    },
+    "behaviour": {
+      "level": 2,
+      "gate": "check-test-signal",
+      "owns": "whether a test asserts behaviour or restates a declaration"
+    },
+    "language": {
+      "level": 3,
+      "gate": "check-source-language",
+      "owns": "English-only source policy"
+    }
+  },
   "checkers": {
     "size-budget": {
-      "scopes": [{ "cwd": "packages/core", "args": ["check", "src", "tests"] }]
+      "scopes": [
+        {
+          "cwd": "packages/core",
+          "args": [
+            "check",
+            "src",
+            "tests"
+          ]
+        }
+      ]
     },
     "source-language": {
-      "scanRoots": ["packages/web-v2/src", "packages/dev/src", "packages/core/src"],
-      "scanExts": [".ts", ".tsx", ".md"],
-      "brandTokens": ["Pokémon", "café", "naïve", "résumé", "cliché", "façade", "jalapeño"]
+      "scanRoots": [
+        "packages/web-v2/src",
+        "packages/dev/src",
+        "packages/core/src"
+      ],
+      "scanExts": [
+        ".ts",
+        ".tsx",
+        ".md"
+      ],
+      "brandTokens": [
+        "Pokémon",
+        "café",
+        "naïve",
+        "résumé",
+        "cliché",
+        "façade",
+        "jalapeño"
+      ]
     },
     "test-signal": {
       "scanRoots": [
@@ -20,7 +72,10 @@
         "packages/contracts/src",
         "packages/contracts/tests"
       ],
-      "testFileSuffixes": [".test.ts", ".test.tsx"],
+      "testFileSuffixes": [
+        ".test.ts",
+        ".test.tsx"
+      ],
       "minAssertions": 20,
       "declarationRatio": 0.5,
       "mockRatio": 0.7,

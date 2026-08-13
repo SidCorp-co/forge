@@ -32,6 +32,31 @@ Four contracts:
 
 Exit codes: `0` clean, `1` violations, `2` a check could not run.
 
+## conformance-status.mjs — declared level vs measured level
+
+`.forge/conformance.json` declares a level per axis; this runs each axis's checker and fails when
+the two disagree. Levels are shared across axes: `0` no checker · `1` measures but does not block ·
+`2` baseline the old and block the new · `3` zero violations, no baseline.
+
+It measures by **running** the checker, never by reading the manifest back. Every gate this repo has
+lost was lost the same way — biome to 366 errors, `typecheck` to 84, the two length rules to 143 —
+each of them described as gating something for the whole time it gated nothing. A written level is a
+claim; this is the check that tests the claim.
+
+Also fails when an axis is declared with no probe, or probed with no declaration, so neither half can
+drift out of the other's sight.
+
+## check-size-budget.mjs — file and function length
+
+`packages/core/biome.json` owns both length rules; this owns only the baseline biome lacks. 102 files
+are frozen in `.forge/size-baseline.json` — a file already over budget may stay over, it may not get
+worse. Frozen per file (its length and its longest function), so a reflow or a moved function is not
+a violation.
+
+Adding a `cm:` annotation to a file already at its frozen budget will trip this. Re-freeze with
+`--update-baseline`; the one-line growth shows up in the diff, which is how that escape hatch is
+meant to be used.
+
 ### Adding a check
 
 Append to `CHECKS` with a `scanned` regex matching that checker's own success line. Without one the

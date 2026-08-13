@@ -105,6 +105,12 @@ All six run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify
 declares fails `verify --ci-parity`, which is itself a CI step — so the local command and the
 workflow cannot drift apart.
 
+`.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not block
+· `2` baseline the old, block the new · `3` zero violations. `conformance-status.mjs` **runs** every
+checker and fails when what it does disagrees with what the manifest claims, so this table cannot
+become the next thing that describes a gate it no longer has. Today: form 2 · knowledge 2 ·
+relations 2 · behaviour 2 · language 3.
+
 | Axis | Gate | Owns | Must not touch |
 |---|---|---|---|
 | format + lint | `biome check` — job `core` | whitespace, import order, recommended rules | comment content |
