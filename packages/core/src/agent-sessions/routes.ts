@@ -687,6 +687,18 @@ agentSessionRoutes.patch(
           })
         : null;
 
+    // cm:guard a session that settles `completed` MUST carry no failureReason. The I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on a session that was still ACTIVE when its run went terminal; the runner's own terminal patch then lands here, and without this clear the row reads completed-and-failed (ISS-759 recurred on session 228cdf03 two days after the job-lane fix shipped, because the chat lane finalizes HERE).
+    // cm:guard read the RESOLVED status and clear only AFTER the two blocks above — gating on `patch.status` instead would wipe the `skill_not_synced` reason and the classifier's reason, both of which rewrite a reported `completed` into `failed` before this point.
+    // cm:edge lockstep -> packages/core/src/jobs/agent-session-link.ts — the job-report writer of the same contract
+    // cm:edge lockstep -> packages/core/src/pipeline/runs-cascade.ts — its completedSuccess branch is the third writer of the same contract
+    if (
+      (updates.status ?? existing.status) === 'completed' &&
+      existing.failureReason &&
+      existing.failureReason !== 'user_cancelled'
+    ) {
+      updates.failureReason = null;
+    }
+
     // Dual-write: when the worker PATCHes the messages array we mirror append /
     // truncate into agent_session_turns inside the same transaction so the
     // legacy blob and turn rows can never diverge. Streaming-tail debounce is

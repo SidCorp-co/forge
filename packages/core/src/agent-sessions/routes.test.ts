@@ -794,6 +794,103 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
   });
 });
 
+describe('PATCH /api/agent-sessions/:id — ISS-759: a completed session must not keep a failure reason', () => {
+  it('clears an orphan_under_terminal_run stamp when the runner reports the turn completed', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: {},
+        failureReason: 'orphan_under_terminal_run',
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'completed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    const set = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(set.status).toBe('completed');
+    expect(set.failureReason).toBeNull();
+  });
+
+  it('keeps skill_not_synced when the ISS-733 guard rewrites the reported completed into failed', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [{ role: 'user', content: '/forge-onboard\nhi' }],
+        metadata: { pendingSkillName: 'forge-onboard' },
+        failureReason: 'orphan_under_terminal_run',
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'failed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        status: 'completed',
+        messages: [
+          { role: 'user', content: '/forge-onboard\nhi' },
+          { role: 'assistant', content: 'Unknown command: /forge-onboard' },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const set = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(set.status).toBe('failed');
+    expect(set.failureReason).toBe('skill_not_synced');
+  });
+
+  it('never clears user_cancelled', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'failed',
+        messages: [],
+        metadata: {},
+        failureReason: 'user_cancelled',
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'completed' },
+    ]);
+
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    const set = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(set.failureReason).toBeUndefined();
+  });
+});
+
 describe('PATCH /api/agent-sessions/:id — ISS-824: schedule terminal write-back + classifier', () => {
   it('persists a classifier reason on a schedule.run failure that matches no known pattern', async () => {
     authVerified();
