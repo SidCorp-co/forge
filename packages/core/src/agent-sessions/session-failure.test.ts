@@ -133,6 +133,28 @@ describe('finalizeScheduleSessionFailure', () => {
     expect(redispatchScheduleSessionOnFailoverMock).not.toHaveBeenCalled();
   });
 
+  // cm:why every other test here authors its transcript as `assistant`, which is why the prompt-as-error defect shipped: the classifier only ever saw runner text in tests. A schedule transcript really opens with the schedule's own prompt as a `user` message.
+  it('does NOT classify the schedule prompt — a user message saying "usage limit" must not trigger a failover', async () => {
+    const set: Record<string, unknown> = {};
+    const result = await finalizeScheduleSessionFailure({
+      sessionId: 'sess-1',
+      messages: [
+        {
+          role: 'user',
+          content:
+            'You are the Forge skill-optimizer agent. Report any usage limit reached or rate limit exceeded condition you observe.',
+        },
+        { role: 'assistant', content: 'some unrelated tool error' },
+      ],
+      note: null,
+      baseMetadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      set,
+    });
+    expect(result.action).not.toBe('failover');
+    expect(redispatchScheduleSessionOnFailoverMock).not.toHaveBeenCalled();
+    expect(set.failureReason).not.toContain('Forge skill-optimizer agent');
+  });
+
   it('classifies a usage/session-limit hit as action:failover, stamps limitResetAt, and recovers the schedule run', async () => {
     const set: Record<string, unknown> = {};
     const result = await finalizeScheduleSessionFailure({
