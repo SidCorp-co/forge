@@ -158,6 +158,17 @@ committed `100644` fails the job with permission denied, not with a violation.
 
 ## Commands
 
+**`pnpm verify` when you finish coding, before you push** — the conformance entrypoint. It runs
+every check CI runs, reports all of them in one pass instead of stopping at the first, and prints
+the `cm:guard` / `cm:edge` / `cm:flow` declared on the files you touched. Exit `0` clean · `1`
+violations · `2` a check could not run. This is the mechanism; hooks only make it arrive sooner, and
+a contributor with no plugin installed is held to exactly the same bar. Details and how to add a
+check: `scripts/README.md`.
+
+`verify --ci-parity` is itself a CI step: a `- run:` in `ci.yml` that `verify` neither runs nor
+declares in `CI_COVERAGE` fails the build. That is what stops the local command and the workflow
+drifting apart, which would make a green `pnpm verify` meaningless.
+
 From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm typecheck` / `pnpm lint`. Per package (from inside `packages/<pkg>/`):
 
 | Package | Dev | Build | Test | Lint |

@@ -2,6 +2,42 @@
 
 Project-level utilities. Each script is standalone (no shared lib) and has a comment header explaining its contract.
 
+## verify.mjs — the conformance entrypoint (`pnpm verify`)
+
+Run it after you finish coding, before you push — same slot as `pnpm build`. It runs every
+conformance check CI runs, in one pass, and reports all of them rather than stopping at the first.
+
+Hooks are an accelerator, never the mechanism: Claude Code hooks need a plugin, git hooks need
+`pnpm install` and an env without `SKIP_*`. Anything correctness depends on has to be reachable from
+this script with nothing but a checkout and node.
+
+Four contracts:
+
+1. **CI parity** — every `- run:` and named step in `.github/workflows/ci.yml` is either run here or
+   declared in `CI_COVERAGE` as covered by another root script. `--ci-parity` proves it and is itself
+   a CI step, so the two cannot drift.
+2. **Fail-closed** — each checker must emit a file count that this script can read, and a count of
+   zero exits `2`, not `0`. A checker whose scope matched nothing reports "clean"; forwarding that as
+   a pass is the failure mode this guards.
+3. **Report everything** — no early exit. One fix cycle instead of six.
+4. **Advisory** — `cm impact` on every file changed against `origin/main`, including untracked ones,
+   printing the guards / edges / flows you should read. This is the pull-side stand-in for the
+   PreToolUse hook, and it works with no plugin installed.
+
+### Modes
+
+- (none) — full run
+- `--ci-parity` — only the parity proof; cheap, zero-dep, no install needed
+- `--no-advisory` — skip the `cm impact` pass
+
+Exit codes: `0` clean, `1` violations, `2` a check could not run.
+
+### Adding a check
+
+Append to `CHECKS` with a `scanned` regex matching that checker's own success line. Without one the
+fail-closed contract cannot hold for it. If you add the step to CI too, add it to `CI_COVERAGE` in
+the same commit — `--ci-parity` fails otherwise, which is the point.
+
 ## check-branch-name.sh
 
 Validates a branch name against the [Trunk-Based Development](../docs/guides/trunk-based-development.md) naming convention. Wired into `.githooks/pre-push`.

@@ -1,0 +1,278 @@
+#!/usr/bin/env node
+// Conformance entrypoint — the one command to run after coding, before pushing.
+//
+// The mechanism is this script, not the hooks. Claude Code hooks need a plugin
+// installed and git hooks need `pnpm install` plus no SKIP_* in the env, so
+// neither can be what correctness depends on. Everything reachable from here
+// works with a bare checkout and a node binary.
+//
+// Four contracts, ordered by what breaks without them:
+//   1. CI parity — every step in ci.yml is run here or explicitly declared as
+//      covered by another root script. `--ci-parity` proves it.
+//   2. Fail-closed — a checker that scanned zero files exits 2, never 0. A
+//      green report from a check that never ran is worse than no check at all.
+//   3. Report everything — no early exit, so one fix cycle instead of six.
+//   4. Advisory — `cm impact` on changed files: the pull-side replacement for
+//      the PreToolUse hook that used to push guards into an agent's context.
+//
+// Modes: (none) full run · --ci-parity only the parity proof · --no-advisory
+// Exit: 0 clean · 1 violations · 2 a check could not run.
+
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
+
+// cm:guard every entry needs a `scanned` pattern that matches the checker's OWN success line. Without it a checker that walked an empty scope reports clean and this script forwards that as a pass — the exact fail-open shape codemap's own CLI documents as the only bug class it has ever shipped.
+const CHECKS = [
+  {
+    axis: 'language',
+    label: 'source-language',
+    cmd: ['node', 'scripts/check-source-language.mjs', '--all'],
+    // cm:edge naming -> scripts/check-source-language.mjs — parses that script's success line; reword it there and the fail-closed count silently stops matching
+    scanned: /across (\d+) files/,
+  },
+  {
+    axis: 'behaviour',
+    label: 'test-signal',
+    cmd: ['node', 'scripts/check-test-signal.mjs', '--all'],
+    // cm:edge naming -> scripts/check-test-signal.mjs — same coupling as above
+    scanned: /^test-signal: (\d+) test file/m,
+  },
+  {
+    axis: 'knowledge',
+    label: 'codemap prose',
+    cmd: ['.forge/codemap/cm', 'verify', '--since', '@@MERGE_BASE@@'],
+    scanned: /"files":\s*(\d+)/,
+    json: true,
+    scopeMayBeEmpty: true,
+  },
+  {
+    axis: 'knowledge',
+    label: 'codemap referential',
+    cmd: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
+    scanned: /"files":\s*(\d+)/,
+    json: true,
+  },
+  {
+    axis: 'knowledge',
+    label: 'codemap structural',
+    cmd: ['.forge/codemap/cm', 'verify', '--tier', 'structural'],
+    scanned: /"files":\s*(\d+)/,
+    json: true,
+  },
+  {
+    axis: 'relations',
+    label: 'archmap',
+    cmd: ['./.forge/archmap/arch', 'check'],
+    scanned: /archmap · (\d+) files/,
+  },
+  {
+    axis: 'form',
+    label: 'core lint',
+    cmd: ['pnpm', '--filter', '@forge/core', 'lint'],
+    scanned: /Checked (\d+)/,
+  },
+  {
+    axis: 'form',
+    label: 'core typecheck',
+    cmd: ['pnpm', '--filter', '@forge/core', 'typecheck'],
+  },
+];
+
+// cm:edge contract -> .github/workflows/ci.yml — every `- run:` line and every named step there must appear as a key here; `--ci-parity` fails on an unlisted one. Adding a CI step without a line here is the drift this map exists to catch.
+const CI_COVERAGE = {
+  'node scripts/check-source-language.mjs --all': 'verify',
+  'node scripts/check-test-signal.mjs --all': 'verify',
+  'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',
+  '.forge/codemap/cm verify --since $(git merge-base origin/main HEAD)': 'verify',
+  '.forge/codemap/cm verify --tier referential': 'verify',
+  '.forge/codemap/cm verify --tier structural': 'verify',
+  './.forge/archmap/arch check': 'verify',
+  'pnpm --filter @forge/core lint': 'verify',
+  'pnpm --filter @forge/core typecheck': 'verify',
+  'pnpm --filter web-v2 lint': 'pnpm lint',
+  'pnpm --filter web-v2 exec vitest run --passWithNoTests': 'pnpm test',
+  'pnpm --filter web-v2 build': 'pnpm build',
+  'pnpm --filter forge-beta exec vitest run --passWithNoTests': 'pnpm test',
+  'pnpm --filter @forge/core test': 'pnpm test',
+  'pnpm --filter @forge/core build': 'pnpm build',
+  'pnpm --filter @forge/core test:integration:ci': 'pnpm --filter @forge/core test:integration',
+  'Validate bundle.active=true': 'dev-bundle-smoke, Tauri-only',
+  'Install Linux deps for Tauri': 'dev-bundle-smoke, Tauri-only',
+  'Generate throwaway updater signing key': 'dev-bundle-smoke, Tauri-only',
+  'Build (deb only)': 'dev-bundle-smoke, Tauri-only',
+  'Verify .deb produced': 'dev-bundle-smoke, Tauri-only',
+  'Rust check': 'cargo, dev/src-tauri only — continue-on-error, not a gate',
+  'Lockfile sync + fmt + clippy + test (same gates as runner-ci)': 'cargo, runner-only',
+  'Check Markdown links': 'docs job, lychee action',
+  'Require every CI job to have passed or been skipped': 'the ci-passed gate itself',
+};
+
+function git(args) {
+  const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+function mergeBase() {
+  return git(['merge-base', 'origin/main', 'HEAD']);
+}
+
+function runCheck(check, base) {
+  const cmd = check.cmd.map((a) => (a === '@@MERGE_BASE@@' ? base : a));
+  if (cmd.includes('@@MERGE_BASE@@') || (check.scopeMayBeEmpty && base === null)) {
+    return { ...check, code: 2, why: 'origin/main not available — cannot scope the diff' };
+  }
+  const argv = check.json ? [...cmd, '--json'] : cmd;
+  const r = spawnSync(argv[0], argv.slice(1), { cwd: ROOT, encoding: 'utf8' });
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+
+  if (r.error) return { ...check, code: 2, out, why: `could not spawn: ${r.error.message}` };
+  if (r.status === 2) return { ...check, code: 2, out, why: 'checker reported it could not run' };
+
+  if (check.scanned) {
+    const m = out.match(check.scanned);
+    if (!m) return { ...check, code: 2, out, why: 'no file count in output — cannot prove it ran' };
+    const n = Number(m[1]);
+    if (n === 0 && !check.scopeMayBeEmpty) {
+      return { ...check, code: 2, out, why: 'scanned 0 files — a scope nobody could compute' };
+    }
+    const note = n === 0 ? 'no diff against origin/main — nothing to scope' : undefined;
+    return { ...check, code: r.status ?? 1, out, files: n, note };
+  }
+  return { ...check, code: r.status ?? 1, out };
+}
+
+function advisory(base) {
+  if (!base) return null;
+  const changed = git(['diff', '--name-only', base, 'HEAD']);
+  const staged = git(['diff', '--name-only', '--cached']);
+  const dirty = git(['diff', '--name-only']);
+  // cm:why untracked is not optional here — a brand-new file is exactly the case with no LSP history and the highest chance of walking into a guard nobody told the author about
+  const untracked = git(['ls-files', '--others', '--exclude-standard']);
+  const files = [
+    ...new Set([changed, staged, dirty, untracked].filter(Boolean).join('\n').split('\n')),
+  ].filter((f) => f && existsSync(join(ROOT, f)));
+  if (files.length === 0) return null;
+
+  const hits = [];
+  for (const f of files.slice(0, 40)) {
+    const r = spawnSync('.forge/codemap/cm', ['impact', f, '--json'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    });
+    if (r.status !== 0 || !r.stdout) continue;
+    try {
+      // cm:edge contract -> .forge/codemap/cm — these five key names are `cm impact --json`'s output shape; a rename there turns this advisory silently empty, which reads as "no couplings" rather than as a break
+      const d = JSON.parse(r.stdout);
+      const rows = [
+        ...(d.guards ?? []).map((x) => ['guard', x.text ?? x.raw]),
+        ...(d.hacks ?? []).map((x) => ['hack ', x.text ?? x.raw]),
+        ...(d.outgoing ?? []).map((x) => ['edge ', `${x.kind} -> ${x.target} — ${x.text ?? ''}`]),
+        ...(d.incoming ?? []).map((x) => ['edge←', `${x.kind} from ${x.file} — ${x.text ?? ''}`]),
+        ...(d.flows ?? []).map((x) => ['flow ', x.id ?? x.raw]),
+      ];
+      if (rows.length) hits.push({ file: f, rows });
+    } catch {}
+  }
+  return hits.length ? hits : null;
+}
+
+function ciSteps() {
+  if (!existsSync(CI_PATH)) return null;
+  const lines = readFileSync(CI_PATH, 'utf8').split('\n');
+  const steps = [];
+  for (const line of lines) {
+    const run = line.match(/^\s+- run:\s+(\S.*?)\s*$/);
+    if (run && run[1] !== '|') steps.push(run[1]);
+    const named = line.match(/^\s+- name:\s+(\S.*?)\s*$/);
+    if (named) steps.push(named[1]);
+  }
+  return steps;
+}
+
+function ciParity(quiet) {
+  const steps = ciSteps();
+  if (steps === null) {
+    console.error('ci-parity: .github/workflows/ci.yml not found');
+    return 2;
+  }
+  if (steps.length === 0) {
+    console.error('ci-parity: parsed 0 steps out of ci.yml — the parser, not the workflow, is wrong');
+    return 2;
+  }
+  const missing = steps.filter((s) => !(s in CI_COVERAGE));
+  if (missing.length === 0) {
+    if (!quiet) console.log(`ci-parity: ${steps.length} CI step(s), all declared`);
+    return 0;
+  }
+  console.error(`\nci-parity: ${missing.length} CI step(s) not declared in CI_COVERAGE:`);
+  for (const m of missing) console.error(`  ${m}`);
+  console.error('\nAdd each to CI_COVERAGE in scripts/verify.mjs — either "verify" (this script');
+  console.error('runs it) or the root script that does. An undeclared step is a gate that CI');
+  console.error('enforces and `pnpm verify` silently skips.\n');
+  return 1;
+}
+
+function report(results, adv, parity) {
+  const width = Math.max(...results.map((r) => r.label.length), 18);
+  console.log('');
+  for (const r of results) {
+    const mark = r.code === 0 ? 'ok  ' : r.code === 2 ? 'FAIL' : 'red ';
+    const files = r.files === undefined ? '' : `${r.files} files`;
+    const aside = r.why ?? r.note;
+    console.log(
+      `  ${mark}  ${r.axis.padEnd(10)} ${r.label.padEnd(width)}  ${files}${aside ? `  ${aside}` : ''}`,
+    );
+  }
+  console.log(`  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ci-parity`);
+
+  const failed = results.filter((r) => r.code !== 0);
+  for (const r of failed) {
+    console.error(`\n${'─'.repeat(72)}\n${r.axis} · ${r.label}\n`);
+    console.error((r.out ?? '').trimEnd());
+  }
+
+  if (adv) {
+    console.log(`\n${'─'.repeat(72)}\nDeclared couplings on files you changed — read before pushing:\n`);
+    for (const h of adv) {
+      console.log(`  ${h.file}`);
+      for (const [tag, text] of h.rows) console.log(`    ${tag}  ${text}`);
+    }
+  }
+
+  const codes = [...results.map((r) => r.code), parity];
+  if (codes.includes(2)) return 2;
+  return codes.some((c) => c !== 0) ? 1 : 0;
+}
+
+const args = process.argv.slice(2);
+const bad = args.filter((a) => !['--ci-parity', '--no-advisory'].includes(a));
+if (bad.length) {
+  console.error(`usage: verify.mjs [--ci-parity] [--no-advisory]\nunknown: ${bad.join(' ')}`);
+  process.exit(2);
+}
+
+if (args.includes('--ci-parity')) process.exit(ciParity());
+
+const base = mergeBase();
+if (base === null) {
+  console.error('verify: `git merge-base origin/main HEAD` failed. Fetch origin first:');
+  console.error('  git fetch origin main');
+  process.exit(2);
+}
+
+console.log(`verify: ${CHECKS.length} checks against ${base.slice(0, 8)}`);
+const tty = process.stdout.isTTY;
+const results = [];
+for (const check of CHECKS) {
+  if (tty) process.stdout.write(`  … ${check.label}${' '.repeat(24)}\r`);
+  results.push(runCheck(check, base));
+}
+if (tty) process.stdout.write(`${' '.repeat(48)}\r`);
+
+const adv = args.includes('--no-advisory') ? null : advisory(base);
+process.exit(report(results, adv, ciParity(true)));
