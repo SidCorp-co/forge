@@ -193,6 +193,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A runner box that fails the same preflight check repeatedly is now quarantined (taken out of dispatch rotation) instead of being retried forever across the fleet; quarantine self-heals on expiry, clears on the next success, is operator-clearable, and shows up with its reason in the runners list.
 - Fixed a pipeline reliability gap where a failed automatic step dispatch could silently leave an issue stuck instead of being retried or reported.
 - The support chat bot now reports project progress using the same authoritative numbers as the dashboard, and stays within its intended product-support role.
+- Project Settings now shows every pipeline permission and override that used to be visible only through the API — which tools each pipeline stage is blocked from using, per-stage MCP servers, complexity skips, session groups, and installed plugins.
 
 ## [0.3.0] - 2026-06-11
 
