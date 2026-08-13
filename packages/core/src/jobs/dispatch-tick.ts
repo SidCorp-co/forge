@@ -174,3 +174,22 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
 export function setDispatchTickDebounceMs(ms: number): void {
   debounceMs = ms;
 }
+
+// cm:guard the integration harness MUST await this before dropping a worker database. Every trigger above is fire-and-forget, so a sweep outlives the test that caused it; dropping the database under one produced `database "test_w<N>_<hash>" does not exist` from runTickInner, and vitest attributes that rejection to whichever FILE happens to be running — which is why a docs-only commit could turn core-integration red.
+// cm:edge protocol -> packages/core/tests/helpers/db.ts — cleanup() calls this first; reordering it after client.end() restores the race
+/**
+ * Await every in-flight sweep and settle the lock map.
+ *
+ * A sweep can chain another (dispatch → job complete → re-tick), so this
+ * drains in rounds rather than awaiting a single snapshot. `rounds` bounds it
+ * so a pathological re-tick loop surfaces as a leak rather than hanging the
+ * suite; the residual project ids are returned for the caller to report.
+ */
+export async function quiesceDispatchTicks(rounds = 20): Promise<string[]> {
+  for (let i = 0; i < rounds; i++) {
+    const inflight = [...projectLocks.values()];
+    if (inflight.length === 0) return [];
+    await Promise.allSettled(inflight);
+  }
+  return [...projectLocks.keys()];
+}

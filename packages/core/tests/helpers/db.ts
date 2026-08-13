@@ -79,6 +79,7 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
     client,
     url,
     cleanup: async () => {
+      await quiesceOrReport(url);
       try {
         await client.end({ timeout: 5 });
       } finally {
@@ -123,15 +124,45 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
     client,
     url: url.toString(),
     cleanup: async () => {
+      await quiesceOrReport(dbName);
       await client.end({ timeout: 5 }).catch(() => {});
       const dropper = postgres(adminUrl, { max: 1 });
       try {
+        await reportLingeringConnections(dropper, dbName);
         await dropper.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
       } finally {
         await dropper.end({ timeout: 5 });
       }
     },
   };
+}
+
+async function quiesceOrReport(dbName: string): Promise<void> {
+  const { quiesceBackgroundWork } = await import('./quiesce.js');
+  const { stuckProjects } = await quiesceBackgroundWork();
+  if (stuckProjects.length > 0) {
+    console.error(
+      `[db] ${dbName}: dispatch sweeps still chained for ${stuckProjects.join(', ')} ` +
+        'after the bounded drain — a re-tick loop is outliving its test.',
+    );
+  }
+}
+
+// cm:why the DROP below is WITH (FORCE), so a leaked connection is severed silently and resurfaces as a failure in whichever file runs next. This names the leak in the file that caused it, which is the only place it can be fixed.
+async function reportLingeringConnections(admin: Sql, dbName: string): Promise<void> {
+  try {
+    const rows = await admin<{ count: string }[]>`
+      SELECT count(*)::text AS count FROM pg_stat_activity
+      WHERE datname = ${dbName} AND pid <> pg_backend_pid()
+    `;
+    const n = Number(rows[0]?.count ?? '0');
+    if (n > 0) {
+      console.error(
+        `[db] ${dbName}: ${n} connection(s) still open at teardown. FORCE will sever them; ` +
+          'whatever holds them is background work that outlived this file.',
+      );
+    }
+  } catch {}
 }
 
 function resolveMode(): 'container' | 'schema' {
