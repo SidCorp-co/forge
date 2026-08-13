@@ -344,10 +344,21 @@ describe('classifyWaitingCause (ISS-828)', () => {
     ).toBe('reopen_cap');
   });
 
-  it('precedence: decompose_parent wins over merged_parked/terminal', () => {
+  // cm:why this assertion was inverted on 2026-08-13. It previously demanded `decompose_parent`, which is what put the plan-approval copy and a live `Approve` button on ISS-812 — an epic merged 2026-08-12T05:38 whose code was already on main and deployed. The test locked the defect in, so fixing the classifier meant fixing the test that ratified it.
+  it('precedence: merged_parked wins over decompose_parent — a merged epic is not awaiting approval to START coding', () => {
     expect(
       classifyWaitingCause({
         mergedAt: new Date('2026-08-11T00:00:00.000Z'),
+        decompChildCount: 1,
+        latestRun: run({ status: 'failed' }),
+      }),
+    ).toBe('merged_parked');
+  });
+
+  it('decompose_parent still wins over a terminal run while the parent is UNmerged', () => {
+    expect(
+      classifyWaitingCause({
+        mergedAt: null,
         decompChildCount: 1,
         latestRun: run({ status: 'failed' }),
       }),

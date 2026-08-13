@@ -171,9 +171,10 @@ export interface ClassifyInput {
 const RUN_TERMINAL_STATUSES = new Set<PipelineRunStatus>(['completed', 'failed', 'cancelled']);
 
 /**
- * Pure sub-classifier for `waitingCause` — see the `WaitingCause` doc comment
- * for the precedence rationale. Exported so `derive.ts`-style callers (and
- * tests) can exercise it without constructing a full `ClassifyInput`.
+ * Pure sub-classifier for `waitingCause`. Precedence is load-bearing and the
+ * reason for each ordering is on the guard inside the body. Exported so
+ * `derive.ts`-style callers (and tests) can exercise it without constructing a
+ * full `ClassifyInput`.
  */
 export function classifyWaitingCause(input: {
   mergedAt: Date | null;
@@ -184,8 +185,10 @@ export function classifyWaitingCause(input: {
   if (latestRun?.status === 'paused' && latestRun.pauseReason?.startsWith('reopen_cap:')) {
     return 'reopen_cap';
   }
-  if (decompChildCount > 0) return 'decompose_parent';
+  // cm:guard `mergedAt` outranks `decompChildCount`, and the order is the whole point: `decompose_parent` renders the plan-approval copy plus an `Approve` CTA verbatim, so a MERGED epic that still has decompose children was told "the plan is awaiting approval before coding starts" and offered a button that re-dispatches a full `code` job on code already merged and live. Walked live on ISS-812 (merged 2026-08-12T05:38, banner read exactly that) — a merged parent is `merged_parked`, never awaiting approval to start.
+  // cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — deriveBlockerState maps `decompose_parent` to the Approve CTA and `merged_parked` to no CTA at all; swapping these two lines back silently restores the destructive button
   if (mergedAt !== null) return 'merged_parked';
+  if (decompChildCount > 0) return 'decompose_parent';
   if (latestRun && RUN_TERMINAL_STATUSES.has(latestRun.status)) return 'retry_exhausted';
   return 'plan_approval';
 }
