@@ -5,23 +5,18 @@
  * live join over `issues + jobs + pipeline_runs + agent_sessions +
  * issue_dependencies`, plus the picker's own `fresh_capable_runners` CTE
  * (`freshRunnerAvailability`), and mirrors EVERY arm of the dispatch CASE in
- * `jobs/dispatch-gates.ts` — run-not-running, L1..L3, and both L4/L5 runner
- * arms. A gate with no arm here renders as an idle, actionable issue. No
- * persisted gate column is consulted — `jobs.gate_reason` is intentionally
- * NOT read here so this layer stays correct after ISS-162 (D1) eventually
- * drops it (the column is still in the schema today, but reading it would
- * mask the 29-min plan-stage UI blind spot from ISS-137).
+ * `jobs/dispatch-gates.ts`. A gate with no arm here renders as an idle,
+ * actionable issue. `jobs.gate_reason` is deliberately NOT read: this layer
+ * must stay correct after ISS-162 (D1) drops the column, and reading it would
+ * mask the 29-min plan-stage UI blind spot from ISS-137.
  *
  * WS event `issue.pipelineHealth.changed` is published directly (NOT routed
- * through `pipeline/hooks.ts` → `ws/broadcast-subscribers.ts`) because the
- * payload is a derived snapshot recomputed at publish time. Matches the
- * existing direct-publish pattern for `issue.statusChanged` (see
- * `ws/broadcast-subscribers.ts:38`). Future maintainers: keep it direct.
+ * through `pipeline/hooks.ts` -> `ws/broadcast-subscribers.ts`) because the
+ * payload is a derived snapshot recomputed at publish time — the same pattern
+ * `issue.statusChanged` uses. Keep it direct.
  *
- * `lastTickAt` is sourced from the in-memory map below. On multi-process
- * deploys each process keeps its own copy; clients connected to a different
- * process see stale liveness. Acceptable for v1 — ISS-163 (D2) ships a
- * pg-boss-backed health probe that closes the gap.
+ * `lastTickAt` comes from the in-memory map below, so on multi-process deploys
+ * clients on another process see stale liveness (closed by ISS-163's probe).
  */
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';

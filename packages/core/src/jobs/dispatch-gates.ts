@@ -448,10 +448,14 @@ function buildBarrierFragments(args: {
         AND r.status = 'online'
         AND r.last_seen_at IS NOT NULL
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-        -- Rate/usage-limited runners are unavailable until their reset time.
-        -- rate_limited_until is NULL for auth limits (no auto-recovery), so
-        -- those do not gate here; they keep failing and trip the breaker.
+        -- cm:guard every clause runners/select.ts filters on MUST appear here too, or the pair deadlocks silently: the picker counts the runner as available and declares the job dispatchable, selectRunnerForJob then filters it out and returns null, handleDispatch skips, and the job spins "queued" with NO gate reason for any UI to show. Measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state.
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
+        -- cm:guard an auth limit has NO reset time by design ("rate_limited_until" stays NULL, nothing parseable to wait for), so the time predicate above passes it and an auth-dead runner reads as healthy. It must be excluded by NAME. The comment removed here claimed the breaker caught these instead; it does not — "maybeQuarantineRunner" returns early unless the error parses as a PREFLIGHT check, so device dev1-ai013 took 421 jobs on an expired OAuth session in 5.5h with "quarantined_until" still NULL.
+        AND r.limit_reason IS DISTINCT FROM 'auth'
+        -- cm:guard mirrors NOT_QUARANTINED in runners/select.ts — a quarantined runner was counted as available here, which is the deadlock above and is also what would have made the escalating backoff invisible: longer TTL, more days of a job queued with no reason
+        AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
+        -- cm:guard mirrors WORKSPACE_READY in runners/select.ts — NULL is a legacy row that predates the column and stays eligible; only an explicit non-ready value blocks
+        AND (r.provision_status IS NULL OR r.provision_status = 'ready')
         -- Device turn-off gate — MUST mirror runners/select.ts
         -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner
         -- on a disabled device as available and declares the job dispatchable,

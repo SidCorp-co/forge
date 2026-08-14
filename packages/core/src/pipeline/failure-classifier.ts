@@ -19,7 +19,7 @@ import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
 // cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
-export const CLASSIFIER_VERSION = 7;
+export const CLASSIFIER_VERSION = 8;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -77,7 +77,11 @@ const PERMANENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bbilling[ _-]?(error|required)\b/i,
   /\bmissing_prompt_string\b/i,
   /\brunner_unsupported_type\b/i,
-  // cm:why ISS-808 — a project with no git repo by design (e.g. a storefront) can't fix these by retrying
+];
+
+// cm:guard these are `infra` with a TERMINAL action, and the pair is the point — the DIAGNOSIS is the runner's workspace and the POLICY is "retrying cannot fix it". They were `code`, which is the same policy reached by lying about the cause: a human triaging a red job read "code" and went looking at a diff, when the fault was that /home/forge/projects/anhome was not a git repo (ubuntu1, 8 jobs on 2026-08-14). ISS-808's original reason still holds for the action — a project with no git repo by design (e.g. a storefront) can't fix these by retrying.
+// cm:edge protocol -> packages/core/src/pipeline/failure-classifier.ts#deriveActionFromKind — that fallback maps kind->action for pre-ISS-823 rows and CANNOT express this pair; anything added here is invisible to it, so a historical row keeps its old verdict by design
+const TERMINAL_INFRA_PATTERNS: ReadonlyArray<RegExp> = [
   /\bpreflight[ _-]?failed:\s*origin_remote\b/i,
   /\bpreflight[ _-]?failed:\s*work_tree\b/i,
   /\bpreflight[ _-]?failed:\s*repo_path\b/i,
@@ -134,18 +138,19 @@ interface ClassifyInput {
  *
  * Match order: structured `meta.error.type` → runner token → spend-cap →
  * usage/session limit → cc-startup signal → PERMISSION (infra) → TIMEOUT →
- * PERMANENT (code) → TRANSIENT (infra) → CC_STARTUP text fallback → infra +
- * needsReview. Permission/timeout precede the broader buckets because their
- * patterns are more specific.
+ * TERMINAL_INFRA (infra, terminal) → PERMANENT (code) → TRANSIENT (infra) →
+ * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
+ * the broader buckets because their patterns are more specific.
  */
 export function classifyFailure(input: ClassifyInput): ClassifyResult {
   const text = (input.error ?? '').trim();
   const meta = input.meta ?? null;
   const retryAfter = extractRetryAfter(meta);
-  const { kind, reason, meta: resultMeta } = classifyKind(text, meta, input.signals);
+  const { kind, reason, meta: resultMeta, action } = classifyKind(text, meta, input.signals);
   return {
     kind,
-    action: deriveActionFromKind(kind),
+    // cm:guard an explicit `action` from classifyKind MUST win — kind and action are two independent axes (diagnosis vs policy) and collapsing them is what forced `preflight_failed: work_tree` to be labelled `code` just to stop it retrying
+    action: action ?? deriveActionFromKind(kind),
     reason,
     meta: resultMeta,
     version: CLASSIFIER_VERSION,
@@ -157,7 +162,12 @@ function classifyKind(
   text: string,
   meta: Record<string, unknown> | null,
   signals: ClassifyInput['signals'],
-): { kind: FailureKind; reason: string; meta: Record<string, unknown> | null } {
+): {
+  kind: FailureKind;
+  reason: string;
+  meta: Record<string, unknown> | null;
+  action?: FailureAction;
+} {
   const reasonExcerpt = text.length > 200 ? `${text.slice(0, 197)}…` : text;
 
   const metaErrorType = readMetaErrorType(meta);
@@ -243,6 +253,17 @@ function classifyKind(
   for (const pat of TIMEOUT_PATTERNS) {
     if (pat.test(text)) {
       return { kind: 'timeout', reason: reasonExcerpt || 'timeout (pattern match)', meta };
+    }
+  }
+
+  for (const pat of TERMINAL_INFRA_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        action: 'terminal',
+        reason: reasonExcerpt || 'workspace preflight (pattern match)',
+        meta,
+      };
     }
   }
 

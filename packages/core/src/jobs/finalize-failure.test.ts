@@ -140,8 +140,10 @@ vi.mock('../pipeline/hooks.js', () => ({
 
 // cm:edge contract -> packages/core/src/jobs/hold.ts — its import chain reaches queue/boss.ts via enqueue.js, whose top-level env import throws without DB env (same pitfall as reconcile-service.ts above); hold.test.ts covers the real thing
 const holdJobMock = vi.fn(async (..._args: unknown[]): Promise<string | null> => null);
+const holdAutoReleasesMock = vi.fn((..._args: unknown[]) => false);
 vi.mock('./hold.js', () => ({
   holdJobForReason: (...args: unknown[]) => holdJobMock(...args),
+  holdAutoReleases: (...args: unknown[]) => holdAutoReleasesMock(...args),
 }));
 
 const syncSessionMock = vi.fn(async (..._args: unknown[]) => undefined);
@@ -382,5 +384,25 @@ describe('finalizeFailedJob', () => {
     expect(call.title).toBe('Step held: every runner is rate-limited');
     expect(call.nextStep).toMatch(/resumes itself/);
     expect(call.nextStep).not.toMatch(/clear the park/);
+  });
+
+  // cm:guard a hold that resumes itself must emit NOTHING here — `releaseHeldJobs` re-queues it the moment its condition clears, and `alarmAgedHolds` is the 6h escalation if it does not. Emitting at hold time is what filled the owner's bell with 721 unresolved rows whose own action text said "No action needed" (forge-beta 2026-08-14).
+  it('emits NO wedge when the hold will release itself', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+    holdJobMock.mockResolvedValueOnce('held-job-4');
+    holdAutoReleasesMock.mockReturnValueOnce(true);
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+
+    expect(emitWedgeMock).not.toHaveBeenCalled();
+  });
+
+  it('still emits for a hold that waits on a human', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'non_retryable_terminal' });
+    holdJobMock.mockResolvedValueOnce('held-job-5');
+    holdAutoReleasesMock.mockReturnValueOnce(false);
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+
+    const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(call.title).toBe('Step held: non-retryable failure');
   });
 });

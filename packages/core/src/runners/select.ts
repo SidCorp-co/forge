@@ -17,9 +17,17 @@ const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
 
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — every candidate predicate in this file must also sit in `fresh_capable_runners`; a clause here and not there makes the picker offer a job this selector then refuses, and the job spins `queued` forever with no gate reason
 // cm:why placed alongside rate_limited_until (not a bare column ref) so it
 // resolves correctly whether the enclosing query aliases `runners` as `r.` or not
 const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
+
+// cm:guard `auth` MUST be excluded by NAME, never left to `rate_limited_until` — that column is NULL for an auth limit BY DESIGN (no parseable reset), so the time-based filter passes it and an auth-dead box reads as perfectly healthy. lib/device-pool.ts has carried this exact clause for the chat path all along; the job path did not, and device dev1-ai013 took 421 jobs on an expired OAuth session in 5.5h (forge-beta 2026-08-14).
+const NOT_AUTH_LIMITED = sql`AND limit_reason IS DISTINCT FROM 'auth'`;
+
+// cm:guard NULL means "legacy row, never provisioned" and MUST stay eligible — 4 runners are NULL today and blocking them would starve their projects for a column they predate. Only an EXPLICIT non-ready value blocks.
+// cm:guard a workspace that is not `ready` cannot run a job, and this gate is the only thing that says so — `provision_status` was write-only telemetry (web drew a stepper, no dispatch path read it), so runner ubuntu1/Anhome sat at `needs_manual_setup` while the picker fed it one job an hour for 8 hours, every one dying on `preflight_failed: work_tree` (measured 2026-08-14).
+const WORKSPACE_READY = sql`AND (provision_status IS NULL OR provision_status = 'ready')`;
 
 /**
  * Per-state runner pool (`pipelineConfig.states[x].deviceIds`) as a candidate
@@ -397,6 +405,8 @@ async function findHealthyByDevice(
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
         ${NOT_QUARANTINED}
+        ${NOT_AUTH_LIMITED}
+        ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
         ${poolClause(allowDeviceIds)}
       ORDER BY last_seen_at DESC, id ASC
@@ -459,6 +469,8 @@ async function findStandby(
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
         ${NOT_QUARANTINED}
+        ${NOT_AUTH_LIMITED}
+        ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
         ${poolClause(extra.allowDeviceIds)}
         ${exclusionClause}
@@ -523,6 +535,8 @@ async function pickLeastLoadedFreeRunner(
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
         ${NOT_QUARANTINED}
+        ${NOT_AUTH_LIMITED}
+        ${WORKSPACE_READY}
         AND COALESCE(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
         ${NOT_DISABLED_DEVICE}
         ${poolClause(opts.allowDeviceIds, sql`r.device_id`)}
@@ -564,7 +578,7 @@ export async function onlineCapableDeviceIds(
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const limitClause = opts?.includeLimited
     ? sql``
-    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now()) ${NOT_QUARANTINED}`;
+    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now()) ${NOT_QUARANTINED} ${NOT_AUTH_LIMITED}`;
   const rows = await db.execute<{ device_id: string }>(
     sql`
       SELECT DISTINCT device_id
@@ -576,6 +590,7 @@ export async function onlineCapableDeviceIds(
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         ${limitClause}
+        ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
         ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC

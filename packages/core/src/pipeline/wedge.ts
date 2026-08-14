@@ -17,9 +17,15 @@
  * manual escape hatches (C0 `job_events.kind='intervention'`, C1
  * `kernel_transitions` user-actor run flips).
  *
- * Spam guard: one UNREAD wedge notification per entity, keyed on the indexed
- * `resolution_key` column (`wedge:<entityId>`, ISS-510) rather than a body
- * marker — this keeps the visible body free of the entity id.
+ * Spam guard: at most one UNRESOLVED wedge per entity per
+ * {@link WEDGE_RENOTIFY_MS}, keyed on the indexed `resolution_key` column
+ * (`wedge:<entityId>`, ISS-510) rather than a body marker — this keeps the
+ * visible body free of the entity id. `resolvePipelineWedge` is the clear path.
+ *
+ * A condition that clears ITSELF should not reach here at all: the caller is
+ * the one that knows (see `holdResumesItself` in `jobs/hold.ts`), and the
+ * 6-hour `alarmAgedHolds` pass is the escalation for a self-clearing condition
+ * that did not.
  *
  * ISS-619 — `title`/`summary`/`nextStep`/`secondaryIssueId` are OPTIONAL
  * business-language presentation fields. When a caller supplies them (today:
@@ -34,11 +40,31 @@
  * path that called it.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
+
+/**
+ * Shortest gap between two wedge notifications about the SAME entity.
+ */
+// cm:guard a re-notify FLOOR is required, and it must not be the read flag — the dedupe once matched `read = false`, so opening the notification re-armed it and the next monitor pass wrote another: read -> re-emit -> read, a closed loop that put 721 unresolved `pipeline_wedge` rows in the owner's bell (measured forge-beta 2026-08-14). Keying on `resolvedAt IS NULL` alone would swing the other way: with no resolve call for a key, the wedge would be emitted exactly once and never again.
+export const WEDGE_RENOTIFY_MS = 24 * 60 * 60_000;
+
+export function wedgeResolutionKey(entityId: string): string {
+  return `wedge:${entityId}`;
+}
+
+/**
+ * Clear the wedge notifications for `entityId` — the condition they reported is
+ * gone. Call this from whatever observes the recovery, never on a timer.
+ */
+// cm:edge lockstep -> packages/core/src/pipeline/wedge.ts#emitPipelineWedge — the key both sides use comes from `wedgeResolutionKey`; a caller that hand-writes `wedge:<id>` here and the emitter drifting apart means a resolved wedge stays in the bell forever
+export async function resolvePipelineWedge(entityId: string): Promise<number> {
+  return resolveNotifications(wedgeResolutionKey(entityId));
+}
 
 export type WedgeHop = 'ack' | 'claim' | 'heartbeat' | 'result' | 'dispatch';
 
@@ -66,17 +92,17 @@ export interface PipelineWedgeEvent {
 
 export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
   try {
-    const resolutionKey = `wedge:${ev.entityId}`;
+    const resolutionKey = wedgeResolutionKey(ev.entityId);
 
-    // Dedupe: an unread wedge for this entity already surfaces the problem.
     const [existing] = await db
       .select({ id: notifications.id })
       .from(notifications)
       .where(
         and(
           eq(notifications.type, 'pipeline_wedge'),
-          eq(notifications.read, false),
           eq(notifications.resolutionKey, resolutionKey),
+          isNull(notifications.resolvedAt),
+          gt(notifications.createdAt, new Date(Date.now() - WEDGE_RENOTIFY_MS)),
         ),
       )
       .limit(1);

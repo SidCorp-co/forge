@@ -62,6 +62,12 @@ vi.mock('./stage-overrides.js', () => ({
 // cm:edge contract -> packages/core/src/jobs/retry.ts — the literal MUST equal AUTO_RETRY_PAYLOAD_KEY there; hold.ts imports the real constant, and this stub exists only because that module's import chain validates DB env at load time
 vi.mock('./retry.js', () => ({ AUTO_RETRY_PAYLOAD_KEY: '_autoRetry' }));
 
+const resolveWedgeMock = vi.fn(async (..._args: unknown[]) => 0);
+// cm:edge contract -> packages/core/src/pipeline/wedge.ts — stubbed for the same reason as retry.js: its chain reaches notifications/routes.ts, whose env import throws at load time here
+vi.mock('../pipeline/wedge.js', () => ({
+  resolvePipelineWedge: (...args: unknown[]) => resolveWedgeMock(...args),
+}));
+
 const {
   AUTO_RELEASE_REASONS,
   HOLD_PAYLOAD_KEY,

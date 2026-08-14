@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T07:39:26.504Z",
+  "generatedAt": "2026-08-14T12:24:05.036Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -331,7 +331,7 @@
     },
     "packages/core/tests/integration/dispatcher-gates-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 247
+      "maxFunctionLines": 279
     },
     "packages/core/tests/integration/dispatcher-iss40-pipeline.test.ts": {
       "fileLines": 0,
@@ -339,7 +339,7 @@
     },
     "packages/core/tests/integration/failure-taxonomy-policy-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 288
+      "maxFunctionLines": 289
     },
     "packages/core/tests/integration/issues-job-history-route.test.ts": {
       "fileLines": 0,
@@ -387,7 +387,7 @@
     },
     "packages/core/tests/integration/runner-last-error-clear-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 204
+      "maxFunctionLines": 215
     },
     "packages/core/tests/integration/session-context-staleness-e2e.test.ts": {
       "fileLines": 0,

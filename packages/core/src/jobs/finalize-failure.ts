@@ -1,31 +1,21 @@
 /**
- * Shared failure-finalize path (ISS-280, reworked by ISS-393).
+ * Shared failure-finalize path (ISS-280, reworked by ISS-393 + RFC 0002).
  *
- * The `/complete` and `/fail` device lifecycle handlers, the dispatcher's
- * adapter-dispatch failure path, and the `reconcileOrphanedJobs` /
- * stale-detector sweepers all need the SAME tail once a job row has been
- * flipped to `failed`: route through verify-first auto-retry, reconcile the
- * linked issue's status so it is NEVER stranded at the in-flight marker,
- * mirror the linked agent_session, broadcast, emit hooks, and re-tick
- * dispatch so the freed runner slot refills.
+ * `/complete`, `/fail`, the dispatcher's adapter-dispatch failure path, and the
+ * `reconcileOrphanedJobs` / stale-detector sweepers all need the SAME tail once
+ * a job row is `failed`: verify-first auto-retry, reconcile the linked issue so
+ * it is NEVER stranded at the in-flight marker, mirror the agent_session,
+ * broadcast, emit hooks, re-tick dispatch so the freed runner slot refills. One
+ * place is the anti-drift guarantee — a silently-reaped orphan (runner died
+ * without calling `/complete`) recovers identically to a job that reported its
+ * own failure, so the cap=1 slot is always released (ISS-268 / ISS-34 root cause).
  *
- * ISS-393 — the legacy `setManualHoldBlock` fallback is gone. RFC 0002 then
- * removed the second of its two outcomes. A failed job with an issueId now
- * always reverts `issues.status` to the stage entry-status, and the difference
- * between "retry" and "no retry" is which JOB row carries the wait:
- *   - retry scheduled  → the queued retry row drives re-dispatch;
- *   - no retry, mechanical reason → a `held` successor row (`jobs/hold.ts`)
- *     waits for the condition to clear; the run stays open because a held job
- *     holds no slot;
- *   - no retry, a conclusion (`cancellation_requested`, `completed_via_*`) →
- *     nothing waits; the run closes.
- * `on_hold`/`manualHold`/`waiting` are no longer failure targets — a failure
- * path never writes `issues.status` anything but the stage entry-status.
- *
- * Keeping this in one place is the anti-drift guarantee: a silently-reaped
- * orphan (runner died without calling `/complete`) recovers identically to a
- * job that reported its own failure, so the runner cap=1 slot is always
- * released and the pipeline never wedges (ISS-268 / ISS-34 root cause).
+ * A failed job with an issueId ALWAYS reverts `issues.status` to the stage
+ * entry-status; `on_hold`/`manualHold`/`waiting` are no longer failure targets.
+ * What differs is which JOB row carries the wait: a scheduled retry row; a
+ * `held` successor (`jobs/hold.ts`) when the reason is mechanical, the run
+ * staying open because a held job holds no slot; or nothing at all for a
+ * conclusion (`cancellation_requested`, `completed_via_*`) — then it closes.
  */
 
 import { eq } from 'drizzle-orm';
@@ -53,7 +43,7 @@ import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
-import { holdJobForReason } from './hold.js';
+import { holdAutoReleases, holdJobForReason } from './hold.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -183,6 +173,11 @@ async function reconcileIssueStatusAfterFailure(
   if (retry.scheduled) return;
 
   if (heldJobId) {
+    // cm:guard a hold that RELEASES ITSELF must not notify here — `releaseHeldJobs` re-queues it the moment its condition clears, so the notification asks for nothing (its own action text read "No action needed unless this hold outlives the condition that caused it"). `alarmAgedHolds` is the escalation for one that outlives it, at 6h, which is the only point a human learns anything. Measured forge-beta 2026-08-14: 721 unresolved `pipeline_wedge` rows, the bulk of them holds that had already resumed.
+    if (holdAutoReleases(job.payload, reason)) {
+      logger.info({ jobId: heldJobId, reason }, 'hold: self-clearing, no wedge emitted');
+      return;
+    }
     const content = HOLD_WEDGE_CONTENT[reason];
     // cm:guard the wedge is the ONLY escalation a hold gets (RFC 0002 INV-7) — it must never grow into a status change or a dispatch block, which is what made the mechanical park cost an intervention per occurrence
     await emitPipelineWedge({

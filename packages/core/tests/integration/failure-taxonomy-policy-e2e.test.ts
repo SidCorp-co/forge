@@ -49,6 +49,7 @@ type Mods = {
   RETRY_TRIES_PER_DEVICE: typeof JobsRetry.RETRY_TRIES_PER_DEVICE;
   maybeQuarantineRunner: typeof RunnersQuarantine.maybeQuarantineRunner;
   RUNNER_QUARANTINE_STREAK: typeof RunnersQuarantine.RUNNER_QUARANTINE_STREAK;
+  RUNNER_QUARANTINE_TTL_MS: typeof RunnersQuarantine.RUNNER_QUARANTINE_TTL_MS;
   selectRunnerForJob: typeof RunnersSelect.selectRunnerForJob;
   onlineCapableDeviceIds: typeof RunnersSelect.onlineCapableDeviceIds;
   finalizeScheduleSessionFailure: typeof AgentSessionsSessionFailure.finalizeScheduleSessionFailure;
@@ -98,6 +99,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       RETRY_TRIES_PER_DEVICE: retryMod.RETRY_TRIES_PER_DEVICE,
       maybeQuarantineRunner: quarantineMod.maybeQuarantineRunner,
       RUNNER_QUARANTINE_STREAK: quarantineMod.RUNNER_QUARANTINE_STREAK,
+      RUNNER_QUARANTINE_TTL_MS: quarantineMod.RUNNER_QUARANTINE_TTL_MS,
       selectRunnerForJob: selectMod.selectRunnerForJob,
       onlineCapableDeviceIds: selectMod.onlineCapableDeviceIds,
       finalizeScheduleSessionFailure: sessionFailureMod.finalizeScheduleSessionFailure,

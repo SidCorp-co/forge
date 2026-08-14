@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure, deriveActionFromKind } from './fai
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(7);
+    expect(CLASSIFIER_VERSION).toBe(8);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -199,18 +199,22 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     expect(classifyFailure({ error: 'preflight_failed: hooks_path: missing' }).kind).toBe('infra');
   });
 
-  it('classifies structural preflight sub-variants as code, not infra (ISS-808)', () => {
-    expect(
-      classifyFailure({
-        error: "preflight_failed: origin_remote: no 'origin' remote configured",
-      }).kind,
-    ).toBe('code');
-    expect(
-      classifyFailure({ error: 'preflight_failed: work_tree: not a git working tree' }).kind,
-    ).toBe('code');
-    expect(classifyFailure({ error: 'preflight_failed: repo_path: not a directory' }).kind).toBe(
-      'code',
-    );
+  // cm:guard assert BOTH axes on every case — this test read only `.kind` and demanded `code`, which is how a runner-workspace fault came to blame the repo. The `terminal` half is the load-bearing one (retrying a missing git repo is the ubuntu1 loop, 8 jobs on 2026-08-14); `infra` is the half a triaging human reads.
+  it('classifies structural preflight sub-variants as infra with a terminal action (ISS-808)', () => {
+    for (const error of [
+      "preflight_failed: origin_remote: no 'origin' remote configured",
+      'preflight_failed: work_tree: not a git working tree',
+      'preflight_failed: repo_path: not a directory',
+    ]) {
+      expect(classifyFailure({ error })).toMatchObject({ kind: 'infra', action: 'terminal' });
+    }
+  });
+
+  it('still retries the non-structural preflight checks — those a runner can recover from', () => {
+    expect(classifyFailure({ error: 'preflight_failed: hooks_path: missing' })).toMatchObject({
+      kind: 'infra',
+      action: 'retry',
+    });
   });
 
   describe('cc-startup death → transient-cc (ISS-402 class)', () => {

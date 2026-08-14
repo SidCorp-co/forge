@@ -18,6 +18,7 @@ import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { checkMonthlyBudget } from './budget-check.js';
@@ -93,6 +94,17 @@ export function holdResumesItself(reason: string | null | undefined): boolean {
   return reason !== null && reason !== undefined && AUTO_RELEASE_REASONS.has(reason);
 }
 
+/**
+ * Whether holding `job` for `reason` produces a hold that will release itself.
+ *
+ * Narrower than {@link holdResumesItself}: it also spends the once-per-lineage
+ * bound, so a re-hold answers false even for a self-clearing reason.
+ */
+// cm:guard ONE expression with two readers — `holdJobForReason` stamps it and `finalize-failure.ts` decides from it whether the hold is worth a notification. A second copy of `prior === null && AUTO_RELEASE_REASONS.has(...)` is a copy that will disagree, and the disagreement is silent in both directions: a notification for a hold that clears itself, or silence on one that never will.
+export function holdAutoReleases(priorPayload: unknown, reason: string): boolean {
+  return readHoldState(priorPayload) === null && AUTO_RELEASE_REASONS.has(reason);
+}
+
 export function readHoldState(payload: unknown): HoldState | null {
   if (!payload || typeof payload !== 'object') return null;
   const raw = (payload as Record<string, unknown>)[HOLD_PAYLOAD_KEY];
@@ -113,11 +125,10 @@ export function readHoldState(payload: unknown): HoldState | null {
 export async function holdJobForReason(job: JobRow, reason: string): Promise<string | null> {
   if (!HOLD_REASONS.has(reason)) return null;
 
-  const prior = readHoldState(job.payload);
   const state: HoldState = {
     reason,
     heldAt: new Date().toISOString(),
-    autoRelease: prior === null && AUTO_RELEASE_REASONS.has(reason),
+    autoRelease: holdAutoReleases(job.payload, reason),
   };
   const basePayload = (job.payload ?? {}) as Record<string, unknown>;
   // cm:guard the timer belongs to the reasons that USE it — this was inverted, stamping `retry_after_at` on exactly the holds that never auto-release (a permanently-held job advertising a retry 10 minutes out, observed live on 4 jobs 2026-08-14) while the condition-checked ones released on the next tick regardless
@@ -230,6 +241,9 @@ export async function releaseHeldJobs(projectId: string): Promise<number> {
 
     released += 1;
     logger.info({ jobId: job.id, issueId: job.issueId, reason }, 'hold: released to queued');
+    // cm:guard resolve the wedge HERE, on the released job's own id — the wedge that named this hold (`alarmAgedHolds` at 6h) is otherwise unresolvable, and emitPipelineWedge's dedupe now reads `resolvedAt`, so an unresolved key would keep the bell red about a step that is running again. Nothing else observes a release.
+    // cm:edge lockstep -> packages/core/src/pipeline/inv7-alarms.ts — that pass is the only emitter keyed on a held job's id; if it ever keys on something else (the issue, the run), this call must follow it
+    await resolvePipelineWedge(job.id);
     try {
       if (updated.type === 'reconcile' || updated.type === 'verify_skill') {
         await enqueueReconcileJob(updated.id);

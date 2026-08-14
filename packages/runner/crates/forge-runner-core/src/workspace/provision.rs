@@ -12,8 +12,13 @@
 //!
 //! Git is OPTIONAL: a project with no repo URL whose folder already exists is a
 //! repo-less workspace (an MCP-driven storefront has no codebase) and gets every
-//! non-git step. `needs_manual_setup` is reserved for the cases nothing can
-//! proceed from — no resolvable path, or a missing folder with no URL to clone.
+//! non-git step. A folder holding only THIS provisioner's own output (see
+//! `PROVISIONED_ENTRIES`) is adopted in place — `git init` + fetch + force
+//! checkout — because `git clone` cannot write into a non-empty folder and that
+//! state is one provisioning itself creates: a repo-less workspace that later
+//! gains a repo URL. `needs_manual_setup` is reserved for what nothing can
+//! proceed from: no resolvable path, a missing folder with no URL to clone, or a
+//! folder holding content this runner did not put there.
 //!
 //! Best-effort by contract — a failure reports `failed`/`needs_manual_setup`,
 //! never panics.
@@ -106,6 +111,48 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
             )
             .await;
             return;
+        }
+        WorkspaceMode::Occupied(extra) => {
+            // cm:guard name the files and the folder, and say what to do with them — the message this replaced forwarded raw git stderr ("destination path '/home/forge/projects/anhome' already exists and is not an empty directory"), which states a fact and asks for nothing. An operator read it 8 times over 8 hours without a next step.
+            let listed = extra.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+            let more = if extra.len() > 5 {
+                format!(" (+{} more)", extra.len() - 5)
+            } else {
+                String::new()
+            };
+            report(
+                client,
+                &p.runner_id,
+                "needs_manual_setup",
+                Some(&format!(
+                    "{} already holds files this runner did not create ({listed}{more}), so the repo cannot be cloned or adopted into it. Either clone the project there by hand and re-assign, or move/empty the folder and re-provision.",
+                    repo_path.display()
+                )),
+            )
+            .await;
+            return;
+        }
+        WorkspaceMode::Adopt => {
+            tracing::info!(
+                "[provision] project={} adopting repo into existing workspace {}",
+                p.slug,
+                repo_path.display()
+            );
+            let repo_url = p
+                .repo_url
+                .as_deref()
+                .map(str::trim)
+                .expect("WorkspaceMode::Adopt implies a non-empty repo url");
+            report(client, &p.runner_id, "cloning", None).await;
+            if let Err(detail) = adopt_repo(
+                repo_url,
+                &repo_path,
+                ssh_cmd.as_deref(),
+                p.branch.as_deref(),
+            ) {
+                report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
+                return;
+            }
         }
         WorkspaceMode::Clone => {
             let repo_url = p
@@ -232,6 +279,62 @@ fn clone_repo(
     Ok(())
 }
 
+/// Turn an existing non-empty folder into a checkout of `repo_url` WITHOUT
+/// moving it: `git init`, add the remote, fetch, then force the base branch out
+/// over whatever provisioning had already written there.
+///
+/// This is the documented recipe for the one thing `git clone` refuses. It is
+/// only ever reached from `WorkspaceMode::Adopt`, which has already established
+/// that every file present is one this provisioner wrote.
+// cm:guard `checkout -f` is safe ONLY under that precondition — `PROVISIONED_ENTRIES` is what establishes it, and the two must be read together. Calling this on an arbitrary folder discards uncommitted work with no prompt.
+fn adopt_repo(
+    repo_url: &str,
+    repo_path: &Path,
+    ssh_cmd: Option<&str>,
+    branch: Option<&str>,
+) -> std::result::Result<(), String> {
+    let git = |args: &[&str]| -> std::result::Result<String, String> {
+        let mut cmd = Command::new("git");
+        cmd.arg("-C").arg(repo_path).args(args);
+        if let Some(ssh) = ssh_cmd {
+            cmd.env("GIT_SSH_COMMAND", ssh);
+        }
+        let out = cmd
+            .output()
+            .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
+        if !out.status.success() {
+            return Err(format!(
+                "git {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+
+    git(&["init"])?;
+    // An adopt may re-run (a fetch that failed on a network blip), so the remote
+    // may already be there. Set it either way rather than branching on `git
+    // remote get-url`, which is one more process for the same outcome.
+    if git(&["remote", "add", "origin", repo_url]).is_err() {
+        git(&["remote", "set-url", "origin", repo_url])?;
+    }
+    git(&["fetch", "--prune", "origin"])?;
+
+    let target = match branch.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => b.to_string(),
+        None => {
+            // cm:why derive the default from the REMOTE, never assume `main` — a repo whose default is `master`/`develop` would otherwise land on a branch that does not exist and fail the checkout after a successful fetch
+            let _ = git(&["remote", "set-head", "origin", "--auto"]);
+            let head = git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])?;
+            head.strip_prefix("origin/").unwrap_or(&head).to_string()
+        }
+    };
+    let remote_ref = format!("origin/{target}");
+    git(&["checkout", "-f", "-B", &target, &remote_ref])?;
+    Ok(())
+}
+
 /// Set repo-local `core.sshCommand` so pushes use the project deploy key.
 fn set_repo_ssh_command(repo_path: &Path, ssh_cmd: &str) {
     let out = Command::new("git")
@@ -264,28 +367,68 @@ enum WorkspaceMode {
     AlreadyRepo,
     /// Folder exists, no repo URL: a deliberate repo-less workspace.
     RepoLess,
-    /// Folder exists or not, repo URL present: clone into it.
+    /// Missing or empty folder, repo URL present: clone into it.
     Clone,
+    /// Folder holds only this provisioner's own output: adopt the repo in place.
+    Adopt,
+    /// Occupied by content this runner did not write; the names that are in the way.
+    Occupied(Vec<String>),
     /// Nothing to work with — no folder and nothing to clone from.
     ManualSetup,
 }
 
-// cm:guard the ONLY branch that may report `needs_manual_setup` is a MISSING folder
-// with no URL. An existing folder without a URL is an MCP-driven project that has
-// no codebase by design; refusing it there is what forced a fake `git init` before
-// any such store could be provisioned at all.
+/// Everything this provisioner writes into a workspace itself.
+// cm:guard keep this in lockstep with what `finish_workspace` writes — it is the entire basis for calling an adopt non-destructive. A name that belongs to the repo but is missing here turns `Adopt` into `Occupied` (harmless, just a manual step); a name this runner writes but is NOT here means a real file gets force-checked-out over, which is data loss.
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/orientation.rs — writes `.forge/orientation.md` and `CLAUDE.md`
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/mcp/config.rs — writes `.mcp.json`
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/skill_sync.rs — writes `.claude/skills/`
+const PROVISIONED_ENTRIES: &[&str] = &[".claude", ".mcp.json", ".forge", "CLAUDE.md"];
+
+/// Entries in `dir` that this provisioner did not write. `Err` on an unreadable
+/// directory, which the caller must treat as occupied rather than as empty.
+fn foreign_entries(dir: &Path) -> std::io::Result<Vec<String>> {
+    let mut extra = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let name = entry?.file_name().to_string_lossy().into_owned();
+        if !PROVISIONED_ENTRIES.contains(&name.as_str()) {
+            extra.push(name);
+        }
+    }
+    extra.sort();
+    Ok(extra)
+}
+
+// cm:guard an existing folder + a repo URL is NOT automatically `Clone` — `git clone` refuses a non-empty destination ("destination path '...' already exists and is not an empty directory"), and provisioning is what put files there: a repo-less workspace gets `.mcp.json`/`.forge`/`CLAUDE.md`, so the day someone sets the repo URL every re-provision fails identically, forever, with a raw git error and no way forward (ubuntu1/anhome, 2026-08-14).
+// cm:guard an existing folder without a URL is an MCP-driven project that has no codebase by design — it must stay `RepoLess`. Refusing it is what forced a fake `git init` before any such store could be provisioned at all.
 fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode {
     if repo_path.join(".git").exists() {
         return WorkspaceMode::AlreadyRepo;
     }
     let has_url = repo_url.map(str::trim).is_some_and(|u| !u.is_empty());
-    if has_url {
-        return WorkspaceMode::Clone;
+    if !repo_path.is_dir() {
+        return if has_url {
+            WorkspaceMode::Clone
+        } else {
+            WorkspaceMode::ManualSetup
+        };
     }
-    if repo_path.is_dir() {
-        WorkspaceMode::RepoLess
-    } else {
-        WorkspaceMode::ManualSetup
+    if !has_url {
+        return WorkspaceMode::RepoLess;
+    }
+    match foreign_entries(repo_path) {
+        Ok(extra) if !extra.is_empty() => WorkspaceMode::Occupied(extra),
+        Ok(_) => {
+            // cm:why an empty folder still takes the plain clone — it is the cheaper, better-understood path, and adopt exists only for the case clone cannot do
+            if std::fs::read_dir(repo_path)
+                .map(|d| d.count() == 0)
+                .unwrap_or(false)
+            {
+                WorkspaceMode::Clone
+            } else {
+                WorkspaceMode::Adopt
+            }
+        }
+        Err(e) => WorkspaceMode::Occupied(vec![format!("<unreadable: {e}>")]),
     }
 }
 
@@ -356,5 +499,43 @@ mod tests {
     fn only_a_missing_folder_with_no_url_needs_manual_setup() {
         let dir = tmp("missing-no-url");
         assert_eq!(classify_workspace(&dir, None), WorkspaceMode::ManualSetup);
+    }
+
+    // cm:guard this is the whole state the Adopt mode exists for — a repo-less workspace that LATER gained a repo URL. Before it, every re-provision reported the raw git refusal and nothing an operator could act on (ubuntu1/anhome, 8 hours, 2026-08-14). If this test ever expects Clone again, the loop is back.
+    #[test]
+    fn a_folder_holding_only_our_own_output_is_adopted_not_cloned() {
+        let dir = tmp("adopt");
+        fs::create_dir_all(dir.join(".claude/skills")).unwrap();
+        fs::create_dir_all(dir.join(".forge")).unwrap();
+        fs::write(dir.join(".mcp.json"), "{}").unwrap();
+        fs::write(dir.join("CLAUDE.md"), "pointer").unwrap();
+        assert_eq!(
+            classify_workspace(&dir, Some("git@example.com:a/b.git")),
+            WorkspaceMode::Adopt
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // cm:guard a folder with anything else in it must NEVER be adopted — adopt ends in `checkout -f`, so the only thing separating a recovery from silent data loss is this branch
+    #[test]
+    fn a_folder_with_foreign_files_is_occupied_and_names_them() {
+        let dir = tmp("occupied");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(".mcp.json"), "{}").unwrap();
+        fs::write(dir.join("notes.txt"), "mine").unwrap();
+        fs::create_dir_all(dir.join("src")).unwrap();
+        assert_eq!(
+            classify_workspace(&dir, Some("git@example.com:a/b.git")),
+            WorkspaceMode::Occupied(vec!["notes.txt".into(), "src".into()])
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_repo_less_workspace_stays_repo_less_even_when_we_wrote_into_it() {
+        let dir = tmp("repo-less-provisioned");
+        fs::create_dir_all(dir.join(".forge")).unwrap();
+        assert_eq!(classify_workspace(&dir, None), WorkspaceMode::RepoLess);
+        let _ = fs::remove_dir_all(&dir);
     }
 }
