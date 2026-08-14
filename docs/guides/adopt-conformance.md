@@ -74,7 +74,7 @@ your stack — you are proving the loop works, not covering everything.
 | Axis | Owns | Typical tool |
 |---|---|---|
 | form | formatting, lint rules, file/function length | biome · eslint · pint · ruff · rubocop |
-| knowledge | couplings no analyser can derive | [codemap](https://github.com/SidCorp-co/codemap) |
+| knowledge | couplings no analyser can derive | codemap · your own checker |
 | relations | which module may depend on which | archmap · dependency-cruiser · deptrac |
 | behaviour | whether a test asserts behaviour, whether flows are walked | your own checker |
 | language | source-language policy, banned strings | your own checker |
