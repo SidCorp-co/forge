@@ -23,6 +23,11 @@ pub struct MeRunner {
     pub repo_path: Option<String>,
     pub branch: Option<String>,
     pub status: String,
+    /// `standard` (code repo) or `website` (Epodsystem storefront, no git repo
+    /// by design). `None` when talking to a core that predates the field.
+    // cm:guard `Option` + `#[serde(default)]` is what keeps an older core from breaking a runner update, and the ABSENT case must stay the CAUTIOUS one — `requires_preflight` reads `None` as "assume git-backed", so a standard project can never lose its git checks because the field failed to arrive
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 /// List the projects this device is assigned to. `401` maps to a clear
@@ -84,4 +89,28 @@ pub async fn patch_runner(
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A core that predates the field must still deserialize — and land on the
+    /// cautious side, since `None` makes `requires_preflight` demand the git
+    /// checks.
+    #[test]
+    fn kind_absent_deserializes_to_none() {
+        let json = r#"{"projectId":"p1","runnerId":"r1","slug":"app","baseBranch":"main",
+                       "repoPath":"/srv/app","branch":null,"status":"online"}"#;
+        let parsed: MeRunner = serde_json::from_str(json).expect("older core payload must parse");
+        assert_eq!(parsed.kind, None);
+    }
+
+    #[test]
+    fn kind_is_read_when_core_sends_it() {
+        let json = r#"{"projectId":"p1","runnerId":"r1","slug":"store","baseBranch":null,
+                       "repoPath":"/srv/store","branch":null,"status":"online","kind":"website"}"#;
+        let parsed: MeRunner = serde_json::from_str(json).expect("payload must parse");
+        assert_eq!(parsed.kind.as_deref(), Some("website"));
+    }
 }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T16:39:04.175Z",
+  "generatedAt": "2026-08-14T17:24:53.428Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -42,11 +42,11 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/devices/routes.test.ts": {
-      "fileLines": 555,
+      "fileLines": 568,
       "maxFunctionLines": 0
     },
     "packages/core/src/devices/routes.ts": {
-      "fileLines": 676,
+      "fileLines": 678,
       "maxFunctionLines": 0
     },
     "packages/core/src/index.ts": {
@@ -258,11 +258,11 @@
       "maxFunctionLines": 180
     },
     "packages/core/src/projects/routes.test.ts": {
-      "fileLines": 1670,
-      "maxFunctionLines": 322
+      "fileLines": 1712,
+      "maxFunctionLines": 353
     },
     "packages/core/src/projects/routes.ts": {
-      "fileLines": 821,
+      "fileLines": 826,
       "maxFunctionLines": 0
     },
     "packages/core/src/prompt/user.test.ts": {

@@ -98,6 +98,9 @@ export const updateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
+    // cm:guard `kind` was create-only for two months, which made it unreachable for every project that already existed — including the one storefront it was added for (mowment stayed `standard` while ISS-808 was written about it being a storefront). A shape that can only be declared at birth is a shape nobody can correct.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `requires_preflight` reads this value out of `/me/runners`; flipping a project to `website` turns OFF its git preflight and workspace refresh, so this is a behaviour switch, not a label
+    kind: z.enum(projectKinds).optional(),
     repoPath: z.string().trim().max(500).nullable().optional(),
     repoUrl: z.string().trim().max(500).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
@@ -450,6 +453,7 @@ projectRoutes.patch(
     }
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.description !== undefined) updates.description = patch.description;
+    if (patch.kind !== undefined) updates.kind = patch.kind;
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
@@ -515,6 +519,7 @@ projectRoutes.patch(
       orgId: projects.orgId,
       createdBy: projects.createdBy,
       description: projects.description,
+      kind: projects.kind,
       repoPath: projects.repoPath,
       repoUrl: projects.repoUrl,
       baseBranch: projects.baseBranch,

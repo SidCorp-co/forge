@@ -5,6 +5,7 @@ import { db } from '../../db/client.js';
 import {
   agentSessions,
   type ProjectMemberRole,
+  projectKinds,
   projectMembers,
   projects,
 } from '../../db/schema.js';
@@ -227,6 +228,8 @@ const updateInputSchema = z
         repoPath: z.string().trim().max(500).nullable().optional(),
         baseBranch: z.string().trim().max(100).nullable().optional(),
         productionBranch: z.string().trim().max(100).nullable().optional(),
+        // cm:guard exposed here and not left to REST because REST PATCH needs a user JWT — a device/MCP principal cannot reach it, and the only projects that need `website` are set up by an agent. Removing it makes the field create-only again for anyone without a browser session.
+        kind: z.enum(projectKinds).optional(),
         // cm:guard scoped write for `previewDeploy.notes` ONLY — the rest of previewDeploy holds testCredentials and stays REST-only. This merges into the existing jsonb; it must never replace it, or a note would delete the credentials beside it.
         previewDeployNotes: z.string().trim().max(8000).nullable().optional(),
       })
@@ -261,7 +264,7 @@ const updateInputSchema = z
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   description:
-    "Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is otherwise read-only via forge_projects.get, with ONE scoped exception: `previewDeployNotes` writes `previewDeploy.notes` — the how-to-use and known limits of the project's test resources (which surfaces the test account can reach, which states this environment never contains, what must not be faked). Write it as prose for whoever plans a live walk. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it.",
+    "Update project settings (name, description, repoPath, baseBranch, productionBranch, kind). `kind` is the project's SHAPE, not a label: `website` means an Epodsystem-backed storefront where the store is the source of truth and a git repo is optional, and the runner then skips the git preflight and the workspace refresh for every job. Set it on a project that has no repo; never set it on one that does, or its stages stop verifying the checkout they run in. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is otherwise read-only via forge_projects.get, with ONE scoped exception: `previewDeployNotes` writes `previewDeploy.notes` — the how-to-use and known limits of the project's test resources (which surfaces the test account can reach, which states this environment never contains, what must not be faked). Write it as prose for whoever plans a live walk. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -300,6 +303,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.patch.productionBranch !== undefined) {
       updates.productionBranch = input.patch.productionBranch;
     }
+    if (input.patch.kind !== undefined) updates.kind = input.patch.kind;
     if (input.patch.previewDeployNotes !== undefined) {
       const [row] = await db
         .select({ previewDeploy: projects.previewDeploy })
@@ -323,6 +327,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
         repoPath: projects.repoPath,
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
+        kind: projects.kind,
       });
 
     const project = updated[0];

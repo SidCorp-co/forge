@@ -31,6 +31,9 @@ pub(crate) struct Resolved {
     /// refresh reads it — the fast-forward target must be the base, not
     /// whatever the folder currently sits on.
     pub base_branch: Option<String>,
+    /// The project's shape per the server (`standard` / `website`). Decides
+    /// whether the git preflight applies at all.
+    pub kind: Option<String>,
 }
 
 /// Merge server assignments with local config bindings for one project id.
@@ -66,22 +69,38 @@ pub(crate) fn resolve_repo(
         .filter(|b| !b.is_empty())
         .map(str::to_string);
 
+    let kind = server_match
+        .and_then(|r| r.kind.as_deref())
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_string);
+
     match repo_path {
         Some(repo_path) => Ok(Resolved {
             slug,
             repo_path,
             base_branch,
+            kind,
         }),
         None => Err(slug),
     }
 }
 
-/// `reconcile`/`verify_skill` jobs edit a skill body via MCP and never touch
-/// git, so the pipeline-lane git preflight (work tree / origin remote /
-/// reachability) does not apply to them — e.g. a storefront project has no
-/// repo by design (ISS-808).
-fn requires_preflight(job_type: &str) -> bool {
-    !matches!(job_type, "reconcile" | "verify_skill")
+/// Whether this job must pass the git preflight (work tree / origin remote /
+/// reachability) before the runner claims it.
+///
+/// Two independent reasons it may not apply:
+///   - the JOB never touches git — `reconcile`/`verify_skill` edit a skill body
+///     over MCP (ISS-808);
+///   - the PROJECT has no git repo by design — a `website` project is an
+///     Epodsystem storefront whose deliverable is store content, not commits.
+// cm:guard fail CLOSED on anything unrecognised, and `None` is unrecognised. A missing or unknown `kind` must REQUIRE the preflight — that is what keeps a normal project from losing its git checks because a field was dropped from `/me/runners` or a core predates it. Only the explicit string `website` skips.
+// cm:guard `website` was declared by ISS-387 (schema.ts: "a git repo is optional") and read by NOTHING for two months — ISS-808 then closed the reconcile half and put the pipeline half out of scope on the premise that storefront projects "already do not" run git-based stages. mowment received a `triage` job on 2026-08-14 and held on `preflight_failed: origin_remote`, so that premise was false. This function is the wire those two issues each left to the other.
+fn requires_preflight(job_type: &str, project_kind: Option<&str>) -> bool {
+    if matches!(job_type, "reconcile" | "verify_skill") {
+        return false;
+    }
+    project_kind != Some("website")
 }
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
@@ -220,7 +239,8 @@ pub async fn handle(
     // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
     // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
     // pattern-matches on this exact string to pick failureKind (ISS-808).
-    if requires_preflight(&ja.job_type) {
+    // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
+    if requires_preflight(&ja.job_type, resolved.kind.as_deref()) {
         if let Err(err) = preflight::preflight(&resolved.repo_path).await {
             let msg = format!("preflight_failed: {err}");
             tracing::error!("[job {job_id}] {msg}");
@@ -432,6 +452,7 @@ mod tests {
             repo_path: repo_path.map(str::to_string),
             branch: None,
             status: "online".into(),
+            kind: Some("standard".into()),
         }
     }
 
@@ -483,14 +504,38 @@ mod tests {
 
     #[test]
     fn preflight_skipped_for_reconcile_and_verify_skill() {
-        assert!(!requires_preflight("reconcile"));
-        assert!(!requires_preflight("verify_skill"));
+        assert!(!requires_preflight("reconcile", Some("standard")));
+        assert!(!requires_preflight("verify_skill", Some("standard")));
+    }
+
+    /// A `website` project has no git repo by design, so no job type preflights.
+    #[test]
+    fn preflight_skipped_for_every_job_type_on_a_website_project() {
+        for job_type in ["triage", "plan", "code", "fix", "review", "release"] {
+            assert!(
+                !requires_preflight(job_type, Some("website")),
+                "{job_type} must not preflight on a storefront"
+            );
+        }
+    }
+
+    /// An absent or unknown kind must FAIL CLOSED — a dropped field can never
+    /// cost a normal project its git checks.
+    #[test]
+    fn preflight_required_when_the_kind_is_missing_or_unknown() {
+        assert!(requires_preflight("code", None));
+        assert!(requires_preflight("code", Some("")));
+        assert!(requires_preflight("code", Some("Website")));
+        assert!(requires_preflight("code", Some("something-new")));
     }
 
     #[test]
     fn preflight_required_for_pipeline_job_types() {
         for job_type in ["triage", "plan", "code", "fix", "review"] {
-            assert!(requires_preflight(job_type), "{job_type} should preflight");
+            assert!(
+                requires_preflight(job_type, Some("standard")),
+                "{job_type} should preflight"
+            );
         }
     }
 }

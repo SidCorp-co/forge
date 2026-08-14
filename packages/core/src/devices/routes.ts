@@ -468,6 +468,8 @@ deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
       repoPath: runners.repoPath,
       branch: runners.branch,
       status: runners.status,
+      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/runners.rs — `MeRunner.kind` deserializes this field, and `requires_preflight` decides from it whether a job runs the git preflight at all. Dropping it here does not fail any type check: the runner defaults a missing field to None and then REQUIRES preflight, so a storefront project silently goes back to failing every job on `origin_remote`.
+      kind: projects.kind,
     })
     .from(runners)
     .innerJoin(projects, eq(projects.id, runners.projectId))
