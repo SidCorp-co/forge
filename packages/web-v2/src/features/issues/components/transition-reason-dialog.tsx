@@ -31,8 +31,9 @@ const COPY: Record<ReasonStatus, CopySpec> = {
   waiting: {
     title: "Park this issue for a human",
     confirm: "Park",
+    // cm:guard plain prose only — this string renders in a bare <p>, so markdown backticks reach the user as literal characters (caught on forge-beta 2026-08-14); the same applies to every blurb and placeholder in this file
     blurb:
-      "`waiting` stops the pipeline until a person acts, so it has to say what that person is being asked for. Nobody can answer a question that was never written down.",
+      "Parking stops the pipeline until a person acts, so it has to say what that person is being asked for. Nobody can answer a question that was never written down.",
     placeholder: "e.g. need a Stripe test account with 3DS enabled — I cannot create one",
   },
   needs_info: {
