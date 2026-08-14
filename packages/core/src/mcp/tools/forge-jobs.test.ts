@@ -24,6 +24,14 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+// cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts — these stubs must keep the real return SHAPES (a Map for the batch, a DispatchBarrier for the single job); dispatch-gates.test.ts owns whether the gate reasons themselves are right, this file only covers the MCP layer attaching them
+const gateReasonsMock = vi.fn(async (_projectId: string) => new Map<string, string>());
+const assertDispatchableMock = vi.fn(async (_jobId: string) => ({ ok: true }) as unknown);
+vi.mock('../../jobs/dispatch-gates.js', () => ({
+  gateReasonsForQueuedJobs: (projectId: string) => gateReasonsMock(projectId),
+  assertDispatchable: (jobId: string) => assertDispatchableMock(jobId),
+}));
+
 // ISS-442 C0 — the MCP cancel tool delegates to the shared cancelJob() helper.
 // Mock it here so these tests cover only the MCP layer (writer gate, arg
 // passthrough, JobCancelError → Error mapping); the helper's transactional
@@ -122,6 +130,48 @@ describe('forge_jobs.list', () => {
 
     expect(result.jobs).toHaveLength(1);
     expect(result.jobs[0]?.id).toBe(JOB_ID);
+  });
+
+  // cm:guard the gate reason must reach the CALLER, not just exist server-side — `queued` is the status of a job about to run AND of one blocked for weeks, and every diagnosis of the latter before this went through a hand-written database script
+  it('attaches gateReason to queued rows', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    gateReasonsMock.mockResolvedValueOnce(new Map([[JOB_ID, 'blocked_by']]));
+
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      jobs: Array<{ gateReason?: string | null }>;
+    };
+
+    expect(gateReasonsMock).toHaveBeenCalledWith(PROJECT_ID);
+    expect(result.jobs[0]?.gateReason).toBe('blocked_by');
+  });
+
+  it('reports gateReason null for a queued job that is merely awaiting its turn', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    gateReasonsMock.mockResolvedValueOnce(new Map());
+
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      jobs: Array<{ gateReason?: string | null }>;
+    };
+
+    expect(result.jobs[0]?.gateReason).toBeNull();
+  });
+
+  // cm:guard skip the gate query when nothing is queued — a terminal-only page must not pay for a scan whose every answer would be omitted anyway
+  it('does not query gates when no row is queued', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'done' as const }]);
+
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      jobs: Array<{ gateReason?: string | null }>;
+    };
+
+    expect(gateReasonsMock).not.toHaveBeenCalled();
+    expect(result.jobs[0]).not.toHaveProperty('gateReason');
   });
 
   it('rejects non-member with FORBIDDEN', async () => {

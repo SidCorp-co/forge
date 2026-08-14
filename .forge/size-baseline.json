@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T07:05:07.941Z",
+  "generatedAt": "2026-08-14T07:39:26.504Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -86,7 +86,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/pipeline-health.ts": {
-      "fileLines": 544,
+      "fileLines": 599,
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/routes.ts": {
@@ -98,7 +98,7 @@
       "maxFunctionLines": 169
     },
     "packages/core/src/jobs/dispatch-gates.test.ts": {
-      "fileLines": 734,
+      "fileLines": 800,
       "maxFunctionLines": 0
     },
     "packages/core/src/jobs/dispatcher.test.ts": {
@@ -379,7 +379,7 @@
     },
     "packages/core/tests/integration/pipeline-health-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 212
+      "maxFunctionLines": 237
     },
     "packages/core/tests/integration/pipeline-per-project-config.test.ts": {
       "fileLines": 0,

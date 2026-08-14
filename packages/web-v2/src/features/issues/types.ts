@@ -217,9 +217,11 @@ export interface IssueDetail extends IssueRow {
 export type WaitingReason =
   | "issue_busy"
   | "job_held"
+  | "run_not_running"
   | "waiting_on_dep"
   | "waiting_on_decomp_children"
   | "project_full"
+  | "runner_stale"
   | "runner_full";
 
 // cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`, the AUTHORED kind an agent or human writes alongside `status='waiting'`; it is never derived, so an absent kind must render the generic copy rather than a guessed one

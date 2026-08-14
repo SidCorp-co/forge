@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { jobEvents, jobStatuses, jobs, jobTypes } from '../../db/schema.js';
 import { cancelJob, JobCancelError } from '../../jobs/cancel-job.js';
+import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/dispatch-gates.js';
 import {
   assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
@@ -63,7 +64,7 @@ const cancelInputSchema = z
 export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_jobs.list',
   description:
-    'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. A hard response-size cap trims the oldest rows when needed; when that happens the result carries truncated:true + a notice (narrow with filters or a smaller limit). Requires device owner to be a project member.',
+    'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Every `queued` row also carries `gateReason` — the exact dispatch gate holding it (`blocked_by`, `runner_stale`, `pipeline_run_not_running`, …) or null when it is dispatchable and merely awaiting its turn. READ IT before assuming a queued job is progressing: `queued` is the status both of a job about to run and of one blocked indefinitely. A hard response-size cap trims the oldest rows when needed; when that happens the result carries truncated:true + a notice (narrow with filters or a smaller limit). Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, status, type, issueId, limit } = listInputSchema.parse(args);
@@ -116,21 +117,30 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
       .orderBy(desc(jobs.queuedAt))
       .limit(limit ?? DEFAULT_LIST_LIMIT);
 
+    // cm:why one extra project-scoped query, not one per row — the gate is stateless, so `queued` alone cannot say whether a job is about to run or blocked forever, and without this the only way to find out is a hand-written script against the database (which is how 11 jobs came to sit queued for 6-22 days unnoticed)
+    const gates = rows.some((r) => r.status === 'queued')
+      ? await gateReasonsForQueuedJobs(projectId)
+      : new Map<string, string>();
+    const withGates = rows.map((r) => ({
+      ...r,
+      ...(r.status === 'queued' ? { gateReason: gates.get(r.id) ?? null } : {}),
+    }));
+
     // Hard total-response cap: trim from the tail (oldest) until the serialized
     // payload fits MAX_RESPONSE_CHARS, so a large explicit `limit` (or a verbose
     // run of jobs) can never spill to a file. Always keep at least one row.
-    let kept = rows;
+    let kept = withGates;
     while (kept.length > 1 && JSON.stringify({ jobs: kept }).length > MAX_RESPONSE_CHARS) {
       kept = kept.slice(0, -1);
     }
 
-    if (kept.length < rows.length) {
+    if (kept.length < withGates.length) {
       return {
         jobs: kept,
         truncated: true,
         returned: kept.length,
         requested: limit ?? DEFAULT_LIST_LIMIT,
-        notice: `Response truncated to the ${kept.length} most recent of ${rows.length} jobs to stay under the MCP output cap. Narrow with status/type/issueId filters or a smaller limit; fetch full job bodies via forge_jobs.get.`,
+        notice: `Response truncated to the ${kept.length} most recent of ${withGates.length} jobs to stay under the MCP output cap. Narrow with status/type/issueId filters or a smaller limit; fetch full job bodies via forge_jobs.get.`,
       };
     }
 
@@ -141,14 +151,15 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
 export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.get',
   description:
-    'Fetch a single job by id including its linked agentSessionId. Requires the principal to be a member of the job’s project; PAT principals must additionally have the job’s project in their allowlist.',
+    'Fetch a single job by id including its linked agentSessionId. A `queued` job also carries `gate`: `{ ok: true }` when it is dispatchable and merely awaiting its turn, or `{ ok: false, reason }` naming the gate holding it — the answer to "why has this been queued for days?", which `status` alone cannot give. Requires the principal to be a member of the job’s project; PAT principals must additionally have the job’s project in their allowlist.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { jobId } = getInputSchema.parse(args);
     const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!row) throw new Error('NOT_FOUND: job not found');
     await assertPrincipalIsMember(principal, row.projectId);
-    return { job: row };
+    if (row.status !== 'queued') return { job: row };
+    return { job: row, gate: await assertDispatchable(row.id) };
   },
 });
 

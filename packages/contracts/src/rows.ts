@@ -22,9 +22,11 @@ export type Project = typeof schema.projects.$inferSelect;
 export type PipelineWaitingReason =
   | 'issue_busy'
   | 'job_held'
+  | 'run_not_running'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_children'
   | 'project_full'
+  | 'runner_stale'
   | 'runner_full';
 
 // cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`; a value here that core cannot store renders a banner nothing can produce, and the reverse leaves an authored kind falling through to generic copy

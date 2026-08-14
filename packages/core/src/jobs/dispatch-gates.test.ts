@@ -24,6 +24,8 @@ vi.mock('../logger.js', () => ({
 
 const {
   assertDispatchable,
+  freshRunnerAvailability,
+  gateReasonsForQueuedJobs,
   checkLayer4RunnerFull,
   checkLayer5RunnerHeartbeat,
   pickNextDispatchableJobForProject,
@@ -747,5 +749,69 @@ describe('assertDispatchable', () => {
     );
     const matches = src.match(/running_ids\s+AS\s*\(/g) ?? [];
     expect(matches.length).toBe(1);
+  });
+});
+
+// cm:guard this and `assertDispatchable` MUST take their CASE from the one builder — the arm ORDER is the answer they return, so two copies report a different "most specific reason" for the same job and the surfaces that read them start contradicting each other
+describe('gateReasonsForQueuedJobs', () => {
+  it('maps only the gated jobs, leaving dispatchable ones out', async () => {
+    selectChainOnce([{ agentConfig: { pipelineConfig: { maxConcurrentIssues: 1 } } }]);
+    dbExecute.mockResolvedValueOnce([
+      { id: 'j1', reason: 'blocked_by' },
+      { id: 'j2', reason: null },
+      { id: 'j3', reason: 'runner_stale' },
+    ]);
+
+    const gates = await gateReasonsForQueuedJobs('p1');
+
+    expect(gates.get('j1')).toBe('blocked_by');
+    expect(gates.get('j3')).toBe('runner_stale');
+    expect(gates.has('j2')).toBe(false);
+    expect(gates.size).toBe(2);
+  });
+
+  it('returns an empty map when the project has no queued jobs', async () => {
+    selectChainOnce([{ agentConfig: null }]);
+    dbExecute.mockResolvedValueOnce([]);
+
+    expect((await gateReasonsForQueuedJobs('p1')).size).toBe(0);
+  });
+
+  // cm:guard the batch query must stay scoped to `status='queued'` — a dispatched or running job has no gate to report, and including one would label live work with the reason it passed on its way out of the queue
+  it('scopes the scan to the project and to queued jobs', async () => {
+    selectChainOnce([{ agentConfig: null }]);
+    dbExecute.mockResolvedValueOnce([]);
+
+    await gateReasonsForQueuedJobs('proj-x');
+
+    const rendered = JSON.stringify(dbExecute.mock.calls.at(-1)?.[0]);
+    expect(rendered).toContain('proj-x');
+    expect(rendered).toContain('queued');
+  });
+});
+
+describe('freshRunnerAvailability', () => {
+  it('returns the picker’s own two counts', async () => {
+    dbExecute.mockResolvedValueOnce([{ total: 3, with_capacity: 1 }]);
+
+    expect(await freshRunnerAvailability('p1')).toEqual({ total: 3, withCapacity: 1 });
+  });
+
+  // cm:guard an empty pool must read as 0/0, never as an absent row the caller coerces to "available" — pipelineHealth turns total>0 into "waiting for a slot" and total===0 into "no runner is online", opposite verdicts
+  it('reads an empty result as no runners at all', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+
+    expect(await freshRunnerAvailability('p1')).toEqual({ total: 0, withCapacity: 0 });
+  });
+
+  // cm:guard it must read `fresh_capable_runners`, not a local copy of the availability WHERE — a second copy is how pipelineHealth came to disagree with the gate and report nothing for 11 jobs stuck behind dead runners
+  it('counts from the barrier builder’s CTE, scoped to the project', async () => {
+    dbExecute.mockResolvedValueOnce([{ total: 0, with_capacity: 0 }]);
+
+    await freshRunnerAvailability('proj-y');
+
+    const rendered = JSON.stringify(dbExecute.mock.calls.at(-1)?.[0]);
+    expect(rendered).toContain('fresh_capable_runners');
+    expect(rendered).toContain('proj-y');
   });
 });

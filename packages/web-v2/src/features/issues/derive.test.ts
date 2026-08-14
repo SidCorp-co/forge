@@ -509,9 +509,11 @@ describe("deriveBlockerState", () => {
   it("maps each pipelineHealth.waitingOn reason", () => {
     for (const reason of [
       "issue_busy",
+      "run_not_running",
       "waiting_on_dep",
       "waiting_on_decomp_children",
       "project_full",
+      "runner_stale",
       "runner_full",
     ] as const) {
       const b = deriveBlockerState(
@@ -523,6 +525,19 @@ describe("deriveBlockerState", () => {
       expect(b?.reason.length).toBeGreaterThan(0);
     }
   });
+
+  // cm:guard `run_not_running` and `runner_stale` must never say "No action" — a paused run and an empty runner pool are the only two queued gates that cannot clear themselves, so the reassuring copy the capacity waits use is a lie there (measured 2026-08-14: ISS-576/ISS-652 paused 3 days, 11 jobs behind dead runners up to 22)
+  it.each(["run_not_running", "runner_stale"] as const)(
+    "gives %s an action instead of reassurance",
+    (reason) => {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "in_progress" }),
+        { stage: "code", waitingOn: { reason, since: "x", details: {} } },
+        undefined,
+      );
+      expect(b?.whoMustAct).not.toContain("No action");
+    },
+  );
 
   // cm:guard the two halves of `job_held` must read differently — for months this said "No action — it resumes itself" for every hold reason, while three of the five never self-release, so the UI told the reader to sit tight in front of a step that was waiting on them
   it("splits job_held copy on whether the hold clears itself", () => {

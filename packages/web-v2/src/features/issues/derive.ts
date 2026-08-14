@@ -509,10 +509,13 @@ function heldCopy(holdReason: unknown): { reason: string; who: string } {
 const WAITING_REASON_COPY: Record<WaitingReason, { reason: string; who: string }> = {
   issue_busy: { reason: "Another job is already active on this issue.", who: "Wait for the active run to finish." },
   job_held: heldCopy(null),
+  // cm:guard these two must NOT say "no action" — unlike the capacity waits below, nothing clears them by itself: the run stays paused until someone resumes it and the pool stays empty until a host comes back. That silence is what let ISS-576/ISS-652 sit paused for 3 days and 11 jobs sit behind dead runners for up to 22.
+  run_not_running: { reason: "The step is queued, but its pipeline run is paused or already closed — nothing will dispatch it.", who: "Resume the run (or cancel it and re-open the issue for a fresh one)." },
+  runner_stale: { reason: "No runner is online for this project — every host is offline, stale, or rate-limited.", who: "Bring a runner back (check the Runners tab); the step dispatches on the next tick." },
   waiting_on_dep: { reason: "Blocked by a dependency that hasn't merged to the base branch yet.", who: "Finish (and merge) the blocking issue first." },
   waiting_on_decomp_children: { reason: "Waiting for its decomposed child issues to merge.", who: "The child issues must land on the base branch first." },
   project_full: { reason: "The project's concurrency cap is reached.", who: "No action — dispatches when a slot frees." },
-  runner_full: { reason: "The pinned runner is at capacity.", who: "No action — dispatches when the runner frees." },
+  runner_full: { reason: "Every online runner is at capacity.", who: "No action — dispatches when a runner frees." },
 };
 
 /**

@@ -2,8 +2,11 @@
  * ISS-164 (D4 of ISS-141) — pipelineHealth derived field + WS broadcast.
  *
  * Single server-side source of truth for per-issue gate state. Loader runs a
- * live join over `issues + jobs + agent_sessions + issue_dependencies` and
- * mirrors the Layer-1..L4 predicates in `jobs/dispatch-gates.ts`. No
+ * live join over `issues + jobs + pipeline_runs + agent_sessions +
+ * issue_dependencies`, plus the picker's own `fresh_capable_runners` CTE
+ * (`freshRunnerAvailability`), and mirrors EVERY arm of the dispatch CASE in
+ * `jobs/dispatch-gates.ts` — run-not-running, L1..L3, and both L4/L5 runner
+ * arms. A gate with no arm here renders as an idle, actionable issue. No
  * persisted gate column is consulted — `jobs.gate_reason` is intentionally
  * NOT read here so this layer stays correct after ISS-162 (D1) eventually
  * drops it (the column is still in the schema today, but reading it would
@@ -29,10 +32,16 @@ import {
   issueDependencies,
   issues,
   jobs,
+  pipelineRuns,
   runners,
   type WaitingKind,
 } from '../db/schema.js';
-import { resolveGateSettings, runnerSupportsJobType } from '../jobs/dispatch-gates.js';
+import {
+  freshRunnerAvailability,
+  type RunnerAvailability,
+  resolveGateSettings,
+  runnerSupportsJobType,
+} from '../jobs/dispatch-gates.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 
@@ -57,12 +66,16 @@ export function resetLastTickAtForTest(): void {
 }
 
 // cm:guard `job_held` is the ONLY thing that makes RFC 0002 honest — a held job leaves the issue at its stage entry-status, so without this reason the board shows an issue that looks idle and actionable while a step is in fact waiting on a machine. Delete it and you have rebuilt the ambiguity the RFC removed, on the other axis.
+// cm:guard every reason the dispatch CASE can return needs a member here, or the issue renders as idle-and-actionable while the picker refuses it — `run_not_running` and `runner_stale` were the two missing ones, and they are the two that never clear on their own: measured 2026-08-14, forge-dev ISS-576/ISS-652 sat under a `paused` run since 08-11 and 11 jobs across 5 projects sat behind dead runners for 6-22 days, all of them showing NO waitingOn at all.
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts#buildGateReasonCase — that CASE is the authority on which gates exist; a reason added there and not here is invisible to every UI
 export type PipelineWaitingReason =
   | 'issue_busy'
   | 'job_held'
+  | 'run_not_running'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_children'
   | 'project_full'
+  | 'runner_stale'
   | 'runner_full';
 
 /**
@@ -102,6 +115,8 @@ export interface PipelineHealthJob {
   agentSessionId: string | null;
   /** The hold reason when `status === 'held'` (`jobs/hold.ts`). */
   failureReason?: string | null;
+  /** Parent `pipeline_runs.status`. The picker requires `running`. */
+  pipelineRunStatus?: string | null;
 }
 
 export interface PipelineHealthDep {
@@ -140,6 +155,8 @@ export interface ClassifyInput {
    *  `merged_at`, the gate honors `status='closed'` as satisfaction. */
   baseStampable: boolean;
   runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
+  /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
+  runnerPool: RunnerAvailability;
   lastTickAt: Date | null;
 }
 
@@ -156,6 +173,47 @@ function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['waitingO
       holdReason: held.failureReason ?? null,
     },
   };
+}
+
+/** The runner-layer (L4/L5) `waitingOn` for a queued candidate, or `null`. */
+// cm:guard report the EMPTY pool before a saturated one — "no runner is online" and "every runner is busy" read almost identically in the UI but need opposite actions (bring a host back vs. wait), and the empty-pool arm is the one that was missing while 11 jobs sat behind dead runners for up to 22 days
+function runnerWaitingOn(
+  candidate: PipelineHealthJob,
+  sinceIso: string,
+  runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>,
+  runnerPool: RunnerAvailability,
+): PipelineHealth['waitingOn'] {
+  if (runnerPool.total === 0) {
+    return { reason: 'runner_stale', since: sinceIso, details: { freshRunners: 0 } };
+  }
+
+  const sat = candidate.runnerId ? runnerInFlight.get(candidate.runnerId) : undefined;
+  if (
+    candidate.runnerId &&
+    sat &&
+    sat.inFlight >= sat.cap &&
+    runnerSupportsJobType(
+      sat.type as Parameters<typeof runnerSupportsJobType>[0],
+      candidate.type as Parameters<typeof runnerSupportsJobType>[1],
+    )
+  ) {
+    return {
+      reason: 'runner_full',
+      since: sinceIso,
+      details: { runnerId: candidate.runnerId, cap: sat.cap, inFlight: sat.inFlight },
+    };
+  }
+
+  // cm:why the pinned-runner branch above only covers a candidate that ALREADY has a runner_id; an unpinned job whose whole pool is busy fails the picker's pool-coarse EXISTS with nothing said about it here
+  if (runnerPool.withCapacity === 0) {
+    return {
+      reason: 'runner_full',
+      since: sinceIso,
+      details: { freshRunners: runnerPool.total, runnersWithCapacity: 0 },
+    };
+  }
+
+  return undefined;
 }
 
 /**
@@ -176,8 +234,10 @@ async function loadActiveJobsByIssue(
       agentSessionId: jobs.agentSessionId,
       issueId: jobs.issueId,
       failureReason: jobs.failureReason,
+      pipelineRunStatus: pipelineRuns.status,
     })
     .from(jobs)
+    .leftJoin(pipelineRuns, eq(pipelineRuns.id, jobs.pipelineRunId))
     .where(
       and(
         eq(jobs.projectId, projectId),
@@ -197,6 +257,7 @@ async function loadActiveJobsByIssue(
       runnerId: r.runnerId,
       agentSessionId: r.agentSessionId,
       failureReason: r.failureReason,
+      pipelineRunStatus: r.pipelineRunStatus,
     });
     byIssue.set(r.issueId, bucket);
   }
@@ -221,6 +282,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     cap,
     baseStampable,
     runnerInFlight,
+    runnerPool,
     lastTickAt,
   } = input;
 
@@ -255,6 +317,16 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
   out.queuedAt = sinceIso;
+
+  // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in dispatch-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` or `runner_full` for it sends the reader after a slot that would change nothing
+  if (candidate.pipelineRunStatus && candidate.pipelineRunStatus !== 'running') {
+    out.waitingOn = {
+      reason: 'run_not_running',
+      since: sinceIso,
+      details: { runStatus: candidate.pipelineRunStatus, queuedJobId: candidate.id },
+    };
+    return out;
+  }
 
   const blockingSession = sessions.find(
     (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
@@ -325,23 +397,10 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  if (candidate.runnerId) {
-    const sat = runnerInFlight.get(candidate.runnerId);
-    if (
-      sat &&
-      sat.inFlight >= sat.cap &&
-      runnerSupportsJobType(
-        sat.type as Parameters<typeof runnerSupportsJobType>[0],
-        candidate.type as Parameters<typeof runnerSupportsJobType>[1],
-      )
-    ) {
-      out.waitingOn = {
-        reason: 'runner_full',
-        since: sinceIso,
-        details: { runnerId: candidate.runnerId, cap: sat.cap, inFlight: sat.inFlight },
-      };
-      return out;
-    }
+  const runnerWait = runnerWaitingOn(candidate, sinceIso, runnerInFlight, runnerPool);
+  if (runnerWait) {
+    out.waitingOn = runnerWait;
+    return out;
   }
 
   return out;
@@ -361,6 +420,49 @@ function runnerDefaultConcurrency(_runnerType: string): number {
   // antigravity 5-slot branch is gone; antigravity-as-load-balancer is
   // replaced by primary-pinned selection (see runners/select.ts).
   return 1;
+}
+
+/**
+ * Q6 — in-flight load on the runners that queued candidates are pinned to.
+ * Empty when no candidate has a `runner_id` (nothing to be saturated).
+ */
+// cm:guard count only `dispatched|running` here — this mirrors the gate's `runner_load` CTE, where `held` is deliberately absent because a held job has released its slot; adding it reports `runner_full` for a runner that is in fact free
+async function loadPinnedRunnerSaturation(
+  jobsByIssue: ReadonlyMap<string, PipelineHealthJob[]>,
+): Promise<Map<string, PipelineHealthRunnerSat>> {
+  const candidateRunnerIds = new Set<string>();
+  for (const list of jobsByIssue.values()) {
+    for (const j of list) {
+      if (j.status === 'queued' && j.runnerId) candidateRunnerIds.add(j.runnerId);
+    }
+  }
+  const out = new Map<string, PipelineHealthRunnerSat>();
+  if (candidateRunnerIds.size === 0) return out;
+
+  const ids = [...candidateRunnerIds];
+  const runnerRows = await db
+    .select({ id: runners.id, type: runners.type, capabilities: runners.capabilities })
+    .from(runners)
+    .where(inArray(runners.id, ids));
+  const inFlightRows = await db
+    .select({ runnerId: jobs.runnerId, count: sql<string>`COUNT(*)::text` })
+    .from(jobs)
+    .where(and(inArray(jobs.runnerId, ids), inArray(jobs.status, ['dispatched', 'running'])))
+    .groupBy(jobs.runnerId);
+
+  const inFlightByRunner = new Map<string, number>();
+  for (const r of inFlightRows) {
+    if (r.runnerId) inFlightByRunner.set(r.runnerId, Number(r.count));
+  }
+  for (const r of runnerRows) {
+    const caps = (r.capabilities ?? {}) as Record<string, unknown>;
+    const cap =
+      typeof caps.maxConcurrent === 'number' && caps.maxConcurrent > 0
+        ? caps.maxConcurrent
+        : runnerDefaultConcurrency(r.type);
+    out.set(r.id, { type: r.type, cap, inFlight: inFlightByRunner.get(r.id) ?? 0 });
+  }
+  return out;
 }
 
 export async function hydratePipelineHealthForIssues(
@@ -492,51 +594,9 @@ export async function hydratePipelineHealthForIssues(
   );
   const runningIssueCount = runningIssueIds.size;
 
-  // Q6 — runner saturation, only for queued candidates with a pinned runner.
-  const candidateRunnerIds = new Set<string>();
-  for (const list of jobsByIssue.values()) {
-    for (const j of list) {
-      if (j.status === 'queued' && j.runnerId) candidateRunnerIds.add(j.runnerId);
-    }
-  }
-  const runnerInFlight = new Map<string, { type: string; cap: number; inFlight: number }>();
-  if (candidateRunnerIds.size > 0) {
-    const runnerRows = await db
-      .select({
-        id: runners.id,
-        type: runners.type,
-        capabilities: runners.capabilities,
-      })
-      .from(runners)
-      .where(inArray(runners.id, [...candidateRunnerIds]));
-    const inFlightRows = await db
-      .select({ runnerId: jobs.runnerId, count: sql<string>`COUNT(*)::text` })
-      .from(jobs)
-      .where(
-        and(
-          inArray(jobs.runnerId, [...candidateRunnerIds]),
-          inArray(jobs.status, ['dispatched', 'running']),
-        ),
-      )
-      .groupBy(jobs.runnerId);
-    const inFlightByRunner = new Map<string, number>();
-    for (const r of inFlightRows) {
-      if (r.runnerId) inFlightByRunner.set(r.runnerId, Number(r.count));
-    }
-    for (const r of runnerRows) {
-      const caps = (r.capabilities ?? {}) as Record<string, unknown>;
-      const runnerCap =
-        typeof caps.maxConcurrent === 'number' && caps.maxConcurrent > 0
-          ? caps.maxConcurrent
-          : runnerDefaultConcurrency(r.type);
-      runnerInFlight.set(r.id, {
-        type: r.type,
-        cap: runnerCap,
-        inFlight: inFlightByRunner.get(r.id) ?? 0,
-      });
-    }
-  }
+  const runnerInFlight = await loadPinnedRunnerSaturation(jobsByIssue);
 
+  const runnerPool = await freshRunnerAvailability(projectId);
   const lastTickAt = getLastTickAt(projectId);
 
   for (const issueId of ids) {
@@ -558,6 +618,7 @@ export async function hydratePipelineHealthForIssues(
       cap,
       baseStampable,
       runnerInFlight,
+      runnerPool,
       lastTickAt,
     });
     map.set(issueId, health);

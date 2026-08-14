@@ -647,6 +647,33 @@ export async function pickNextDispatchableJobForProject(
  * builder; the parity test in `dispatch-gates.test.ts` will fail if the two
  * sites disagree on any of 20 mixed scenarios.
  */
+/**
+ * The gate-precedence CASE, shared by {@link assertDispatchable} and
+ * {@link gateReasonsForQueuedJobs}. Expects `j`, `r`, `running_ids` and
+ * `fresh_capable_runners` in scope.
+ */
+// cm:guard both readers MUST take the CASE from here — the arm order IS the answer (issue_busy before blocked_by before project_cap before the two runner arms), so a second copy reports a different "most specific reason" for the same job and the two surfaces start contradicting each other. This is the same one-builder rule `buildBarrierFragments` already enforces for the picker/asserter pair.
+function buildGateReasonCase(predicates: BarrierFragments['predicates'], cap: number): SQL {
+  return sql`
+      CASE
+        WHEN j.status <> 'queued' THEN 'not_queued'
+        WHEN r.status <> 'running' THEN 'pipeline_run_not_running'
+        WHEN j.retry_after_at IS NOT NULL AND j.retry_after_at > now() THEN 'retry_cooldown'
+        WHEN ${predicates.issueBusySession} THEN 'issue_busy'
+        WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
+        WHEN ${predicates.blockedBy} THEN 'blocked_by'
+        WHEN ${predicates.decomposeChildrenPending} THEN 'decompose_children_pending'
+        WHEN j.issue_id IS NOT NULL
+             AND j.issue_id::text NOT IN (SELECT issue_id FROM running_ids)
+             AND (SELECT COUNT(*) FROM running_ids) >= ${cap}
+          THEN 'project_cap'
+        WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners) THEN 'runner_stale'
+        WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners WHERE in_flight < cap)
+          THEN 'runner_full'
+        ELSE NULL
+      END`;
+}
+
 export async function assertDispatchable(jobId: string): Promise<DispatchBarrier> {
   const [job] = await db
     .select({ projectId: jobs.projectId })
@@ -665,24 +692,7 @@ export async function assertDispatchable(jobId: string): Promise<DispatchBarrier
 
   const rows = await db.execute<{ reason: string | null }>(sql`
     WITH ${ctes}
-    SELECT
-      CASE
-        WHEN j.status <> 'queued' THEN 'not_queued'
-        WHEN r.status <> 'running' THEN 'pipeline_run_not_running'
-        WHEN j.retry_after_at IS NOT NULL AND j.retry_after_at > now() THEN 'retry_cooldown'
-        WHEN ${predicates.issueBusySession} THEN 'issue_busy'
-        WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
-        WHEN ${predicates.blockedBy} THEN 'blocked_by'
-        WHEN ${predicates.decomposeChildrenPending} THEN 'decompose_children_pending'
-        WHEN j.issue_id IS NOT NULL
-             AND j.issue_id::text NOT IN (SELECT issue_id FROM running_ids)
-             AND (SELECT COUNT(*) FROM running_ids) >= ${cap}
-          THEN 'project_cap'
-        WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners) THEN 'runner_stale'
-        WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners WHERE in_flight < cap)
-          THEN 'runner_full'
-        ELSE NULL
-      END AS reason
+    SELECT ${buildGateReasonCase(predicates, cap)} AS reason
     FROM jobs j
     LEFT JOIN issues i ON i.id = j.issue_id
     JOIN pipeline_runs r ON r.id = j.pipeline_run_id
@@ -692,4 +702,69 @@ export async function assertDispatchable(jobId: string): Promise<DispatchBarrier
   if (!row) return { ok: false, reason: 'not_found', hint: jobId };
   if (row.reason === null) return { ok: true };
   return { ok: false, reason: row.reason as GateSkipReason };
+}
+
+export interface RunnerAvailability {
+  /** Runners the picker considers selectable at all (online, fresh, not
+   *  rate-limited, device not disabled). Zero ⇒ gate reason `runner_stale`. */
+  total: number;
+  /** Of those, how many have a free slot. Zero ⇒ gate reason `runner_full`. */
+  withCapacity: number;
+}
+
+/**
+ * How many runners the picker can currently choose from in `projectId`.
+ *
+ * Reads the picker's OWN `fresh_capable_runners` CTE, so no caller has to
+ * restate the six-clause availability rule.
+ */
+// cm:guard take this from `buildBarrierFragments`, never a hand-copied WHERE — the availability rule is six clauses deep (online, heartbeat window, rate_limited_until, disabled device, …) and a second copy silently disagrees with the gate, which is how pipelineHealth came to report NO reason at all for jobs the picker was refusing (11 jobs, queued 6-22 days, measured 2026-08-14).
+// cm:why `baseStampable` is arbitrary here — it shapes only the dependency PREDICATES, never the CTEs, and this reads nothing but the CTE
+export async function freshRunnerAvailability(projectId: string): Promise<RunnerAvailability> {
+  const { ctes } = buildBarrierFragments({
+    projectIdRef: sql`${projectId}`,
+    livenessSeconds: Math.floor(dispatchLivenessMs() / 1000),
+    baseStampable: false,
+  });
+  const rows = await db.execute<{ total: number; with_capacity: number }>(sql`
+    WITH ${ctes}
+    SELECT COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE in_flight < cap)::int AS with_capacity
+    FROM fresh_capable_runners
+  `);
+  const row = rows[0];
+  return { total: Number(row?.total ?? 0), withCapacity: Number(row?.with_capacity ?? 0) };
+}
+
+/**
+ * The gate a job is stuck behind, for every `queued` job in `projectId`.
+ *
+ * Read-only, one query. Jobs absent from the map are dispatchable right now.
+ */
+// cm:why `queued` alone cannot distinguish "about to run" from "will never run" — the gates are stateless by design (nothing is persisted on the row), so a job blocked forever is byte-identical to a healthy one. Measured 2026-08-14: 11 jobs had been queued 6-22 days across 5 projects and no surface anywhere could say why, which is why finding out took a hand-written script against production.
+export async function gateReasonsForQueuedJobs(
+  projectId: string,
+): Promise<Map<string, GateSkipReason>> {
+  const { cap, baseStampable } = await resolveGateSettings(projectId);
+  const { ctes, predicates } = buildBarrierFragments({
+    projectIdRef: sql`${projectId}`,
+    livenessSeconds: Math.floor(dispatchLivenessMs() / 1000),
+    baseStampable,
+  });
+
+  const rows = await db.execute<{ id: string; reason: string | null }>(sql`
+    WITH ${ctes}
+    SELECT j.id, ${buildGateReasonCase(predicates, cap)} AS reason
+    FROM jobs j
+    LEFT JOIN issues i ON i.id = j.issue_id
+    JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+    WHERE j.project_id = ${projectId}
+      AND j.status = 'queued'
+  `);
+
+  const out = new Map<string, GateSkipReason>();
+  for (const row of rows) {
+    if (row.reason !== null) out.set(row.id, row.reason as GateSkipReason);
+  }
+  return out;
 }

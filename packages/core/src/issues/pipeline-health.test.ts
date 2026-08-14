@@ -41,6 +41,7 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     cap: 5,
     baseStampable: true,
     runnerInFlight: new Map(),
+    runnerPool: { total: 1, withCapacity: 1 },
     lastTickAt: null,
     ...over,
   };
@@ -54,6 +55,7 @@ function job(
     queuedAt: Date;
     runnerId: string | null;
     agentSessionId: string | null;
+    pipelineRunStatus: string | null;
   }> = {},
 ) {
   return {
@@ -63,6 +65,7 @@ function job(
     queuedAt: over.queuedAt ?? QUEUED_AT,
     runnerId: over.runnerId ?? null,
     agentSessionId: over.agentSessionId ?? null,
+    pipelineRunStatus: over.pipelineRunStatus ?? 'running',
   };
 }
 
@@ -276,6 +279,56 @@ describe('classifyPipelineHealthForIssue', () => {
       }),
     );
     expect(out.waitingOn?.since).toBe(QUEUED_AT.toISOString());
+  });
+});
+
+describe('classifyPipelineHealthForIssue — the two gates that never clear themselves', () => {
+  // cm:guard these four are the regression suite for the two blind spots — a paused parent run and an empty runner pool both reported NO waitingOn at all, which is indistinguishable from a healthy issue awaiting its turn; that silence is what let ISS-576/ISS-652 sit paused for 3 days
+  it.each(['paused', 'cancelled', 'failed', 'completed'])(
+    'classifies run_not_running when the parent run is %s',
+    (runStatus) => {
+      const out = classifyPipelineHealthForIssue(
+        baseInput({ jobs: [job({ pipelineRunStatus: runStatus })] }),
+      );
+      expect(out.waitingOn?.reason).toBe('run_not_running');
+      expect(out.waitingOn?.details).toEqual({ runStatus, queuedJobId: 'job-1' });
+    },
+  );
+
+  it('reports run_not_running ahead of every other queued gate', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        cap: 1,
+        runningIssueIds: new Set(['iss-other']),
+        runningIssueCount: 1,
+        runnerPool: { total: 0, withCapacity: 0 },
+        deps: [
+          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open', fromMergedAt: null },
+        ],
+        jobs: [job({ pipelineRunStatus: 'paused' })],
+      }),
+    );
+    expect(out.waitingOn?.reason).toBe('run_not_running');
+  });
+
+  it('classifies runner_stale when no runner is fresh, even with a pinned runner recorded', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ runnerId: 'rnr-1' })],
+        runnerInFlight: new Map([['rnr-1', { type: 'claude-code', cap: 1, inFlight: 1 }]]),
+        runnerPool: { total: 0, withCapacity: 0 },
+      }),
+    );
+    expect(out.waitingOn?.reason).toBe('runner_stale');
+    expect(out.waitingOn?.details).toEqual({ freshRunners: 0 });
+  });
+
+  it('classifies runner_full pool-wide for an unpinned candidate when every runner is busy', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({ jobs: [job()], runnerPool: { total: 2, withCapacity: 0 } }),
+    );
+    expect(out.waitingOn?.reason).toBe('runner_full');
+    expect(out.waitingOn?.details).toEqual({ freshRunners: 2, runnersWithCapacity: 0 });
   });
 });
 

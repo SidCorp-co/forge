@@ -73,7 +73,18 @@ describe('ISS-164 pipelineHealth E2E', () => {
         WHERE id = ${project.id}
       `);
     }
+    await insertFreshRunner(project.id);
     return { owner, project };
+  }
+
+  // cm:guard every fixture project needs one fresh runner or the classifier answers `runner_stale` for all of them — the gate is right to say so (an empty pool dispatches nothing), which is exactly why the default fixture must model a WORKING project and the empty pool gets its own test
+  async function insertFreshRunner(projectId: string): Promise<string> {
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, name, status, last_seen_at)
+      VALUES (${id}, ${projectId}, 'claude-code', 'remote', 'fixture-runner', 'online', now())
+    `);
+    return id;
   }
 
   async function insertIssue(
@@ -326,6 +337,36 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(health?.waitingOn).toBeUndefined();
     expect(health?.queuedAt).toBe(queuedAt.toISOString());
     expect(health?.lastTickAt).toBe(tickAt.toISOString());
+  });
+
+  // cm:guard these two are the end-to-end proof for the blind spots the unit tests cover in isolation — both used to report NO waitingOn, so the board rendered a permanently-stuck issue as one merely awaiting its turn (forge-dev ISS-576/ISS-652, paused 3 days unnoticed)
+  it('reports run_not_running for a queued job under a paused run', async () => {
+    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const issueId = await insertIssue(project.id);
+    const jobId = await insertJob(project.id, { issueId, status: 'queued', type: 'plan' });
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET status = 'paused'
+      WHERE id = (SELECT pipeline_run_id FROM jobs WHERE id = ${jobId})
+    `);
+
+    const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
+    const health = map.get(issueId);
+    expect(health?.waitingOn?.reason).toBe('run_not_running');
+    expect(health?.waitingOn?.details.runStatus).toBe('paused');
+  });
+
+  it('reports runner_stale when the project has no fresh runner', async () => {
+    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const issueId = await insertIssue(project.id);
+    await insertJob(project.id, { issueId, status: 'queued', type: 'plan' });
+    await harness.db.execute(
+      sql`UPDATE runners SET status = 'offline' WHERE project_id = ${project.id}`,
+    );
+
+    const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
+    const health = map.get(issueId);
+    expect(health?.waitingOn?.reason).toBe('runner_stale');
+    expect(health?.waitingOn?.details.freshRunners).toBe(0);
   });
 
   it('never reads jobs.gate_reason (live-join contract — preserved after D1 column drop)', async () => {
