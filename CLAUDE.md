@@ -119,7 +119,19 @@ workflow cannot drift apart.
 · `2` baseline the old, block the new · `3` zero violations. `conformance-status.mjs` **runs** every
 checker and fails when what it does disagrees with what the manifest claims, so this table cannot
 become the next thing that describes a gate it no longer has. Today: form 2 · knowledge 2 ·
-relations 2 · behaviour 2 · language 3.
+relations 2 · behaviour 2 · language 3. Level 2 is the claim *"old debt frozen, new debt blocked"*,
+so each such axis must also name where its debt is frozen and which direction improves it —
+`baseline: {path, keyBy, improves}`, where `improves` is `down` (a per-key number may only fall),
+`shrink` (a set may only lose members) or `tighten` (a status may only get stricter). The direction
+lives in the manifest, not in the baseline file, because `--update-baseline` rewrites those files
+and a rule a re-freeze can silently drop is not a rule.
+
+The manifest also declares a `profile` — the shape the whole repo claims, never the tools it uses:
+`baseline` one axis measures · `standard` two axes block and both meta-checks are present ·
+`hardened` every declared axis blocks and every `ci-passed` needs-job is asserted. Today: hardened.
+`conformance-audit.mjs` is the only check whose subject is the **setup** rather than the code, and
+it exists because the protocol is otherwise content-free — a repo could gate nothing, declare a
+profile, and be perfectly conformant. Its six rules and what each was born from: `scripts/README.md`.
 
 | Axis | Gate | Owns | Must not touch |
 |---|---|---|---|

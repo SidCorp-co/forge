@@ -92,6 +92,14 @@ jobs:
       # for it. Every gate this repo lost was lost by staying documented while
       # it stopped blocking; this is the check that notices.
       - run: node scripts/conformance-status.mjs
+      # Conformance audit: the only check whose SUBJECT is the setup itself.
+      # `status` asks whether each axis does what it claims; this asks whether
+      # the setup around them still has the shape the manifest's `profile`
+      # claims — an entrypoint, scan proof on every check, a baseline with a
+      # direction, every needs-job asserted, both meta-checks, no level that
+      # blocks where nothing blocks. Without it a repo can gate nothing and
+      # still be perfectly conformant, which is the hole it exists to close.
+      - run: node scripts/conformance-audit.mjs
 
   # codemap/1 declared-edge layer (.forge/codemap.json + .forge/codemap-baseline.json).
   # The checker is VENDORED at .forge/codemap/ (cm install) — the repo owns its own

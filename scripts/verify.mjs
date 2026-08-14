@@ -107,6 +107,14 @@ const CHECKS = [
     scanned: /^conformance-status: (\d+) axes measured/m,
     unit: 'axes',
   },
+  {
+    axis: 'meta',
+    label: 'conformance audit',
+    cmd: ['node', 'scripts/conformance-audit.mjs'],
+    // cm:edge naming -> scripts/conformance-audit.mjs — parses that script's success line
+    scanned: /^conformance-audit: (\d+) rules evaluated/m,
+    unit: 'rules',
+  },
 ];
 
 // cm:edge contract -> .github/workflows/ci.yml — every `- run:` line and every named step there must appear as a key here; `--ci-parity` fails on an unlisted one. Adding a CI step without a line here is the drift this map exists to catch.
@@ -115,6 +123,7 @@ const CI_COVERAGE = {
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
+  'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',
   '.forge/codemap/cm verify --since $(git merge-base origin/main HEAD)': 'verify',
   '.forge/codemap/cm verify --tier referential': 'verify',

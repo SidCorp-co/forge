@@ -132,6 +132,37 @@ with `--require-sources`, and `--ci-parity` proves that step exists.
 Uncovered steps freeze into `.forge/flow-coverage-baseline.json` via `--update-baseline`, so
 declaring a flow is never punished — the debt just shows up in the diff. Today the baseline is empty.
 
+## conformance-audit.mjs — the only check whose subject is the setup
+
+`conformance-status.mjs` asks whether each axis does what it claims. This asks whether the setup
+*around* them still has the shape `.forge/conformance.json`'s `profile` claims. Without it the
+protocol is content-free: a repo can gate nothing, declare a profile, and be perfectly conformant.
+
+| | Rule | Broken here on |
+|---|---|---|
+| R1 | an entrypoint exists | the repo had 6 checkers and no command for months |
+| R2 | every check proves it scanned something | `core typecheck` and `conformance levels`, 2026-08-14 |
+| R3 | every level-2 axis has a baseline with a direction | all four, until `improves` was added |
+| R4 | every `ci-passed` needs-job is asserted by it | `archmap`, measured 2026-08-13 |
+| R5 | both meta-checks present | — |
+| R6 | no blocking level without CI to block with | — |
+
+Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
+block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two
+axes blocking" ports to any stack; "must run biome" does not.
+
+```bash
+node scripts/conformance-audit.mjs      # 0 meets the claim · 1 does not · 2 cannot audit
+```
+
+Exit `2` on an unreadable manifest, an unknown profile name, or a manifest with no axis at all.
+With no `profile` declared it reports the highest one the repo would meet and exits on the rules
+alone.
+
+It audits shape, not worth: a repo can pass all six with an axis measuring something pointless. That
+is deliberate — choosing what to measure is the repo's call, and a tool that ruled on it would start
+dictating stacks.
+
 ## check-lockstep.mjs — a declared pair where only one half moved
 
 The second join. `cm` knows which files carry `cm:edge lockstep` — *"these two must change
