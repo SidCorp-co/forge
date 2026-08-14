@@ -25,6 +25,9 @@ import {
 
 const idParamSchema = z.object({ id: z.uuid() });
 
+// cm:edge contract -> packages/core/src/pipeline/runs-control.ts — omitting `parkIssue` must reach `cancelPipelineRun` as absent, not as `false`; the default lives there and sending `false` here silently flips every existing caller to the no-park intent
+const cancelBodySchema = z.object({ parkIssue: z.boolean().optional() });
+
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
@@ -102,8 +105,13 @@ pipelineRunRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     await loadRunWithAccess(id, userId);
+    const body = cancelBodySchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) throw badRequest(z.flattenError(body.error));
     try {
-      const result = await cancelPipelineRun(id);
+      const result = await cancelPipelineRun(id, {
+        actorUserId: userId,
+        ...(body.data.parkIssue !== undefined ? { parkIssue: body.data.parkIssue } : {}),
+      });
       return c.json(result);
     } catch (err) {
       rethrowControlError(err);

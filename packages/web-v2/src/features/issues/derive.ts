@@ -487,10 +487,28 @@ export function openBlockingRefs(deps: IssueDependencies | undefined): BlockingR
     }));
 }
 
+// cm:edge contract -> packages/core/src/jobs/hold.ts — mirrors AUTO_RELEASE_REASONS (`holdResumesItself`); a reason that changes lane there and not here tells the reader "no action needed" about a hold that is in fact waiting for them
+const SELF_RESUMING_HOLD_REASONS = new Set(["all_devices_exhausted", "monthly_budget_exhausted", "verify_unavailable"]);
+
+/** Copy for a `job_held` wait, which depends on whether the hold clears itself. */
+// cm:guard only the self-resuming half may say "no action" (RFC 0002) — a held step waiting on a MACHINE must not ask the reader to act, but `retry_rounds_exhausted` and `non_retryable_terminal` never clear on their own, and telling THOSE readers to sit tight is how a dead step outlives everyone's attention
+function heldCopy(holdReason: unknown): { reason: string; who: string } {
+  if (typeof holdReason === "string" && SELF_RESUMING_HOLD_REASONS.has(holdReason)) {
+    return {
+      reason: "A step is held: it could not run and is waiting for the condition to clear.",
+      who: "No action — it resumes itself, and alerts if the hold outlives the condition.",
+    };
+  }
+  // cm:guard cancel BEFORE moving the issue — a held step occupies the issue-busy gate, so a transition made first cannot produce a replacement step and the issue looks stuck for a second reason
+  return {
+    reason: "A step is held: it could not run, and this hold does not clear on its own.",
+    who: "Fix the cause, then cancel the step — the issue can only move on once it is cancelled.",
+  };
+}
+
 const WAITING_REASON_COPY: Record<WaitingReason, { reason: string; who: string }> = {
   issue_busy: { reason: "Another job is already active on this issue.", who: "Wait for the active run to finish." },
-  // cm:guard the `who` half must stay "no action" (RFC 0002) — a held step is the pipeline waiting on a MACHINE, and copy that asks the reader to do something re-creates, in the UI, the intervention the RFC removed from the state machine
-  job_held: { reason: "A step is held: it could not run and is waiting for the condition to clear.", who: "No action — it resumes itself, or alerts if the hold outlives the condition." },
+  job_held: heldCopy(null),
   waiting_on_dep: { reason: "Blocked by a dependency that hasn't merged to the base branch yet.", who: "Finish (and merge) the blocking issue first." },
   waiting_on_decomp_children: { reason: "Waiting for its decomposed child issues to merge.", who: "The child issues must land on the base branch first." },
   project_full: { reason: "The project's concurrency cap is reached.", who: "No action — dispatches when a slot frees." },
@@ -566,7 +584,10 @@ export function deriveBlockerState(
   // 5. pipelineHealth capacity / dependency waits.
   const waitingOn = pipelineHealth?.waitingOn;
   if (waitingOn && WAITING_REASON_COPY[waitingOn.reason]) {
-    const copy = WAITING_REASON_COPY[waitingOn.reason];
+    const copy =
+      waitingOn.reason === "job_held"
+        ? heldCopy(waitingOn.details?.holdReason)
+        : WAITING_REASON_COPY[waitingOn.reason];
     const isDep = waitingOn.reason === "waiting_on_dep" || waitingOn.reason === "waiting_on_decomp_children";
 
     // Closed-but-unmerged blocker: waiting will NEVER resolve this — an

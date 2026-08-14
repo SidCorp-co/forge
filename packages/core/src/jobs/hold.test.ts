@@ -62,8 +62,15 @@ vi.mock('./stage-overrides.js', () => ({
 // cm:edge contract -> packages/core/src/jobs/retry.ts — the literal MUST equal AUTO_RETRY_PAYLOAD_KEY there; hold.ts imports the real constant, and this stub exists only because that module's import chain validates DB env at load time
 vi.mock('./retry.js', () => ({ AUTO_RETRY_PAYLOAD_KEY: '_autoRetry' }));
 
-const { HOLD_REASONS, holdJobForReason, readHoldState, releaseHeldJobs, HOLD_PAYLOAD_KEY } =
-  await import('./hold.js');
+const {
+  AUTO_RELEASE_REASONS,
+  HOLD_PAYLOAD_KEY,
+  HOLD_REASONS,
+  HOLD_RECHECK_MS,
+  holdJobForReason,
+  readHoldState,
+  releaseHeldJobs,
+} = await import('./hold.js');
 
 function makeJob(over: Record<string, unknown> = {}) {
   return {
@@ -139,6 +146,24 @@ describe('holdJobForReason', () => {
     expect(readHoldState(written.payload)?.autoRelease).toBe(false);
   });
 
+  // cm:guard a permanent hold must NOT advertise a retry — `retry_after_at` was stamped on exactly these reasons and on none of the ones that use it, so the row claimed a retry 10 minutes out that no code path would ever perform (seen live on 4 jobs, 2026-08-14)
+  it('a permanent hold stores no retry timestamp', async () => {
+    await holdJobForReason(makeJob(), 'non_retryable_terminal');
+    const written = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(written.retryAfterAt).toBeUndefined();
+  });
+
+  // cm:guard `verify_unavailable` must arm auto-release AND carry the backoff — HOLD_RECHECK_MS and conditionCleared's fallback were both written for this reason while the autoRelease flag blocked it, so the operator was told "no action needed, it re-checks itself" about a hold that never re-checked
+  it('a time-checked reason arms auto-release behind a backoff', async () => {
+    const before = Date.now();
+    await holdJobForReason(makeJob(), 'verify_unavailable');
+    const written = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(readHoldState(written.payload)?.autoRelease).toBe(true);
+    const retryAt = written.retryAfterAt as Date;
+    expect(retryAt).toBeInstanceOf(Date);
+    expect(retryAt.getTime()).toBeGreaterThanOrEqual(before + HOLD_RECHECK_MS);
+  });
+
   // cm:guard this is the loop bound (RFC 0002) — without it a flapping fleet holds, releases with a fresh rotation, fails, and holds again forever, spending a full round budget per flap
   it('a SECOND hold in the same lineage never re-arms auto-release', async () => {
     const alreadyHeld = makeJob({
@@ -179,6 +204,36 @@ describe('releaseHeldJobs', () => {
     expect(await releaseHeldJobs('p1')).toBe(0);
     expect(updateSet).not.toHaveBeenCalled();
     expect(enqueueJobMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard this is the release the feature always claimed and never performed — the candidate query returned the row (its backoff had passed) and the autoRelease guard then dropped it, so a DB blip held the step forever. It must re-queue with NO condition lookup: the timer was the whole gate.
+  it('releases a time-checked hold once its backoff has passed, without consulting the fleet', async () => {
+    selectRows.mockReturnValue([
+      heldRow({
+        payload: {
+          [HOLD_PAYLOAD_KEY]: {
+            reason: 'verify_unavailable',
+            heldAt: '2026-08-13T00:00:00.000Z',
+            autoRelease: true,
+          },
+        },
+      }),
+    ]);
+    capableMock.mockResolvedValue([]);
+
+    expect(await releaseHeldJobs('p1')).toBe(1);
+    expect(capableMock).not.toHaveBeenCalled();
+    const written = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(written.status).toBe('queued');
+    expect(written.retryAfterAt).toBeNull();
+  });
+
+  // cm:guard AUTO_RELEASE_REASONS must stay derived from the two lanes — a reason in the union with no lane would reach conditionCleared's fallback, and a fallback of `true` there auto-releases it into the very failure it recorded
+  it('every auto-releasable reason declares a lane', () => {
+    for (const reason of AUTO_RELEASE_REASONS) expect(HOLD_REASONS.has(reason)).toBe(true);
+    expect(AUTO_RELEASE_REASONS.has('non_retryable_terminal')).toBe(false);
+    expect(AUTO_RELEASE_REASONS.has('retry_rounds_exhausted')).toBe(false);
+    expect(AUTO_RELEASE_REASONS.has('verify_unavailable')).toBe(true);
   });
 
   it('re-queues and enqueues once a capable runner is back', async () => {

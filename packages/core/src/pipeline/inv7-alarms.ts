@@ -9,7 +9,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { HOLD_PAYLOAD_KEY } from '../jobs/hold.js';
+import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { emitPipelineWedge } from './wedge.js';
@@ -58,6 +58,8 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
   for (const row of rows) {
     const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A step';
     const hours = Math.round(HOLD_AGE_ALARM_MS / 3_600_000);
+    // cm:guard ask `holdResumesItself`, never assume — three of the five hold reasons never self-release, and this wedge is the operator's ONLY notification for a hold. Telling them "it resumes on its own" about a permanent hold is how a step sat for weeks with everyone believing it was handled.
+    const selfResuming = holdResumesItself(row.hold_reason);
     await emitPipelineWedge({
       projectId: row.project_id,
       issueId: row.issue_id,
@@ -67,9 +69,13 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
       reason: `held_over_${hours}h:${row.hold_reason ?? 'unknown'}`,
       title: `${label} has been waiting on a machine for over ${hours}h`,
       summary: `The \`${row.job_type}\` step could not run (${row.hold_reason ?? 'unknown reason'}) and has been held since ${row.held_at ?? 'an unknown time'}. The issue itself was never moved — it is still at its stage, and no decision is being asked of anyone.`,
-      nextStep:
-        'Fix the underlying condition (a runner, a quota, a budget) and the step resumes on its own. If the condition is permanent, cancel the run.',
-      action: 'Clear the blocking condition; nothing needs doing on the issue.',
+      // cm:guard the order in this sentence is load-bearing — a held job occupies L1 `issueBusyJob` (and `jobs_active_unique` covers `held`), so moving the issue on FIRST cannot produce a replacement step. Cancel, then move.
+      nextStep: selfResuming
+        ? 'Fix the underlying condition (a runner, a quota, a budget) and the step resumes on its own. If the condition is permanent, cancel the step.'
+        : 'This hold will NOT clear by itself. Fix the underlying cause, then cancel this step and move the issue on — in that order, because a held step blocks any replacement for the same issue.',
+      action: selfResuming
+        ? 'Clear the blocking condition; nothing needs doing on the issue.'
+        : 'Fix the cause, then cancel the step; it is waiting on you, not on a machine.',
     });
   }
 

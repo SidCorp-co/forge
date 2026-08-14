@@ -93,7 +93,7 @@ const HOLD_WEDGE_CONTENT: Partial<
     title: 'Step held: recovery check unavailable',
     summary:
       'The pipeline could not verify whether the work already completed, so it held the step rather than risk a wrong retry.',
-    nextStep: 'No action needed — the hold retries the check by itself.',
+    nextStep: 'No action needed — the hold re-checks within 10 minutes.',
   },
 };
 

@@ -10,8 +10,14 @@ vi.mock('./wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...(args as [])),
 }));
 
-// cm:edge contract -> packages/core/src/jobs/hold.ts — HOLD_PAYLOAD_KEY must stay `__hold`; importing the real module pulls queue/boss.ts, whose load-time env validation throws under vitest
-vi.mock('../jobs/hold.js', () => ({ HOLD_PAYLOAD_KEY: '__hold' }));
+// cm:edge contract -> packages/core/src/jobs/hold.ts — HOLD_PAYLOAD_KEY must stay `__hold` and this `holdResumesItself` stub must keep AUTO_RELEASE_REASONS' membership; importing the real module pulls queue/boss.ts, whose load-time env validation throws under vitest. hold.test.ts owns the real predicate — this stub only has to agree with it.
+vi.mock('../jobs/hold.js', () => ({
+  HOLD_PAYLOAD_KEY: '__hold',
+  holdResumesItself: (reason: string | null) =>
+    reason === 'all_devices_exhausted' ||
+    reason === 'monthly_budget_exhausted' ||
+    reason === 'verify_unavailable',
+}));
 
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -65,6 +71,18 @@ describe('alarmAgedHolds', () => {
     expect(body).not.toMatch(/move (this|the) issue/i);
     expect(body).not.toMatch(/clear the park/i);
     expect(wedge().summary).toContain('never moved');
+  });
+
+  // cm:guard a permanent hold must NOT be described as self-resuming — `non_retryable_terminal` and `retry_rounds_exhausted` have `autoRelease: false`, so this wedge was telling operators "no action needed, it resumes on its own" about steps that would never run again
+  it('tells the reader a permanent hold will not clear itself', async () => {
+    dbExecute.mockResolvedValueOnce([{ ...heldRow, hold_reason: 'non_retryable_terminal' }]);
+
+    await alarmAgedHolds(NOW);
+
+    const body = `${wedge().summary} ${wedge().nextStep} ${wedge().action}`;
+    expect(body).not.toContain('resumes on its own');
+    expect(wedge().nextStep).toMatch(/will NOT clear by itself/);
+    expect(wedge().nextStep).toMatch(/cancel this step and move the issue on/);
   });
 
   it('writes nothing and emits nothing when no hold is old enough', async () => {

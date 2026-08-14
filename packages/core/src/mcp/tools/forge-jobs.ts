@@ -191,7 +191,7 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
 export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.cancel',
   description:
-    'Cancel a single job (audited manual intervention). queued → cancelled; dispatched/running → cancellation requested + device push. Works even when the parent pipeline_run is already terminal (orphan escape hatch). Requires writer access (member/admin; PAT write scope).',
+    'Cancel a single job (audited manual intervention). queued/held → cancelled; dispatched/running → cancellation requested + device push. Cancelling a `held` step leaves its issue and run untouched — reach for this instead of cancelling the whole run, which additionally parks the issue at on_hold. Works even when the parent pipeline_run is already terminal (orphan escape hatch). Requires writer access (member/admin; PAT write scope).',
   inputSchema: zodToMcpSchema(cancelInputSchema),
   handler: async (args) => {
     const { jobId, reason } = cancelInputSchema.parse(args);

@@ -524,6 +524,25 @@ describe("deriveBlockerState", () => {
     }
   });
 
+  // cm:guard the two halves of `job_held` must read differently — for months this said "No action — it resumes itself" for every hold reason, while three of the five never self-release, so the UI told the reader to sit tight in front of a step that was waiting on them
+  it("splits job_held copy on whether the hold clears itself", () => {
+    const held = (holdReason: string) =>
+      deriveBlockerState(
+        blockerIssue({ status: "in_progress" }),
+        { stage: "code", waitingOn: { reason: "job_held", since: "x", details: { holdReason } } },
+        undefined,
+      );
+
+    const selfResuming = held("all_devices_exhausted");
+    expect(selfResuming?.whoMustAct).toContain("No action");
+    expect(selfResuming?.whoMustAct).toContain("resumes itself");
+
+    const permanent = held("non_retryable_terminal");
+    expect(permanent?.reason).toContain("does not clear on its own");
+    expect(permanent?.whoMustAct).not.toContain("No action");
+    expect(permanent?.whoMustAct).toContain("cancel the step");
+  });
+
   it("escalates closed-unmerged blockers to an operator decision with refs", () => {
     const b = deriveBlockerState(
       blockerIssue({ status: "in_progress" }),

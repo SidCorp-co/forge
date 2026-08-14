@@ -114,3 +114,43 @@ describe('cancelJob — queued path closes orphaned reconcile runs (ISS-808)', (
     expect(result.status).toBe('cancelled');
   });
 });
+
+describe('cancelJob — held', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // cm:guard a `held` step must be cancellable on its own — while it was not, the only cure was cancelling its parent run, which ALSO parked the issue at `on_hold`. If this starts throwing NOT_CANCELLABLE again, that hammer is back.
+  it('cancels a held job through the no-device branch and guards the CAS on `held`', async () => {
+    queuedJobRow = { id: 'job-1', status: 'held', issueId: null };
+    applyKernelTransitionMock.mockResolvedValueOnce([
+      updatedRow({ type: 'triage', payload: {}, status: 'cancelled' }),
+    ]);
+
+    const result = await cancelJob('job-1', {
+      actorUserId: 'u1',
+      reason: 'condition is permanent',
+      source: 'mcp',
+    });
+
+    expect(result.status).toBe('cancelled');
+    expect(result.cancellationRequested).toBe(true);
+    const args = applyKernelTransitionMock.mock.calls[0]?.[1] as {
+      fromStatus: string;
+      where: { _and: Array<{ _eq: unknown[] }> };
+    };
+    expect(args.fromStatus).toBe('held');
+    expect(args.where._and.some((c) => c._eq?.[1] === 'held')).toBe(true);
+  });
+
+  it('records the audited intervention for a held cancel', async () => {
+    queuedJobRow = { id: 'job-1', status: 'held', issueId: 'iss-1' };
+    applyKernelTransitionMock.mockResolvedValueOnce([
+      updatedRow({ type: 'triage', payload: {}, issueId: 'iss-1' }),
+    ]);
+
+    await cancelJob('job-1', { actorUserId: 'u1', reason: 'permanent', source: 'mcp' });
+
+    expect(syncAgentSessionLifecycleMock).toHaveBeenCalledTimes(1);
+  });
+});
