@@ -56,6 +56,18 @@ Then **say so in the commit message and name what moved**. The changed numbers i
 
 A full verify run prints the declared couplings on every file you changed — \`cm:guard\` (invariants you must obey), \`cm:edge\` (files that must change together), \`cm:flow\` (runtime steps). This is the pull-side replacement for context injection and it works with nothing installed. If an edge's other side needs the same change, make it now rather than leaving the pair inconsistent.
 
+Ask **before** you edit rather than after, and ask the map rather than reading files:
+
+| Want to know | Ask |
+|---|---|
+| what this file is coupled to, both directions | \`cm impact <path>\` |
+| the ordered steps of a named runtime flow | \`cm flow <name>\` |
+| the whole declared graph, for your own reasoning | \`cm graph --json\` |
+
+These answer in one call what would otherwise cost a dozen file reads, and they carry edges no language server can see — a \`lockstep\` pair usually has no import between its two sides. They are also only as complete as what somebody declared: an empty \`cm impact\` means *nothing was declared here*, never *nothing depends on this*. Confirm with references either way.
+
+The other direction is part of your job too. If you discover a coupling nothing links — two sides that must agree on a string, a call that must run before another, an effect that happens in SQL or a cron — declare it with a \`cm:edge\` in the same change. That is how the next agent gets context you had to work for.
+
 ### Cardinal rules
 
 1. **A check that cannot run must never report clean.** If you find one that does, that is a defect worth fixing before the work you came for.

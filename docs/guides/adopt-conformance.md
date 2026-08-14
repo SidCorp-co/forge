@@ -11,6 +11,10 @@ no global install.
 
 ## What you are building
 
+Conformance owns **no checker**. `cm` and `arch` are standalone tools with their own configs and
+CLIs; biome, vitest, tsc and phpunit are third-party. What you are building is the layer that turns
+them into one platform.
+
 | Piece | Lives | What it does |
 |---|---|---|
 | `scripts/check-*.mjs` | your repo | one checker per axis — measures one thing, exits `0/1/2` |
@@ -21,6 +25,30 @@ no global install.
 
 **The unit of work is one axis, not "a conformance system".** Six steps below, about half a day.
 Then repeat for the next axis. Axes are independent — adding one cannot break another.
+
+Four things the layer supplies that no single tool can. The first three are plumbing; the fourth is
+where it stops being a task runner — see [step 8](#8-join-two-axes--where-the-platform-pays-off).
+
+| | |
+|---|---|
+| **One exit contract** | `0/1/2` across every tool, so "could not run" is never read as "clean" |
+| **One manifest** | what is defended and at what level — readable by a human, an agent, or a fleet view |
+| **One advisory surface** | `cm`'s guards reach a contributor with **no plugin installed**, because `verify` pulls them |
+| **Joins** | facts that exist only when one tool's declaration meets another tool's measurement |
+
+## What the repo gets
+
+Measured on this repo, not projected:
+
+| | |
+|---|---|
+| **Debt stops growing** | biome had drifted to 366 errors, typecheck to 84, the two length rules to 143. Each stopped drifting the day it was baselined and gated. The gate does not clean the 143 — it makes the 144th impossible |
+| **"Already red" stops being an exit** | five pipeline runs merged on *"lint remains red only on pre-existing, untouched diagnostics"* while a required check was red and a regression suite had never run anywhere. Nobody lied; nobody fixed it |
+| **One command, bare checkout** | a contributor with no plugin and an agent with no hooks are held to the same bar |
+| **Declared knowledge reaches the editor** | `verify` prints the `cm:guard` / `cm:edge` on the files you changed. Without it those invariants are invisible until somebody breaks one |
+
+The agent-facing version of the last two matters more than it looks: where agents write most of the
+code, a green that is not true is not a missed defect — it is a **wrong instruction, repeated**.
 
 ## The one rule everything rests on
 
@@ -232,6 +260,63 @@ seen that, you have a script, not a gate.
 | `<n> job(s) in ci-passed.needs that ci-passed never asserts` | job listed but not in the result loop | add it to the loop — listing is not gating |
 | CI step exists that `verify` neither runs nor declares | drift between the local command and the workflow | add it to `CI_COVERAGE` in `verify.mjs` |
 | adding a `cm:` annotation trips the size budget | the file was already at its frozen length | `--update-baseline`; the +1 line in the diff is the intended record |
+
+## 8. Join two axes — where the platform pays off
+
+Steps 1–7 give you N independent gates run from one command. That is worth having, and it is still
+only a task runner. The return on having them all in one place comes from **joins**:
+
+> A fact that **no tool has on its own**, because it needs tool A's declaration matched against
+> tool B's measurement.
+
+The worked example in this repo is `check-flow-coverage.mjs`:
+
+| | knows |
+|---|---|
+| `cm` | which line is **step 4 of the `dispatch` flow** |
+| istanbul / v8 coverage | which lines **ran under the integration suite** |
+| **neither** | **a declared flow step that nothing executes end-to-end** |
+
+Notice why the join cannot live inside either tool. `cm` must not learn your coverage format — it
+would then have to learn every coverage format. Your coverage tool must not learn what a "flow" is —
+that concept does not exist outside `cm`. The fact is orthogonal to both, so it belongs to the layer
+that already holds both. **That orthogonality is the test for whether something is a join at all.**
+
+### How to build one
+
+1. **Name the fact first**, in one sentence, and check no single tool can already answer it. If one
+   can, add the rule there instead — a second owner on one rule is the drift this system forbids.
+2. **Get both sides in machine form.** Declaration side: `cm graph --json`, `cm flow --json`,
+   `.arch.json`, your manifest. Measurement side: coverage JSON, `git diff --name-only`, a linter's
+   `--reporter=json`, an issue tracker's API.
+3. **Cross-check the two counts against each other.** `check-flow-coverage` takes the step *sites*
+   from `git grep` but the step *count* from `cm flow`, and exits `2` when they disagree — because
+   re-parsing another tool's annotations duplicates its parser, and the only safe way to keep a copy
+   is to make the tool audit it every run.
+4. **Decide what an absent input means.** A join has more ways to not-run than a plain checker: a
+   missing report, a stale report, an empty diff. Each is exit `2`, and the message must name which
+   side was missing and how to produce it.
+5. **Baseline the join separately.** `flow-coverage` freezes uncovered steps in its own file, so
+   declaring a *new* flow is never punished — only made visible.
+
+### Joins worth building, and what each catches
+
+| Join | Declares | Measures | Catches |
+|---|---|---|---|
+| `flow-coverage` ✅ live | `cm:flow` step | integration coverage | a flow step nothing walks end-to-end |
+| **lockstep-in-diff** | `cm:edge lockstep` | `git diff` vs merge-base | one half of a pair changed, the other untouched |
+| guard-coverage | `cm:guard` | coverage | an invariant no test exercises |
+| edge × architecture | `cm:edge` | `.arch.json` `forbidden` | a coupling that is real **and** illegal |
+| hack expiry | `cm:hack ISS-<n>` | issue status | a workaround still in the tree after its issue closed |
+
+**`lockstep-in-diff` is the cheapest and the highest-value one unbuilt.** Both inputs already exist,
+and `cm` deliberately cannot own it: `cm` has no business knowing your PR's scope, your merge-base,
+or which CI job blocks. This repo has 158 lockstep edges — for example the three orphan-hygiene
+defences that must move together — and today nothing checks that a PR touching one touched the
+others.
+
+Do not build any of these before you have two axes at level 2. A join over a gate that does not
+block is a report nobody acts on.
 
 ## Add the next axis
 
