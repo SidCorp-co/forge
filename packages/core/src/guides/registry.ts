@@ -26,6 +26,8 @@
 // `prompt/facts/registry.ts` — the route, the MCP tool, and the tests all
 // import this module without a live DB.
 
+import { CONFORMANCE_GUIDE } from './conformance-guide.js';
+
 // cm:edge contract -> packages/core/src/guides/integration-guides.ts — that tier owns the `integration-<provider>` slug prefix; a code guide claiming it would be unreachable for any org that authored its own
 export interface ForgeGuide {
   /** Stable, URL-safe id: kebab-case, `/^[a-z0-9][a-z0-9-]*$/`. */
@@ -446,6 +448,7 @@ tell both agents to prefer \`human\` when uncertain.
 A failure at any stage keeps the last-good body running. The skill is never left empty and never
 silently changed, and the run records why it stopped.`,
   },
+  CONFORMANCE_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));
