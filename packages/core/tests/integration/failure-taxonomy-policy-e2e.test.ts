@@ -437,13 +437,11 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
 
   // ---------- ISS-630/804 — the fifth face: per-state budget gate ---------
 
-  it('ISS-630/804: a budget-exhausted stage parks the issue and closes the run instead of stranding both (the 3x-vs-0x asymmetry)', async () => {
+  // cm:guard the issue/run assertions at the end are the RFC 0002 half of this test (INV-1/INV-4) — ISS-630's own finding was that the capped stage died SILENTLY; the fix is that it now dies honestly on the JOB axis, and re-parking the issue here would restore the lie while every failure_action assertion above still passed
+  it('ISS-630/804: a budget-exhausted stage holds the job, leaving the issue and run untouched (the 3x-vs-0x asymmetry)', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    // Cap set on `confirmed` specifically (a stage a `triage` job runs
-    // under) — the asymmetry was that ONE capped stage died with zero
-    // retries while an uncapped stage retried normally; the fix is that the
-    // capped stage now dies HONESTLY (parked + closed) instead of silently.
+    // cm:why the cap sits on `confirmed` (a stage `triage` runs under) because the ISS-630 asymmetry was per-STAGE: one capped stage died with zero retries while an uncapped one retried normally
     await harness.db.execute(sql`
       UPDATE projects
       SET agent_config = COALESCE(agent_config, '{}'::jsonb)
@@ -522,15 +520,26 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     // terminal park on record.
     expect(jobRows[0]?.classifier_version).toBe(mods.CLASSIFIER_VERSION);
 
+    const heldRows = await harness.db.execute<{
+      retry_of: string | null;
+      failure_reason: string | null;
+    }>(sql`
+      SELECT retry_of, failure_reason FROM jobs
+      WHERE issue_id = ${issueId} AND status = 'held'
+    `);
+    expect(heldRows).toHaveLength(1);
+    expect(heldRows[0]?.retry_of).toBe(jobId);
+    expect(heldRows[0]?.failure_reason).toBe('monthly_budget_exhausted');
+
     const issueRows = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issueId}`,
     );
-    expect(issueRows[0]?.status).toBe('waiting');
+    expect(issueRows[0]?.status).not.toBe('waiting');
 
     const runRows = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM pipeline_runs WHERE id = ${openRunId}`,
     );
-    expect(runRows[0]?.status).not.toBe('running');
+    expect(runRows[0]?.status).toBe('running');
   });
 
   // ---------- Composition: quarantine + per-account exhaustion share the same gate ----

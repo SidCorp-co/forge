@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T18:57:37.213Z",
+  "generatedAt": "2026-08-14T02:08:47.193Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -307,7 +307,7 @@
     },
     "packages/core/tests/integration/budget-check-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 221
+      "maxFunctionLines": 227
     },
     "packages/core/tests/integration/decomposition-e2e.test.ts": {
       "fileLines": 0,
@@ -335,7 +335,7 @@
     },
     "packages/core/tests/integration/failure-taxonomy-policy-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 282
+      "maxFunctionLines": 288
     },
     "packages/core/tests/integration/issues-job-history-route.test.ts": {
       "fileLines": 0,

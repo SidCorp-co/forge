@@ -373,7 +373,8 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     expect(commentRows[0]?.author_id).toBeTruthy();
   });
 
-  it('ISS-823 — parks the issue at waiting + closes the run instead of stranding both', async () => {
+  // cm:guard this test IS the ISS-823 case, re-pointed by RFC 0002 — a budget breach is the pipeline waiting on a MACHINE, so the assertions that the issue stayed at `approved` and the run stayed `running` are the invariant (INV-1/INV-4), not incidental. A future change that parks the issue here passes every other budget test in this file.
+  it('ISS-823 — holds the job and leaves the issue and its run alone', async () => {
     const { project } = await seedProjectWithBudget({ perMonthUsd: 1.0, action: 'pause' });
     const issueId = await insertIssue(project.id);
     await seedHistoricalSpend(project.id, { costUsd: 1.1, jobType: 'code', issueId });
@@ -397,20 +398,28 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     expect(jobRows[0]?.failure_action).toBe('terminal');
     expect(jobRows[0]?.classifier_version).toBe(mods.CLASSIFIER_VERSION);
 
+    const heldRows = await harness.db.execute<{
+      id: string;
+      status: string;
+      retry_of: string | null;
+      failure_reason: string | null;
+    }>(sql`
+      SELECT id, status, retry_of, failure_reason FROM jobs
+      WHERE issue_id = ${issueId} AND status = 'held'
+    `);
+    expect(heldRows).toHaveLength(1);
+    expect(heldRows[0]?.retry_of).toBe(jobId);
+    expect(heldRows[0]?.failure_reason).toBe('monthly_budget_exhausted');
+
     const issueRows = await harness.db.execute<{ status: string }>(sql`
       SELECT status FROM issues WHERE id = ${issueId}
     `);
-    expect(issueRows[0]?.status).toBe('waiting');
+    expect(issueRows[0]?.status).toBe('approved');
 
     const runRows = await harness.db.execute<{ status: string }>(sql`
       SELECT status FROM pipeline_runs WHERE id = ${runId}
     `);
-    expect(runRows[0]?.status).not.toBe('running');
-
-    const commentRows = await harness.db.execute<{ body: string }>(sql`
-      SELECT body FROM comments WHERE issue_id = ${issueId}
-    `);
-    expect(commentRows.length).toBeGreaterThanOrEqual(2);
+    expect(runRows[0]?.status).toBe('running');
   });
 
   // ---------- action='warn' (no enforcement) -----------------------------

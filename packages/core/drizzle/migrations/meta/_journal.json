@@ -1247,6 +1247,13 @@
       "when": 1788912000000,
       "tag": "0179_rfc0002_waiting_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1788998400000,
+      "tag": "0180_i1_trigger_failure_kind_regression",
+      "breakpoints": true
     }
   ]
 }
