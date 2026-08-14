@@ -14,12 +14,13 @@ import { db } from '../db/client.js';
 import { comments, type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { PIPELINE_STEPS } from './registry.js';
-import { pauseRun } from './run-pause.js';
+import { pauseReasonFor, pauseRun } from './run-pause.js';
 
 export const PAUSE_REASON_PREFIX = 'missing_skill:';
 
+// cm:edge lockstep -> packages/core/src/pipeline/run-pause.ts — the kind must stay in LIVE_PAUSE_REASON_KINDS; drop it there and `resumeOrphanedPauses` frees every run this guard paused, one sweep later
 export function buildMissingSkillReason(stage: IssueStatus): string {
-  return `${PAUSE_REASON_PREFIX}${stage}`;
+  return pauseReasonFor('missing_skill', stage);
 }
 
 /**

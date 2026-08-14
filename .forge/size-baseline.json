@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T03:45:10.743Z",
+  "generatedAt": "2026-08-14T07:05:07.941Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -238,11 +238,11 @@
       "maxFunctionLines": 180
     },
     "packages/core/src/pipeline/sweeper.test.ts": {
-      "fileLines": 785,
+      "fileLines": 800,
       "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/sweeper.ts": {
-      "fileLines": 703,
+      "fileLines": 708,
       "maxFunctionLines": 0
     },
     "packages/core/src/pm/routes.ts": {

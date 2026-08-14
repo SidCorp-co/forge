@@ -30,7 +30,7 @@ import { db } from '../db/client.js';
 import { comments, type IssueStatus, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { type DeviceSkillStatusValue, loadDeviceSkillStatus } from '../skills/effective.js';
-import { pauseRun } from './run-pause.js';
+import { pauseReasonFor, pauseRun } from './run-pause.js';
 import { createProjectSkillResolver, resolveJobTypeForStatus } from './skill-mapping.js';
 
 /**
@@ -43,8 +43,9 @@ export const STAGE_STALL_CAP = 3;
 
 export const STAGE_STALL_REASON_PREFIX = 'stage_stalled:';
 
+// cm:edge lockstep -> packages/core/src/pipeline/run-pause.ts — the kind must stay in LIVE_PAUSE_REASON_KINDS; drop it there and `resumeOrphanedPauses` frees every run this guard paused, one sweep later
 export function buildStageStalledReason(stage: IssueStatus): string {
-  return `${STAGE_STALL_REASON_PREFIX}${stage}`;
+  return pauseReasonFor('stage_stalled', stage);
 }
 
 export type StageCauseVerification =

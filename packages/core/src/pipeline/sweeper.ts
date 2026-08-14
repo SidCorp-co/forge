@@ -46,6 +46,7 @@ import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import { alarmAgedHolds, alarmChurningIssues, type Inv7AlarmResult } from './inv7-alarms.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
+import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
@@ -125,6 +126,7 @@ export interface SweepResult {
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
+  orphanedPauses: OrphanedPauseResult;
   retryRescueThresholds: RetryRescueAlertResult;
   backstopProjects: number;
   queueSnapshots: number;
@@ -203,6 +205,8 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     alarmClosedUnmergedBlockedDependents(now),
   );
   const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
+  // cm:why an ACTIVE reaper, not an alarm: a run paused by a mechanism this build no longer has is not a state anyone can act on — there is nothing left to clear the reason, so surfacing it would ask a human to do the resume every time
+  const orphanedPauses = await runPass('resumeOrphanedPauses', () => resumeOrphanedPauses());
   const churningIssues = await runPass('alarmChurningIssues', () => alarmChurningIssues());
 
   // cm:edge sideeffect -> packages/core/src/release-batch/claim-subscriber.ts — backstop for the pipelineRunStatusChanged hook: releases release_batch_run_id claims left behind if the subscriber threw or was skipped
@@ -245,6 +249,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     churningIssues: churningIssues as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
+    orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
     backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,

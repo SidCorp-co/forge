@@ -38,6 +38,11 @@ vi.mock('./inv7-alarms.js', () => ({
   alarmChurningIssues: () => alarmChurningIssuesMock(),
 }));
 
+const resumeOrphanedPausesMock = vi.fn(async () => ({ detected: 0, resumed: 0 }));
+vi.mock('./run-pause.js', () => ({
+  resumeOrphanedPauses: () => resumeOrphanedPausesMock(),
+}));
+
 const detectRetryRescueThresholdsMock = vi.fn(async (_now?: Date) => ({
   detected: 0,
   notified: 0,
@@ -226,6 +231,16 @@ describe('runPipelineSweep — INV-7 alarms (RFC 0002)', () => {
     expect(alarmChurningIssuesMock).toHaveBeenCalledTimes(1);
     expect(result.agedHolds).toEqual({ alerted: 2 });
     expect(result.churningIssues).toEqual({ alerted: 1 });
+  });
+
+  // cm:guard this pass must stay in the sweep AND in SweepResult — it is the only thing that frees a run paused by a mechanism a later build deleted, and the reopen_cap residue it exists for produced no alarm anywhere for 3 days
+  it('runs the orphaned-pause reaper and exposes its counts', async () => {
+    resumeOrphanedPausesMock.mockResolvedValueOnce({ detected: 2, resumed: 2 });
+
+    const result = await runPipelineSweep();
+
+    expect(resumeOrphanedPausesMock).toHaveBeenCalledTimes(1);
+    expect(result.orphanedPauses).toEqual({ detected: 2, resumed: 2 });
   });
 });
 
