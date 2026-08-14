@@ -134,6 +134,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "job.assigned":
 		case "job.completed":
 		case "job.failed":
+		// cm:edge contract -> packages/core/src/jobs/resume-job.ts — a resumed job leaves `held` for `queued`, so both the list and the job detail are stale; without this case the operator presses resume and the row keeps reading "held" until something unrelated invalidates it
+		case "job.resumed":
 		case "job.cancelled": {
 			qc.invalidateQueries({ queryKey: ["jobs", "list"] });
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's

@@ -4,6 +4,7 @@ import { db } from '../../db/client.js';
 import { jobEvents, jobStatuses, jobs, jobTypes } from '../../db/schema.js';
 import { cancelJob, JobCancelError } from '../../jobs/cancel-job.js';
 import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/dispatch-gates.js';
+import { JobResumeError, resumeHeldJob } from '../../jobs/resume-job.js';
 import {
   assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
@@ -218,6 +219,34 @@ export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) 
       });
     } catch (e) {
       if (e instanceof JobCancelError) throw new Error(`${e.code}: ${e.message}`);
+      throw e;
+    }
+  },
+});
+
+/**
+ * The counterpart to `forge_jobs.cancel` for a hold whose cause has been fixed.
+ * Writer-gated for the same reason: it moves a job.
+ */
+export const forgeJobsResumeTool: ContextScopedMcpToolFactory = ({ principal }) => ({
+  name: 'forge_jobs.resume',
+  description:
+    "Put a `held` job back in the queue (audited manual intervention). Use this when the hold's cause is FIXED — `retry_rounds_exhausted` and `non_retryable_terminal` never clear on their own, so without a resume the only way out of one is to cancel the step and lose it. The resume does not re-check the condition: you are asserting it cleared, and the audit row records that. Fails with NOT_HELD on any other status. Requires writer access (member/admin; PAT write scope).",
+  inputSchema: zodToMcpSchema(cancelInputSchema),
+  handler: async (args) => {
+    const { jobId, reason } = cancelInputSchema.parse(args);
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!job) throw new Error('NOT_FOUND: job not found');
+    await assertPrincipalIsWriter(principal, job.projectId);
+
+    try {
+      return await resumeHeldJob(jobId, {
+        actorUserId: principalUserId(principal),
+        reason: reason ?? 'manual resume (MCP)',
+        source: 'mcp',
+      });
+    } catch (e) {
+      if (e instanceof JobResumeError) throw new Error(`${e.code}: ${e.message}`);
       throw e;
     }
   },

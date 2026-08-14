@@ -91,8 +91,21 @@ const scheduleRetryMock = vi.fn(
     scheduled: false,
   }),
 );
+// cm:edge contract -> packages/core/src/jobs/retry.ts — the literal MUST equal AUTO_RETRY_PAYLOAD_KEY there; hold.ts (reached via the resume route) imports the real constant, and omitting it here made `buildRequeueUpdate` strip a key named "undefined" instead of the spent rotation
 vi.mock('./retry.js', () => ({
+  AUTO_RETRY_PAYLOAD_KEY: '_autoRetry',
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
+}));
+
+const enqueueMock = vi.fn(async () => {});
+vi.mock('./enqueue.js', () => ({
+  enqueueJob: () => enqueueMock(),
+  enqueueReconcileJob: () => enqueueMock(),
+}));
+
+vi.mock('../pipeline/wedge.js', () => ({
+  emitPipelineWedge: async () => undefined,
+  resolvePipelineWedge: async () => 0,
 }));
 
 const publishMock = vi.fn(() => 0);
@@ -668,6 +681,71 @@ describe('POST /:id/cancel (user)', () => {
     expect(r.status).toBe(409);
     const json = (await r.json()) as { code?: string };
     expect(json.code).toBe('NOT_CANCELLABLE');
+  });
+});
+
+describe('POST /:id/resume (user)', () => {
+  const heldJob = {
+    ...jobRow,
+    status: 'held' as string,
+    deviceId: null,
+    failureReason: 'non_retryable_terminal',
+    payload: {
+      __hold: {
+        reason: 'non_retryable_terminal',
+        heldAt: '2026-08-14T06:00:00.000Z',
+        autoRelease: false,
+      },
+    },
+  };
+
+  // cm:guard three queued `selectLimit` results in this exact order — assertEmailVerified, the route's own authz load, then the service's re-read. Drop one and the service reads the USER row as its job, which fails on a status mismatch and looks like a route bug.
+  it('re-queues a held job and audits it as a resume, not a cancel', async () => {
+    selectLimit.mockResolvedValueOnce([verifiedUser]);
+    selectLimit.mockResolvedValueOnce([heldJob]);
+    selectLimit.mockResolvedValueOnce([heldJob]);
+    txUpdateReturning.mockResolvedValueOnce([{ id: 'j1', type: 'plan', issueId: 'i1' }]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/resume`, {
+        method: 'POST',
+        token: await signUserToken('u-1'),
+        body: JSON.stringify({ reason: 'workspace re-provisioned' }),
+      }),
+    );
+
+    expect(r.status).toBe(200);
+    const json = (await r.json()) as { status: string; heldReason: string };
+    expect(json.status).toBe('queued');
+    expect(json.heldReason).toBe('non_retryable_terminal');
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'intervention',
+        data: expect.objectContaining({
+          action: 'resume',
+          source: 'rest',
+          previousStatus: 'held',
+          reason: 'workspace re-provisioned',
+        }),
+      }),
+    );
+  });
+
+  // cm:guard 409 NOT_HELD, never 200 — a resume that reports success for a job it did not move is the state-lies failure VISION principle №10 forbids, and the operator would stop looking for the stuck step
+  it('409 NOT_HELD when the job is in any other status', async () => {
+    selectLimit.mockResolvedValueOnce([verifiedUser]);
+    selectLimit.mockResolvedValueOnce([jobRow]);
+    selectLimit.mockResolvedValueOnce([jobRow]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/resume`, { method: 'POST', token: await signUserToken('u-1') }),
+    );
+
+    expect(r.status).toBe(409);
+    expect(((await r.json()) as { code?: string }).code).toBe('NOT_HELD');
+    expect(txInsertValues).not.toHaveBeenCalled();
   });
 });
 

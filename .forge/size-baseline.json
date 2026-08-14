@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T14:34:52.799Z",
+  "generatedAt": "2026-08-14T15:05:33.115Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -114,11 +114,11 @@
       "maxFunctionLines": 210
     },
     "packages/core/src/jobs/lifecycle-routes.test.ts": {
-      "fileLines": 778,
+      "fileLines": 856,
       "maxFunctionLines": 0
     },
     "packages/core/src/jobs/lifecycle-routes.ts": {
-      "fileLines": 611,
+      "fileLines": 649,
       "maxFunctionLines": 0
     },
     "packages/core/src/jobs/loop-monitor.test.ts": {
@@ -180,6 +180,10 @@
     "packages/core/src/mcp/tools/forge-issues.ts": {
       "fileLines": 1373,
       "maxFunctionLines": 503
+    },
+    "packages/core/src/mcp/tools/forge-jobs.test.ts": {
+      "fileLines": 558,
+      "maxFunctionLines": 0
     },
     "packages/core/src/mcp/tools/forge-projects.test.ts": {
       "fileLines": 873,

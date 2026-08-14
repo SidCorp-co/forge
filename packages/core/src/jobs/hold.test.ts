@@ -70,6 +70,7 @@ vi.mock('../pipeline/wedge.js', () => ({
 
 const {
   AUTO_RELEASE_REASONS,
+  buildRequeueUpdate,
   HOLD_PAYLOAD_KEY,
   HOLD_REASONS,
   HOLD_RECHECK_MS,
@@ -304,5 +305,55 @@ describe('releaseHeldJobs', () => {
     capableMock.mockRejectedValue(new Error('runner table unreachable'));
     expect(await releaseHeldJobs('p1')).toBe(0);
     expect(updateSet).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildRequeueUpdate', () => {
+  const now = new Date('2026-08-14T12:00:00.000Z');
+  const armed = {
+    [HOLD_PAYLOAD_KEY]: {
+      reason: 'all_devices_exhausted',
+      heldAt: '2026-08-14T06:00:00.000Z',
+      autoRelease: true,
+    },
+  };
+
+  // cm:guard this is the patch BOTH the automatic release and the operator resume apply — the assertion that matters is that it spends the auto-release, because that is the only thing standing between a resume button and an unbounded hold/release loop
+  it('spends the auto-release whichever path applies it', () => {
+    const patch = buildRequeueUpdate(makeJob({ payload: armed }), now);
+    expect(readHoldState(patch.payload)?.autoRelease).toBe(false);
+    expect(readHoldState(patch.payload)?.reason).toBe('all_devices_exhausted');
+  });
+
+  it('clears the failure verdict and the backoff so the row reads as freshly queued', () => {
+    const patch = buildRequeueUpdate(
+      makeJob({
+        payload: armed,
+        failureReason: 'all_devices_exhausted',
+        retryAfterAt: new Date('2026-08-14T07:00:00.000Z'),
+      }),
+      now,
+    );
+    expect(patch.status).toBe('queued');
+    expect(patch.queuedAt).toBe(now);
+    expect(patch.retryAfterAt).toBeNull();
+    expect(patch.failureReason).toBeNull();
+    expect(patch.failureKind).toBeNull();
+  });
+
+  // cm:guard the rotation must go and everything else must stay — dropping the whole payload would lose `requiredCapabilities` and the stage overrides, and keeping the rotation gives the recovered job one attempt instead of a full round
+  it('drops only the spent rotation, preserving the rest of the payload', () => {
+    const patch = buildRequeueUpdate(
+      makeJob({
+        payload: {
+          ...armed,
+          _autoRetry: { nextRotation: null },
+          requiredCapabilities: { git: true },
+        },
+      }),
+      now,
+    );
+    expect(patch.payload).not.toHaveProperty('_autoRetry');
+    expect(patch.payload.requiredCapabilities).toEqual({ git: true });
   });
 });

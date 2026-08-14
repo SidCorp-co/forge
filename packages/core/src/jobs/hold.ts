@@ -16,7 +16,7 @@
 
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
+import { type JobType, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
@@ -186,6 +186,60 @@ async function conditionCleared(job: JobRow, reason: string): Promise<boolean> {
 }
 
 /**
+ * The CAS patch that turns a held row back into a queued one.
+ *
+ * Shared by the automatic release below and the operator resume in
+ * `resume-job.ts` — the two must produce an IDENTICAL row.
+ */
+// cm:guard `autoRelease: false` is the load-bearing field, and both callers need it: it is what makes a SECOND hold permanent. An operator resume that cleared the flag instead would hand the lineage a fresh auto-release on every button press, which is exactly the unbounded loop the once-per-lineage bound exists to forbid.
+export function buildRequeueUpdate(
+  job: JobRow,
+  now: Date,
+): {
+  status: 'queued';
+  queuedAt: Date;
+  retryAfterAt: null;
+  failureKind: null;
+  failureReason: null;
+  payload: Record<string, unknown>;
+} {
+  // cm:guard drop the rotation, do not carry it — a fleet that recovered must get a full round budget, and a payload still holding `nextRotation === null` state fails once and holds again with its auto-release already spent
+  const { [AUTO_RETRY_PAYLOAD_KEY]: _spentRotation, ...freshPayload } = (job.payload ??
+    {}) as Record<string, unknown>;
+  return {
+    status: 'queued' as const,
+    queuedAt: now,
+    retryAfterAt: null,
+    failureKind: null,
+    failureReason: null,
+    payload: {
+      ...freshPayload,
+      [HOLD_PAYLOAD_KEY]: { ...readHoldState(job.payload), autoRelease: false },
+    },
+  };
+}
+
+/** Clear the requeued job's hold wedge and hand it to the dispatcher. */
+// cm:guard resolve the wedge on the requeued row's OWN id — the wedge that named this hold (`alarmAgedHolds` at 6h) is otherwise unresolvable, and emitPipelineWedge's dedupe now reads `resolvedAt`, so an unresolved key would keep the bell red about a step that is running again. Nothing else observes a release.
+// cm:edge lockstep -> packages/core/src/pipeline/inv7-alarms.ts — that pass is the only emitter keyed on a held job's id; if it ever keys on something else (the issue, the run), this call must follow it
+export async function dispatchRequeuedJob(updated: {
+  id: string;
+  type: JobType;
+  issueId: string | null;
+}): Promise<void> {
+  await resolvePipelineWedge(updated.id);
+  try {
+    if (updated.type === 'reconcile' || updated.type === 'verify_skill') {
+      await enqueueReconcileJob(updated.id);
+    } else {
+      await enqueueJob({ jobId: updated.id, issueId: updated.issueId, type: updated.type });
+    }
+  } catch (err) {
+    logger.error({ err, jobId: updated.id }, 'hold: enqueue after release failed');
+  }
+}
+
+/**
  * Re-queue every held job in `projectId` whose condition has cleared.
  *
  * A released job carries a FRESH rotation: the auto-retry payload is dropped so
@@ -219,40 +273,16 @@ export async function releaseHeldJobs(projectId: string): Promise<number> {
     }
     if (!cleared) continue;
 
-    // cm:guard drop the rotation, do not carry it — a fleet that recovered must get a full round budget, and a payload still holding `nextRotation === null` state fails once and holds again with its auto-release already spent
-    const { [AUTO_RETRY_PAYLOAD_KEY]: _spentRotation, ...freshPayload } = (job.payload ??
-      {}) as Record<string, unknown>;
     const [updated] = await db
       .update(jobs)
-      .set({
-        status: 'queued',
-        queuedAt: now,
-        retryAfterAt: null,
-        failureKind: null,
-        failureReason: null,
-        payload: {
-          ...freshPayload,
-          [HOLD_PAYLOAD_KEY]: { ...state, autoRelease: false },
-        },
-      })
+      .set(buildRequeueUpdate(job, now))
       .where(and(eq(jobs.id, job.id), eq(jobs.status, 'held')))
       .returning({ id: jobs.id, type: jobs.type, issueId: jobs.issueId });
     if (!updated) continue;
 
     released += 1;
     logger.info({ jobId: job.id, issueId: job.issueId, reason }, 'hold: released to queued');
-    // cm:guard resolve the wedge HERE, on the released job's own id — the wedge that named this hold (`alarmAgedHolds` at 6h) is otherwise unresolvable, and emitPipelineWedge's dedupe now reads `resolvedAt`, so an unresolved key would keep the bell red about a step that is running again. Nothing else observes a release.
-    // cm:edge lockstep -> packages/core/src/pipeline/inv7-alarms.ts — that pass is the only emitter keyed on a held job's id; if it ever keys on something else (the issue, the run), this call must follow it
-    await resolvePipelineWedge(job.id);
-    try {
-      if (updated.type === 'reconcile' || updated.type === 'verify_skill') {
-        await enqueueReconcileJob(updated.id);
-      } else {
-        await enqueueJob({ jobId: updated.id, issueId: updated.issueId, type: updated.type });
-      }
-    } catch (err) {
-      logger.error({ err, jobId: updated.id }, 'hold: enqueue after release failed');
-    }
+    await dispatchRequeuedJob(updated);
   }
   return released;
 }

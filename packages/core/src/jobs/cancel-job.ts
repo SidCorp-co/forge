@@ -1,6 +1,6 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobEvents, jobs } from '../db/schema.js';
+import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -9,6 +9,7 @@ import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
+import { insertInterventionEvent } from './intervention-event.js';
 
 /** Job statuses from which a single-job cancel is permitted. */
 // cm:guard cancellable, NOT slot-occupying — `held` belongs here (a human may always stop a step that will never run) but is deliberately excluded from the runner-cap CTEs in dispatch-gates.ts. Reusing this set for load accounting would count held jobs against the cap and re-create the wedge RFC 0002 removed.
@@ -97,7 +98,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
         source: 'cancel',
       });
       if (!row) return null;
-      await insertInterventionEvent(tx, row.id, row.issueId, previousStatus, opts);
+      await insertInterventionEvent(tx, { ...opts, ...auditFor(row, previousStatus) });
       return row;
     });
     if (!updated) {
@@ -141,7 +142,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
       .where(eq(jobs.id, jobId))
       .returning();
     if (!row) return null;
-    await insertInterventionEvent(tx, row.id, row.issueId, previousStatus, opts);
+    await insertInterventionEvent(tx, { ...opts, ...auditFor(row, previousStatus) });
     return row;
   });
   if (!updated) throw new JobCancelError('NOT_FOUND', 'job not found');
@@ -164,37 +165,5 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
   };
 }
 
-/**
- * Append the audited `intervention` event inside an open transaction. Uses the
- * same advisory-lock + `MAX(seq)+1` frontier as the job_events POST route
- * (jobs/events-routes.ts) so the server-assigned seq stays monotonic under
- * concurrent inserts; the lock auto-releases at COMMIT/ROLLBACK.
- */
-async function insertInterventionEvent(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  jobId: string,
-  issueId: string | null,
-  previousStatus: string,
-  opts: CancelJobOptions,
-): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
-  const maxRows = await tx.execute<{ max_seq: number | string | null }>(
-    sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${jobId}`,
-  );
-  const first = maxRows[0] as { max_seq: number | string | null } | undefined;
-  const nextSeq = Number(first?.max_seq ?? 0) + 1;
-
-  await tx.insert(jobEvents).values({
-    jobId,
-    kind: 'intervention',
-    data: {
-      action: 'cancel',
-      actor: opts.actorUserId,
-      reason: opts.reason,
-      source: opts.source,
-      previousStatus,
-      issueId,
-    },
-    seq: nextSeq,
-  });
-}
+const auditFor = (row: { id: string; issueId: string | null }, previousStatus: string) =>
+  ({ jobId: row.id, issueId: row.issueId, previousStatus, action: 'cancel' }) as const;
