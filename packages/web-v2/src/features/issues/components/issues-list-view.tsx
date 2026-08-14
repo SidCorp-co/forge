@@ -47,7 +47,6 @@ import {
   usePatchIssue,
   useProjectLabels,
   useProjectMembers,
-  useTransitionIssue,
 } from "../hooks";
 import {
   type GroupBy,
@@ -59,6 +58,7 @@ import {
 import { BulkActionBar } from "./bulk-action-bar";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
+import { useGuardedTransition } from "./use-guarded-transition";
 
 // "All" includes drafts (ISS-360 — no "All + drafts" split). Draft and Done are
 // explicit narrowing buckets (ISS-438): pipeline order left→right, with the
@@ -224,7 +224,11 @@ export function IssuesListView({
   const membersQ = useProjectMembers(projectId);
   const labelsQ = useProjectLabels(projectId);
   const patch = usePatchIssue();
-  const transition = useTransitionIssue();
+  const {
+    requestTransition,
+    dialog: reasonDialog,
+    isPending: transitionPending,
+  } = useGuardedTransition();
 
   // cm:why options list project members only; a non-member creator's row still displays correctly since its label comes from the row payload, not this list
   const creatorFilterOptions = useMemo<SelectOption[]>(
@@ -252,8 +256,8 @@ export function IssuesListView({
 
   const actions: RowActions = {
     patch: patch.mutate,
-    transition: transition.mutate,
-    isPending: patch.isPending || transition.isPending,
+    transition: ({ id, toStatus }) => requestTransition(id, toStatus),
+    isPending: patch.isPending || transitionPending,
     canWrite,
   };
 
@@ -310,6 +314,7 @@ export function IssuesListView({
 
   return (
     <>
+      {reasonDialog}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Input
           icon="search"

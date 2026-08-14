@@ -155,9 +155,22 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
   it("returns [] for an empty selection", () => {
     expect(bulkAllowedStatuses([])).toEqual([]);
   });
-  it("matches allowedTransitions when every row shares a status", () => {
+  it("matches allowedTransitions when every row shares a status, less the reason-required three", () => {
     const rows = [row({ id: "a", status: "approved" }), row({ id: "b", status: "approved" })];
-    expect(bulkAllowedStatuses(rows)).toEqual(allowedTransitions("approved"));
+    expect(bulkAllowedStatuses(rows)).toEqual(
+      allowedTransitions("approved").filter(
+        (s) => s !== "reopen" && s !== "waiting" && s !== "needs_info",
+      ),
+    );
+  });
+  // cm:guard the bulk endpoint carries no reason, so offering these three mass-422s the selection (RFC 0002 INV-8) — and a single reason pasted across N issues is the unexplained park the RFC deleted, so the fix is to withhold them, never to send a shared one
+  it("never offers a status that requires an authored reason", () => {
+    const rows = [row({ id: "a", status: "in_progress" }), row({ id: "b", status: "developed" })];
+    const result = bulkAllowedStatuses(rows);
+    expect(result).not.toContain("waiting");
+    expect(result).not.toContain("needs_info");
+    expect(result).not.toContain("reopen");
+    expect(result).toContain("on_hold");
   });
   it("intersects allowed targets across mixed statuses", () => {
     const rows = [row({ id: "a", status: "open" }), row({ id: "b", status: "approved" })];

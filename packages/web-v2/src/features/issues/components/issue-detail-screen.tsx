@@ -43,6 +43,7 @@ import {
   deriveBlockerState,
   deriveStageOutcomes,
   parseChecklist,
+  statusLabel,
   statusToChip,
   statusToRun,
   statusToStage,
@@ -61,21 +62,12 @@ import {
   useIssueDeps,
   usePatchIssue,
   useProjectMembers,
-  useTransitionIssue,
 } from "../hooks";
-import type { IssueAgentSession, IssueStatus, TaskRow, WaitingCause } from "../types";
+import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AttachmentList } from "./attachment-list";
 import { BlockerBanner } from "./blocker-banner";
-import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-dialog";
-
-// cm:edge contract -> packages/core/src/issues/transition-reason.ts — mirrors REASON_REQUIRED_STATUSES; a status added there but not here fires the mutation without a reason and the user sees a 422 they cannot act on
-const REASON_REQUIRED = new Set<string>(["reopen", "waiting", "needs_info"]);
-const REASON_TOAST: Record<ReasonStatus, string> = {
-  reopen: "Issue reopened",
-  waiting: "Issue parked for a human",
-  needs_info: "Information requested",
-};
+import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { LiveAgentPanel } from "./live-agent-panel";
 import { PropertiesRail } from "./properties-rail";
@@ -130,11 +122,6 @@ export function IssueDetailScreen({
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
-  // cm:guard every surface offering reopen / waiting / needs_info MUST route through this dialog (RFC 0002 INV-8) — the server rejects those three without a reason, so a direct `transition.mutate` added here reads to the user as a broken button
-  const [reasonPrompt, setReasonPrompt] = useState<{
-    status: ReasonStatus;
-    successMessage: string;
-  } | null>(null);
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -148,8 +135,9 @@ export function IssueDetailScreen({
   const durationsQ = useStepDurations(projectId, id);
 
   const patch = usePatchIssue();
-  const transition = useTransitionIssue();
-  const pending = patch.isPending || transition.isPending;
+  const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
+    useGuardedTransition();
+  const pending = patch.isPending || transitionPending;
 
   const issue = issueQ.data;
   const checklist = useMemo(() => {
@@ -202,42 +190,14 @@ export function IssueDetailScreen({
   }
 
   const stage = statusToStage(issue.status);
-  const onTransition = (toStatus: IssueStatus) => {
-    if (REASON_REQUIRED.has(toStatus)) {
-      setReasonPrompt({
-        status: toStatus as ReasonStatus,
-        successMessage: REASON_TOAST[toStatus as ReasonStatus],
-      });
-      return;
-    }
-    transition.mutate({ id, toStatus });
-  };
+  const onTransition = (toStatus: IssueStatus) => requestTransition(id, toStatus);
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id, body });
 
-  // ISS-828 AC#10 — every blocker-banner mutation toasts success (errors are
-  // already toasted by `useTransitionIssue`'s shared `onError`).
-  const runBlockerAction = (toStatus: IssueStatus, successMessage: string) =>
-    transition.mutate(
-      { id, toStatus },
-      { onSuccess: () => toast({ title: successMessage, tone: "success" }) },
-    );
-  const onApprove = () => runBlockerAction("approved", "Issue approved");
-  const onBannerResume = () => setReasonPrompt({ status: "reopen", successMessage: "Issue resumed" });
+  const onApprove = () => requestTransition(id, "approved", { successMessage: "Issue approved" });
+  const onBannerResume = () =>
+    requestTransition(id, "reopen", { successMessage: "Issue resumed" });
   const onReopen = () => onTransition("reopen");
-  const onConfirmReason = (reason: string, waitingKind?: WaitingCause) => {
-    if (!reasonPrompt) return;
-    const { status: toStatus, successMessage } = reasonPrompt;
-    transition.mutate(
-      { id, toStatus, reason, ...(waitingKind ? { waitingKind } : {}) },
-      {
-        onSuccess: () => {
-          setReasonPrompt(null);
-          toast({ title: successMessage, tone: "success" });
-        },
-      },
-    );
-  };
 
   // ISS-377 — these are pure derivations (not hooks), so they sit safely after
   // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
@@ -461,12 +421,7 @@ export function IssueDetailScreen({
             />
           )}
 
-          <TransitionReasonDialog
-            status={reasonPrompt?.status ?? null}
-            loading={transition.isPending}
-            onConfirm={onConfirmReason}
-            onClose={() => setReasonPrompt(null)}
-          />
+          {reasonDialog}
 
           <Card>
             <CardContent>

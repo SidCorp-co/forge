@@ -210,8 +210,12 @@ export function bulkAllowedStatuses(rows: IssueRow[]): IssueStatus[] {
       common = common.filter((s) => allowedSet.has(s));
     }
   }
-  return common ?? [];
+  // cm:guard the three reason-required statuses stay OUT of a bulk pick (RFC 0002 INV-8) — the bulk endpoint carries no reason so every one of them would 422, and the shape that would make them work, one reason pasted across N issues, is the unexplained park the RFC deleted
+  return (common ?? []).filter((s) => !BULK_EXCLUDED_STATUSES.has(s));
 }
+
+// cm:edge contract -> packages/core/src/issues/transition-reason.ts — the same three as REASON_REQUIRED_STATUSES; a status added there stays offered here and mass-422s the whole selection
+const BULK_EXCLUDED_STATUSES = new Set<IssueStatus>(["reopen", "waiting", "needs_info"]);
 
 export interface DepCounts {
   blockedBy: number;
