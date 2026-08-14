@@ -274,6 +274,21 @@ function ciParity(quiet) {
   return 1;
 }
 
+// cm:guard print on a CLEAN run too, never only on failure — a green `verify` silent about what it skipped reads as a green BUILD, and on 2026-08-14 that shipped six red integration tests inside a report that said "verified"
+function reportNotRunHere() {
+  const elsewhere = Object.entries(CI_COVERAGE)
+    .filter(([, where]) => !where.startsWith('verify'))
+    .filter(([step]) => RUN_ELSEWHERE_HINT.some((h) => step.includes(h)));
+  if (elsewhere.length === 0) return;
+  console.log(`\n  CI runs these too — verify does NOT. Run them before you trust a green:`);
+  for (const cmd of [...new Set(elsewhere.map(([, where]) => where))].sort()) {
+    console.log(`    ${cmd}`);
+  }
+}
+
+// cm:guard keep to gates a local run can actually reproduce — a step needing a CI-only secret or a Tauri bundle prints advice nobody can take, and unusable advice is how the usable lines stop being read
+const RUN_ELSEWHERE_HINT = ['test:integration', 'web-v2', '@forge/core test', '@forge/core build'];
+
 function report(results, adv, parity) {
   const width = Math.max(...results.map((r) => r.label.length), 18);
   console.log('');
@@ -286,6 +301,7 @@ function report(results, adv, parity) {
     );
   }
   console.log(`  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ci-parity`);
+  reportNotRunHere();
 
   const failed = results.filter((r) => r.code !== 0);
   for (const r of failed) {
