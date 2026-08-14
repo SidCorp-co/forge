@@ -231,6 +231,23 @@ function advisory(base) {
   return hits.length ? hits : null;
 }
 
+// cm:edge naming -> scripts/check-lockstep.mjs — reads that script's --json shape; it ships advisory on purpose, so a non-zero exit here must NOT reach the summary or a rename would silently start failing verify
+function lockstepDrift(base) {
+  if (!base) return null;
+  const r = spawnSync('node', ['scripts/check-lockstep.mjs', '--json', '--since', base], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
+  if (r.status !== 0 || !r.stdout) return null;
+  try {
+    const body = r.stdout.slice(r.stdout.indexOf('{'));
+    const pairs = JSON.parse(body).oneSided ?? [];
+    return pairs.length ? pairs : null;
+  } catch {
+    return null;
+  }
+}
+
 function ciSteps() {
   if (!existsSync(CI_PATH)) return null;
   const lines = readFileSync(CI_PATH, 'utf8').split('\n');
@@ -334,6 +351,23 @@ function report(results, adv, parity) {
     }
   }
 
+  if (drift) {
+    console.log(
+      `\n${'─'.repeat(72)}\n${drift.length} declared lockstep pair(s) where only one half moved:\n`,
+    );
+    for (const p of drift) {
+      console.log(`  changed   ${p.moved}`);
+      console.log(`  untouched ${p.still}`);
+      if (p.why) console.log(`            ${p.why}`);
+      console.log('');
+    }
+    console.log(
+      '\n  Advice, not a verdict — a rename moves one side alone. Make the matching\n' +
+        '  change, or delete the cm:edge if the pair no longer holds.',
+    );
+  }
+
+  // cm:guard the lockstep drift above is ADVISORY and must stay out of this reduction — a `cm:edge lockstep` means "the other side likely needs this too", and blocking a rename on it teaches people to route around verify, which costs more than the check earns
   const codes = [...results.map((r) => r.code), parity];
   if (codes.includes(2)) return 2;
   return codes.some((c) => c !== 0) ? 1 : 0;
@@ -367,4 +401,5 @@ for (const check of CHECKS) {
 if (tty) process.stdout.write(`${' '.repeat(48)}\r`);
 
 const adv = args.includes('--no-advisory') ? null : advisory(base);
+const drift = args.includes('--no-advisory') ? null : lockstepDrift(base);
 process.exit(report(results, adv, ciParity(true)));

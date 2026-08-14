@@ -311,7 +311,7 @@ that already holds both. **That orthogonality is the test for whether something 
 
 **`lockstep-in-diff` is the cheapest and the highest-value one unbuilt.** Both inputs already exist,
 and `cm` deliberately cannot own it: `cm` has no business knowing your PR's scope, your merge-base,
-or which CI job blocks. This repo has 158 lockstep edges — for example the three orphan-hygiene
+or which CI job blocks. This repo has 49 lockstep edges among 150 declared — for example the three orphan-hygiene
 defences that must move together — and today nothing checks that a PR touching one touched the
 others.
 

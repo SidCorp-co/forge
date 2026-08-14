@@ -132,6 +132,36 @@ with `--require-sources`, and `--ci-parity` proves that step exists.
 Uncovered steps freeze into `.forge/flow-coverage-baseline.json` via `--update-baseline`, so
 declaring a flow is never punished — the debt just shows up in the diff. Today the baseline is empty.
 
+## check-lockstep.mjs — a declared pair where only one half moved
+
+The second join. `cm` knows which files carry `cm:edge lockstep` — *"these two must change
+together"*. `git` knows which files a change touched. Neither can know that one half moved and the
+other did not, and neither should: `cm` has no business knowing your merge-base, and `git` has never
+heard of an edge.
+
+Today: 49 lockstep edges across 66 files. The three orphan-hygiene defences are the worked example —
+change `runs-cascade.ts` alone, tests stay green, merge, and an orphan job wedges a runner slot.
+
+**It ships advisory, and that is a design decision, not a stepping stone.** A lockstep edge means
+*"the other side likely needs this too"*, not *"every keystroke here needs a matching one there"* — a
+rename or a comment edit legitimately moves one side alone. Blocking on that teaches people to route
+around the checker, which costs more than the check earns. `pnpm verify` prints the drifting pairs
+after the summary table and does **not** let them change its exit code.
+
+```bash
+node scripts/check-lockstep.mjs                  # pairs drifting vs origin/main, exit 0
+node scripts/check-lockstep.mjs --staged         # same, against the index
+node scripts/check-lockstep.mjs --all            # every declared pair
+node scripts/check-lockstep.mjs --strict         # exit 1 when a pair drifted
+```
+
+Exit `2` when the graph cannot be read, when it carries **no** lockstep edge (the checker's whole
+scope is empty — that is not a pass), or when the changed set cannot be computed.
+
+It is not an axis and is deliberately absent from `.forge/conformance.json`. Attaching a level-1
+checker to the level-2 `knowledge` axis would drag that axis down to 1, because an axis measures at
+its weakest gate — the manifest telling the truth here is the system working, not a gap.
+
 ## upload-image.sh — attach images from a runner
 
 Uploads screenshots/images to a Forge issue or comment over REST. Exists because the MCP
