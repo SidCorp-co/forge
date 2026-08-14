@@ -151,6 +151,7 @@ const {
   CHAT_IDLE_CLOSE_MS,
   detectStalledDependencies,
   alarmClosedUnmergedBlockedDependents,
+  alarmDraftBlockedDependents,
 } = await import('./sweeper.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
@@ -699,6 +700,70 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
     dbExecute.mockRejectedValueOnce(new Error('boom'));
     const res = await detectStalledDependencies(new Date());
     expect(res.detected).toBe(0);
+  });
+});
+
+describe('alarmDraftBlockedDependents — the gate is right, the silence was not', () => {
+  const draftRow = {
+    job_id: '71111111-1111-4111-8111-111111111111',
+    project_id: '72222222-2222-4222-8222-222222222222',
+    issue_id: '73333333-3333-4333-8333-333333333333',
+    blocker_seq: 51,
+    blocker_title: 'a11y: /sign-up "Sign in" link fails axe',
+    blocker_count: 1,
+  };
+
+  // cm:guard alarm ONLY — never a status write and never a gate exemption. Owner decision 2026-08-14: an edge onto a draft means the draft really must come first. brand-gateway ISS-50 (3 draft blockers) and anhome ISS-313 (2) each sat queued 15-22 days with NOTHING told to anyone; that silence is the entire defect this closes.
+  it('emits a wedge naming the draft blocker and writes no state', async () => {
+    dbExecute.mockResolvedValueOnce([draftRow]);
+
+    const res = await alarmDraftBlockedDependents(new Date());
+
+    expect(res.alerted).toBe(1);
+    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
+    const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(wedge.issueId).toBe(draftRow.issue_id);
+    expect(wedge.summary).toContain('ISS-51');
+    expect(wedge.summary).toContain('draft');
+    expect(wedge.nextStep).toContain('dispatches by itself');
+  });
+
+  // cm:guard ONE notification per stuck issue, not one per edge — brand-gateway ISS-50 has three draft blockers at once, so a row-per-edge query would triple-notify about a single stuck issue and read as three problems
+  it('reports the sibling blockers in one wedge rather than one wedge each', async () => {
+    dbExecute.mockResolvedValueOnce([{ ...draftRow, blocker_count: 3 }]);
+
+    const res = await alarmDraftBlockedDependents(new Date());
+
+    expect(res.alerted).toBe(1);
+    expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+    const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(wedge.summary).toContain('2 other draft blockers');
+  });
+
+  it('no rows → alerted 0, nothing emitted', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    const res = await alarmDraftBlockedDependents(new Date());
+    expect(res.alerted).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
+  });
+
+  it('survives a throwing row and still reports the rest', async () => {
+    dbExecute.mockResolvedValueOnce([
+      draftRow,
+      { ...draftRow, issue_id: '75555555-5555-4555-8555-555555555555' },
+    ]);
+    emitWedgeMock.mockRejectedValueOnce(new Error('notify down'));
+
+    const res = await alarmDraftBlockedDependents(new Date());
+
+    expect(res.alerted).toBe(1);
+  });
+
+  it('returns 0 instead of throwing when the query fails', async () => {
+    dbExecute.mockRejectedValueOnce(new Error('db down'));
+    const res = await alarmDraftBlockedDependents(new Date());
+    expect(res.alerted).toBe(0);
   });
 });
 

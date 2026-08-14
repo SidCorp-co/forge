@@ -97,6 +97,11 @@ export interface ClosedUnmergedAlarmResult {
   alerted: number;
 }
 
+export interface DraftBlockedAlarmResult {
+  /** Dependents alarmed because a blocker is still at `draft`. */
+  alerted: number;
+}
+
 export interface StaleReleaseBatchClaimsResult {
   released: number;
 }
@@ -118,6 +123,8 @@ export interface SweepResult {
   stalledDependencies: StallDetectResult;
   /** ISS-639 — dependents alarmed because their blocker closed without merging. */
   closedUnmergedAlarms: ClosedUnmergedAlarmResult;
+  /** Dependents alarmed because a `blocks` parent is still at `draft` (alarm only). */
+  draftBlockedAlarms: DraftBlockedAlarmResult;
   /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
   agedHolds: Inv7AlarmResult;
   /** RFC 0002 INV-7 — issues at or past `noProgressRounds` (alarm only). */
@@ -204,6 +211,10 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const closedUnmergedAlarms = await runPass('alarmClosedUnmergedBlockedDependents', () =>
     alarmClosedUnmergedBlockedDependents(now),
   );
+  // cm:why alarm, never a gate change — the owner's call 2026-08-14: a `blocks` edge onto a `draft` issue SHOULD keep waiting, because the edge is a deliberate statement of order. What was wrong was only that the wait was invisible.
+  const draftBlockedAlarms = await runPass('alarmDraftBlockedDependents', () =>
+    alarmDraftBlockedDependents(now),
+  );
   const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
   // cm:why an ACTIVE reaper, not an alarm: a run paused by a mechanism this build no longer has is not a state anyone can act on — there is nothing left to clear the reason, so surfacing it would ask a human to do the resume every time
   const orphanedPauses = await runPass('resumeOrphanedPauses', () => resumeOrphanedPauses());
@@ -245,6 +256,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
     stalledDependencies: stalledDependencies as StallDetectResult,
     closedUnmergedAlarms: closedUnmergedAlarms as ClosedUnmergedAlarmResult,
+    draftBlockedAlarms: draftBlockedAlarms as DraftBlockedAlarmResult,
     agedHolds: agedHolds as Inv7AlarmResult,
     churningIssues: churningIssues as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
@@ -427,6 +439,93 @@ type ClosedUnmergedRow = {
  * can no longer arise from normal operation. This pass stays as the backstop
  * for pre-existing rows and direct DB writes that bypass both paths.
  */
+type DraftBlockedRow = {
+  job_id: string;
+  project_id: string;
+  issue_id: string;
+  blocker_seq: number;
+  blocker_title: string;
+  blocker_count: number;
+};
+
+/**
+ * A `blocks` parent still at `draft` is a wait nothing will ever end on its own:
+ * `draft` is precisely the status the dispatcher does not pick up, so the
+ * blocker cannot advance, cannot merge, and cannot satisfy the gate. Emit a
+ * wedge naming it.
+ *
+ * The gate itself is CORRECT and stays — see the guard below. Alarm only.
+ */
+// cm:guard do NOT "fix" this by exempting `draft` blockers from the L2 gate. Owner decision 2026-08-14: an edge pointing at a draft means the draft really must come first, so dispatching past it would ship work in the wrong order. The defect was never the wait — it was that the wait was silent, and this pass is the whole fix.
+// cm:guard alarm ONLY, like its closed-unmerged sibling (RFC 0002 INV-5) — never write issues.status. A park here would ask a human to move the dependent back by hand once the draft opens, when the gate already releases it with no intervention at all.
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — L2 `blockedBy` is what actually holds these jobs; if that predicate stops treating a `draft` blocker as unsatisfied, this pass starts alarming about jobs that are dispatching fine
+export async function alarmDraftBlockedDependents(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<DraftBlockedAlarmResult> {
+  try {
+    const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();
+    const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
+
+    // cm:why DISTINCT ON the issue with a blocker COUNT rather than one row per edge — brand-gateway ISS-50 is blocked by three drafts at once (ISS-51/52/53, measured 2026-08-14), and a row each would be three notifications about one stuck issue
+    const rows = await db.execute<DraftBlockedRow>(sql`
+      SELECT DISTINCT ON (j.issue_id)
+             j.id AS job_id, j.project_id, j.issue_id::text AS issue_id,
+             p.iss_seq AS blocker_seq, p.title AS blocker_title,
+             count(*) OVER (PARTITION BY j.issue_id)::int AS blocker_count
+      FROM jobs j
+      JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+      JOIN issue_dependencies d ON d.kind = 'blocks' AND d.to_issue_id = j.issue_id
+      JOIN issues p ON p.id = d.from_issue_id
+      WHERE j.status = 'queued'
+        AND j.type <> 'pm'
+        AND j.issue_id IS NOT NULL
+        AND j.queued_at < ${cutoffIso}
+        AND r.status = 'running'
+        AND (d.valid_until IS NULL OR d.valid_until > now())
+        AND p.status = 'draft'
+        ${projectClause}
+      ORDER BY j.issue_id, p.iss_seq ASC
+      LIMIT 100
+    `);
+
+    let alerted = 0;
+    for (const row of rows) {
+      try {
+        const others = row.blocker_count - 1;
+        const alsoText =
+          others > 0 ? ` (and ${others} other draft blocker${others > 1 ? 's' : ''})` : '';
+        await emitPipelineWedge({
+          projectId: row.project_id,
+          issueId: row.issue_id,
+          hop: 'dispatch',
+          entity: 'job',
+          entityId: row.job_id,
+          reason: `blocker_draft:${row.blocker_count}`,
+          title: 'Blocked on an issue that is still a draft',
+          summary: `ISS-${row.blocker_seq} "${row.blocker_title}"${alsoText} blocks this issue and is still at \`draft\`. The pipeline never picks up a draft, so this wait cannot end by itself.`,
+          nextStep:
+            'Open the blocker so it can run, or drop the dependency if the order no longer matters — this issue then dispatches by itself.',
+          action: 'Open or unlink the blocking draft; no action is needed on this issue.',
+        });
+        alerted++;
+      } catch (err) {
+        logger.warn(
+          { err, issueId: row.issue_id },
+          'pipeline-sweeper: draft-blocked row failed (skipped)',
+        );
+      }
+    }
+    if (alerted > 0) {
+      logger.info({ alerted }, 'pipeline-sweeper: draft-blocked dependents surfaced');
+    }
+    return { alerted };
+  } catch (err) {
+    logger.error({ err }, 'pipeline-sweeper: alarmDraftBlockedDependents failed');
+    return { alerted: 0 };
+  }
+}
+
 export async function alarmClosedUnmergedBlockedDependents(
   now: Date = new Date(),
   scope: SweepScope = {},

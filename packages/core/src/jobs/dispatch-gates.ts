@@ -471,15 +471,8 @@ function buildBarrierFragments(args: {
         )
     )`;
 
-  // ISS-639 — the `OR status='closed'` bypass below is only safe when the
-  // project's `mergeStates.baseBranch` is structurally unstampable (manual
-  // mode / auto-toggle off — see `isBaseBranchStampable`). For a normal
-  // auto-advancing base, a `closed` blocker with `merged_at IS NULL` means
-  // it was closed WITHOUT its code ever landing on the base branch — the
-  // dependent must NOT dispatch (see `pipeline/sweeper.ts`'s
-  // `parkClosedUnmergedBlockedDependents`, which parks it at `waiting`
-  // instead). Omitting the arm entirely for a stampable base is what
-  // actually fixes the devbox ISS-2/ISS-4 bug.
+  // cm:guard ISS-639 — the `OR status='closed'` bypass is legal ONLY while the project's base branch is structurally unstampable (manual mode / auto-toggle off, per `isBaseBranchStampable`). On an auto-advancing base a `closed` blocker with `merged_at IS NULL` was closed WITHOUT its code landing, so the dependent must NOT dispatch; re-adding the arm unconditionally is the devbox ISS-2/ISS-4 bug.
+  // cm:edge lockstep -> packages/core/src/pipeline/sweeper.ts — `alarmClosedUnmergedBlockedDependents` and `alarmDraftBlockedDependents` are the surfacing halves of this predicate: this decides which blockers hold a job, those decide what the operator is told about it. A blocker status added or dropped here and not there is a job queued with nobody notified. (This comment named `parkClosedUnmergedBlockedDependents` for months after RFC 0002 renamed it and removed the park.)
   const blockClosedArm = baseStampable ? sql`` : sql` AND p.status <> 'closed'`;
   const decompClosedArm = baseStampable ? sql`` : sql` AND c2.status <> 'closed'`;
 

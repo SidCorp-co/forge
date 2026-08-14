@@ -2,42 +2,21 @@
  * ISS-452 (ISS-442 C6 / invariant I7) — no silent wedge.
  *
  * `emitPipelineWedge` is the single surfacing point for a non-progressing
- * kernel state: the loop monitor's miss-handlers (jobs/loop-monitor.ts) and
- * the demoted sweepers' alarm passes call it when a hop exceeds its
- * threshold. It writes a `pipeline_wedge` notification to the project owner
- * carrying WHERE (which hop) + WHY (the reason) + WHAT a human should do;
- * the `notificationCreated` hook then fans it out to the owner's user room
- * AND the project room (ws/broadcast-subscribers.ts), so any operator with
- * the project open sees the wedge without a refresh.
- *
- * These notification rows are the raw signal behind the queryable
- * interventions-per-issue metric (`issue_intervention_events` view, migration
- * 0117; REST `GET /api/pipeline/interventions`) — VISION §1 metric ②
- * (interventions per issue closed) is counted from them plus the audited
- * manual escape hatches (C0 `job_events.kind='intervention'`, C1
- * `kernel_transitions` user-actor run flips).
+ * kernel state: the loop monitor's miss-handlers and the demoted sweepers'
+ * alarm passes call it when a hop exceeds its threshold. It writes a
+ * `pipeline_wedge` notification to the project owner carrying WHERE + WHY +
+ * WHAT to do; the `notificationCreated` hook fans it out to the owner's user
+ * room AND the project room. These rows are also the raw signal behind the
+ * interventions-per-issue metric (`issue_intervention_events`, migration
+ * 0117) — VISION §1 metric ②.
  *
  * Spam guard: at most one UNRESOLVED wedge per entity per
- * {@link WEDGE_RENOTIFY_MS}, keyed on the indexed `resolution_key` column
- * (`wedge:<entityId>`, ISS-510) rather than a body marker — this keeps the
- * visible body free of the entity id. `resolvePipelineWedge` is the clear path.
+ * {@link WEDGE_RENOTIFY_MS}, keyed on `resolution_key`; `resolvePipelineWedge`
+ * clears it. A self-clearing condition should not reach here at all — the
+ * caller knows (`holdResumesItself` in `jobs/hold.ts`).
  *
- * A condition that clears ITSELF should not reach here at all: the caller is
- * the one that knows (see `holdResumesItself` in `jobs/hold.ts`), and the
- * 6-hour `alarmAgedHolds` pass is the escalation for a self-clearing condition
- * that did not.
- *
- * ISS-619 — `title`/`summary`/`nextStep`/`secondaryIssueId` are OPTIONAL
- * business-language presentation fields. When a caller supplies them (today:
- * the dependency-stall detector in sweeper.ts), the notification shows a
- * plain-language title + a two-sentence body instead of the raw
- * `hop`/`entity`/`reason`/`action` template — the full technical detail still
- * goes to `logger.warn`/Sentry either way. Callers that don't supply them
- * (the ops-facing loop-monitor/stale-detector alarms) keep the original
- * technical template unchanged.
- *
- * Best-effort by contract: NEVER throws — surfacing must not break the reap
- * path that called it.
+ * ISS-619 — `title`/`summary`/`nextStep`/`secondaryIssueId` are optional
+ * business-language fields; without them the technical template is used. Never throws.
  */
 
 import { and, eq, gt, isNull } from 'drizzle-orm';

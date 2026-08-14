@@ -1,24 +1,16 @@
 //! Workspace provisioning — turn a freshly-assigned (device × project) runner
 //! into a ready-to-run folder.
 //!
-//! Triggered by the `provision.request` WS event and by a periodic sweep (so an
-//! offline device catches up on reconnect). For each `queued` provision the
-//! runner pulls from core it resolves the target folder (server `repoPath`, else
-//! `projects_root/<slug>`), writes the project's git SSH key when one was
-//! delivered and pins git to it, clones the repo when the folder is not already a
-//! work tree, then seeds `.claude/skills/`, a persistent `.mcp.json` (Forge MCP)
-//! and the Forge orientation (`.forge/orientation.md` + a fixed `CLAUDE.md`
-//! pointer), reporting each stage back so web renders a live stepper.
+//! Triggered by the `provision.request` WS event and by a periodic sweep. For
+//! each `queued` provision: resolve the target folder (server `repoPath`, else
+//! `projects_root/<slug>`), write the project git SSH key and pin git to it,
+//! bring the repo in, then seed `.claude/skills/`, a persistent `.mcp.json` and
+//! the Forge orientation, reporting each stage so web renders a live stepper.
 //!
-//! Git is OPTIONAL: a project with no repo URL whose folder already exists is a
-//! repo-less workspace (an MCP-driven storefront has no codebase) and gets every
-//! non-git step. A folder holding only THIS provisioner's own output (see
-//! `PROVISIONED_ENTRIES`) is adopted in place — `git init` + fetch + force
-//! checkout — because `git clone` cannot write into a non-empty folder and that
-//! state is one provisioning itself creates: a repo-less workspace that later
-//! gains a repo URL. `needs_manual_setup` is reserved for what nothing can
-//! proceed from: no resolvable path, a missing folder with no URL to clone, or a
-//! folder holding content this runner did not put there.
+//! Git is OPTIONAL — see `classify_workspace` for the five shapes the target
+//! folder can take and which one earns `needs_manual_setup`. The load-bearing
+//! one is `Adopt`: `git clone` refuses a non-empty destination, and a
+//! repo-less workspace that later gains a repo URL is exactly that.
 //!
 //! Best-effort by contract — a failure reports `failed`/`needs_manual_setup`,
 //! never panics.
