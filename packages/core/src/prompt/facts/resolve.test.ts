@@ -116,6 +116,29 @@ describe('renderStageFactsText', () => {
   });
 });
 
+// cm:guard assert the RENDERED release block, not the registry's `appliesTo` — the two are separated by resolve.ts's tier filter, and the whole defect this closes was an instruction that existed in the registry and reached no prompt. Checking the metadata would have passed the entire time the leak was open.
+describe('renderStageFactsText — worktree cleanup reaches the release prompt', () => {
+  it('injects the removal step at release', () => {
+    const text = renderStageFactsText(makeInputs(), 'p-1', 'release');
+    expect(text).toContain("### Remove this issue's worktree");
+    expect(text).toContain('git worktree remove');
+    expect(text).toContain('git worktree prune');
+  });
+
+  it('does NOT inject it at the stages that re-enter the worktree', () => {
+    for (const stage of ['code', 'fix', 'review', 'test'] as const) {
+      const text = renderStageFactsText(makeInputs(), 'p-1', stage);
+      expect(text, `must not reach ${stage}`).not.toContain("### Remove this issue's worktree");
+    }
+  });
+
+  it('still gives code/fix the create-and-reuse half', () => {
+    const text = renderStageFactsText(makeInputs(), 'p-1', 'code');
+    expect(text).toContain('### Worktree isolation');
+    expect(text).toContain('Do NOT delete it when you finish');
+  });
+});
+
 describe('renderStageFactsText — always-inject tier (ISS-521)', () => {
   beforeEach(() => warnSpy.mockClear());
 

@@ -395,15 +395,37 @@ Handoff is best-effort context for the next step; it never replaces the mandator
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['code', 'fix'],
-    version: 2,
+    version: 3,
     render: () => `## Worktree isolation
 Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/worktrees/iss-XX-short-title/\` — never check out branches in the main tree.
 - Create on first entry; REUSE the existing worktree if it's already present (fix re-enters the one code created).
-- Resolve collisions by reusing rather than recreating; clean up only at release.
+- Resolve collisions by reusing rather than recreating. Do NOT delete it when you finish — \`fix\` and \`review\` re-enter this same worktree; the \`worktree-cleanup\` fact makes removal a release-stage step.
 - The root checkout is SHARED with other agents running right now. Never \`git checkout\`, \`git stash\`, \`git reset\` or \`git clean\` there. Uncommitted changes you find are very likely someone else's in-flight work; clobbering them is silent, and they cannot get it back.
 - Resolve every path against your WORKTREE root, not the repo root — including "quick" edits to packages your issue only touches incidentally. An absolute repo-root path writes into whatever branch the shared tree happens to be on.
 - Uncommitted changes already in your worktree that you did not make mean a prior attempt was interrupted. Inspect them and adopt or discard deliberately; never assume they are yours.
 - **Your adopted skill's steps may still tell you to \`git checkout\` / \`git stash\` in the main tree. That text predates this protocol — this block wins.** Skills are copied per project and do not receive template fixes, so a stale procedure is expected; follow it for WHAT to build, not for where to stand.`,
+  },
+  // cm:guard this fact and `worktree-protocol` are the two halves of one lifecycle: that one says CREATE and never delete, this one is the only place deletion is ever asked for. `worktree-protocol` carried the sentence "clean up only at release" while its own `appliesTo` was `['code','fix']` — so the instruction existed and no stage it named could ever read it. Measured 2026-08-14: ~200 abandoned worktrees fleet-wide, one project holding 17G / 1.69M files in `.claude/worktrees`, and ubuntu6 down to 951MB free on a 78G disk.
+  // cm:edge lockstep -> packages/core/src/prompt/facts/registry.ts#worktree-protocol — that fact tells the agent to create the worktree and to REUSE it across code/fix/review; if its path convention or reuse rule changes, the removal step here has to follow or it deletes the wrong thing (or nothing)
+  // cm:why a release-stage step, NOT a background reaper — a sweep would have to guess from the outside whether a worktree is still wanted, and guessing wrong deletes an agent's in-flight work. At release the answer is already known: this issue's branch just merged, so its worktree is provably finished.
+  {
+    id: 'worktree-cleanup',
+    title: "Remove this issue's worktree at release",
+    category: 'protocol',
+    tier: 'contextual',
+    scope: 'global',
+    namespace: 'forge',
+    appliesTo: ['release'],
+    version: 1,
+    render: () => `## Remove this issue's worktree
+The branch you just merged leaves a worktree behind at \`.claude/worktrees/iss-XX-short-title/\`, carrying its own \`node_modules\` and build cache — routinely 0.8-3 GB each. Nothing else ever removes it, so releasing without this step is how a runner box fills up and every project on it starts failing.
+
+Remove ONLY this issue's worktree, and only after checking it:
+1. \`git -C <worktree> status --porcelain\` — if any TRACKED file is modified, STOP. Do not remove it, and say so in your handoff: uncommitted work you did not author is someone's interrupted attempt, and it is unrecoverable once deleted. Untracked files (\`??\`) are build output and do not block removal.
+2. \`git worktree remove .claude/worktrees/iss-XX-short-title --force\` from the repo root. \`--force\` is required (untracked build output) and is safe only because step 1 already cleared it.
+3. \`git worktree prune\` — drops the stale admin entry so \`git worktree list\` stops naming a directory that is gone.
+
+Never sweep other issues' worktrees, however old they look: a directory you did not create may hold an agent's work in progress right now.`,
   },
   // ISS-552 (C1) — trigger-phrased red-flag fact for code + fix stages.
   // Teaches by trigger condition (ISS-541: "if X happened, do Y"), not by

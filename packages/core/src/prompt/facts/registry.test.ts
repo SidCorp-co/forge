@@ -212,6 +212,55 @@ describe('worktree-protocol fact — the invariant that must outrank a stale ski
 });
 
 /**
+ * The worktree lifecycle only closes if some stage is actually told to remove
+ * one. `worktree-protocol` carried the sentence "clean up only at release"
+ * while its own `appliesTo` was `[code, fix]` — so the single instruction to
+ * delete anything was addressed to two stages that must NOT delete (fix and
+ * review re-enter the same worktree) and invisible to the one that should.
+ *
+ * Measured 2026-08-14: ~200 abandoned worktrees across six runner boxes, one
+ * project holding 17G / 1.69M files under `.claude/worktrees`, ubuntu6 down to
+ * 951MB free on a 78G disk with every project on it failing.
+ */
+describe('worktree-cleanup fact — the half of the lifecycle that deletes', () => {
+  const body = renderFact('worktree-cleanup') ?? '';
+
+  // cm:guard `release` and ONLY release — adding `code`/`fix`/`review` here tells a stage to delete the worktree its successor re-enters, and dropping `release` restores the leak this fact exists to close
+  it('reaches release, and none of the stages that re-enter the worktree', () => {
+    const fact = getFact('worktree-cleanup');
+    expect(fact?.appliesTo).toEqual(['release']);
+    for (const stage of ['code', 'fix', 'review', 'test']) {
+      expect(fact?.appliesTo, `must not apply to ${stage}`).not.toContain(stage);
+    }
+  });
+
+  // cm:guard the dirty check must come BEFORE the removal, and the removal must carry --force — `--force` is mandatory (node_modules is untracked) and is precisely what makes an unchecked removal destroy uncommitted work
+  it('orders the dirty check ahead of the forced removal', () => {
+    const check = body.indexOf('status --porcelain');
+    const remove = body.indexOf('git worktree remove');
+    expect(check).toBeGreaterThan(-1);
+    expect(remove).toBeGreaterThan(check);
+    expect(body).toContain('--force');
+    expect(body).toMatch(/STOP/);
+  });
+
+  it('prunes the admin entry, not just the directory', () => {
+    expect(body).toContain('git worktree prune');
+  });
+
+  // cm:guard a blanket sweep is the one thing this fact must never license — the reason it is a release-stage step and not a reaper is that only the releasing agent knows its own worktree is finished
+  it("forbids sweeping other issues' worktrees", () => {
+    expect(body).toMatch(/Never sweep other issues/);
+    expect(body).toMatch(/work in progress right now/);
+  });
+
+  it('states the cost, so the step does not read as tidiness', () => {
+    expect(body).toMatch(/GB each|node_modules/);
+    expect(body).toMatch(/Nothing else ever removes it/);
+  });
+});
+
+/**
  * `deploying` was retired platform-wide (db/schema.ts: removed from the
  * lifecycle, one-shot migrations re-parked every stranded row), but the
  * forked skill bodies still name it in their exit tables. Six reports across
