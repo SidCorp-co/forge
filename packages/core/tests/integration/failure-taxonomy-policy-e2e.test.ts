@@ -8,8 +8,8 @@
  *
  * One test per face:
  *   - ISS-757 org spend-cap storm → per-account exhaustion, rotates immediately,
- *     the round budget ends it (NOT an immediate park — reversed 2026-08-12, see
- *     the `allRunnersLimited` guard in `src/jobs/retry.ts`).
+ *     the DEFERRAL CEILING ends it (NOT an immediate park — reversed 2026-08-12;
+ *     and not the round budget, which an empty pool never spends).
  *   - ISS-806 box-scoped deterministic failure → quarantine, no fleet rotation.
  *   - ISS-760 schedule terminal path → honest reason + status, never NULL/success.
  *   - ISS-811 rescued retry chain → countable, attributed to its first reason.
@@ -47,6 +47,7 @@ type Mods = {
   AUTO_RETRY_PAYLOAD_KEY: typeof JobsRetry.AUTO_RETRY_PAYLOAD_KEY;
   RETRY_MAX_ROUNDS: typeof JobsRetry.RETRY_MAX_ROUNDS;
   RETRY_TRIES_PER_DEVICE: typeof JobsRetry.RETRY_TRIES_PER_DEVICE;
+  CAPACITY_DEFER_CEILING_MS: typeof JobsRetry.CAPACITY_DEFER_CEILING_MS;
   maybeQuarantineRunner: typeof RunnersQuarantine.maybeQuarantineRunner;
   RUNNER_QUARANTINE_STREAK: typeof RunnersQuarantine.RUNNER_QUARANTINE_STREAK;
   RUNNER_QUARANTINE_TTL_MS: typeof RunnersQuarantine.RUNNER_QUARANTINE_TTL_MS;
@@ -97,6 +98,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       AUTO_RETRY_PAYLOAD_KEY: retryMod.AUTO_RETRY_PAYLOAD_KEY,
       RETRY_MAX_ROUNDS: retryMod.RETRY_MAX_ROUNDS,
       RETRY_TRIES_PER_DEVICE: retryMod.RETRY_TRIES_PER_DEVICE,
+      CAPACITY_DEFER_CEILING_MS: retryMod.CAPACITY_DEFER_CEILING_MS,
       maybeQuarantineRunner: quarantineMod.maybeQuarantineRunner,
       RUNNER_QUARANTINE_STREAK: quarantineMod.RUNNER_QUARANTINE_STREAK,
       RUNNER_QUARANTINE_TTL_MS: quarantineMod.RUNNER_QUARANTINE_TTL_MS,
@@ -250,12 +252,12 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     });
     const job = await getJobRow(jobId);
 
-    // cm:why this assertion was inverted on 2026-08-13, and the inversion is the POINT: it used to demand `{scheduled:false, reason:'all_devices_exhausted'}` on the FIRST attempt, which is the policy the owner reversed on 2026-08-12 (see the cm:why + cm:guard on `allRunnersLimited` in src/jobs/retry.ts — an all-limited fleet now DEFERS to the rotation, because parking a seconds-long provider throttle turns it into a human intervention). The test was authored the same day and never executed, so nothing caught that it contradicted the guard.
-    // cm:edge lockstep -> packages/core/src/jobs/retry.ts — `allRunnersLimited` is computed but deliberately NOT acted on at entry; if that entry-park is ever restored, this first-attempt expectation flips back
+    // cm:why this assertion was inverted on 2026-08-13, and the inversion is the POINT: it used to demand `{scheduled:false, reason:'all_devices_exhausted'}` on the FIRST attempt, which is the policy the owner reversed on 2026-08-12 — an all-limited fleet DEFERS rather than parking, because parking a seconds-long provider throttle turns it into a human intervention. The test was authored the same day and never executed, so nothing caught that it contradicted the guard.
+    // cm:edge lockstep -> packages/core/src/jobs/retry.ts — the deferral is `nextRotation`'s empty-pool branch; if an entry-park is ever restored, this first-attempt expectation flips back
     const firstAttempt = await mods.scheduleAutoRetryWithVerify(job, spendCapText);
     expect(firstAttempt.scheduled).toBe(true);
 
-    // cm:why the ISS-757 face is the 60-dispatch STORM, and what stops it now is the round budget plus an immediate rotation, so proving the face is closed needs BOTH halves: the first attempt rotates, and the last permitted sweep parks. Asserting only the park would pass even if entry-parking came back, which is the reversed policy.
+    // cm:guard what closes the 60-dispatch face is no longer the ROUND BUDGET, and asserting the budget here would re-assert the defect: an empty pool spends no round (a round is one sweep over the devices that can take the work), so a job at RETRY_MAX_ROUNDS still defers. The storm is bounded harder than before — the deferred clone goes back to `queued` and the dispatch gate holds it there, instead of spending 10 sweeps x 3 tries to reach a permanent hold.
     const exhausted = {
       ...job,
       payload: {
@@ -267,7 +269,25 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
         },
       },
     };
-    const lastAttempt = await mods.scheduleAutoRetryWithVerify(exhausted, spendCapText);
+    const atBudgetEnd = await mods.scheduleAutoRetryWithVerify(exhausted, spendCapText);
+    expect(atBudgetEnd.scheduled).toBe(true);
+
+    // cm:why the park is proven from the DEFERRAL CEILING instead, which is the only thing that now ends a capacity outage — and it reports `all_devices_exhausted`, the hold reason jobs/hold.ts re-queues by itself, so the storm ends without a human
+    const deferredTooLong = {
+      ...job,
+      payload: {
+        [mods.AUTO_RETRY_PAYLOAD_KEY]: {
+          round: 1,
+          target: deviceId,
+          tries: mods.RETRY_TRIES_PER_DEVICE,
+          done: [deviceId],
+          deferredSince: new Date(
+            Date.now() - mods.CAPACITY_DEFER_CEILING_MS - 5_000,
+          ).toISOString(),
+        },
+      },
+    };
+    const lastAttempt = await mods.scheduleAutoRetryWithVerify(deferredTooLong, spendCapText);
     expect(lastAttempt.scheduled).toBe(false);
     expect(lastAttempt.reason).toBe('all_devices_exhausted');
   });

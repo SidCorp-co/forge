@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T15:05:33.115Z",
+  "generatedAt": "2026-08-14T16:39:04.175Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -134,12 +134,12 @@
       "maxFunctionLines": 169
     },
     "packages/core/src/jobs/retry.test.ts": {
-      "fileLines": 569,
-      "maxFunctionLines": 317
+      "fileLines": 668,
+      "maxFunctionLines": 379
     },
     "packages/core/src/jobs/retry.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 165
+      "maxFunctionLines": 151
     },
     "packages/core/src/mcp/handler.test.ts": {
       "fileLines": 0,
@@ -343,7 +343,7 @@
     },
     "packages/core/tests/integration/failure-taxonomy-policy-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 289
+      "maxFunctionLines": 303
     },
     "packages/core/tests/integration/issues-job-history-route.test.ts": {
       "fileLines": 0,

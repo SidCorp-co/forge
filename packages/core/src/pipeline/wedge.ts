@@ -37,6 +37,16 @@ export function wedgeResolutionKey(entityId: string): string {
 }
 
 /**
+ * Entity id for a capacity outage: the subject is a project's runner pool, not
+ * any one job.
+ */
+// cm:guard the `capacity:` prefix is load-bearing — `wedgeResolutionKey` keys ONLY on entityId, so a bare projectId here would share a dedup key with any pass that ever emits about a project, and the two would silently resolve each other. Prefixing keeps the namespace separate without touching the key format every existing unresolved row already carries.
+// cm:guard key per POOL, not per project — with per-state device pools (`resolveStageOverrides`) `code` can be out of capacity while `triage` is fine, and a project-wide key would report the first outage and hide every other one. `stageKey` is `all` when no pool is in force, so the common case is still exactly one notification per project.
+export function capacityWedgeEntityId(projectId: string, stageKey: string): string {
+  return `capacity:${projectId}:${stageKey}`;
+}
+
+/**
  * Clear the wedge notifications for `entityId` — the condition they reported is
  * gone. Call this from whatever observes the recovery, never on a timer.
  */
@@ -53,7 +63,8 @@ export interface PipelineWedgeEvent {
   /** WHERE — which loop hop missed. */
   hop: WedgeHop;
   // cm:guard `issue` carries NO job/session id, so it only fits an alarm whose subject is the issue itself (RFC 0002 INV-7 churn) — the dedup key is `wedge:<entityId>`, so passing an issue id under `entity:'job'` silently makes the once-per-entity guard mean once-per-issue while the payload claims a job that does not exist
-  entity: 'job' | 'session' | 'run' | 'outbox' | 'issue';
+  // cm:guard `capacity` is the one entity whose id is NOT a row id — build it with `capacityWedgeEntityId`, never by hand, because its whole purpose is that many jobs hitting the same empty pool collapse into ONE notification. Passing a job id here would emit per failed job, which is the spam this type exists to avoid.
+  entity: 'job' | 'session' | 'run' | 'outbox' | 'issue' | 'capacity';
   entityId: string;
   /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
   reason: string;

@@ -32,6 +32,15 @@ vi.mock('../db/client.js', () => ({
 vi.mock('../notifications/emit.js', () => ({ emitNotification: vi.fn() }));
 vi.mock('../notifications/auto-resolve.js', () => ({ resolveNotifications: vi.fn() }));
 
+const emitWedgeMock = vi.fn(async (..._a: unknown[]) => undefined);
+const resolveWedgeMock = vi.fn(async (..._a: unknown[]) => 0);
+// cm:edge contract -> packages/core/src/pipeline/wedge.ts — `capacityWedgeEntityId` is reimplemented here rather than imported because that module's chain reaches config/env.js; the FORMAT must match, since the emit and the resolve are asserted against this string
+vi.mock('../pipeline/wedge.js', () => ({
+  capacityWedgeEntityId: (p: string, s: string) => `capacity:${p}:${s}`,
+  emitPipelineWedge: (...a: unknown[]) => emitWedgeMock(...a),
+  resolvePipelineWedge: (...a: unknown[]) => resolveWedgeMock(...a),
+}));
+
 const enqueueMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('./enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueMock(...args),
@@ -83,9 +92,12 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { scheduleAutoRetryWithVerify, RETRY_COOLDOWN_MS, RETRY_MAX_ROUNDS } = await import(
-  './retry.js'
-);
+const {
+  scheduleAutoRetryWithVerify,
+  RETRY_COOLDOWN_MS,
+  RETRY_MAX_ROUNDS,
+  CAPACITY_DEFER_CEILING_MS,
+} = await import('./retry.js');
 
 type JobRow = Record<string, unknown>;
 
@@ -382,7 +394,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
       expect(inserted.payload).toEqual({
         skill: 'forge-plan',
-        _autoRetry: { round: 1, target: 'device-A', tries: 2, done: [] },
+        _autoRetry: { round: 1, target: 'device-A', tries: 2, done: [], deferredSince: null },
       });
     });
 
@@ -402,7 +414,13 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
       expect(inserted.payload).toEqual({
         skill: 'forge-plan',
-        _autoRetry: { round: 1, target: 'device-B', tries: 1, done: ['device-A'] },
+        _autoRetry: {
+          round: 1,
+          target: 'device-B',
+          tries: 1,
+          done: ['device-A'],
+          deferredSince: null,
+        },
       });
     });
 
@@ -420,7 +438,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       );
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
       expect(inserted.payload).toEqual({
-        _autoRetry: { round: 2, target: 'device-A', tries: 1, done: [] },
+        _autoRetry: { round: 2, target: 'device-A', tries: 1, done: [], deferredSince: null },
       });
     });
 
@@ -459,7 +477,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(inserted.payload).toEqual({
         skill: 'forge-plan',
         custom: 'keep-me',
-        _autoRetry: { round: 1, target: 'device-A', tries: 2, done: [] },
+        _autoRetry: { round: 1, target: 'device-A', tries: 2, done: [], deferredSince: null },
       });
     });
   });
@@ -505,18 +523,44 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         } as never,
         'spend-limit',
       );
-      // cm:why the clone must be UNPINNED — dispatch excludes limited runners, so target:null is what
-      //   lets it land on whichever box frees first instead of waiting on the one that just failed
+      // cm:guard the clone KEEPS its target, and the note this replaced was wrong about why it should not: it claimed a pin would make the job "wait on the one that just failed", but select.ts:322 falls through on a stale pin, so a pin to a limited box costs one lookup and then picks a standby. Nulling the target bought nothing and travelled with a `done` reset that did real harm.
       expect(result.scheduled).toBe(true);
+      const rotation = (insertValues.mock.calls[0]?.[0] as Record<string, unknown>).payload as {
+        _autoRetry: { round: number; target: string | null; done: string[]; deferredSince: string };
+      };
+      expect(rotation._autoRetry.target).toBe('device-A');
+      expect(rotation._autoRetry.deferredSince).toBe(new Date(FIXED_NOW).toISOString());
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-      expect(
-        ((inserted.payload as Record<string, unknown>)._autoRetry as { target: string | null })
-          .target,
-      ).toBeNull();
       expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
     });
 
-    it('reports all_devices_exhausted (not the generic reason) once the budget runs out while limited', async () => {
+    // cm:guard the round must NOT move on a deferral — this is the whole fix. A round is one sweep over the usable devices, so charging one when there are none is what drove sid-desk from round 2 to 3 in 90 seconds and landed it on `retry_rounds_exhausted`, the hold reason no code can clear.
+    it('spends no round and keeps the exclusion memory while the pool is empty', async () => {
+      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
+        const opts = _args[2] as { includeLimited?: boolean } | undefined;
+        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
+      });
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          error: "You've hit your org's monthly spend limit",
+          payload: {
+            _autoRetry: { round: 3, target: 'device-A', tries: 1, done: ['device-B'] },
+          },
+        } as never,
+        'spend-limit',
+      );
+      const rotation = (insertValues.mock.calls[0]?.[0] as Record<string, unknown>).payload as {
+        _autoRetry: { round: number; done: string[] };
+      };
+      expect(rotation._autoRetry.round).toBe(3);
+      expect(rotation._autoRetry.done).toEqual(['device-B']);
+    });
+
+    // cm:guard the give-up reason must come from HOW LONG the pool stayed empty, not from a reading taken at give-up time — the old ternary re-read the fleet on entry, so one device recovering for one instant mid-burn relabelled a capacity outage as `retry_rounds_exhausted` and the job then needed a human forever
+    it('reports all_devices_exhausted once the deferral ceiling is passed', async () => {
       onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
         const opts = _args[2] as { includeLimited?: boolean } | undefined;
         return opts?.includeLimited ? ['device-A', 'device-B'] : [];
@@ -528,10 +572,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
           error: "You've hit your org's monthly spend limit",
           payload: {
             _autoRetry: {
-              round: RETRY_MAX_ROUNDS,
+              round: 1,
               target: 'device-A',
               tries: 3,
               done: ['device-A', 'device-B'],
+              deferredSince: new Date(FIXED_NOW - CAPACITY_DEFER_CEILING_MS - 1000).toISOString(),
             },
           },
         } as never,
@@ -540,6 +585,60 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(result.scheduled).toBe(false);
       expect(result.reason).toBe('all_devices_exhausted');
       expect(dbInsert).not.toHaveBeenCalled();
+    });
+
+    // cm:guard ONE notification per pool, keyed on the pool and not the job — many jobs hit the same empty fleet, and keying per job is the notification spam that put 721 unresolved rows in the bell (2026-08-14)
+    it('notifies once about the pool, naming the rate-limit case', async () => {
+      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
+        const opts = _args[2] as { includeLimited?: boolean } | undefined;
+        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
+      });
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          error: "You've hit your org's monthly spend limit",
+        } as never,
+        'spend-limit',
+      );
+      expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+      const ev = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+      expect(ev.entity).toBe('capacity');
+      expect(ev.entityId).toBe(`capacity:${baseJob.projectId}:all`);
+      expect(ev.reason).toContain('rate-limited');
+      expect(ev.nextStep).toContain('limit');
+    });
+
+    it('names the no-runner-online case differently, since the human action differs', async () => {
+      onlineDevicesMock.mockResolvedValue([]);
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          error: "You've hit your org's monthly spend limit",
+        } as never,
+        'spend-limit',
+      );
+      const ev = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+      expect(ev.reason).toBe('no capable device is online');
+      expect(ev.nextStep).toContain('Start a runner');
+    });
+
+    // cm:guard a successful rotation is the ONLY observer of recovery — without this resolve the capacity notification stays in the bell about a pool that came back
+    it('clears the capacity notification as soon as a device is usable again', async () => {
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          error: "You've hit your org's monthly spend limit",
+        } as never,
+        'spend-limit',
+      );
+      expect(emitWedgeMock).not.toHaveBeenCalled();
+      expect(resolveWedgeMock).toHaveBeenCalledWith(`capacity:${baseJob.projectId}:all`);
     });
 
     it('keeps rotating (does not park) when every device is merely offline', async () => {
