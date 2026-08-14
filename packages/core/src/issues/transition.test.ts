@@ -197,14 +197,47 @@ describe('POST /api/issues/:id/transition', () => {
   });
 
   // cm:guard the three cap tests deleted from this spot asserted a 422 at reopenCount>=5 and an admin-only override. RFC 0002 removed the cap outright — reopenCount still increments (ISS-535 model escalation reads it), it just gates nothing. A returning 422 here means someone re-added the ceiling.
-  it('422 REOPEN_REASON_REQUIRED when a reopen carries no reason', async () => {
+  // cm:guard all three stopping statuses, not just reopen — `waiting` and `needs_info` mean "a human is needed", and one that does not say WHAT is needed is a question nobody can answer; on forge-beta 2026-08-14 all 43 issues at `waiting` were exactly that
+  it.each([
+    ['reopen', 'closed'],
+    ['waiting', 'in_progress'],
+    ['needs_info', 'open'],
+  ])('422 TRANSITION_REASON_REQUIRED entering %s with no reason', async (to, from) => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 0 });
-    const res = await req({ toStatus: 'reopen' }, token);
+    queueAuthAndIssue({ status: from, reopenCount: 0 });
+    const res = await req({ toStatus: to }, token);
     expect(res.status).toBe(422);
     const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('REOPEN_REASON_REQUIRED');
+    expect(body.code).toBe('TRANSITION_REASON_REQUIRED');
     expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the kind is REQUIRED but must never be DEFAULTED — this test fails both ways: drop the requirement and it 200s, add a default and it 200s. Guessing the kind is what rendered the wrong button on ISS-163.
+  it('422 WAITING_KIND_REQUIRED when a `waiting` park states a reason but no kind', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'in_progress', reopenCount: 0 });
+    const res = await req({ toStatus: 'waiting', reason: 'need the staging DB password' }, token);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('WAITING_KIND_REQUIRED');
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('200 when a `waiting` park carries both a reason and a kind', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'in_progress', reopenCount: 0 });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'waiting', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    const res = await req(
+      {
+        toStatus: 'waiting',
+        reason: 'need the staging DB password',
+        waitingKind: 'needs_resource',
+      },
+      token,
+    );
+    expect(res.status).toBe(200);
   });
 
   it('200 closed → reopen with a reason increments reopen_count, at any count', async () => {

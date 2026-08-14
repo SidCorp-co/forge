@@ -63,11 +63,19 @@ import {
   useProjectMembers,
   useTransitionIssue,
 } from "../hooks";
-import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
+import type { IssueAgentSession, IssueStatus, TaskRow, WaitingCause } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AttachmentList } from "./attachment-list";
 import { BlockerBanner } from "./blocker-banner";
-import { ReopenReasonDialog } from "./reopen-reason-dialog";
+import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-dialog";
+
+// cm:edge contract -> packages/core/src/issues/transition-reason.ts — mirrors REASON_REQUIRED_STATUSES; a status added there but not here fires the mutation without a reason and the user sees a 422 they cannot act on
+const REASON_REQUIRED = new Set<string>(["reopen", "waiting", "needs_info"]);
+const REASON_TOAST: Record<ReasonStatus, string> = {
+  reopen: "Issue reopened",
+  waiting: "Issue parked for a human",
+  needs_info: "Information requested",
+};
 import { CommentThread } from "./comment-thread";
 import { LiveAgentPanel } from "./live-agent-panel";
 import { PropertiesRail } from "./properties-rail";
@@ -122,8 +130,11 @@ export function IssueDetailScreen({
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
-  // cm:guard every reopen surface on this screen MUST route through this dialog (RFC 0002 INV-8) — the server rejects a reason-less `reopen` with 422, so a direct `transition.mutate({ toStatus: "reopen" })` added here reads to the user as a broken button
-  const [reopenPrompt, setReopenPrompt] = useState<{ successMessage: string } | null>(null);
+  // cm:guard every surface offering reopen / waiting / needs_info MUST route through this dialog (RFC 0002 INV-8) — the server rejects those three without a reason, so a direct `transition.mutate` added here reads to the user as a broken button
+  const [reasonPrompt, setReasonPrompt] = useState<{
+    status: ReasonStatus;
+    successMessage: string;
+  } | null>(null);
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -192,8 +203,11 @@ export function IssueDetailScreen({
 
   const stage = statusToStage(issue.status);
   const onTransition = (toStatus: IssueStatus) => {
-    if (toStatus === "reopen") {
-      setReopenPrompt({ successMessage: "Issue reopened" });
+    if (REASON_REQUIRED.has(toStatus)) {
+      setReasonPrompt({
+        status: toStatus as ReasonStatus,
+        successMessage: REASON_TOAST[toStatus as ReasonStatus],
+      });
       return;
     }
     transition.mutate({ id, toStatus });
@@ -209,15 +223,16 @@ export function IssueDetailScreen({
       { onSuccess: () => toast({ title: successMessage, tone: "success" }) },
     );
   const onApprove = () => runBlockerAction("approved", "Issue approved");
-  const onBannerResume = () => setReopenPrompt({ successMessage: "Issue resumed" });
-  const onReopen = () => setReopenPrompt({ successMessage: "Issue reopened" });
-  const onConfirmReopen = (reason: string) => {
-    const successMessage = reopenPrompt?.successMessage ?? "Issue reopened";
+  const onBannerResume = () => setReasonPrompt({ status: "reopen", successMessage: "Issue resumed" });
+  const onReopen = () => onTransition("reopen");
+  const onConfirmReason = (reason: string, waitingKind?: WaitingCause) => {
+    if (!reasonPrompt) return;
+    const { status: toStatus, successMessage } = reasonPrompt;
     transition.mutate(
-      { id, toStatus: "reopen", reason },
+      { id, toStatus, reason, ...(waitingKind ? { waitingKind } : {}) },
       {
         onSuccess: () => {
-          setReopenPrompt(null);
+          setReasonPrompt(null);
           toast({ title: successMessage, tone: "success" });
         },
       },
@@ -446,11 +461,11 @@ export function IssueDetailScreen({
             />
           )}
 
-          <ReopenReasonDialog
-            open={reopenPrompt !== null}
+          <TransitionReasonDialog
+            status={reasonPrompt?.status ?? null}
             loading={transition.isPending}
-            onConfirm={onConfirmReopen}
-            onClose={() => setReopenPrompt(null)}
+            onConfirm={onConfirmReason}
+            onClose={() => setReasonPrompt(null)}
           />
 
           <Card>

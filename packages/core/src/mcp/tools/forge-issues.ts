@@ -1162,7 +1162,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         if (input.data.status && input.data.status !== issue.status) {
           await applyStatusTransition(issue, input.data.status, device, {
-            reopenReason: input.data.reason ?? input.data.note,
+            transitionReason: input.data.reason ?? input.data.note,
             waitingKind: input.data.waitingKind,
           });
         }
@@ -1184,7 +1184,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
         await applyStatusTransition(issue, target, device, {
-          reopenReason: input.data?.reason ?? input.data?.note,
+          transitionReason: input.data?.reason ?? input.data?.note,
           waitingKind: input.data?.waitingKind,
         });
         const fresh = await loadIssue(issue.id);

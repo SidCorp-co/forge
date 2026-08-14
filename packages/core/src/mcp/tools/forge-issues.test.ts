@@ -1192,19 +1192,41 @@ describe('forge_issues tool', () => {
   });
 
   // cm:guard a reopen through MCP must be REJECTED without a reason (INV-8) — this is the only enforcement point an agent meets, and the three dispatch-side guards that used to detect a reasonless reopen afterwards are all deleted
-  it('rejects a reopen with no reason and no note', async () => {
+  // cm:guard the agent surface is held to the same bar as REST — an MCP path that accepts a reasonless park is the whole requirement defeated, because agents are what produce nearly all of them
+  it.each([
+    ['reopen', 'tested'],
+    ['waiting', 'in_progress'],
+    ['needs_info', 'open'],
+  ])('rejects a %s with no reason and no note', async (to, from) => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
       projectSlug: PROJECT_SLUG,
     });
-    const testedRow = { ...baseIssueRow, status: 'tested' as const };
-    selectLimit.mockResolvedValueOnce([testedRow]);
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: from }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
     await expect(
-      tool.handler({ action: 'transition', documentId: ISSUE_ID, data: { status: 'reopen' } }),
-    ).rejects.toThrow(/REOPEN_REASON_REQUIRED/);
+      tool.handler({ action: 'transition', documentId: ISSUE_ID, data: { status: to } }),
+    ).rejects.toThrow(/TRANSITION_REASON_REQUIRED/);
+  });
+
+  it('rejects a `waiting` park that states a reason but no kind', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: 'in_progress' as const }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    await expect(
+      tool.handler({
+        action: 'transition',
+        documentId: ISSUE_ID,
+        data: { status: 'waiting', reason: 'need the staging DB password' },
+      }),
+    ).rejects.toThrow(/WAITING_KIND_REQUIRED/);
   });
 
   it('accepts a reopen whose rationale arrives as `note`', async () => {

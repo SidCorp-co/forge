@@ -16,6 +16,7 @@ import type {
   IssueSearchOpts,
   IssueStatus,
   ProjectMember,
+  WaitingCause,
 } from "./types";
 
 export const ISSUES_PAGE_SIZE = 25;
@@ -96,13 +97,18 @@ export const issuesApi = {
 
   /** `POST /api/issues/:id/transition` — state-machine guarded status change.
    *  Invalid transitions return 409 (ILLEGAL_TRANSITION). */
-  // cm:guard `reason` is REQUIRED when `toStatus === "reopen"` (RFC 0002 INV-8) — the server answers 422 REOPEN_REASON_REQUIRED without it, so a caller that cannot collect one must not offer the action
-  transition: (id: string, toStatus: IssueStatus, opts?: { reason?: string }) =>
+  // cm:guard `reason` is REQUIRED entering reopen / waiting / needs_info, and `waitingKind` additionally for waiting (RFC 0002 INV-8) — the server answers 422 without them, so a caller that cannot collect one must not offer the action
+  transition: (
+    id: string,
+    toStatus: IssueStatus,
+    opts?: { reason?: string; waitingKind?: WaitingCause },
+  ) =>
     apiClient<IssueRow>(`/issues/${id}/transition`, {
       method: "POST",
       body: JSON.stringify({
         toStatus,
         ...(opts?.reason ? { reason: opts.reason } : {}),
+        ...(opts?.waitingKind ? { waitingKind: opts.waitingKind } : {}),
       }),
     }),
 

@@ -15,7 +15,14 @@ import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, issuesApi, releaseBatchApi } from "./api";
-import type { IssueLabel, IssuePriority, IssueRow, IssueSearchOpts, IssueStatus } from "./types";
+import type {
+  IssueLabel,
+  IssuePriority,
+  IssueRow,
+  IssueSearchOpts,
+  IssueStatus,
+  WaitingCause,
+} from "./types";
 
 /**
  * Create an issue in `projectId`. On success invalidates `['issues']` so the
@@ -112,8 +119,11 @@ export function usePatchIssue() {
 export function useTransitionIssue() {
   const qc = useQueryClient();
   const mut = useIssueMutation(
-    (args: { id: string; toStatus: IssueStatus; reason?: string }) =>
-      issuesApi.transition(args.id, args.toStatus, { reason: args.reason }),
+    (args: { id: string; toStatus: IssueStatus; reason?: string; waitingKind?: WaitingCause }) =>
+      issuesApi.transition(args.id, args.toStatus, {
+        reason: args.reason,
+        waitingKind: args.waitingKind,
+      }),
   );
   // Also refresh the single-issue + activity caches (detail view) on success.
   // `onSuccess` is an optional per-call passthrough (ISS-828 blocker-banner
@@ -123,7 +133,7 @@ export function useTransitionIssue() {
   return {
     ...mut,
     mutate: (
-      args: { id: string; toStatus: IssueStatus; reason?: string },
+      args: { id: string; toStatus: IssueStatus; reason?: string; waitingKind?: WaitingCause },
       options?: { onSuccess?: () => void },
     ) =>
       mut.mutate(args, {

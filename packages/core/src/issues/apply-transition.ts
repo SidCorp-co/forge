@@ -10,8 +10,8 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
-import { postReopenReasonComment } from './reopen-reason.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
+import { postTransitionReasonComment, requiresAuthoredReason } from './transition-reason.js';
 
 /**
  * Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2) and
@@ -42,7 +42,8 @@ export type TransitionActor = { type: 'user'; id: string } | ({ type: 'device' }
 export type TransitionErrorCode =
   | 'NO_OP'
   | 'ILLEGAL_TRANSITION'
-  | 'REOPEN_REASON_REQUIRED'
+  | 'TRANSITION_REASON_REQUIRED'
+  | 'WAITING_KIND_REQUIRED'
   | 'STALE_TRANSITION'
   | 'PLAN_REQUIRED'
   | 'NO_WORK_EVIDENCE';
@@ -92,16 +93,17 @@ export interface ApplyStatusTransitionOptions {
    */
   reason?: string | undefined;
   /**
-   * Why this issue is being reopened, in the actor's own words. REQUIRED on a
-   * reopen entry and posted as a comment before the status write.
+   * Why the pipeline is being stopped, in the actor's own words. REQUIRED
+   * entering `reopen`, `waiting` or `needs_info`; posted as a comment before
+   * the status write.
    */
-  // cm:guard required, not advisory (RFC 0002 INV-8) — the reason is what the fix step scopes against, and the guards deleted with the reopen cap were all attempts to detect its absence AFTER the fact; rejecting the write is the only version that cannot strand an issue
-  reopenReason?: string | undefined;
+  // cm:guard required, not advisory (RFC 0002 INV-8) — every guard deleted with the reopen cap was an attempt to detect a missing rationale AFTER the fact, and each detected it by stranding the issue; rejecting the write is the only version that cannot strand anything
+  transitionReason?: string | undefined;
   /**
-   * Which flavour of "a human is needed" this park is. Only meaningful when
-   * `toStatus === 'waiting'`.
+   * Which flavour of "a human is needed" this park is. REQUIRED entering
+   * `waiting`.
    */
-  // cm:guard core must never DEFAULT this (RFC 0002 INV-5) — an unstated kind stays NULL and renders as generic copy, which is honest; picking one on the author's behalf re-invents the derivation this replaced, and the derivation was wrong on ISS-163
+  // cm:guard REQUIRED but never DEFAULTED (RFC 0002 INV-5) — refusing the write is not the same as picking a value: an unstated kind must never be guessed, because the five-way derivation this replaced guessed wrong on ISS-163 and rendered the wrong button
   waitingKind?: WaitingKind | undefined;
 }
 
@@ -179,21 +181,31 @@ export async function transitionIssueStatus(
     );
   }
 
-  // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a reopen whose rationale is missing is exactly the state the deleted bounce/empty-reopen guards existed to detect afterwards, and every one of them detected it by stranding the issue at `needs_info`
-  if (isReopenEntry(fromStatus, toStatus) && options.skip !== true) {
-    const reopenReason = options.reopenReason?.trim();
-    if (!reopenReason) {
+  // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
+  // cm:guard `skip: true` is exempt ON PURPOSE — that is the orchestrator's curated soft-skip/guard chain, and every one of those paths posts its own operator comment first (plan-gate-guard.ts); requiring a second one would double-comment, and refusing the write would freeze the chain
+  if (requiresAuthoredReason(fromStatus, toStatus) && options.skip !== true) {
+    const reason = options.transitionReason?.trim();
+    if (!reason) {
       throw new TransitionError(
-        'REOPEN_REASON_REQUIRED',
-        'a reopen must carry a reason describing what regressed or what is still wrong',
+        'TRANSITION_REASON_REQUIRED',
+        `a transition to \`${toStatus}\` must carry a reason saying what is needed or what is wrong`,
         { from: fromStatus, to: toStatus },
       );
     }
-    await postReopenReasonComment({
+    if (toStatus === 'waiting' && !options.waitingKind) {
+      throw new TransitionError(
+        'WAITING_KIND_REQUIRED',
+        'a `waiting` park must say which kind it is: `needs_decision` or `needs_resource`',
+        { from: fromStatus, to: toStatus },
+      );
+    }
+    await postTransitionReasonComment({
       issueId: issue.id,
       authorId: actor.type === 'user' ? actor.id : actor.ownerId,
       fromStatus,
-      reason: reopenReason,
+      toStatus,
+      reason,
+      waitingKind: options.waitingKind ?? null,
       isAi: actor.type !== 'user',
     });
   }

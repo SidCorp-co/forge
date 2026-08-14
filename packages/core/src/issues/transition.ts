@@ -51,7 +51,8 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
   switch (err.code) {
     case 'NO_OP':
       return new HTTPException(409, { message: 'issue already in toStatus', cause });
-    case 'REOPEN_REASON_REQUIRED':
+    case 'TRANSITION_REASON_REQUIRED':
+    case 'WAITING_KIND_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'PLAN_REQUIRED':
       return new HTTPException(409, { message: err.detail, cause });
@@ -195,7 +196,7 @@ transitionRoutes.post(
         },
         toStatus,
         { type: 'user', id: userId },
-        { reason, reopenReason: reason, waitingKind },
+        { reason, transitionReason: reason, waitingKind },
       );
     } catch (err) {
       if (err instanceof TransitionError) throw transitionErrorToHttp(err);

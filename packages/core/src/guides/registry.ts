@@ -214,7 +214,7 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
     title: 'Pipeline & issue lifecycle',
     summary:
       'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park needs a human or an operator sentinel, the four things `waiting` means, and who owns which derived fields.',
-    version: 4,
+    version: 5,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -272,12 +272,20 @@ An earlier version of this pipeline refused every non-human exit from a park. It
 | \`needs_decision\` | a person must decide something the agent cannot (a tradeoff, a scope call, an approval) | the decision, then any status write |
 | \`needs_resource\` | a person must supply something the agent cannot create (a test account, credentials, third-party data) | the resource, then any status write |
 
-The agent says which in a comment before it sets the status. A plan awaiting approval and a decompose parent awaiting review are both \`needs_decision\`.
+The kind is REQUIRED and core never guesses it. A plan awaiting approval and a decompose parent awaiting review are both \`needs_decision\`.
 
 **A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 
-### Reopening requires a reason
-A \`reopen\` is rejected without one. Pass \`reason\` on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so the fix step reads why it is running. There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
+### Stopping the pipeline costs you a written reason
+\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`.
+
+Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
+
+Write the reason for the person who will read it, not for the audit trail. "blocked" is not a reason. "Need a Stripe test account with 3DS enabled — I cannot create one, and the checkout AC cannot be walked without it" is: it says what is needed, why the agent cannot get it, and what it unblocks.
+
+This replaced a check on WHO answered a \`needs_info\` question. That check existed because the question itself was invisible, so the only thing left to police was the answer's author. A question on the record needs no such policing.
+
+There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
 
 ### Leaving a state can stamp \`merged_at\` behind you
 Transitioning OUT of the project's \`mergeStates.baseBranch\` state stamps \`merged_at\` — including a hop you made for an unrelated reason, and including one where nothing was merged. That stamp is what releases every \`blocks\` dependent, so a diagnostic transition near the merge state can unblock work that should still be blocked. After any hand transition out of that state, check the field and clear it with \`forge_issues\` \`unmark\` if no merge landed.

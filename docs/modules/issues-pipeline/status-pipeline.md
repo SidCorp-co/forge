@@ -140,7 +140,7 @@ Device runners share one repo checkout per project → one agent per project at 
 
 ### Reopen cycle protection
 
-Every `reopen` entry MUST carry a `reason` — it is posted as a comment *before* the status flips, and a failed post rejects the transition (422 `REOPEN_REASON_REQUIRED`). There is no cap: the count that mattered was never "how many reopens" but "how many reopens changed nothing", and a cap could not tell those apart, so it parked issues that were making progress. `reopenCount` is still stamped for the alert. Superseded: [reopen-loop-guard.md](../../architecture/reopen-loop-guard.md).
+`reopen`, `waiting` and `needs_info` — the three statuses that STOP the pipeline — each MUST carry a `reason` (`waiting` also a `waitingKind`) — posted as a comment *before* the status flips, and a failed post rejects the transition (422 `TRANSITION_REASON_REQUIRED` / `WAITING_KIND_REQUIRED`). Entering a park costs a sentence; leaving one costs nothing. There is no cap: the count that mattered was never "how many reopens" but "how many reopens changed nothing", and a cap could not tell those apart, so it parked issues that were making progress. `reopenCount` is still stamped for the alert. Superseded: [reopen-loop-guard.md](../../architecture/reopen-loop-guard.md).
 
 ## Project pipeline configuration
 

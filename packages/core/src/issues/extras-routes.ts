@@ -82,7 +82,8 @@ type BatchSkipReason =
   | 'not_found'
   | 'illegal_transition'
   | 'no_op'
-  | 'reopen_reason_required'
+  | 'transition_reason_required'
+  | 'waiting_kind_required'
   | 'stale'
   | 'plan_required'
   | 'no_work_evidence';
@@ -90,7 +91,8 @@ type BatchSkipReason =
 const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   NO_OP: 'no_op',
   ILLEGAL_TRANSITION: 'illegal_transition',
-  REOPEN_REASON_REQUIRED: 'reopen_reason_required',
+  TRANSITION_REASON_REQUIRED: 'transition_reason_required',
+  WAITING_KIND_REQUIRED: 'waiting_kind_required',
   STALE_TRANSITION: 'stale',
   PLAN_REQUIRED: 'plan_required',
   NO_WORK_EVIDENCE: 'no_work_evidence',

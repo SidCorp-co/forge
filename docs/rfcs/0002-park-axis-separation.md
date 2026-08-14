@@ -132,7 +132,7 @@ What changes, per axis:
 | INV-5 | `waiting` is written **only** by an agent or a human — core has zero writers. Two authored kinds: `needs_decision`, `needs_resource`. | `issues/apply-transition.ts`, plus a test asserting core has no writer |
 | INV-6 | Entering and leaving a park are symmetric. No actor gate anywhere — MCP, REST and UI behave identically. | delete `pipeline/park-states.ts` and its consumers |
 | INV-7 | A hold that outlives its threshold, or an issue churning rounds, raises an **alert**. It never changes a status and never blocks a dispatch. | ops / alerting |
-| INV-8 | A reopen requires a non-empty `reason`; the reason is posted as a comment **before** the status write. | `issues/apply-transition.ts` — the one chokepoint every caller passes through |
+| INV-8 | Entering `reopen`, `waiting` or `needs_info` requires a non-empty `reason`, posted as a comment **before** the status write; `waiting` also requires a `waitingKind`. Widened from reopen-only on 2026-08-14 — see below. | `issues/transition-reason.ts` + `issues/apply-transition.ts`, the one chokepoint every caller passes through |
 
 INV-3 and INV-4 are a pair and carry all the implementation risk: a held job that still counts toward the project serial gate (default `maxConcurrentIssues: 1`) wedges every other issue in the project. This is the only part of the RFC that can make things worse than today.
 
@@ -199,6 +199,10 @@ Three deviations from the design above, each a deliberate call made during imple
 
 4. **Phase 1 shipped a migration regression, caught only by the integration suite.** `0178` taught the I1 orphan trigger about `held` by rebuilding its body from `0113` — the file `0118` had already replaced, which had swapped `failure_kind := 'transient'` for `'infra'` after `0115` narrowed the CHECK. The trigger runs in alarm mode, so the invalid value turned an auto-cancel into a raised 23514: every write of an active child under a terminal run failed outright. `0180` repairs it. Four of the six failing tests were nothing to do with `held`, and `pnpm verify` is blind to all of them — it does not run `test:integration`. **A `CREATE OR REPLACE FUNCTION` migration must be built from the LIVE function body, never from the migration that first created it.**
 
+5. **INV-8 widened from `reopen` to all three stopping statuses (2026-08-14, owner call).** Shipping the RFC as written produced the evidence against it: all 43 issues sitting at `waiting` on forge-beta had `waiting_kind` NULL and no machine-readable ask between them, so the only way to clear them was to restart every one from `triage`. `reopen` — which at least dispatches work — required a reason, while `waiting` and `needs_info` — which stop everything and mean "a human is needed" — required nothing.
+
+   The owner's framing collapsed this into the deleted `hasHumanAnswerSince` guard: **if the question is mandatory and on the record, there is nothing left to police about who answers it.** That guard checked the answer's author precisely because the question was invisible. So the alarm proposed as a replacement was dropped too — the requirement subsumes it, and unlike either the guard or the alarm it cannot strand or nag an issue. `waiting` additionally requires `waitingKind`: required, still never defaulted (INV-5 forbids core guessing; refusing the write is not guessing).
+
 One accepted regression, beyond the drawbacks table: ISS-635's guard refused a `reopen` on an issue with no prior implementation job before dispatching. That judgement now belongs to the fix agent, which reads the required reason and can conclude `needs_info` itself — one dispatch where the kernel used to spend none, in exchange for no false refusals.
 
 ## Drawbacks
@@ -209,7 +213,7 @@ Accepted by the owner on 2026-08-13. These are choices, not oversights.
 |---|---|---|
 | No ceiling on reopen rounds. An agent that misjudges "no progress" can loop until the provider's own account limit stops it. | ISS-801 ran 8 fix + 9 review rounds serially at opus tier before a human saw it — with the cap rule already taught in `PIPELINE_RULES_TEXT:92`. Prose alone did not bound it. | Accepted. Safety moves to observation (INV-7), not enforcement. |
 | No budget backstop, in either form (park or hold). | — | Accepted. The de-facto ceiling is the provider account limit plus `noProgressRounds` as agent orientation. |
-| An agent can leave `needs_info` without a human answering, so it can effectively answer its own question. | ISS-820 exists because a fabricated "the owner decided" note overrode a real human answer. | Accepted. |
+| An agent can leave `needs_info` without a human answering, so it can effectively answer its own question. | ISS-820 exists because a fabricated "the owner decided" note overrode a real human answer. | ~~Accepted~~ → **resolved 2026-08-14 by extending INV-8**: entering `needs_info` (and `waiting`) now requires a `reason`, so the question is on the record and needs no check on who answers it. |
 | **Cancel narrows in meaning.** With no actor gate, Cancel cancels the current attempt (jobs cancelled, run `cancelled`, cascade) but no longer freezes the issue: a later status advance dispatches new work. | ISS-411 built the `on_hold` gate for exactly this. | Accepted. Cancel is a job-axis action and stays there. Freeze semantics would need a gate, which this RFC removes by design. |
 | A permanently dead condition (an account with no credit, a runner that never returns) leaves a job held forever with nobody asked. | — | Accepted, mitigated by INV-7 alerts. An honest, visible hold beats a park demanding an answer to a question nobody asked. |
 

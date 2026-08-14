@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T02:08:47.193Z",
+  "generatedAt": "2026-08-14T03:45:10.743Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -74,15 +74,15 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/decompose.ts": {
-      "fileLines": 545,
-      "maxFunctionLines": 249
+      "fileLines": 548,
+      "maxFunctionLines": 251
     },
     "packages/core/src/issues/extras-routes-batch.test.ts": {
       "fileLines": 513,
       "maxFunctionLines": 210
     },
     "packages/core/src/issues/extras-routes.ts": {
-      "fileLines": 557,
+      "fileLines": 559,
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/pipeline-health.ts": {
@@ -92,6 +92,10 @@
     "packages/core/src/issues/routes.ts": {
       "fileLines": 802,
       "maxFunctionLines": 0
+    },
+    "packages/core/src/issues/transition.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 169
     },
     "packages/core/src/jobs/dispatch-gates.test.ts": {
       "fileLines": 734,
@@ -170,8 +174,8 @@
       "maxFunctionLines": 215
     },
     "packages/core/src/mcp/tools/forge-issues.test.ts": {
-      "fileLines": 2465,
-      "maxFunctionLines": 1413
+      "fileLines": 2487,
+      "maxFunctionLines": 1429
     },
     "packages/core/src/mcp/tools/forge-issues.ts": {
       "fileLines": 1373,
