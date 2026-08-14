@@ -29,41 +29,47 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
 // cm:edge lockstep -> .forge/conformance.json — one entry per axis declared there; an axis in the manifest with no probe here, or a probe with no manifest entry, fails this check rather than going unreported
+// cm:guard this table holds COMMANDS only — every baseline path is read from the manifest, never repeated here. A second copy of a path is a second thing to keep true, and the manifest is the half a reader is entitled to trust.
 const PROBES = {
   form: {
     gate: 'check-size-budget + biome',
-    baseline: '.forge/size-baseline.json',
     probe: ['node', 'scripts/check-size-budget.mjs', '--all'],
   },
   knowledge: {
     gate: 'cm verify',
-    baseline: '.forge/codemap-baseline.json',
     probe: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
   },
   relations: {
     gate: 'arch check',
     // cm:why archmap carries its baseline INSIDE .arch.json as each contract's draft/locked status rather than in a separate frozen file — `locked` already means "no new violations", not "zero violations", which is level 2 by the same definition the other axes use
-    baseline: '.arch.json',
     probe: ['./.forge/archmap/arch', 'check'],
   },
   // cm:guard an axis with several checkers measures at the WEAKEST of them. Reporting the strongest would let one locked checker hide a sibling that stopped blocking, which is the drift this whole script exists to catch.
   behaviour: {
     gate: 'check-test-signal + check-flow-coverage',
-    baseline: '.forge/test-signal-baseline.json',
     probe: ['node', 'scripts/check-test-signal.mjs', '--all'],
-    also: [
-      {
-        baseline: '.forge/flow-coverage-baseline.json',
-        probe: ['node', 'scripts/check-flow-coverage.mjs', '--all'],
-      },
-    ],
+    also: [{ from: 'alsoBaseline', probe: ['node', 'scripts/check-flow-coverage.mjs', '--all'] }],
   },
   language: {
     gate: 'check-source-language',
-    baseline: null,
     probe: ['node', 'scripts/check-source-language.mjs', '--all'],
   },
 };
+
+const IMPROVES = ['down', 'shrink', 'tighten'];
+
+// cm:guard level 2 IS the claim "old debt frozen, new debt blocked", so a level-2 axis whose declared baseline is absent, or whose direction is undeclared, has no frozen half — report the axis at the level it can actually prove, never at the one it claims.
+function baselineFault(level, decl) {
+  if (level !== 2) return null;
+  if (decl === undefined) return 'declares no baseline — level 2 needs one';
+  if (decl === null) return 'declares baseline null at level 2 — nothing is frozen';
+  if (!decl.path) return 'baseline entry has no path';
+  if (!existsSync(join(ROOT, decl.path))) return `${decl.path} is declared but absent`;
+  if (!IMPROVES.includes(decl.improves)) {
+    return `${decl.path} declares improves=${decl.improves ?? 'nothing'}, not one of ${IMPROVES.join('/')}`;
+  }
+  return null;
+}
 
 function readManifest() {
   if (!existsSync(CONFIG_PATH)) return { error: `${CONFIG_PATH} not found` };
@@ -75,7 +81,7 @@ function readManifest() {
 }
 
 // cm:guard measure by RUNNING the checker, never by reading the manifest. Reading the declaration and printing it back is what every drifted gate already did.
-function measureOne(spec) {
+function measureOne(spec, baselinePath) {
   const r = spawnSync(spec.probe[0], spec.probe.slice(1), {
     cwd: ROOT,
     encoding: 'utf8',
@@ -84,15 +90,16 @@ function measureOne(spec) {
   if (r.error) return { level: 0, note: `cannot run: ${r.error.message}` };
   if (r.status === 2) return { level: 0, note: 'checker reported it could not run' };
 
-  const hasBaseline = spec.baseline === null ? false : existsSync(join(ROOT, spec.baseline));
+  const hasBaseline = baselinePath ? existsSync(join(ROOT, baselinePath)) : false;
   if (r.status === 1) return { level: 2, note: 'blocking, violations present' };
   if (hasBaseline) return { level: 2, note: 'blocking, baseline frozen' };
   return { level: 3, note: 'blocking, no baseline' };
 }
 
-function measure(_axis, spec) {
+function measure(_axis, spec, decl) {
+  const paths = { baseline: decl.baseline?.path ?? null, alsoBaseline: decl.alsoBaseline?.path ?? null };
   return [spec, ...(spec.also ?? [])]
-    .map(measureOne)
+    .map((s) => measureOne(s, paths[s.from ?? 'baseline']))
     .reduce((weakest, m) => (m.level < weakest.level ? m : weakest));
 }
 
@@ -127,10 +134,11 @@ for (const axis of axes) {
     disagreements++;
     continue;
   }
-  const m = measure(axis, spec);
+  const m = measure(axis, spec, declared[axis]);
   const d = declared[axis].level;
-  if (d !== m.level) disagreements++;
-  rows.push({ axis, gate: spec.gate, declared: d, measured: m.level, note: m.note });
+  const fault = baselineFault(d, declared[axis].baseline);
+  if (d !== m.level || fault) disagreements++;
+  rows.push({ axis, gate: spec.gate, declared: d, measured: fault ? '!' : m.level, note: fault ?? m.note });
 }
 
 const w = Math.max(...rows.map((r) => r.gate.length), 10);
@@ -144,6 +152,18 @@ for (const r of rows) {
 
 const gates = ciGates();
 if (gates) console.log(`\n  ci-passed needs ${gates.length} job(s): ${gates.join(' ')}`);
+
+// cm:edge naming -> scripts/verify.mjs — its `conformance levels` entry parses this line for the axis count; a manifest whose axes map is empty must read as scanned-nothing, not as agreement
+console.log(`\nconformance-status: ${rows.length} axes measured`);
+
+if (rows.length === 0) {
+  console.error(
+    'conformance-status: the manifest declares no axes and no probe fired — this is\n' +
+      'scanned-nothing, not agreement. Exit 2, because a status report over an empty\n' +
+      'set is the fail-open shape this whole system exists to refuse.\n',
+  );
+  process.exit(2);
+}
 
 if (disagreements === 0) {
   console.log('\nconformance: declared levels match measured\n');

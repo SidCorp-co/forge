@@ -95,12 +95,17 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'core typecheck',
-    cmd: ['pnpm', '--filter', '@forge/core', 'typecheck'],
+    // cm:why `tsc --noEmit` alone prints NOTHING on success, so a tsconfig whose include matched no file is indistinguishable from a clean compile — --extendedDiagnostics is here only for its `Files:` count, and CI's plain `typecheck` script stays a subset of this
+    cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
+    scanned: /^Files:\s+(\d+)/m,
   },
   {
     axis: 'meta',
     label: 'conformance levels',
     cmd: ['node', 'scripts/conformance-status.mjs'],
+    // cm:edge naming -> scripts/conformance-status.mjs — parses that script's success line
+    scanned: /^conformance-status: (\d+) axes measured/m,
+    unit: 'axes',
   },
 ];
 
@@ -144,6 +149,18 @@ function git(args) {
 
 function mergeBase() {
   return git(['merge-base', 'origin/main', 'HEAD']);
+}
+
+// cm:guard the guard above is only a rule while THIS function refuses the entry that breaks it — two entries sat here for a day with no `scanned`, and nothing said so because the rule lived in a comment. A prose invariant with no code behind it is a wish.
+function assertEveryCheckProvesScan() {
+  const unproven = CHECKS.filter((c) => !c.scanned).map((c) => c.label);
+  if (unproven.length === 0) return;
+  console.error(
+    `verify: ${unproven.length} check(s) declare no \`scanned\` pattern: ${unproven.join(', ')}\n` +
+      'Each must match its own checker\'s success line, so an empty scope reads as exit 2\n' +
+      'rather than as a pass. Exit 2 — this script cannot vouch for a run it cannot audit.\n',
+  );
+  process.exit(2);
 }
 
 function runCheck(check, base) {
@@ -328,6 +345,8 @@ if (bad.length) {
   console.error(`usage: verify.mjs [--ci-parity] [--no-advisory]\nunknown: ${bad.join(' ')}`);
   process.exit(2);
 }
+
+assertEveryCheckProvesScan();
 
 if (args.includes('--ci-parity')) process.exit(ciParity());
 
