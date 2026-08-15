@@ -362,6 +362,7 @@ async fn run_turn(
         timeout_seconds: None,
         mcp_servers_override: turn.mcp_servers_override.clone(),
         worktree_branch: None,
+        worktree_start_point: None,
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.clone()),
     };

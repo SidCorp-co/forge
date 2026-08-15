@@ -103,6 +103,35 @@ fn requires_preflight(job_type: &str, project_kind: Option<&str>) -> bool {
     project_kind != Some("website")
 }
 
+/// What a stage is told when its workspace could not be brought up to date.
+///
+/// The pipeline lane can act on this where the chat lane cannot: a stage owns
+/// the repo for its whole run, so checking the base branch out is its move to
+/// make. It is told what is wrong, what it may do about it, and what it may not
+/// claim until it has.
+fn workspace_notice_text(described: &str, base_branch: Option<&str>) -> String {
+    let fix = match base_branch {
+        Some(base) => format!(
+            "Before anything else, get the workspace onto `{base}`: check it out and fast-forward it to `origin/{base}`. Do NOT do this by discarding uncommitted changes that are not yours — if the tree carries someone else's work, leave it, say so, and treat every file you read as possibly not `{base}`."
+        ),
+        None => "Before anything else, work out what this checkout is on and get it onto the branch this step is supposed to run against.".to_string(),
+    };
+    // cm:why the agent cannot detect staleness on its own — a stale checkout makes file content and `git log` agree WITH EACH OTHER, so "I verified by reading the files, not just history" is the one check that cannot catch it.
+    format!(
+        "[workspace notice] {described}\n{fix}\nUntil it is refreshed, do not state what is or is not on the base branch from local files — check the remote before any such claim."
+    )
+}
+
+/// Commit-ish a new ISS-* branch must be cut from, or `None` when the daemon
+/// could not resolve one and `git worktree add` has to fall back to HEAD.
+// cm:guard pass `origin/<base>` whenever it resolved, refreshed or NOT — with the hard refusal gone an unrefreshed root can sit on any branch, and `worktree add -b` with no start-point cuts the ISS-* branch from whatever that is. On anhome (2026-08-15) that root was `main`, the production branch. Gate on `base_sha`, not on `refreshed`: the sha is what proves the ref exists locally, and requiring `refreshed` would drop the start-point in exactly the case that needs it.
+fn start_point_for(state: &refresh::WorkspaceGit) -> Option<String> {
+    match (&state.base_sha, &state.base_branch) {
+        (Some(_), Some(base)) => Some(format!("origin/{base}")),
+        _ => None,
+    }
+}
+
 const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 /// Cadence for the per-job session heartbeat. A `POST /api/jobs/:id/events`
 /// bumps `agent_sessions.lastHeartbeatAt` server-side, so emitting a tiny
@@ -240,6 +269,8 @@ pub async fn handle(
     // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
     // pattern-matches on this exact string to pick failureKind (ISS-808).
     // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
+    let mut workspace_notice: Option<String> = None;
+    let mut worktree_start_point: Option<String> = None;
     if requires_preflight(&ja.job_type, resolved.kind.as_deref()) {
         if let Err(err) = preflight::preflight(&resolved.repo_path).await {
             let msg = format!("preflight_failed: {err}");
@@ -247,19 +278,17 @@ pub async fn handle(
             let _ = lifecycle::fail(client, &job_id, &msg).await;
             return Ok(());
         }
-        // cm:guard a job must NOT run on a workspace this runner could not bring up to date. Preflight already proves the remote is reachable (`ls-remote`) and then declined to read it, which is how a stage judged current code against a checkout days old. `workspace_refresh` rides the load-bearing `preflight_failed:` prefix so core's classifier and the box-scoped quarantine extractor both keep working.
         let git_state =
             refresh::refresh(&resolved.repo_path, resolved.base_branch.as_deref()).await;
         tracing::info!("[job {job_id}] {}", refresh::describe(&git_state));
+        // cm:guard when the refresh does not happen the job now RUNS anyway, so the notice reaching the agent's prompt is the only mitigation left — drop it and a stage silently judges current code against an old checkout, which is the defect refresh.rs exists for. This lane used to fail the job with `preflight_failed: workspace_refresh`; a retry cannot check out a branch, so one wrong branch on ubuntu5 (anhome, 2026-08-15) became 4 identical 7-second failures over 8h, a box quarantine and a held job. The agent can check out a branch — that is the whole reason this is a notice and not a failure.
         if !git_state.refreshed {
-            let msg = format!(
-                "preflight_failed: workspace_refresh: {}",
-                git_state.detail.as_deref().unwrap_or("no reason recorded")
-            );
-            tracing::error!("[job {job_id}] {msg}");
-            let _ = lifecycle::fail(client, &job_id, &msg).await;
-            return Ok(());
+            workspace_notice = Some(workspace_notice_text(
+                &refresh::describe(&git_state),
+                git_state.base_branch.as_deref(),
+            ));
         }
+        worktree_start_point = start_point_for(&git_state);
     }
 
     // ISS-449 (Decision B): explicit claim ack once preflight passes.
@@ -274,6 +303,17 @@ pub async fn handle(
         tracing::warn!("[job {job_id}] ack: {e}");
     }
 
+    // cm:guard the notice must reach the SERVER as well as the prompt. As a `failed` job this condition was impossible to miss; as a prompt line it is visible only to the agent reading it, and a stage that ran on a workspace nobody could refresh with no row anywhere is exactly the state-lies-by-omission this replaced the failure with.
+    if let Some(notice) = &workspace_notice {
+        let ev = [JobEventInput::new(
+            "progress",
+            serde_json::json!({ "workspaceNotice": notice }),
+        )];
+        if let Err(e) = post_job_events(client, &job_id, &ev).await {
+            tracing::warn!("[job {job_id}] workspace notice event: {e}");
+        }
+    }
+
     // Only create a worktree when core explicitly hands us a feature branch
     // (e.g. code/fix stages). Triage/plan/review run in the repo root. Never
     // fall back to the binding's base branch — that branch is already checked
@@ -285,6 +325,11 @@ pub async fn handle(
         .filter(|s| !s.is_empty())
         .map(str::to_string);
 
+    let prompt = match (&ja.prompt_string, &workspace_notice) {
+        (Some(prompt), Some(notice)) => Some(format!("{notice}\n\n{prompt}")),
+        _ => ja.prompt_string.clone(),
+    };
+
     let spec = JobSpec {
         job_id: job_id.clone(),
         project_id: ja.project_id.clone(),
@@ -292,7 +337,7 @@ pub async fn handle(
         issue_id: ja.issue_id.clone(),
         step: ja.job_type.clone(),
         repo_path: resolved.repo_path.clone(),
-        prompt: ja.prompt_string.clone(),
+        prompt,
         system_prompt: ja.system_prompt.clone(),
         model: ja.model.clone(),
         allowed_tools: ja.allowed_tools.clone(),
@@ -301,6 +346,7 @@ pub async fn handle(
         timeout_seconds: ja.timeout_seconds,
         mcp_servers_override: ja.mcp_servers_override.clone(),
         worktree_branch,
+        worktree_start_point,
         resume_id: ja.claude_session_id.clone(),
         agent_session_id: ja.agent_session_id.clone(),
     };
@@ -537,5 +583,63 @@ mod tests {
                 "{job_type} should preflight"
             );
         }
+    }
+
+    /// The anhome regression: root on `main` while the base is `release/stg`.
+    /// The refresh is refused, the job runs anyway, and the ISS-* branch must
+    /// still be cut from the base — not from whatever the root sits on.
+    #[test]
+    fn start_point_is_the_base_even_when_the_refresh_was_refused() {
+        let state = refresh::WorkspaceGit {
+            head_sha: Some("deadbeef".into()),
+            base_branch: Some("release/stg".into()),
+            base_sha: Some("cafe1234".into()),
+            refreshed: false,
+            detail: Some("checked out main , not the base branch release/stg — left alone".into()),
+        };
+        assert_eq!(
+            start_point_for(&state).as_deref(),
+            Some("origin/release/stg")
+        );
+    }
+
+    /// No `base_sha` means the fetch never landed, so `origin/<base>` may not
+    /// exist locally — naming it would fail the worktree instead of creating it.
+    #[test]
+    fn no_start_point_when_the_base_ref_did_not_resolve() {
+        let state = refresh::WorkspaceGit {
+            base_branch: Some("release/stg".into()),
+            detail: Some("fetch timed out after 20s".into()),
+            ..Default::default()
+        };
+        assert_eq!(start_point_for(&state), None);
+    }
+
+    #[test]
+    fn the_notice_tells_the_stage_to_check_the_base_branch_out() {
+        let text = workspace_notice_text(
+            "workspace NOT refreshed (checked out main , not the base branch release/stg — left alone): HEAD dead, origin/release/stg cafe",
+            Some("release/stg"),
+        );
+        assert!(
+            text.contains("checked out main"),
+            "keeps the observed state"
+        );
+        assert!(
+            text.contains("`release/stg`"),
+            "names the branch to move to"
+        );
+        assert!(
+            text.contains("check the remote before any such claim"),
+            "still forbids claiming what is on the base from local files"
+        );
+    }
+
+    /// With no base resolvable there is nothing to name, but the ban on
+    /// claiming base-branch content from local files must survive.
+    #[test]
+    fn the_notice_still_bans_base_branch_claims_with_no_base() {
+        let text = workspace_notice_text("workspace NOT refreshed (detached HEAD)", None);
+        assert!(text.contains("check the remote before any such claim"));
     }
 }

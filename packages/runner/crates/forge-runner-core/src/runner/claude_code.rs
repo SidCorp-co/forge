@@ -334,7 +334,7 @@ impl Runner for ClaudeCodeRunner {
         // Resolve repo (worktree if a branch was requested).
         let repo = spec.repo_path.to_string_lossy().to_string();
         let effective_repo = match spec.worktree_branch.as_deref() {
-            Some(branch) => worktree::create(&repo, branch)
+            Some(branch) => worktree::create(&repo, branch, spec.worktree_start_point.as_deref())
                 .await?
                 .to_string_lossy()
                 .to_string(),

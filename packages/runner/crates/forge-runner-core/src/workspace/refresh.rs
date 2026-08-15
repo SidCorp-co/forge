@@ -109,8 +109,9 @@ async fn foreign_dirty_paths(repo: &Path) -> Vec<String> {
 ///
 /// Never panics and never returns `Err`: a workspace that could not be
 /// refreshed is a fact the caller must act on, not an error to unwrap. Callers
-/// decide the policy — the pipeline lane refuses to run on an unknown state,
-/// the chat lane runs and tells the agent it is stale.
+/// decide the policy — both lanes now run and tell the agent what it is looking
+/// at; the pipeline lane additionally tells it to fix the checkout, which it is
+/// the only lane in a position to do.
 pub async fn refresh(repo_path: &Path, base_branch: Option<&str>) -> WorkspaceGit {
     let mut state = WorkspaceGit::default();
 

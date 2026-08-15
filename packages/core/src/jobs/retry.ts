@@ -14,11 +14,9 @@
  * A round is one sweep over the devices that can take the work, so an empty
  * pool spends none: the chain DEFERS (`CAPACITY_DEFER_CEILING_MS`), notifies
  * once per pool, and only then gives up with `all_devices_exhausted`, which
- * holds and releases itself. Detail: docs/modules/agents-jobs.
- *
- * Structural guards ahead of any class: cancellation-requested, and the
- * verify-first check (issue already advanced/reverted, so retrying is wasted
- * spend).
+ * holds and releases itself. Two structural guards run ahead of any class:
+ * cancellation-requested, and verify-first (the issue already advanced or
+ * reverted, so retrying is wasted spend). Detail: docs/modules/agents-jobs.
  */
 
 import { randomUUID } from 'node:crypto';
