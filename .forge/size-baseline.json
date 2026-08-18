@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T03:35:53.968Z",
+  "generatedAt": "2026-08-18T04:09:49.807Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -186,7 +186,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/mcp/tools/forge-projects.test.ts": {
-      "fileLines": 873,
+      "fileLines": 877,
       "maxFunctionLines": 152
     },
     "packages/core/src/mcp/tools/forge-step-start.test.ts": {

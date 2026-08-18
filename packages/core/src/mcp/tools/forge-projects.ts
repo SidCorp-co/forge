@@ -430,6 +430,8 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         createdBy: proj.createdBy,
         role,
         repoPath: proj.repoPath,
+        // cm:guard this handler returns a HAND-BUILT object, so adding a column to the `select` above is only half the change — the field is fetched and then silently dropped. Shipped exactly that way on 2026-08-18 while the project-settings guide already told agents `get` returns it.
+        workspaceSetup: proj.workspaceSetup,
         baseBranch: proj.baseBranch,
         productionBranch: proj.productionBranch,
         defaultDeviceId: proj.defaultDeviceId,
