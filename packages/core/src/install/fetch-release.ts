@@ -11,7 +11,7 @@
  * the local `VERSION` already matches the latest published tag.
  *
  * Repo `SidCorp-co/forge` is public, so the GitHub API + asset downloads work
- * unauthenticated; `GITHUB_TOKEN` is used only to raise the rate limit if set.
+ * unauthenticated; a token only raises the rate limit.
  */
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -38,7 +38,8 @@ function ghHeaders(): Record<string, string> {
     'user-agent': 'forge-core-release-fetch',
     accept: 'application/vnd.github+json',
   };
-  const token = process.env.GITHUB_TOKEN;
+  // cm:guard read RUNNER_RELEASE_GITHUB_TOKEN first — that is the name the deploy environment sets, next to RUNNER_RELEASE_DIR and RUNNER_RELEASE_REPO. Reading only GITHUB_TOKEN meant an operator could fill the release token in and get nothing, with no error: the fetch just stayed anonymous (measured on forge-beta 2026-08-18, where it was set and empty).
+  const token = process.env.RUNNER_RELEASE_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
   if (token) h.authorization = `Bearer ${token}`;
   return h;
 }
