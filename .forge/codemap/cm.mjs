@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @generated codemap 0.12.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
 // cm — the codemap/1 CLI. Zero dependencies on purpose (see registry.mjs).
 //
 // A positional path resolves against the CWD first, which is what a shell user means, and falls back to
@@ -27,7 +27,7 @@ import { renderHelp, VERBS } from './lib/help.mjs';
 
 // cm:guard the bootstrap prompt pins a TAG, never a branch — a floating gate turns a PR red with no
 //   code change, which is the property §8.1's pin exists to protect (ISS-B)
-const TAG_HINT = 'codemap-v0.12.0';
+const TAG_HINT = 'codemap-v0.13.0';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
@@ -787,6 +787,25 @@ switch (cmd) {
     }
     if (r.hook) console.log(`  ${r.hook} ${dim('runs: cm verify --staged --tier grammar')}`);
     for (const n of r.notes) console.log(dim(`  note: ${n}`));
+    console.log('');
+    // cm:why a gate nobody wires is not a gate, and asking every contributor to run a setup command is the
+    //   thing that does not scale — so bolt it to whatever this repo already makes people run
+    const pkg = existsSync(join(root, 'package.json'));
+    console.log(bold('Wire it to something the team already runs (pick one, commit it):'));
+    if (pkg) {
+      console.log('  package.json  "scripts": { "prepare": "git config core.hooksPath .forge/codemap/hooks" }');
+      console.log(dim('                runs on npm/pnpm install — nobody has to remember anything'));
+    }
+    console.log('  .pre-commit-config.yaml');
+    console.log(dim('                - repo: local'));
+    console.log(dim('                  hooks:'));
+    console.log(dim('                    - id: codemap'));
+    console.log(dim('                      name: codemap'));
+    console.log(dim('                      entry: .forge/codemap/cm verify --staged --tier grammar'));
+    console.log(dim('                      language: system'));
+    console.log(dim('                      pass_filenames: false'));
+    console.log('  Makefile      setup: ; git config core.hooksPath .forge/codemap/hooks');
+    console.log('  by hand       git config core.hooksPath .forge/codemap/hooks   ' + dim('(once per clone)'));
     console.log('');
     console.log('Commit .forge/codemap/ — it is what makes the rules hold without the plugin:');
     console.log(dim('  CI:        .forge/codemap/cm verify --since $(git merge-base origin/main HEAD)'));

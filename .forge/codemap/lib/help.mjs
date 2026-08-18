@@ -1,4 +1,4 @@
-// @generated codemap 0.12.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
 // `cm help` — the guidebook, shipped inside the tool.
 //
 // It lives here rather than in the plugin's skill because the checker is what a project vendors
