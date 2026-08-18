@@ -28,6 +28,12 @@ pub struct MeRunner {
     // cm:guard `Option` + `#[serde(default)]` is what keeps an older core from breaking a runner update, and the ABSENT case must stay the CAUTIOUS one — `requires_preflight` reads `None` as "assume git-backed", so a standard project can never lose its git checks because the field failed to arrive
     #[serde(default)]
     pub kind: Option<String>,
+    /// Prose from `projects.workspace_setup`: how to bring this repo's workspace
+    /// to a state a stage can build, test and commit in. `None` on an older core
+    /// or an undeclared project — the setup agent then derives it from the repo,
+    /// which is the expensive path this field exists to retire.
+    #[serde(default)]
+    pub workspace_setup: Option<String>,
 }
 
 /// List the projects this device is assigned to. `401` maps to a clear

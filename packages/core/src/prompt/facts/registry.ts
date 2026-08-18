@@ -428,6 +428,26 @@ Remove ONLY this issue's worktree, and only after checking it:
 
 Never sweep other issues' worktrees, however old they look: a directory you did not create may hold an agent's work in progress right now.`,
   },
+  // cm:guard the RULE lives here and the OBSERVATION lives in the runner's `[workspace notice]`, and they must not swap places. What is wrong right now is only knowable on the box at dispatch; what an agent may do about it is policy, and policy in a per-box prompt line is policy that drifts per box and cannot be reviewed.
+  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `workspace_notice_text` writes the `[workspace notice]` block this fact refers to by name; rename the prefix there and this text points at something the agent never receives
+  // cm:edge contract -> packages/core/src/mcp/tools/forge-projects.ts — the write-back this fact asks for is `forge_projects.update` with `workspaceSetup`; that field is the ONLY reason the derivation is paid for once instead of once per job
+  {
+    id: 'workspace-discipline',
+    title: 'The workspace you were handed',
+    category: 'protocol',
+    tier: 'contextual',
+    scope: 'global',
+    namespace: 'forge',
+    appliesTo: ISSUE_STAGES,
+    version: 1,
+    render: () => `## The workspace you were handed
+A setup step may have run in this checkout seconds before you started, and anything it changed or could not fix arrives as a \`[workspace notice]\` at the top of your prompt. If there is no notice, the workspace was already in the shape this step expects.
+
+- **Read the notice before you read the code.** It is the only thing that can tell you the tree is not what it looks like: a stale checkout makes file content and \`git log\` agree with each other, so reading the files cannot catch it.
+- **Uncommitted work you did not author is not yours to discard.** Not with \`checkout --force\`, \`reset --hard\` or \`clean\`. Leave it, and say in your result that you did — it is someone's interrupted attempt and it is unrecoverable.
+- **A workspace fault is not a reason to abandon the task**, and it is not this issue's work either. Fix what stands between you and the task, do the task, and report the repair under \`Extra fixes:\`.
+- **If the notice says this project declares no setup procedure and you worked one out, record it**: \`forge_projects.update\` with \`workspaceSetup\` = the minimal ordered steps that set this repo up from a fresh clone. Only steps you actually ran and saw succeed. That write is what stops the next job paying to work it out again; if it is refused for lack of permission, say so in your result and move on rather than retrying.`,
+  },
   // ISS-552 (C1) — trigger-phrased red-flag fact for code + fix stages.
   // Teaches by trigger condition (ISS-541: "if X happened, do Y"), not by
   // noun-list. Injected via the contextual tier; appliesTo keeps it out of

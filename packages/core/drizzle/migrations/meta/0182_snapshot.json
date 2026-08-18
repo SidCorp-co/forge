@@ -1,6 +1,6 @@
 {
-  "id": "e7e98a79-8da6-4e90-a6c7-a207324edae8",
-  "prevId": "ccd75740-a7b3-4975-be98-8080eda83590",
+  "id": "25d6f47e-7852-4c84-9ae3-3d0eb0a1f39f",
+  "prevId": "e7e98a79-8da6-4e90-a6c7-a207324edae8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -52,6 +52,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -66,6 +72,21 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "activity_log_dedupe_key_idx": {
+          "name": "activity_log_dedupe_key_idx",
+          "columns": [
+            {
+              "expression": "dedupe_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1373,6 +1394,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "is_ai": {
+          "name": "is_ai",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "body": {
           "name": "body",
@@ -4365,6 +4393,12 @@
           "notNull": true,
           "default": 0
         },
+        "waiting_kind": {
+          "name": "waiting_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "source": {
           "name": "source",
           "type": "text",
@@ -4904,6 +4938,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "failure_action": {
+          "name": "failure_action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "failure_reason": {
           "name": "failure_reason",
           "type": "text",
@@ -5117,7 +5157,7 @@
             }
           ],
           "isUnique": true,
-          "where": "status IN ('queued','dispatched','running') AND issue_id IS NOT NULL",
+          "where": "status IN ('queued','dispatched','running','held') AND issue_id IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -5133,7 +5173,7 @@
             }
           ],
           "isUnique": true,
-          "where": "type = 'pm' AND status IN ('queued','dispatched','running')",
+          "where": "type = 'pm' AND status IN ('queued','dispatched','running','held')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6582,6 +6622,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -6644,6 +6690,21 @@
             },
             {
               "expression": "read",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notifications_dedupe_key_idx": {
+          "name": "notifications_dedupe_key_idx",
+          "columns": [
+            {
+              "expression": "dedupe_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7521,6 +7582,12 @@
         },
         "processed_at": {
           "name": "processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -8641,6 +8708,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "workspace_setup": {
+          "name": "workspace_setup",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "default_device_id": {
           "name": "default_device_id",
           "type": "uuid",
@@ -9666,6 +9739,18 @@
         },
         "limit_detail": {
           "name": "limit_detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quarantined_until": {
+          "name": "quarantined_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quarantine_reason": {
+          "name": "quarantine_reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false

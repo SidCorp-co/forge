@@ -47,6 +47,19 @@ pub async fn run_pending(client: &CoreClient, cfg: &Config) {
     }
 }
 
+/// Re-run provisioning for one runner NOW, from a lane that found the workspace
+/// unusable. Returns once the pull has been drained; the caller re-checks the
+/// workspace itself rather than trusting a status.
+///
+/// Flips the server row back to `queued` because that is what `/me/provisions`
+/// filters on — the pull is the mechanism, not a detail of it.
+// cm:guard go through the SERVER row; never call clone_repo/adopt_repo from another module. This path is the only one that receives the decrypted deploy key (`/me/provisions` delivers it once, per ISS-305's side-channel) and the only one that also writes `.mcp.json`, skills and `orientation.md`. A caller that shortcuts to the clone gets a checkout no agent can work in.
+// cm:guard `queued` makes this runner ineligible for SELECTION (the server requires provision_status ready), which is correct for a box whose workspace is broken but only safe because the job that triggered this is ALREADY claimed. Never call this before a claim.
+pub async fn reprovision(client: &CoreClient, cfg: &Config, runner_id: &str) {
+    report(client, runner_id, "queued", None).await;
+    run_pending(client, cfg).await;
+}
+
 /// Best-effort status report (logs on failure).
 async fn report(client: &CoreClient, runner_id: &str, status: &str, detail: Option<&str>) {
     if let Err(e) = provision::report_status(client, runner_id, status, detail).await {

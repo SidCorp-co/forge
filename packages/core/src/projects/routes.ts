@@ -103,6 +103,8 @@ export const updateProjectSchema = z
     kind: z.enum(projectKinds).optional(),
     repoPath: z.string().trim().max(500).nullable().optional(),
     repoUrl: z.string().trim().max(500).nullable().optional(),
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this text IS the setup agent's instruction set; it reaches the box via `/me/runners`, so a rename here silently gives every setup agent an empty procedure and sends it back to deriving one per job
+    workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
     productionBranch: z.string().trim().max(100).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
@@ -322,6 +324,7 @@ projectRoutes.get(
         description: projects.description,
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
+        workspaceSetup: projects.workspaceSetup,
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
         defaultDeviceId: projects.defaultDeviceId,
@@ -457,6 +460,7 @@ projectRoutes.patch(
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
+    if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
     if (patch.stateContext !== undefined) {
@@ -522,6 +526,7 @@ projectRoutes.patch(
       kind: projects.kind,
       repoPath: projects.repoPath,
       repoUrl: projects.repoUrl,
+      workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,
       productionBranch: projects.productionBranch,
       defaultDeviceId: projects.defaultDeviceId,

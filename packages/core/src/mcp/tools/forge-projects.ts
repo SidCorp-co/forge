@@ -232,6 +232,8 @@ const updateInputSchema = z
         kind: z.enum(projectKinds).optional(),
         // cm:guard scoped write for `previewDeploy.notes` ONLY — the rest of previewDeploy holds testCredentials and stays REST-only. This merges into the existing jsonb; it must never replace it, or a note would delete the credentials beside it.
         previewDeployNotes: z.string().trim().max(8000).nullable().optional(),
+        // cm:guard writable over MCP so the stage that just repaired a workspace can record the procedure that WORKED — the whole saving depends on the loop closing without a human, and no browser session exists on a runner box. It is read by the setup agent and executed by nobody, so treat a rewrite as documentation, not configuration: never overwrite a human-authored procedure with a guess.
+        workspaceSetup: z.string().trim().max(8000).nullable().optional(),
       })
       .strict()
       // Zod v4 `.strict()` only rejects unknown keys; it does NOT strip
@@ -264,7 +266,7 @@ const updateInputSchema = z
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   description:
-    "Update project settings (name, description, repoPath, baseBranch, productionBranch, kind). `kind` is the project's SHAPE, not a label: `website` means an Epodsystem-backed storefront where the store is the source of truth and a git repo is optional, and the runner then skips the git preflight and the workspace refresh for every job. Set it on a project that has no repo; never set it on one that does, or its stages stop verifying the checkout they run in. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is otherwise read-only via forge_projects.get, with ONE scoped exception: `previewDeployNotes` writes `previewDeploy.notes` — the how-to-use and known limits of the project's test resources (which surfaces the test account can reach, which states this environment never contains, what must not be faked). Write it as prose for whoever plans a live walk. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it.",
+    "Update project settings (name, description, repoPath, baseBranch, productionBranch, kind). `kind` is the project's SHAPE, not a label: `website` means an Epodsystem-backed storefront where the store is the source of truth and a git repo is optional, and the runner then skips the git preflight and the workspace refresh for every job. Set it on a project that has no repo; never set it on one that does, or its stages stop verifying the checkout they run in. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. `workspaceSetup` is prose describing how to bring this repo's workspace to a state a stage can build, test and commit in (install commands, hook setup, toolchain quirks) — the runner's setup agent reads it before every stage that lands in a broken workspace, so writing it once retires a per-job derivation. Record only a procedure you actually ran; null clears it. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is otherwise read-only via forge_projects.get, with ONE scoped exception: `previewDeployNotes` writes `previewDeploy.notes` — the how-to-use and known limits of the project's test resources (which surfaces the test account can reach, which states this environment never contains, what must not be faked). Write it as prose for whoever plans a live walk. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -304,6 +306,9 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       updates.productionBranch = input.patch.productionBranch;
     }
     if (input.patch.kind !== undefined) updates.kind = input.patch.kind;
+    if (input.patch.workspaceSetup !== undefined) {
+      updates.workspaceSetup = input.patch.workspaceSetup;
+    }
     if (input.patch.previewDeployNotes !== undefined) {
       const [row] = await db
         .select({ previewDeploy: projects.previewDeploy })
@@ -325,6 +330,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
         orgId: projects.orgId,
         description: projects.description,
         repoPath: projects.repoPath,
+        workspaceSetup: projects.workspaceSetup,
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
         kind: projects.kind,
@@ -353,7 +359,7 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
   description:
-    'Fetch project detail visible to the principal — id, slug, name, description, orgId, createdBy, role (effective: admin|member|viewer), repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials,notes}, createdAt. READ previewDeploy.notes before planning any live verification: it carries the how-to-use and the known limits of these resources (what a test account can and cannot reach, states this environment never contains), and those limits decide whether an acceptance criterion is walkable AT ALL — check it while the work is still being scoped, not at the testing gate. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+    'Fetch project detail visible to the principal — id, slug, name, description, orgId, createdBy, role (effective: admin|member|viewer), repoPath, workspaceSetup, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials,notes}, createdAt. `workspaceSetup` is the project-declared setup procedure (install commands, hook setup, toolchain quirks) — follow it rather than guessing when a checkout will not build, and if it is null and you establish one, record it via forge_projects.update. READ previewDeploy.notes before planning any live verification: it carries the how-to-use and the known limits of these resources (what a test account can and cannot reach, states this environment never contains), and those limits decide whether an acceptance criterion is walkable AT ALL — check it while the work is still being scoped, not at the testing gate. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
@@ -383,6 +389,7 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         orgId: projects.orgId,
         createdBy: projects.createdBy,
         repoPath: projects.repoPath,
+        workspaceSetup: projects.workspaceSetup,
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
         defaultDeviceId: projects.defaultDeviceId,

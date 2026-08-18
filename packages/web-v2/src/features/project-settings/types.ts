@@ -64,6 +64,9 @@ export interface ProjectUpdateInput {
 	description?: string | null;
 	repoPath?: string | null;
 	repoUrl?: string | null;
+	/** Prose: how to bring this repo's workspace to a buildable state. Read by
+	 *  the runner's setup agent; blank means it derives the procedure per job. */
+	workspaceSetup?: string | null;
 	baseBranch?: string | null;
 	productionBranch?: string | null;
 	previewDeploy?: PreviewDeployConfig | null;
@@ -851,7 +854,7 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 	for (const row of rows) {
 		const tools = row.config.disallowedTools ?? [];
 		if (tools.length === 0) continue;
-		const key = [...tools].sort().join(" ");
+		const key = [...tools].sort().join("\u0000");
 		const entry = counts.get(key) ?? { set: new Set(tools), count: 0 };
 		entry.count += 1;
 		counts.set(key, entry);

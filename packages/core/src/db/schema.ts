@@ -329,6 +329,9 @@ export const projects = pgTable(
     // Optional: when set with a project git credential, a freshly-assigned
     // device auto-clones here during provision; absent => manual folder setup.
     repoUrl: text('repo_url'),
+    // cm:guard prose ON PURPOSE, and never executed as a command list: any project admin can write this, and the runner would be running it unreviewed on every box. NULL is not an error — it means the setup agent derives the procedure from the repo itself, at a paid model's rates, on every job that needs it.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this column plus the live findings ARE that agent's whole prompt
+    workspaceSetup: text('workspace_setup'),
     defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
       onDelete: 'set null',
     }),

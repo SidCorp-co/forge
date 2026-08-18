@@ -9,6 +9,7 @@
 pub mod chat;
 pub mod dispatch;
 pub mod preflight;
+pub mod setup_agent;
 pub mod skill_pull;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
