@@ -88,8 +88,12 @@ const SHARED_AFFORDANCE_RULES: ReadonlyArray<{ rule: string; must: RegExp }> = [
     must: /closing auto-stamps `merged_at`, which unblocks every `blocks` dependent/,
   },
   {
-    rule: 'a residual becomes an issue, a blocks edge, or a proposals line — never an unowned draft',
-    must: /A new unowned `draft` — it is not a hand-off/,
+    rule: 'a bug found while working an issue is fixed in place and declared, never filed',
+    must: /\*\*Fix it now, in this issue\*\*, and DECLARE it in your comment/,
+  },
+  {
+    rule: 'an out-of-reach residual becomes a blocks edge, a proposals line, or waiting — never a new issue',
+    must: /Filing a new issue to carry it — that is not one of the options/,
   },
 ];
 
@@ -104,6 +108,7 @@ const SHARED_RED_FLAGS = [
   'fix-by-hand-and-forget',
   'close-without-unmark',
   'silent-nonwork',
+  'file-instead-of-fix',
 ];
 
 describe('rule parity — operating affordances (prompt preamble vs runner orientation)', () => {
@@ -120,6 +125,13 @@ describe('rule parity — operating affordances (prompt preamble vs runner orien
   // cm:guard the exact row that survived two of three fixes on 2026-08-07 — if it comes back anywhere, an agent is being taught to file notes as issues again.
   it('neither surface still routes a note to a draft issue', () => {
     const retired = /To record a note \/ follow-up \| create an issue at `draft`/;
+    expect(promptCopy).not.toMatch(retired);
+    expect(runnerCopy).not.toMatch(retired);
+  });
+
+  // cm:guard removed 2026-08-18 (owner decision) — stages were deferring fixable bugs into unowned drafts instead of fixing them; 30 had accumulated on forge-dev, two of them (ISS-791, ISS-845) describing that very failure while sitting in it. If "an issue that passes the gates" returns as a residual home on either surface, the deferral loop is back.
+  it('neither surface offers a new issue as a home for a residual', () => {
+    const retired = /ONE of: an issue that passes the gates/;
     expect(promptCopy).not.toMatch(retired);
     expect(runnerCopy).not.toMatch(retired);
   });

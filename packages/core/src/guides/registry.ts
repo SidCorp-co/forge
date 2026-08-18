@@ -182,17 +182,19 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 | An audit or scan finding | an observation | memory, until it becomes work with a deliverable |
 | A fix you already made by hand | a record | move the status, capture the learning in memory |
 
-### Residuals — the opposite mistake is just as real
+### Residuals — fix them, don't file them
 
 Under-filing ships bugs. Measured case: four separate stages flagged an unauthenticated data leak, each asked for a follow-up to be filed, none was, and the leak shipped.
 
-So anything a stage or review wants to hand onward becomes exactly one of three things:
+Filing was the wrong correction. Measured 2026-08-18 on forge-dev: 30 open \`draft\`s, the oldest untouched for 54 days, most of them fixable defects a stage deferred rather than fixed — two of them (ISS-791, ISS-845) describing drafts being filed and forgotten while themselves sitting filed and forgotten.
 
-1. **Work with a deliverable** → an issue.
-2. **A \`blocks\` edge** onto the issue that would otherwise ship without it.
-3. **A line in a decision doc** (\`docs/proposals/\`).
+So anything a stage wants to hand onward routes as:
 
-There is no fourth option. An unowned \`draft\` is not a hand-off, it is a place things go to be forgotten. If it fits none of the three, say it in a comment on the issue you are already working on.
+1. **You can fix it here** → **fix it**, and declare it under \`Extra fixes:\` in your comment. This is the default and covers most residuals. A declared extra fix is authorized work, not scope-creep — review judges it on merit.
+2. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
+3. **It needs a human decision** → \`waiting\` + \`waitingKind\` + \`reason\` when it blocks this issue; a standing policy question → a line in \`docs/proposals/\`.
+
+Filing a NEW issue is not on that list. If it fits none of the three, say it in a comment on the issue you are already working on — silence is the only thing that is never acceptable.
 
 ### When you find one that is not work — act on it, don't leave it
 

@@ -48,7 +48,9 @@ that PR weekly, and `cm doctor` shows any skew. Post-baseline prose is at 0, so 
 reports is something you just added. Spec: `.forge/codemap/SPEC.md`.
 
 **Rule: if a tool can derive it, don't write it.** No `// Load the config` — the compiler already
-says that. No new `TODO`/`FIXME`: file an issue at `draft` instead. Orientation prose goes in the
+says that. No new `TODO`/`FIXME`: fix it in the change you are already making and declare it under
+`Extra fixes:`; a defect you genuinely cannot fix here goes in the issue comment, never into the
+source and never into a new `draft`. Orientation prose goes in the
 **module header** (first comment block, followed by a blank line, ≤20 lines); `/** */` on an
 `export` is fine (IDE hover docs).
 
@@ -189,7 +191,10 @@ Three axes, not three checks — `ci-passed` also needs `core`, `core-integratio
 **A defect you have seen may not leave your hands labelled "not mine".** In reach and inside the
 ownership line (no merging or reverting a shared branch, no doing another issue's work, no silently
 overriding a human's decision) → **fix it**, whoever caused it and whether or not it is in your AC.
-Out of reach → it leaves as someone's work: an issue, a `blocks` edge, or a comment with evidence.
+Out of reach → it leaves as someone's work: a `blocks` edge, a `docs/proposals/` line, or a comment
+with evidence (`waiting` + `reason` when it blocks this issue). **Never a new issue** — filing a
+fixable defect instead of fixing it is the `file-instead-of-fix` red flag, and it is what put 30
+unread drafts on forge-dev by 2026-08-18.
 
 "Pre-existing", "untouched", "out of scope" are reasons to **record**, never reasons to go quiet.
 Measured 2026-08-13: five `forge-test` runs wrote *"lint remains red only on pre-existing, untouched
