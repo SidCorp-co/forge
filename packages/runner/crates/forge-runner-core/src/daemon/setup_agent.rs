@@ -69,7 +69,11 @@ only steps you actually ran and saw succeed, or `unknown` if you could not estab
 /// `procedure` is `projects.workspace_setup` — prose, never executed as a command
 /// list, so a project admin's text cannot become a shell line on the box.
 // cm:edge contract -> packages/core/src/db/schema.ts — `projects.workspace_setup` is the source of `procedure`; it reaches here via `/me/runners` and this is its only consumer
-pub fn build_prompt(findings: &[String], base_branch: Option<&str>, procedure: Option<&str>) -> String {
+pub fn build_prompt(
+    findings: &[String],
+    base_branch: Option<&str>,
+    procedure: Option<&str>,
+) -> String {
     let mut out = String::from(RULES);
     out.push_str("\n\n## What is wrong right now\n");
     for f in findings {
@@ -86,7 +90,9 @@ fast-forwarded to `origin/{base}`.\n"
     match procedure.map(str::trim).filter(|p| !p.is_empty()) {
         Some(p) => {
             out.push_str("\n## This project's setup procedure\n");
-            out.push_str("Declared by whoever knows this repo. Follow it; do not invent your own.\n\n");
+            out.push_str(
+                "Declared by whoever knows this repo. Follow it; do not invent your own.\n\n",
+            );
             out.push_str(p);
             out.push('\n');
         }

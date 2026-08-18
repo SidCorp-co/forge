@@ -99,6 +99,18 @@ const CHECKS = [
     cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
     scanned: /^Files:\s+(\d+)/m,
   },
+  // cm:guard this check exists because `pnpm verify` was 13/13 green while the `runner` job in ci.yml was red: 0.7.6 shipped with an unformatted file, which failed runner-ci AND runner-release, so no GitHub Release was cut and the install channel had nothing to serve (2026-08-18). CI_COVERAGE had declared the hole honestly the whole time — a declared hole is still a hole.
+  // cm:edge lockstep -> scripts/check-runner-gates.mjs — that script runs the four cargo commands; its own edge points back at the ci.yml step they mirror
+  {
+    axis: 'runner',
+    label: 'cargo gates',
+    cmd: ['node', 'scripts/check-runner-gates.mjs'],
+    // cm:edge naming -> scripts/check-runner-gates.mjs — parses that script's success line
+    scanned: /^runner-gates: (\d+) crate file\(s\) in scope/m,
+    unit: 'crate files',
+    scopeMayBeEmpty: true,
+    skipIf: /skipped — cargo not available/,
+  },
   {
     axis: 'meta',
     label: 'conformance levels',
@@ -146,7 +158,8 @@ const CI_COVERAGE = {
   'Build (deb only)': 'dev-bundle-smoke, Tauri-only',
   'Verify .deb produced': 'dev-bundle-smoke, Tauri-only',
   'Rust check': 'cargo, dev/src-tauri only — continue-on-error, not a gate',
-  'Lockfile sync + fmt + clippy + test (same gates as runner-ci)': 'cargo, runner-only',
+  'Lockfile sync + fmt + clippy + test (same gates as runner-ci)':
+    'verify, via scripts/check-runner-gates.mjs when packages/runner changed',
   'Check Markdown links': 'docs job, lychee action',
   'Require every CI job to have passed or been skipped': 'the ci-passed gate itself',
 };

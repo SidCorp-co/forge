@@ -362,8 +362,12 @@ pub async fn handle(
     let mut workspace_notice: Option<String> = None;
     let mut worktree_start_point: Option<String> = None;
     if requires_preflight(&ja.job_type, resolved.kind.as_deref()) {
-        let measured = match measure(&resolved.repo_path, resolved.base_branch.as_deref(), owns_root)
-            .await
+        let measured = match measure(
+            &resolved.repo_path,
+            resolved.base_branch.as_deref(),
+            owns_root,
+        )
+        .await
         {
             Ok(m) => Ok(m),
             // cm:guard re-provision, then MEASURE again — never trust the provision status. It reports `ready` from the runner's own view of a sweep that may have hit `needs_manual_setup` for a reason no re-run changes (an occupied folder, no repo URL), and a job that proceeded on that word would run in the same broken tree it just failed on.
@@ -373,7 +377,12 @@ pub async fn handle(
                         "[job {job_id}] {err} — re-provisioning the workspace before giving up"
                     );
                     provision::reprovision(client, cfg, runner_id).await;
-                    measure(&resolved.repo_path, resolved.base_branch.as_deref(), owns_root).await
+                    measure(
+                        &resolved.repo_path,
+                        resolved.base_branch.as_deref(),
+                        owns_root,
+                    )
+                    .await
                 }
                 None => Err(err),
             },
@@ -409,7 +418,13 @@ pub async fn handle(
             // Re-measure rather than believe the summary. A setup agent that
             // broke the checkout must fail the job here, not hand a stage a tree
             // that no longer has a work tree.
-            match measure(&resolved.repo_path, resolved.base_branch.as_deref(), owns_root).await {
+            match measure(
+                &resolved.repo_path,
+                resolved.base_branch.as_deref(),
+                owns_root,
+            )
+            .await
+            {
                 Ok((f, g)) => {
                     findings = f;
                     git_state = g;
@@ -423,8 +438,12 @@ pub async fn handle(
             }
         }
 
-        let root_warning = (!owns_root && !git_state.refreshed)
-            .then(|| root_warning_text(&refresh::describe(&git_state), git_state.base_branch.as_deref()));
+        let root_warning = (!owns_root && !git_state.refreshed).then(|| {
+            root_warning_text(
+                &refresh::describe(&git_state),
+                git_state.base_branch.as_deref(),
+            )
+        });
         if !findings.is_empty() || root_warning.is_some() || setup_summary.is_some() {
             workspace_notice = Some(workspace_notice_text(
                 &findings,
@@ -791,7 +810,12 @@ mod tests {
     /// with — a tree someone else changed, and no record the stage ever saw it.
     #[test]
     fn a_repaired_workspace_reports_the_repair_and_asks_for_nothing() {
-        let text = workspace_notice_text(&[], None, Some("ran pnpm install; hooks restored"), Some("main"));
+        let text = workspace_notice_text(
+            &[],
+            None,
+            Some("ran pnpm install; hooks restored"),
+            Some("main"),
+        );
         assert!(text.contains("ran pnpm install"));
         assert!(!text.contains("yours to deal with"));
     }
@@ -811,9 +835,15 @@ mod tests {
     /// The two faults a re-clone can fix, and the two it cannot.
     #[test]
     fn only_a_missing_folder_or_a_non_checkout_is_worth_reprovisioning() {
-        assert!(is_reprovisionable("repo_path: not a directory: /home/forge/projects/anhome"));
+        assert!(is_reprovisionable(
+            "repo_path: not a directory: /home/forge/projects/anhome"
+        ));
         assert!(is_reprovisionable("work_tree: fatal: not a git repository"));
-        assert!(!is_reprovisionable("origin_remote: no 'origin' remote configured"));
-        assert!(!is_reprovisionable("push_credentials: ls-remote timed out after 20s"));
+        assert!(!is_reprovisionable(
+            "origin_remote: no 'origin' remote configured"
+        ));
+        assert!(!is_reprovisionable(
+            "push_credentials: ls-remote timed out after 20s"
+        ));
     }
 }
