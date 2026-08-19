@@ -1,6 +1,6 @@
 # Agent-driven pipeline
 
-- Status: **In progress** — design capture + phases 0 and 2 (partial), owner session 2026-08-19.
+- Status: **Phases 0–4 shipped; phase 5 instrumented and awaiting evidence** — owner sessions 2026-08-19/20.
 - Upgrade path: this becomes an RFC once the mode switch and the status vocabulary are agreed — both are cross-surface (REST, MCP, web, runner).
 - Related: [RFC 0002](../rfcs/0002-park-axis-separation.md) (park axis) · [skill-delivery ADR](../architecture/skill-delivery.md) · [runner-daemon](../architecture/runner-daemon.md)
 
@@ -258,16 +258,20 @@ paid for themselves.
   binary; `forge-drive` and `forge-review` survive the global switch.
 - **Nothing consumes the tree.** Pipeline behaviour is byte-for-byte unchanged.
 
-### Phase 1 — the lock is a flag, and per-project knowledge has a home
+### Phase 1 — the lock is a flag, and per-project knowledge has a home — **done**
 
-- A `lockedSurfaces` declaration in project config makes a skill non-overridable. Being locked no
-  longer depends on which channel delivered it, and `meta-skills.ts` returns to name reservation
-  only.
-- Per-project specificity that used to live in forked skills (build and test commands, merge
-  target, deploy gating, reproduction conventions) has a declared place in project config that the
-  autonomous skills read.
-- Acceptance: a project can express everything the old forked skills expressed, without forking a
-  skill.
+- `pipelineConfig.lockedSkills` makes a skill non-overridable. Being locked no longer depends on
+  which channel delivered it, and `meta-skills.ts` is back to name reservation only.
+  `skills/lock.ts` owns the rules; `SKILL_LOCKED` maps to 400 at all three write boundaries.
+- Per-project specificity has a declared home: `projects/autonomous-contract.ts` names the six
+  `projectFacts` keys the bundled skills read, and `updatePipelineConfig` refuses the switch to
+  autonomous while `build-commands` or `test-commands` is unanswered.
+- Acceptance met: a project expresses what the forked skills expressed, without forking one.
+
+> **A hole this closed.** `pipelineConfigSchema` STRIPS unknown keys, so `lockedSkills` could never
+> have survived `PATCH /pipeline-config` or `forge_config`. The lock would have reported every
+> project unlocked while looking implemented. Both it and `mode` are now declared in the schema,
+> with a test that proves the round-trip.
 
 > Path-scoped skill variants — the Claude Code model where `apps/web:deploy` coexists with `deploy`
 > instead of destroying it — are **deferred, not dropped**. They would change resolution for the
@@ -283,9 +287,15 @@ paid for themselves.
   the `phase_journal_verdict_is_runner_written` CHECK, and observed rejecting an agent-authored
   verdict in `tests/integration/phase-journal-e2e.test.ts`.
 - Staged phases are **derived** from `jobs` + `agent_sessions`, not written by a lifecycle hook.
-  **done** (`pipeline/phase-journal-derive.ts`); the sweeper that runs it is open.
-- `pipeline_run_step_durations` is rebuilt on the journal and **agrees with today's numbers on
-  staged data** — that equality is the acceptance criterion, not "the view returns rows." **open.**
+  **done** — `pipeline/phase-journal-backfill.ts`, hourly, skipping any run with an unfinished job.
+- `phase_step_durations` (migration 0184) is rebuilt on the journal and **agrees with today's
+  numbers on staged data** — EXCEPT returns nothing in both directions across done, failed,
+  cancelled, no-session and inverted-span steps. **done.**
+
+> **The derivation is SQL, not TypeScript, and that was not a style choice.** The first version
+> derived in node and the two views disagreed on every row: a timestamp round-tripped through a JS
+> `Date` loses Postgres microseconds. The TypeScript module and its unit tests were deleted rather
+> than kept beside the SQL — two implementations of one rule is the drift this repo gates against.
 
 > **Why derive rather than hook.** Staged mode puts one phase in one job, so `jobs` already holds
 > every fact. Deriving reaches backwards over months of finished jobs, so phase 5 opens with real
@@ -295,24 +305,56 @@ paid for themselves.
 > and is the wrong one twice over: it is deliberately a thin primitive with side effects left to its
 > callers, and it records terminal flips only, while a phase also needs a start.
 
-### Phase 3 — one issue, one session
+### Phase 3 — one issue, one session — **done**
 
-- `pipelineConfig.mode = autonomous` produces one `pipeline_run` with **one** `jobs` row.
-- The driver runs all seven phases, forks the reviewer with diff + criteria only, and merges into
-  the base branch it checked out.
-- Slot cap, reaper and close cascade are **unmodified** except the watchdog's progress signal.
-- Acceptance: no second orphan-hygiene mechanism exists. If one was needed, the seam was wrong.
+- `pipelineConfig.mode = autonomous` produces one run with **one** `jobs` row, of the new type
+  `drive`. "Exactly one" is the existing `(issueId, type)` unique index, not new code.
+- The runner seeds its bundled skills into the drive job's worktree, and `skill_sync`'s prune
+  predicate keeps those names.
+- `forge_phase` (MCP) is how the session declares where it is. Verdicts are absent from it by
+  design; `POST /api/jobs/:id/verdict` is device-authenticated with no user-authenticated twin.
+- Slot cap, reaper and close cascade are unmodified. The watchdog gained ONE term in its existing
+  quiet computation: a declared phase counts as progress alongside `job_events`.
+- Acceptance met: no second orphan-hygiene mechanism exists.
 
-### Phase 4 — six statuses
+> **Correction: there is no `kind='autonomous'`.** This document asked for one. The kernel says no —
+> 21 sites key on `kind='issue'`, including the partial unique index that makes one-open-run-per-
+> issue true, the issue-run reaper and the dispatch gates. A new kind means a second copy of each,
+> which is precisely the second orphan-hygiene mechanism the acceptance criterion forbids. An
+> autonomous run is a `kind='issue'` run with one job; the mode lives on the project and the driver
+> on the job type.
 
-- An autonomous project runs on the six-value vocabulary; `dropped` closes without stamping
-  `merged_at`.
-- `status` and `phase` are separate columns and no gate reads `phase`.
-- The board renders both vocabularies, per project.
+### Phase 4 — six statuses — **done**
 
-### Phase 5 — measured, then decided
+- `dropped` closes without stamping `merged_at`. Terminal for dispatch, closes the run like
+  `closed`, never reaches `markMergedOnClose`, and has **no exit at all** — reopening it would
+  carry `merged_at NULL` into an issue that then ships.
+- `status` and `phase` are separate: `phase` lives in `phase_journal` and no gate reads it.
+- The board renders both vocabularies per project via `statusLabelFor(status, mode)`, over the
+  kernel→label map in `contracts/issue-vocabulary.ts`.
 
+> **Correction: only ONE of the six is a new kernel status.** `running` is what `in_progress`
+> already enforces, `needs_human` what the three parked statuses do, `done` what `closed` does.
+> Adding them would have been two enum values for one rule — the selection rule this document set
+> for itself. The other five are a rendering map, and `dropped` is the only rule nothing enforced.
+>
+> It also fixed a case nobody had named: discarding a **draft** to `closed` stamped `merged_at` on
+> an issue whose work never existed. `draft → dropped` is now legal and is the right discard.
+
+### Phase 5 — measured, then decided — **instrument built, evidence pending**
+
+- The measurement exists: `pipeline/driver-comparison.ts` and
+  `GET /api/pipeline/driver-comparison` report both metrics per project, with each project's `mode`
+  saying which driver produced them. Never grouped across projects — that would compare
+  repositories, not drivers.
+- Two arithmetic rules carry their own tests, because getting either wrong yields a decision worse
+  than no measurement: a project that closed nothing reports `null`, not `0` (a driver must not win
+  by never finishing anything), and an issue no session ever started is excluded from the wait
+  rather than counted as instant.
 - `KineTrak` and `archmap` run autonomous beside staged projects for at least 30 closed issues.
-- Report *interventions per issue closed* and *request → running*.
 - Acceptance: autonomous wins on both, or it does not ship. A tie is a loss — the staged path is
   already paid for.
+
+> **This phase cannot be finished by writing code.** Everything above is in place; what remains is
+> thirty closed issues' worth of elapsed time on two real projects. Reporting it as done before
+> that evidence exists would be the failure mode this document was written against.
