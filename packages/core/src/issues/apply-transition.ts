@@ -18,7 +18,7 @@ import { postTransitionReasonComment, requiresAuthoredReason } from './transitio
  * fire the terminal dispatch fan-out. Does NOT imply the run closes here —
  * see `RUN_CLOSING_STATUSES`.
  */
-export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed']);
+export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed', 'dropped']);
 
 /**
  * Statuses that close the issue's open `pipeline_run`. Only `closed`:
@@ -28,7 +28,8 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed']
  * Leaving the run open on `released` lets the release step run inside it;
  * the run closes when release finishes and sets `closed`.
  */
-export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed']);
+// cm:guard `dropped` closes the run like `closed` but must NEVER reach markMergedOnClose — that split is the whole point of the status, and merging the two sets re-creates the silent unblock it exists to prevent
+export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed', 'dropped']);
 
 export type DeviceLite = { id: string; ownerId: string };
 

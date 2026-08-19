@@ -27,6 +27,8 @@ export const REGISTRY_ISSUE_STATUSES = [
 	"on_hold",
 	"needs_info",
 	"draft",
+	// cm:edge contract -> packages/core/src/db/schema.ts#issueStatuses — closed-without-stamping; a client union missing it renders an unknown status on a terminal issue
+	"dropped",
 ] as const;
 
 export const REGISTRY_JOB_TYPES = [

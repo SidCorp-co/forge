@@ -33,7 +33,9 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   needs_info: ['open', 'confirmed', 'on_hold'],
   // ISS-236 — drafts are AI-generated proposals; user either promotes them
   // into the normal pipeline or discards them. No other status maps INTO draft.
-  draft: ['open', 'closed'],
+  draft: ['open', 'closed', 'dropped'],
+  // cm:guard terminal with NO exit, unlike `closed → reopen`: reopening a dropped issue would leave `merged_at` NULL on an issue that then ships, so re-filing is the correct move and this map must not offer a shortcut past it
+  dropped: [],
 };
 
 export function getAllowedTransitions(from: IssueStatus): readonly IssueStatus[] {
@@ -85,7 +87,10 @@ export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft
  */
 export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
   if (NON_TARGETABLE_STATUSES.has(to)) return false;
-  if (from === 'draft') return to === 'open' || to === 'closed' || to === 'developed';
+  // cm:guard `dropped` is the RIGHT discard for a draft and `closed` is the wrong one: closing stamps merged_at, so discarding a draft today unblocks every dependent of an issue whose work never existed. Keep `closed` only because callers predate the status.
+  if (from === 'draft') {
+    return to === 'open' || to === 'closed' || to === 'dropped' || to === 'developed';
+  }
   return true;
 }
 

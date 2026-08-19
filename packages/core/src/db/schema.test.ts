@@ -365,6 +365,7 @@ describe('db/schema — issues', () => {
       'on_hold',
       'needs_info',
       'draft',
+      'dropped',
     ]);
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });

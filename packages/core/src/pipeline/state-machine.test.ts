@@ -55,6 +55,11 @@ describe('state machine', () => {
     expect(transitions.closed).toEqual(['reopen']);
   });
 
+  // cm:guard `dropped` must stay a dead end: `closed → reopen` exists because a closed issue shipped and can come back, whereas reopening a dropped issue would carry merged_at NULL into a shipping issue
+  it('dropped is terminal with no exit at all', () => {
+    expect([...transitions.dropped]).toEqual([]);
+  });
+
   it('on_hold can resume to any non-on_hold, non-draft status', () => {
     // ISS-236 — draft is excluded from on_hold's resume list because drafts
     // are pre-pipeline proposals; nothing should be demoted INTO draft.
@@ -62,8 +67,8 @@ describe('state machine', () => {
     expect([...transitions.on_hold]).toEqual(resumable);
   });
 
-  it('draft promotes to open or discards to closed (ISS-236)', () => {
-    expect([...transitions.draft].sort()).toEqual(['closed', 'open']);
+  it('draft promotes to open or discards (ISS-236)', () => {
+    expect([...transitions.draft].sort()).toEqual(['closed', 'dropped', 'open']);
   });
 
   it('no status maps INTO draft (ISS-236)', () => {
@@ -73,9 +78,9 @@ describe('state machine', () => {
     }
   });
 
-  it('draft rejects every transition target except open and closed (ISS-236)', () => {
+  it('draft rejects every transition target except open and the two discards (ISS-236)', () => {
     for (const to of issueStatuses) {
-      const expected = to === 'open' || to === 'closed';
+      const expected = to === 'open' || to === 'closed' || to === 'dropped';
       expect(canTransition('draft', to)).toBe(expected);
     }
   });

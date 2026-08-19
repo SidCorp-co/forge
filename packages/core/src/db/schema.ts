@@ -1020,6 +1020,7 @@ export const issueStatuses = [
   'on_hold',
   'needs_info',
   'draft',
+  'dropped',
 ] as const;
 // `pass`, `staging`, and `deploying` were retired (unify gate model): the single
 // production approval gate is `tested` ("Awaiting release") and review exits
@@ -2463,7 +2464,6 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
 
-// ===== PM Agent (ISS-17) =====================================================
 // Stateless coordinator agent supplementing the per-issue pipeline. See parent
 // epic ISS-16 and `.forge/pm-agent-requirements.md` for the design. Tables:
 //   - issue_dependencies: cross-issue edges (blocks/relates/duplicates/parent)
