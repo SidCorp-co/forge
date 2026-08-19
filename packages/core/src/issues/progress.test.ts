@@ -59,7 +59,13 @@ describe('bucketOf', () => {
     expect(bucketOf('closed', false)).toBe('closed_unshipped');
   });
 
-  it('covers all 15 statuses x hasShippedEvidence true/false with a single bucket each', () => {
+  // cm:guard `dropped` is terminal and shipped nothing by definition, whatever evidence happens to exist — bucketing it as in_flight counts a finished issue as work in progress forever
+  it('dropped is closed_unshipped whether or not evidence exists', () => {
+    expect(bucketOf('dropped', false)).toBe('closed_unshipped');
+    expect(bucketOf('dropped', true)).toBe('closed_unshipped');
+  });
+
+  it('covers every status x hasShippedEvidence true/false with a single bucket each', () => {
     for (const status of issueStatuses) {
       for (const hasShippedEvidence of [true, false]) {
         const bucket = bucketOf(status, hasShippedEvidence);
@@ -75,9 +81,9 @@ describe('bucketOf', () => {
     }
   });
 
-  it('everything else (non-closed, non-released) lands in in_flight', () => {
+  it('everything else (non-terminal, non-released) lands in in_flight', () => {
     const inFlightStatuses = issueStatuses.filter(
-      (s) => !REMAINING.includes(s) && s !== 'closed' && s !== 'released',
+      (s) => !REMAINING.includes(s) && s !== 'closed' && s !== 'released' && s !== 'dropped',
     );
     for (const status of inFlightStatuses) {
       expect(bucketOf(status, false)).toBe('in_flight');
