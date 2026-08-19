@@ -440,6 +440,11 @@ export const pipelineConfigSchema = z
     // gate. Default (absent/false) keeps the gate: prod never auto-deploys
     // (safety valve for the autonomous pipeline). Per-project opt-in only.
     autoProdDeploy: z.boolean().optional(),
+    // cm:why per-project rather than global so the two drivers run side by side on one fleet and can be compared on the same issues — a global flag would make the comparison a migration
+    mode: z.enum(['staged', 'autonomous']).optional(),
+    // cm:guard MUST stay declared here — this schema STRIPS unknown keys, so a lock that is not in the object literal is dropped by PATCH /pipeline-config and silently never takes effect, while skills/lock.ts keeps reporting the project as unlocked
+    // cm:edge contract -> packages/core/src/skills/lock.ts — readLockedSkills() parses exactly this field; `false` and a malformed value read as ABSENT there, never as "unlocked"
+    lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo

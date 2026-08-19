@@ -29,9 +29,10 @@ role exists to prevent.
 
 ## Run it
 
-Read the diff, then **build it and run the tests**. A review that only read is worth a fraction of
-one that ran. If the build or tests fail, that is `request_changes` with the output attached — not
-a note in passing.
+Read the diff, then **build it and run the tests** — `projectFacts.build-commands` and
+`projectFacts.test-commands` from `forge_config` say how, on this project. A review that only read
+is worth a fraction of one that ran. If the build or tests fail, that is `request_changes` with the
+output attached — not a note in passing.
 
 ## What earns a finding
 

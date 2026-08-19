@@ -25,8 +25,9 @@ back through review if the resolution changed behaviour.
 
 ## Deploy gate
 
-The project config decides whether a deploy happens and how. You request it; the cloud allows it or
-does not. A refusal is not an error to work around — if deploy is gated, the gate is the answer.
+`projectFacts.deploy-policy` says whether a deploy happens on this project and what gates it. You
+request it; the cloud allows it or does not. A refusal is not an error to work around — if deploy
+is gated, the gate is the answer.
 
 If a deploy runs and does not come up, do not close the issue. Comment with what you saw and set
 `needs_human`. A green merge with a dead deploy is the exact state that looks finished and is not.

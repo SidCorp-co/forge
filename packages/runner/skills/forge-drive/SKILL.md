@@ -32,6 +32,27 @@ if this session dies, the next one restarts from the last phase you declared, no
 Phase 5 can send you back to phase 3. That loop has no counter — go around as many times as the
 verdict requires. Re-declare `code` each time so the journal shows the rounds.
 
+## What this project told you about itself
+
+These skills ship in the runner binary and are the same on every project. Nothing about *this*
+repo is baked into them. Call `forge_config` with action `get` once, before phase 1, and read
+`projectFacts`:
+
+| key | you need it for |
+|---|---|
+| `build-commands` | phase 3 — proving the branch compiles |
+| `test-commands` | phase 3 and phase 5 — a verdict with no test run is an opinion |
+| `merge-target` | phase 6, only when the branch does not land in the base it came from |
+| `deploy-policy` | phase 7 — whether shipping deploys, and what gates it |
+| `reproduction` | phase 1 — the URL, the seed data, the account |
+| `done-means` | phase 7 — what this project counts as finished beyond the criteria |
+
+The first two are guaranteed: a project cannot be switched to autonomous mode without them. The
+rest may be absent, which means the project has no rule and the ordinary answer applies.
+
+If a fact is wrong or missing something you needed, say so in the close comment. Do not work
+around it silently — the next session reads the same map.
+
 ## Phase 5 is not yours
 
 You fork a reviewer. You do not review yourself in phase 5 — phase 4 was that, and it is not

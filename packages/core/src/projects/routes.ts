@@ -35,9 +35,10 @@ import {
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
-import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
+import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { readAgentConfig } from './agent-config.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
+import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { skillsBootstrapRoutes } from './skills-bootstrap-routes.js';
@@ -705,28 +706,7 @@ projectRoutes.patch(
       const result = await updatePipelineConfig({ projectId: id, patch });
       return c.json(result);
     } catch (err) {
-      if (err instanceof PipelineConfigError) {
-        switch (err.code) {
-          case 'OPEN_LOCKED_ON':
-          case 'DEAD_END_CONFIG':
-          case 'MERGE_STATE_DISABLED':
-          case 'STAGE_POOL_UNKNOWN_RUNNER':
-            throw new HTTPException(400, {
-              message: err.message,
-              cause: { code: err.code, details: err.details },
-            });
-          case 'STAGE_HAS_ISSUES':
-          case 'AUTO_STAGE_NEEDS_SKILL':
-          case 'MISSING_SKILL_FOR_ENABLED_STAGE':
-            throw new HTTPException(409, {
-              message: err.message,
-              cause: { code: err.code, details: err.details },
-            });
-          case 'PROJECT_NOT_FOUND':
-            throw notFound();
-        }
-      }
-      throw err;
+      throw pipelineConfigHttpError(err);
     }
   },
 );

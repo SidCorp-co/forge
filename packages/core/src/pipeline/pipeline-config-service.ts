@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, projects, runners, skillRegistrations } from '../db/schema.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { logger } from '../logger.js';
+import { missingAutonomousFacts } from '../projects/autonomous-contract.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -27,6 +28,7 @@ export type PipelineConfigErrorCode =
   | 'MISSING_SKILL_FOR_ENABLED_STAGE'
   | 'DEAD_END_CONFIG'
   | 'MERGE_STATE_DISABLED'
+  | 'AUTONOMOUS_FACTS_MISSING'
   | 'PROJECT_NOT_FOUND';
 
 export class PipelineConfigError extends Error {
@@ -64,6 +66,27 @@ export interface UpdatePipelineConfigResult {
 }
 
 /**
+ * Refuse a switch to autonomous mode while the project has left a required
+ * contract fact unanswered.
+ */
+// cm:guard the gate belongs on the WRITE, not on dispatch: rejecting an unanswered project at dispatch time would leave issues sitting in a mode nobody can see is broken, whereas refusing the switch keeps the project on the staged driver that still works
+// cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the required set is declared there; adding one locks out every project that has not answered it
+function assertAutonomousReady(
+  patch: PipelineConfigPatchInput,
+  currentAgentConfig: Record<string, unknown>,
+): void {
+  if ((patch as { mode?: string }).mode !== 'autonomous') return;
+  const missing = missingAutonomousFacts(currentAgentConfig['projectFacts']);
+  if (missing.length === 0) return;
+  const detail = missing.map((f) => `${f.key} (${f.role})`).join('; ');
+  throw new PipelineConfigError(
+    'AUTONOMOUS_FACTS_MISSING',
+    `autonomous mode needs project facts this project has not set: ${detail}. One set of skills ships in the runner binary — the difference between projects lives in projectFacts, so an unanswered key is a phase the agent cannot finish.`,
+    { missing: missing.map((f) => f.key) },
+  );
+}
+
+/**
  * Validate + atomically merge a pipeline-config patch onto the project's
  * `agentConfig` jsonb document. Authorization is the caller's responsibility
  * — both REST (`PATCH /projects/:id/pipeline-config`) and MCP
@@ -97,10 +120,7 @@ export async function updatePipelineConfig(
     const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
     const nextDoc: Record<string, unknown> = {};
     if (mergeDoc.pipelineConfig) {
-      const nextPipeline = {
-        ...currentPipeline,
-        ...(mergeDoc.pipelineConfig as object),
-      };
+      const nextPipeline = { ...currentPipeline, ...(mergeDoc.pipelineConfig as object) };
       const patchStates = (pipelinePatch as { states?: StagesConfig }).states;
       if (patchStates) {
         if (patchStates.open && patchStates.open.enabled === false) {
@@ -259,6 +279,7 @@ export async function updatePipelineConfig(
           { baseBranch: baseMergeState },
         );
       }
+      assertAutonomousReady(pipelinePatch, currentAc);
       nextDoc.pipelineConfig = nextPipeline;
     }
     const subkey = JSON.stringify(nextDoc);
