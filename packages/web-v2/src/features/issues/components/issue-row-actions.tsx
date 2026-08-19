@@ -33,6 +33,7 @@ import {
   statusToRun,
   statusToStage,
 } from "../derive";
+import { useStatusLabeller } from "../vocabulary";
 import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
@@ -112,6 +113,7 @@ function AgentChip({
  *  mini stage tracker — replaces the old separate Pipeline/Status columns,
  *  which rendered the same `status`+`agentStatus` pair twice. */
 function StatusCell({ row }: { row: IssueRow }) {
+  const statusLabel = useStatusLabeller();
   const stage = statusToStage(row.status);
   return (
     <div className="flex flex-col gap-1.5">
@@ -168,6 +170,7 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
+  const statusLabel = useStatusLabeller();
   const items: MenuItem[] = [
     { label: "Open issue", icon: "arrowRight", onSelect: open },
   ];

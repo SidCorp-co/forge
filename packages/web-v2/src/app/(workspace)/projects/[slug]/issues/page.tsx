@@ -7,6 +7,7 @@
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
 import { IssuesScreen } from "@/features/issues/components/issues-screen";
+import { IssueVocabularyProvider } from "@/features/issues/vocabulary";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 
@@ -43,5 +44,9 @@ export default function ProjectIssuesPage() {
     );
   }
 
-  return <IssuesScreen scope={{ projectId: project.id, slug: project.slug }} />;
+  return (
+    <IssueVocabularyProvider projectId={project.id}>
+      <IssuesScreen scope={{ projectId: project.id, slug: project.slug }} />
+    </IssueVocabularyProvider>
+  );
 }

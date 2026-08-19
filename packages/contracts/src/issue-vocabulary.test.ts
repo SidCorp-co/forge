@@ -3,6 +3,7 @@ import {
 	AUTONOMOUS_LABELS,
 	type AutonomousLabel,
 	LABEL_TO_KERNEL,
+	readPipelineMode,
 	renderStatus,
 	toAutonomousLabel,
 } from "./issue-vocabulary.js";
@@ -66,5 +67,22 @@ describe("renderStatus", () => {
 
 	it("relabels only under autonomous", () => {
 		expect(renderStatus("in_progress", "autonomous")).toBe("running");
+	});
+});
+
+describe("readPipelineMode", () => {
+	it("reads the mode a project declared", () => {
+		expect(readPipelineMode({ pipelineConfig: { mode: "autonomous" } })).toBe(
+			"autonomous",
+		);
+	});
+
+	// cm:guard absent must read as staged, not as unknown — a board that relabels on a malformed config tells an operator their project runs a driver it does not
+	it("treats anything malformed or absent as no declaration", () => {
+		expect(readPipelineMode({ pipelineConfig: { mode: 42 } })).toBeUndefined();
+		expect(readPipelineMode({ pipelineConfig: null })).toBeUndefined();
+		expect(readPipelineMode({})).toBeUndefined();
+		expect(readPipelineMode(null)).toBeUndefined();
+		expect(readPipelineMode("nope")).toBeUndefined();
 	});
 });

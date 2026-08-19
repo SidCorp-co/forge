@@ -43,7 +43,6 @@ import {
   deriveBlockerState,
   deriveStageOutcomes,
   parseChecklist,
-  statusLabel,
   statusToChip,
   statusToRun,
   statusToStage,

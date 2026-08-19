@@ -75,3 +75,17 @@ export function renderStatus(
 ): string {
 	return mode === "autonomous" ? toAutonomousLabel(status) : status;
 }
+
+/**
+ * Read `pipelineConfig.mode` out of a project's untyped `agentConfig`. Anything
+ * that is not a string is absent, which renders the kernel vocabulary — the
+ * behaviour every client already has.
+ */
+// cm:guard absent must mean STAGED, never "unknown": a malformed config that relabelled the board would tell an operator their staged project is running a driver it is not
+export function readPipelineMode(agentConfig: unknown): string | undefined {
+	if (typeof agentConfig !== "object" || agentConfig === null) return undefined;
+	const pipeline = (agentConfig as Record<string, unknown>)["pipelineConfig"];
+	if (typeof pipeline !== "object" || pipeline === null) return undefined;
+	const mode = (pipeline as Record<string, unknown>)["mode"];
+	return typeof mode === "string" ? mode : undefined;
+}

@@ -13,7 +13,8 @@
 
 import { useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
-import { bulkAllowedStatuses, priorityLabel, statusLabel } from "../derive";
+import { bulkAllowedStatuses, priorityLabel } from "../derive";
+import { useStatusLabeller } from "../vocabulary";
 import { type BulkUpdate, useBulkUpdateIssues } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
@@ -46,6 +47,7 @@ export function BulkActionBar({
   onCleared: () => void;
 }) {
   const bulk = useBulkUpdateIssues();
+  const statusLabel = useStatusLabeller();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const count = selectedRows.length;
   if (count === 0) return null;
