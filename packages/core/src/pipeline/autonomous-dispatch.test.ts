@@ -75,6 +75,17 @@ describe('dispatchAutonomous', () => {
     });
   });
 
+  // cm:guard forge_phase takes runId as a REQUIRED argument, so a prompt without it instructs the agent to make a call it cannot make — and the failure looks like the agent ignoring its skill
+  it('tells the agent which run it is on, since forge_phase cannot be called without it', async () => {
+    selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
+
+    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
+
+    const prompt = String(insertAndEnqueueJob.mock.calls[0]?.[0]?.promptString ?? '');
+    expect(prompt).toContain('run-1');
+    expect(prompt).toContain('resume_point');
+  });
+
   // cm:guard the property the whole branch exists for: falling through at a non-entry status makes the staged resolver report "no skill registered", which pauses the run and comments on the issue every time the agent moves it
   it('owns the decision at every other status, and enqueues nothing there', async () => {
     for (const status of ['confirmed', 'developed', 'testing', 'closed'] as const) {

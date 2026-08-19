@@ -46,16 +46,19 @@ export function autonomousStepFor(
   return { type: AUTONOMOUS_JOB_TYPE, skillName: AUTONOMOUS_SKILL_NAME };
 }
 
-function buildDrivePrompt(issueId: string, projectId: string): string {
+// cm:guard the runId MUST be in the prompt — `forge_phase` takes it as a required argument, and without it the agent cannot make the call the skill tells it to make first. It has no other way to learn its own run.
+function buildDrivePrompt(args: { issueId: string; projectId: string; runId: string }): string {
   return [
-    `Drive issue ${issueId} to completion with the \`${AUTONOMOUS_SKILL_NAME}\` skill.`,
+    `Drive issue ${args.issueId} to completion with the \`${AUTONOMOUS_SKILL_NAME}\` skill.`,
     '',
-    `Project: ${projectId}. Read the issue with \`forge_issues\`, and this project's`,
+    `Project: ${args.projectId}. Read the issue with \`forge_issues\`, and this project's`,
     '`projectFacts` with `forge_config` action `get` before phase 1 — the skills ship in the',
     'runner binary and know nothing about this repo.',
     '',
-    'Declare every phase with `forge_phase` before you begin it. That declaration is your',
-    'resume point: a session that dies restarts from the last phase you declared.',
+    `Your run is ${args.runId}. Declare every phase with \`forge_phase\` before you begin it,`,
+    'passing that runId. The declaration is your resume point: a session that dies restarts from',
+    'the last phase you declared, so call `forge_phase` action `resume_point` first — if it',
+    'returns a phase, you are a resumed session and that is where you continue.',
   ].join('\n');
 }
 
@@ -106,7 +109,11 @@ export async function dispatchAutonomous(args: DispatchAutonomousArgs): Promise<
       createdBy,
       type: step.type,
       skillName: step.skillName,
-      promptString: buildDrivePrompt(args.issueId, args.projectId),
+      promptString: buildDrivePrompt({
+        issueId: args.issueId,
+        projectId: args.projectId,
+        runId: run.id,
+      }),
       payloadExtras: { mode: 'autonomous' },
       resolveRacingJobId: async () => {
         const [row] = await db
