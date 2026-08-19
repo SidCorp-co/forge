@@ -137,10 +137,11 @@ import {
 import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
 import { hooks } from './pipeline/hooks.js';
-import { backfillMissingSkillPauses } from './pipeline/missing-skill-backfill.js';
+import { runMissingSkillPauseBackfillIfRequested } from './pipeline/missing-skill-backfill.js';
 import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
+import { registerPhaseJournalBackfill } from './pipeline/phase-journal-backfill.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
@@ -548,6 +549,7 @@ if (isMain) {
   await registerRetentionSweeper();
   await registerDesktopPairingCleanup();
   await registerPipelineSweeper();
+  await registerPhaseJournalBackfill();
   await registerPgBossHealthProbe();
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();
@@ -563,17 +565,7 @@ if (isMain) {
   // re-enqueue path it triggers walks through the orchestrator's hooks.
   registerMissingSkillResume(hooks);
 
-  // ISS-238 — opt-in backfill for projects that already have stuck runs
-  // looping the reconciler rescue path. Runs once at boot; safe to re-run
-  // (the underlying pause helper is idempotent via WHERE status='running').
-  if (process.env.FORGE_BACKFILL_MISSING_SKILL_PAUSES === '1') {
-    try {
-      const result = await backfillMissingSkillPauses();
-      logger.info(result, '@forge/core: missing-skill backfill complete');
-    } catch (err) {
-      logger.error({ err }, '@forge/core: missing-skill backfill failed');
-    }
-  }
+  await runMissingSkillPauseBackfillIfRequested();
 
   // ISS-196 — must run AFTER subscribers are wired so the worker's first
   // drain hits a populated bus. Outbox worker polls the transactional

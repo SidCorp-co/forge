@@ -147,3 +147,17 @@ export async function backfillMissingSkillPauses(projectId?: string): Promise<Ba
   logger.info(result, 'missing-skill-backfill: scan complete');
   return result;
 }
+
+/**
+ * Boot-time entry point (ISS-238): opt-in via
+ * `FORGE_BACKFILL_MISSING_SKILL_PAUSES=1`, safe to re-run, and never fatal —
+ * a backfill that throws must not stop the server coming up.
+ */
+export async function runMissingSkillPauseBackfillIfRequested(): Promise<void> {
+  if (process.env.FORGE_BACKFILL_MISSING_SKILL_PAUSES !== '1') return;
+  try {
+    logger.info(await backfillMissingSkillPauses(), '@forge/core: missing-skill backfill complete');
+  } catch (err) {
+    logger.error({ err }, '@forge/core: missing-skill backfill failed');
+  }
+}
