@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { activityLog, issues, jobTypes, projectMembers, projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { driverComparison } from './driver-comparison.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -578,5 +579,18 @@ projectCostAnalyticsRoutes.get(
     }));
 
     return c.json({ threshold, runs });
+  },
+);
+
+// cm:edge contract -> packages/core/src/pipeline/driver-comparison.ts — the two north-star metrics; this route only scopes them to what the caller may see
+pipelineAnalyticsRoutes.get(
+  '/driver-comparison',
+  zValidator('query', querySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { days, projectId } = c.req.valid('query');
+    const projectIds = await loadVisibleProjectIdsScoped(c.get('userId'), projectId);
+    return c.json({ days, projects: await driverComparison({ days, projectIds }) });
   },
 );
