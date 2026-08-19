@@ -16,6 +16,7 @@ export const ALL_ISSUE_COLS: { status: IssueStatus; label: string; color: string
   { status: "reopen", label: "Reopen", color: "border-amber-400", bg: "bg-amber-50" },
   { status: "on_hold", label: "On Hold", color: "border-orange-400", bg: "bg-orange-50" },
   { status: "needs_info", label: "Needs Info", color: "border-rose-400", bg: "bg-rose-50" },
+  { status: "dropped", label: "Dropped", color: "border-slate-300", bg: "bg-slate-50" },
 ];
 
 export const TASK_COLS: { status: KanbanCol; label: string; color: string; bg: string }[] = [
@@ -31,4 +32,5 @@ export const DEFAULT_VISIBLE: Record<IssueStatus, boolean> = {
   approved: true, in_progress: true, developed: true, testing: true,
   tested: true, released: false, closed: false,
   reopen: true, on_hold: true, needs_info: false,
+  dropped: false,
 };

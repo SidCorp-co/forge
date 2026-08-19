@@ -198,8 +198,6 @@ export const refreshTokens = pgTable(
   }),
 );
 
-// === Organizations (org-level permission tier) ===
-//
 // Every project belongs to exactly ONE org (`projects.org_id` NOT NULL). Each
 // user gets a personal org at signup (and via the 0106 backfill); team orgs are
 // created explicitly. Org owner/admin derive an implicit project `admin` role
@@ -1004,6 +1002,7 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
 export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
 export type WaitingKind = (typeof waitingKinds)[number];
 
+// cm:edge lockstep -> packages/dev/src/pages/project/project-board/constants.ts — DEFAULT_VISIBLE and STATUS_COLORS are `Record<IssueStatus, …>`, so a value added here without them fails the desktop build, which `pnpm verify` does not run: `dropped` reached a deploy that way on 2026-08-20
 export const issueStatuses = [
   'open',
   'confirmed',

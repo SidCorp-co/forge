@@ -36,6 +36,7 @@
     "typescript": "^5.7.2"
   },
   "scripts": {
-    "build": "tsc --noEmit -p tsconfig.json"
+    "build": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

@@ -40,6 +40,7 @@ export const ALL_STATUSES: { value: IssueStatus; label: string }[] = [
   { value: "reopen", label: "Reopen" },
   { value: "on_hold", label: "On Hold" },
   { value: "needs_info", label: "Needs Info" },
+  { value: "dropped", label: "Dropped" },
 ];
 
 export const STATUS_COLORS: Record<IssueStatus, string> = {
@@ -58,6 +59,7 @@ export const STATUS_COLORS: Record<IssueStatus, string> = {
   reopen: "bg-amber-100 text-amber-700",
   on_hold: "bg-yellow-100 text-yellow-700",
   needs_info: "bg-purple-100 text-purple-700",
+  dropped: "bg-gray-50 text-gray-400",
 };
 
 export const ALL_CATEGORIES: { value: string; label: string }[] = [
