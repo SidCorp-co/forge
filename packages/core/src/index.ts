@@ -121,7 +121,6 @@ import { projectMetricsRoutes } from './metrics/routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
-import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { registerTransitionNotifications } from './notifications/notify-transitions.js';
@@ -134,6 +133,7 @@ import {
   pipelineAnalyticsRoutes,
   projectCostAnalyticsRoutes,
 } from './pipeline/analytics-routes.js';
+import { registerAnswerResume } from './pipeline/answer-resume.js';
 import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
 import { hooks } from './pipeline/hooks.js';
@@ -562,6 +562,7 @@ if (isMain) {
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
   registerDecompositionSubscribers(hooks);
+  registerAnswerResume(hooks);
   // ISS-238 — resume paused runs whose missing skill was just registered.
   // Subscriber must register AFTER registerPipelineOrchestrator so the
   // re-enqueue path it triggers walks through the orchestrator's hooks.

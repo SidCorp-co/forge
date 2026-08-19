@@ -18,7 +18,7 @@ import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
-import { dispatchAutonomous } from './autonomous-dispatch.js';
+import { dispatchAutonomous, isAutonomous } from './autonomous-dispatch.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
 import { findDecompositionParent } from './decomposition.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
@@ -929,12 +929,12 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
     'transition',
     async (payload) => {
       try {
-        // Guard: `needs_info → open` never re-triages (user answered a question).
-        if (payload.to === 'open' && payload.from === 'needs_info') return;
         // cm:guard leaving a park dispatches like any other transition (RFC 0002 INV-6) — do NOT re-add an actor or reason gate here. The guard deleted from this spot refused every non-user exit from `waiting`/`on_hold`; on ISS-163 it refused four legitimate resume attempts in a row and produced no work at all. Entering a park is free from anywhere, so leaving one is too.
         // cm:why the short-circuit runs BEFORE loadPipelineConfig so a human-gated transition costs no DB hit
         if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
         const { cfg, projectCreatedBy } = await loadPipelineConfig(payload.projectId);
+        // cm:guard the answered-question short-circuit is STAGED-ONLY — under the autonomous driver `needs_info → open` IS the resume (pipeline/answer-resume.ts), and returning here leaves the issue `open` with no job, which the board renders as running: the one failure shape nobody thinks to check
+        if (payload.to === 'open' && payload.from === 'needs_info' && !isAutonomous(cfg)) return;
         // ISS-239 — build the resolver once and thread it through both phases
         // so skill_registrations is read exactly once per transition hook.
         const resolver = createProjectSkillResolver(payload.projectId);

@@ -94,7 +94,7 @@ A status is kept only if the kernel enforces it. That is the whole selection rul
 | `draft` | never claimed by a session | `draft` |
 | `open` | claimable, unless a `blocks` edge holds it | `open` |
 | `running` | **exactly one live session per issue** | `confirmed` `clarified` `approved` `developed` `testing` `tested` `released` `reopen` |
-| `needs_human` | session alive, holds no slot, reaper never touches it | `needs_info` `waiting` `on_hold` |
+| `needs_human` | no session, holds no slot, resumed by the answer | `needs_info` `waiting` `on_hold` |
 | `done` | stamps `merged_at` → unblocks every dependent | `closed` |
 | `dropped` | closes **without** stamping — replaces close + `unmark` | `closed` + `unmark` |
 
@@ -317,14 +317,7 @@ paid for themselves.
   quiet computation: a declared phase counts as progress alongside `job_events`.
 - Acceptance met: no second orphan-hygiene mechanism exists.
 
-> **Two things this phase does NOT yet do, named rather than discovered later.**
->
-> **The `needs_human → running` edge has no implementation.** The state diagram above draws it as
-> "human answers". In code, `autonomousStepFor` returns a job only at `open`, so an agent that asks
-> for a human ends its session, the job completes, and a comment answering it dispatches nothing —
-> a person has to move the issue back to `open` by hand. The six-status table also claims
-> `needs_human` means "session alive, holds no slot, reaper never touches it"; none of the three is
-> true today, and `held` (RFC 0002) is reachable only from `finalize-failure`.
+> **One thing this phase does NOT do, named rather than discovered later.**
 >
 > **Verdict attribution is bounded.** The CHECK guarantees the journal ROW was written by the
 > runner. It does not, and cannot, prove that the reviewer rather than the driver wrote
@@ -340,16 +333,21 @@ paid for themselves.
 > autonomous run is a `kind='issue'` run with one job; the mode lives on the project and the driver
 > on the job type.
 
-### Phase 4 — six statuses — **kernel done, board wiring open**
+### Phase 4 — six statuses — **done**
 
 - `dropped` closes without stamping `merged_at`. Terminal for dispatch, closes the run like
   `closed`, never reaches `markMergedOnClose`, and has **no exit at all** — reopening it would
   carry `merged_at NULL` into an issue that then ships.
 - `status` and `phase` are separate: `phase` lives in `phase_journal` and no gate reads it.
-- The kernel→label map lives in `contracts/issue-vocabulary.ts` and web exposes
-  `statusLabelFor(status, mode)` over it. **The board itself is NOT yet relabelled** — six
-  components still call the mode-blind `statusLabel`, and none of them has the project's `mode` in
-  hand. The capability exists; the wiring does not, so this bullet is **open**.
+- The kernel→label map lives in `contracts/issue-vocabulary.ts`; web reads it through
+  `IssueVocabularyProvider` (resolves the project's `mode` once per project route) and
+  `useStatusLabeller`. Five surfaces call the hook; outside a provider the label is the kernel
+  status, which is what the workspace-tier screens already showed.
+- A human comment on a `needs_info` issue returns it to `open` — `pipeline/answer-resume.ts`. The
+  agent that asked is gone, so the answer is the only thing that can dispatch a new session. Only
+  `needs_info`: `waiting` and `on_hold` were entered by a person and stay that way. The
+  orchestrator's `needs_info → open` short-circuit, which exists so a staged project does not
+  re-triage, is now staged-only.
 
 > **Correction: only ONE of the six is a new kernel status.** `running` is what `in_progress`
 > already enforces, `needs_human` what the three parked statuses do, `done` what `closed` does.

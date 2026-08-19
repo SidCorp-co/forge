@@ -79,7 +79,15 @@ shows the round, fix what the findings name, and go round again.
 
 Set `needs_human` and say why in a comment when, and only when, a human has something you cannot
 get for yourself: a credential, a decision between real tradeoffs, access, or an answer about
-intent. A human answers by commenting; you continue from there.
+intent.
+
+Then **end your session**. Do not wait, poll, or keep the run alive — asking is a stopping point,
+not a pause. The comment you leave is the whole question, so write it to be answered by someone who
+was not here: what you tried, what you need, and what you will do with each possible answer.
+
+A human answering with a comment is what starts you again. The next session declares its phases from
+the same journal, so `forge_phase` action `resume_point` puts it back where you stopped — which is
+also why the question has to be in the comment and not only in your head.
 
 Do not set `needs_human` because something is hard, slow, or ambiguous in a way you could resolve
 by reading more code. Read more code.

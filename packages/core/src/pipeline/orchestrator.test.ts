@@ -29,11 +29,6 @@ const dbInsert = vi.fn(() => ({
   values: () => ({ returning: insertReturning }),
 }));
 
-// ISS-196 — `considerEnqueue` wraps the find+insert critical section in
-// `db.transaction(tx => ...)` after taking `pg_advisory_xact_lock`. The tx
-// callback receives a tx with `execute` (for the lock) and `select`/`insert`
-// proxied to the same mocks (so `findActiveJob` and `insertAndEnqueueJob`
-// continue to see the same plumbing).
 const txExecute = vi.fn(async (_query?: unknown) => undefined);
 vi.mock('../db/client.js', () => {
   const dbStub = {
@@ -92,10 +87,6 @@ vi.mock('./runs.js', () => ({
   setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
 }));
 
-// ISS-238 — guard helpers hit DB paths the orchestrator unit test doesn't
-// model (db.update, db.select + project owner join, comments insert). Stub
-// them so the test asserts orchestration intent (helper called with the
-// right args) without re-deriving the helper's DB shape.
 const pauseMissingSkillMock = vi.fn(async (..._args: unknown[]) => ({
   paused: true,
   alreadyPaused: false,
@@ -176,8 +167,6 @@ vi.mock('./skill-mapping.js', async () => {
   };
 });
 
-// ISS-239 — stub skip-chain logging so unit tests don't model the
-// pipeline_runs UPDATE / comments INSERT side effects.
 const appendSkipChainEntryMock = vi.fn<
   (runId: string, entry: { from: string; to: string; reason: string; at: string }) => Promise<void>
 >(async () => undefined);
@@ -299,9 +288,6 @@ beforeEach(() => {
   txExecute.mockReset();
   txExecute.mockImplementation(async () => undefined);
   nextSelect.mockReset();
-  // mockReset wipes the default impl; restore it so unmocked SELECT calls
-  // (eg. loadIssueSnapshot when the test only cares about the dispatch path)
-  // return [] instead of undefined and TypeError-destructuring.
   nextSelect.mockImplementation(() => [] as unknown[]);
   resolverResolve.mockReset();
   resolverStagesMock.mockReset();
@@ -460,14 +446,6 @@ describe('pipeline/orchestrator', () => {
     expect(dbInsert).not.toHaveBeenCalled();
     expect(nextSelect).not.toHaveBeenCalled();
     expect(resolverResolve).not.toHaveBeenCalled();
-  });
-
-  it('skips needs_info→open (guard against answer-loop)', async () => {
-    const bus = makeBus();
-    // biome-ignore lint/suspicious/noExplicitAny: test-only cast
-    await bus.emit('transition', transition({ from: 'needs_info', to: 'open' }) as any);
-    expect(dbInsert).not.toHaveBeenCalled();
-    expect(nextSelect).not.toHaveBeenCalled();
   });
 
   // cm:guard the three park-exit cases below are the ones RFC 0002 INVERTED — they asserted for two years that a non-user exit from a park dispatches NOTHING. Re-introducing that gate is a one-line change in orchestrator.ts, so these tests exist to fail when someone does it, whatever incident motivates them.
@@ -992,6 +970,27 @@ describe('pipeline/orchestrator', () => {
       expect(isPlanStageLiveMock).not.toHaveBeenCalled();
       expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'plan-job' }));
     });
+  });
+});
+
+describe('pipeline/orchestrator needs_info→open', () => {
+  it('skips it on a STAGED project — the answer must not re-triage', async () => {
+    cfgResolved({ enabled: true, autoReview: true });
+    const bus = makeBus();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only cast
+    await bus.emit('transition', transition({ from: 'needs_info', to: 'open' }) as any);
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the skip above must NOT fire for the autonomous driver — that transition is the only thing that brings a session back after a question, so swallowing it parks the issue forever while the board still reads `open`
+  it('DOES enqueue under the autonomous driver', async () => {
+    cfgResolved({ enabled: true, autoReview: true, mode: 'autonomous' });
+    nextSelect.mockResolvedValueOnce([{ status: 'open' }]);
+    const bus = makeBus();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only cast
+    await bus.emit('transition', transition({ from: 'needs_info', to: 'open' }) as any);
+    expect(dbInsert).toHaveBeenCalled();
   });
 });
 
