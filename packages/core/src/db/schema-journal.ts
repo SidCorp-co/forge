@@ -31,8 +31,10 @@ import { agentSessions, issues, jobs, pipelineRuns, projects } from './schema.js
  * Who wrote the row. The distinction is the whole integrity story: an agent may
  * narrate its own progress, but a result that judges the agent's work must come
  * from the runner, out of a structured return value the agent never touched.
+ * `system` is core deriving a row from kernel state it observed itself — the
+ * most trustworthy of the three, and how staged-mode history is reconstructed.
  */
-export const phaseJournalSources = ['runner', 'agent'] as const;
+export const phaseJournalSources = ['runner', 'agent', 'system'] as const;
 export type PhaseJournalSource = (typeof phaseJournalSources)[number];
 
 export const phaseJournalOutcomes = ['ok', 'failed', 'abandoned'] as const;
