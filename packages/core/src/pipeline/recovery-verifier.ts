@@ -55,6 +55,8 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   release: ['released', 'closed'],
   custom: [],
   pm: [],
+  // cm:guard EMPTY on purpose — the autonomous driver owns the issue's whole walk, so there is no single status its one job is expected to land on; listing one here would make the recovery verifier call a still-working session unadvanced
+  drive: [],
   // smoke canaries (ISS-455) are issue-less; there is no status to advance.
   smoke: [],
   release_batch: [],

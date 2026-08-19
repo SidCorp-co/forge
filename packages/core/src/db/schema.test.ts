@@ -263,6 +263,7 @@ describe('db/schema — jobs', () => {
       'release_batch',
       'reconcile',
       'verify_skill',
+      'drive',
     ]);
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });
@@ -532,8 +533,6 @@ describe('db/schema — activity_log', () => {
     expect(t.enumValues).toEqual([...actorTypes]);
   });
 });
-
-// ===== PM Agent (ISS-17) =====================================================
 
 describe('db/schema — pm agent enum extensions', () => {
   it('memorySources includes decision and policy', () => {

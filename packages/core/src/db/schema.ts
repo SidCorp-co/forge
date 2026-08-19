@@ -62,8 +62,7 @@ export const oauthAccounts = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // 'github' | 'google' | 'oidc' — kept as text rather than an enum so a
-    // future provider doesn't require a migration to add a value.
+    // cm:why text rather than a pg enum so adding a provider ('github' | 'google' | 'oidc' today) is not a migration
     provider: text('provider').notNull(),
     providerAccountId: text('provider_account_id').notNull(),
     email: text('email'),
@@ -603,6 +602,7 @@ export const jobTypes = [
   'release_batch',
   'reconcile',
   'verify_skill',
+  'drive',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 

@@ -46,6 +46,7 @@ import {
 } from './tools/forge-metrics.js';
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
+import { forgePhaseTool } from './tools/forge-phase.js';
 // ISS-483 §E#3: the forge_pipeline_runs_* / forge_pm_* standalone shims are
 // superseded by the forge_project_pipeline_runs / forge_project_pm action
 // dispatchers. Removed the 9 shims with zero references (repo + every project's
@@ -231,6 +232,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeCollaboratorsTool(ctx),
     forgeOpsHealthTool(ctx),
     forgeIssuesTool(ctx),
+    forgePhaseTool(ctx),
     forgeStepStartTool(ctx),
     forgeCommentsTool(ctx),
     forgeFeedbackTool(ctx),

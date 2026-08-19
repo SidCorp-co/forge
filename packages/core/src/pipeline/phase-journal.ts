@@ -113,7 +113,7 @@ export async function recordVerdict(
     ...input,
     artifact: { kind: 'verdict', ...input.verdict },
   });
-  await db
+  const updated = await db
     .update(phaseJournal)
     .set({
       outcome: entry.outcome,
@@ -127,7 +127,14 @@ export async function recordVerdict(
         eq(phaseJournal.phase, input.phase),
         eq(phaseJournal.attempt, input.attempt),
       ),
+    )
+    .returning({ id: phaseJournal.id });
+  // cm:guard an UPDATE matching no row must throw, not return 200 — a verdict that lands nowhere is indistinguishable from a review that never ran, and the reviewer is the one check the driver cannot perform on itself
+  if (updated.length === 0) {
+    throw new Error(
+      `phase_journal: no row for ${input.phase} attempt ${input.attempt} on run ${input.runId}`,
     );
+  }
 }
 
 /**

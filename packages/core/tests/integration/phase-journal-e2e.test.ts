@@ -31,6 +31,8 @@ describe('phase_journal constraints E2E', () => {
     harness = await setupTestDatabase();
     process.env.DATABASE_URL = harness.url;
     process.env.NODE_ENV ??= 'test';
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   }, 60_000);
 
   afterAll(async () => {
@@ -101,6 +103,21 @@ describe('phase_journal constraints E2E', () => {
     `);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ source: 'runner', decision: 'approve' });
+  });
+
+  // cm:guard a verdict that updates zero rows returned 200 and left no record — indistinguishable from a review that never ran, on the one check the driver cannot perform on itself
+  it('refuses a verdict for a phase attempt that was never opened', async () => {
+    const { recordVerdict } = await import('../../src/pipeline/phase-journal.js');
+
+    await expect(
+      recordVerdict({
+        runId,
+        phase: 'review',
+        attempt: 7,
+        outcome: 'ok',
+        verdict: { decision: 'approve' },
+      }),
+    ).rejects.toThrow(/no row for review attempt 7/);
   });
 
   it('lets the agent write every non-verdict phase it owns', async () => {

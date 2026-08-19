@@ -126,6 +126,7 @@ const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
   release: [],
   fix: [],
   custom: [],
+  drive: [],
   pm: [],
   smoke: [],
   release_batch: [],
@@ -158,6 +159,7 @@ const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
   release: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   fix: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   custom: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  drive: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   smoke: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   release_batch: {

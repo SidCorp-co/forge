@@ -18,6 +18,7 @@ import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
+import { dispatchAutonomous } from './autonomous-dispatch.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
 import { findDecompositionParent } from './decomposition.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
@@ -491,6 +492,7 @@ async function considerEnqueue(args: {
 
   const { cfg, projectCreatedBy } = args.preloaded ?? (await loadPipelineConfig(args.projectId));
   if (!cfg?.enabled) return;
+  if (await dispatchAutonomous({ ...args, cfg, projectCreatedBy })) return;
   // Belt-and-suspenders: if the landing stage is disabled in `states`, never
   // enqueue a job. autoSkipDisabledStages should have moved the issue past
   // this stage already; this fallback ensures a failed skip path never
@@ -504,8 +506,6 @@ async function considerEnqueue(args: {
   // The transition hook can fire from a stale outbox snapshot (`payload.to`)
   // after another writer has already advanced the issue past this stage
   // (e.g. a review self-correction reopen→testing racing the reopen→fix
-  // dispatch). Mirrors the race guard `autoSkipDisabledStages` already has
-  // (`issue.status !== payload.to`) — reuses the same row shape/query.
   const liveIssue = await loadIssueForSkip(args.issueId);
   if (!liveIssue || liveIssue.status !== args.status) {
     logger.debug(

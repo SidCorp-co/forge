@@ -32,6 +32,7 @@ import {
   requestJobKill,
   resolveKillConfirmation,
 } from './kill-gate.js';
+import { LAST_PHASE_CTE, LAST_PROGRESS_AT } from './progress-signal.js';
 
 // Lazily loaded (ISS-584 B). schedules/dispatch.js pulls a heavy prompt-builder
 // chain (and through it the env-validating embeddings module); importing it
@@ -332,7 +333,6 @@ export async function reapAckMisses(
 ): Promise<JobAxisReapResult> {
   const { ackMs } = getLoopThresholds();
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
-  // postgres-js rejects raw Date params; serialise to ISO before binding.
   const cutoffIso = new Date(now.getTime() - ackMs).toISOString();
   const candidates = await db.execute<KillGateCandidateRow>(sql`
     SELECT j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
@@ -675,18 +675,18 @@ export async function reapResultMisses(
       SELECT job_id, MAX(ts) AS max_ts
       FROM job_events
       GROUP BY job_id
-    )
+    ), ${LAST_PHASE_CTE}
     SELECT j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
            j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome
     FROM jobs j
     LEFT JOIN last_event le ON le.job_id = j.id
+    LEFT JOIN last_phase lp ON lp.run_id = j.pipeline_run_id
     WHERE j.status IN ('dispatched', 'running')
       AND NOT EXISTS (
         SELECT 1 FROM job_events
         WHERE job_id = j.id AND kind = 'result'
       )
-      AND GREATEST(COALESCE(le.max_ts, j.dispatched_at), j.dispatched_at) <
-          now() - interval '${sql.raw(String(RESULT_QUIET_MINUTES))} minutes'
+      AND ${LAST_PROGRESS_AT} < now() - interval '${sql.raw(String(RESULT_QUIET_MINUTES))} minutes'
       ${projectClause}
   `);
 
