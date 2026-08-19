@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface — no runtime coupling.",
+  "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface \u2014 no runtime coupling.",
   "type": "module",
   "exports": {
     ".": {
@@ -13,6 +13,10 @@
     "./pipeline-registry": {
       "types": "./src/pipeline-registry.ts",
       "default": "./src/pipeline-registry.ts"
+    },
+    "./issue-vocabulary": {
+      "types": "./src/issue-vocabulary.ts",
+      "default": "./src/issue-vocabulary.ts"
     },
     "./notifications": {
       "types": "./src/notifications.ts",

@@ -2,7 +2,7 @@
 // `derive.test.ts`). No React, no IO: status → stage / chip / run, dependency
 // counts, filter → server params, client grouping, comment-kind heuristic.
 
-import { type AutonomousLabel, toAutonomousLabel } from "@forge/contracts";
+import { type AutonomousLabel, toAutonomousLabel } from "@forge/contracts/issue-vocabulary";
 import { STAGE_INDEX, STAGES, type StageKey } from "@/design/stages";
 import {
 	type SemanticTone,
