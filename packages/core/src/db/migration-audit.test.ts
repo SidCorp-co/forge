@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   describeUnrecorded,
   findUnrecordedMigrations,
+  partitionUnrecorded,
   unrecordedSentryEvent,
 } from './migration-audit.js';
 
@@ -83,5 +84,43 @@ describe('unrecordedSentryEvent', () => {
       (event.extra.entries as unknown[]).map((entry) => (entry as { tag: string }).tag),
     ).toEqual(['0041_pm_agent', '0062_personal_access_tokens', '0063_mcp_audit_log']);
     expect(event.extra.note).toMatch(/Unrecorded != unapplied/);
+  });
+});
+
+describe('partitionUnrecorded', () => {
+  it('keeps the three measured entries out of the alarm path', () => {
+    const journal = [
+      e(41, 1778100000000, '0041_pm_agent'),
+      e(62, 1779400360000, '0062_personal_access_tokens'),
+      e(63, 1779400420000, '0063_mcp_audit_log'),
+    ];
+    const { investigated, unexpected } = partitionUnrecorded(journal, []);
+
+    expect(investigated.map((m) => m.tag)).toEqual([
+      '0041_pm_agent',
+      '0062_personal_access_tokens',
+      '0063_mcp_audit_log',
+    ]);
+    expect(unexpected).toEqual([]);
+  });
+
+  // cm:guard the whole point of the baseline: before it, a fourth unrecorded entry surfaced only as the count going 3 -> 4 in a warning that fired on every boot
+  it('surfaces a NEW unrecorded entry alongside the baselined ones', () => {
+    const journal = [
+      e(41, 1778100000000, '0041_pm_agent'),
+      e(200, 1790000000000, '0200_something_new'),
+    ];
+    const { investigated, unexpected } = partitionUnrecorded(journal, []);
+
+    expect(investigated.map((m) => m.tag)).toEqual(['0041_pm_agent']);
+    expect(unexpected.map((m) => m.tag)).toEqual(['0200_something_new']);
+  });
+
+  it('reports a baselined entry as neither once its ledger row exists', () => {
+    const journal = [e(41, 1778100000000, '0041_pm_agent')];
+    const { investigated, unexpected } = partitionUnrecorded(journal, [1778100000000]);
+
+    expect(investigated).toEqual([]);
+    expect(unexpected).toEqual([]);
   });
 });

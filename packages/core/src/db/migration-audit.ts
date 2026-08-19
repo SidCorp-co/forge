@@ -21,6 +21,38 @@ export interface JournalEntry {
 }
 
 /**
+ * The unrecorded entries already investigated, by tag. Each was confirmed on
+ * forge-beta 2026-08-19 by querying for the objects it creates:
+ * `0041_pm_agent` → issue_dependencies, pm_decisions, pm_config, pm_policies;
+ * `0062_personal_access_tokens` → personal_access_tokens;
+ * `0063_mcp_audit_log` → mcp_audit_log. All present.
+ */
+// cm:guard baseline the measured three so a FOURTH is visible — before this, every boot warned and raised the same Sentry event forever, and new drift would have surfaced only as the count going 3 → 4 inside noise nobody reads
+// cm:edge lockstep -> packages/core/src/db/migrate.ts — removing a tag here re-arms its warning; the two files are one mechanism
+export const INVESTIGATED_UNRECORDED: ReadonlySet<string> = new Set([
+  '0041_pm_agent',
+  '0062_personal_access_tokens',
+  '0063_mcp_audit_log',
+]);
+
+/**
+ * Split the unrecorded entries into the ones already investigated and the ones
+ * that are new. Only `unexpected` deserves an alarm: an entry in the baseline
+ * has had its schema checked by a human, and re-raising it on every container
+ * start is what makes the alarm worthless when it finally means something.
+ */
+export function partitionUnrecorded(
+  journal: JournalEntry[],
+  recordedCreatedAt: Iterable<number>,
+): { investigated: JournalEntry[]; unexpected: JournalEntry[] } {
+  const unrecorded = findUnrecordedMigrations(journal, recordedCreatedAt);
+  return {
+    investigated: unrecorded.filter((e) => INVESTIGATED_UNRECORDED.has(e.tag)),
+    unexpected: unrecorded.filter((e) => !INVESTIGATED_UNRECORDED.has(e.tag)),
+  };
+}
+
+/**
  * Journal entries with no matching `created_at` row. This means the ledger has
  * no record of them — NOT that their DDL is absent. Verify the schema itself
  * before concluding a migration needs re-running.
