@@ -73,6 +73,7 @@ pub async fn run(
     let runner = Arc::new(ClaudeCodeRunner::new(
         core_url.clone(),
         device_token.clone(),
+        cfg.skills.clone(),
     ));
 
     // Discover server-side assignments (`/me/runners`). This is the source of

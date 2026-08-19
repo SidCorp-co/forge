@@ -67,9 +67,13 @@ Give the reviewer:
 Do not give it your transcript, your plan, or your reasoning. It must be able to reach a different
 conclusion than you did.
 
-**You never write the verdict.** The reviewer returns a structured result and the runner records
-it. If you find yourself summarising the review in your own words as the record of what happened,
-stop — that is the one move this design exists to prevent.
+**You never write the verdict.** The reviewer appends one JSON line to
+`.forge/review-verdicts.jsonl`; the runner posts it and deletes the file. Read that line and act on
+it, but never author one, never edit one, and never restate it as the record of what happened —
+that is the one move this design exists to prevent.
+
+`request_changes` sends you back to phase 3. Re-declare `code` with `forge_phase` so the journal
+shows the round, fix what the findings name, and go round again.
 
 ## When to stop and ask
 

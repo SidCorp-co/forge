@@ -16,4 +16,5 @@ pub mod plugin_sync;
 pub mod provision;
 pub mod refresh;
 pub mod skill_sync;
+pub mod verdict;
 pub mod worktree;

@@ -224,7 +224,7 @@ mod tests {
     #[test]
     fn next_delay_base_bounds() {
         let d = next_delay(0).as_secs();
-        assert!(d >= BASE_INTERVAL_SECS && d <= BASE_INTERVAL_SECS + JITTER_MAX_SECS);
+        assert!((BASE_INTERVAL_SECS..=BASE_INTERVAL_SECS + JITTER_MAX_SECS).contains(&d));
     }
 
     #[test]
@@ -238,7 +238,7 @@ mod tests {
     fn next_delay_capped_at_max_backoff() {
         for failures in [3u32, 4, 10] {
             let d = next_delay(failures).as_secs();
-            assert!(d >= MAX_BACKOFF_SECS && d <= MAX_BACKOFF_SECS + JITTER_MAX_SECS);
+            assert!((MAX_BACKOFF_SECS..=MAX_BACKOFF_SECS + JITTER_MAX_SECS).contains(&d));
         }
     }
 }

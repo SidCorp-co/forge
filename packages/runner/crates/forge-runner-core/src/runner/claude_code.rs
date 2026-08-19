@@ -6,6 +6,7 @@
 //! frame straight onto the right process.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,9 +18,17 @@ use tokio::sync::{mpsc, Mutex};
 
 use super::process::{build_command, graceful_kill};
 use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
+use crate::config::SkillSettings;
 use crate::error::{Error, Result};
 use crate::mcp;
-use crate::workspace::worktree;
+use crate::workspace::{bundled_skills, worktree};
+
+/// `jobs.type` of the autonomous driver — the one job an autonomous run has.
+// cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — the literal core enqueues; a rename there silently stops the bundled skills reaching the worktree
+const AUTONOMOUS_STEP: &str = "drive";
+
+/// How often the runner looks for a reviewer result mid-session.
+const VERDICT_POLL_INTERVAL: Duration = Duration::from_secs(15);
 
 struct Session {
     status: RunnerStatus,
@@ -232,14 +241,20 @@ fn mcp_failure_is_fatal(is_issue_job: bool, mcp_failed: &[String]) -> bool {
 pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
+    skills: SkillSettings,
     sessions: Sessions,
 }
 
 impl ClaudeCodeRunner {
-    pub fn new(core_url: impl Into<String>, device_token: impl Into<String>) -> Self {
+    pub fn new(
+        core_url: impl Into<String>,
+        device_token: impl Into<String>,
+        skills: SkillSettings,
+    ) -> Self {
         Self {
             core_url: core_url.into(),
             device_token: device_token.into(),
+            skills,
             sessions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -322,6 +337,38 @@ fn detect_usage_limit(json: &Value) -> Option<String> {
     None
 }
 
+/// Post every verdict the reviewer has left on disk. Best-effort: a rejected
+/// or unreachable post is logged and the verdict is gone, which is the same
+/// tradeoff every other lifecycle call in this runner makes.
+async fn drain_and_post_verdicts(core_url: &str, token: &str, job_id: &str, worktree: &Path) {
+    let verdicts = crate::workspace::verdict::drain(worktree);
+    if verdicts.is_empty() {
+        return;
+    }
+    let client = crate::transport::CoreClient::new(core_url.to_string(), token.to_string());
+    for v in verdicts {
+        match crate::transport::lifecycle::verdict(&client, job_id, &v).await {
+            Ok(()) => tracing::info!("[job {job_id}] recorded verdict: {}", v.decision),
+            Err(e) => tracing::error!("[job {job_id}] verdict post failed ({}): {e}", v.decision),
+        }
+    }
+}
+
+/// Watch the worktree for reviewer results while the session runs.
+fn spawn_verdict_poller(
+    core_url: String,
+    token: String,
+    job_id: String,
+    worktree: PathBuf,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(VERDICT_POLL_INTERVAL).await;
+            drain_and_post_verdicts(&core_url, &token, &job_id, &worktree).await;
+        }
+    })
+}
+
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
     fn kind(&self) -> RunnerKind {
@@ -347,6 +394,22 @@ impl Runner for ClaudeCodeRunner {
         // `skill.sync` event / background auto-pull), plus any device-scope
         // plugin skills inherited from the config dir. A job-start re-seed was
         // removed because it clobbered project-shadowed skills mid-flight.
+        //
+        // cm:guard the ONE exception, and only for its own names: an autonomous
+        // job's skills ship in this binary, so there is nothing to have synced
+        // ahead of time. It cannot clobber a project shadow the way the removed
+        // re-seed did, because core refuses to create a project skill under a
+        // bundled name while the project runs autonomous.
+        if spec.step == AUTONOMOUS_STEP {
+            match bundled_skills::seed_into(Path::new(&effective_repo), &self.skills) {
+                Ok(names) => tracing::info!(
+                    "[job {job_id}] seeded {} bundled skill(s): {}",
+                    names.len(),
+                    names.join(", ")
+                ),
+                Err(e) => tracing::error!("[job {job_id}] bundled skill seeding failed: {e}"),
+            }
+        }
 
         let prompt = spec
             .prompt
@@ -396,6 +459,21 @@ impl Runner for ClaudeCodeRunner {
                     .map_err(std::io::Error::other)
             });
         }
+
+        // cm:guard the poller runs DURING the session, not only at the end: a
+        // review that sends the driver back to code happens mid-run, and a
+        // verdict core only learns about after the job finishes cannot gate
+        // anything the job did.
+        let verdict_poller = if spec.step == AUTONOMOUS_STEP {
+            Some(spawn_verdict_poller(
+                self.core_url.clone(),
+                self.device_token.clone(),
+                job_id.clone(),
+                PathBuf::from(&effective_repo),
+            ))
+        } else {
+            None
+        };
 
         let mut child = cmd.spawn().map_err(|e| {
             let _ = std::fs::remove_file(&mcp_path);
@@ -513,6 +591,9 @@ impl Runner for ClaudeCodeRunner {
         // reap, classify, and emit Done/Failed.
         let sessions = self.sessions.clone();
         let job_id_task = job_id.clone();
+        let core_url_for_verdicts = self.core_url.clone();
+        let token_for_verdicts = self.device_token.clone();
+        let worktree_for_verdicts = PathBuf::from(&effective_repo);
         tokio::spawn(async move {
             let job_id = job_id_task;
             let mut reader = reader;
@@ -567,6 +648,16 @@ impl Runner for ClaudeCodeRunner {
                 },
             }
             reader.abort();
+            if let Some(handle) = verdict_poller {
+                handle.abort();
+                drain_and_post_verdicts(
+                    &core_url_for_verdicts,
+                    &token_for_verdicts,
+                    &job_id,
+                    &worktree_for_verdicts,
+                )
+                .await;
+            }
 
             // Reap the child + group, capturing its exit status if the
             // exit-poll branch didn't already.

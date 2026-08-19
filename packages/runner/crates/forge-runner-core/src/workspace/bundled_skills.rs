@@ -6,15 +6,16 @@
 //! resulting table is `include_str!`-ed in. At daemon start the set is
 //! materialised into a version-keyed directory under the user data dir.
 //!
-//! Nothing consumes the extracted tree yet — wiring it into a worktree is
-//! phase 3, gated on `pipelineConfig.mode`. Extracting early is deliberate:
-//! it makes the mechanism observable (and its failures loud) a release before
-//! anything depends on it.
+//! [`seed_into`] copies the extracted set into an autonomous job's worktree.
+//! Only a `drive` job gets it, and only these names — a project cannot
+//! shadow them (core refuses the write, `packages/core/src/skills/lock.ts`),
+//! which is what makes seeding at job start safe here when it was not for the
+//! staged lanes.
 //!
 //! Design notes in `docs/proposals/agent-driven-pipeline.md`.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::SkillSettings;
 use crate::error::{Error, Result};
@@ -173,6 +174,48 @@ pub fn ensure_extracted(cfg: &SkillSettings) -> Result<Extracted> {
     })
 }
 
+/// Names this binary ships, whether or not they are currently enabled. The
+/// disk-sync prune predicate needs the full set: a name suppressed by the kill
+/// switch is still not the server's to delete.
+pub fn all_names() -> Vec<String> {
+    skills().into_iter().map(|s| s.name).collect()
+}
+
+/// Copy the enabled bundled set into `<worktree>/.claude/skills/<name>/`.
+///
+/// Overwrites in place rather than clearing the tree: the worktree also holds
+/// the project's own synced skills, and this owns only its own names.
+// cm:guard no `.hash` marker is written for these dirs — that marker is what marks a dir server-managed, and a bundled skill that carried one would be pruned by the next `skill_sync` pass the moment the server manifest (which never lists it) came back
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/skill_sync.rs — `find_prunable` must keep `all_names()`; drop that and the seeding here is undone on the next sync
+pub fn seed_into(worktree: &Path, cfg: &SkillSettings) -> Result<Vec<String>> {
+    let extracted = ensure_extracted(cfg)?;
+    write_tree(
+        &worktree.join(".claude").join("skills"),
+        &extracted.installed,
+    )?;
+    Ok(extracted.installed)
+}
+
+/// Write the named subset of the embedded files under `dest_root`.
+fn write_tree(dest_root: &Path, names: &[String]) -> Result<()> {
+    let keep: BTreeSet<&str> = names.iter().map(String::as_str).collect();
+    for (rel, body) in BUNDLED_FILES {
+        let Some(owner) = rel.split('/').next() else {
+            continue;
+        };
+        if !keep.contains(owner) {
+            continue;
+        }
+        let dest = dest_root.join(rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Config(format!("mkdir {parent:?}: {e}")))?;
+        }
+        std::fs::write(&dest, body).map_err(|e| Error::Config(format!("write {dest:?}: {e}")))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +230,58 @@ mod tests {
                 .map(|(k, v)| (k.to_string(), *v))
                 .collect::<HashMap<_, _>>(),
         }
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge-bundled-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn write_tree_lays_out_only_the_named_skills() {
+        let root = scratch("write-tree");
+        write_tree(&root, &["forge-drive".to_string()]).unwrap();
+
+        assert!(root.join("forge-drive/SKILL.md").is_file());
+        assert!(!root.join("forge-review").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // cm:guard the marker is what `skill_sync::find_prunable` reads to decide a dir is the server's to delete — a bundled skill that carried one would be removed by the first sync after the job that needs it
+    #[test]
+    fn write_tree_leaves_no_server_managed_marker() {
+        let root = scratch("no-marker");
+        write_tree(&root, &all_names()).unwrap();
+
+        for name in all_names() {
+            assert!(
+                !root.join(&name).join(".hash").exists(),
+                "{name} carries a .hash marker"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_tree_keeps_a_project_skill_sharing_the_directory() {
+        let root = scratch("coexist");
+        std::fs::create_dir_all(root.join("project-own")).unwrap();
+        std::fs::write(root.join("project-own/SKILL.md"), "mine").unwrap();
+
+        write_tree(&root, &all_names()).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(root.join("project-own/SKILL.md")).unwrap(),
+            "mine"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn all_names_reports_every_skill_regardless_of_the_kill_switch() {
+        assert!(all_names().contains(&"forge-drive".to_string()));
+        assert_eq!(all_names().len(), skills().len());
     }
 
     #[test]

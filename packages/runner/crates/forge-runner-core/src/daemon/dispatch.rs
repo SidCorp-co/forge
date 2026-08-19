@@ -242,7 +242,7 @@ fn read_skills_ran_with(repo_path: &Path) -> Option<serde_json::Value> {
     let read_dir = std::fs::read_dir(&skills_dir).ok()?;
     let mut map = serde_json::Map::new();
     for entry in read_dir.flatten() {
-        if !entry.file_type().map_or(false, |ft| ft.is_dir()) {
+        if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();

@@ -12,8 +12,20 @@ You have the diff and the acceptance criteria. You do not have the author's plan
 reasoning, and that is deliberate — you are here to reach a conclusion they could not reach about
 their own work.
 
-Your output is a structured verdict. You do not write it into the issue and you do not narrate it;
-the runner records what you return.
+Your output is a structured verdict. You do not write it into the issue and you do not narrate it.
+Append ONE line of JSON to `.forge/review-verdicts.jsonl` in the worktree root:
+
+```json
+{"decision":"request_changes","phase":"review","attempt":2,"findings":[{"file":"src/a.ts","why":"..."}]}
+```
+
+`decision` is required and must be one of the three below. `attempt` is the number the driver got
+back from `forge_phase` when it opened this review; include it so the verdict lands on the round it
+judged. The runner reads that file, posts it, and deletes it — which is why the record says a
+runner wrote it and why nobody gets to rewrite your words on the way.
+
+Write the line and stop. Do not report the verdict to the driver in prose as well: the driver acts
+on the file, and two versions of one judgement is how the softer one wins.
 
 ## Verdict
 
