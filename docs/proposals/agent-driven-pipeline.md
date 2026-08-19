@@ -317,6 +317,22 @@ paid for themselves.
   quiet computation: a declared phase counts as progress alongside `job_events`.
 - Acceptance met: no second orphan-hygiene mechanism exists.
 
+> **Two things this phase does NOT yet do, named rather than discovered later.**
+>
+> **The `needs_human → running` edge has no implementation.** The state diagram above draws it as
+> "human answers". In code, `autonomousStepFor` returns a job only at `open`, so an agent that asks
+> for a human ends its session, the job completes, and a comment answering it dispatches nothing —
+> a person has to move the issue back to `open` by hand. The six-status table also claims
+> `needs_human` means "session alive, holds no slot, reaper never touches it"; none of the three is
+> true today, and `held` (RFC 0002) is reachable only from `finalize-failure`.
+>
+> **Verdict attribution is bounded.** The CHECK guarantees the journal ROW was written by the
+> runner. It does not, and cannot, prove that the reviewer rather than the driver wrote
+> `.forge/review-verdicts.jsonl`, and nothing forces the reviewer to have run in a separate
+> context at all. A driver that writes its own verdict file is accepted. What the mechanism buys is
+> that the driver cannot RESTATE a review in its own words as the record — the bytes posted are the
+> bytes on disk. The rest is skill discipline.
+
 > **Correction: there is no `kind='autonomous'`.** This document asked for one. The kernel says no —
 > 21 sites key on `kind='issue'`, including the partial unique index that makes one-open-run-per-
 > issue true, the issue-run reaper and the dispatch gates. A new kind means a second copy of each,
@@ -324,14 +340,16 @@ paid for themselves.
 > autonomous run is a `kind='issue'` run with one job; the mode lives on the project and the driver
 > on the job type.
 
-### Phase 4 — six statuses — **done**
+### Phase 4 — six statuses — **kernel done, board wiring open**
 
 - `dropped` closes without stamping `merged_at`. Terminal for dispatch, closes the run like
   `closed`, never reaches `markMergedOnClose`, and has **no exit at all** — reopening it would
   carry `merged_at NULL` into an issue that then ships.
 - `status` and `phase` are separate: `phase` lives in `phase_journal` and no gate reads it.
-- The board renders both vocabularies per project via `statusLabelFor(status, mode)`, over the
-  kernel→label map in `contracts/issue-vocabulary.ts`.
+- The kernel→label map lives in `contracts/issue-vocabulary.ts` and web exposes
+  `statusLabelFor(status, mode)` over it. **The board itself is NOT yet relabelled** — six
+  components still call the mode-blind `statusLabel`, and none of them has the project's `mode` in
+  hand. The capability exists; the wiring does not, so this bullet is **open**.
 
 > **Correction: only ONE of the six is a new kernel status.** `running` is what `in_progress`
 > already enforces, `needs_human` what the three parked statuses do, `done` what `closed` does.
