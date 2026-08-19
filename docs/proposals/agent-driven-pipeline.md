@@ -374,3 +374,14 @@ paid for themselves.
 > **This phase cannot be finished by writing code.** Everything above is in place; what remains is
 > thirty closed issues' worth of elapsed time on two real projects. Reporting it as done before
 > that evidence exists would be the failure mode this document was written against.
+>
+> **The clock has not started, and the reason is the fleet, not the code.** Measured 2026-08-20,
+> with both projects' contract facts complete and `runner-v0.7.8` published and served by core:
+> KineTrak's runner (`ubuntu6 (ai011)`) is on **0.7.6** — it predates the bundled skill set
+> entirely, so a `drive` job would dispatch to a box with no `forge-drive` to run. archmap's
+> (`ubuntu2 (ai017)`) is on **0.7.7**, which embeds the skills but does not seed them into the
+> worktree or post verdicts. Four of fifteen online devices sat at 0.7.6 while eight reached 0.7.8
+> within an hour of the release, so this is auto-update being off on those boxes, not the six-hour
+> check cadence. Switching either project to `mode: 'autonomous'` before its runner updates would
+> enqueue drive jobs that fail for a reason that has nothing to do with the driver — and that
+> failure would then be the evidence. Update the two runners first.
