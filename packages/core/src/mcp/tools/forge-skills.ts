@@ -4,6 +4,7 @@ import {
   loadProjectSkillSyncStatus,
   resolveEffectiveSkillsForProject,
 } from '../../skills/effective.js';
+import { SkillLockedError } from '../../skills/lock.js';
 import { MetaSkillReservedError } from '../../skills/meta-skills.js';
 import {
   applyGlobalSkillDefault,
@@ -272,6 +273,9 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (err instanceof MetaSkillReservedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
+      if (err instanceof SkillLockedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
       throw err;
     }
   },
@@ -297,6 +301,9 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { skill };
     } catch (err) {
       if (err instanceof MetaSkillReservedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      if (err instanceof SkillLockedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;
@@ -367,6 +374,9 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       if (err instanceof MetaSkillReservedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      if (err instanceof SkillLockedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;
