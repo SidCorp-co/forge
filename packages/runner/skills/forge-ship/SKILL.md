@@ -1,0 +1,64 @@
+---
+name: forge-ship
+description: "Phases 6-7 of the autonomous pipeline: merge into the base branch, pass the deploy gate, write the changelog line and the close comment. Triggers on: /forge-ship, merge and close this issue, ship this issue."
+survives_kill_switch: false
+user_invocable: false
+arguments: "issueId"
+---
+
+# forge-ship
+
+The review approved. Two things left: land it, and account for it.
+
+## Merge
+
+Into the base branch you checked out from. That is yours and needs no permission.
+
+Resolve the target from the project's own configuration, not from the plan text and not from
+habit — a project whose base branch changed will have stale branch names written into older issue
+descriptions, and following them merges into the wrong place silently.
+
+Merging anywhere else needs a human. Ask, do not assume.
+
+If the merge conflicts, that is phase 3 again, not a failure: re-declare `code`, resolve, and come
+back through review if the resolution changed behaviour.
+
+## Deploy gate
+
+The project config decides whether a deploy happens and how. You request it; the cloud allows it or
+does not. A refusal is not an error to work around — if deploy is gated, the gate is the answer.
+
+If a deploy runs and does not come up, do not close the issue. Comment with what you saw and set
+`needs_human`. A green merge with a dead deploy is the exact state that looks finished and is not.
+
+## Account for it
+
+One comment. It is the only record a human will read, so it carries everything that is not in the
+diff:
+
+| Section | Content |
+|---|---|
+| What changed | one paragraph, in terms of the reported problem, not the files |
+| Extra fixes | defects you fixed that were not in the acceptance criteria |
+| Left unresolved | anything you found and did not fix, and why |
+| Verification | what you ran, and what it said |
+
+`Left unresolved` is not optional and it is not a confession. Something out of reach leaves as one
+of: a `blocks` edge onto the issue that would ship without it, a line in `docs/proposals/`, or this
+comment saying plainly that a human must decide. It does not leave as a new issue.
+
+## Changelog
+
+One line under `## [Unreleased]`, written for someone who does not know this issue exists. If the
+change is invisible to users, say so and write nothing — an entry that says "refactored internals"
+is noise in a file people read to find out what changed for them.
+
+## Close
+
+`done` when the work shipped. It stamps `merged_at`, which unblocks every issue that declared a
+`blocks` edge on this one — so closing something that did not actually land releases work that is
+not ready.
+
+`dropped` when it turned out not to be work. It closes without stamping.
+
+Never leave it `running` because you are unsure which. Say which in a comment and pick.

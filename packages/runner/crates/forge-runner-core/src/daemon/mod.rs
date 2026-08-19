@@ -351,6 +351,30 @@ pub async fn run(
         });
     }
 
+    // Materialise the skills embedded in this binary. Synchronous and cheap
+    // (a handful of small files, no network), and nothing consumes the tree
+    // yet — phase 3 wires it into worktrees behind `pipelineConfig.mode`.
+    // cm:why extract a release BEFORE anything reads it: a permission or
+    // data-dir failure then shows up in logs on a build where it breaks
+    // nothing, instead of on the build that first depends on it
+    match crate::workspace::bundled_skills::ensure_extracted(&cfg.skills) {
+        Ok(e) => tracing::info!(
+            "[skills] bundled set ready at {} — {} installed{}",
+            e.root.display(),
+            e.installed.len(),
+            if e.suppressed.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", {} suppressed: {}",
+                    e.suppressed.len(),
+                    e.suppressed.join(", ")
+                )
+            }
+        ),
+        Err(e) => tracing::warn!("[skills] bundled set unavailable: {e}"),
+    }
+
     // Background skill auto-pull (ISS-736) — OFF by default (canary gate).
     // Independent poller; `skill.sync` above stays the immediate, explicit path.
     if cfg.skills.auto_pull {

@@ -139,12 +139,27 @@ pub struct SkillSettings {
     /// `auto_pull =` ⇒ ON; an explicit `auto_pull = false` opts a device out.
     #[serde(default = "default_skill_auto_pull")]
     pub auto_pull: bool,
+
+    /// Kill switch for the skills embedded in this binary. Exists so a bad
+    /// skill release can be stopped from the config the daemon already reads,
+    /// without cutting a new runner build. Skills whose frontmatter declares
+    /// `survives_kill_switch: true` ignore it.
+    #[serde(default)]
+    pub bundled_disabled: bool,
+
+    /// Per-skill enable/disable, by skill name. Wins over `bundled_disabled` in
+    /// both directions, so one skill can be taken out without disabling the set
+    /// — and one can be kept when the set is off.
+    #[serde(default)]
+    pub bundled_overrides: HashMap<String, bool>,
 }
 
 impl Default for SkillSettings {
     fn default() -> Self {
         Self {
             auto_pull: default_skill_auto_pull(),
+            bundled_disabled: false,
+            bundled_overrides: HashMap::new(),
         }
     }
 }
@@ -237,6 +252,21 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Guards the exact syntax documented in `packages/runner/skills/README.md`.
+    /// A hyphenated bare key in an inline table is legal TOML, but if that ever
+    /// stopped parsing the docs would be telling operators to write a config
+    /// that silently drops their kill switch.
+    #[test]
+    fn the_documented_kill_switch_syntax_parses() {
+        let cfg: Config = toml::from_str(
+            "[skills]\nbundled_disabled = true\nbundled_overrides = { forge-plan = false }\n",
+        )
+        .expect("documented syntax must parse");
+        assert!(cfg.skills.bundled_disabled);
+        assert_eq!(cfg.skills.bundled_overrides.get("forge-plan"), Some(&false));
+        assert!(cfg.skills.auto_pull, "an unrelated default must survive");
+    }
 
     #[test]
     fn roundtrips_through_toml() {
