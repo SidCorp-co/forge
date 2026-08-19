@@ -1,6 +1,6 @@
 # Agent-driven pipeline
 
-- Status: **Draft** — design capture, owner session 2026-08-19. Not implemented.
+- Status: **In progress** — design capture + phases 0 and 2 (partial), owner session 2026-08-19.
 - Upgrade path: this becomes an RFC once the mode switch and the status vocabulary are agreed — both are cross-surface (REST, MCP, web, runner).
 - Related: [RFC 0002](../rfcs/0002-park-axis-separation.md) (park axis) · [skill-delivery ADR](../architecture/skill-delivery.md) · [runner-daemon](../architecture/runner-daemon.md)
 
@@ -249,7 +249,7 @@ A phase is done when its acceptance criteria hold, not when its code is written.
 no risk to the running pipeline and are independently valuable — if 3–5 are abandoned, they still
 paid for themselves.
 
-### Phase 0 — the skill set ships inside the binary · **done**
+### Phase 0 — the skill set ships inside the binary · **done, released as `runner-v0.7.7`**
 
 - `packages/runner/skills/` is the source; `build.rs` walks it, so a file added there cannot be
   missing at runtime.
@@ -274,14 +274,26 @@ paid for themselves.
 > live staged pipeline, and the autonomous set is not overridable anyway, so the risk buys nothing
 > yet. Revisit if the staged set outlives phase 5.
 
-### Phase 2 — the journal exists and staged mode already writes it
+### Phase 2 — the journal exists and staged history is in it
 
 - A phase journal records, per issue attempt: phase name, start, end, and the artifact produced.
+  **done** — `phase_journal`, migration 0183, live on forge-beta.
 - **Entries are written from structured events, never from agent narration.** A reviewer verdict is
-  recorded by the runner from a returned result; the driver cannot author it.
-- Staged jobs journal too, so a baseline accrues before there is anything to compare against.
+  recorded by the runner from a returned result; the driver cannot author it. **done** — enforced by
+  the `phase_journal_verdict_is_runner_written` CHECK, and observed rejecting an agent-authored
+  verdict in `tests/integration/phase-journal-e2e.test.ts`.
+- Staged phases are **derived** from `jobs` + `agent_sessions`, not written by a lifecycle hook.
+  **done** (`pipeline/phase-journal-derive.ts`); the sweeper that runs it is open.
 - `pipeline_run_step_durations` is rebuilt on the journal and **agrees with today's numbers on
-  staged data** — that equality is the acceptance criterion, not "the view returns rows."
+  staged data** — that equality is the acceptance criterion, not "the view returns rows." **open.**
+
+> **Why derive rather than hook.** Staged mode puts one phase in one job, so `jobs` already holds
+> every fact. Deriving reaches backwards over months of finished jobs, so phase 5 opens with real
+> history instead of accruing from the day it ships, and it touches no hot path. What it does not
+> exercise is the autonomous write path — but that is the agent declaring phases over MCP, which a
+> job-lifecycle hook would not have exercised either. `applyKernelTransition` was the tempting hook
+> and is the wrong one twice over: it is deliberately a thin primitive with side effects left to its
+> callers, and it records terminal flips only, while a phase also needs a start.
 
 ### Phase 3 — one issue, one session
 
