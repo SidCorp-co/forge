@@ -7,8 +7,9 @@
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { jobs } from '../db/schema.js';
 import {
   type NewPhaseJournalRow,
   type PhaseArtifact,
@@ -106,16 +107,26 @@ export async function endPhase(input: EndPhaseInput): Promise<void> {
  * Close every phase this job left open, once the job itself is terminal.
  * Returns how many rows were closed.
  */
-// cm:guard scoped to the JOB, never the run — a staged run holds one phase per job, so closing by run_id would end a sibling job's phase while that job is still working in it
+// cm:guard a staged run holds one phase per job, so a bare `run_id` match would end a sibling job's phase while that job is still working in it. The unowned half is safe only because it is scoped to rows with NO job at all, which staged never writes.
 // cm:guard `source: 'system'`, never 'agent' — the outcome here is inferred from the job, not reported by anyone, and a reader must be able to tell an inferred close from a declared one. Leaving the row open instead is worse: it is indistinguishable from a crashed phase and reports a NULL duration forever (KineTrak ISS-1 ended with `ship` open, 2026-08-20).
 export async function closeDanglingPhasesForJob(
   jobId: string,
   outcome: PhaseJournalOutcome,
 ): Promise<number> {
+  // cm:guard `forge_phase.jobId` is OPTIONAL and `forge-drive` does not send it, so EVERY autonomous row lands with job_id NULL — matching on job_id alone closed nothing on the one driver this was built for (measured on getcontent, 2026-08-20: 3 finished drive jobs, 0 rows closed). Widening to the run's unowned rows is what makes it fire.
+  const [job] = await db
+    .select({ runId: jobs.pipelineRunId })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  const owned = eq(phaseJournal.jobId, jobId);
+  const unowned = job?.runId
+    ? and(eq(phaseJournal.runId, job.runId), isNull(phaseJournal.jobId))
+    : undefined;
   const closed = await db
     .update(phaseJournal)
     .set({ outcome, source: 'system', endedAt: new Date() })
-    .where(and(eq(phaseJournal.jobId, jobId), isNull(phaseJournal.endedAt)))
+    .where(and(unowned ? or(owned, unowned) : owned, isNull(phaseJournal.endedAt)))
     .returning({ id: phaseJournal.id });
   return closed.length;
 }

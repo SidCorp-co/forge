@@ -62,7 +62,7 @@ describe('phase-journal dangling close E2E', () => {
     return id;
   }
 
-  async function phase(jobId: string, name: string, ended: boolean): Promise<void> {
+  async function phase(jobId: string | null, name: string, ended: boolean): Promise<void> {
     await harness.db.execute(sql`
       INSERT INTO phase_journal (id, project_id, run_id, job_id, phase, attempt, source, outcome,
                                  started_at, ended_at)
@@ -116,5 +116,37 @@ describe('phase-journal dangling close E2E', () => {
 
     const out = await rows();
     expect(out.find((r) => r.phase === 'code')?.ended_at).toBeNull();
+  });
+
+  // cm:guard `forge_phase.jobId` is optional and `forge-drive` never sends it, so every autonomous row carries job_id NULL — this is the shape the closer exists for, and matching on job_id alone missed all of it
+  it('closes the run phases the driver wrote with no job on them', async () => {
+    const { closeDanglingPhasesForJob } = await import('../../src/pipeline/phase-journal.js');
+    const j = await job();
+    await phase(null, 'ship', false);
+
+    expect(await closeDanglingPhasesForJob(j, 'ok')).toBe(1);
+
+    expect((await rows())[0]).toMatchObject({ outcome: 'ok', source: 'system' });
+  });
+
+  it("leaves another run's unowned phase alone", async () => {
+    const { closeDanglingPhasesForJob } = await import('../../src/pipeline/phase-journal.js');
+    const j = await job();
+    const otherRun = randomUUID();
+    const otherIssue = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (${otherIssue}, ${projectId}, 2, 'other', 'in_progress', ${ownerId})
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${otherRun}, ${projectId}, ${otherIssue}, 'issue', 'running', now())
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO phase_journal (id, project_id, run_id, job_id, phase, attempt, source, started_at)
+      VALUES (${randomUUID()}, ${projectId}, ${otherRun}, NULL, 'ship', 1, 'agent', now())
+    `);
+
+    expect(await closeDanglingPhasesForJob(j, 'ok')).toBe(0);
   });
 });

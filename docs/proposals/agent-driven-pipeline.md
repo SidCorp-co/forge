@@ -433,3 +433,59 @@ for fifteen hours, was the only thing standing between the switch and the first 
 is invisible on the board, which shows ISS-1 as a plain `open` issue. **Switch a project when it is
 quiet, and check `jobs` for `held` rows first.** A project with seven jobs in flight is the wrong
 moment, whatever the config says.
+
+#### The memory profile is the driver's, not the box's — 2026-08-20
+
+The first multi-issue run (getcontent, 46 open issues, `maxConcurrentIssues: 3`) failed three drive
+jobs in four hours, all `infra` / *"agent session terminated without job completion"*, all recovered
+by the reaper and re-dispatched. The cause was not the driver:
+
+```
+systemd-oomd: Killed forge-runner.service due to memory pressure for
+user@1000.service being 60.78% > 50.00% for > 20s with reclaim activity
+```
+
+`max_concurrent = 1`, so this is **one** session: the runner cgroup peaked at 11.4 GB of ubuntu5's
+15.7 GB, because a drive session hosts `claude` plus every MCP child it starts — on getcontent that
+includes `playwright-mcp`, i.e. headless Chromium. Two oom-kills in 24 h on each of ubuntu2 and
+ubuntu5; ubuntu6 none.
+
+This is a consequence of the inversion, not a box that happens to be small. A staged step is a
+3–15 minute process that exits and frees everything; a drive session is one 60–90 minute process
+that accumulates for the whole issue. The fleet was sized for the first shape.
+
+What made it expensive is *which* process oomd chose. Killing the daemon reclaims memory a **child**
+allocated, and takes the supervisor and every in-flight session down with it — 31 and 44 minutes of
+paid session lost per kill, then a full restart from scratch. The mitigation is to take the daemon
+out of oomd's candidate set so the kernel picks the largest child instead:
+
+```ini
+# ~/.config/systemd/user/forge-runner.service.d/oom.conf
+[Service]
+ManagedOOMPreference=omit
+```
+
+Applied to ubuntu2 and ubuntu5 without a restart (a restart would have killed the live session it
+was meant to protect). **This is a mitigation, not the fix.** The daemon still cannot see how much
+memory its own session subtree is using, so nothing stops a drive session from taking the box down —
+the runner should cap concurrency on available memory rather than on a static `max_concurrent`.
+Left as follow-up work; recorded here because it is the first cost of the inversion that is paid in
+operations rather than in code.
+
+#### The reviewer is independent — measured, 2026-08-20
+
+The one claim phase 3 could not check in a test is whether the verdict in the ledger is the
+reviewer's or the driver's account of it. On getcontent ISS-422 the reviewer refused four rounds
+running, every row `source: 'runner'` and `kind: 'verdict'`, none agent-authored:
+
+| Round | Decision | What it caught |
+|---|---|---|
+| 1 | `request_changes` | AC6 unmet — no published article gained a URL and no owner decision was recorded |
+| 2 | `request_changes` | rejected the driver's own CHANGELOG paragraph, proposal section and memory record as a substitute for an owner decision |
+| 3 | `request_changes` | a comment **claiming** round 2 was fixed while it was not — the check is a source-text regex, and a regex-literal argument prints as `{slug\}`, so it never matches |
+| 4 | `request_changes` | AC6 still unrouted |
+
+Round 3 is the one worth keeping: the reviewer refuted a fix the driver had asserted, on a detail
+the assertion was wrong about. The job then finished `done` with the issue at `waiting` — escalated
+to a human rather than merged. Before the `FORGE_VERDICT_FILE` fix all four of these rows would
+have been the driver's own note, and the issue would have read as reviewed and approved.
