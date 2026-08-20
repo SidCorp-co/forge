@@ -388,6 +388,23 @@ paid for themselves.
 > enqueue drive jobs that fail for a reason that has nothing to do with the driver — and that
 > failure would then be the evidence. Update the two runners first.
 
+#### First production run — what it proved, 2026-08-20
+
+KineTrak switched to `mode: 'autonomous'` and drove ISS-1. Every mechanism phase 3 built has now
+run somewhere other than a test:
+
+| Mechanism | Evidence |
+|---|---|
+| bundled skills reach the box | runner log: `bundled set ready at .../bundled-skills/0.7.8 — 5 installed` |
+| `drive` dispatches | job reached the runner with a session, after the capability gate was fixed |
+| the session declares its phases | `phase_journal` row `understand / attempt 1 / source 'agent'` — written by the agent over MCP, not by the backfill |
+| orphan hygiene covers the new type | a drive job stranded by a core restart was reaped in ~4 min as `infra` / *"agent session terminated without job completion"*, and the reconciler then re-dispatched on its own |
+
+The one thing that broke was self-inflicted and worth writing down: the first drive job dispatched
+during a core deploy, so the runner's websocket was down and the session timed out. **Deploy before
+flipping a project, or flip it back to `staged` first** — while a project is autonomous the
+reconciler re-dispatches every minute, so a restart window is nearly certain to catch one.
+
 #### Switching a live project over
 
 Flipping `mode` is not a drop-in: the staged driver leaves work the autonomous one has no step
