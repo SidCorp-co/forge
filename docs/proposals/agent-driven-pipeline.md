@@ -369,10 +369,22 @@ paid for themselves.
   than no measurement: a project that closed nothing reports `null`, not `0` (a driver must not win
   by never finishing anything), and an issue no session ever started is excluded from the wait
   rather than counted as instant.
-- `KineTrak` and `archmap` run autonomous beside staged projects for at least 30 closed issues.
+- The trial runs on `KineTrak`, `archmap` and `getcontent`, for at least 30 closed issues.
+  **`KineTrak` and `archmap` alone could never have supplied them** — measured 2026-08-20, the two
+  had 19 issues between them in their entire history (10 and 9), of which 8 were already closed
+  under the staged driver. Naming two small projects and a 30-issue bar was an acceptance criterion
+  that could not be met by the projects it named, and no amount of waiting would have fixed it;
+  `getcontent` was added because it closes ~7 issues a day and has 455 in its history, which makes
+  30 reachable in about a week.
 - Acceptance: autonomous wins on both, or it does not ship. A tie is a loss — the staged path is
   already paid for.
 
+> **Switching a project does not start the clock — queued work does.** `getcontent` went autonomous
+> with 320 issues closed, 127 in `draft` and **zero at `open`**, so nothing dispatched. `draft` never
+> dispatches, and neither do the parked statuses; only an issue somebody moves to `open` produces a
+> drive job. On a project whose merges deploy straight to production, which issues those are is the
+> owner's call and not the measurement's.
+>
 > **This phase cannot be finished by writing code.** Everything above is in place; what remains is
 > thirty closed issues' worth of elapsed time on two real projects. Reporting it as done before
 > that evidence exists would be the failure mode this document was written against.
