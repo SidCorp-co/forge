@@ -118,6 +118,7 @@ export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map
 // it; without the entry the dispatcher would permanently fail the job as
 // `runner_unsupported_type`.
 
+// cm:guard TypeScript checks the KEYS of this Record, never the array contents, so a job type missing from a list compiles and then fails every dispatch permanently with `runner_unsupported_type`. `drive` shipped that way and burned two jobs on KineTrak (2026-08-20); registry.test.ts now asserts the membership the compiler cannot.
 // cm:why release_batch has no PIPELINE_STEPS entry (dispatched explicitly via the batch-release REST endpoint, not a trigger status) but still needs a RUNNER_CAPABILITIES entry or the dispatcher fails it runner_unsupported_type
 // cm:why reconcile / verify_skill have no PIPELINE_STEPS entry — dispatched by the reconcile service directly, not by a trigger status (ISS-801).
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
@@ -135,7 +136,9 @@ export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
     'release_batch',
     'reconcile',
     'verify_skill',
+    'drive',
   ],
+  // cm:guard `drive` is DELIBERATELY absent here — the autonomous driver is a Claude Code skill set seeded by ClaudeCodeRunner, so an antigravity box cannot run it. This is the one asymmetry in this map; do not "fix" it by copying the list.
   antigravity: [
     'plan',
     'code',

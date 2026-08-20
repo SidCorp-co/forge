@@ -14,6 +14,7 @@ import {
   issueComplexities,
   issuePriorities,
   issueStatuses,
+  type JobType,
   jobTypes,
   pipelineRunKinds,
   pipelineRunStatuses,
@@ -226,6 +227,25 @@ describe('GET /api/pipeline/registry', () => {
       'release_batch',
       'reconcile',
       'verify_skill',
+      'drive',
     ]);
+  });
+});
+
+describe('RUNNER_CAPABILITIES covers every dispatchable job type', () => {
+  // cm:why `pm` bypasses the gate entirely (own queue) and `custom` is operator-defined with no canonical runner — every other type reaches `runnerSupportsJobType` and must be claimable
+  const EXEMPT: readonly JobType[] = ['pm', 'custom'];
+
+  // cm:guard this is the ONLY check on the array contents — `RUNNER_CAPABILITIES` is a Record keyed by runner type, so TypeScript verifies the two KEYS and never the lists inside them. `drive` was absent for the whole of phase 3 and every dispatch failed `runner_unsupported_type`, permanently, with no runner ever selected.
+  it('every job type is claimable by some runner, or explicitly exempt', () => {
+    const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
+    const orphans = jobTypes.filter((t) => !claimable.has(t) && !EXEMPT.includes(t));
+    expect(orphans).toEqual([]);
+  });
+
+  // cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — AUTONOMOUS_JOB_TYPE; spelled literally because importing that module pulls in db/client.js, which validates env at import and would make this hermetic suite need a database
+  it('the autonomous driver runs on claude-code and nowhere else', () => {
+    expect(RUNNER_CAPABILITIES['claude-code']).toContain('drive');
+    expect(RUNNER_CAPABILITIES.antigravity).not.toContain('drive');
   });
 });

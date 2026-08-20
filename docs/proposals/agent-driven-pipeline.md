@@ -385,3 +385,20 @@ paid for themselves.
 > check cadence. Switching either project to `mode: 'autonomous'` before its runner updates would
 > enqueue drive jobs that fail for a reason that has nothing to do with the driver — and that
 > failure would then be the evidence. Update the two runners first.
+
+#### Switching a live project over
+
+Flipping `mode` is not a drop-in: the staged driver leaves work the autonomous one has no step
+for. `autonomousStepFor` returns a job at `open` and nowhere else, so at the moment of the switch:
+
+| What the staged driver left | What happens under autonomous | What to do |
+|---|---|---|
+| an issue mid-pipeline (`in_progress`, `developed`, `testing`, …) | its next transition enqueues nothing — it stalls at a status the board still shows as active | move it back to `open`, or let it finish before switching |
+| a `held` job | still counted by the L1 `issueBusyJob` gate, so the drive job for that issue is refused as a duplicate | cancel the held job — under the new driver it is debris, not a pause someone chose |
+| a job already dispatched | runs to completion normally; its result transition then produces nothing | let it drain before switching |
+
+Measured on KineTrak 2026-08-20: one `held` triage on ISS-1, parked on `retry_rounds_exhausted`
+for fifteen hours, was the only thing standing between the switch and the first drive job — and it
+is invisible on the board, which shows ISS-1 as a plain `open` issue. **Switch a project when it is
+quiet, and check `jobs` for `held` rows first.** A project with seven jobs in flight is the wrong
+moment, whatever the config says.
