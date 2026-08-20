@@ -11,9 +11,11 @@
 //     session actually starting on it.
 //   ② interventions per issue closed: how often a human had to reach in.
 //
-// Both are per PROJECT, and each project's `mode` says which driver produced
-// them. Grouping by mode across projects would compare repositories, not
-// drivers.
+// Both are per PROJECT and per DRIVER. The driver is derived from what
+// actually ran on each issue, never from the project's current `mode` — a
+// project that switches drivers would otherwise relabel its whole history,
+// and the switch is exactly when someone wants to read this. Grouping by
+// driver ACROSS projects would compare repositories, not drivers.
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
@@ -22,7 +24,8 @@ import { db } from '../db/client.js';
 
 export interface DriverComparisonRow {
   projectId: string;
-  mode: string;
+  /** Derived from the jobs that ran, not from `pipelineConfig.mode`. */
+  driver: 'autonomous' | 'staged';
   issuesClosed: number;
   /** `dropped` issues, reported apart: they closed without work happening. */
   issuesDropped: number;
@@ -34,7 +37,7 @@ export interface DriverComparisonRow {
 
 type Raw = {
   project_id: string;
-  mode: string | null;
+  driver: string;
   issues_closed: number | string;
   issues_dropped: number | string;
   interventions: number | string;
@@ -42,6 +45,8 @@ type Raw = {
   p95_request_to_running: number | string | null;
 };
 
+// cm:guard the driver is derived per ISSUE from a dispatched `drive` job, never from `pipelineConfig.mode` — reading the project's current mode retroactively credits one driver with the other's history, and flipping KineTrak on 2026-08-20 relabelled three staged closures as autonomous evidence the moment the config changed
+// cm:guard the `drive` row EXISTING is the test, deliberately not that it dispatched — an autonomous issue no session ever started belongs in autonomous's numbers, counted as closed and contributing no wait. Requiring dispatch would move exactly the driver's failures into the other driver's bucket, which is the one direction this measurement must never be wrong in.
 // cm:guard both metrics are scoped to the issues that CLOSED in the window, not to the window's events — counting every intervention in the period against only the issues that finished in it inflates whichever driver happens to have long-running work open at the boundary
 // cm:edge contract -> packages/core/drizzle/migrations/0117_intervention_events_view.sql — reads that view's project_id/issue_id/occurred_at; it is the only definition of what counts as a human reaching in
 export async function driverComparison(args: {
@@ -56,6 +61,13 @@ export async function driverComparison(args: {
       WHERE i.project_id IN ${args.projectIds}
         AND i.status IN ('closed', 'dropped')
         AND i.updated_at >= now() - (${args.days}::int * interval '1 day')
+    ), driver AS (
+      SELECT sc.id,
+             CASE WHEN EXISTS (
+                    SELECT 1 FROM jobs j
+                    WHERE j.issue_id = sc.id AND j.type = 'drive'
+                  ) THEN 'autonomous' ELSE 'staged' END AS driver
+      FROM scope sc
     ), first_run AS (
       SELECT j.issue_id, MIN(COALESCE(s.started_at, j.dispatched_at)) AS started_at
       FROM jobs j
@@ -63,32 +75,36 @@ export async function driverComparison(args: {
       WHERE j.issue_id IN (SELECT id FROM scope)
       GROUP BY j.issue_id
     ), waits AS (
-      SELECT sc.project_id,
+      SELECT sc.project_id, d.driver,
              EXTRACT(EPOCH FROM (fr.started_at - sc.created_at))::float AS wait_seconds
       FROM scope sc
+      JOIN driver d ON d.id = sc.id
       JOIN first_run fr ON fr.issue_id = sc.id
       WHERE fr.started_at IS NOT NULL AND fr.started_at >= sc.created_at
     ), touches AS (
-      SELECT sc.project_id, count(*)::int AS n
+      SELECT sc.project_id, d.driver, count(*)::int AS n
       FROM issue_intervention_events e
       JOIN scope sc ON sc.id = e.issue_id
-      GROUP BY sc.project_id
+      JOIN driver d ON d.id = sc.id
+      GROUP BY sc.project_id, d.driver
     )
     SELECT
       sc.project_id                                                     AS project_id,
-      p.agent_config->'pipelineConfig'->>'mode'                         AS mode,
+      d.driver                                                          AS driver,
       count(*) FILTER (WHERE sc.status = 'closed')::int                 AS issues_closed,
       count(*) FILTER (WHERE sc.status = 'dropped')::int                AS issues_dropped,
       COALESCE(MAX(t.n), 0)                                             AS interventions,
       (SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY w.wait_seconds)
-         FROM waits w WHERE w.project_id = sc.project_id)               AS median_request_to_running,
+         FROM waits w
+         WHERE w.project_id = sc.project_id AND w.driver = d.driver)    AS median_request_to_running,
       (SELECT percentile_disc(0.95) WITHIN GROUP (ORDER BY w.wait_seconds)
-         FROM waits w WHERE w.project_id = sc.project_id)               AS p95_request_to_running
+         FROM waits w
+         WHERE w.project_id = sc.project_id AND w.driver = d.driver)    AS p95_request_to_running
     FROM scope sc
-    JOIN projects p ON p.id = sc.project_id
-    LEFT JOIN touches t ON t.project_id = sc.project_id
-    GROUP BY sc.project_id, p.agent_config
-    ORDER BY sc.project_id
+    JOIN driver d ON d.id = sc.id
+    LEFT JOIN touches t ON t.project_id = sc.project_id AND t.driver = d.driver
+    GROUP BY sc.project_id, d.driver
+    ORDER BY sc.project_id, d.driver
   `);
 
   return [...rows].map((r) => {
@@ -96,7 +112,7 @@ export async function driverComparison(args: {
     const interventions = Number(r.interventions);
     return {
       projectId: r.project_id,
-      mode: r.mode ?? 'staged',
+      driver: r.driver === 'autonomous' ? 'autonomous' : 'staged',
       issuesClosed: closed,
       issuesDropped: Number(r.issues_dropped),
       interventions,

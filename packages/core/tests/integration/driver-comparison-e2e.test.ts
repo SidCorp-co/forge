@@ -63,6 +63,10 @@ describe('driver comparison E2E', () => {
     status?: string;
     filedMinutesAgo?: number;
     startedMinutesAgo?: number | null;
+    /** Which driver's job the issue carries. `drive` = autonomous. */
+    jobType?: 'drive' | 'code';
+    /** Write the job even when nothing started it (never dispatched). */
+    jobWithoutStart?: boolean;
   }): Promise<string> {
     const id = randomUUID();
     seq += 1;
@@ -72,7 +76,8 @@ describe('driver comparison E2E', () => {
       VALUES (${id}, ${projectId}, ${seq}, ${`i${seq}`}, ${opts.status ?? 'closed'}, ${ownerId},
               now() - make_interval(mins => ${filed}), now())
     `);
-    if (opts.startedMinutesAgo != null) {
+    const started = opts.startedMinutesAgo;
+    if (started != null || opts.jobWithoutStart) {
       const runId = randomUUID();
       await harness.db.execute(sql`
         INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
@@ -81,9 +86,9 @@ describe('driver comparison E2E', () => {
       await harness.db.execute(sql`
         INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload,
                           created_by, queued_at, dispatched_at, finished_at)
-        VALUES (${randomUUID()}, ${projectId}, ${id}, ${runId}, 'drive', 'done', '{}'::jsonb,
-                ${ownerId}, now() - make_interval(mins => ${filed}),
-                now() - make_interval(mins => ${opts.startedMinutesAgo}), now())
+        VALUES (${randomUUID()}, ${projectId}, ${id}, ${runId}, ${opts.jobType ?? 'drive'},
+                'done', '{}'::jsonb, ${ownerId}, now() - make_interval(mins => ${filed}),
+                ${started == null ? null : sql`now() - make_interval(mins => ${started})`}, now())
       `);
     }
     return id;
@@ -110,7 +115,7 @@ describe('driver comparison E2E', () => {
     await wedge(a);
 
     expect(await row()).toMatchObject({
-      mode: 'autonomous',
+      driver: 'autonomous',
       issuesClosed: 2,
       interventions: 2,
       interventionsPerIssueClosed: 1,
@@ -138,17 +143,32 @@ describe('driver comparison E2E', () => {
   // cm:guard an issue nothing ever started must not become a zero wait — averaging it in would make a driver that ignores issues look instant
   it('leaves an issue that never started out of the wait, rather than scoring it zero', async () => {
     await closedIssue({ filedMinutesAgo: 120, startedMinutesAgo: 110 });
-    await closedIssue({ filedMinutesAgo: 300, startedMinutesAgo: null });
+    await closedIssue({ filedMinutesAgo: 300, startedMinutesAgo: null, jobWithoutStart: true });
 
     const r = await row();
     expect(r.issuesClosed).toBe(2);
     expect(r.medianRequestToRunningSeconds).toBeCloseTo(600, -1);
   });
 
-  it('defaults an undeclared project to the staged driver', async () => {
-    await closedIssue({ startedMinutesAgo: 110 });
+  // cm:guard the driver comes from the JOBS, never from `pipelineConfig.mode` — reading the config means flipping a project relabels every issue it ever closed, and the flip is exactly when someone opens this report
+  it('reports the driver that ran, not the mode the project now declares', async () => {
+    await setMode('autonomous');
+    await closedIssue({ startedMinutesAgo: 110, jobType: 'code' });
 
-    expect((await row()).mode).toBe('staged');
+    expect((await row()).driver).toBe('staged');
+  });
+
+  it('splits a project that switched drivers into one row per driver', async () => {
+    await setMode('autonomous');
+    await closedIssue({ startedMinutesAgo: 110, jobType: 'code' });
+    await closedIssue({ startedMinutesAgo: 100, jobType: 'code' });
+    await closedIssue({ startedMinutesAgo: 90, jobType: 'drive' });
+
+    const out = await driverComparison({ days: 7, projectIds: [projectId] });
+    expect(out.map((r) => [r.driver, r.issuesClosed])).toEqual([
+      ['autonomous', 1],
+      ['staged', 2],
+    ]);
   });
 
   it('ignores interventions on issues outside the window', async () => {

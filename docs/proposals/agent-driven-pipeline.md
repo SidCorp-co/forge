@@ -360,9 +360,11 @@ paid for themselves.
 ### Phase 5 — measured, then decided — **instrument built, evidence pending**
 
 - The measurement exists: `pipeline/driver-comparison.ts` and
-  `GET /api/pipeline/driver-comparison` report both metrics per project, with each project's `mode`
-  saying which driver produced them. Never grouped across projects — that would compare
-  repositories, not drivers.
+  `GET /api/pipeline/driver-comparison` report both metrics per project **and per driver**, where
+  the driver is derived from whether the issue carries a `drive` job — not from the project's
+  current `mode`. Reading the config would let a flip relabel every issue the project ever closed,
+  and the flip is exactly when someone opens the report. A project that switched mid-stream reports
+  one row per driver. Never grouped across projects — that would compare repositories, not drivers.
 - Two arithmetic rules carry their own tests, because getting either wrong yields a decision worse
   than no measurement: a project that closed nothing reports `null`, not `0` (a driver must not win
   by never finishing anything), and an issue no session ever started is excluded from the wait
