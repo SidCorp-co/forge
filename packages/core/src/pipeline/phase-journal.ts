@@ -103,6 +103,24 @@ export async function endPhase(input: EndPhaseInput): Promise<void> {
 }
 
 /**
+ * Close every phase this job left open, once the job itself is terminal.
+ * Returns how many rows were closed.
+ */
+// cm:guard scoped to the JOB, never the run — a staged run holds one phase per job, so closing by run_id would end a sibling job's phase while that job is still working in it
+// cm:guard `source: 'system'`, never 'agent' — the outcome here is inferred from the job, not reported by anyone, and a reader must be able to tell an inferred close from a declared one. Leaving the row open instead is worse: it is indistinguishable from a crashed phase and reports a NULL duration forever (KineTrak ISS-1 ended with `ship` open, 2026-08-20).
+export async function closeDanglingPhasesForJob(
+  jobId: string,
+  outcome: PhaseJournalOutcome,
+): Promise<number> {
+  const closed = await db
+    .update(phaseJournal)
+    .set({ outcome, source: 'system', endedAt: new Date() })
+    .where(and(eq(phaseJournal.jobId, jobId), isNull(phaseJournal.endedAt)))
+    .returning({ id: phaseJournal.id });
+  return closed.length;
+}
+
+/**
  * Record a review result. Separate from {@link endPhase} because the row it
  * writes is the one the driver is not allowed to author.
  */
