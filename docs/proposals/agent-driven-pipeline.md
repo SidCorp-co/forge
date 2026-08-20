@@ -489,3 +489,44 @@ Round 3 is the one worth keeping: the reviewer refuted a fix the driver had asse
 the assertion was wrong about. The job then finished `done` with the issue at `waiting` — escalated
 to a human rather than merged. Before the `FORGE_VERDICT_FILE` fix all four of these rows would
 have been the driver's own note, and the issue would have read as reviewed and approved.
+
+#### First measurement — 2026-08-20, n=3 and already pointing one way
+
+`driverComparison` run for the first time, 30-day window, the three projects that
+have any autonomous history:
+
+| project | driver | closed | dropped | interventions | per closed | median wait | p95 wait |
+|---|---|---|---|---|---|---|---|
+| getcontent | autonomous | 2 | 0 | 2 | **1.00** | **0m** | **3.8h** |
+| getcontent | staged | 211 | 73 | 83 | 0.39 | 23m | 39.9h |
+| kinetrak | autonomous | 1 | 0 | 4 | **4.00** | **14m** | **14m** |
+| kinetrak | staged | 3 | 0 | 1 | 0.33 | 8.7h | 10.5h |
+| archmap | staged | 8 | 0 | 4 | 0.50 | 16.3h | 19.0h |
+
+The two metrics split, and they split the same way on both projects:
+
+- **① request → running: autonomous wins, decisively.** 0m vs 23m median on
+  getcontent, 14m vs 8.7h on kinetrak, and p95 39.9h → 3.8h. This is the
+  inversion working exactly as designed — there is no queue of per-stage
+  dispatches to wait through, so an issue starts when a runner is free.
+- **② interventions per issue closed: autonomous loses, badly.** 1.00 vs 0.39,
+  and 4.00 vs 0.33. Against the rule this document set — *"autonomous has to win
+  on both or it does not ship; a tie is a loss"* — today's evidence says **do not
+  ship**.
+
+Two things make that reading premature rather than wrong, and both are reasons
+the bar was set at 30 rather than 3:
+
+1. **n=3.** One issue needing four touches moves kinetrak's ratio from 0 to 4.00.
+   Nothing at this size distinguishes a driver from a bad afternoon.
+2. **The sample is the bring-up itself.** Every autonomous closure so far ran
+   while the driver's own defects were being found — `drive` unclaimable by any
+   runner, verdicts written to a path nothing polled, phases left open, oomd
+   killing sessions at 31 and 44 minutes. The interventions counted against
+   autonomous here are substantially the interventions that *fixed* it. Staged's
+   211 closures carry no such tax because staged was already debugged.
+
+So the honest state of phase 5 is: the instrument works, it has been run, and the
+metric at risk is **②, not ①**. That is worth knowing now — it says the thing to
+watch as evidence accumulates is how often a human is pulled in, not how fast work
+starts. Re-run `driverComparison` at n≥30 before reading anything into the ratio.
