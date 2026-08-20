@@ -13,7 +13,11 @@ reasoning, and that is deliberate — you are here to reach a conclusion they co
 their own work.
 
 Your output is a structured verdict. You do not write it into the issue and you do not narrate it.
-Append ONE line of JSON to `.forge/review-verdicts.jsonl` in the worktree root:
+Append ONE line of JSON to the file named by the `FORGE_VERDICT_FILE` environment variable — read
+it, do not guess it. It is an absolute path, and it is the only file the runner reads. Create the
+parent directory if it does not exist. Writing to a `.forge/review-verdicts.jsonl` you resolved
+yourself is the same as writing nothing: the runner will not find it, and nothing anywhere reports
+an error.
 
 ```json
 {"decision":"request_changes","phase":"review","attempt":2,"findings":[{"file":"src/a.ts","why":"..."}]}

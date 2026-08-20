@@ -32,6 +32,10 @@ pub fn path(worktree: &Path) -> PathBuf {
     worktree.join(".forge").join("review-verdicts.jsonl")
 }
 
+/// Env var naming the exact file the reviewer must append to.
+// cm:edge contract -> packages/runner/skills/forge-review/SKILL.md — the skill reads this name and writes that file; a rename here silently voids every verdict, because a file the poller never finds is indistinguishable from a review that never ran
+pub const VERDICT_FILE_ENV: &str = "FORGE_VERDICT_FILE";
+
 fn is_known_decision(d: &str) -> bool {
     matches!(d, "approve" | "request_changes" | "abstain")
 }
@@ -41,8 +45,12 @@ fn is_known_decision(d: &str) -> bool {
 ///
 // cm:guard truncate only after a successful read, and drop malformed lines rather than the whole file — a reviewer that wrote one bad line must still get its other verdicts recorded, and a file left in place would re-post approvals on the next drain
 pub fn drain(worktree: &Path) -> Vec<Verdict> {
-    let file = path(worktree);
-    let Ok(body) = std::fs::read_to_string(&file) else {
+    drain_file(&path(worktree))
+}
+
+/// Drain one exact file. The poller resolves the path; this only reads it.
+pub fn drain_file(file: &Path) -> Vec<Verdict> {
+    let Ok(body) = std::fs::read_to_string(file) else {
         return Vec::new();
     };
     let verdicts: Vec<Verdict> = body
@@ -51,13 +59,39 @@ pub fn drain(worktree: &Path) -> Vec<Verdict> {
         .filter_map(|l| serde_json::from_str::<Verdict>(l).ok())
         .filter(|v| is_known_decision(&v.decision))
         .collect();
-    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_file(file);
     verdicts
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // cm:guard the five tests below all hand `drain` the directory the file is in, so every one of
+    // them passed while the poller was looking somewhere else entirely. What broke phase 3 was the
+    // PATH, and only these two look at it.
+    #[test]
+    fn a_verdict_under_the_agents_own_worktree_is_not_found_from_the_repo_root() {
+        let repo = scratch("worktree-miss");
+        let wt = repo.join(".claude").join("worktrees").join("iss-1-x");
+        std::fs::create_dir_all(wt.join(".forge")).unwrap();
+        std::fs::write(path(&wt), "{\"decision\":\"approve\"}\n").unwrap();
+
+        assert!(
+            drain(&repo).is_empty(),
+            "repo root must not see a worktree verdict — this is the phase-3 bug"
+        );
+        assert_eq!(
+            drain_file(&path(&wt)).len(),
+            1,
+            "the file itself is readable"
+        );
+    }
+
+    #[test]
+    fn the_env_name_is_the_one_the_review_skill_reads() {
+        assert_eq!(VERDICT_FILE_ENV, "FORGE_VERDICT_FILE");
+    }
 
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("forge-verdict-{tag}-{}", std::process::id()));

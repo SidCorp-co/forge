@@ -67,10 +67,15 @@ Give the reviewer:
 Do not give it your transcript, your plan, or your reasoning. It must be able to reach a different
 conclusion than you did.
 
-**You never write the verdict.** The reviewer appends one JSON line to
-`.forge/review-verdicts.jsonl`; the runner posts it and deletes the file. Read that line and act on
-it, but never author one, never edit one, and never restate it as the record of what happened —
-that is the one move this design exists to prevent.
+**You never write the verdict.** The reviewer appends one JSON line to the file named by
+`FORGE_VERDICT_FILE`; the runner posts it and deletes the file. Pass that variable through to the
+reviewer — it is an absolute path and neither of you may resolve it yourselves. Read the line it
+wrote and act on it, but never author one, never edit one, and never restate it as the record of
+what happened — that is the one move this design exists to prevent.
+
+Check the verdict landed: the `review` phase you close should carry the reviewer's decision, not
+your account of it. If `FORGE_VERDICT_FILE` is unset, say so in the phase artifact rather than
+proceeding as though a review was recorded.
 
 `request_changes` sends you back to phase 3. Re-declare `code` with `forge_phase` so the journal
 shows the round, fix what the findings name, and go round again.

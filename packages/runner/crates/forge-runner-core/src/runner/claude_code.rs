@@ -341,7 +341,7 @@ fn detect_usage_limit(json: &Value) -> Option<String> {
 /// or unreachable post is logged and the verdict is gone, which is the same
 /// tradeoff every other lifecycle call in this runner makes.
 async fn drain_and_post_verdicts(core_url: &str, token: &str, job_id: &str, worktree: &Path) {
-    let verdicts = crate::workspace::verdict::drain(worktree);
+    let verdicts = crate::workspace::verdict::drain_file(&declared_verdict_file(worktree));
     if verdicts.is_empty() {
         return;
     }
@@ -352,6 +352,14 @@ async fn drain_and_post_verdicts(core_url: &str, token: &str, job_id: &str, work
             Err(e) => tracing::error!("[job {job_id}] verdict post failed ({}): {e}", v.decision),
         }
     }
+}
+
+/// Where this job's reviewer was told to write. The env var is authoritative;
+/// the repo-root path is only the shape the file takes when nothing set it.
+fn declared_verdict_file(worktree: &Path) -> PathBuf {
+    std::env::var(crate::workspace::verdict::VERDICT_FILE_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| crate::workspace::verdict::path(worktree))
 }
 
 /// Watch the worktree for reviewer results while the session runs.
@@ -448,6 +456,11 @@ impl Runner for ClaudeCodeRunner {
         // claude default is tight. Caller-set env wins (don't clobber an override).
         if std::env::var_os("MCP_TIMEOUT").is_none() {
             cmd.env("MCP_TIMEOUT", "15000");
+            // cm:guard the reviewer is told the ABSOLUTE file, never a relative one — `forge-drive` works in a per-issue worktree it creates itself, so "the worktree root" means a different directory to the skill and to this poller, and for the whole of phase 3 it did (KineTrak ISS-1, 2026-08-20: three verdicts written, none posted, no error anywhere)
+            cmd.env(
+                crate::workspace::verdict::VERDICT_FILE_ENV,
+                crate::workspace::verdict::path(Path::new(&effective_repo)),
+            );
         }
 
         // New process group so we can kill the whole tree.
