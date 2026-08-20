@@ -352,6 +352,42 @@ pub async fn run(
         });
     }
 
+    // Reap the per-issue worktrees the agent leaves behind. Nothing else does:
+    // `.claude/worktrees/` is the agent's own directory, so neither
+    // `workspace::worktree` nor any skill has ever removed one, and they
+    // accumulate until the disk fills — ubuntu6 hit 100% (342M free) on
+    // 2026-08-20 with 29G of them, which fails every job on the box.
+    // cm:guard runs on the bound repos only, never a scan of the filesystem — the
+    // reaper deletes checkouts, so the set it can even consider must come from
+    // config, not from whatever a walk happens to find under a similar name
+    {
+        let cfg = cfg.clone();
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        for (slug, b) in &cfg.bindings {
+                            let gone = crate::workspace::worktree_reap::reap_repo(
+                                &b.repo_path,
+                                crate::workspace::worktree_reap::MIN_AGE,
+                            )
+                            .await;
+                            if !gone.is_empty() {
+                                tracing::info!(
+                                    "[worktree-reap] {slug}: removed {} stale worktree(s)",
+                                    gone.len()
+                                );
+                            }
+                        }
+                    }
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
+
     // Materialise the skills embedded in this binary. Synchronous and cheap
     // (a handful of small files, no network), and nothing consumes the tree
     // yet — phase 3 wires it into worktrees behind `pipelineConfig.mode`.

@@ -18,3 +18,4 @@ pub mod refresh;
 pub mod skill_sync;
 pub mod verdict;
 pub mod worktree;
+pub mod worktree_reap;
