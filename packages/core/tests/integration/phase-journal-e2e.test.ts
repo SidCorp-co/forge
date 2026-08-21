@@ -120,6 +120,54 @@ describe('phase_journal constraints E2E', () => {
     ).rejects.toThrow(/no row for review attempt 7/);
   });
 
+  // cm:guard the driver must not erase the one row it cannot author — an accepted overwrite keeps `source: 'runner'`, so its own prose then reads as the reviewer's verdict (getcontent 2026-08-21: 9 of 10 closed issues lost a real verdict this way)
+  it('refuses to let an agent note overwrite a recorded verdict', async () => {
+    const { endPhase } = await import('../../src/pipeline/phase-journal.js');
+    await insertPhase('review', 'runner', {
+      kind: 'verdict',
+      decision: 'request_changes',
+      findings: [{ why: 'AC2 unmet' }],
+    });
+
+    await endPhase({
+      runId,
+      phase: 'review',
+      attempt: 1,
+      outcome: 'ok',
+      artifact: { kind: 'note', text: 'Reviewer decision: approve.' },
+    });
+
+    const rows = await harness.db.execute(sql`
+      SELECT source, artifact->>'kind' AS kind, artifact->>'decision' AS decision, ended_at
+      FROM phase_journal WHERE phase = 'review'
+    `);
+    expect(rows[0]).toMatchObject({
+      source: 'runner',
+      kind: 'verdict',
+      decision: 'request_changes',
+    });
+    expect(rows[0]?.['ended_at']).toBeNull();
+  });
+
+  it('still closes a phase whose artifact is not a verdict', async () => {
+    const { endPhase } = await import('../../src/pipeline/phase-journal.js');
+    await insertPhase('code', 'agent', { kind: 'note', text: 'first' });
+
+    await endPhase({
+      runId,
+      phase: 'code',
+      attempt: 1,
+      outcome: 'ok',
+      artifact: { kind: 'note', text: 'second' },
+    });
+
+    const rows = await harness.db.execute(sql`
+      SELECT artifact->>'text' AS text, ended_at FROM phase_journal WHERE phase = 'code'
+    `);
+    expect(rows[0]?.['text']).toBe('second');
+    expect(rows[0]?.['ended_at']).not.toBeNull();
+  });
+
   it('lets the agent write every non-verdict phase it owns', async () => {
     await insertPhase('code', 'agent', { kind: 'commit', sha: 'abc123' });
     await insertPhase('plan', 'agent', null);

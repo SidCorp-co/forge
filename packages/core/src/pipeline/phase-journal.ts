@@ -90,6 +90,7 @@ export async function startPhase(input: StartPhaseInput): Promise<PhaseJournalRo
 }
 
 /** Close a phase the agent opened. */
+// cm:guard NEVER overwrite a row already carrying a verdict: `endPhase` leaves `source` untouched, so an agent note landing on a recorded verdict keeps `source: 'runner'` and the driver's prose then reads as the reviewer's — measured on getcontent 2026-08-21, 9 of 10 closed issues had a real verdict destroyed exactly this way
 export async function endPhase(input: EndPhaseInput): Promise<void> {
   await db
     .update(phaseJournal)
@@ -99,6 +100,7 @@ export async function endPhase(input: EndPhaseInput): Promise<void> {
         eq(phaseJournal.runId, input.runId),
         eq(phaseJournal.phase, input.phase),
         eq(phaseJournal.attempt, input.attempt),
+        sql`(artifact IS NULL OR artifact->>'kind' IS DISTINCT FROM 'verdict')`,
       ),
     );
 }
