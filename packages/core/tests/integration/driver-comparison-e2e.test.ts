@@ -184,4 +184,33 @@ describe('driver comparison E2E', () => {
 
     expect(await row()).toMatchObject({ issuesClosed: 1, interventions: 0 });
   });
+  // cm:guard the backlog cohort is the whole reason this column exists: on getcontent 2026-08-21 the raw metric read 141.2h for autonomous against staged's 23m purely because the driver was switched on into a 52-issue backlog, and the split was 249.9h before the switch vs 0m after
+  it('charges the autonomous driver only for the wait after it existed here', async () => {
+    await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 500 });
+    await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 200 });
+    await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 100 });
+
+    const r = await row();
+    expect(r.medianRequestToRunningSeconds).toBeCloseTo(400 * 60, -2);
+    expect(r.medianDriverWaitSeconds).toBeCloseTo(300 * 60, -2);
+    expect(r.issuesBornUnderDriver).toBe(0);
+  });
+
+  it('counts as born under the driver only the issues filed after it arrived', async () => {
+    await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 500 });
+    await closedIssue({ filedMinutesAgo: 50, startedMinutesAgo: 40 });
+
+    expect(await row()).toMatchObject({ issuesClosed: 2, issuesBornUnderDriver: 1 });
+  });
+
+  // cm:guard the clamp must be asymmetric or it is not a fix: staged was present for the whole backlog, so an old issue it left sitting IS staged being slow and the two columns have to agree for it
+  it('leaves the staged wait untouched in a project that later switched', async () => {
+    await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 100, jobType: 'code' });
+    await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 500 });
+
+    const out = await driverComparison({ days: 7, projectIds: [projectId] });
+    const staged = out.find((r) => r.driver === 'staged') ?? {};
+    expect(staged.medianDriverWaitSeconds).toBe(staged.medianRequestToRunningSeconds);
+    expect(staged.medianRequestToRunningSeconds).toBeCloseTo(500 * 60, -2);
+  });
 });

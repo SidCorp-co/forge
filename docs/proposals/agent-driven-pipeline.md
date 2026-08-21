@@ -530,3 +530,61 @@ So the honest state of phase 5 is: the instrument works, it has been run, and th
 metric at risk is **②, not ①**. That is worth knowing now — it says the thing to
 watch as evidence accumulates is how often a human is pulled in, not how fast work
 starts. Re-run `driverComparison` at n≥30 before reading anything into the ratio.
+
+#### Second measurement — 2026-08-21, n=13, and the instrument was lying
+
+Re-run at 13 autonomous closures on getcontent. Both metrics moved, and the more
+important finding is that **one of them was measuring the wrong thing.**
+
+**② interventions per issue closed — autonomous now wins.**
+
+| driver | closed | interventions | per closed |
+|---|---|---|---|
+| autonomous | 12 | 3 | **0.25** |
+| staged | 324 | 99 | 0.31 |
+
+At n=3 this read 1.00 vs 0.39. The prediction in the section above — that the
+early ratio was bring-up tax, not driver cost — holds: all three interventions
+charged to autonomous are infrastructure, none is a driver defect.
+
+| issue | intervention |
+|---|---|
+| ISS-196 | `wedge` — "No capacity: every runner for this project is limited" |
+| ISS-470 | `wedge` — heartbeat hop miss on session |
+| ISS-470 | `wedge` — heartbeat hop miss on job |
+
+The margin is **one event wide**: a fourth wedge takes autonomous to 0.33 and it
+loses again. This is not yet a result.
+
+**① request → running — the raw column reported the inverse of the truth.**
+
+The 30-day read was autonomous 141.2h median against staged's 23m. That is not
+the driver being slow; it is the metric charging a driver for time before it
+existed. getcontent's first `drive` job ran 2026-08-20T06:34Z, into a 52-issue
+backlog whose issues had been filed weeks earlier. Splitting the cohort:
+
+| driver | issue filed | n | median → running |
+|---|---|---|---|
+| autonomous | before the switch | 11 | 249.9h |
+| autonomous | **after** the switch | 2 | **0m** |
+| staged | before the switch | 151 | 23m |
+
+The 0m matches the first measurement exactly. The 141.2h is backlog age — which
+is *staged's* failure to pick those issues up, charged to whichever driver
+finally did.
+
+Left alone, this would have produced the wrong verdict at n=30 with no signal
+that anything was off: a reader of that table concludes autonomous is ~300×
+slower to start work. Fixed in `driver-comparison.ts` by measuring a second,
+clamped column — `medianDriverWaitSeconds`, charging each driver only from the
+moment it existed on that project — and keeping the raw column beside it, since
+the raw one is what matches the north-star definition. The clamp is deliberately
+**asymmetric**: staged was present for the whole backlog, so an old issue it left
+sitting genuinely is staged being slow. `issuesBornUnderDriver` reports the n
+behind the clamped figure, so a 2-issue cohort cannot be mistaken for a result.
+
+**Where phase 5 stands.** Both metrics now point at autonomous, and neither is
+decidable: ① has n=2 in the only comparable cohort, ② has a one-event margin.
+The bar stays 30. What this run settled is not the verdict but the instrument —
+the sixth defect found by running the thing rather than testing it, and the only
+one whose failure mode was *a confident wrong answer* rather than a crash.

@@ -8,9 +8,11 @@
  * even before its parsed reset time elapses.
  *
  * The dispatcher treats a runner with `rateLimitedUntil` in the future as
- * unavailable; an `auth` limit (no reset time) is highlighted for the operator
- * but does not itself gate dispatch — the underlying 401 keeps failing jobs,
- * and the circuit breaker trips the device after the configured streak.
+ * unavailable, and excludes an `auth` limit by NAME — auth has no reset time,
+ * so the time predicate alone reads an auth-dead runner as healthy. An auth
+ * stamp is therefore not cosmetic and not self-healing: it hard-excludes the
+ * runner from dispatch until an operator clears it, because `clearRunnerLimit`
+ * below fires on a successful job the runner can no longer be given.
  *
  * Both helpers reuse the existing `runner.status` project-room broadcast (the
  * same event the heartbeat emits) so the web-v2 runners view refreshes live.
@@ -38,6 +40,7 @@ export function broadcastRunnerChanged(projectId: string, runnerId: string): voi
  * Record a limit on the given runner. No-ops when `runnerId` is absent —
  * orphan/sweeper failures may not carry a runner.
  */
+// cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts — `fresh_capable_runners` matches the reason 'auth' as a LITERAL, so stamping it here is what hard-excludes the runner; renaming the enum member silently reopens dispatch to auth-dead boxes
 export async function stampRunnerLimit(
   runnerId: string | null | undefined,
   projectId: string,
