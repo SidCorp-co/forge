@@ -540,10 +540,11 @@ important finding is that **one of them was measuring the wrong thing.**
 
 | driver | closed | interventions | per closed |
 |---|---|---|---|
-| autonomous | 12 | 3 | **0.25** |
-| staged | 324 | 99 | 0.31 |
+| autonomous | 13 | 3 | **0.23** |
+| staged | 214 | 83 | 0.39 |
 
-At n=3 this read 1.00 vs 0.39. The prediction in the section above — that the
+(30-day window, as the tool reports it. All-time it is 0.25 vs 0.31 — staged's
+older history is cleaner than its recent history.) At n=3 this read 1.00 vs 0.39. The prediction in the section above — that the
 early ratio was bring-up tax, not driver cost — holds: all three interventions
 charged to autonomous are infrastructure, none is a driver defect.
 
@@ -583,8 +584,21 @@ the raw one is what matches the north-star definition. The clamp is deliberately
 sitting genuinely is staged being slow. `issuesBornUnderDriver` reports the n
 behind the clamped figure, so a 2-issue cohort cannot be mistaken for a result.
 
-**Where phase 5 stands.** Both metrics now point at autonomous, and neither is
-decidable: ① has n=2 in the only comparable cohort, ② has a one-event margin.
-The bar stays 30. What this run settled is not the verdict but the instrument —
-the sixth defect found by running the thing rather than testing it, and the only
-one whose failure mode was *a confident wrong answer* rather than a crash.
+Measured on production after deploying the fix: the clamped column reads
+autonomous **13.2h** median against staged's 23m, with staged unmoved — the
+asymmetry behaving as designed. So the clamp removes the 141.2h artefact without
+handing autonomous a win it has not earned: **autonomous still loses ① on the
+full cohort**, and that loss is real. Eleven of its thirteen closures are backlog
+issues draining through a 3-wide queue, so the driver genuinely did make them
+wait hours. The 0m figure belongs only to the 2 issues filed after the switch.
+
+**Where phase 5 stands.** ② favours autonomous (0.23 vs 0.39) by a margin one
+event wide. ① favours staged on the full cohort (13.2h vs 23m) and autonomous on
+the born-after-switch cohort (0m vs 23m, n=2). Nothing here is decidable, and the
+split now has a clear cause rather than a mystery: queue depth. The bar stays 30,
+and the thing to watch is whether ① converges once the backlog is drained and
+every measured issue is one filed under the driver.
+
+What this run settled is not the verdict but the instrument — the sixth defect
+found by running the thing rather than testing it, and the only one whose failure
+mode was *a confident wrong answer* rather than a crash.
