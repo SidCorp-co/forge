@@ -602,3 +602,52 @@ every measured issue is one filed under the driver.
 What this run settled is not the verdict but the instrument — the sixth defect
 found by running the thing rather than testing it, and the only one whose failure
 mode was *a confident wrong answer* rather than a crash.
+
+#### Third measurement — 2026-08-21 08:14Z, n=20, and the bar is now exactly the backlog
+
+Two structural things happened between the second and third read, and both change how
+phase 5 finishes rather than what it says.
+
+**Consolidation collapsed the population to exactly the bar.** A merge-by-module wave
+dropped 42 issues into a handful of `[MODULE]` issues between 03:00 and 06:00Z — full text
+appended verbatim, `dropped` rather than `closed` because no code changed, which is the
+semantic `issuesDropped` exists for. Nothing was lost and the merges cite concrete
+file/function intersections, not topic similarity. But the arithmetic afterwards:
+
+| | count |
+|---|---|
+| closed under autonomous | 20 |
+| still open | 10 |
+| **bar** | **30** |
+
+Every one of the 10 remaining must close, with **zero margin**. The bar was set assuming a
+deep backlog of independent issues; it now equals the backlog. One more consolidation, or
+one issue parked at `waiting`, and 30 is unreachable on this project — the decision would
+need a second measurement project, not more patience. All 10 are queued and dispatchable
+(the drive-session note warning that a 20k-char description could not be dispatched is a
+precaution, not a real cap — `step_start`'s 2000-char threshold degrades to a field
+manifest, it does not block), and each now stands in for four or more former issues, so
+they will run far longer than the 60–90 minutes that produced the ~1.5 closures/hour rate.
+
+**The binding constraint is not time — it is the org's monthly Claude spend cap.**
+
+```
+[RESULT_ERROR] success: You've hit your org's monthly spend limit
+               · run /usage-credits to ask your admin for a higher limit
+```
+
+Measured fleet-wide at 08:14Z: **7 project-runner rows stamped across 5 distinct accounts**
+(ai005, ai011, ai013, ai017, dev1·CLI), 14 jobs burned on it in 24h, 5 of them getcontent
+drive jobs in 12h. getcontent is down to **1 usable runner of 4**, against
+`maxConcurrentIssues: 3`. First occurrence 2026-07-24, so this recurs monthly.
+
+`limit-detect.ts` handles it correctly and deliberately — the spend-cap string carries no
+parseable reset, so `SPEND_LIMIT_COOLDOWN_MS` is a 6h re-probe cadence (4×/day rather than
+1h's 24×/day), cleared early by any success. The staggered 2/5/6-hour reset times are
+staggered stamp times, not fabricated deadlines. There is no defect here to fix: the exits
+are an admin raising the cap, or month rollover.
+
+So the honest close on phase 5's *schedule*: it is not ~9 hours of queue time. It is a
+billing decision plus ten long module-sized sessions. Capacity must not be added to make
+the number arrive sooner — extra runners would flatter ① and any flakiness in them would
+land in ②, which is precisely the contamination the clamped column was added to prevent.
