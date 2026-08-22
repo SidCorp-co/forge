@@ -197,7 +197,6 @@
     "**/.claude/**",
     "**/*.d.ts",
     "packages/web-v2/**",
-    "packages/dev/**",
     "packages/tests/**",
     "packages/web/**",
     "packages/runner/**",

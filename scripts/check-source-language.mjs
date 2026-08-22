@@ -42,7 +42,7 @@ const NON_ENGLISH_GLOBAL = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/gu;
 
 // cm:guard an unreadable config must abort, never fall back to DEFAULTS. Silently reverting to this repo's own layout is how a consuming repo gets a green run over a scope that does not exist there.
 const DEFAULTS = {
-  scanRoots: ['packages/web-v2/src', 'packages/dev/src', 'packages/core/src'],
+  scanRoots: ['packages/web-v2/src', 'packages/core/src'],
   scanExts: ['.ts', '.tsx', '.md'],
   brandTokens: ['Pokémon', 'café', 'naïve', 'résumé', 'cliché', 'façade', 'jalapeño'],
 };

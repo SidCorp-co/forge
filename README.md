@@ -58,9 +58,8 @@ docker compose up -d
 - Core API: <http://localhost:8080>
 - Web dashboard: <http://localhost:3000>
 
-Install the desktop agent (spawns `claude` on your machine) from
-[Releases](https://github.com/SidCorp-co/forge/releases), or run
-`forge-runner login --code <code>`.
+Install the device agent (spawns `claude` on your machine) with
+`curl <core-url>/install.sh | sh`, then `forge-runner login --code <code>`.
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 
@@ -70,9 +69,9 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
   Your browser / phone                 Your machine(s)
   ┌──────────────┐                     ┌──────────────────────┐
   │ web (Next.js)│                     │ Device agent         │
-  │ dashboard    │                     │ - Tauri GUI (dev), or│
-  │              │                     │ - CLI daemon         │
+  │ dashboard    │                     │ - CLI daemon         │
   │              │                     │   (forge-runner)     │
+  │              │                     │                      │
   └──────┬───────┘                     │                      │
          │ REST + WebSocket            │ runs `claude` locally│
          ▼                             │ in a git worktree    │
@@ -107,16 +106,14 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 |---------|------|-----|
 | [`packages/core/`](packages/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP | `pnpm dev` |
 | [`packages/web-v2/`](packages/web-v2/) | Next.js dashboard: kanban, replay, pipeline health, devices | `pnpm dev` |
-| [`packages/dev/`](packages/dev/) | Tauri desktop device agent (GUI form factor) | `pnpm tauri dev` |
-| [`packages/runner/`](packages/runner/) | Rust CLI daemon device agent (headless) — forge-runner binary | `cargo run` |
+| [`packages/runner/`](packages/runner/) | Rust CLI daemon device agent — the only device agent; forge-runner binary | `cargo run` |
 | [`packages/contracts/`](packages/contracts/) | Shared TypeScript contracts | — |
 
 ## How it works
 
 1. **Pair a device.** Account → Devices → "Add device" generates a pairing
-   code. Run `forge-runner login --code F9-3K7T-92XA` on your machine (or paste into the
-   Tauri app). Token stored in the OS keychain. Device appears online in the
-   dashboard.
+   code. Run `forge-runner login --code F9-3K7T-92XA` on your machine. Token
+   stored in the OS keychain. Device appears online in the dashboard.
 2. **Bind a project to a device.** Project → Settings → Runtime → pick a
    device from your pool. First bind prompts for the repo's local path and
    runs `git clone` if needed. One device active at a time per project.

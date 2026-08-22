@@ -1002,7 +1002,7 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
 export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
 export type WaitingKind = (typeof waitingKinds)[number];
 
-// cm:edge lockstep -> packages/dev/src/pages/project/project-board/constants.ts — DEFAULT_VISIBLE and STATUS_COLORS are `Record<IssueStatus, …>`, so a value added here without them fails the desktop build, which `pnpm verify` does not run: `dropped` reached a deploy that way on 2026-08-20
+// cm:edge lockstep -> packages/web-v2/src/features/issues/derive.ts — STATUS_LABELS and STATUS_TO_STAGE are exhaustive `Record<IssueStatus, …>`, so a value added here without them fails the web-v2 build, which `pnpm verify` does not run (only CI's `web` job does): `dropped` reached a deploy through the same hole in the desktop map on 2026-08-20, before that client was deleted
 export const issueStatuses = [
   'open',
   'confirmed',

@@ -15,20 +15,19 @@ Open-source control plane for Claude Code — full-stack project management + an
 |---|---|
 | `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the pipeline dispatcher that drives Claude. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
-| `packages/dev` | Tauri desktop app (Vite + React + react-router-dom + Zustand; Rust backend in `src-tauri/`) for local codebase access + Claude CLI agent. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. See `docs/architecture/runner-daemon.md`. |
 | `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
-`packages/web` is retired (empty — web-v2 replaced it); `nexus` is gone from `pnpm-workspace.yaml`. Neither has tracked files, so a local `packages/web/` or `nexus/` is leftover build/`node_modules` residue and safe to delete.
+`packages/dev` (the Tauri desktop app) was **deleted on 2026-08-23** — desktop is not a product any more, and the CLI runner is the only device agent. `packages/web` is retired (empty — web-v2 replaced it) and `nexus` is gone from `pnpm-workspace.yaml`; none of the three has tracked files, so a local `packages/web/`, `packages/dev/` or `nexus/` is leftover build/`node_modules` residue and safe to delete.
 
 ## Key patterns
 
-- TypeScript everywhere (Rust only for the Tauri backend + runner)
+- TypeScript everywhere (Rust only for the runner)
 - All UI clients share the same `core` Hono REST contract (mirrored in `packages/contracts`)
-- React Query for server state; Zustand for client state (dev)
+- React Query for server state
 - Real-time: WebSocket broadcasts from `core` (`/ws`) to all UIs
-- core domain modules: `routes.ts` + service/helper files + co-located `*.test.ts`; web/dev feature modules: `api.ts`, `types.ts`, `components/`, `hooks/`
+- core domain modules: `routes.ts` + service/helper files + co-located `*.test.ts`; web feature modules: `api.ts`, `types.ts`, `components/`, `hooks/`
 - Bearer token in Authorization header; web always uses `apiClient` (`src/lib/api/client.ts`), never raw `fetch`
 - DB is source of truth: enums/tables live in `packages/core/src/db/schema.ts`; change via `pnpm db:generate` + `pnpm db:migrate` (drizzle-kit)
 
@@ -233,12 +232,10 @@ From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `p
 |---------|-----|-------|------|------|
 | core | `pnpm dev` (tsx watch) | `pnpm build` (tsc) | `pnpm test` (vitest); `pnpm test:integration` | `pnpm lint` (biome) |
 | web-v2 | `pnpm dev` (next, :3100) | `pnpm build` | `pnpm test` (vitest) | no-op stub (WIP) |
-| dev | `pnpm tauri dev` | `pnpm tauri build` | `npx vitest` | — |
 | runner | — | `cargo build` (in `packages/runner`) | `cargo test` | — |
 
 DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:studio` (drizzle-kit).
 
-> ⚠️ **Before working on `packages/dev`**: `tauri.conf.json` uses the production identifier `co.sidcorp.forge-beta` and config dir `forge-beta`. Building/running from source under the default config shares those OS-level identifiers (keychain service, config dir, deep-link scheme, single-instance ID) with an installed production beta and will hijack a running prod app. Use a separate dev namespace before building locally.
 
 ## Observability — Sentry (opt-in)
 
@@ -248,8 +245,6 @@ DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:stu
 |---------|---------------|-----------|
 | backend (Hono) | `packages/core/src/observability/sentry.ts` | runtime `SENTRY_DSN` |
 | cloud UI (Next.js) | `packages/web-v2/src/providers/sentry-init.tsx` | build-time `NEXT_PUBLIC_SENTRY_DSN` |
-| desktop renderer | `packages/dev/src/lib/sentry.ts` | build-time `VITE_SENTRY_DSN` |
-| desktop Rust (Tauri) | `packages/dev/src-tauri/src/main.rs` (`option_env!`) | build-time `FORGE_SENTRY_DSN_RUST` |
 
 All payloads pass through a scrubber that replaces Authorization, X-Device-Token, Cookie, X-API-Key headers; `authToken`/`auth_token`/`jwt`/`apiKey`/`api_key`/`password`/`token` body fields; and tokenized URL query params with `[Filtered]`.
 

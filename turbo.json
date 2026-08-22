@@ -8,8 +8,7 @@
         "dist/**",
         "build/**",
         ".next/**",
-        "!.next/cache/**",
-        "src-tauri/target/**"
+        "!.next/cache/**"
       ],
       "env": ["NODE_ENV"]
     },

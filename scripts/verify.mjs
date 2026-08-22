@@ -146,18 +146,11 @@ const CI_COVERAGE = {
   'pnpm --filter web-v2 lint': 'pnpm lint',
   'pnpm --filter web-v2 exec vitest run --passWithNoTests': 'pnpm test',
   'pnpm --filter web-v2 build': 'pnpm build',
-  'pnpm --filter forge-beta exec vitest run --passWithNoTests': 'pnpm test',
   'pnpm --filter @forge/core test': 'pnpm test',
   'pnpm --filter @forge/core build': 'pnpm build',
   'TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage':
     'pnpm --filter @forge/core test:integration',
   'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
-  'Validate bundle.active=true': 'dev-bundle-smoke, Tauri-only',
-  'Install Linux deps for Tauri': 'dev-bundle-smoke, Tauri-only',
-  'Generate throwaway updater signing key': 'dev-bundle-smoke, Tauri-only',
-  'Build (deb only)': 'dev-bundle-smoke, Tauri-only',
-  'Verify .deb produced': 'dev-bundle-smoke, Tauri-only',
-  'Rust check': 'cargo, dev/src-tauri only — continue-on-error, not a gate',
   'Lockfile sync + fmt + clippy + test (same gates as runner-ci)':
     'verify, via scripts/check-runner-gates.mjs when packages/runner changed',
   'Check Markdown links': 'docs job, lychee action',

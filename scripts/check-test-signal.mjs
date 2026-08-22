@@ -34,8 +34,6 @@ const DEFAULTS = {
     'packages/core/tests',
     'packages/web-v2/src',
     'packages/web-v2/tests',
-    'packages/dev/src',
-    'packages/dev/tests',
     'packages/contracts/src',
     'packages/contracts/tests',
   ],
