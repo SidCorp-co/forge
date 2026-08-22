@@ -69,10 +69,7 @@ function editCounts(tc: ToolCallData): { added: number; removed: number } {
 const PASSED = /(\d+)\s+passed/i;
 const FAILED = /(\d+)\s+failed/i;
 
-// cm:why the LAST line carrying a passed count wins, not the first. vitest
-// prints "Test Files 1 failed | 212 passed" above "Tests 428 passed | 1 failed";
-// matching across the whole blob paired 212 with the wrong failure count and
-// reported a suite size that was never run.
+// cm:why the LAST line carrying a passed count wins, not the first: vitest prints "Test Files 1 failed | 212 passed" above "Tests 428 passed | 1 failed", and matching across the whole blob paired 212 with the failure count from the next line, reporting a suite size that was never run.
 function testCounts(text: string): { passed: number; failed: number } | null {
   let best: { passed: number; failed: number } | null = null;
   for (const line of text.split("\n")) {
@@ -123,7 +120,6 @@ export function toolOutcome(tc: ToolCallData): ToolOutcome {
   }
 }
 
-/* --------------------------- activity groups ---------------------------- */
 
 export type ActivityKind = "errors" | "ran" | "edited" | "forge" | "explored";
 
@@ -231,7 +227,6 @@ export function deriveActivityGroups(items: ConversationItem[]): ActivityGroup[]
   return groups;
 }
 
-/* ------------------------------ transcript ------------------------------ */
 
 export interface TranscriptRow {
   id: string;
@@ -283,7 +278,6 @@ export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[]
   return rows;
 }
 
-/* --------------------------------- tape --------------------------------- */
 
 export type TapeTick = "prose" | "tool" | "edit" | "err" | "think";
 
@@ -308,7 +302,6 @@ export function deriveTape(items: ConversationItem[]): TapeTick[] {
   return ticks;
 }
 
-/* ------------------------------- blocker -------------------------------- */
 
 export interface RunBlocker {
   /** Human label of the call that failed, e.g. `Ran pnpm test`. */
@@ -334,7 +327,6 @@ export function deriveBlocker(items: ConversationItem[]): RunBlocker | null {
   };
 }
 
-/* ---------------------------- totals & meta ----------------------------- */
 
 export interface TranscriptMeta {
   totals: RunTotals | null;
@@ -367,7 +359,6 @@ export function readTranscriptMeta(
   return { totals, thinkingPauses };
 }
 
-/* ----------------------------- time breakdown --------------------------- */
 
 export type TimeSpanKey = "queued" | "startup" | "agent";
 

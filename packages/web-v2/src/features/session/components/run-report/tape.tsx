@@ -4,6 +4,7 @@
 //
 // Ticks share the column height (`flex-1`) rather than carrying a fixed one, so
 // a 40-call run and a 1,000-call run both fit the card they sit beside.
+
 import type { TapeTick } from "../../run-report";
 
 const TICK_COLOR: Record<TapeTick, string> = {

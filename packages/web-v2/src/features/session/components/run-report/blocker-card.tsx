@@ -1,5 +1,6 @@
 // The failure card. It sits above the fold because on a failed run it is the
 // only thing the reader came for, and the transcript below is 400 rows deep.
+
 import { Button, Icon } from "@/design";
 import type { RunBlocker } from "../../run-report";
 

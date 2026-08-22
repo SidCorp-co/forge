@@ -9,6 +9,7 @@
 //
 // Interactive chat sessions keep the Conversation thread; `SessionScreen`
 // picks between the two on `metadata.type`.
+
 import { useMemo, useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EmptyState } from "@/design";
 import { formatDurationMs, formatUsd } from "@/features/pipeline/derive";

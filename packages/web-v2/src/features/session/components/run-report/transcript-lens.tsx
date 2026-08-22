@@ -6,6 +6,7 @@
 // what makes 400 rows scannable, and it is derived per tool kind (a Read says
 // "218 lines", a test run says "428 passed, 1 failed"). `e` / `c` expand and
 // collapse everything, which is how a reader diffs two runs quickly.
+
 import { useEffect, useState } from "react";
 import { Kbd } from "@/design";
 import type { TranscriptRow } from "../../run-report";

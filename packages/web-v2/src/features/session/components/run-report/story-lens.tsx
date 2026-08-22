@@ -7,6 +7,7 @@
 // "it edited 4 files and one test failed" is the problem this page exists to
 // fix. The transcript lens is still one click away for the reader who needs the
 // row at 01:00:41.
+
 import { useState } from "react";
 import { Icon, type IconName } from "@/design";
 import type { ActivityGroup, ActivityKind } from "../../run-report";

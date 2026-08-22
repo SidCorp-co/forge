@@ -1,6 +1,7 @@
 // The seven-stage pipeline strip, read off the run this session belongs to.
 // Answers "where in the pipeline am I" before the reader has scrolled — the
 // session alone cannot say that, it only knows its own step.
+
 import { formatDurationMs } from "@/features/pipeline/derive";
 import type { PipelineRunStepSummary, PipelineRunSummary } from "@/features/pipeline/types";
 import { STAGES } from "@/design";

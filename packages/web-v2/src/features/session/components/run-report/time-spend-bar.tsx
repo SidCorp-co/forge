@@ -4,6 +4,7 @@
 // page: that answers "which steps ran", this answers "which part of THIS step
 // burned the three minutes". A run that spent 2m queued and 12s working is the
 // single most actionable shape here, and no step strip can show it.
+
 import { formatDurationMs } from "@/features/pipeline/derive";
 import type { TimeSpanKey, TimeSpend } from "../../run-report";
 

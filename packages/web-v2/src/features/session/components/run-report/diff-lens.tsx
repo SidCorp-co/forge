@@ -7,6 +7,7 @@
 // changed outside a tool call cannot appear here. That is a real limit, and it
 // is why the file list shows counts derived from the same source rather than a
 // git stat that would disagree with it.
+
 import { EmptyState } from "@/design";
 import type { FileDiff } from "../../types";
 import { InlineDiff } from "../tool-card";
