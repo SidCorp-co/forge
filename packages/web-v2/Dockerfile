@@ -11,7 +11,8 @@ FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /repo
 
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+# cm:guard .npmrc MUST be copied: it declares `node-linker=hoisted`, and without it the image installs with pnpm's default isolated linker. next 16.3.1's standalone tracer then copies the `@swc/helpers` SYMLINK without its target, and `node server.js` dies on MODULE_NOT_FOUND before serving a single request (forge-beta, 2026-08-23).
+COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 
 # Install only web-v2's transitive deps (package name is "web-v2").
