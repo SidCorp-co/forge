@@ -651,3 +651,40 @@ So the honest close on phase 5's *schedule*: it is not ~9 hours of queue time. I
 billing decision plus ten long module-sized sessions. Capacity must not be added to make
 the number arrive sooner — extra runners would flatter ① and any flakiness in them would
 land in ②, which is precisely the contamination the clamped column was added to prevent.
+
+#### The wedge that stopped it at 27 — 2026-08-22
+
+Phase 5 reached 27/30 and stopped. Not capacity: the spend caps had cleared
+themselves on the 6h re-probe and all four getcontent runners were idle and
+unlimited. The last two issues sat **queued for 53 hours**.
+
+Cause: the merge-by-module wave dropped ISS-463 into ISS-468 but left ISS-463's
+`blocks` edge on ISS-455 behind. **A `dropped` blocker never stamps `merged_at`,
+and the L2 gate reads `merged_at IS NULL` as unsatisfied** — so the edge held
+ISS-455, and through ISS-455 held ISS-457, permanently and silently. The
+dependency itself had been delivered: ISS-468 closed and merged (042ec6c,
+verified with `git merge-base --is-ancestor`), its own comment stating it
+"unblocks ISS-455 §B, which needed G3's write endpoint".
+
+Clearing it surfaced a second defect. `set_dependency` advertises `validUntil`
+and `reason`, then discarded both on `onConflictDoNothing`. With `DELETE
+/api/issues/:id/dependencies/:edgeId` being JWT-only REST, **no agent could
+retract or expire an edge at all** — every dropped-blocker wedge needed DB
+surgery. Fixed in `d6d01b72`: the conflict path applies the fields the caller
+sent, emits `dependencyChanged` so the gated side dispatches immediately, and
+reports `updated`. Expiring the stale edge then released ISS-455 within one
+dispatcher tick.
+
+**The systemic hole is still open, and it is a policy call.** Every future
+consolidation that drops a blocker mints the same wedge; it is now merely
+clearable rather than requiring DB access. Two candidate fixes:
+
+1. the L2 gate treats `dropped` as satisfying a `blocks` edge — defensible
+   because `dropped` is terminal and can never merge, unlike `draft`, but it
+   contradicts the owner's 2026-08-14 ruling next door (`sweeper.ts:214`,
+   "alarm, never a gate change") and loosens a safety gate;
+2. dropping an issue expires its own outgoing `blocks` edges — repairs the
+   actual failure (the wave forgot to clean up) without touching the gate.
+
+(2) is the better shape. Neither was shipped here: the gate's own history is a
+list of incidents caused by widening it, and this one was reachable without.
