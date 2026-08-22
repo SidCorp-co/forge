@@ -1,9 +1,8 @@
 /**
  * ISS-305 — Runner browser-approve device login (OAuth device-authorization
- * flow, cf. `claude login`). Mirrors the desktop pairing flow
- * (`auth/desktop/pairing-routes.ts`) but mints a *device token* (for the
- * headless `forge-runner` CLI) instead of a user JWT, and optionally hands the
- * runner a git push credential so it can push with no manual SSH setup.
+ * flow, cf. `claude login`). Mints a *device token* for the headless
+ * `forge-runner` CLI and optionally hands the runner a git push credential so
+ * it can push with no manual SSH setup.
  *
  *   1. POST /api/devices/login/init    — the CLI mints a short code; backend
  *                                         hashes + persists it; returns the
@@ -51,7 +50,7 @@ const MAX_HOSTNAME_LEN = 100;
 const MAX_USER_AGENT_LEN = 200;
 const MAX_INSERT_RETRIES = 5;
 
-// === Helpers (mirror desktop pairing-routes.ts) ===
+// === Helpers ===
 
 /**
  * Crockford-base32 7-char code, rejection-sampled so each glyph is uniform over
@@ -131,7 +130,7 @@ async function publishLoginEvent(
 
 deviceLoginRoutes.post(
   '/login/init',
-  rateLimit(RULES.desktopPairInit, { name: 'deviceLoginInit' }),
+  rateLimit(RULES.deviceLoginInit, { name: 'deviceLoginInit' }),
   async (c) => {
     let body: {
       device_label?: unknown;
@@ -233,7 +232,7 @@ deviceLoginRoutes.post(
 
 deviceLoginRoutes.post(
   '/login/approve',
-  rateLimit(RULES.desktopApprove, { name: 'deviceLoginApprove' }),
+  rateLimit(RULES.deviceLoginApprove, { name: 'deviceLoginApprove' }),
   requireAuth(),
   async (c) => {
     const userId = c.get('userId');

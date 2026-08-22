@@ -1289,6 +1289,13 @@
       "when": 1789430400000,
       "tag": "0185_dropped_status",
       "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1789516800000,
+      "tag": "0186_drop_desktop_pairing_codes",
+      "breakpoints": true
     }
   ]
 }

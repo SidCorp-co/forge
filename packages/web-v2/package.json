@@ -9,7 +9,8 @@
     "build": "pnpm gen:help && next build",
     "start": "next start --port 3100",
     "test": "vitest run",
-    "lint": "echo \"web-v2 lint: skipped (WIP)\""
+    "lint": "node ../../scripts/check-lint-budget.mjs --all",
+    "lint:raw": "biome check src"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",

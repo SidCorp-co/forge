@@ -4,7 +4,7 @@ Threats + mitigations for the PAT auth path alongside legacy device-token on `/m
 
 ## Surface
 
-- `/mcp` (POST/GET/DELETE) accepts `Authorization: Bearer <token>`, either a paired-device token (legacy desktop, unchanged) or a PAT `forge_pat_<env>_<64 hex>` (`<env>` ∈ `dev|stg|prd`).
+- `/mcp` (POST/GET/DELETE) accepts `Authorization: Bearer <token>`, either a paired-device token or a PAT `forge_pat_<env>_<64 hex>` (`<env>` ∈ `dev|stg|prd`).
 - Dispatcher (`require-pat-or-device.ts`) picks path by prefix, sets `c.get('principal')` = `{ kind: 'device'; device } | { kind: 'pat'; userId; tokenId; scopes; projectIds }`.
 - PAT CRUD under `/api/pat`, requires user JWT (cookie/Bearer). PATs cannot mint PATs — browser/web login required first.
 
@@ -27,7 +27,7 @@ PAT plaintext in a Sentry event, log line, or WS payload is replayable by observ
 
 - `packages/observability/src/index.ts` exports `PAT_STRING_PATTERN` (unanchored, global) + `scrubStringValues` / `scrubPatInString`.
 - `scrubSentryEvent` applies the PAT scrubber to request URL, body, breadcrumb messages, breadcrumb `data`, and recursively nested strings. Header values still redacted by existing key-based pass.
-- Three surfaces call `scrubSentryEvent` from their `beforeSend`, and all three must keep doing so: `packages/core/src/observability/sentry.ts` (Hono backend), `packages/web-v2/src/lib/sentry.ts` (cloud UI — initialised from `src/providers/sentry-init.tsx`; `@sentry/react` is a declared dependency), and `packages/dev/src/lib/sentry.ts` (desktop renderer). Auditing the scrubber means auditing all three `beforeSend` paths, not just the backend one. The desktop's Rust/Tauri reporter is separate and does not route through this module.
+- Two surfaces call `scrubSentryEvent` from their `beforeSend`, and both must keep doing so: `packages/core/src/observability/sentry.ts` (Hono backend) and `packages/web-v2/src/lib/sentry.ts` (cloud UI — initialised from `src/providers/sentry-init.tsx`; `@sentry/react` is a declared dependency). Auditing the scrubber means auditing both `beforeSend` paths, not just the backend one.
 
 ### T3 — Privilege escalation through admin tools
 

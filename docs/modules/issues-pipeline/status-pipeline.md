@@ -131,7 +131,7 @@ No-auto-dispatch statuses (`waiting`, `needs_info`, `tested`, `on_hold`, `draft`
 
 Each step runs via one of:
 
-- **desktop / device runner** (default) — agent session over WebSocket → device runs Claude CLI in a git worktree
+- **device runner** (default) — agent session over WebSocket → device runs Claude CLI in a git worktree
 - **antigravity** — server-side execution via the Antigravity service
 
 ### Concurrency

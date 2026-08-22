@@ -6,9 +6,10 @@
   "axes": {
     "form": {
       "level": 2,
-      "gate": "check-size-budget + biome",
+      "gate": "check-size-budget + check-lint-budget + biome",
       "owns": "file & function length; whitespace, import order, recommended rules",
-      "baseline": { "path": ".forge/size-baseline.json", "keyBy": "path", "improves": "down" }
+      "baseline": { "path": ".forge/size-baseline.json", "keyBy": "path", "improves": "down" },
+      "alsoBaseline": { "path": ".forge/lint-baseline.json", "keyBy": "path", "improves": "down" }
     },
     "knowledge": {
       "level": 2,
@@ -37,6 +38,17 @@
     }
   },
   "checkers": {
+    "lint-budget": {
+      "scopes": [
+        {
+          "cwd": "packages/web-v2",
+          "args": [
+            "check",
+            "src"
+          ]
+        }
+      ]
+    },
     "size-budget": {
       "scopes": [
         {

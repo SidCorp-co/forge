@@ -32,8 +32,9 @@ const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 // cm:guard this table holds COMMANDS only — every baseline path is read from the manifest, never repeated here. A second copy of a path is a second thing to keep true, and the manifest is the half a reader is entitled to trust.
 const PROBES = {
   form: {
-    gate: 'check-size-budget + biome',
+    gate: 'check-size-budget + check-lint-budget + biome',
     probe: ['node', 'scripts/check-size-budget.mjs', '--all'],
+    also: [{ from: 'alsoBaseline', probe: ['node', 'scripts/check-lint-budget.mjs', '--all'] }],
   },
   knowledge: {
     gate: 'cm verify',

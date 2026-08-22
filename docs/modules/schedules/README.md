@@ -11,7 +11,7 @@ Cron-driven automation for a project: fire either a Claude agent session (`kind:
 
 ## 2. `kind: 'prompt'`
 
-The pre-existing behavior (default when `kind` is omitted). The schedule's `prompt` (or a `templateKey`-built prompt — see the skill-improve / steward templates in `packages/core/src/schedules/messages/`) is delivered to a **desktop runner** over the same interactive rails as `POST /api/agent-sessions/start`:
+The pre-existing behavior (default when `kind` is omitted). The schedule's `prompt` (or a `templateKey`-built prompt — see the skill-improve / steward templates in `packages/core/src/schedules/messages/`) is delivered to a **device runner** over the same interactive rails as `POST /api/agent-sessions/start`:
 
 - `dispatchScheduleRun()` (`packages/core/src/schedules/dispatch.ts`) resolves an available device (`resolveChatDevice`), opens a `system`-kind `agent_sessions` row (`createChatSessionRow`), and delivers the prompt via `dispatchChatTurn` — publishing `agent:start` to that device.
 - This is a full Claude Code agent session: multi-turn, tool use, the works. It shows up in `/settings/sessions` indistinguishable from a user-initiated chat except for `metadata.source === 'schedule.run'` (+ `metadata.tick === true` for cron-driven runs, absent for manual `/run`).
@@ -23,7 +23,7 @@ The pre-existing behavior (default when `kind` is omitted). The schedule's `prom
 
 The schedule's `script` (a Node.js source string) runs directly inside `packages/core`, on the cron cadence, with **no device, no agent session, and no Claude/LLM call of any kind**:
 
-- `dispatchScheduleRun()` branches to `dispatchScheduleScriptRun()` (`dispatch.ts`) before the desktop-runner device guard even applies.
+- `dispatchScheduleRun()` branches to `dispatchScheduleScriptRun()` (`dispatch.ts`) before the device guard even applies.
 - A `schedule_runs` row is inserted up front (`status: 'running'`), then `runScheduleScript()` (`packages/core/src/schedules/script/executor.ts`) executes the script and the row is updated with the final `status` / `output` / `error`.
 - Run history for script-kind schedules comes from `schedule_runs`, not `agent_sessions` — `listScheduleRuns()` (`packages/core/src/schedules/service.ts`) branches on `schedule.kind` to pick the right table. `GET /api/schedules/:id/runs` returns the same shape either way.
 - `ctx.notify()` calls made by the script are delivered as `type: 'schedule_report'` notifications (`emitNotification`, best-effort — a failed delivery doesn't flip a successful run to failed).

@@ -9,7 +9,7 @@ Every pipeline job (`triage`, `clarify`, `plan`, `code`, `review`, `test`, `fix`
 - **System prompt** — process rules + tool catalogue + project config + per-state policy block, optionally extended/replaced by the operator. Built once at dispatch from one module; identical-prefix-friendly so the Anthropic prompt cache hits across jobs.
 - **User prompt** — per-issue body (description / plan / acceptance criteria / sessionContext), built at enqueue time by the orchestrator.
 
-All dispatch parameters (system prompt, model, allowed tools, permission mode, timeout, MCP servers, session group) default to the previous hardcoded values, individually overridable per state via project settings — no migration, no Tauri release.
+All dispatch parameters (system prompt, model, allowed tools, permission mode, timeout, MCP servers, session group) default to the previous hardcoded values, individually overridable per state via project settings — no migration.
 
 ## System Prompt Builder (SSOT)
 

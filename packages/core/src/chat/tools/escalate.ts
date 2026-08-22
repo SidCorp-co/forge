@@ -3,7 +3,7 @@
  *
  * A local synthetic tool (not an MCP tool), so it composes via `mergeToolsets`
  * without going through the MCP allowlist machinery — RC-only, never exposed
- * to web/desktop chat (those never escalate to a room). `execute()` returns a
+ * to web chat (those never escalate to a room). `execute()` returns a
  * stub; the real work happens in `connection-manager.ts`, which inspects
  * `result.toolCalls` for this call and drives `startEscalation` — the model's
  * tool-call record is the signal, not this function's return value.

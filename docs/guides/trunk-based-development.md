@@ -45,7 +45,6 @@ test/<slug>     perf/<slug>
 | Check | Default |
 |---|---|
 | Branch name (ADR 0014) | warn only, never blocks |
-| `tauri.conf.json` `bundle.active=true` | hard fail (a `false` silently produces zero release artifacts) |
 | Builds / tests | skipped |
 
 - `PREPUSH_BUILD=1 git push` — build affected packages

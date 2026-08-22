@@ -64,13 +64,6 @@ const flagDefs = {
   // when those flags are added). Disable with FEATURE_PM_AGENT=false.
   pmAgent: true,
 
-  // ADR 0019 — Desktop sign-in via short pairing code (supersedes ADR 0017
-  // PKCE deep-link). Gates /api/auth/desktop/{pair-init,approve,poll} and the
-  // desktop Login screen's pairing UI. Independent from `socialAuth` — the
-  // pairing flow uses the user's existing cookie session, so it works for
-  // password-only users. Set FEATURE_DESKTOP_PAIRING=false to disable.
-  desktopPairing: true,
-
   // ISS-305 — auto git-credential provisioning at runner-login time. Ships
   // DARK (default OFF): provisioning a real push credential requires a
   // configured host token/deploy-key source (env GIT_PROVISION_*), which most

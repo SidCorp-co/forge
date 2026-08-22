@@ -65,18 +65,6 @@
       "docs": "docs/proposals/web-v2-redesign.md"
     },
     {
-      "id": "packages/dev",
-      "kind": "service",
-      "purpose": "Tauri desktop app \u2014 local codebase + agent runner",
-      "status": "active",
-      "stack": [
-        "tauri",
-        "rust",
-        "react"
-      ],
-      "docs": "packages/dev/CLAUDE.md"
-    },
-    {
       "id": "packages/core",
       "kind": "service",
       "purpose": "Hono + Drizzle backend (REST + WS + MCP)",
@@ -106,7 +94,7 @@
     {
       "id": "packages/runner",
       "kind": "service",
-      "purpose": "Headless CLI device agent (Rust forge-runner daemon \u2014 CI runners, servers)",
+      "purpose": "Headless CLI device agent (Rust forge-runner daemon — CI runners, servers)",
       "status": "active",
       "decisions": [
         "ADR-0001"
@@ -170,7 +158,7 @@
     {
       "id": "feature.issue-pipeline-18status",
       "kind": "feature",
-      "purpose": "open \u2192 confirmed \u2192 clarified \u2192 \u2026 \u2192 closed (max 5 reopen cycles)",
+      "purpose": "open → confirmed → clarified → … → closed (max 5 reopen cycles)",
       "status": "active",
       "docs": "docs/modules/issues-pipeline/status-pipeline.md"
     },
@@ -254,11 +242,6 @@
       "relation": "contains"
     },
     {
-      "from": "client-plane",
-      "to": "packages/dev",
-      "relation": "contains"
-    },
-    {
       "from": "control-plane",
       "to": "packages/core",
       "relation": "contains"
@@ -267,13 +250,7 @@
       "from": "control-plane",
       "to": "forge/strapi",
       "relation": "contains",
-      "note": "frozen \u2014 replaced_by packages/core"
-    },
-    {
-      "from": "runtime-plane",
-      "to": "packages/dev",
-      "relation": "contains",
-      "note": "dev is both client (UI) and runtime (agent)"
+      "note": "frozen — replaced_by packages/core"
     },
     {
       "from": "runtime-plane",
@@ -379,12 +356,6 @@
       "relation": "depends_on"
     },
     {
-      "from": "packages/dev",
-      "to": "claude-cli",
-      "relation": "depends_on",
-      "note": "spawned in git worktree per job"
-    },
-    {
       "from": "packages/runner",
       "to": "claude-cli",
       "relation": "depends_on"
@@ -396,22 +367,10 @@
       "note": "REST + WS"
     },
     {
-      "from": "packages/dev",
-      "to": "packages/core",
-      "relation": "depends_on",
-      "note": "REST + WS for control; receives job dispatches"
-    },
-    {
       "from": "packages/core",
       "to": "packages/web-v2",
       "relation": "broadcasts_to",
       "note": "user JWT room"
-    },
-    {
-      "from": "packages/core",
-      "to": "packages/dev",
-      "relation": "broadcasts_to",
-      "note": "user + device rooms"
     },
     {
       "from": "packages/core",

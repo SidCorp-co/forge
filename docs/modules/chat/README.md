@@ -174,7 +174,7 @@ A second, distinct chat path — the "Ask Agent" dock in web-v2 — that dispatc
 
 **vs `/api/chat`:**
 
-- Runs `claude` on the paired device (or locally for desktop) against that runner's repo path — unlike `/api/chat`, which always runs the resolved LLM provider in-core and is **never** dispatched to a device.
+- Runs `claude` on the paired device against that runner's repo path — unlike `/api/chat`, which always runs the resolved LLM provider in-core and is **never** dispatched to a device.
 - Supports attachments, page-context headers, and fork/regenerate/rerun of individual turns.
 - Session-scoped `metadata.lensOverride` (ISS-674) can pin the chat voice for the session, similar to the role-aware lenses described above.
 

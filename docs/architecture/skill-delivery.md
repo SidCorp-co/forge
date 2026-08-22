@@ -63,7 +63,7 @@ flowchart LR
 
 - **Server trigger (only one):** `skillSyncRequested` bus → per-device `skill.sync` — `ws/broadcast-subscribers.ts`. Entered via `forge_skills.push` (MCP), `POST /api/skills/bulk-push`, onboard, agent-session lifecycle, template-drift rebase. (`skill.updated` is web-UI cache-invalidation only — never triggers a device pull.)
 - **Device pull (4, all call `sync_skills`):** job provision (`workspace/provision.rs`) · `skill.sync` event (`daemon/dispatch.rs`) · background auto-pull, ISS-736 (`daemon/skill_pull.rs`, `[skills] auto_pull` default **on**) · CLI `forge-runner sync`, ISS-740 (`cmd/sync.rs`).
-- **Transports:** WS+REST (`/api/devices/me/skills*`) for CLI/desktop runners; deterministic ZIP (`runners/skills-zip.ts`) for `host='remote'`.
+- **Transports:** WS+REST (`/api/devices/me/skills*`) for CLI runners; deterministic ZIP (`runners/skills-zip.ts`) for `host='remote'`.
 
 ## Concurrency in `sync_skills` (ISS-743)
 

@@ -18,7 +18,6 @@ import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
-import { pairingRoutes } from './auth/desktop/pairing-routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -75,7 +74,6 @@ import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
-import { registerDesktopPairingCleanup } from './jobs/desktop-pairing-cleanup.js';
 import {
   registerDispatcher,
   registerPmDispatcher,
@@ -203,19 +201,9 @@ app.use('*', requestLogger());
 // Cookie-based auth from browsers requires Access-Control-Allow-Credentials
 // with an explicit origin (never `*`). `CORS_ORIGINS` is a comma-separated
 // allow-list; requests from unlisted origins receive no CORS headers.
-//
-// Tauri desktop client origins are added unconditionally — they're part of
-// the product, not external embeds. Tauri 2 webview uses tauri://localhost
-// on macOS/Linux and https://tauri.localhost on Windows. Without this,
-// every fetch from the Tauri webview to /api/* fails CORS even though the
-// app is "us" — operators would have to learn an undocumented env var.
-const CORS_ORIGINS = [
-  ...env.CORS_ORIGINS.split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0),
-  'tauri://localhost',
-  'https://tauri.localhost',
-];
+const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
 // ISS-161 — /mcp is reachable from the browser (settings/mcp Test Connection
 // panel) so the same CORS allow-list must cover it. `X-Forge-Project-Slug`
 // is added to allowHeaders so the preflight passes for the per-project
@@ -316,7 +304,7 @@ registerFeedbackNormalizer(hooks);
 registerReleaseBatchClaimSubscriber(hooks);
 
 // MCP endpoint authentication (ISS-202 + ISS-150).
-// Accepts either a device token (legacy desktop path) or a Personal Access
+// Accepts either a device token or a Personal Access
 // Token (`forge_pat_*`) so non-device MCP clients (Cursor, Cline, Zed,
 // web-only users) can authenticate with per-tenant scoping. The dispatcher
 // middleware sets `c.get('principal')` to the resolved union type for the
@@ -371,9 +359,6 @@ app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
 // by `socialAuth` feature flag; safe to mount unconditionally.
 app.route('/api/auth', oauthRoutes);
-// ADR 0019 — Desktop sign-in via pairing code (Tauri client). Internally
-// gated by `desktopPairing` feature flag; safe to mount unconditionally.
-app.route('/api/auth', pairingRoutes);
 // projectHealthRoutes mounts /health (static) and must register before
 // projectRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "health" segment.
@@ -550,7 +535,6 @@ if (isMain) {
   await registerDevicePrune();
   await registerRunnerStaleDetector();
   await registerRetentionSweeper();
-  await registerDesktopPairingCleanup();
   await registerPipelineSweeper();
   await registerPhaseJournalBackfill();
   await registerPgBossHealthProbe();

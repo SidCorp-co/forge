@@ -1,0 +1,1 @@
+DROP TABLE "desktop_pairing_codes" CASCADE;

@@ -20,7 +20,7 @@ Single trunk = `main`. **No `develop`, no `staging`, no long-lived release branc
 | Feature flags | Incomplete work merges behind `isEnabled('flagName')` (default off, env-controlled) |
 | Hot-fix | Same as feature: branch from main, merge back fast. No separate hotfix track. |
 | Revert culture | If `main` breaks, revert within 30 min. Don't push fix-forward unless revert is structurally impossible. |
-| Pre-push hook | `.githooks/pre-push` — cheap guards only (warns on branch naming, hard-fails the tauri `bundle.active` guard). Builds/tests are opt-in: `PREPUSH_BUILD=1` / `PREPUSH_FULL=1`. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
+| Pre-push hook | `.githooks/pre-push` — cheap guards only (warns on branch naming). Builds/tests are opt-in: `PREPUSH_BUILD=1` / `PREPUSH_FULL=1`. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
 | Release tagging | Tag `vX.Y.Z` on commits when ready to ship. No release branch. |
 
 ### Branch naming — pick one scheme

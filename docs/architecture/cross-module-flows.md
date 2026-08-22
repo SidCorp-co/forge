@@ -58,7 +58,7 @@ Two flows reach the same token, and the runner picks between them on whether `--
 ```mermaid
 flowchart TD
     subgraph PC["paste-code · back-compat, --code"]
-      A1["web UI mints a code<br/>PAIR_CODE_TTL_MS = 5 min"] --> A2["forge-runner login --code F9-3K7T-92XA<br/>or paste into the Tauri app"]
+      A1["web UI mints a code<br/>PAIR_CODE_TTL_MS = 5 min"] --> A2["forge-runner login --code F9-3K7T-92XA"]
       A2 --> A3["POST /api/devices/pair<br/>code + capabilities"]
     end
     subgraph DI["device-initiated · no --code"]
@@ -119,7 +119,7 @@ flowchart TD
 
 1. **[devices]** one transaction sets `devices.status = 'revoked'` (the row is kept — history) and **deletes** every `runners` row bound to the device. Nothing sets runners `offline`; they cease to exist.
 2. `jobs.runner_id` is `onDelete: 'set null'`, so every job that pointed at those runners loses its runner id. `jobs.device_id` survives (the device row is not deleted), so a parked job can still be traced to the device it ran on.
-3. The auth middleware rejects the revoked token from here on; a reconnect attempt gets 401 and the agent surfaces "Device revoked, please re-pair." The revoke handler itself does not close the socket — it publishes `device.revoked`, which only [web-v2] consumes (to refetch); the desktop notices via its heartbeat loop.
+3. The auth middleware rejects the revoked token from here on; a reconnect attempt gets 401 and the agent surfaces "Device revoked, please re-pair." The revoke handler itself does not close the socket — it publishes `device.revoked`, which only [web-v2] consumes (to refetch); the runner notices via its heartbeat loop.
 4. Dispatch stops because the runner rows are gone, not because anything was cancelled.
 
 **What revocation does NOT do** — verified, not assumed:

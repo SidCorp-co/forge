@@ -1,6 +1,6 @@
 # Runner daemon (`forge-runner`)
 
-Pure-Rust CLI daemon — the headless runtime-plane form factor (same protocol as the `dev` Tauri GUI, no webview): pairs as a device, takes job dispatches over WS, runs each with the Claude Code CLI in a git checkout, streams results back.
+Pure-Rust CLI daemon — the runtime plane: pairs as a device, takes job dispatches over WS, runs each with the Claude Code CLI in a git checkout, streams results back.
 
 - Source: [`packages/runner/`](../../packages/runner/).
 - Shipped from the former `forge-runner-cli` proposal (now retired).
@@ -37,7 +37,7 @@ Two-crate Cargo workspace ([`packages/runner/Cargo.toml`](../../packages/runner/
 
 ## Auth — device token
 
-Authenticates as a **device** (long-lived, revocable token), same principal class as the Tauri app. Two pairing flows ([`auth/pairing.rs`](../../packages/runner/crates/forge-runner-core/src/auth/pairing.rs)):
+Authenticates as a **device** (long-lived, revocable token). Two pairing flows ([`auth/pairing.rs`](../../packages/runner/crates/forge-runner-core/src/auth/pairing.rs)):
 
 - **Browser-approve (default).** `POST /api/devices/login/init` returns a pairing code + verify URL; daemon opens the browser (or prints the URL with `--no-browser`); user approves in the web UI; daemon polls `GET /api/devices/login/poll` (204 pending / 200 approved / 410 gone) until it gets the device token. May also return a git push credential when the server has that feature enabled.
 - **Paste-code (fallback).** `forge-runner login --code <CODE>` calls `POST /api/devices/pair` directly.
@@ -71,7 +71,7 @@ The daemon ([`daemon::run`](../../packages/runner/crates/forge-runner-core/src/d
 
 The [`Runner` trait](../../packages/runner/crates/forge-runner-core/src/runner/mod.rs) is the seam for multiple CLI backends on one machine. `RunnerKind` currently has the single `ClaudeCode` variant (wire type `"claude-code"`; `Codex` / `Antigravity` reserved). New backend = new variant + a `Runner` impl + a stream parser.
 
-**`ClaudeCodeRunner`** ([`runner/claude_code.rs`](../../packages/runner/crates/forge-runner-core/src/runner/claude_code.rs)) wraps the `claude` CLI (ported from the Tauri app's `claude_cli/*`):
+**`ClaudeCodeRunner`** ([`runner/claude_code.rs`](../../packages/runner/crates/forge-runner-core/src/runner/claude_code.rs)) wraps the `claude` CLI:
 
 - Creates a git worktree under `<repo>/.worktrees/<branch>` only when core hands a `worktreeBranch` (code/fix steps); triage/plan/review run in the repo root ([`workspace/worktree.rs`](../../packages/runner/crates/forge-runner-core/src/workspace/worktree.rs)).
 - Seeds the project's registered skills into `.claude/skills/<name>/` before the run, best-effort (ISS-278, [`workspace/skill_sync.rs`](../../packages/runner/crates/forge-runner-core/src/workspace/skill_sync.rs)).
@@ -107,4 +107,4 @@ Resume is core-driven: the daemon passes through `claudeSessionId` and reports a
 
 ## Not yet / future
 
-Shipped Linux-first (M1–M4). Deferred: Windows/WSL `claude` spawn; auto-clone on `bind` (today `--path` must point at an existing checkout); a `status --watch` TUI; `start --detach` (use `service install` instead); additional runner kinds (Codex / Antigravity). `packages/dev` (Tauri GUI) remains the other supported runtime form factor.
+Shipped Linux-first (M1–M4). Deferred: Windows/WSL `claude` spawn; auto-clone on `bind` (today `--path` must point at an existing checkout); a `status --watch` TUI; `start --detach` (use `service install` instead); additional runner kinds (Codex / Antigravity).

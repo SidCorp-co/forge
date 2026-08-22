@@ -2,8 +2,8 @@
 
 Per-project rule set (`ux_contract_rules`) that projectFacts-injects into the pipeline
 system prompt, plus the finding log (`ux_findings`) agents write to during
-review/verify-live. REST/MCP only — **no UI anywhere**: `packages/web-v2/src`,
-`packages/dev/src` have zero `ux-contract`/`uxContract`/`uxFinding` references.
+review/verify-live. REST/MCP only — **no UI anywhere**: `packages/web-v2/src` has zero
+`ux-contract`/`uxContract`/`uxFinding` references.
 
 ## `ux_contract_rules` table
 

@@ -1,12 +1,12 @@
 # WebSocket
 
-Real-time channel: `packages/core` ↔ clients (`packages/web-v2`, `packages/dev`). One endpoint, room-scoped, JSON envelopes.
+Real-time channel: `packages/core` ↔ clients (`packages/web-v2`, `packages/runner`). One endpoint, room-scoped, JSON envelopes.
 
 ## Endpoint & connection
 
 - **URL:** `/ws`, same host/port as HTTP API. `WS_URL` derived from `NEXT_PUBLIC_API_URL` (e.g. `http://api/api` → `ws://api/ws`).
 - **Auth at upgrade** (required), accepted forms in order:
-  1. `Authorization: Bearer <jwt|deviceToken>` — native clients that set arbitrary headers (Tauri).
+  1. `Authorization: Bearer <jwt|deviceToken>` — native clients that set arbitrary headers.
   2. `Sec-WebSocket-Protocol: forge.bearer.<jwt>` — browsers (can't set Authorization on WS upgrade); server echoes matched subprotocol to complete handshake (ISS-286).
   3. `forge_auth` cookie — same-origin browser; Web's default.
 - `?token=<jwt>` query path removed in ISS-315 (leaked into access logs / Referer / history).

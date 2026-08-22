@@ -4,7 +4,6 @@ import {
   activityLog,
   actorTypes,
   comments,
-  desktopPairingCodes,
   devicePlatforms,
   deviceStatuses,
   devices,
@@ -49,7 +48,6 @@ type AnyTable =
   | typeof refreshTokens
   | typeof devices
   | typeof pairingCodes
-  | typeof desktopPairingCodes
   | typeof jobs
   | typeof jobEvents
   | typeof issues
@@ -219,19 +217,6 @@ describe('db/schema — pairing_codes', () => {
     const ref = projFk.reference();
     expect(ref.foreignColumns[0]?.name).toBe('id');
     expect(projFk.onDelete).toBe('cascade');
-  });
-});
-
-describe('db/schema — desktop_pairing_codes', () => {
-  it('approved_user_id references users.id with onDelete cascade', () => {
-    const cfg = getTableConfig(desktopPairingCodes);
-    expect(cfg.foreignKeys).toHaveLength(1);
-    const fk = cfg.foreignKeys[0];
-    if (!fk) throw new Error('expected FK');
-    const ref = fk.reference();
-    expect(ref.columns[0]?.name).toBe('approved_user_id');
-    expect(ref.foreignColumns[0]?.name).toBe('id');
-    expect(fk.onDelete).toBe('cascade');
   });
 });
 

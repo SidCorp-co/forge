@@ -87,6 +87,13 @@ const CHECKS = [
   },
   {
     axis: 'form',
+    label: 'lint-budget',
+    cmd: ['node', 'scripts/check-lint-budget.mjs', '--all'],
+    // cm:edge naming -> scripts/check-lint-budget.mjs — parses that script's success line
+    scanned: /^lint-budget: (\d+) file/m,
+  },
+  {
+    axis: 'form',
     label: 'size-budget',
     cmd: ['node', 'scripts/check-size-budget.mjs', '--all'],
     // cm:edge naming -> scripts/check-size-budget.mjs — parses that script's success line
@@ -143,7 +150,7 @@ const CI_COVERAGE = {
   './.forge/archmap/arch check': 'verify',
   'pnpm --filter @forge/core lint': 'verify',
   'pnpm --filter @forge/core typecheck': 'verify',
-  'pnpm --filter web-v2 lint': 'pnpm lint',
+  'pnpm --filter web-v2 lint': 'verify, as the lint-budget check',
   'pnpm --filter web-v2 exec vitest run --passWithNoTests': 'pnpm test',
   'pnpm --filter web-v2 build': 'pnpm build',
   'pnpm --filter @forge/core test': 'pnpm test',
@@ -335,7 +342,7 @@ function reportNotRunHere() {
   }
 }
 
-// cm:guard keep to gates a local run can actually reproduce — a step needing a CI-only secret or a Tauri bundle prints advice nobody can take, and unusable advice is how the usable lines stop being read
+// cm:guard keep to gates a local run can actually reproduce — a step needing a CI-only secret prints advice nobody can take, and unusable advice is how the usable lines stop being read
 const RUN_ELSEWHERE_HINT = ['test:integration', 'web-v2', '@forge/core test', '@forge/core build'];
 
 function report(results, adv, parity) {

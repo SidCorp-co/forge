@@ -182,9 +182,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
-      # web-v2 lint is a no-op placeholder (WIP); kept non-blocking.
       - run: pnpm --filter web-v2 lint
-        continue-on-error: true
       - run: pnpm --filter web-v2 exec vitest run --passWithNoTests
       - run: pnpm --filter web-v2 build
         env:
