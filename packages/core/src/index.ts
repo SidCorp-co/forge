@@ -303,13 +303,6 @@ registerCandidatesObserver(hooks);
 registerFeedbackNormalizer(hooks);
 registerReleaseBatchClaimSubscriber(hooks);
 
-// MCP endpoint authentication (ISS-202 + ISS-150).
-// Accepts either a device token or a Personal Access
-// Token (`forge_pat_*`) so non-device MCP clients (Cursor, Cline, Zed,
-// web-only users) can authenticate with per-tenant scoping. The dispatcher
-// middleware sets `c.get('principal')` to the resolved union type for the
-// handler. Desktop continues to send `Authorization: Bearer <deviceToken>`
-// with no client-side change.
 app.use('/mcp', requirePatOrDevice());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);

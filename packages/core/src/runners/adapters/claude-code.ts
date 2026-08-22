@@ -67,10 +67,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
         runnerId: runner.id,
         runnerType: runner.type,
         dispatchedAt: job.dispatchedAt.toISOString(),
-        // Forwarded so the runner can PATCH the canonical agent_sessions row
-        // on completion (messages, claudeSessionId, diff). The runner uses
-        // `jobId` as its local session key, so without this it has no way to
-        // map back to the DB row created by ensureAgentSessionForJob.
+        // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner keys its local session by `jobId`, so this field is its only route back to the agent_sessions row; drop it and the transcript, claudeSessionId and diff are never written.
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
       },
     });

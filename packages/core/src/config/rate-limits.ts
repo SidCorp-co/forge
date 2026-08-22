@@ -14,10 +14,7 @@ const DEFAULTS = {
   // (`c.get('patTokenId')`). Per-token overrides come from
   // `personal_access_tokens.rate_limit_max` and are applied at call sites.
   patPerToken: { windowMs: 60_000, max: 60, by: 'token' },
-  // ISS-305 — Runner browser-approve device-login endpoints. init mints a code
-  // (anonymous); approve consumes one with cookie-auth. 32^7 + 10-min TTL
-  // already makes targeted guessing infeasible — these caps stop an IP from
-  // filling the table with pending rows.
+  // cm:why 32^7 + a 10-min TTL already makes guessing a code infeasible; these two caps exist for the other attack — an anonymous `init` caller filling device_login_codes with pending rows.
   deviceLoginInit: { windowMs: 60 * 60_000, max: 20, by: 'ip' },
   deviceLoginApprove: { windowMs: 60 * 60_000, max: 10, by: 'ip' },
   // memory-v2 phase 0 — both endpoints embed caller-supplied text via the

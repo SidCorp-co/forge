@@ -77,11 +77,7 @@ export const oauthAccounts = pgTable(
   }),
 );
 
-// ISS-305 — Runner browser-approve device-login (OAuth device-authorization
-// flow, cf. `claude login`). Mints a *device token* for the headless
-// `forge-runner` CLI and (optionally) provisions a git push credential. Kept
-// distinct from `pairingCodes` (further down), which couples a device to a
-// project at first run.
+// cm:guard this is the device-token mint (browser-approved, one per runner install); `pairingCodes` further down is the separate project binding. Folding the two tables together drops the distinction between "this machine may talk to Forge" and "this machine works on that project".
 export const deviceLoginCodes = pgTable(
   'device_login_codes',
   {

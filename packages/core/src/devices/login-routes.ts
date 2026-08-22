@@ -50,8 +50,6 @@ const MAX_HOSTNAME_LEN = 100;
 const MAX_USER_AGENT_LEN = 200;
 const MAX_INSERT_RETRIES = 5;
 
-// === Helpers ===
-
 /**
  * Crockford-base32 7-char code, rejection-sampled so each glyph is uniform over
  * the 32-symbol alphabet (`b & 0x1f` over 0..255 is exact: 256 % 32 == 0).

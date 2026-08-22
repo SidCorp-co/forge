@@ -233,3 +233,175 @@ describe('buildSessionFromEvents', () => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+// cm:why measured on forge-beta over 3 days to 2026-08-23: 1,051 error results, 12,899 thinking blocks and 33,671 tool results all reached the DB and were then dropped by the derive — these four fields are why the transcript read as a flat list of prose.
+describe('fields the transcript used to drop', () => {
+  it('keeps is_error from a tool_result and lands it on the matching toolCall', () => {
+    const { messages } = buildSessionFromEvents([
+      {
+        kind: 'stdout',
+        data: {
+          line: {
+            type: 'assistant',
+            message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] },
+          },
+        },
+      },
+      {
+        kind: 'stdout',
+        data: {
+          line: {
+            type: 'user',
+            message: {
+              content: [
+                { type: 'tool_result', tool_use_id: 't1', content: 'exit 1', is_error: true },
+              ],
+            },
+          },
+        },
+      },
+    ]);
+    expect(messages[0]?.toolCalls?.[0]).toMatchObject({
+      id: 't1',
+      isError: true,
+      output: 'exit 1',
+    });
+  });
+
+  it('leaves isError unset when the tool succeeded, so a red row means a real failure', () => {
+    const { messages } = buildSessionFromEvents([
+      {
+        kind: 'stdout',
+        data: {
+          line: {
+            type: 'assistant',
+            message: { content: [{ type: 'tool_use', id: 't1', name: 'Read' }] },
+          },
+        },
+      },
+      {
+        kind: 'stdout',
+        data: {
+          line: {
+            type: 'user',
+            message: {
+              content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok', is_error: false }],
+            },
+          },
+        },
+      },
+    ]);
+    expect(messages[0]?.toolCalls?.[0]?.isError).toBeUndefined();
+  });
+
+  it('reads total_cost_usd and the run totals off the result line', () => {
+    const r = parseStreamMessages(
+      {
+        type: 'result',
+        subtype: 'success',
+        total_cost_usd: 2.4137,
+        duration_ms: 192_000,
+        duration_api_ms: 161_000,
+        num_turns: 41,
+        permission_denials: [{ tool_name: 'Bash' }, { tool_name: 'Write' }],
+        stop_reason: 'end_turn',
+      },
+      makeId(),
+    );
+    expect(r.messages[0]?.totals).toMatchObject({
+      totalCostUsd: 2.4137,
+      durationMs: 192_000,
+      durationApiMs: 161_000,
+      numTurns: 41,
+      permissionDenials: 2,
+      stopReason: 'end_turn',
+    });
+    expect(r.messages[0]?.content).toBe('Cost: $2.4137');
+  });
+
+  it('still reads the pre-2025 cost_usd spelling so old transcripts re-derive', () => {
+    const r = parseStreamMessages({ type: 'result', cost_usd: 0.5 }, makeId());
+    expect(r.messages[0]?.totals?.totalCostUsd).toBe(0.5);
+  });
+
+  it('counts thinking blocks without inventing text for them', () => {
+    const r = parseStreamMessages(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: '', signature: 'sig-a' },
+            { type: 'thinking', thinking: '', signature: 'sig-b' },
+            { type: 'text', text: 'done' },
+          ],
+        },
+      },
+      makeId(),
+    );
+    expect(r.messages[0]?.thinkingCount).toBe(2);
+    expect(r.messages[0]?.content).toBe('done');
+    expect(r.messages[0]?.blocks?.every((b) => b.type !== 'text' || b.text === 'done')).toBe(true);
+  });
+
+  it('emits an assistant message for a turn that is thinking-only', () => {
+    const r = parseStreamMessages(
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'thinking', thinking: '', signature: 'sig' }] },
+      },
+      makeId(),
+    );
+    expect(r.messages).toHaveLength(1);
+    expect(r.messages[0]?.thinkingCount).toBe(1);
+  });
+
+  it('times each tool from the gap between its own two job_events', () => {
+    const { messages } = buildSessionFromEvents([
+      {
+        kind: 'stdout',
+        ts: 1_000,
+        data: {
+          line: {
+            type: 'assistant',
+            message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] },
+          },
+        },
+      },
+      {
+        kind: 'stdout',
+        ts: 3_500,
+        data: {
+          line: {
+            type: 'user',
+            message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
+          },
+        },
+      },
+    ]);
+    expect(messages[0]?.toolCalls?.[0]?.durationMs).toBe(2_500);
+  });
+
+  it('leaves durationMs unset when the events carry no timestamps', () => {
+    const { messages } = buildSessionFromEvents([
+      {
+        kind: 'stdout',
+        data: {
+          line: {
+            type: 'assistant',
+            message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] },
+          },
+        },
+      },
+      {
+        kind: 'stdout',
+        data: {
+          line: {
+            type: 'user',
+            message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
+          },
+        },
+      },
+    ]);
+    expect(messages[0]?.toolCalls?.[0]?.durationMs).toBeUndefined();
+  });
+});
