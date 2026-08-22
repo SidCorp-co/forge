@@ -1,8 +1,11 @@
 /**
  * `forge_pm.set_dependency` (Epic 3, ISS-19) — record a dependency edge
  * between two issues in the same project. Idempotent on the unique edge
- * `(project_id, from_issue_id, to_issue_id, kind)` from Epic 1; duplicates
- * return the existing row with `created: false`.
+ * `(project_id, from_issue_id, to_issue_id, kind)` from Epic 1; a duplicate
+ * returns `created: false` and applies whichever of `validUntil` / `reason`
+ * the caller supplied, reporting that as `updated`. Setting `validUntil` into
+ * the past is how an edge is RETRACTED — the only agent-reachable way, since
+ * the DELETE route is JWT-only REST.
  *
  * Epic 4 (ISS-20) wires the `dependencyChanged` hook emit on first insert so
  * PM spawn triggers react to graph mutations.
@@ -169,11 +172,57 @@ export async function pmSetDependencyHandler(
   if (!existing) {
     throw new Error('forge_pm.set_dependency: conflict but no existing row found');
   }
+
+  // cm:guard apply `validUntil`/`reason` on the CONFLICT path too — the tool advertises both and the `onConflictDoNothing` above silently dropped them, which left a `blocks` edge retractable by no agent-reachable API at all (the DELETE route is JWT-only REST). It matters because a `dropped` blocker never stamps `merged_at`: on getcontent a consolidation dropped ISS-463 and its stale edge held ISS-455, and via ISS-455 held ISS-457, queued for 53h with nobody notified (measured 2026-08-22).
+  // cm:why only the fields the caller actually sent — a bare re-assert of an existing edge is the common idempotent call, and blanking someone's expiry or reason because they omitted it is a silent data loss
+  const patch: { validUntil?: Date; reason?: string } = {};
+  if (input.validUntil) patch.validUntil = new Date(input.validUntil);
+  if (input.reason) patch.reason = input.reason;
+  const updated = Object.keys(patch).length > 0;
+
+  if (updated) {
+    await db.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
+    // cm:guard emit `dependencyChanged` on an update, not just an insert — expiring an edge can make the gated side dispatchable THIS INSTANT, and without the emit the unblock waits for whatever else happens to wake the dispatcher
+    await hooks.emit('dependencyChanged', {
+      projectId: input.projectId,
+      edgeId: existing.id,
+      fromIssueId: input.fromIssueId,
+      toIssueId: input.toIssueId,
+      kind: input.kind,
+    });
+    const updatePayload: Record<string, unknown> = {
+      edgeId: existing.id,
+      fromIssueId: input.fromIssueId,
+      toIssueId: input.toIssueId,
+      kind: input.kind,
+      ...(input.validUntil ? { validUntil: input.validUntil } : {}),
+      ...(input.reason ? { reason: input.reason } : {}),
+    };
+    const actor = { type: 'device' as const, id: device.id };
+    await Promise.all([
+      safeRecordActivity({
+        issueId: input.fromIssueId,
+        actor,
+        action: 'issue.dependency.updated',
+        payload: updatePayload,
+      }),
+      safeRecordActivity({
+        issueId: input.toIssueId,
+        actor,
+        action: 'issue.dependency.updated',
+        payload: updatePayload,
+      }),
+    ]);
+    if (input.kind === 'blocks' || input.kind === 'decomposes') {
+      await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
+    }
+  }
+
   // ISS-138 (PR-D) — even on conflict (edge was already there), run the
   // helper so a parent whose first decompose call predated PR-D can still
   // be brought up to date when a new edge is added later.
   await maybeRunDecomposeHelper(input, device.ownerId);
-  return { id: existing.id, created: false };
+  return { id: existing.id, created: false, updated };
 }
 
 async function maybeRunDecomposeHelper(
@@ -212,7 +261,7 @@ function recordDeprecation(ctx: McpContext, toolName: string) {
 export const forgePmSetDependencyTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pm.set_dependency',
   description:
-    "[DEPRECATED — use forge_project_pm (action=set_dependency)] Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — duplicate calls return the existing row with created:false. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error. ISS-138 (PR-D): when `kind='decomposes'`, the first edge added to a parent also triggers integration-branch creation + branchConfig auto-fill on parent and child. Pass `decomposeOpts.useIntegrationBranch: false` to opt out (children then branch off the project default).",
+    "[DEPRECATED — use forge_project_pm (action=set_dependency)] Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only way an agent can retract one (DELETE is JWT-only REST). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error. ISS-138 (PR-D): when `kind='decomposes'`, the first edge added to a parent also triggers integration-branch creation + branchConfig auto-fill on parent and child. Pass `decomposeOpts.useIntegrationBranch: false` to opt out (children then branch off the project default).",
   inputSchema: zodToMcpSchema(pmSetDependencyInputSchema),
   handler: async (args) => {
     recordDeprecation(ctx, 'forge_pm.set_dependency');
