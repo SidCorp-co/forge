@@ -76,6 +76,19 @@ export interface SessionAttachment {
   url: string;
 }
 
+/** The `result` line's run totals, written by the core derive
+ *  (`packages/core/src/lib/agent-stream-parser.ts` `RunTotals`). Present on the
+ *  final `system`/`result` entry only. */
+export interface RunTotals {
+  totalCostUsd?: number;
+  durationMs?: number;
+  durationApiMs?: number;
+  numTurns?: number;
+  permissionDenials?: number;
+  stopReason?: string;
+  isError?: boolean;
+}
+
 export interface MessageEntry {
   id?: string;
   role?: "user" | "assistant" | "tool" | "system";
@@ -89,6 +102,12 @@ export interface MessageEntry {
   blocks?: CanonicalBlock[];
   /** Files the user attached to this turn (ISS-499); persisted on the user message. */
   attachments?: SessionAttachment[];
+  /** Assistant `thinking` blocks in this turn. A count, not text — every
+   *  thinking block Claude Code emits carries an empty string. */
+  thinkingCount?: number;
+  /** Run totals, on the final result entry only. */
+  totals?: RunTotals;
+  subtype?: string;
 }
 
 export type TurnRole = "user" | "assistant" | "tool";
@@ -136,6 +155,8 @@ export interface ConversationItem {
   attachments: SessionAttachment[];
   timestamp?: number;
   editedAt: string | null;
+  /** Thinking pauses inside this turn (count only — the text is always empty). */
+  thinkingCount: number;
 }
 
 /** Coarse tool classification driving the tool-card layout. */
@@ -336,6 +357,7 @@ export function parseTurns(turns: TurnRow[]): ConversationItem[] {
         attachments,
         timestamp: entry.timestamp,
         editedAt: turn.editedAt,
+        thinkingCount: entry.thinkingCount ?? 0,
       });
     } else {
       const blocks = assistantBlocks(entry);
@@ -351,6 +373,7 @@ export function parseTurns(turns: TurnRow[]): ConversationItem[] {
         attachments: [],
         timestamp: entry.timestamp,
         editedAt: turn.editedAt,
+        thinkingCount: entry.thinkingCount ?? 0,
       });
     }
   }
@@ -387,6 +410,7 @@ export function parseMessages(messages: unknown[]): ConversationItem[] {
         attachments,
         timestamp: entry.timestamp,
         editedAt: null,
+        thinkingCount: entry.thinkingCount ?? 0,
       });
     } else {
       const blocks = assistantBlocks(entry);
@@ -402,6 +426,7 @@ export function parseMessages(messages: unknown[]): ConversationItem[] {
         attachments: [],
         timestamp: entry.timestamp,
         editedAt: null,
+        thinkingCount: entry.thinkingCount ?? 0,
       });
     }
   });

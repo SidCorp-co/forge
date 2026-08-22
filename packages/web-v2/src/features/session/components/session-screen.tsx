@@ -44,6 +44,7 @@ import {
 } from "../hooks";
 import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
 import { Composer, ReadOnlyComposerNote } from "./composer";
+import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
 import { useStickToBottom } from "./use-stick-to-bottom";
@@ -138,6 +139,8 @@ export function SessionScreen({
   }, [turnsQ.data, session?.messages]);
   const fromMessages =
     (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
+  // cm:guard route on `metadata.type`, never on "does it have turn rows": a pipeline session that has been replied to grows turn rows, and the layout would silently fall back to the chat thread on the runs that got the most attention.
+  const isRun = session?.metadata?.type === "pipeline" || session?.metadata?.type === "pm";
   // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
   // in the header without opening the context rail. Same derivation the rail uses.
   const taskCount = useMemo(() => deriveAgentTasks(items).length, [items]);
@@ -334,6 +337,16 @@ export function SessionScreen({
         </div>
       </header>
 
+      {isRun ? (
+        <RunReport
+          session={session}
+          items={items}
+          {...(issueId && projectSlug
+            ? { onOpenIssue: () => router.push(`/projects/${projectSlug}/issues/${issueId}`) }
+            : {})}
+        />
+      ) : (
+        <>
       {/* Body */}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
@@ -416,6 +429,8 @@ export function SessionScreen({
           <ContextRail session={session} items={items} />
         </div>
       </SlideOver>
+        </>
+      )}
     </div>
   );
 }
