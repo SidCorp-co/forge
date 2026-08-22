@@ -8,6 +8,7 @@ import {
   deriveTranscriptRows,
   mcpServer,
   readTranscriptMeta,
+  shortenPath,
   toolOutcome,
 } from "./run-report";
 import type { ConversationItem, ToolCallData } from "./types";
@@ -91,6 +92,28 @@ describe("mcpServer", () => {
   });
 });
 
+describe("shortenPath", () => {
+  it("drops everything up to and including the worktree segment", () => {
+    expect(
+      shortenPath(
+        "/home/forge/projects/getcontent/.claude/worktrees/iss-455/packages/core/src/x.ts",
+        "/home/kieutrung/tools/getcontent",
+      ),
+    ).toBe("packages/core/src/x.ts");
+  });
+
+  it("falls back to stripping the checkout prefix when there is no worktree", () => {
+    expect(shortenPath("/srv/repo/apps/api/src/routes.ts", "/srv/repo")).toBe(
+      "apps/api/src/routes.ts",
+    );
+  });
+
+  it("returns the path unchanged when neither applies, rather than an empty string", () => {
+    expect(shortenPath("src/a.ts", "/srv/repo")).toBe("src/a.ts");
+    expect(shortenPath("/srv/repo", "/srv/repo")).toBe("/srv/repo");
+  });
+});
+
 describe("deriveActivityGroups", () => {
   const items = [
     agentItem([
@@ -119,6 +142,19 @@ describe("deriveActivityGroups", () => {
     const groups = deriveActivityGroups(items);
     expect(groups.find((g) => g.kind === "errors")?.total).toBe(1);
     expect(groups.find((g) => g.kind === "ran")?.total).toBe(1);
+  });
+
+  it("counts DISTINCT files edited, not edit calls", () => {
+    const repeated = deriveActivityGroups([
+      agentItem([
+        toolBlock(tool({ id: "1", name: "Edit", input: { file_path: "a.ts", new_string: "x" } })),
+        toolBlock(tool({ id: "2", name: "Edit", input: { file_path: "a.ts", new_string: "y" } })),
+        toolBlock(tool({ id: "3", name: "Edit", input: { file_path: "b.ts", new_string: "z" } })),
+      ]),
+    ]);
+    const edited = repeated.find((g) => g.kind === "edited");
+    expect(edited?.headline).toBe("Edited 2 files");
+    expect(edited?.total).toBe(3);
   });
 
   it("sums the edit delta across the group", () => {

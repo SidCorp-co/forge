@@ -7,6 +7,10 @@
 // "it edited 4 files and one test failed" is the problem this page exists to
 // fix. The transcript lens is still one click away for the reader who needs the
 // row at 01:00:41.
+//
+// The first row opens on load — errors when there were any, since the order puts
+// them first. A run that failed shows why without a click; a run that passed
+// shows what it ran.
 
 import { useState } from "react";
 import { Icon, type IconName } from "@/design";
@@ -73,8 +77,8 @@ export function StoryLens({
   return (
     <div>
       <ul>
-        {groups.map((group) => (
-          <GroupRow key={group.kind} group={group} defaultOpen={group.kind === "errors"} />
+        {groups.map((group, i) => (
+          <GroupRow key={group.kind} group={group} defaultOpen={i === 0} />
         ))}
       </ul>
       {thinkingPauses > 0 && (

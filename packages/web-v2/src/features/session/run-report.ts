@@ -52,6 +52,26 @@ export function mcpServer(name: string): string {
   return /^mcp__([^_]+)__/.exec(name)?.[1] ?? "";
 }
 
+const WORKTREE = /\/\.claude\/worktrees\/[^/]+\//;
+
+/**
+ * The transcript records absolute paths on the RUNNER — `/home/forge/projects/
+ * getcontent/.claude/worktrees/iss-455-delivery-truth/packages/core/src/x.ts`.
+ * Truncated in a 240px column that reads `/home/forge/projects/…` on every row,
+ * which is the one part every row shares. Strip the checkout prefix and the
+ * worktree segment so what is left is what differs.
+ */
+export function shortenPath(path: string, repoPath?: string | null): string {
+  let out = path;
+  const cut = out.search(WORKTREE);
+  if (cut >= 0) {
+    out = out.slice(cut).replace(WORKTREE, "");
+  } else if (repoPath && out.startsWith(repoPath)) {
+    out = out.slice(repoPath.length);
+  }
+  return out.replace(/^\/+/, "") || path;
+}
+
 function editCounts(tc: ToolCallData): { added: number; removed: number } {
   const input = tc.input ?? {};
   const edits =
@@ -162,6 +182,15 @@ function allToolCalls(items: ConversationItem[]): ToolCallData[] {
   return out;
 }
 
+function distinctPaths(calls: ToolCallData[]): number {
+  const paths = new Set<string>();
+  for (const tc of calls) {
+    const p = tc.input?.file_path;
+    if (typeof p === "string" && p) paths.add(p);
+  }
+  return paths.size || calls.length;
+}
+
 function groupMeta(kind: ActivityKind, calls: ToolCallData[]): string {
   if (kind === "edited") {
     const totals = calls.reduce(
@@ -181,14 +210,15 @@ function groupMeta(kind: ActivityKind, calls: ToolCallData[]): string {
   return "";
 }
 
-function headlineFor(kind: ActivityKind, n: number): string {
+function headlineFor(kind: ActivityKind, n: number, calls: ToolCallData[]): string {
   switch (kind) {
     case "errors":
       return `${plural(n, "tool call")} returned an error`;
     case "ran":
       return `Ran ${plural(n, "command")}`;
     case "edited":
-      return `Edited ${plural(n, "file")}`;
+      // cm:guard count DISTINCT paths, not edit calls — the left column's "Files changed" counts paths, and an agent that edits one file six times made this row read "Edited 52 files" beside a list of 22.
+      return `Edited ${plural(distinctPaths(calls), "file")}`;
     case "forge":
       return `Forge · ${plural(n, "call")}`;
     default:
@@ -214,7 +244,7 @@ export function deriveActivityGroups(items: ConversationItem[]): ActivityGroup[]
     if (!members?.length) continue;
     groups.push({
       kind,
-      headline: headlineFor(kind, members.length),
+      headline: headlineFor(kind, members.length, members),
       meta: groupMeta(kind, members),
       total: members.length,
       children: members.slice(0, CHILD_CAP).map((tc) => ({
