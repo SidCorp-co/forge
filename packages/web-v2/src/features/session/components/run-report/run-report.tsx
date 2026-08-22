@@ -175,7 +175,12 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
             <div className="min-w-0 flex-1 overflow-y-auto">
               {lens === "story" && <StoryLens groups={groups} thinkingPauses={meta.thinkingPauses} />}
               {lens === "diff" && (
-                <DiffLens files={files} selectedPath={selectedPath} onSelect={setSelectedPath} />
+                <DiffLens
+                  files={files}
+                  selectedPath={selectedPath}
+                  onSelect={setSelectedPath}
+                  repoPath={session.repoPath}
+                />
               )}
               {lens === "transcript" && <TranscriptLens rows={rows} />}
             </div>

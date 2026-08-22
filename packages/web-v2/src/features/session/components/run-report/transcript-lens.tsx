@@ -19,12 +19,15 @@ const TONE_COLOR = {
 
 const MAX_BODY_CHARS = 1200;
 
+// cm:why 24-hour, not the locale default: `11:34:30 PM` wraps to two lines in
+// the timestamp column and doubles the height of all 146 rows.
 function clockOf(ts: number | undefined): string {
   if (!ts) return "";
   return new Date(ts).toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
   });
 }
 

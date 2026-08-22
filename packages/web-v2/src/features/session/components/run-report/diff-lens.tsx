@@ -9,6 +9,7 @@
 // git stat that would disagree with it.
 
 import { EmptyState } from "@/design";
+import { shortenPath } from "../../run-report";
 import type { FileDiff } from "../../types";
 import { InlineDiff } from "../tool-card";
 
@@ -16,10 +17,12 @@ export function DiffLens({
   files,
   selectedPath,
   onSelect,
+  repoPath,
 }: {
   files: FileDiff[];
   selectedPath: string | null;
   onSelect: (path: string) => void;
+  repoPath?: string | null;
 }) {
   const active = files.find((f) => f.path === selectedPath) ?? files[0];
   if (!active) {
@@ -28,7 +31,9 @@ export function DiffLens({
   return (
     <div className="flex min-h-0 flex-col">
       <div className="border-line-subtle flex items-center gap-2 border-b px-3 py-2">
-        <span className="fg-caption min-w-0 flex-1 truncate font-mono">{active.path}</span>
+        <span className="fg-caption min-w-0 flex-1 truncate font-mono" title={active.path}>
+          {shortenPath(active.path, repoPath)}
+        </span>
         <span className="fg-caption font-mono" style={{ color: "var(--green-600)" }}>
           +{active.added}
         </span>
