@@ -1,5 +1,5 @@
 /**
- * `alarmDraftBlockedDependents` against real Postgres.
+ * `alarmUnrunnableBlockedDependents` against real Postgres.
  *
  * The gate is correct: an edge onto a `draft` issue means the draft really must
  * come first (owner decision 2026-08-14). What was broken is that the wait was
@@ -31,10 +31,10 @@ vi.mock('../../src/pipeline/wedge.js', () => ({
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  alarmDraftBlockedDependents: typeof import('../../src/pipeline/sweeper.js').alarmDraftBlockedDependents;
+  alarmUnrunnableBlockedDependents: typeof import('../../src/pipeline/blocked-dependent-alarms.js').alarmUnrunnableBlockedDependents;
 };
 
-describe('alarmDraftBlockedDependents E2E', () => {
+describe('alarmUnrunnableBlockedDependents E2E', () => {
   let harness: TestDatabase;
   let mods: Mods;
   let projectId: string;
@@ -54,7 +54,7 @@ describe('alarmDraftBlockedDependents E2E', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    mods = (await import('../../src/pipeline/sweeper.js')) as unknown as Mods;
+    mods = (await import('../../src/pipeline/blocked-dependent-alarms.js')) as unknown as Mods;
   }, 60_000);
 
   afterAll(async () => {
@@ -114,13 +114,30 @@ describe('alarmDraftBlockedDependents E2E', () => {
     await blocks(blocker.id, dependent.id);
     await insertQueuedJob(dependent.id);
 
-    const res = await mods.alarmDraftBlockedDependents(new Date());
+    const res = await mods.alarmUnrunnableBlockedDependents(new Date());
 
     expect(res.alerted).toBe(1);
     const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(wedge.issueId).toBe(dependent.id);
     expect(wedge.summary).toContain(`ISS-${blocker.seq}`);
     expect(wedge.summary).toContain('a11y: sign-up link fails axe');
+  });
+
+  // cm:guard the getcontent 2026-08-22 shape: a consolidation dropped ISS-463 and its stale `blocks` edge held ISS-455, and through ISS-455 held ISS-457, queued 53h against four idle unlimited runners with NOTHING told to anyone. A dropped blocker never stamps `merged_at`, so unlike a draft it cannot even be opened — the guidance has to differ or the operator hunts for something to open.
+  it('alarms a job blocked by a dropped issue and says to expire the edge', async () => {
+    const blocker = await insertIssue('dropped', 'settings write-surface gaps G1-G3');
+    const dependent = await insertIssue('approved');
+    await blocks(blocker.id, dependent.id);
+    await insertQueuedJob(dependent.id);
+
+    const res = await mods.alarmUnrunnableBlockedDependents(new Date());
+
+    expect(res.alerted).toBe(1);
+    const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(wedge.issueId).toBe(dependent.id);
+    expect(wedge.reason).toBe('blocker_dropped:1');
+    expect(wedge.summary).toContain('will never merge');
+    expect(wedge.nextStep).toContain('validUntil');
   });
 
   // cm:guard this is the brand-gateway ISS-50 shape exactly (3 draft blockers, measured 2026-08-14) — one wedge, not three, or the operator reads one stuck issue as three problems
@@ -132,12 +149,12 @@ describe('alarmDraftBlockedDependents E2E', () => {
     }
     await insertQueuedJob(dependent.id);
 
-    const res = await mods.alarmDraftBlockedDependents(new Date());
+    const res = await mods.alarmUnrunnableBlockedDependents(new Date());
 
     expect(res.alerted).toBe(1);
     expect(emitWedgeMock).toHaveBeenCalledTimes(1);
     const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
-    expect(wedge.summary).toContain('2 other draft blockers');
+    expect(wedge.summary).toContain('2 other blockers');
   });
 
   // cm:guard the grace window is what keeps this off a normal queue — without it every job enqueued behind a draft alarms instantly, and an alarm that fires on healthy state is one operators learn to ignore
@@ -147,7 +164,7 @@ describe('alarmDraftBlockedDependents E2E', () => {
     await blocks(blocker.id, dependent.id);
     await insertQueuedJob(dependent.id, 1);
 
-    expect((await mods.alarmDraftBlockedDependents(new Date())).alerted).toBe(0);
+    expect((await mods.alarmUnrunnableBlockedDependents(new Date())).alerted).toBe(0);
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
@@ -165,7 +182,7 @@ describe('alarmDraftBlockedDependents E2E', () => {
     `);
     await insertQueuedJob(d2.id);
 
-    expect((await mods.alarmDraftBlockedDependents(new Date())).alerted).toBe(0);
+    expect((await mods.alarmUnrunnableBlockedDependents(new Date())).alerted).toBe(0);
   });
 
   // cm:guard a job under a paused or terminal run is not waiting on the draft — `run_not_running` is its real reason, and reporting the draft instead sends the operator to fix the wrong thing
@@ -176,7 +193,7 @@ describe('alarmDraftBlockedDependents E2E', () => {
     await insertQueuedJob(dependent.id);
     await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'paused'`);
 
-    expect((await mods.alarmDraftBlockedDependents(new Date())).alerted).toBe(0);
+    expect((await mods.alarmUnrunnableBlockedDependents(new Date())).alerted).toBe(0);
   });
 
   it('scopes to one project when asked', async () => {
@@ -185,11 +202,13 @@ describe('alarmDraftBlockedDependents E2E', () => {
     await blocks(blocker.id, dependent.id);
     await insertQueuedJob(dependent.id);
 
-    expect((await mods.alarmDraftBlockedDependents(new Date(), { projectId })).alerted).toBe(1);
+    expect((await mods.alarmUnrunnableBlockedDependents(new Date(), { projectId })).alerted).toBe(
+      1,
+    );
     emitWedgeMock.mockClear();
     const other = await createTestProject(harness.db, ownerId);
     expect(
-      (await mods.alarmDraftBlockedDependents(new Date(), { projectId: other.id })).alerted,
+      (await mods.alarmUnrunnableBlockedDependents(new Date(), { projectId: other.id })).alerted,
     ).toBe(0);
   });
 });
