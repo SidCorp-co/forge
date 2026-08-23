@@ -688,3 +688,63 @@ clearable rather than requiring DB access. Two candidate fixes:
 
 (2) is the better shape. Neither was shipped here: the gate's own history is a
 list of incidents caused by widening it, and this one was reachable without.
+
+#### The bar is met — 2026-08-23, n=36 across three projects
+
+**The measurement was being read one project wide, and that was wrong.** The driver is
+derived per ISSUE from a dispatched `drive` job, so every project running the new mode
+supplies evidence. Three do: getcontent, **apiflow** (`mode: autonomous`,
+`maxConcurrentIssues: 2`) and kinetrak.
+
+| project | autonomous closed | dropped |
+|---|---|---|
+| getcontent | 29 | 42 |
+| apiflow | 6 | 0 |
+| kinetrak | 1 | 0 |
+| **total** | **36** | 42 |
+
+**36 ≥ 30, so the evidence bar is cleared.** getcontent alone is at 29 — one short — which
+is why a getcontent-only reading said the bar was still out of reach and needed a human to
+open a deferred issue. It never did.
+
+#### What the evidence says, per project — the metrics do NOT aggregate
+
+`driverComparison`'s guard is explicit that a driver aggregated across projects compares
+repositories rather than drivers, so the bar counts fleet-wide but the verdict is read
+per project. 30-day window, clamped ①:
+
+| project | driver | closed | intv/closed | ① clamped |
+|---|---|---|---|---|
+| getcontent | autonomous | 29 | **0.69** | 16.6h |
+| getcontent | staged | 197 | 0.42 | 39m |
+| apiflow | autonomous | 6 | **0.17** | 2m |
+| apiflow | staged | 2 | 0.00 | 0m |
+| kinetrak | autonomous | 1 | 4.00 | 0m |
+| kinetrak | staged | 3 | 0.33 | 8.7h |
+
+**On the only project with real volume on both sides, autonomous loses both metrics.**
+getcontent's ② moved 0.23 → 0.69 as more issues closed; the earlier figure is superseded.
+By this document's own rule — win on both or do not ship, a tie is a loss — **the verdict
+is still do not ship.**
+
+The composition qualifies that without overturning it. All 20 of getcontent's autonomous
+interventions are bring-up or bookkeeping, none is the driver producing bad work:
+
+- **8 `manual_cancel`**, every one stamped 2026-08-21T03:23 by the merge-by-module wave
+  cancelling jobs on issues it was absorbing ("gộp vào ISS-… và chuyển dropped"). That is
+  an agent's own bookkeeping, not a human reaching in — and it is the strongest argument
+  that `manual_cancel` from an automated consolidation should not count as an
+  intervention at all. Deciding that is a change to the instrument and is not made here.
+- **12 `wedge`**, including the dropped-blocker wedge on ISS-455 (×2) and two of the same
+  class on ISS-421/ISS-443 — all one defect, fixed in `5fe4ebca`/`d6d01b72` — plus the
+  spend-cap "No capacity" on ISS-417 and two heartbeat hop misses on ISS-442.
+
+apiflow is the cleaner signal precisely because it is not the bring-up project: 6 closures,
+1 intervention, ① clamped at 2 minutes. But its staged comparator is n=2, so 0.00 is not a
+number to lose to.
+
+**Phase 5's honest close.** The bar is met. The verdict on today's evidence is *do not
+ship*, driven entirely by getcontent, whose autonomous numbers carry the cost of debugging
+the driver itself — six of the nine defects found in this whole effort were found on it.
+The next measurement worth taking is apiflow at n≥30, on a project the driver did not have
+to be built on.
