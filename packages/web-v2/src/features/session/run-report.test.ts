@@ -327,6 +327,13 @@ describe("the agent's own prose", () => {
     expect(deriveNarration(items).count).toBe(1);
   });
 
+  it("keeps the runner's status lines off the tape too, so the shapes agree", () => {
+    const system = agentItem([said("Session started")], { id: "sys" });
+    system.role = "tool";
+
+    expect(deriveTape([system])).toEqual([]);
+  });
+
   it("reports nothing to show for a run that only made tool calls", () => {
     const n = deriveNarration([agentItem([toolBlock(tool({ name: "Read" }))])]);
     expect(n).toEqual({ closing: null, count: 0 });

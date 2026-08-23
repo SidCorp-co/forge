@@ -379,8 +379,9 @@ export function deriveTape(items: ConversationItem[]): TapeTick[] {
     if (item.kind !== "agent") continue;
     for (let i = 0; i < item.thinkingCount; i++) ticks.push("think");
     for (const block of item.blocks) {
-      if (block.type === "text") ticks.push("prose");
-      else if (block.type === "tool") {
+      if (block.type === "text") {
+        if (wroteIt(item)) ticks.push("prose");
+      } else if (block.type === "tool") {
         ticks.push(
           block.tool.isError ? "err" : toolKind(block.tool.name) === "edit" ? "edit" : "tool",
         );
