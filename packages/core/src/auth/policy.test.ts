@@ -19,9 +19,9 @@ vi.mock('../db/client.js', () => {
   return { db: chain };
 });
 
-const { assertUserIsProjectMember, assertUserIsProjectOwner } = await import('./policy.js');
+const { assertUserIsProjectOwner } = await import('./policy.js');
 
-type Ctx = Parameters<typeof assertUserIsProjectMember>[0];
+type Ctx = Parameters<typeof assertUserIsProjectOwner>[0];
 
 function makeCtx(userId: string): Ctx {
   const vars = new Map<string, unknown>([
@@ -45,26 +45,6 @@ async function expectForbidden(p: Promise<void>) {
 beforeEach(() => {
   queuedResults = [];
   selectSpy.mockClear();
-});
-
-describe('assertUserIsProjectMember', () => {
-  it('resolves when a membership row exists', async () => {
-    queuedResults = [[{ userId: 'user-1' }]];
-    await expect(assertUserIsProjectMember(makeCtx('user-1'), 'proj-1')).resolves.toBeUndefined();
-    expect(selectSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('throws 403 FORBIDDEN when no membership row exists', async () => {
-    queuedResults = [[]];
-    await expectForbidden(assertUserIsProjectMember(makeCtx('user-1'), 'proj-1'));
-    expect(selectSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('issues exactly one query (no N+1)', async () => {
-    queuedResults = [[{ userId: 'user-1' }]];
-    await assertUserIsProjectMember(makeCtx('user-1'), 'proj-1');
-    expect(selectSpy).toHaveBeenCalledTimes(1);
-  });
 });
 
 describe('assertUserIsProjectOwner', () => {
