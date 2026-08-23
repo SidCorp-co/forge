@@ -5,7 +5,7 @@
 import type { ComponentProps } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { coreFileUrl } from "@/lib/api/client";
+import { coreFileUrl } from "@/lib/utils/core-url";
 import { cn } from "@/lib/utils/cn";
 import { MermaidDiagram } from "./mermaid";
 

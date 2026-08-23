@@ -10,7 +10,7 @@
 // and comment attachments.
 
 import { Icon } from "@/design";
-import { coreFileUrl } from "@/lib/api/client";
+import { coreFileUrl } from "@/lib/utils/core-url";
 import { useMemo, useState } from "react";
 import { ImageLightbox, type LightboxImage } from "./image-lightbox";
 

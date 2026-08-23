@@ -66,6 +66,30 @@ Append to `CHECKS` with a `scanned` regex matching that checker's own success li
 fail-closed contract cannot hold for it. If you add the step to CI too, add it to `CI_COVERAGE` in
 the same commit — `--ci-parity` fails otherwise, which is the point.
 
+## check-lint-budget.mjs — biome debt in web-v2, frozen per (file, rule)
+
+`packages/web-v2/biome.json` owns the rules; this owns only the baseline biome lacks — the same
+split as `check-size-budget.mjs`, one package over.
+
+web-v2 had no biome config at all until 2026-08-23. Measured the day it got one: **748 diagnostics —
+409 formatter, 185 import order, 151 real lint errors.** `error` meant 151 red builds, `warn` meant
+nothing held, so 226 violations across 101 files are frozen in `.forge/lint-baseline.json`. A file
+already carrying debt may keep it and may lose it; it may not gain any.
+
+Frozen per (file, rule) rather than per line, so moving or reflowing code inside a file is not a
+violation.
+
+The **formatter is off** in that config on purpose. Enabling it is a 313-file, 22k-line diff that
+would bury every real change under it, and it is a separate decision from the linter — which is why
+the two were separated rather than shipped together.
+
+Exit `0` clean · `1` a file gained a violation · `2` could not run. That last one includes the case
+biome reports **zero** diagnostics: web-v2 carries debt at rest, so an empty report means the scope
+matched nothing or the config stopped loading, and reporting clean there is the fail-open shape every
+other checker exits 2 on.
+
+Modes: `--all` (CI, via `pnpm --filter web-v2 lint`) · `--staged` (pre-commit) · `--update-baseline`.
+
 ## check-branch-name.sh
 
 Validates a branch name against the [Trunk-Based Development](../docs/guides/trunk-based-development.md) naming convention. Wired into `.githooks/pre-push`.

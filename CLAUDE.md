@@ -95,7 +95,7 @@ the file**; `cm:edge` drives `cm impact`; **`cm:why` has no consumer at all** �
 not even `cm impact`. So anything a future editor must *obey* belongs in `cm:guard`, never
 `cm:why`. Filler accumulates in `cm:why` precisely because nothing surfaces it.
 
-## Seven gates, five axes
+## Eight gates, five axes
 
 Each sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks the
 merge. **That, not this file, is why they hold.** Both halves are load-bearing: `ci-passed` runs
@@ -106,13 +106,14 @@ mismatch, which is why this sentence can be trusted. Every gate that drifted did
 `typecheck` to 84, and the two length rules to 143 — and each stopped drifting the day it was
 baselined and gated (see the comments on the `core` job in `.github/workflows/ci.yml`).
 
-Seven gates over five axes: `form` is gated twice (biome for the rules, `check-size-budget` for the
-baseline biome cannot hold) and `behaviour` is gated twice (`check-test-signal` for whether a test
-asserts anything, `check-flow-coverage` for whether the flows are walked). **An axis measures at its
-weakest gate** — reporting the strongest would let one locked checker hide a sibling that stopped
-blocking, which is the whole failure mode here.
+Eight gates over five axes: `form` is gated three times (biome for the rules, `check-size-budget`
+for the length baseline biome cannot hold, `check-lint-budget` for `web-v2`, where biome carries 226
+violations at rest and so had the same error-or-nothing choice `core` had) and `behaviour` twice
+(`check-test-signal` for whether a test asserts anything, `check-flow-coverage` for whether the flows
+are walked). **An axis measures at its weakest gate** — reporting the strongest would let one locked
+checker hide a sibling that stopped blocking, which is the whole failure mode here.
 
-All seven run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify` neither runs nor
+All eight run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify` neither runs nor
 declares fails `verify --ci-parity`, which is itself a CI step — so the local command and the
 workflow cannot drift apart.
 
@@ -138,6 +139,7 @@ profile, and be perfectly conformant. Its six rules and what each was born from:
 |---|---|---|---|
 | format + lint | `biome check` — job `core` | whitespace, import order, recommended rules | comment content |
 | size | `check-size-budget` — job `lang-check` | file & function length, frozen per file | which rules exist — biome declares them |
+| lint debt | `check-lint-budget` — job `web` | per (file, rule) biome violations in `web-v2`, frozen | which rules exist — `packages/web-v2/biome.json` declares them |
 | knowledge | `cm verify` — job `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
 | relations | `arch check` — job `archmap` | which module may depend on which | how a file is written |
 | behaviour | `check-test-signal` — job `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
@@ -153,6 +155,15 @@ connects. Nothing is self-reported: a `// covers dispatch/tick` comment in a tes
 claim-instead-of-measurement the manifest exists to catch. All 6 steps of `dispatch` are settled
 end-to-end today and `.forge/flow-coverage-baseline.json` is empty; freeze into it with
 `--update-baseline` so declaring a new flow is never punished, only visible.
+
+Lint debt is its own row for the same reason, one package over. `web-v2` had no biome config at all
+until 2026-08-23; measured on the day it got one, 748 diagnostics — 409 formatter, 185 import order,
+151 real lint errors. Turning the linter on as `error` would have been 151 red builds and turning it
+on as `warn` would have held nothing, so `check-lint-budget.mjs` freezes today's 226 violations per
+(file, rule) in `.forge/lint-baseline.json` and fails only on growth. Frozen per rule rather than
+per line, so moving code inside a file is not a violation. The formatter stays **off** there on
+purpose: enabling it is a 313-file, 22k-line diff that would bury every real change under it, and
+it is a separate decision from the linter.
 
 Size is its own row because biome **declares** the two length rules but cannot gate them: it has no
 baseline, so the only choices were `warn` (143 violations, `biome check` exits 0, nothing held) and

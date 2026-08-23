@@ -10,7 +10,7 @@ import { useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { coreFileUrl } from "@/lib/api/client";
+import { coreFileUrl } from "@/lib/utils/core-url";
 import { cn } from "@/lib/utils/cn";
 
 const LINK_CLASS = "text-[color:var(--link)] underline underline-offset-2 hover:opacity-80";
