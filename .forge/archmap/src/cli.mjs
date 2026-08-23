@@ -64,7 +64,7 @@ function collectGraph(manifest, roots) {
   const results = [];
   const failures = [];
   for (const [lang, provider] of Object.entries(PROVIDERS)) {
-    const r = provider.collect({ root: manifest.root, roots, exclude });
+    const r = provider.collect({ root: manifest.root, roots, exclude, tsConfig: manifest.tsConfig });
     if (!r.ok) failures.push(`${lang}: ${r.reason}`);
     else results.push(r);
   }

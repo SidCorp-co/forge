@@ -133,9 +133,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
-      # Four `forbidden ... to: "*"` contracts are locked and green at zero debt; `fan-out` is
-      # draft, so it reports without blocking. exit 1 = a NEW violation · exit 2 = the gate could
-      # not run (unreadable manifest, a scope matching no files) — never read 2 as a pass.
+      # Seven contracts are locked and green at zero debt (four core purity, three web boundary);
+      # `fan-out` is draft, so it reports without blocking. exit 1 = a NEW violation · exit 2 = the
+      # gate could not run (unreadable manifest, a scope matching no files) — never read 2 as a pass.
+      # The three web contracts only mean anything because `.arch.json` declares a tsConfig: without
+      # it dependency-cruiser resolves nothing through web-v2's `@/*` alias, and an unresolvable edge
+      # is dropped rather than reported, so they would pass on an empty graph. conformance-audit R7
+      # holds that ceiling.
       # The vendored copy in .forge/archmap is the authority: a contributor without a global
       # install and this job are held to the same reviewed version.
       - run: ./.forge/archmap/arch check

@@ -45,7 +45,7 @@ function dirExcludeRe(globs) {
   return segments.size ? `(^|/)(${[...segments].join('|')})(/|$)` : null;
 }
 
-export function collect({ root, roots, exclude }) {
+export function collect({ root, roots, exclude, tsConfig }) {
   const cruiser = resolveCruiser(root);
   if (!cruiser) {
     return { ok: false, reason: 'dependency-cruiser is not installed in this project or in archmap' };
@@ -59,6 +59,17 @@ export function collect({ root, roots, exclude }) {
     '--ts-pre-compilation-deps',
     '--do-not-follow', 'node_modules',
   ];
+  // cm:guard without --ts-config, dependency-cruiser resolves nothing that goes through a
+  //   tsconfig `paths` alias, and an unresolvable edge is DROPPED, not reported. A package that
+  //   imports through one therefore contributes no edges and every contract over it passes on an
+  //   empty graph. Measured here 2026-08-23: 841 of 997 unresolvable edges were one package's
+  //   `@/*`; passing the flag took the repo to 6,292 resolved / 169 unresolvable.
+  if (tsConfig) {
+    if (!existsSync(join(root, tsConfig))) {
+      return { ok: false, reason: `tsConfig declared in the manifest but missing: ${tsConfig}` };
+    }
+    args.push('--ts-config', tsConfig);
+  }
   const skip = dirExcludeRe(exclude);
   if (skip) args.push('--exclude', skip);
 

@@ -11,6 +11,7 @@
 //
 // Exit: 0 meets the claimed profile · 1 does not · 2 cannot audit.
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,6 +91,21 @@ const metaStatus = /conformance-status/.test(verifySrc) || /conformance-status/.
 const metaParity = /ci-parity/.test(verifySrc) || /ci-parity/.test(ciText);
 const lvl = (n) => Object.values(axes).filter((s) => (s.level ?? 0) >= n).length;
 
+// cm:guard R7 is the only rule here that RUNS anything, and it has to: whether the relations gate can resolve the graph it covers is knowable only by asking it, and a gate that resolves nothing prints the same "0 violations" a clean repo does. Measured 2026-08-23: `arch check` could not follow web-v2's `@/*` alias, 841 of 997 edges were dropped, and three contracts over that package would have locked onto an empty graph.
+function unresolvableEdges() {
+  const declared = manifest?.checkers?.archmap?.maxUnresolvableEdges;
+  if (typeof declared !== 'number') return { declared: null };
+  const r = spawnSync(at('.forge/archmap/arch'), ['check', '--stats'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const m = /(\d+)\s+unresolvable edges/.exec(r.stdout ?? '');
+  return { declared, measured: m ? Number(m[1]) : null };
+}
+
+const resolution = unresolvableEdges();
+
 const RULES = [
   {
     id: 'R1',
@@ -132,6 +148,21 @@ const RULES = [
     pass: overclaimed.length === 0,
     detail: overclaimed.length ? `level > 1 with no CI: ${overclaimed.join(', ')}` : 'no overclaim',
     why: 'a level that claims to block, where nothing blocks, is the lie this system exists to catch',
+  },
+  {
+    id: 'R7',
+    text: 'the relations gate can resolve the graph it claims to cover',
+    pass:
+      resolution.declared === null
+        ? null
+        : resolution.measured !== null && resolution.measured <= resolution.declared,
+    detail:
+      resolution.declared === null
+        ? 'no checkers.archmap.maxUnresolvableEdges declared'
+        : resolution.measured === null
+          ? 'arch check --stats printed no unresolvable count'
+          : `${resolution.measured} unresolvable (ceiling ${resolution.declared})`,
+    why: 'an unresolvable edge is dropped, not reported — a gate that resolves nothing prints the same "0 violations" a clean repo does',
   },
 ];
 

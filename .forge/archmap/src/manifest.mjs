@@ -88,6 +88,7 @@ export function loadManifest(root) {
     generated: { globs: asArray(raw.generated?.globs, 'generated.globs') },
     exclude: asArray(raw.exclude, 'exclude'),
     size: raw.size ?? null,
+    tsConfig: typeof raw.tsConfig === 'string' && raw.tsConfig ? raw.tsConfig : null,
     contracts,
   };
 }

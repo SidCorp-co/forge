@@ -2,73 +2,123 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/SidCorp-co/archmap/schema/arch.schema.json",
   "title": "archmap manifest",
-  "description": "A project's declared architecture. Closed vocabulary: an unknown contract type is an error, never a warning (SPEC.md §2).",
+  "description": "A project's declared architecture. Closed vocabulary: an unknown contract type is an error, never a warning (SPEC.md \u00a72).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version"],
+  "required": [
+    "version"
+  ],
   "properties": {
-    "version": { "const": 1 },
-
+    "version": {
+      "const": 1
+    },
+    "tsConfig": {
+      "type": "string",
+      "description": "Path (repo-relative) to a tsconfig whose `compilerOptions.paths` the TS provider must resolve through. Without it dependency-cruiser runs with --no-config and every aliased import is unresolvable, so a package that imports through an alias contributes no edges and every contract over it passes vacuously."
+    },
     "modules": {
       "type": "object",
-      "description": "Module name to the globs whose files belong to it. Later declarations win, so a narrow module can carve itself out of a broader one (§6).",
-      "additionalProperties": { "type": "array", "items": { "type": "string" } },
-      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$" }
+      "description": "Module name to the globs whose files belong to it. Later declarations win, so a narrow module can carve itself out of a broader one (\u00a76).",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9-]*$"
+      }
     },
-
     "tests": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Test files are a first-class kind, not an exemption list. `relax` removes named contract types for test files only (§6.1).",
+      "description": "Test files are a first-class kind, not an exemption list. `relax` removes named contract types for test files only (\u00a76.1).",
       "properties": {
-        "globs": { "type": "array", "items": { "type": "string" } },
+        "globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "relax": {
           "type": "array",
-          "items": { "enum": ["layers", "forbidden", "independence", "boundary", "fan-out"] }
+          "items": {
+            "enum": [
+              "layers",
+              "forbidden",
+              "independence",
+              "boundary",
+              "fan-out"
+            ]
+          }
         }
       }
     },
-
     "generated": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Generated code belongs to no module. Edges touching it are dropped rather than attributed (§6).",
-      "properties": { "globs": { "type": "array", "items": { "type": "string" } } }
+      "description": "Generated code belongs to no module. Edges touching it are dropped rather than attributed (\u00a76).",
+      "properties": {
+        "globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
-
     "exclude": {
       "type": "array",
       "description": "Paths outside the graph entirely.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
-
     "size": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Thresholds declared once and generated into each language's native linter. archmap does not count lines itself (§5.1).",
+      "description": "Thresholds declared once and generated into each language's native linter. archmap does not count lines itself (\u00a75.1).",
       "properties": {
-        "max_file_lines": { "type": "integer", "minimum": 1 },
-        "max_function_lines": { "type": "integer", "minimum": 1 },
-        "max_files_per_dir": { "type": "integer", "minimum": 1 }
+        "max_file_lines": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_function_lines": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_files_per_dir": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-
     "contracts": {
       "type": "array",
-      "items": { "$ref": "#/$defs/contract" }
+      "items": {
+        "$ref": "#/$defs/contract"
+      }
     }
   },
-
   "$defs": {
     "base": {
       "type": "object",
-      "required": ["id", "type"],
+      "required": [
+        "id",
+        "type"
+      ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
         "status": {
-          "enum": ["draft", "locked"],
+          "enum": [
+            "draft",
+            "locked"
+          ],
           "default": "draft",
-          "description": "draft reports, locked blocks. Status is per contract — there is no repo-wide mode (§8)."
+          "description": "draft reports, locked blocks. Status is per contract \u2014 there is no repo-wide mode (\u00a78)."
         },
         "description": {
           "type": "string",
@@ -77,31 +127,58 @@
       }
     },
     "contract": {
-      "allOf": [{ "$ref": "#/$defs/base" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        }
+      ],
       "oneOf": [
         {
           "title": "layers",
-          "required": ["type", "order"],
+          "required": [
+            "type",
+            "order"
+          ],
           "properties": {
-            "type": { "const": "layers" },
+            "type": {
+              "const": "layers"
+            },
             "order": {
               "type": "array",
               "minItems": 2,
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Highest first. A module may depend on any module later in the list, never earlier."
             }
           }
         },
         {
           "title": "forbidden",
-          "required": ["type", "from", "to"],
+          "required": [
+            "type",
+            "from",
+            "to"
+          ],
           "properties": {
-            "type": { "const": "forbidden" },
-            "from": { "type": "string" },
+            "type": {
+              "const": "forbidden"
+            },
+            "from": {
+              "type": "string"
+            },
             "to": {
               "oneOf": [
-                { "type": "string" },
-                { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                }
               ],
               "description": "Module names, path globs, or the wildcard \"*\" meaning the module may depend on nothing outside itself."
             }
@@ -109,65 +186,127 @@
         },
         {
           "title": "independence",
-          "required": ["type", "modules"],
+          "required": [
+            "type",
+            "modules"
+          ],
           "properties": {
-            "type": { "const": "independence" },
+            "type": {
+              "const": "independence"
+            },
             "modules": {
               "type": "array",
               "minItems": 2,
-              "items": { "type": "string" },
-              "description": "Checked transitively — the common real violation is two features glued through a module neither one names."
+              "items": {
+                "type": "string"
+              },
+              "description": "Checked transitively \u2014 the common real violation is two features glued through a module neither one names."
             }
           }
         },
         {
           "title": "boundary",
-          "required": ["type", "module", "public"],
+          "required": [
+            "type",
+            "module",
+            "public"
+          ],
           "properties": {
-            "type": { "const": "boundary" },
-            "module": { "type": "string" },
+            "type": {
+              "const": "boundary"
+            },
+            "module": {
+              "type": "string"
+            },
             "public": {
               "type": "array",
               "minItems": 1,
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Globs for the module's entry points. Any cross-module edge landing elsewhere is a divergence."
             }
           }
         },
         {
           "title": "fan-out",
-          "required": ["type", "max_modules"],
+          "required": [
+            "type",
+            "max_modules"
+          ],
           "properties": {
-            "type": { "const": "fan-out" },
-            "max_modules": { "type": "integer", "minimum": 1 },
-            "scope": { "enum": ["file", "module"], "default": "file" }
+            "type": {
+              "const": "fan-out"
+            },
+            "max_modules": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "scope": {
+              "enum": [
+                "file",
+                "module"
+              ],
+              "default": "file"
+            }
           }
         },
         {
           "title": "cardinality",
-          "required": ["type", "port", "implementations"],
+          "required": [
+            "type",
+            "port",
+            "implementations"
+          ],
           "properties": {
-            "type": { "const": "cardinality" },
-            "port": { "type": "string" },
-            "implementations": { "type": "integer", "minimum": 0 }
+            "type": {
+              "const": "cardinality"
+            },
+            "port": {
+              "type": "string"
+            },
+            "implementations": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         },
         {
           "title": "interface-only",
-          "required": ["type", "from", "to"],
+          "required": [
+            "type",
+            "from",
+            "to"
+          ],
           "properties": {
-            "type": { "const": "interface-only" },
-            "from": { "type": "string" },
-            "to": { "type": "string" }
+            "type": {
+              "const": "interface-only"
+            },
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            }
           }
         },
         {
           "title": "absence",
-          "required": ["type", "from", "to"],
+          "required": [
+            "type",
+            "from",
+            "to"
+          ],
           "properties": {
-            "type": { "const": "absence" },
-            "from": { "type": "string" },
-            "to": { "type": "string" }
+            "type": {
+              "const": "absence"
+            },
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            }
           }
         }
       ]

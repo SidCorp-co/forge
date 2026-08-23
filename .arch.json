@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "tsConfig": ".arch-tsconfig.json",
   "modules": {
     "core-admin": [
       "packages/core/src/admin/**"
@@ -269,24 +270,24 @@
       "type": "forbidden",
       "from": "web-design",
       "to": "web-features",
-      "status": "draft",
-      "description": "the kit renders what a feature hands it; a kit component reaching into a feature makes the kit un-reusable and the feature un-testable. Measured 2026-08-23 on the alias-resolved graph: 0 edges. DRAFT because `arch check` runs dependency-cruiser with --no-config and no --ts-config, so 841 of web-v2's 856 import edges are unresolvable and a locked contract here could never fire. Proven with the flag: 1795 edges resolve, 15 left. See docs/proposals/archmap-ts-config.md."
+      "status": "locked",
+      "description": "the kit renders what a feature hands it; a kit component reaching into a feature makes the kit un-reusable and the feature un-testable. Measured 2026-08-23 on the alias-resolved graph: 0 edges."
     },
     {
       "id": "web-design-holds-no-api-client",
       "type": "forbidden",
       "from": "web-design",
       "to": "web-lib-api",
-      "status": "draft",
-      "description": "a kit component renders what it is handed; resolving a URL against the API client makes the kit depend on a deploy's origin. Measured 2026-08-23 on the alias-resolved graph: 0 edges \u2014 markdown.tsx and knowledge-markdown.tsx imported coreFileUrl until it moved to lib/utils/core-url.ts, which is what it always was (a string function over one env value, no fetch, no route). DRAFT for the same reason as the other two web contracts, not because the rule is unsettled."
+      "status": "locked",
+      "description": "a kit component renders what it is handed; resolving a URL against the API client makes the kit depend on a deploy's origin. Measured 2026-08-23: 0 edges, once `coreFileUrl` moved out of lib/api/client.ts to lib/utils/core-url.ts \u2014 it is a string function over one env value and was never part of the client."
     },
     {
       "id": "web-features-do-not-reach-into-routes",
       "type": "forbidden",
       "from": "web-features",
       "to": "web-app",
-      "status": "draft",
-      "description": "routes compose features, never the reverse; a feature importing a route file pins it to one URL. Same alias blindness as web-design-is-presentational. Measured 2026-08-23 on the alias-resolved graph: 0 edges. DRAFT because `arch check` runs dependency-cruiser with --no-config and no --ts-config, so 841 of web-v2's 856 import edges are unresolvable and a locked contract here could never fire. Proven with the flag: 1795 edges resolve, 15 left. See docs/proposals/archmap-ts-config.md."
+      "status": "locked",
+      "description": "routes compose features, never the reverse; a feature importing a route file pins it to one URL. Same alias blindness as web-design-is-presentational. Measured 2026-08-23 on the alias-resolved graph: 0 edges."
     }
   ]
 }

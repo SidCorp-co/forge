@@ -133,7 +133,7 @@ The manifest also declares a `profile` — the shape the whole repo claims, neve
 `hardened` every declared axis blocks and every `ci-passed` needs-job is asserted. Today: hardened.
 `conformance-audit.mjs` is the only check whose subject is the **setup** rather than the code, and
 it exists because the protocol is otherwise content-free — a repo could gate nothing, declare a
-profile, and be perfectly conformant. Its six rules and what each was born from: `scripts/README.md`.
+profile, and be perfectly conformant. Its seven rules and what each was born from: `scripts/README.md`.
 
 | Axis | Gate | Owns | Must not touch |
 |---|---|---|---|
@@ -187,6 +187,14 @@ Do not add a rule to one axis that another already owns:
 `arch check` exit codes: `0` clean · `1` a new violation · `2` **the gate could not run** (bad flag,
 unreadable manifest, a scope matching no files). Never read `2` as a pass — the same 1-vs-2 split
 `cm verify` uses.
+
+`.arch.json` declares `tsConfig: .arch-tsconfig.json`, and that line is load-bearing: dependency-cruiser
+runs with `--no-config`, so without it nothing resolves through a tsconfig `paths` alias — and an
+unresolvable edge is **dropped, not reported**. Measured 2026-08-23: 841 of 997 unresolvable edges
+were `web-v2`'s `@/*`, i.e. effectively that whole package's graph, while three contracts over it sat
+`locked` and passed on nothing. With the map: 5,122 edges resolved, 171 unresolvable — all of them
+node_modules subpath exports, which belong to no module. Audit rule R7 holds the ceiling, because
+`.forge/archmap/` is vendored and a re-vendor could drop the support without a single test going red.
 
 Thresholds live in one place per axis. `.arch.json` declares the architecture (modules by path glob,
 plus `layers` / `forbidden` / `independence` / `fan-out` contracts, each `draft` or `locked`); the
