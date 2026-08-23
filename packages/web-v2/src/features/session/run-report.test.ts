@@ -316,6 +316,17 @@ describe("the agent's own prose", () => {
     expect(n.closing).toBe("two");
   });
 
+  it("does not put the runner's own status lines in the agent's voice", () => {
+    const system = agentItem([said("Session started")], { id: "sys" });
+    system.role = "tool";
+    const items = [system, agentItem([said("I'll start by reading the issue.")], { id: "a1" })];
+
+    expect(deriveTranscriptRows(items).map((r) => r.arg)).toEqual([
+      "I'll start by reading the issue.",
+    ]);
+    expect(deriveNarration(items).count).toBe(1);
+  });
+
   it("reports nothing to show for a run that only made tool calls", () => {
     const n = deriveNarration([agentItem([toolBlock(tool({ name: "Read" }))])]);
     expect(n).toEqual({ closing: null, count: 0 });

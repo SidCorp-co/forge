@@ -41,7 +41,7 @@ export function useSessionTurns(id: string | undefined) {
 // cm:guard follow `nextCursor` to the end — the server caps a page at 500 (`turns-helpers.ts`), and one page is not a session: run d089d6f3 has 1663 entries, so the single-page fetch rendered the first 500 and silently dropped the rest, closing the run report on "Now §E — the FAQ JSON-LD tokenizer." while the actual verdict sat in the tail.
 const TURN_PAGE_CAP = 40;
 
-async function fetchAllTurns(id: string): Promise<TurnsResponse> {
+export async function fetchAllTurns(id: string): Promise<TurnsResponse> {
   const turns: TurnRow[] = [];
   let after: string | undefined;
   for (let page = 0; page < TURN_PAGE_CAP; page++) {

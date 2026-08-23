@@ -169,7 +169,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
               ))}
             </div>
             <span className="fg-caption">
-              {rows.length} tool calls
+              {rows.filter((r) => r.kind === "tool").length} tool calls
               {blocker ? ` · ${blocker.errorCount} errors` : ""}
             </span>
           </CardHeader>

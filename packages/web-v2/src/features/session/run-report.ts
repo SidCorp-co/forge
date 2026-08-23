@@ -296,6 +296,11 @@ function transcriptArg(tc: ToolCallData): string {
  * 10 are the verdicts. Drop them and the record still lists what ran, but no
  * longer says what the agent thought it was doing.
  */
+// cm:guard only role `assistant` is the agent talking — a runner `system` entry lands as role `tool` and `assistantBlocks` turns its content into an ordinary text block, so without this "Session started" rendered as the agent's first sentence and counted toward the notes.
+function wroteIt(item: ConversationItem): boolean {
+  return item.role === "assistant";
+}
+
 export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   let saidCount = 0;
@@ -303,7 +308,7 @@ export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[]
     if (item.kind !== "agent") continue;
     for (const block of item.blocks) {
       if (block.type === "text") {
-        if (!block.text.trim()) continue;
+        if (!block.text.trim() || !wroteIt(item)) continue;
         saidCount += 1;
         rows.push({
           id: `${item.id}-said-${saidCount}`,
@@ -351,7 +356,7 @@ export interface Narration {
 export function deriveNarration(items: ConversationItem[]): Narration {
   const texts: string[] = [];
   for (const item of items) {
-    if (item.kind !== "agent") continue;
+    if (item.kind !== "agent" || !wroteIt(item)) continue;
     for (const block of item.blocks) {
       if (block.type === "text" && block.text.trim()) texts.push(block.text.trim());
     }
