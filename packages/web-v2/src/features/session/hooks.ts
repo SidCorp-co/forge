@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import type { SessionMetadata } from "@/features/sessions/types";
+import type { TurnRow, TurnsResponse } from "./types";
 import {
   type CreateSessionOpts,
   type EditTurnOpts,
@@ -32,9 +33,24 @@ export function useSession(id: string | undefined) {
 export function useSessionTurns(id: string | undefined) {
   return useQuery({
     queryKey: ["agent-session", id, "turns"],
-    queryFn: () => sessionApi.getTurns(id as string, { limit: 500 }),
+    queryFn: () => fetchAllTurns(id as string),
     enabled: !!id,
   });
+}
+
+// cm:guard follow `nextCursor` to the end — the server caps a page at 500 (`turns-helpers.ts`), and one page is not a session: run d089d6f3 has 1663 entries, so the single-page fetch rendered the first 500 and silently dropped the rest, closing the run report on "Now §E — the FAQ JSON-LD tokenizer." while the actual verdict sat in the tail.
+const TURN_PAGE_CAP = 40;
+
+async function fetchAllTurns(id: string): Promise<TurnsResponse> {
+  const turns: TurnRow[] = [];
+  let after: string | undefined;
+  for (let page = 0; page < TURN_PAGE_CAP; page++) {
+    const res = await sessionApi.getTurns(id, { after, limit: 500 });
+    turns.push(...res.turns);
+    if (!res.nextCursor) return { turns, nextCursor: null };
+    after = res.nextCursor;
+  }
+  return { turns, nextCursor: null };
 }
 
 /** Invalidate the whole `['agent-session', id]` family after a mutation. */
