@@ -261,13 +261,16 @@ export function deriveActivityGroups(items: ConversationItem[]): ActivityGroup[]
 export interface TranscriptRow {
   id: string;
   timestamp?: number;
-  /** Display name: the bare tool, or `MCP <server>` for an MCP call. */
+  /** `tool` — a call. `said` — the agent's own prose, in place. */
+  kind: "tool" | "said";
+  /** Display name: the bare tool, `MCP <server>` for an MCP call, `said` for prose. */
   tool: string;
   isMcp: boolean;
-  /** The one argument that identifies the call (path, pattern, command). */
+  /** The one argument that identifies the call (path, pattern, command); for
+   *  `said`, the first line of what the agent wrote. */
   arg: string;
   outcome: ToolOutcome;
-  /** Full captured output — the expanded body. */
+  /** Full captured output, or the full text of a `said` row. */
   body: string;
   isError: boolean;
 }
@@ -285,17 +288,42 @@ function transcriptArg(tc: ToolCallData): string {
   return first.length > 90 ? `${first.slice(0, 89)}…` : first;
 }
 
-/** Every tool call in transcript order, one row each. */
+/**
+ * Every event in transcript order — tool calls AND the agent's own prose.
+ *
+ * The prose is not decoration: measured on a getcontent `drive` run, 58 of its
+ * 69 text blocks are step markers ("Now the route itself.") and the remaining
+ * 10 are the verdicts. Drop them and the record still lists what ran, but no
+ * longer says what the agent thought it was doing.
+ */
 export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
+  let saidCount = 0;
   for (const item of items) {
     if (item.kind !== "agent") continue;
     for (const block of item.blocks) {
+      if (block.type === "text") {
+        if (!block.text.trim()) continue;
+        saidCount += 1;
+        rows.push({
+          id: `${item.id}-said-${saidCount}`,
+          timestamp: item.timestamp,
+          kind: "said",
+          tool: "said",
+          isMcp: false,
+          arg: firstLine(block.text),
+          outcome: { text: "", tone: "muted" },
+          body: block.text,
+          isError: false,
+        });
+        continue;
+      }
       if (block.type !== "tool") continue;
       const server = mcpServer(block.tool.name);
       rows.push({
         id: block.tool.id,
         timestamp: item.timestamp,
+        kind: "tool",
         tool: server ? `MCP ${server}` : block.tool.name,
         isMcp: !!server,
         arg: transcriptArg(block.tool),
@@ -306,6 +334,31 @@ export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[]
     }
   }
   return rows;
+}
+
+// cm:why 120 chars, measured on a getcontent `drive` run: 58 of 69 text blocks fall under it and are step markers ("Now the route itself."), while all 10 above it are substantive verdicts. Taking simply the LAST block would have surfaced "Now the close comment." as the run's conclusion.
+const SUMMARY_MIN_CHARS = 120;
+
+export interface Narration {
+  /** The last substantive thing the agent wrote — its conclusion. */
+  closing: string | null;
+  /** How many prose blocks the transcript holds, conclusion included. */
+  count: number;
+}
+
+/** The agent's own voice, folded to what the Story lens can carry: the
+ *  conclusion, plus a count pointing at the full record in the transcript. */
+export function deriveNarration(items: ConversationItem[]): Narration {
+  const texts: string[] = [];
+  for (const item of items) {
+    if (item.kind !== "agent") continue;
+    for (const block of item.blocks) {
+      if (block.type === "text" && block.text.trim()) texts.push(block.text.trim());
+    }
+  }
+  const substantive = texts.filter((t) => t.length >= SUMMARY_MIN_CHARS);
+  const closing = substantive[substantive.length - 1] ?? texts[texts.length - 1] ?? null;
+  return { closing, count: texts.length };
 }
 
 

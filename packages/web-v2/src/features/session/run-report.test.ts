@@ -3,6 +3,7 @@ import type { SessionRow } from "@/features/sessions/types";
 import {
   deriveActivityGroups,
   deriveBlocker,
+  deriveNarration,
   deriveTape,
   deriveTimeSpend,
   deriveTranscriptRows,
@@ -274,5 +275,49 @@ describe("deriveTimeSpend", () => {
     const spend = deriveTimeSpend({ ...session, dispatchedAt: null } as SessionRow);
     expect(spend?.spans.map((s) => s.key)).toEqual(["agent"]);
     expect(spend?.totalMs).toBe(192_000);
+  });
+});
+
+const said = (text: string) => ({ type: "text" as const, text });
+
+describe("the agent's own prose", () => {
+  it("interleaves what the agent said with what it ran, in order", () => {
+    const rows = deriveTranscriptRows([
+      agentItem([
+        said("Now the route itself."),
+        toolBlock(tool({ name: "Read", input: { file_path: "/repo/a.ts" } })),
+        said("Green."),
+      ]),
+    ]);
+
+    expect(rows.map((r) => r.kind)).toEqual(["said", "tool", "said"]);
+    expect(rows[0].arg).toBe("Now the route itself.");
+    expect(rows[0].outcome.text).toBe("");
+  });
+
+  it("skips blocks that are only whitespace, which every turn ends with", () => {
+    const rows = deriveTranscriptRows([agentItem([said("   \n  "), said("real")])]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].arg).toBe("real");
+  });
+
+  it("closes on the last substantive verdict, not the last step marker", () => {
+    const verdict = `Both actions are done. ${"x".repeat(150)}`;
+    const n = deriveNarration([
+      agentItem([said("First, the schema."), said(verdict), said("Now the close comment.")]),
+    ]);
+
+    expect(n.closing).toBe(verdict);
+    expect(n.count).toBe(3);
+  });
+
+  it("falls back to the last note when the agent never wrote a long one", () => {
+    const n = deriveNarration([agentItem([said("one"), said("two")])]);
+    expect(n.closing).toBe("two");
+  });
+
+  it("reports nothing to show for a run that only made tool calls", () => {
+    const n = deriveNarration([agentItem([toolBlock(tool({ name: "Read" }))])]);
+    expect(n).toEqual({ closing: null, count: 0 });
   });
 });

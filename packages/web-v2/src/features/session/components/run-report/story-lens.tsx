@@ -11,10 +11,14 @@
 // The first row opens on load — errors when there were any, since the order puts
 // them first. A run that failed shows why without a click; a run that passed
 // shows what it ran.
+//
+// Above the rows sits the agent's conclusion in its own words. Folding tool
+// calls is the point of this lens; folding away the agent's voice was not, and
+// for one release it did exactly that.
 
 import { useState } from "react";
 import { Icon, type IconName } from "@/design";
-import type { ActivityGroup, ActivityKind } from "../../run-report";
+import type { ActivityGroup, ActivityKind, Narration } from "../../run-report";
 
 const GLYPH: Record<ActivityKind, { icon: IconName; color: string }> = {
   errors: { icon: "alert", color: "var(--red-600)" },
@@ -70,12 +74,31 @@ function GroupRow({ group, defaultOpen }: { group: ActivityGroup; defaultOpen: b
 export function StoryLens({
   groups,
   thinkingPauses,
+  narration,
+  onOpenTranscript,
 }: {
   groups: ActivityGroup[];
   thinkingPauses: number;
+  narration: Narration;
+  onOpenTranscript?: () => void;
 }) {
   return (
     <div>
+      {narration.closing && (
+        <div className="border-line-subtle border-b px-3 py-2.5">
+          <p className="fg-caption mb-1">What the agent concluded</p>
+          <p className="fg-body-sm whitespace-pre-wrap">{narration.closing}</p>
+          {narration.count > 1 && onOpenTranscript && (
+            <button
+              type="button"
+              onClick={onOpenTranscript}
+              className="fg-caption mt-1.5 underline underline-offset-2"
+            >
+              {narration.count} notes written during the run →
+            </button>
+          )}
+        </div>
+      )}
       <ul>
         {groups.map((group, i) => (
           <GroupRow key={group.kind} group={group} defaultOpen={i === 0} />

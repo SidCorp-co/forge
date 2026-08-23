@@ -6,6 +6,10 @@
 // what makes 400 rows scannable, and it is derived per tool kind (a Read says
 // "218 lines", a test run says "428 passed, 1 failed"). `e` / `c` expand and
 // collapse everything, which is how a reader diffs two runs quickly.
+//
+// The agent's own prose sits inline, in place, as `said` rows — this is the one
+// lens that promises the complete record, and a record of what ran without what
+// the agent said it was doing is not one.
 
 import { useEffect, useState } from "react";
 import { Kbd } from "@/design";
@@ -36,7 +40,13 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
   return (
     <li
       className="border-line-subtle border-b last:border-b-0"
-      style={row.isError ? { background: "var(--red-50)" } : undefined}
+      style={
+        row.isError
+          ? { background: "var(--red-50)" }
+          : row.kind === "said"
+            ? { background: "var(--bg-sunken)" }
+            : undefined
+      }
     >
       <button
         type="button"
@@ -47,11 +57,21 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
         <span className="fg-caption w-[62px] flex-none font-mono">{clockOf(row.timestamp)}</span>
         <span
           className="fg-caption w-[92px] flex-none truncate font-mono"
-          style={row.isMcp ? { color: "var(--cobalt-500)" } : undefined}
+          style={
+            row.isMcp
+              ? { color: "var(--cobalt-500)" }
+              : row.kind === "said"
+                ? { color: "var(--accent-text)" }
+                : undefined
+          }
         >
           {row.tool}
         </span>
-        <span className="fg-body-sm min-w-0 flex-1 truncate font-mono">{row.arg}</span>
+        <span
+          className={`fg-body-sm min-w-0 flex-1 truncate ${row.kind === "said" ? "" : "font-mono"}`}
+        >
+          {row.arg}
+        </span>
         <span
           className="fg-caption max-w-[42%] flex-none truncate font-mono"
           style={{ color: TONE_COLOR[row.outcome.tone] }}
@@ -59,11 +79,17 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
           {row.outcome.text}
         </span>
       </button>
-      {open && body && (
-        <pre className="fg-mono mx-3 mb-2 overflow-x-auto rounded-md bg-sunken px-3 py-2 text-[11.5px] leading-[1.5]">
-          {body}
-        </pre>
-      )}
+      {open &&
+        body &&
+        (row.kind === "said" ? (
+          <p className="fg-body-sm mx-3 mb-2 whitespace-pre-wrap rounded-md bg-surface px-3 py-2">
+            {body}
+          </p>
+        ) : (
+          <pre className="fg-mono mx-3 mb-2 overflow-x-auto rounded-md bg-sunken px-3 py-2 text-[11.5px] leading-[1.5]">
+            {body}
+          </pre>
+        ))}
     </li>
   );
 }
@@ -85,7 +111,10 @@ export function TranscriptLens({ rows }: { rows: TranscriptRow[] }) {
   return (
     <div>
       <div className="border-line-subtle flex items-center gap-2 border-b px-3 py-2">
-        <span className="fg-caption flex-1">{rows.length} tool calls, newest last</span>
+        <span className="fg-caption flex-1">
+          {rows.length} events, newest last · {rows.filter((r) => r.kind === "said").length} written
+          by the agent
+        </span>
         <span className="fg-caption">
           expand all <Kbd>e</Kbd> · collapse <Kbd>c</Kbd>
         </span>

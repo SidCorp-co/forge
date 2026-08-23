@@ -18,6 +18,7 @@ import { useSessionCost } from "@/features/sessions/hooks";
 import type { SessionRow } from "@/features/sessions/types";
 import {
   deriveActivityGroups,
+  deriveNarration,
   deriveBlocker,
   deriveTape,
   deriveTimeSpend,
@@ -72,6 +73,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
 
   const groups = useMemo(() => deriveActivityGroups(items), [items]);
   const rows = useMemo(() => deriveTranscriptRows(items), [items]);
+  const narration = useMemo(() => deriveNarration(items), [items]);
   const files = useMemo(() => deriveFilesChanged(items), [items]);
   const ticks = useMemo(() => deriveTape(items), [items]);
   const blocker = useMemo(() => deriveBlocker(items), [items]);
@@ -173,7 +175,14 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
           </CardHeader>
           <div className="flex min-h-0 flex-1 gap-2 p-2">
             <div className="min-w-0 flex-1 overflow-y-auto">
-              {lens === "story" && <StoryLens groups={groups} thinkingPauses={meta.thinkingPauses} />}
+              {lens === "story" && (
+                <StoryLens
+                  groups={groups}
+                  thinkingPauses={meta.thinkingPauses}
+                  narration={narration}
+                  onOpenTranscript={() => setLens("transcript")}
+                />
+              )}
               {lens === "diff" && (
                 <DiffLens
                   files={files}
