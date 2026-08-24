@@ -36,7 +36,7 @@ Open-source control plane for Claude Code — full-stack project management + an
 This repo **owns its checker**: `.forge/codemap/cm` is vendored (codemap 0.12.0) and is the
 authority — it wins over a `cm` on PATH, which wins over the plugin's bundled copy. Config:
 `.forge/codemap.json` (flow vocabulary + enforcement scope) · `.forge/codemap-baseline.json`
-(13,304 legacy comments across 1,080 files frozen by CONTENT — a comment is flagged only when its
+(13,413 legacy comments across 1,090 files frozen by CONTENT — a comment is flagged only when its
 text is new, so a reflow or a move is not a violation). **Gate**: the `codemap` job in
 `.github/workflows/ci.yml` sits in `ci-passed`'s `needs` list, so a violation blocks the merge. It
 runs the prose tier scoped to the PR's changed lines (`--since $(git merge-base origin/main HEAD)`)
@@ -153,13 +153,14 @@ unit tests does not count** — with 974 `vi.mock` calls in `packages/core`, a u
 step's function with every neighbour stubbed, which proves the function runs, not that the flow
 connects. Nothing is self-reported: a `// covers dispatch/tick` comment in a test file would be the
 claim-instead-of-measurement the manifest exists to catch. All 6 steps of `dispatch` are settled
-end-to-end today and `.forge/flow-coverage-baseline.json` is empty; freeze into it with
+end-to-end today and `.forge/flow-coverage-baseline.json` freezes one uncovered step,
+`release/deploy`; freeze into it with
 `--update-baseline` so declaring a new flow is never punished, only visible.
 
 Lint debt is its own row for the same reason, one package over. `web-v2` had no biome config at all
 until 2026-08-23; measured on the day it got one, 748 diagnostics — 409 formatter, 185 import order,
 151 real lint errors. Turning the linter on as `error` would have been 151 red builds and turning it
-on as `warn` would have held nothing, so `check-lint-budget.mjs` freezes today's 226 violations per
+on as `warn` would have held nothing, so `check-lint-budget.mjs` freezes today's 226 violations across 101 files per
 (file, rule) in `.forge/lint-baseline.json` and fails only on growth. Frozen per rule rather than
 per line, so moving code inside a file is not a violation. The formatter stays **off** there on
 purpose: enabling it is a 313-file, 22k-line diff that would bury every real change under it, and
@@ -168,7 +169,7 @@ it is a separate decision from the linter.
 Size is its own row because biome **declares** the two length rules but cannot gate them: it has no
 baseline, so the only choices were `warn` (143 violations, `biome check` exits 0, nothing held) and
 `error` (143 violations, every build red). `check-size-budget.mjs` reads biome's own JSON, freezes
-today's 102 offenders per file, and fails only on growth. It adds no rule — `packages/core/biome.json`
+today's 103 offenders per file, and fails only on growth. It adds no rule — `packages/core/biome.json`
 still owns the thresholds. This row is why the format row no longer claims file & function length:
 for most of this repo's life that claim was false.
 
@@ -192,7 +193,7 @@ unreadable manifest, a scope matching no files). Never read `2` as a pass — th
 runs with `--no-config`, so without it nothing resolves through a tsconfig `paths` alias — and an
 unresolvable edge is **dropped, not reported**. Measured 2026-08-23: 841 of 997 unresolvable edges
 were `web-v2`'s `@/*`, i.e. effectively that whole package's graph, while three contracts over it sat
-`locked` and passed on nothing. With the map: 5,122 edges resolved, 171 unresolvable — all of them
+`locked` and passed on nothing. With the map: 5,207 edges resolved, 170 unresolvable of 5,377 possible (3.2%) — all of them
 node_modules subpath exports, which belong to no module. Audit rule R7 holds the ceiling, because
 `.forge/archmap/` is vendored and a re-vendor could drop the support without a single test going red.
 
