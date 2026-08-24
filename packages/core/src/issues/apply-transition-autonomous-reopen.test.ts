@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { issues } from '../db/schema.js';
-
 // ISS-141 — an autonomous project has no step that answers for `reopen`, so a
 // reopened issue was queued for a driver that would never look at it. These
 // tests assert the rewrite lands it on `open` WITHOUT dropping what a reopen
 // means: the authored reason still fires against `reopen`, and the reopen
 // counter still increments.
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { issues } from '../db/schema.js';
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
@@ -83,9 +83,7 @@ const REOPEN_OPTS = { transitionReason: 'the bug is still live on production' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // `clearAllMocks` clears calls but NOT a queued `mockResolvedValueOnce`, and
-  // the reason-required test queues a project row it never consumes — without
-  // this reset that row leaks into the next test and answers its lookup.
+  // cm:why `clearAllMocks` clears calls but NOT a queued `mockResolvedValueOnce`, and the reason-required test queues a project row it never consumes — without this reset that row leaks into the next test and answers its lookup as if the project were autonomous
   projectSelectLimit.mockReset();
   projectSelectLimit.mockResolvedValue([]);
   updateReturning.mockReset();
