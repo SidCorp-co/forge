@@ -124,7 +124,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - run: .forge/codemap/cm verify --since $(git merge-base origin/main HEAD)
+      - run: .forge/codemap/cm verify
       - run: .forge/codemap/cm verify --tier referential
       - run: .forge/codemap/cm verify --tier structural
 

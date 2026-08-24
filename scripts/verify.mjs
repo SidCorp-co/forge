@@ -52,12 +52,13 @@ const CHECKS = [
     skipIf: /skipped — no coverage report/,
   },
   {
+    // cm:guard WHOLE TREE, never `--since`. A scoped run walks the diff against origin/main, and for a commit pushed straight to `main` that diff is EMPTY — cm prints its success line over zero files and this script forwards a green. 15 CM001 errors reached main that way before anyone looked. Legacy prose is frozen by content in the baseline, so a whole-tree run costs nothing and has no blind spot; if it ever goes red on untouched files, the baseline is stale, not the rule.
+    // cm:guard this comment sits ABOVE `label:` on purpose — conformance-audit R2 proves a check declares a `scanned:` pattern by looking at most 400 characters past its label, so prose wedged between the two reads as a check with no scan proof and fails the audit.
     axis: 'knowledge',
     label: 'codemap prose',
-    cmd: ['.forge/codemap/cm', 'verify', '--since', '@@MERGE_BASE@@'],
+    cmd: ['.forge/codemap/cm', 'verify'],
     scanned: /"files":\s*(\d+)/,
     json: true,
-    scopeMayBeEmpty: true,
   },
   {
     axis: 'knowledge',
@@ -144,7 +145,7 @@ const CI_COVERAGE = {
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',
-  '.forge/codemap/cm verify --since $(git merge-base origin/main HEAD)': 'verify',
+  '.forge/codemap/cm verify': 'verify',
   '.forge/codemap/cm verify --tier referential': 'verify',
   '.forge/codemap/cm verify --tier structural': 'verify',
   './.forge/archmap/archmap check': 'verify',
