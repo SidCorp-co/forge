@@ -14,12 +14,17 @@ Do NOT call \`forge_step_start\`. Call \`forge_release_batch get { runId }\` FIR
 2. Carry out the release procedure printed in your task prompt. That text is the authority
    on branches, versioning, changelog and deploy — this block is not, and you must not
    substitute a step it does not name.
-3. \`forge_release_batch finish { runId }\` → every claimed issue closes. Report closed/failed.
+3. \`forge_release_batch finish { runId, commit }\` → every claimed issue closes. Report
+   closed/failed. \`commit\` is the SHA you pushed to the production branch.
 
 ### What finish means
 \`finish\` is the ONLY thing in Forge that writes \`closed\`, and writing it is a claim that
 this release happened. Call it after the procedure completed AND you read its result. Never
 call it because the steps ran without throwing, and never to tidy up a partial release.
+
+When the project declares verification probes, the SERVER reads them on \`finish\` and refuses
+with RELEASE_NOT_VERIFIED unless the live build both changed and matches your \`commit\`. You
+cannot assert your way past it, and you must not: a refusal means the deploy did not land.
 
 On ANY failure — a conflict, a failed deploy, a step you could not complete, a procedure that
 does not fit what you actually found:

@@ -1,6 +1,13 @@
 import type { IntegrationEnvironment } from '../db/schema.js';
 
-export type IntegrationProvider = 'coolify' | 'postman' | 'epodsystem' | 'sentry' | 'rocketchat';
+export type IntegrationProvider =
+  | 'coolify'
+  | 'postman'
+  | 'epodsystem'
+  | 'sentry'
+  | 'rocketchat'
+  // cm:why `agent` has no adapter on purpose — nothing is integrated. It is a release CHANNEL declaration (which box may ship, how to prove it shipped, how to undo it), and the deploy itself is the project's own script run by the release session. Every adapter lookup already guards `if (!adapter)`, so the absence is a supported shape, not a gap.
+  | 'agent';
 
 /** Runtime form of {@link IntegrationProvider} — for validating caller-supplied strings. */
 export const INTEGRATION_PROVIDERS = [
@@ -9,6 +16,7 @@ export const INTEGRATION_PROVIDERS = [
   'epodsystem',
   'sentry',
   'rocketchat',
+  'agent',
 ] as const satisfies readonly IntegrationProvider[];
 
 // cm:guard adding a provider to the union above without adding it here fails this line — keep both in lockstep rather than letting the runtime list silently lag the type

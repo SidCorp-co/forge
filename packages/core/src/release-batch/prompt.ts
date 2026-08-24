@@ -57,5 +57,16 @@ function renderProcedure(plan: ReleasePlan): string {
   if (plan.instructions) {
     blocks.push(`### Deploy channel notes (${plan.provider})\n${plan.instructions}`);
   }
+  if (plan.verify) {
+    const urls = plan.verify.probes.map((p) => `- ${p.url}`).join('\n');
+    blocks.push(
+      `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed to the production branch. The server then reads these probes itself:\n${urls}\nIt goes green only when the live build CHANGED from what was serving before this batch started AND matches your \`commit\`. A healthy site still serving the old build is a RED, and \`finish\` will refuse. That refusal is not something to retry or work around: it means the deploy did not land.`,
+    );
+  }
+  if (plan.rollback) {
+    blocks.push(
+      `### If the deploy comes up dead\n${plan.rollback}\n\nRoll back AT MOST ONCE, and only when the deploy replaced a working build with a broken one. If the deploy never came up at all, the previous build is still serving — do nothing and abort. A rollback always ends in \`abort\`, never \`finish\`: nothing shipped.`,
+    );
+  }
   return `\n${blocks.join('\n\n')}\n`;
 }

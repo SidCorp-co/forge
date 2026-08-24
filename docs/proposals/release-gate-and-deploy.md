@@ -290,14 +290,36 @@ became an explicit default *floor* instead, named as such in the prompt.
 
 ### Wave 4 — deploy and proof · only for projects whose channel is not `none`
 
-- [ ] **L2.1** `forge_coolify_deploy` → `forge_deploy`, routed on `provider`, Coolify semantics kept.
-- [ ] **L2.2** `verify` on the production binding: a **list** of probes, cache-bypass required,
+**Shipped 2026-08-24, except L2.1 — which is now a decision not to do it.**
+
+- [ ] **L2.1 — not doing it, and this is the reason.** The premise was "a second channel must not
+  create a second tool with its own lifecycle". The second channel turned out not to need a Forge
+  tool at all: `agent` deploys by running the project's own script on a pinned box, so routing would
+  add a provider switch in front of exactly one Forge-performed provider. Renaming also costs more
+  than it looks — `forge_coolify_deploy` is named in project `disallowedTools` lists (forge-dev's
+  `tested` state has it), and a new name silently un-disallows it. Revisit when a SECOND channel
+  Forge itself performs.
+- [x] **L2.2** `verify` on the production binding: a **list** of probes, cache-bypass required,
   green only when `commit(live) == commit(merged)`, plus timeout + consecutive-stable-reads.
   **Done when** a healthy site still serving the old build reads **red**.
-- [ ] **L2.3** channel `agent`: the session runs the project's own deploy script on a pinned box.
+  *Shipped, and stronger than written:* the probes are read by the **server**, not the agent, and
+  `finish` REFUSES (`RELEASE_NOT_VERIFIED`) when they are not green — there is no assertion an agent
+  can make to get past it. Green needs both halves: the live commit changed from what was serving
+  **before the batch started** (read at claim time, which is why it can be known at all) and it
+  matches the `commit` the release reports. Without that pre-read, an agent reporting the commit
+  that was already live verifies perfectly.
+- [x] **L2.3** channel `agent`: the session runs the project's own deploy script on a pinned box.
   No ssh engine and no production key inside Forge.
-- [ ] **L2.4** rollback, declared per project, at most once, only for *deployed and the app died*,
+  *Shipped* as a real provider in the create union — `provider` is a `text` column, but the REST
+  path validates through a discriminated union, so a provider absent from it cannot be created at
+  all. It has no adapter (nothing is integrated) and its secrets schema is `{}` **strict**: the
+  production key stays on the runner box, enforced rather than documented.
+- [x] **L2.4** rollback, declared per project, at most once, only for *deployed and the app died*,
   and it `abort`s the batch — never `finish`es it.
+  *Shipped* as `binding.config.rollback`, injected verbatim with the once-only rule, the
+  never-when-the-old-build-is-still-serving rule, and "a rollback always ends in `abort`". The
+  enforceable half is already enforced from the other side: a rolled-back release cannot verify, and
+  `finish` refuses on that.
 
 ### Wave 5 — automation and visibility
 

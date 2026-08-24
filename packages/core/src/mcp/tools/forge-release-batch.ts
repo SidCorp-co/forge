@@ -22,6 +22,7 @@ import {
   abortReleaseBatch,
   finishReleaseBatch,
   loadReleaseBatchContext,
+  ReleaseNotVerifiedError,
 } from '../../release-batch/service.js';
 import {
   assertPrincipalIsMember,
@@ -36,6 +37,8 @@ const inputSchema = z
     runId: z.uuid(),
     /** abort only — human-readable reason for the abort. */
     reason: z.string().optional(),
+    /** finish only — the commit this release pushed to the production branch. */
+    commit: z.string().optional(),
   })
   .strict();
 
@@ -47,6 +50,10 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'get: load the batch context — roster of claimed issues (id, displayId, title, releaseNotes, status), ' +
     'baseBranch, productionBranch, deployPlanned. Call this FIRST to know what to merge+deploy+changelog. ' +
     'finish: close every claimed issue from gateStatus→closed via transitionIssueStatus. ' +
+    'Pass `commit` — the SHA this release pushed to the production branch. When the project ' +
+    'declares verification probes, the SERVER reads them and finish REFUSES unless the live ' +
+    'build changed from what was serving before the batch started and matches `commit`; a ' +
+    'refusal (RELEASE_NOT_VERIFIED) means the deploy did not land, and abort is the next move. ' +
     'Idempotent: a second call finds no claimed issues and returns closed:[]. ' +
     'Also closes the batch pipeline run (completed). ' +
     'abort: release all claims (issues remain at their current status), write one comment per issue ' +
@@ -80,8 +87,19 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
             ? ({ type: 'user', id: principal.userId } as const)
             : ({ type: 'device', id: device.id, ownerId: device.ownerId } as const);
 
-        const result = await finishReleaseBatch(input.runId, actor);
-        return result;
+        try {
+          return await finishReleaseBatch(input.runId, actor, { commit: input.commit });
+        } catch (err) {
+          if (err instanceof ReleaseNotVerifiedError) {
+            return {
+              error: 'RELEASE_NOT_VERIFIED',
+              reason: err.reason,
+              live: err.live,
+              nextStep: 'abort this batch with that reason, then fail the turn',
+            };
+          }
+          throw err;
+        }
       }
 
       case 'abort': {

@@ -19,6 +19,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { effectiveConfig, listActiveBindingsForEnvironment } from '../integrations/store.js';
 import { RELEASE_PROCEDURE_FACT, type ReleaseChannel, type ReleasePlan } from './plan.js';
+import { parseVerifyConfig } from './verify.js';
 
 export type { ReleaseChannel, ReleasePlan } from './plan.js';
 export { DEFAULT_RELEASE_PROCEDURE, RELEASE_PROCEDURE_FACT } from './plan.js';
@@ -26,12 +27,23 @@ export { DEFAULT_RELEASE_PROCEDURE, RELEASE_PROCEDURE_FACT } from './plan.js';
 export async function resolveReleaseChannel(projectId: string): Promise<ReleaseChannel> {
   const bindings = await listActiveBindingsForEnvironment(projectId, 'prod');
   const pair = bindings[0];
-  if (!pair) return { provider: null, instructions: null, releaseRunnerLabel: null };
+  if (!pair) {
+    return {
+      provider: null,
+      instructions: null,
+      releaseRunnerLabel: null,
+      verify: null,
+      rollback: null,
+    };
+  }
   const cfg = effectiveConfig(pair);
   const label = cfg.releaseRunnerLabel;
+  const rollback = cfg.rollback;
   return {
     provider: pair.binding.provider,
     instructions: pair.binding.instructions ?? null,
+    verify: parseVerifyConfig(cfg.verify),
+    rollback: typeof rollback === 'string' && rollback.trim().length > 0 ? rollback : null,
     // cm:guard read the pool label out of `config`, NEVER out of `integration_bindings.label` — that column is the multi-store slug (ISS-558) and sits inside UNIQUE(project_id, provider, environment, label), so borrowing it would make "which box releases" and "which store is this" the same field
     releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
   };

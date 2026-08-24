@@ -19,6 +19,8 @@ const plan = (over: Partial<ReleasePlan> = {}): ReleasePlan => ({
   provider: null,
   instructions: null,
   releaseRunnerLabel: null,
+  verify: null,
+  rollback: null,
   procedure: null,
   ...over,
 });

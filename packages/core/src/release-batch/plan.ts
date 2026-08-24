@@ -26,6 +26,8 @@ export const DEFAULT_RELEASE_PROCEDURE = `1. If productionBranch ≠ baseBranch:
    non-empty → skip the append.
    Commit message: \`docs(changelog): batch release <runId first 8> (<n> issues)\`.`;
 
+import type { VerifyConfig } from './verify.js';
+
 export interface ReleaseChannel {
   /** `null` when the project declares no production binding: cut and stop. */
   provider: string | null;
@@ -33,6 +35,10 @@ export interface ReleaseChannel {
   instructions: string | null;
   /** Matched against `runners.labels` to pick the boxes allowed to release. */
   releaseRunnerLabel: string | null;
+  /** How the kernel proves the deploy landed. `null` → nothing is proven. */
+  verify: VerifyConfig | null;
+  /** What to do when a deploy comes up dead, verbatim from the operator. */
+  rollback: string | null;
 }
 
 export interface ReleasePlan extends ReleaseChannel {

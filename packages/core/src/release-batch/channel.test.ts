@@ -57,6 +57,8 @@ describe('resolveReleaseChannel', () => {
       provider: null,
       instructions: null,
       releaseRunnerLabel: null,
+      verify: null,
+      rollback: null,
     });
   });
 
