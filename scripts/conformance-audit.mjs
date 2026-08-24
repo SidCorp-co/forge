@@ -95,12 +95,13 @@ const lvl = (n) => Object.values(axes).filter((s) => (s.level ?? 0) >= n).length
 function unresolvableEdges() {
   const declared = manifest?.checkers?.archmap?.maxUnresolvableEdges;
   if (typeof declared !== 'number') return { declared: null };
-  const r = spawnSync(at('.forge/archmap/arch'), ['check', '--stats'], {
+  const r = spawnSync(at('.forge/archmap/archmap'), ['check', '--stats'], {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
-  const m = /(\d+)\s+unresolvable edges/.exec(r.stdout ?? '');
+  // cm:guard match BOTH phrasings archmap has printed — `N unresolvable edges` (<=0.1.2) and `N unresolvable of M possible edges` (0.1.3+). A regex that stops matching yields measured:null, which FAILS this rule rather than passing it, so a wording change is loud rather than silent — but it also fails a repo whose gate is fine, which is why the pattern must track the tool.
+  const m = /(\d+)\s+unresolvable(?:\s+of\s+\d+\s+possible)?\s+edges/.exec(r.stdout ?? '');
   return { declared, measured: m ? Number(m[1]) : null };
 }
 

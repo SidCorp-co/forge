@@ -1,0 +1,28 @@
+{
+  "tool": "archmap",
+  "version": "0.1.3",
+  "algorithm": "sha256",
+  "files": {
+    ".gitattributes": "7ddb0d0cea0d2b6213418fe3a63083b7aed9d770055d839d231897402de0acfd",
+    "SPEC.md": "ffbcdc0cbe218ae61d1a40db54953802c00874fd14dec1594451831812bda433",
+    "VERSION": "2d2454ef0edeb462a6ce8b25d387aaa74df08093d5cea0428a10ce55510c6326",
+    "archmap": "28e4097480c0a9b71c1bb5af35a7838325e7b6baed4a1e933cced0687db601f5",
+    "entry.mjs": "ea0fc33f928299ac01ced8799279d76cf25d50cac9e3e9cc450f77f0dab98c47",
+    "schema/arch.schema.json": "001b7cc318be44bb64b2d13e3bd792596835f50f949d561eaa1e39d3944a0339",
+    "src/check.mjs": "e7cb8bbbcbcd801a19709cebca3f5cbb17c7c71b1cf524bceffdf9bd3a8c646b",
+    "src/cli.mjs": "9a964bf53874dc2e89acfd80790ba6455da6dcc19c9b6cdcb6e06a3054c45fbc",
+    "src/contracts/index.mjs": "b0290383e6b2afd887c1d1a2905c12810c0d523e74a0a5b70f190499c9f13816",
+    "src/graph/export.mjs": "1dd7b5349f97f401dcb5e9971f3d7209f8e65cc96b5ac55bdb5d76da140949d2",
+    "src/graph/map.mjs": "c71ff60dbb7958140144741167c00477f5eabdc774478772dae211cefeffbe72",
+    "src/graph/normalize.mjs": "a8c0852b5242902b46a2d623af59139c907224e432f8d6295e8ef09d413fd0ea",
+    "src/hook/pending.mjs": "a7a87c68afdd7b9fe7f4e7f02d136bddf803c8a89de312f4cef37c8fa1f932c1",
+    "src/hook/pre-edit.mjs": "200ab13857454be919fdabf9ae08afe226e2421e8e09c082cd17e696976f85d9",
+    "src/hook/resolve.mjs": "b6d29fda23d2623ecc99e941bd14a73e50b4f9eb18ebdb8772946d67d74dc8eb",
+    "src/index.mjs": "9f4f1b4e3755b17c94a6fb06fe7dd964520303c5d4c5773461a7df121c88cd7e",
+    "src/install.mjs": "e60030fa8364d995cce82074c357ba20d8fcf87ba2e68f9365c47ddf65d822e6",
+    "src/manifest.mjs": "4515a926d0dd89b2ab129ba739f837edcfcabb98bdbda714948fcbe36cd8dfde",
+    "src/providers/go.mjs": "1abb8b07a62fb607429b2c80f4830712f65ed10f3abda030021254e72f501a35",
+    "src/providers/ts.mjs": "1e2e78f13a16619e11633a95e50721862f76e12782c546e84e1830c4b60cfccf",
+    "src/providers/tsconfig.mjs": "0a2d75e333fb905ce6b8542d6147cf5802108894c9037a8ed8e0e3658e92b8e5"
+  }
+}

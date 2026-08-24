@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/SidCorp-co/archmap/schema/arch.schema.json",
   "title": "archmap manifest",
-  "description": "A project's declared architecture. Closed vocabulary: an unknown contract type is an error, never a warning (SPEC.md \u00a72).",
+  "description": "A project's declared architecture. Closed vocabulary: an unknown contract type is an error, never a warning (SPEC.md §2).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,11 +14,11 @@
     },
     "tsConfig": {
       "type": "string",
-      "description": "Path (repo-relative) to a tsconfig whose `compilerOptions.paths` the TS provider must resolve through. Without it dependency-cruiser runs with --no-config and every aliased import is unresolvable, so a package that imports through an alias contributes no edges and every contract over it passes vacuously."
+      "description": "Repo-relative path to a tsconfig whose `compilerOptions.paths` dependency-cruiser should resolve through. Needed in a monorepo whose aliases live per package and whose root carries no config at all: without it every aliased import is unresolvable, and an unresolvable edge is dropped rather than reported, so contracts over that package pass on an empty graph. When absent, a tsconfig.json/jsconfig.json at the root is used if one exists. A declared path that is not a file makes the gate refuse to run."
     },
     "modules": {
       "type": "object",
-      "description": "Module name to the globs whose files belong to it. Later declarations win, so a narrow module can carve itself out of a broader one (\u00a76).",
+      "description": "Module name to the globs whose files belong to it. Later declarations win, so a narrow module can carve itself out of a broader one (§6).",
       "additionalProperties": {
         "type": "array",
         "items": {
@@ -32,7 +32,7 @@
     "tests": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Test files are a first-class kind, not an exemption list. `relax` removes named contract types for test files only (\u00a76.1).",
+      "description": "Test files are a first-class kind, not an exemption list. `relax` removes named contract types for test files only (§6.1).",
       "properties": {
         "globs": {
           "type": "array",
@@ -57,7 +57,7 @@
     "generated": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Generated code belongs to no module. Edges touching it are dropped rather than attributed (\u00a76).",
+      "description": "Generated code belongs to no module. Edges touching it are dropped rather than attributed (§6).",
       "properties": {
         "globs": {
           "type": "array",
@@ -77,7 +77,7 @@
     "size": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Thresholds declared once and generated into each language's native linter. archmap does not count lines itself (\u00a75.1).",
+      "description": "Thresholds declared once and generated into each language's native linter. archmap does not count lines itself (§5.1).",
       "properties": {
         "max_file_lines": {
           "type": "integer",
@@ -118,7 +118,7 @@
             "locked"
           ],
           "default": "draft",
-          "description": "draft reports, locked blocks. Status is per contract \u2014 there is no repo-wide mode (\u00a78)."
+          "description": "draft reports, locked blocks. Status is per contract — there is no repo-wide mode (§8)."
         },
         "description": {
           "type": "string",
@@ -200,7 +200,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Checked transitively \u2014 the common real violation is two features glued through a module neither one names."
+              "description": "Checked transitively — the common real violation is two features glued through a module neither one names."
             }
           }
         },
@@ -248,45 +248,6 @@
                 "module"
               ],
               "default": "file"
-            }
-          }
-        },
-        {
-          "title": "cardinality",
-          "required": [
-            "type",
-            "port",
-            "implementations"
-          ],
-          "properties": {
-            "type": {
-              "const": "cardinality"
-            },
-            "port": {
-              "type": "string"
-            },
-            "implementations": {
-              "type": "integer",
-              "minimum": 0
-            }
-          }
-        },
-        {
-          "title": "interface-only",
-          "required": [
-            "type",
-            "from",
-            "to"
-          ],
-          "properties": {
-            "type": {
-              "const": "interface-only"
-            },
-            "from": {
-              "type": "string"
-            },
-            "to": {
-              "type": "string"
             }
           }
         },

@@ -43,7 +43,7 @@ const PROBES = {
   relations: {
     gate: 'arch check',
     // cm:why archmap carries its baseline INSIDE .arch.json as each contract's draft/locked status rather than in a separate frozen file — `locked` already means "no new violations", not "zero violations", which is level 2 by the same definition the other axes use
-    probe: ['./.forge/archmap/arch', 'check'],
+    probe: ['./.forge/archmap/archmap', 'check'],
   },
   // cm:guard an axis with several checkers measures at the WEAKEST of them. Reporting the strongest would let one locked checker hide a sibling that stopped blocking, which is the drift this whole script exists to catch.
   behaviour: {

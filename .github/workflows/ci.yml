@@ -142,7 +142,7 @@ jobs:
       # holds that ceiling.
       # The vendored copy in .forge/archmap is the authority: a contributor without a global
       # install and this job are held to the same reviewed version.
-      - run: ./.forge/archmap/arch check
+      - run: ./.forge/archmap/archmap check
 
   changes:
     runs-on: ubuntu-latest

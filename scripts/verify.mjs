@@ -76,7 +76,7 @@ const CHECKS = [
   {
     axis: 'relations',
     label: 'archmap',
-    cmd: ['./.forge/archmap/arch', 'check'],
+    cmd: ['./.forge/archmap/archmap', 'check'],
     scanned: /archmap · (\d+) files/,
   },
   {
@@ -147,7 +147,7 @@ const CI_COVERAGE = {
   '.forge/codemap/cm verify --since $(git merge-base origin/main HEAD)': 'verify',
   '.forge/codemap/cm verify --tier referential': 'verify',
   '.forge/codemap/cm verify --tier structural': 'verify',
-  './.forge/archmap/arch check': 'verify',
+  './.forge/archmap/archmap check': 'verify',
   'pnpm --filter @forge/core lint': 'verify',
   'pnpm --filter @forge/core typecheck': 'verify',
   'pnpm --filter web-v2 lint': 'verify, as the lint-budget check',

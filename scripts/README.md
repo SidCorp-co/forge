@@ -163,9 +163,9 @@ declaring a flow is never punished — the debt just shows up in the diff. Today
 protocol is content-free: a repo can gate nothing, declare a profile, and be perfectly conformant.
 
 R7 is the only rule here that runs anything, and it has to. The others read the setup off disk;
-whether `arch check` can resolve the graph it covers is only knowable by asking it. Ceiling:
+whether `archmap check` can resolve the graph it covers is only knowable by asking it. Ceiling:
 `checkers.archmap.maxUnresolvableEdges`. It exists because `.forge/archmap/` is vendored and
-`arch install --force` re-vendors it from an upstream checkout — dropping this repo's `--ts-config`
+`archmap install --force` re-vendors it from an upstream checkout — dropping this repo's `--ts-config`
 support would take the count from 171 straight back to 998, silently, while every contract kept
 printing `0 violations`.
 
@@ -177,7 +177,7 @@ printing `0 violations`.
 | R4 | every `ci-passed` needs-job is asserted by it | `archmap`, measured 2026-08-13 |
 | R5 | both meta-checks present | — |
 | R6 | no blocking level without CI to block with | — |
-| R7 | the relations gate can resolve the graph it claims to cover | `arch check` dropped 841 of 997 edges, 2026-08-23 |
+| R7 | the relations gate can resolve the graph it claims to cover | `archmap check` dropped 841 of 997 edges, 2026-08-23 |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two

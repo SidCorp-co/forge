@@ -141,7 +141,7 @@ profile, and be perfectly conformant. Its seven rules and what each was born fro
 | size | `check-size-budget` — job `lang-check` | file & function length, frozen per file | which rules exist — biome declares them |
 | lint debt | `check-lint-budget` — job `web` | per (file, rule) biome violations in `web-v2`, frozen | which rules exist — `packages/web-v2/biome.json` declares them |
 | knowledge | `cm verify` — job `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
-| relations | `arch check` — job `archmap` | which module may depend on which | how a file is written |
+| relations | `archmap check` — job `archmap` | which module may depend on which | how a file is written |
 | behaviour | `check-test-signal` — job `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | flows | `check-flow-coverage` — job `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
 | language | `check-source-language` — job `lang-check` | English-only source policy | everything else |
@@ -184,7 +184,7 @@ Do not add a rule to one axis that another already owns:
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.
 
-`arch check` exit codes: `0` clean · `1` a new violation · `2` **the gate could not run** (bad flag,
+`archmap check` exit codes: `0` clean · `1` a new violation · `2` **the gate could not run** (bad flag,
 unreadable manifest, a scope matching no files). Never read `2` as a pass — the same 1-vs-2 split
 `cm verify` uses.
 
@@ -223,7 +223,7 @@ moved on. Nobody lied and nobody fixed it. "Already red" only means earlier step
 
 **`.forge/` is committed, all of it.** Both checkers are vendored there (`.forge/codemap/`,
 `.forge/archmap/`) and the CI jobs run those copies, so a contributor without a global install and
-the gate are held to the same reviewed version — bump with `cm install --upgrade` / `arch install
+the gate are held to the same reviewed version — bump with `cm install --upgrade` / `archmap install
 --force` and commit the result. The registry, both baselines, and `orientation.md` (which this file
 imports on its first line) live there too. `.forge/.gitignore` is the only place an exception may be
 declared, and it carries the reason; a blanket `.forge/` in `.git/info/exclude` is a **local** rule
