@@ -164,6 +164,15 @@ export type BulkUpdate =
  * On failure preserves the selection (does NOT clear `onCleared`) so the user
  * can retry after fixing the issue.
  */
+/** What is waiting at the release gate, and when the next cut fires. */
+export function useReleaseRoster(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["release-roster", projectId],
+    queryFn: () => releaseBatchApi.roster(projectId as string),
+    enabled: !!projectId,
+  });
+}
+
 export function useBatchRelease(projectId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -172,6 +181,7 @@ export function useBatchRelease(projectId: string) {
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
         title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
         tone: "success",

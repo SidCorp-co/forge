@@ -142,7 +142,32 @@ export interface CreateReleaseBatchResult {
   gateStatus: string;
 }
 
+/** One issue waiting at the release gate. Mirrors core `ReleaseRosterEntry`. */
+export interface ReleaseRosterEntry {
+  id: string;
+  displayId: string;
+  title: string;
+  mergedAt: string | null;
+  waitingDays: number | null;
+  claimedByRunId: string | null;
+}
+
+/** What the project's release surface reads. `gateStatus: null` = no gate. */
+// cm:edge contract -> packages/core/src/release-batch/queries.ts — serialized straight onto this shape; a field renamed there and not here arrives as `undefined` and renders as a blank cell rather than an error
+export interface ReleaseRoster {
+  gateStatus: string | null;
+  channel: string | null;
+  releaseRunnerLabel: string | null;
+  baseBranch: string | null;
+  nextCutAt: string | null;
+  issues: ReleaseRosterEntry[];
+}
+
 export const releaseBatchApi = {
+  /** `GET /api/projects/:projectId/release-batches/roster` — waiting, oldest first. */
+  roster: (projectId: string) =>
+    apiClient<ReleaseRoster>(`/projects/${projectId}/release-batches/roster`),
+
   /** `POST /api/projects/:projectId/release-batches` — create + claim a batch. */
   create: (projectId: string, issueIds: string[]) =>
     apiClient<CreateReleaseBatchResult>(

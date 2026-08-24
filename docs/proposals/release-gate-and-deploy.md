@@ -323,11 +323,25 @@ became an explicit default *floor* instead, named as such in the prompt.
 
 ### Wave 5 — automation and visibility
 
-- [ ] **L3.1** schedule kind calling batch-create per project.
-- [ ] **L3.2** issue UI: `awaiting_release` badge, *"merged into `dev` N days ago"*, countdown,
+**Shipped 2026-08-24.**
+
+- [x] **L3.1** schedule kind calling batch-create per project.
+  *Shipped* as `kind: 'release_batch'` — no prompt, no script, no runner; it cuts whatever is
+  waiting. `schedules.kind` is a plain text column with a TS-only enum, so it cost no migration.
+  Every "not now" (a batch already in flight, no runner online at 04:00, the release box lost its
+  label) records **skipped**, not failed: a cron that cries failure on a quiet night is one people
+  learn to ignore, and the next failure they ignore is a real one.
+- [x] **L3.2** issue UI: `awaiting_release` badge, *"merged into `dev` N days ago"*, countdown,
   `Release now`. The countdown degrades honestly — no schedule prints *"no schedule — waiting for a
   person"*, never a fake number.
-- [ ] **L3.3** release tab: next-batch roster, last cut, which boxes can release, cut-now.
+  *Shipped* as a banner on the issue: *"Merged into `dev` 3 days ago — not shipped yet"*, the
+  countdown, and `Release now`. The countdown comes from the project's enabled `release_batch`
+  schedules; with none it prints the sentence rather than a number.
+- [x] **L3.3** release roster panel: what is waiting (oldest first, with waiting time), the next
+  cut, which channel deploys it, which runner label may ship it, and cut-now with selection. It
+  hides itself entirely on a project with no gate. *Shipped on the issues list rather than as a
+  separate tab — that is where a person is already looking at the same issues.* Not shipped: "last
+  cut (version, issues, result)", which needs a batch-history query nothing keeps yet.
 
 ### epodsystem, in parallel — not Forge work
 

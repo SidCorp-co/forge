@@ -65,6 +65,7 @@ import {
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AttachmentList } from "./attachment-list";
+import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
@@ -419,6 +420,12 @@ export function IssueDetailScreen({
               onReopen={onReopen}
             />
           )}
+
+          <AwaitingReleaseBanner
+            projectId={issue.projectId}
+            issueId={issue.id}
+            canWrite={canWrite}
+          />
 
           {reasonDialog}
 

@@ -7,10 +7,11 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
+import { nextRunFor } from '../schedules/cron.js';
 import { resolveReleaseChannel } from './channel.js';
 import { resolveReleaseGateStatus } from './gate.js';
-import { loadProjectPipelineConfig } from './project-config.js';
+import { loadProjectBranchConfig, loadProjectPipelineConfig } from './project-config.js';
 
 export interface ReleaseRosterEntry {
   id: string;
@@ -28,7 +29,34 @@ export interface ReleaseRoster {
   gateStatus: IssueStatus | null;
   channel: string | null;
   releaseRunnerLabel: string | null;
+  /** The branch these issues merged into — what "merged" means to a reader. */
+  baseBranch: string | null;
+  /** When the next scheduled cut fires. `null` = nobody scheduled one. */
+  nextCutAt: string | null;
   issues: ReleaseRosterEntry[];
+}
+
+/**
+ * The soonest enabled `release_batch` schedule for this project. Null means
+ * nobody scheduled a cut, which the UI must say in those words.
+ */
+// cm:guard NEVER fall back to "some default cadence" here. A countdown to a cut nothing will perform is worse than no countdown: it tells a person their issue ships tonight, and it does not.
+async function nextScheduledCutAt(projectId: string): Promise<string | null> {
+  const rows = await db
+    .select({ cron: schedules.cron })
+    .from(schedules)
+    .where(
+      and(
+        eq(schedules.projectId, projectId),
+        eq(schedules.kind, 'release_batch'),
+        eq(schedules.enabled, true),
+      ),
+    );
+  const times = rows
+    .map((r) => nextRunFor(r.cron))
+    .filter((d): d is Date => d != null)
+    .sort((a, b) => a.getTime() - b.getTime());
+  return times[0]?.toISOString() ?? null;
 }
 
 /**
@@ -45,9 +73,13 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       gateStatus: null,
       channel: channel.provider,
       releaseRunnerLabel: channel.releaseRunnerLabel,
+      baseBranch: null,
+      nextCutAt: null,
       issues: [],
     };
   }
+  const nextCutAt = await nextScheduledCutAt(projectId);
+  const branchCfg = await loadProjectBranchConfig(projectId);
 
   const rows = await db
     .select({
@@ -67,6 +99,8 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     gateStatus,
     channel: channel.provider,
     releaseRunnerLabel: channel.releaseRunnerLabel,
+    baseBranch: branchCfg?.baseBranch ?? null,
+    nextCutAt,
     issues: rows.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? `ISS-${r.issSeq}` : r.id,

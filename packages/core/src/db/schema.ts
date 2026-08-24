@@ -1827,9 +1827,8 @@ export type ScheduleStatus = (typeof scheduleStatuses)[number];
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
-// ISS-618 — a schedule can fire a standalone sandboxed script instead of
-// dispatching a Claude agent session. 'prompt' is the pre-existing behavior.
-export const scheduleKinds = ['prompt', 'script'] as const;
+// cm:why `kind` is a plain text column with a TS-only enum, so adding a kind costs no migration — only every reader that switches on it. `prompt` dispatches a Claude agent session; `script` (ISS-618) and `release_batch` run in core with no session, no device and no runner.
+export const scheduleKinds = ['prompt', 'script', 'release_batch'] as const;
 export type ScheduleKind = (typeof scheduleKinds)[number];
 
 export const schedules = pgTable(

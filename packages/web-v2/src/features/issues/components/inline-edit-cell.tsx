@@ -8,7 +8,7 @@
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
 import { allowedTransitions, statusToChip } from "../derive";
 import { useStatusLabeller } from "../vocabulary";
-import { type IssueAgentStatus, type IssueStatus } from "../types";
+import type { IssueAgentStatus, IssueStatus } from "../types";
 
 interface InlineSelectProps {
   value: string;

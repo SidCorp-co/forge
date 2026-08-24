@@ -18,12 +18,18 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { hooks } from '../pipeline/hooks.js';
+import type { DispatchScheduleInput, DispatchScheduleResult } from './dispatch-types.js';
 import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
 import { buildFeedbackDigestPrompt } from './messages/feedback-digest-prompt.js';
 import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-prompt.js';
 import { getImprovementMessage } from './messages/registry.js';
 import { type AppliedVersions, buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
+import {
+  dispatchScheduleReleaseBatchRun,
+  loadCreatedBy,
+  resolveScheduleTargetProject,
+} from './release-batch-dispatch.js';
 import { runScheduleScript } from './script/executor.js';
 
 // Keys for standing templates that build their own prompt instead of the steward.
@@ -41,48 +47,6 @@ const NON_STEWARD_STANDING_KEYS = new Set<string>([
   PRODUCT_MAP_KEY,
   FEEDBACK_DIGEST_KEY,
 ]);
-
-export interface ScheduleRowForDispatch {
-  id: string;
-  name?: string | null;
-  projectId: string;
-  // Nullable: a kind='script' schedule carries no prompt at all (ISS-618).
-  prompt: string | null;
-  runner: 'desktop' | 'antigravity';
-  targetProjectSlug: string | null;
-  /** When set, the skill-improve engine builds the prompt instead of using `prompt`. */
-  templateKey?: string | null;
-  params?: Record<string, unknown> | null;
-  mode?: ScheduleMode | null;
-  appliedMessageVersions?: AppliedVersions | null;
-  // ISS-618 — 'script' schedules run a sandboxed script, no agent session at all.
-  kind?: ScheduleKind | null;
-  script?: string | null;
-}
-
-export interface DispatchScheduleInput {
-  schedule: ScheduleRowForDispatch;
-  // Manual triggers attribute the session to the calling user; tick triggers
-  // fall back to the resolved project's creator (agent_sessions.user_id is
-  // nullable but useful to populate for audit + activity feeds).
-  actorUserId?: string;
-  // Marks the resulting session metadata so consumers can distinguish
-  // tick-driven runs from manual /:id/run triggers.
-  tick?: boolean;
-  // When the caller has already resolved `targetProjectSlug` (e.g. the route's
-  // auth gate), pass the resolved project here to skip a redundant lookup.
-  resolvedTarget?: { id: string; createdBy: string };
-}
-
-export type DispatchScheduleResult =
-  // cm:why 'running' (interactive session path, decided later by the session's own lifecycle -> writeBackScheduleLastStatus) vs 'success' (script path, already ran synchronously in dispatchScheduleScriptRun) — the caller never re-derives which
-  | { ok: true; sessionId: string; status: 'running' | 'success'; resolvedProjectId: string }
-  | {
-      ok: false;
-      reason: 'project-not-found' | 'no-device' | 'unsupported-runner' | 'already-applied';
-      status: 'skipped';
-    }
-  | { ok: false; reason: 'session-failed'; status: 'failed'; sessionId?: string };
 
 /**
  * Reroute schedule.run onto the interactive agent-session rails used by
@@ -117,6 +81,9 @@ export async function dispatchScheduleRun(
   // this branches BEFORE the desktop-runner guard below (which doesn't apply).
   if (schedule.kind === 'script') {
     return dispatchScheduleScriptRun(input);
+  }
+  if (schedule.kind === 'release_batch') {
+    return dispatchScheduleReleaseBatchRun(input);
   }
 
   // Antigravity adapter is HTTP-push and lives behind the (now-bypassed)
@@ -394,24 +361,9 @@ async function dispatchScheduleScriptRun(
     return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
-  let resolvedProjectId = schedule.projectId;
-  if (schedule.targetProjectSlug) {
-    const target =
-      input.resolvedTarget ??
-      (
-        await db
-          .select({ id: projects.id, createdBy: projects.createdBy })
-          .from(projects)
-          .where(eq(projects.slug, schedule.targetProjectSlug))
-          .limit(1)
-      )[0];
-    if (!target) return { ok: false, reason: 'project-not-found', status: 'skipped' };
-    resolvedProjectId = target.id;
-  }
-
-  const userId =
-    input.actorUserId ?? (await loadCreatedBy(resolvedProjectId, input.resolvedTarget?.createdBy));
-  if (!userId) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+  const resolved = await resolveScheduleTargetProject(input);
+  if (!resolved) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+  const { projectId: resolvedProjectId, userId } = resolved;
 
   const startedAt = new Date();
   const [run] = await db
@@ -623,12 +575,9 @@ export async function redispatchScheduleSessionOnFailover(
   }
 }
 
-async function loadCreatedBy(projectId: string, hint?: string): Promise<string | undefined> {
-  if (hint) return hint;
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy;
-}
+// cm:edge naming -> packages/core/src/schedules/dispatch-types.ts — every caller imports these from this module; they live next door so the runner-less branches can use them without an import cycle, and re-exporting keeps that a file layout rather than an API change
+export type {
+  DispatchScheduleInput,
+  DispatchScheduleResult,
+  ScheduleRowForDispatch,
+} from './dispatch-types.js';

@@ -5,9 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// `provider-schemas` reaches `route-helpers` for the vault assertion, which
-// pulls the db client and therefore the whole env contract. The schemas
-// themselves are pure.
+// cm:why the schemas are pure but `provider-schemas` reaches `route-helpers` for the vault assertion, which pulls the db client and with it the whole env contract — hence two mocks for a file that touches neither
 vi.mock('../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
