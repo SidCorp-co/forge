@@ -40,6 +40,15 @@ describe("toAutonomousLabel", () => {
 		expect(toAutonomousLabel("closed")).toBe("done");
 		expect(toAutonomousLabel("dropped")).toBe("dropped");
 	});
+
+	it("reads the release park as its own label, not as running", () => {
+		expect(toAutonomousLabel("tested")).toBe("awaiting_release");
+	});
+
+	// cm:guard ISS-141 — `reopen` rendered as `running` while no session existed and none would start; a reopened issue must read as queued work, because that is what the autonomous rewrite makes it
+	it("reads reopen as queued work rather than as a live session", () => {
+		expect(toAutonomousLabel("reopen")).toBe("open");
+	});
 });
 
 describe("LABEL_TO_KERNEL", () => {

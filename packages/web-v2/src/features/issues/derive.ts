@@ -64,6 +64,7 @@ export const AUTONOMOUS_STATUS_LABELS: Record<AutonomousLabel, string> = {
 	open: "Open",
 	running: "Running",
 	needs_human: "Needs a human",
+	awaiting_release: "Awaiting release",
 	done: "Done",
 	dropped: "Dropped",
 };
