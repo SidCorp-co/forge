@@ -69,6 +69,20 @@ const WEDGE_JOB_TYPES: readonly JobType[] = [...new Set(RESETTABLE_STEPS.map((s)
 
 let registered = false;
 
+/**
+ * Did the re-enqueue actually produce a job? Same predicate as the stuck-issue
+ * query's NOT EXISTS, so "rescued" and "stuck" can never disagree about what a
+ * live job is.
+ */
+async function hasActiveJob(issueId: string): Promise<boolean> {
+  const rows = await db.execute<{ one: number }>(sql`
+    SELECT 1 AS one FROM jobs
+    WHERE issue_id = ${issueId} AND status IN ('queued','dispatched','running')
+    LIMIT 1
+  `);
+  return rows.length > 0;
+}
+
 export async function runReconcilerOnce(): Promise<{
   rescued: number;
   stale: number;
@@ -129,6 +143,10 @@ export async function runReconcilerOnce(): Promise<{
         actor: { type: 'device', id: actorId },
         reason: { reconciler: true, reason: 'enqueued_missing' },
       });
+
+      // cm:guard count the OUTCOME, never the attempt. `considerEnqueue` has a dozen paths that enqueue nothing — a disabled stage, a human-gated one, a race, a missing skill — and an issue parked on any of them is re-read every 60s forever. Counting the attempt made that loop indistinguishable from productive work, and the breadcrumb fired every minute for it.
+      if (!(await hasActiveJob(row.id))) continue;
+
       rescued++;
       if (isSentryEnabled()) {
         Sentry.addBreadcrumb({

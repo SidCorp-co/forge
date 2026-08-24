@@ -201,7 +201,7 @@ to be an enforcement problem at all.
   never ended), with a Rust test over the embedded skill table asserting no bundled skill names
   `forge_step_start` again. **Still open:** re-measure the ratio after 10 more drive jobs.
 
-- [ ] **L0.7 · the reconciler counts rescues it did not perform.** `pipeline/reconciler.ts:132`
+- [x] **L0.7 · the reconciler counts rescues it did not perform.** `pipeline/reconciler.ts:132`
   increments `rescued` and emits an `enqueued_missing` breadcrumb unconditionally, but
   `reEnqueueForIssue → considerEnqueue` returns `void` and has ~10 paths that enqueue nothing. Any
   issue parked where no job can be enqueued is re-read every 60s and counted as a rescue forever —
@@ -211,6 +211,11 @@ to be an enforcement problem at all.
   currently returns *"I own this decision"* rather than *"I enqueued"* — two different booleans that
   have to be separated first. No autonomous project is in the looping state today (all four have an
   automatic entry stage), so this is a lying metric rather than a live wedge.
+  *Shipped, and not the way that paragraph proposed:* separating the two booleans would have changed
+  the hottest function in the dispatcher. Instead the reconciler asks the **outcome** — did a job
+  appear for that issue — with the same predicate the stuck-issue query uses for `NOT EXISTS`, so
+  "rescued" and "stuck" can never disagree about what a live job is. Measuring the result beats
+  trusting a return value, and it needed no change to `considerEnqueue` at all.
 
 ### Wave 2 — the gate · this is where terminal behaviour changes
 
