@@ -88,9 +88,17 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-workspace
+      # The checkers in scripts/ are what every other gate runs, and until
+      # 2026-08-25 nothing linted or typechecked them: `turbo run lint` only
+      # fans out to workspace packages and this directory is in none. Zero
+      # violations at rest and no baseline — the 21 found on the day it got a
+      # config were fixed, not frozen. Lives in this job rather than lang-check
+      # because `pnpm exec biome` needs node_modules and that job installs
+      # nothing on purpose.
+      - run: pnpm exec biome check scripts
       # Size budget: biome OWNS the two length rules; what it lacks is a
       # baseline, so both sit at `warn` and `biome check` exits 0 with 143
-      # violations. This freezes today's 102 offenders (.forge/size-baseline.json)
+      # violations. This freezes today's 103 offenders (.forge/size-baseline.json)
       # and fails only when a file gets longer or a new one lands over budget.
       - run: node scripts/check-size-budget.mjs --all
       # Conformance levels: runs each axis's checker and fails when what it

@@ -18,8 +18,8 @@
 // to run `pnpm verify` on a TypeScript change.
 
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CRATE_DIR = resolve(ROOT, 'packages/runner');
@@ -75,7 +75,9 @@ if (changed === 'no-git') {
 }
 // cm:guard compare against 'no-base', never against null — `--all` sets `changed` to null on purpose, and keying the failure off that made this script refuse to run in the very mode its own error message tells you to use. Caught only because the message was read back.
 if (changed === 'no-base') {
-  console.error('runner-gates: could not resolve origin/main to scope the diff — run `git fetch origin main`, or pass --all to run every gate unconditionally.');
+  console.error(
+    'runner-gates: could not resolve origin/main to scope the diff — run `git fetch origin main`, or pass --all to run every gate unconditionally.',
+  );
   process.exit(2);
 }
 if (changed !== null && changed.size === 0) {

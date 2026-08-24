@@ -20,7 +20,7 @@
 //
 // Exit: 0 declared matches measured · 1 they disagree · 2 could not run.
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -101,7 +101,10 @@ function measureOne(spec, baselinePath) {
 }
 
 function measure(_axis, spec, decl) {
-  const paths = { baseline: decl.baseline?.path ?? null, alsoBaseline: decl.alsoBaseline?.path ?? null };
+  const paths = {
+    baseline: decl.baseline?.path ?? null,
+    alsoBaseline: decl.alsoBaseline?.path ?? null,
+  };
   return [spec, ...(spec.also ?? [])]
     .map((s) => measureOne(s, paths[s.from ?? 'baseline']))
     .reduce((weakest, m) => (m.level < weakest.level ? m : weakest));
@@ -112,7 +115,12 @@ function ciGates() {
   if (!existsSync(ci)) return null;
   const text = readFileSync(ci, 'utf8');
   const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
-  return needs ? needs[1].split(',').map((s) => s.trim()).filter(Boolean) : null;
+  return needs
+    ? needs[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : null;
 }
 
 const { manifest, error } = readManifest();
@@ -143,12 +151,24 @@ let disagreements = 0;
 for (const axis of axes) {
   const spec = PROBES[axis];
   if (!spec) {
-    rows.push({ axis, gate: '—', declared: declared[axis]?.level ?? '?', measured: '?', note: 'declared with no probe' });
+    rows.push({
+      axis,
+      gate: '—',
+      declared: declared[axis]?.level ?? '?',
+      measured: '?',
+      note: 'declared with no probe',
+    });
     disagreements++;
     continue;
   }
   if (!(axis in declared)) {
-    rows.push({ axis, gate: spec.gate, declared: '—', measured: '?', note: 'probed but not declared' });
+    rows.push({
+      axis,
+      gate: spec.gate,
+      declared: '—',
+      measured: '?',
+      note: 'probed but not declared',
+    });
     disagreements++;
     continue;
   }
@@ -156,11 +176,17 @@ for (const axis of axes) {
   const d = declared[axis].level;
   const fault = baselineFault(d, declared[axis].baseline);
   if (d !== m.level || fault) disagreements++;
-  rows.push({ axis, gate: spec.gate, declared: d, measured: fault ? '!' : m.level, note: fault ?? m.note });
+  rows.push({
+    axis,
+    gate: spec.gate,
+    declared: d,
+    measured: fault ? '!' : m.level,
+    note: fault ?? m.note,
+  });
 }
 
 const w = Math.max(...rows.map((r) => r.gate.length), 10);
-console.log('\n  axis        gate' + ' '.repeat(w - 4) + 'declared  measured');
+console.log(`\n  axis        gate${' '.repeat(w - 4)}declared  measured`);
 for (const r of rows) {
   const flag = r.declared === r.measured ? ' ' : '!';
   console.log(

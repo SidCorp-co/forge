@@ -20,7 +20,11 @@ const DIRECTIONS = ['down', 'shrink', 'tighten'];
 const STRICTNESS = ['draft', 'locked'];
 
 function git(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
 }
 
 /**

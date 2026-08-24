@@ -64,7 +64,10 @@ function declaredFlows(cfg) {
 
 // cm:guard the site list comes from grep but the COUNT comes from `cm flow`, and a disagreement exits 2 — parsing annotations here duplicates codemap's parser, so the only safe way to keep the copy is to make the tool audit it every run
 function stepSites(flows) {
-  const r = spawnSync('git', ['grep', '-n', '-I', '--', 'cm:flow'], { cwd: ROOT, encoding: 'utf8' });
+  const r = spawnSync('git', ['grep', '-n', '-I', '--', 'cm:flow'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
   if (r.status > 1 || r.error) die('git grep failed — not a checkout?');
   const byFlow = new Map(flows.map((f) => [f, []]));
   for (const line of (r.stdout ?? '').split('\n')) {
@@ -112,7 +115,8 @@ function hitsAt(entry, line) {
     const end = fn.loc?.end?.line;
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
     if (start > line + 5 || end < line) continue;
-    if (!best || end - start < best.span) best = { span: end - start, hits: entry.f?.[id] ?? 0, name: fn.name };
+    if (!best || end - start < best.span)
+      best = { span: end - start, hits: entry.f?.[id] ?? 0, name: fn.name };
   }
   return best;
 }
@@ -120,7 +124,9 @@ function hitsAt(entry, line) {
 function lookup(source, site) {
   if (source.missing) return { state: 'nosource' };
   const suffix = `/${site.file}`;
-  const key = Object.keys(source.data).find((k) => k.endsWith(suffix) || k.endsWith(suffix.replace(/^\/packages\/[^/]+\//, '/')));
+  const key = Object.keys(source.data).find(
+    (k) => k.endsWith(suffix) || k.endsWith(suffix.replace(/^\/packages\/[^/]+\//, '/')),
+  );
   if (!key) return { state: 'outofscope' };
   const fn = hitsAt(source.data[key], site.line);
   if (!fn) return { state: 'nofn' };
@@ -145,12 +151,14 @@ const requireSources = args.includes('--require-sources');
 const cfg = loadConfig();
 const flows = declaredFlows(cfg);
 if (flows.length === 0) die('no flows declared in codemap — nothing this checker can measure');
-if (cfg.sources.length === 0) die('checkers.flow-coverage.sources is empty in .forge/conformance.json');
+if (cfg.sources.length === 0)
+  die('checkers.flow-coverage.sources is empty in .forge/conformance.json');
 
 const sites = stepSites(flows);
 for (const flow of flows) {
   const found = new Set(sites.get(flow).map((s) => s.step));
-  if (found.size === 0) die(`flow "${flow}" is declared in codemap but has no cm:flow annotation anywhere`);
+  if (found.size === 0)
+    die(`flow "${flow}" is declared in codemap but has no cm:flow annotation anywhere`);
   const claimed = toolStepCount(cfg, flow);
   if (claimed === null) die(`\`cm flow ${flow}\` failed — cannot audit the step list`);
   if (claimed !== found.size) {
@@ -169,12 +177,15 @@ const missing = sources.filter((s) => s.missing);
 if (missing.length === sources.length) {
   const how = missing.map((s) => s.produce ?? s.path).join('\n    ');
   if (requireSources) die(`no coverage report found. Produce one first:\n    ${how}`);
-  console.log(`check-flow-coverage: skipped — no coverage report on disk. Produce one with:\n    ${how}`);
+  console.log(
+    `check-flow-coverage: skipped — no coverage report on disk. Produce one with:\n    ${how}`,
+  );
   process.exit(0);
 }
 
 const baseline = loadBaseline();
-if (!baseline && !updating) die(`${BASELINE_PATH} not found — run with --update-baseline to create it`);
+if (!baseline && !updating)
+  die(`${BASELINE_PATH} not found — run with --update-baseline to create it`);
 const frozen = new Set(baseline?.uncovered ?? []);
 
 const rows = [];
@@ -182,7 +193,11 @@ const uncovered = [];
 for (const flow of flows) {
   const byStep = new Map();
   for (const site of sites.get(flow)) {
-    const per = sources.map((s) => ({ label: s.label, authoritative: !!s.authoritative, ...lookup(s, site) }));
+    const per = sources.map((s) => ({
+      label: s.label,
+      authoritative: !!s.authoritative,
+      ...lookup(s, site),
+    }));
     const prev = byStep.get(site.step);
     const merged = prev ? prev.map((p, i) => (p.state === 'covered' ? p : per[i])) : per;
     byStep.set(site.step, merged);
@@ -192,7 +207,7 @@ for (const flow of flows) {
     if (scoped.length === per.length) {
       die(
         `${flow}/${step}: not present in ANY coverage report. The step's file is outside the ` +
-          "coverage scope, which is a configuration fault, not an uncovered step.",
+          'coverage scope, which is a configuration fault, not an uncovered step.',
       );
     }
     const settled = per.some((p) => p.authoritative && p.state === 'covered');
@@ -205,7 +220,9 @@ for (const flow of flows) {
 
 if (updating) {
   writeFileSync(BASELINE_PATH, `${JSON.stringify({ uncovered: uncovered.sort() }, null, 2)}\n`);
-  console.log(`check-flow-coverage: froze ${uncovered.length} uncovered step(s) into ${BASELINE_PATH}`);
+  console.log(
+    `check-flow-coverage: froze ${uncovered.length} uncovered step(s) into ${BASELINE_PATH}`,
+  );
   process.exit(0);
 }
 
@@ -227,11 +244,14 @@ console.log(
   `\ncheck-flow-coverage: ${rows.length} step(s) across ${flows.length} flow(s), ` +
     `${rows.filter((r) => r.settled).length} settled end-to-end`,
 );
-if (fixed.length) console.log(`  ${fixed.length} baselined step(s) now covered — re-freeze with --update-baseline`);
+if (fixed.length)
+  console.log(`  ${fixed.length} baselined step(s) now covered — re-freeze with --update-baseline`);
 
 if (fresh.length === 0) process.exit(0);
 
-console.error(`\n${fresh.length} flow step(s) named in the map but executed by no end-to-end test:\n`);
+console.error(
+  `\n${fresh.length} flow step(s) named in the map but executed by no end-to-end test:\n`,
+);
 for (const id of fresh) {
   const r = rows.find((x) => x.id === id);
   const why = r.unitOnly

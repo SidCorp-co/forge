@@ -52,12 +52,16 @@ function collect(scopes) {
 
     let stdout;
     try {
-      stdout = execFileSync('npx', ['biome', ...scope.args, '--reporter=json', '--max-diagnostics=5000'], {
-        cwd,
-        encoding: 'utf8',
-        maxBuffer: 64 * 1024 * 1024,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
+      stdout = execFileSync(
+        'npx',
+        ['biome', ...scope.args, '--reporter=json', '--max-diagnostics=5000'],
+        {
+          cwd,
+          encoding: 'utf8',
+          maxBuffer: 64 * 1024 * 1024,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        },
+      );
     } catch (err) {
       stdout = err.stdout;
       if (!stdout) return { error: `biome produced no output in ${scope.cwd}: ${err.message}` };
@@ -86,7 +90,8 @@ function collect(scopes) {
   }
 
   // cm:guard biome emitting nothing at all means the scope matched no files or the config stopped loading, NOT a clean tree — this repo has 464 diagnostics at rest. Reporting clean here is the fail-open shape the other checkers exit 2 on.
-  if (!sawAnyDiagnostic) return { error: 'biome reported zero diagnostics — the scope matched nothing' };
+  if (!sawAnyDiagnostic)
+    return { error: 'biome reported zero diagnostics — the scope matched nothing' };
   return { measured };
 }
 

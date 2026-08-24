@@ -12,7 +12,7 @@
 // Exit: 0 meets the claimed profile · 1 does not · 2 cannot audit.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,8 +30,20 @@ const read = (p) => {
 // cm:guard a profile bounds SHAPE only — axis counts, CI, meta-checks. The moment one names a tool, the claim stops porting across stacks and this file becomes a second place that decides which linter a repo runs.
 const PROFILES = {
   baseline: { blurb: 'a number you did not have', at1: 1, at2: 0, ci: false, meta: false },
-  standard: { blurb: 'debt stops growing, gates cannot rot silently', at1: 2, at2: 2, ci: true, meta: true },
-  hardened: { blurb: 'the whole declared surface is defended', at1: 4, at2: 4, ci: true, meta: true },
+  standard: {
+    blurb: 'debt stops growing, gates cannot rot silently',
+    at1: 2,
+    at2: 2,
+    ci: true,
+    meta: true,
+  },
+  hardened: {
+    blurb: 'the whole declared surface is defended',
+    at1: 4,
+    at2: 4,
+    ci: true,
+    meta: true,
+  },
 };
 
 const IMPROVES = ['down', 'shrink', 'tighten'];
@@ -49,11 +61,14 @@ try {
 }
 const axes = manifest.axes ?? {};
 const claimed = manifest.profile ?? null;
-if (Object.keys(axes).length === 0) die('the manifest declares no axis — an audit over an empty set is not a pass');
+if (Object.keys(axes).length === 0)
+  die('the manifest declares no axis — an audit over an empty set is not a pass');
 
 const verifySrc = read('scripts/verify.mjs') ?? '';
 const labels = [...verifySrc.matchAll(/label:\s*'([^']+)'/g)].map((m) => m[1]);
-const proven = [...verifySrc.matchAll(/label:\s*'([^']+)'[\s\S]{0,400}?scanned:/g)].map((m) => m[1]);
+const proven = [...verifySrc.matchAll(/label:\s*'([^']+)'[\s\S]{0,400}?scanned:/g)].map(
+  (m) => m[1],
+);
 const unproven = labels.filter((l) => !proven.includes(l));
 
 const CI_DIR = '.github/workflows';
@@ -66,8 +81,15 @@ const ciText = has(CI_DIR)
 const hasCI = ciText.length > 0;
 
 const needsM = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(ciText);
-const needs = needsM ? needsM[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
-const asserted = [...ciText.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.result/g)].map((m) => m[1]);
+const needs = needsM
+  ? needsM[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  : [];
+const asserted = [...ciText.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.result/g)].map(
+  (m) => m[1],
+);
 const unasserted = needs.filter((j) => j !== 'changes' && !asserted.includes(j));
 
 const badBaselines = [];
@@ -79,7 +101,10 @@ for (const [name, spec] of Object.entries(axes)) {
   else if (!b.path) badBaselines.push([name, 'baseline entry has no path']);
   else if (!has(b.path)) badBaselines.push([name, `${b.path} declared but absent`]);
   else if (!IMPROVES.includes(b.improves)) {
-    badBaselines.push([name, `improves=${b.improves ?? 'nothing'}, not one of ${IMPROVES.join('/')}`]);
+    badBaselines.push([
+      name,
+      `improves=${b.improves ?? 'nothing'}, not one of ${IMPROVES.join('/')}`,
+    ]);
   }
 }
 
@@ -112,28 +137,38 @@ const RULES = [
     id: 'R1',
     text: 'an entrypoint exists — one command runs every check',
     pass: labels.length > 0,
-    detail: labels.length ? `scripts/verify.mjs, ${labels.length} checks` : 'no scripts/verify.mjs, or it declares no check',
+    detail: labels.length
+      ? `scripts/verify.mjs, ${labels.length} checks`
+      : 'no scripts/verify.mjs, or it declares no check',
     why: 'a rule with no command to run it is not a rule; this repo had none for months',
   },
   {
     id: 'R2',
     text: 'every declared check proves it scanned something',
     pass: unproven.length === 0,
-    detail: unproven.length ? `no scan proof: ${unproven.join(', ')}` : `${proven.length}/${labels.length} prove scan`,
+    detail: unproven.length
+      ? `no scan proof: ${unproven.join(', ')}`
+      : `${proven.length}/${labels.length} prove scan`,
     why: '"0 violations" and "I looked at nothing" print identically without a count',
   },
   {
     id: 'R3',
     text: 'every level-2 axis has a baseline that declares its direction',
     pass: badBaselines.length === 0,
-    detail: badBaselines.length ? badBaselines.map(([a, m]) => `${a}: ${m}`).join(' · ') : 'all declare path + improves',
+    detail: badBaselines.length
+      ? badBaselines.map(([a, m]) => `${a}: ${m}`).join(' · ')
+      : 'all declare path + improves',
     why: 'without a direction a baseline cannot be compared — it is only a photograph',
   },
   {
     id: 'R4',
     text: 'every job the merge gate needs is also asserted by it',
     pass: hasCI ? unasserted.length === 0 : null,
-    detail: !hasCI ? 'no CI' : unasserted.length ? `listed, never asserted: ${unasserted.join(', ')}` : `${needs.length} jobs, all asserted`,
+    detail: !hasCI
+      ? 'no CI'
+      : unasserted.length
+        ? `listed, never asserted: ${unasserted.join(', ')}`
+        : `${needs.length} jobs, all asserted`,
     why: 'ci-passed runs if:always() — a listed-but-unasserted job cannot fail the gate',
   },
   {
@@ -168,7 +203,9 @@ const RULES = [
 ];
 
 let failed = 0;
-console.log(`\n  axes ${Object.keys(axes).length}   level>=1 ${lvl(1)}   level>=2 ${lvl(2)}   CI ${hasCI ? 'yes' : 'none'}   profile ${claimed ?? 'undeclared'}\n`);
+console.log(
+  `\n  axes ${Object.keys(axes).length}   level>=1 ${lvl(1)}   level>=2 ${lvl(2)}   CI ${hasCI ? 'yes' : 'none'}   profile ${claimed ?? 'undeclared'}\n`,
+);
 for (const r of RULES) {
   const mark = r.pass === null ? ' -- ' : r.pass ? '  ok' : 'FAIL';
   if (r.pass === false) failed++;
@@ -191,19 +228,28 @@ function shortfall(name) {
 console.log(`\nconformance-audit: ${RULES.length} rules evaluated`);
 
 if (!claimed) {
-  const best = Object.keys(PROFILES).filter((n) => shortfall(n).length === 0).pop();
-  console.log(`\nNo profile declared. Add "profile": "${best ?? 'baseline'}" to .forge/conformance.json`);
+  const best = Object.keys(PROFILES)
+    .filter((n) => shortfall(n).length === 0)
+    .pop();
+  console.log(
+    `\nNo profile declared. Add "profile": "${best ?? 'baseline'}" to .forge/conformance.json`,
+  );
   console.log('so the claim is one somebody else can fail you on.\n');
   process.exit(failed > 0 ? 1 : 0);
 }
-if (!PROFILES[claimed]) die(`unknown profile "${claimed}" — one of ${Object.keys(PROFILES).join(', ')}`);
+if (!PROFILES[claimed])
+  die(`unknown profile "${claimed}" — one of ${Object.keys(PROFILES).join(', ')}`);
 
 const miss = shortfall(claimed);
 if (miss.length === 0) {
-  console.log(`\nconformance: meets the "${claimed}" profile it claims — ${PROFILES[claimed].blurb}\n`);
+  console.log(
+    `\nconformance: meets the "${claimed}" profile it claims — ${PROFILES[claimed].blurb}\n`,
+  );
   process.exit(0);
 }
 console.error(`\nconformance: claims "${claimed}" and does not meet it`);
 for (const m of miss) console.error(`  · ${m}`);
-console.error('\nFix the setup or lower the claim. A profile you do not meet is the same\ndefect as a gate you do not have.\n');
+console.error(
+  '\nFix the setup or lower the claim. A profile you do not meet is the same\ndefect as a gate you do not have.\n',
+);
 process.exit(1);

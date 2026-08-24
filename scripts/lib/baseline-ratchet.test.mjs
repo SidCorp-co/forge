@@ -15,13 +15,21 @@ describe('improves: down', () => {
   });
 
   it('refuses a brand-new offender, because the total rises', () => {
-    const faults = compareBaseline('down', at({ 'a.ts': { r: 10 } }), at({ 'a.ts': { r: 10 }, 'b.ts': { r: 3 } }));
+    const faults = compareBaseline(
+      'down',
+      at({ 'a.ts': { r: 10 } }),
+      at({ 'a.ts': { r: 10 }, 'b.ts': { r: 3 } }),
+    );
     expect(faults).toEqual(['frozen total rose 10 -> 13']);
   });
 
   // cm:guard a rename must pass or the rule gets switched off — the baseline is path-keyed, so moving a file re-freezes the same debt under a new key and a "no new keys" rule would fire on every move
   it('lets a rename through: same debt, new path, flat total', () => {
-    const faults = compareBaseline('down', at({ 'old.ts': { r: 10 } }), at({ 'new.ts': { r: 10 } }));
+    const faults = compareBaseline(
+      'down',
+      at({ 'old.ts': { r: 10 } }),
+      at({ 'new.ts': { r: 10 } }),
+    );
     expect(faults).toEqual([]);
   });
 
@@ -42,12 +50,20 @@ describe('improves: shrink', () => {
   });
 
   it('refuses a bigger frozen set', () => {
-    const faults = compareBaseline('shrink', { 'a.ts': ['h1'] }, { 'a.ts': ['h1'], 'b.ts': ['h2'] });
+    const faults = compareBaseline(
+      'shrink',
+      { 'a.ts': ['h1'] },
+      { 'a.ts': ['h1'], 'b.ts': ['h2'] },
+    );
     expect(faults).toEqual(['frozen entries grew 1 -> 2']);
   });
 
   it('reads the flow-coverage shape, which is one array under a key', () => {
-    const faults = compareBaseline('shrink', { uncovered: ['release/deploy'] }, { uncovered: ['release/deploy', 'dispatch/tick'] });
+    const faults = compareBaseline(
+      'shrink',
+      { uncovered: ['release/deploy'] },
+      { uncovered: ['release/deploy', 'dispatch/tick'] },
+    );
     expect(faults).toEqual(['frozen entries grew 1 -> 2']);
   });
 });
@@ -56,11 +72,21 @@ describe('improves: tighten', () => {
   const at = (contracts) => ({ contracts });
 
   it('accepts draft becoming locked', () => {
-    expect(compareBaseline('tighten', at([{ id: 'c', status: 'draft' }]), at([{ id: 'c', status: 'locked' }]))).toEqual([]);
+    expect(
+      compareBaseline(
+        'tighten',
+        at([{ id: 'c', status: 'draft' }]),
+        at([{ id: 'c', status: 'locked' }]),
+      ),
+    ).toEqual([]);
   });
 
   it('refuses locked becoming draft', () => {
-    const faults = compareBaseline('tighten', at([{ id: 'c', status: 'locked' }]), at([{ id: 'c', status: 'draft' }]));
+    const faults = compareBaseline(
+      'tighten',
+      at([{ id: 'c', status: 'locked' }]),
+      at([{ id: 'c', status: 'draft' }]),
+    );
     expect(faults).toEqual(['c: locked -> draft']);
   });
 
@@ -72,7 +98,10 @@ describe('improves: tighten', () => {
 
   it('welcomes a contract that did not exist before', () => {
     const before = at([{ id: 'c', status: 'locked' }]);
-    const now = at([{ id: 'c', status: 'locked' }, { id: 'd', status: 'draft' }]);
+    const now = at([
+      { id: 'c', status: 'locked' },
+      { id: 'd', status: 'draft' },
+    ]);
     expect(compareBaseline('tighten', before, now)).toEqual([]);
   });
 });

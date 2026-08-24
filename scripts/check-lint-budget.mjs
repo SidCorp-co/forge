@@ -87,7 +87,8 @@ function collect(scopes) {
   }
 
   // cm:guard biome emitting nothing at all means the scope matched no files or the config stopped loading, NOT a clean tree — web-v2 carries 151 error-level diagnostics at rest. Reporting clean here is the fail-open shape every other checker exits 2 on.
-  if (!sawAnyDiagnostic) return { error: 'biome reported zero diagnostics — the scope matched nothing' };
+  if (!sawAnyDiagnostic)
+    return { error: 'biome reported zero diagnostics — the scope matched nothing' };
   return { measured };
 }
 

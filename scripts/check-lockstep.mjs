@@ -24,7 +24,11 @@ const CM = '.forge/codemap/cm';
 
 function run(cmd, args) {
   const r = spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return { ok: !r.error && r.status === 0, out: r.stdout ?? '', err: `${r.error?.message ?? ''}${r.stderr ?? ''}` };
+  return {
+    ok: !r.error && r.status === 0,
+    out: r.stdout ?? '',
+    err: `${r.error?.message ?? ''}${r.stderr ?? ''}`,
+  };
 }
 
 function die(message) {
@@ -34,7 +38,10 @@ function die(message) {
 
 function lockstepEdges() {
   const r = run(CM, ['graph', '--json']);
-  if (!r.ok) die(`could not read the declared graph — ${CM} graph --json failed: ${r.err.trim().split('\n')[0] ?? '?'}`);
+  if (!r.ok)
+    die(
+      `could not read the declared graph — ${CM} graph --json failed: ${r.err.trim().split('\n')[0] ?? '?'}`,
+    );
   let graph;
   try {
     graph = JSON.parse(r.out);
@@ -44,7 +51,9 @@ function lockstepEdges() {
   // cm:edge contract -> .forge/codemap/cm — `from`/`to`/`kind`/`line`/`why` are `cm graph --json`'s edge shape; a rename there empties this checker silently, which reads as "no pairs drifted" rather than as a break
   const edges = (graph.edges ?? []).filter((e) => e.kind === 'lockstep' && e.from && e.to);
   if (edges.length === 0) {
-    die('the declared graph carries no lockstep edge — this checker\'s entire scope is empty, which is exit 2, not a pass');
+    die(
+      "the declared graph carries no lockstep edge — this checker's entire scope is empty, which is exit 2, not a pass",
+    );
   }
   return edges;
 }
@@ -54,10 +63,12 @@ function changedFiles(mode, since) {
     const r = run('git', ['diff', '--name-only', '--cached']);
     return r.ok ? r.out.split('\n').filter(Boolean) : null;
   }
-  const base = since ?? (() => {
-    const r = run('git', ['merge-base', 'origin/main', 'HEAD']);
-    return r.ok ? r.out.trim() : null;
-  })();
+  const base =
+    since ??
+    (() => {
+      const r = run('git', ['merge-base', 'origin/main', 'HEAD']);
+      return r.ok ? r.out.trim() : null;
+    })();
   if (!base) return null;
   // cm:why compare the base against the WORKING TREE, not against HEAD — the reader of this advisory is mid-change, and a pair they have already broken but not yet committed is exactly the one worth naming
   const r = run('git', ['diff', '--name-only', base]);
@@ -70,9 +81,12 @@ const value = (name) => {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : undefined;
 };
-const unknown = argv.filter((a, i) => a.startsWith('--')
-  && !['--all', '--staged', '--strict', '--json', '--since'].includes(a)
-  && argv[i - 1] !== '--since');
+const unknown = argv.filter(
+  (a, i) =>
+    a.startsWith('--') &&
+    !['--all', '--staged', '--strict', '--json', '--since'].includes(a) &&
+    argv[i - 1] !== '--since',
+);
 if (unknown.length) die(`unknown flag(s): ${unknown.join(' ')}`);
 
 const edges = lockstepEdges();
@@ -109,7 +123,9 @@ for (const e of edges) {
   });
 }
 
-console.log(`lockstep: ${edges.length} edge(s) across ${pairFiles.size} file(s), ${changed.length} changed`);
+console.log(
+  `lockstep: ${edges.length} edge(s) across ${pairFiles.size} file(s), ${changed.length} changed`,
+);
 
 if (flag('--json')) {
   console.log(JSON.stringify({ changed: changed.length, oneSided }, null, 2));

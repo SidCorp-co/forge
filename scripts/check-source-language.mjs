@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // English-only source policy guard (ISS-65).
 //
 // Scans .ts/.tsx/.md files under packages/{web,dev,core}/src/ for
@@ -25,11 +26,11 @@
 //
 // Exit codes: 0 clean, 1 violations found, 2 invalid invocation.
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 // cm:why resolved from this file rather than from `git rev-parse` or cwd — the checker must work in a source tarball with no .git and when invoked from any directory. Run from elsewhere, the old git-or-cwd root walked nothing and reported "0 violations across 0 files".
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -68,7 +69,8 @@ const SCAN_EXTS = new Set(CFG.scanExts);
 const BRAND_TOKENS = CFG.brandTokens;
 
 const DIRECTIVE_RE = /(?:\/\/|\/\*|<!--)\s*i18n-allow\s*:\s*(.+)/i;
-const LANG_PICKER_RE = /\bvalue\s*:\s*['"](?:vi|fr|de|es|ja|zh|ko|th|pt|it|ru|nl|sv|no|da|fi|pl|cs|tr|ar|he|hi|id|vn)['"]/;
+const LANG_PICKER_RE =
+  /\bvalue\s*:\s*['"](?:vi|fr|de|es|ja|zh|ko|th|pt|it|ru|nl|sv|no|da|fi|pl|cs|tr|ar|he|hi|id|vn)['"]/;
 
 const RED = '\x1b[31;1m';
 const RESET = '\x1b[0m';
@@ -93,11 +95,9 @@ function shouldScan(relPath) {
 function listStagedFiles() {
   let out;
   try {
-    out = execFileSync(
-      'git',
-      ['diff', '--cached', '--name-only', '--diff-filter=ACM', '-z'],
-      { encoding: 'utf8' },
-    );
+    out = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM', '-z'], {
+      encoding: 'utf8',
+    });
   } catch {
     return [];
   }
@@ -149,7 +149,10 @@ function listAllFiles(root) {
 function isAllowed(line) {
   const directive = DIRECTIVE_RE.exec(line);
   if (directive) {
-    const reason = directive[1].replace(/\*\/\s*$/, '').replace(/-->\s*$/, '').trim();
+    const reason = directive[1]
+      .replace(/\*\/\s*$/, '')
+      .replace(/-->\s*$/, '')
+      .trim();
     if (reason.length > 0) return { allowed: true, reason: 'directive' };
     return { allowed: false, reason: 'i18n-allow directive present without reason text' };
   }
@@ -163,13 +166,10 @@ function isAllowed(line) {
   for (const match of matches) {
     const idx = match.index ?? 0;
     const covered = BRAND_TOKENS.some((token) => {
-      let from = 0;
-      while (true) {
-        const at = line.indexOf(token, from);
-        if (at < 0) return false;
+      for (let at = line.indexOf(token); at >= 0; at = line.indexOf(token, at + 1)) {
         if (idx >= at && idx < at + token.length) return true;
-        from = at + 1;
       }
+      return false;
     });
     if (!covered) return { allowed: false };
   }
@@ -224,9 +224,7 @@ function report(violations, mode, fileCount) {
     'Fix: translate to English, or add the i18n-allow: directive on the same line if intentional.',
   );
   const fileSet = new Set(violations.map((v) => v.file));
-  console.error(
-    `${violations.length} violation(s) in ${fileSet.size} file(s).`,
-  );
+  console.error(`${violations.length} violation(s) in ${fileSet.size} file(s).`);
   return 1;
 }
 

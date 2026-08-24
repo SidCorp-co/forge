@@ -19,7 +19,7 @@
 // Exit: 0 clean, 1 violations, 2 invalid invocation.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -169,8 +169,7 @@ for (const file of files) {
 
   const was = baseline[rel];
   // cm:guard a baselined file may only IMPROVE — equal counts pass, higher counts fail.
-  const worse =
-    !was || score.declaration > was.declaration || score.mock > was.mock;
+  const worse = !was || score.declaration > was.declaration || score.mock > was.mock;
   if (worse) failures.push({ rel, reasons, was, score });
 }
 

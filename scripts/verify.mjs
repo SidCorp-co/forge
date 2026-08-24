@@ -100,6 +100,14 @@ const CHECKS = [
     // cm:edge naming -> scripts/check-size-budget.mjs — parses that script's success line
     scanned: /^size-budget: (\d+) file/m,
   },
+  // cm:guard the checkers in `scripts/` hold every other axis and were themselves held by nothing — no lint, no typecheck, because `turbo run lint` only fans out to workspace packages and this directory is in none. Measured 2026-08-25 the day it got a config: 21 diagnostics, one of them a real `useIterableCallbackReturn`. Fixed rather than frozen, so this check has no baseline and none is wanted.
+  {
+    axis: 'form',
+    label: 'scripts lint',
+    // cm:edge lockstep -> scripts/biome.json — that file is the config biome resolves for this directory; `root: false` is what stops it leaking into the package configs
+    cmd: ['pnpm', 'exec', 'biome', 'check', 'scripts'],
+    scanned: /^Checked (\d+) files/m,
+  },
   {
     axis: 'form',
     label: 'core typecheck',
@@ -149,6 +157,7 @@ const CI_COVERAGE = {
   '.forge/codemap/cm verify --tier referential': 'verify',
   '.forge/codemap/cm verify --tier structural': 'verify',
   './.forge/archmap/archmap check': 'verify',
+  'pnpm exec biome check scripts': 'verify',
   'pnpm --filter @forge/core lint': 'verify',
   'pnpm --filter @forge/core typecheck': 'verify',
   'pnpm --filter web-v2 lint': 'verify, as the lint-budget check',
@@ -180,7 +189,7 @@ function assertEveryCheckProvesScan() {
   if (unproven.length === 0) return;
   console.error(
     `verify: ${unproven.length} check(s) declare no \`scanned\` pattern: ${unproven.join(', ')}\n` +
-      'Each must match its own checker\'s success line, so an empty scope reads as exit 2\n' +
+      "Each must match its own checker's success line, so an empty scope reads as exit 2\n" +
       'rather than as a pass. Exit 2 — this script cannot vouch for a run it cannot audit.\n',
   );
   process.exit(2);
@@ -198,8 +207,13 @@ function runCheck(check, base) {
   if (r.error) return { ...check, code: 2, out, why: `could not spawn: ${r.error.message}` };
   if (r.status === 2) return { ...check, code: 2, out, why: 'checker reported it could not run' };
 
-  if (check.skipIf && check.skipIf.test(out)) {
-    return { ...check, code: r.status ?? 0, out, note: 'skipped — prerequisite absent locally, CI runs it' };
+  if (check.skipIf?.test(out)) {
+    return {
+      ...check,
+      code: r.status ?? 0,
+      out,
+      note: 'skipped — prerequisite absent locally, CI runs it',
+    };
   }
   if (check.scanned) {
     const m = out.match(check.scanned);
@@ -288,9 +302,15 @@ function ciSteps() {
 function ciGateParity() {
   const text = readFileSync(CI_PATH, 'utf8');
   const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
-  if (!needs) return { code: 2, why: 'cannot find ci-passed.needs — the parser, not the workflow, is wrong' };
-  const declared = needs[1].split(',').map((s) => s.trim()).filter(Boolean);
-  const asserted = [...text.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.result\s*\}\}"/g)].map((m) => m[1]);
+  if (!needs)
+    return { code: 2, why: 'cannot find ci-passed.needs — the parser, not the workflow, is wrong' };
+  const declared = needs[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const asserted = [
+    ...text.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.result\s*\}\}"/g),
+  ].map((m) => m[1]);
   const unasserted = declared.filter((j) => j !== 'changes' && !asserted.includes(j));
   if (unasserted.length === 0) return { code: 0, count: declared.length };
   return { code: 1, unasserted };
@@ -303,14 +323,20 @@ function ciParity(quiet) {
     return 2;
   }
   if (steps.length === 0) {
-    console.error('ci-parity: parsed 0 steps out of ci.yml — the parser, not the workflow, is wrong');
+    console.error(
+      'ci-parity: parsed 0 steps out of ci.yml — the parser, not the workflow, is wrong',
+    );
     return 2;
   }
   const gate = ciGateParity();
   if (gate.code !== 0) {
-    console.error(`\nci-parity: ${gate.why ?? `${gate.unasserted.length} job(s) in ci-passed.needs that ci-passed never asserts:`}`);
+    console.error(
+      `\nci-parity: ${gate.why ?? `${gate.unasserted.length} job(s) in ci-passed.needs that ci-passed never asserts:`}`,
+    );
     for (const j of gate.unasserted ?? []) console.error(`  ${j}`);
-    console.error('\n`ci-passed` runs `if: always()`. A job it needs but never names in the result');
+    console.error(
+      '\n`ci-passed` runs `if: always()`. A job it needs but never names in the result',
+    );
     console.error('loop completes, is ignored, and cannot block the merge — the gate reads as');
     console.error('enforced and is not. Add it to the loop in .github/workflows/ci.yml.\n');
     return gate.code;
@@ -319,7 +345,9 @@ function ciParity(quiet) {
   const missing = steps.filter((s) => !(s in CI_COVERAGE));
   if (missing.length === 0) {
     if (!quiet) {
-      console.log(`ci-parity: ${steps.length} CI step(s) declared, ${gate.count} gate job(s) asserted`);
+      console.log(
+        `ci-parity: ${steps.length} CI step(s) declared, ${gate.count} gate job(s) asserted`,
+      );
     }
     return 0;
   }
@@ -367,7 +395,9 @@ function report(results, adv, parity) {
   }
 
   if (adv) {
-    console.log(`\n${'─'.repeat(72)}\nDeclared couplings on files you changed — read before pushing:\n`);
+    console.log(
+      `\n${'─'.repeat(72)}\nDeclared couplings on files you changed — read before pushing:\n`,
+    );
     for (const h of adv) {
       console.log(`  ${h.file}`);
       for (const [tag, text] of h.rows) console.log(`    ${tag}  ${text}`);
