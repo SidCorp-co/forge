@@ -8,9 +8,7 @@ const loadReleaseRoster = vi.fn();
 const createReleaseBatch = vi.fn();
 
 vi.mock('../release-batch/queries.js', () => ({ loadReleaseRoster: () => loadReleaseRoster() }));
-// Fully replaced rather than spread over the real module: importing it for
-// real pulls the db client and therefore the env contract, and this file has
-// no database in it.
+// cm:why fully replaced rather than spread over the real module — importing it for real pulls the db client and therefore the env contract, and this file has no database in it
 vi.mock('../release-batch/service.js', () => {
   class BatchInFlightError extends Error {
     constructor(public readonly existingJobId?: string | null) {

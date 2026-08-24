@@ -11,7 +11,7 @@ export interface ScheduleRowForDispatch {
   id: string;
   name?: string | null;
   projectId: string;
-  // Nullable: a kind='script' schedule carries no prompt at all (ISS-618).
+  /** Null for `kind='script'` — a script schedule carries no prompt at all (ISS-618). */
   prompt: string | null;
   runner: 'desktop' | 'antigravity';
   targetProjectSlug: string | null;
@@ -20,22 +20,22 @@ export interface ScheduleRowForDispatch {
   params?: Record<string, unknown> | null;
   mode?: ScheduleMode | null;
   appliedMessageVersions?: AppliedVersions | null;
-  // ISS-618 — 'script' schedules run a sandboxed script, no agent session at all.
+  /** `'script'` runs a sandboxed script with no agent session at all (ISS-618). */
   kind?: ScheduleKind | null;
   script?: string | null;
 }
 
 export interface DispatchScheduleInput {
   schedule: ScheduleRowForDispatch;
-  // Manual triggers attribute the session to the calling user; tick triggers
-  // fall back to the resolved project's creator (agent_sessions.user_id is
-  // nullable but useful to populate for audit + activity feeds).
+  /**
+   * Manual triggers attribute the session to the calling user; tick triggers fall back to the
+   * resolved project's creator. `agent_sessions.user_id` is nullable, but populating it is what
+   * makes the audit trail and activity feed name someone.
+   */
   actorUserId?: string;
-  // Marks the resulting session metadata so consumers can distinguish
-  // tick-driven runs from manual /:id/run triggers.
+  /** Marks the session metadata so consumers can tell tick-driven runs from manual `/:id/run`. */
   tick?: boolean;
-  // When the caller has already resolved `targetProjectSlug` (e.g. the route's
-  // auth gate), pass the resolved project here to skip a redundant lookup.
+  /** Set when the caller already resolved `targetProjectSlug` (e.g. the route's auth gate), to skip a redundant lookup. */
   resolvedTarget?: { id: string; createdBy: string };
 }
 

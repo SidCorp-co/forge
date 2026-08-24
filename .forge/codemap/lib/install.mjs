@@ -1,4 +1,4 @@
-// @generated codemap 0.12.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
 // `cm install` — put the tool IN the project, so the rules hold without the plugin.
 //
 // Until this existed, every enforcement path ran out of the plugin: the hooks are plugin hooks, and
@@ -83,6 +83,14 @@ export function install({ root, version, gitHook, force }) {
   writeFileSync(join(dir, 'VERSION'), `${version}\n`);
   files.push('.forge/codemap/VERSION');
 
+  // cm:guard the hook that gates a TEAM has to be committed — .git/hooks is per-clone, so a repo whose
+  //   only gate lives there is gated on exactly the machines that remembered to run one command
+  const hooksDir = join(dir, 'hooks');
+  mkdirSync(hooksDir, { recursive: true });
+  writeFileSync(join(hooksDir, 'pre-commit'), PRE_COMMIT);
+  chmodSync(join(hooksDir, 'pre-commit'), 0o755);
+  files.push('.forge/codemap/hooks/pre-commit');
+
   const notes = [];
   let hook = null;
   if (gitHook) {
@@ -101,7 +109,7 @@ export function install({ root, version, gitHook, force }) {
         hook = '.git/hooks/pre-commit';
         // cm:why a git hook lives in .git, which is per-clone and never committed — saying so here is the
         // difference between "the repo is gated" and "my clone is gated"
-        notes.push('git hooks are per-clone and not committed — each contributor runs `cm install --git-hook` once (CI is the gate that always holds)');
+        notes.push('this copy is per-clone; the committed one at .forge/codemap/hooks/ is what gates everyone');
       }
     }
   }

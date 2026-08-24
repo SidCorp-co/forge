@@ -1,0 +1,4 @@
+#!/bin/sh
+# codemap/1 — installed by: cm install --git-hook
+# Gates the staged tree only, so an unrelated legacy file can never block a commit.
+exec "$(git rev-parse --show-toplevel)/.forge/codemap/cm" verify --staged --tier grammar

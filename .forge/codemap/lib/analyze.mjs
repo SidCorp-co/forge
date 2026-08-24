@@ -1,4 +1,4 @@
-// @generated codemap 0.12.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
 // Per-file analysis: comments -> annotations + grammar diagnostics (codemap/1 §7 grammar tier).
 //
 // `proseKeys` is the file's answer to "what prose text do I contain" — the set the baseline is built
