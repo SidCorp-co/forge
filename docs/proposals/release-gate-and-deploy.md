@@ -353,3 +353,32 @@ became an explicit default *floor* instead, named as such in the prompt.
 - [ ] `{version, commit}` on `/api/health`'s body (varnish's `fe_probe` reads the status code only, so the body is free).
 - [ ] Per-version image tags, so deploy and rollback become the same operation with a different tag.
 - [ ] A box carrying the prod ssh credential, labelled for the release pool.
+
+### Rollout — 2026-08-24
+
+Code on `main` is not code that runs. Two delivery paths, and they are not the same:
+
+- **core + web-v2** → forge-beta, deployed from `main` at 14:09Z. Verified live: uptime reset to
+  97s and `forge_release_batch`'s live MCP schema carries the `commit` argument Wave 4 added, which
+  the previous build did not have.
+- **bundled runner skills** → the fleet, only through a **runner release**. `forge-drive/SKILL.md`
+  is `include_str!`-ed at compile time, so L0.6's one-word fix (`forge_step_start` → `forge_phase`)
+  changed nothing on any box until `runner-v0.7.11` was cut. That is the fix behind the 76-jobs /
+  1-journal-row measurement; had the tag been skipped, the whole wave would have read as shipped
+  while the driver kept writing to a tool that journals nothing.
+
+Two projects were left in a state the new code describes but does not repair on its own:
+
+- **ISS-141** (epodsystem) was sitting at `reopen`, where the autonomous dispatcher never looks.
+  The write-time rewrite only applies to new transitions, so an issue already parked there does not
+  self-heal. Moved to `tested`/`awaiting_release` — merged to `dev`, not shipped — rather than to
+  `open`, which would have spent a drive job rediscovering a finished diagnosis.
+- **epodsystem's `release-procedure` fact** was unset, which under Wave 3 means the Forge default,
+  and that default opens with *"merge baseBranch → productionBranch and push"*. On this project that
+  is `dev → master`, which its own `merge-target` fact forbids outright. The fact now names the half
+  a `release_batch` agent may carry out (version, changelog, `release.sh open`) and ends it at
+  `abort`: a human merges the MR, tags, and runs `deploy_sa.sh` on the prod host, so an agent here
+  can never truthfully call `finish`.
+
+Still unmeasured: the phase-journal ratio. It needs ~10 drive jobs on runners that have taken
+0.7.11, which is the only acceptance L0.6 has.
