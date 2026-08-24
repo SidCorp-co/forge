@@ -18,7 +18,7 @@ import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import type { Actor } from './activity.js';
-import { dispatchAutonomous, isAutonomous } from './autonomous-dispatch.js';
+import { dispatchAutonomous, dispatchDriveManual, isAutonomous } from './autonomous-dispatch.js';
 import { type PreventivePattern, queryPreventivePatterns } from './ci-fix-pattern-query.js';
 import { findDecompositionParent } from './decomposition.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
@@ -413,10 +413,9 @@ async function buildAndEnqueueStepJob(args: {
 }
 
 /**
- * Manual fire of a pipeline stage from the issue UI (ISS-5). Bypasses
- * `pipelineConfig.enabled` and the per-stage `auto*` toggles — the user
- * explicitly clicked "Run" so we honor it regardless of project automation
- * settings. Throws `ActiveJobConflictError` when a job of the same
+ * Manual fire from the issue UI (ISS-5): one staged stage, or the whole drive
+ * session on an autonomous project. Bypasses every automation gate — the user
+ * clicked "Run". Throws `ActiveJobConflictError` when a job of the same
  * (issueId, type) is already active so the route can return 409.
  */
 export async function triggerPipelineStepManual(args: {
@@ -427,6 +426,9 @@ export async function triggerPipelineStepManual(args: {
   actor: Actor;
   reason: Record<string, unknown>;
 }): Promise<{ jobId: string; type: JobType }> {
+  const { cfg, projectCreatedBy } = await loadPipelineConfig(args.projectId);
+  // cm:guard the autonomous branch must sit BEFORE skill resolution: `forge-drive` ships in the runner binary and is never in `skill_registrations`, so the staged resolver throws NO_SKILL_REGISTERED and Run is dead on every autonomous project — which is the only escape from a gated entry stage
+  if (isAutonomous(cfg)) return dispatchDriveManual({ ...args, projectCreatedBy });
   const resolver = createProjectSkillResolver(args.projectId);
 
   let skill: ResolvedSkill | null;
@@ -451,8 +453,6 @@ export async function triggerPipelineStepManual(args: {
     skill = await resolver.resolve(args.status);
   }
   if (!skill) throw new Error('NO_SKILL_REGISTERED: no skill registration for this status');
-
-  const { cfg, projectCreatedBy } = await loadPipelineConfig(args.projectId);
 
   // Cheap pre-check — 409s before opening a run or building prompt inputs.
   const existing = await findActiveJob(args.issueId, skill.type);

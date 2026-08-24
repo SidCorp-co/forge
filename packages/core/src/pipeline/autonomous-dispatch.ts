@@ -18,21 +18,22 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, type JobType, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
+import {
+  AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_JOB_TYPE,
+  AUTONOMOUS_SKILL_NAME,
+  isAutonomous,
+} from './autonomous-mode.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
-import type { PipelineConfig } from './pipeline-config-schema.js';
+import type { PipelineConfig, StageName } from './pipeline-config-schema.js';
 import { openIssueRun } from './runs.js';
 
-/** The status at which the driver is handed the issue. */
-export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = 'open';
-
-export const AUTONOMOUS_JOB_TYPE: JobType = 'drive';
-
-/** Ships in the runner binary; never resolved from `skill_registrations`. */
-export const AUTONOMOUS_SKILL_NAME = 'forge-drive';
-
-export function isAutonomous(cfg: PipelineConfig | null): boolean {
-  return cfg?.mode === 'autonomous';
-}
+export {
+  AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_JOB_TYPE,
+  AUTONOMOUS_SKILL_NAME,
+  isAutonomous,
+} from './autonomous-mode.js';
 
 /**
  * What the autonomous driver wants done for an issue that just landed on
@@ -72,6 +73,54 @@ export interface DispatchAutonomousArgs {
 }
 
 /**
+ * The operator's gate on the entry stage. In staged mode these two knobs sit
+ * below the autonomous branch in `considerEnqueue` and so never applied here:
+ * a project could set "require a human" and watch the driver start anyway.
+ */
+// cm:guard only the two knobs that name a HUMAN decision belong here. The per-step `auto*` toggles (autoTriage, autoCode…) name stages this mode does not have, so reading one as "may the driver start" would invent a meaning the operator never set.
+// cm:edge lockstep -> packages/core/src/pipeline/orchestrator.ts — the staged path applies its own copy of these two checks (`stageCfg.enabled === false`, `stageCfg.mode === 'manual'`) after `dispatchAutonomous` returns false; both modes must gate on the same pair or "require human review" means two different things per project
+function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
+  const entry = cfg?.states?.[AUTONOMOUS_ENTRY_STATUS as StageName];
+  return entry?.enabled === false || entry?.mode === 'manual';
+}
+
+async function enqueueDriveJob(args: {
+  projectId: string;
+  issueId: string;
+  createdBy: string;
+  runId: string;
+  step: { type: JobType; skillName: string };
+}): Promise<string> {
+  const { jobId } = await insertAndEnqueueJob({
+    projectId: args.projectId,
+    issueId: args.issueId,
+    pipelineRunId: args.runId,
+    createdBy: args.createdBy,
+    type: args.step.type,
+    skillName: args.step.skillName,
+    promptString: buildDrivePrompt({
+      issueId: args.issueId,
+      projectId: args.projectId,
+      runId: args.runId,
+    }),
+    payloadExtras: { mode: 'autonomous' },
+    resolveRacingJobId: async () => {
+      const [row] = await db
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(and(eq(jobs.issueId, args.issueId), eq(jobs.type, args.step.type)))
+        .limit(1);
+      return row?.id ?? null;
+    },
+  });
+  logger.info(
+    { projectId: args.projectId, issueId: args.issueId, jobId },
+    'autonomous-dispatch: drive job enqueued',
+  );
+  return jobId;
+}
+
+/**
  * Handle dispatch for an autonomous project. Returns `true` when this driver
  * owns the decision — including when the decision is to do nothing — so the
  * caller returns without walking the staged path.
@@ -83,7 +132,15 @@ export async function dispatchAutonomous(args: DispatchAutonomousArgs): Promise<
   const step = autonomousStepFor(args.status);
   if (!step) return true;
 
-  const createdBy = args.actor.type === 'user' ? args.actor.id : (args.projectCreatedBy ?? null);
+  if (isEntryGateClosed(args.cfg)) {
+    logger.info(
+      { projectId: args.projectId, issueId: args.issueId },
+      'autonomous-dispatch: entry stage is gated to a human, no drive job enqueued',
+    );
+    return true;
+  }
+
+  const createdBy = resolveCreatedBy(args.actor, args.projectCreatedBy);
   if (!createdBy) {
     logger.warn(
       { projectId: args.projectId, issueId: args.issueId },
@@ -102,36 +159,54 @@ export async function dispatchAutonomous(args: DispatchAutonomousArgs): Promise<
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
   try {
-    const { jobId } = await insertAndEnqueueJob({
+    await enqueueDriveJob({
       projectId: args.projectId,
       issueId: args.issueId,
-      pipelineRunId: run.id,
       createdBy,
-      type: step.type,
-      skillName: step.skillName,
-      promptString: buildDrivePrompt({
-        issueId: args.issueId,
-        projectId: args.projectId,
-        runId: run.id,
-      }),
-      payloadExtras: { mode: 'autonomous' },
-      resolveRacingJobId: async () => {
-        const [row] = await db
-          .select({ id: jobs.id })
-          .from(jobs)
-          .where(and(eq(jobs.issueId, args.issueId), eq(jobs.type, step.type)))
-          .limit(1);
-        return row?.id ?? null;
-      },
+      runId: run.id,
+      step,
     });
-    logger.info(
-      { projectId: args.projectId, issueId: args.issueId, jobId },
-      'autonomous-dispatch: drive job enqueued',
-    );
   } catch (err) {
     // cm:why the duplicate is the unique index on (issueId, type) doing its job — one drive job per issue is the invariant, so a race losing here is correct, not an error
     if (err instanceof ActiveJobConflictError) return true;
     throw err;
   }
   return true;
+}
+
+function resolveCreatedBy(actor: Actor, projectCreatedBy: string | null): string | null {
+  return actor.type === 'user' ? actor.id : (projectCreatedBy ?? null);
+}
+
+/**
+ * The human pressing "Run" on an issue an autonomous project has gated. Throws
+ * `ActiveJobConflictError` when a drive job is already live, so the route 409s
+ * exactly as the staged manual path does.
+ */
+// cm:guard this bypasses `isEntryGateClosed` ON PURPOSE and must keep doing so — "Run" IS the human the gate is waiting for, and a button that refuses because a human is required would make `mode: 'manual'` a dead end with no way out but editing the config
+export async function dispatchDriveManual(args: {
+  projectId: string;
+  issueId: string;
+  status: IssueStatus;
+  actor: Actor;
+  projectCreatedBy: string | null;
+}): Promise<{ jobId: string; type: JobType }> {
+  const step = autonomousStepFor(args.status);
+  if (!step) {
+    throw new Error(
+      `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
+    );
+  }
+  const createdBy = resolveCreatedBy(args.actor, args.projectCreatedBy);
+  if (!createdBy) throw new Error('NO_CREATED_BY: no user actor and no project owner to attribute');
+
+  const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
+  const jobId = await enqueueDriveJob({
+    projectId: args.projectId,
+    issueId: args.issueId,
+    createdBy,
+    runId: run.id,
+    step,
+  });
+  return { jobId, type: step.type };
 }

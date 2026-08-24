@@ -1238,6 +1238,8 @@ describe('forge_issues tool', () => {
     const testedRow = { ...baseIssueRow, status: 'tested' as const };
     selectLimit.mockResolvedValueOnce([testedRow]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // cm:why the third read is the project's pipeline mode: a `reopen` on an autonomous project is rewritten to `open` before the write (issues/autonomous-reopen.ts), and an empty agentConfig is the staged answer that leaves this transition alone
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, reopenCount: 1, updatedAt: new Date() },
     ]);

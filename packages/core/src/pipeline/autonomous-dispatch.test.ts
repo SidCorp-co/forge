@@ -15,7 +15,7 @@ vi.mock('./enqueue-helper.js', () => ({
 }));
 vi.mock('./runs.js', () => ({ openIssueRun }));
 
-const { autonomousStepFor, dispatchAutonomous, isAutonomous } = await import(
+const { autonomousStepFor, dispatchAutonomous, dispatchDriveManual, isAutonomous } = await import(
   './autonomous-dispatch.js'
 );
 
@@ -104,6 +104,34 @@ describe('dispatchAutonomous', () => {
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
   });
 
+  // cm:guard ISS-141 follow-up — an operator who sets "require a human" on the entry stage got the driver starting anyway: in staged mode these two checks sit BELOW the autonomous branch in `considerEnqueue`, so they never ran for this mode
+  it('honours a human gate on the entry stage and enqueues nothing', async () => {
+    for (const open of [{ mode: 'manual' }, { enabled: false }] as const) {
+      expect(
+        await dispatchAutonomous({
+          ...BASE,
+          status: 'open',
+          cfg: { mode: 'autonomous', states: { open } },
+        }),
+      ).toBe(true);
+    }
+    expect(insertAndEnqueueJob).not.toHaveBeenCalled();
+    expect(openIssueRun).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the per-step `auto*` toggles name stages this mode does not have; reading one as "may the driver start" would gate the driver on a knob the operator set for something else
+  it('starts on an entry stage that is enabled and automatic', async () => {
+    selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
+
+    await dispatchAutonomous({
+      ...BASE,
+      status: 'open',
+      cfg: { mode: 'autonomous', states: { open: { mode: 'auto', enabled: true } } },
+    });
+
+    expect(insertAndEnqueueJob).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses rather than inventing an author when the project has no creator', async () => {
     expect(
       await dispatchAutonomous({
@@ -114,6 +142,29 @@ describe('dispatchAutonomous', () => {
         cfg: { mode: 'autonomous' },
       }),
     ).toBe(true);
+    expect(insertAndEnqueueJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('dispatchDriveManual', () => {
+  // cm:guard `forge-drive` is never in `skill_registrations`, so the staged manual path throws NO_SKILL_REGISTERED here — without this entry point a gated entry stage has no way out but editing the config
+  it('starts the driver even though the entry stage is gated to a human', async () => {
+    const result = await dispatchDriveManual({ ...BASE, status: 'open' });
+
+    expect(result).toEqual({ jobId: 'job-1', type: 'drive' });
+    expect(insertAndEnqueueJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads no live status, because the human just looked at the issue', async () => {
+    await dispatchDriveManual({ ...BASE, status: 'open' });
+
+    expect(selectLimit).not.toHaveBeenCalled();
+  });
+
+  it('says where the driver actually starts instead of silently doing nothing', async () => {
+    await expect(dispatchDriveManual({ ...BASE, status: 'developed' })).rejects.toThrow(
+      'AUTONOMOUS_NOT_AT_ENTRY',
+    );
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
   });
 });

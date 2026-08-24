@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T04:09:49.807Z",
+  "generatedAt": "2026-08-24T12:30:57.340Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -34,11 +34,11 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.test.ts": {
-      "fileLines": 762,
+      "fileLines": 747,
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.ts": {
-      "fileLines": 3436,
+      "fileLines": 3402,
       "maxFunctionLines": 0
     },
     "packages/core/src/devices/routes.test.ts": {
@@ -50,7 +50,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/index.ts": {
-      "fileLines": 614,
+      "fileLines": 588,
       "maxFunctionLines": 0
     },
     "packages/core/src/integrations/rocketchat/agent-chat-bridge.test.ts": {
@@ -222,11 +222,11 @@
       "maxFunctionLines": 219
     },
     "packages/core/src/pipeline/orchestrator.test.ts": {
-      "fileLines": 1363,
-      "maxFunctionLines": 460
+      "fileLines": 1362,
+      "maxFunctionLines": 455
     },
     "packages/core/src/pipeline/orchestrator.ts": {
-      "fileLines": 877,
+      "fileLines": 878,
       "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/pipeline-config-schema.test.ts": {
@@ -235,18 +235,18 @@
     },
     "packages/core/src/pipeline/pipeline-config-service.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 152
+      "maxFunctionLines": 151
     },
     "packages/core/src/pipeline/subscribers.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 180
     },
     "packages/core/src/pipeline/sweeper.test.ts": {
-      "fileLines": 865,
+      "fileLines": 801,
       "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/sweeper.ts": {
-      "fileLines": 781,
+      "fileLines": 715,
       "maxFunctionLines": 0
     },
     "packages/core/src/pm/routes.ts": {
@@ -262,7 +262,7 @@
       "maxFunctionLines": 353
     },
     "packages/core/src/projects/routes.ts": {
-      "fileLines": 831,
+      "fileLines": 811,
       "maxFunctionLines": 0
     },
     "packages/core/src/prompt/user.test.ts": {
@@ -306,7 +306,7 @@
       "maxFunctionLines": 160
     },
     "packages/core/src/skills/service.ts": {
-      "fileLines": 653,
+      "fileLines": 652,
       "maxFunctionLines": 0
     },
     "packages/core/tests/integration/admin-aggregate-routes.test.ts": {

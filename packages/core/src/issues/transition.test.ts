@@ -90,6 +90,8 @@ function buildApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  // cm:guard keep a default for reads no test queues: an exhausted `mockResolvedValueOnce` returns `undefined`, which throws inside the caller's destructuring and reaches the test as a 500 — so a new read added to the route under test fails every case here with the wrong reason
+  selectLimit.mockResolvedValue([]);
   updateReturning.mockReset();
   publish.mockReset();
   projectAccess.mockReset();

@@ -8,6 +8,7 @@ import { canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { resolveAutonomousReopenTarget } from './autonomous-reopen.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
@@ -160,13 +161,13 @@ export function publishIssueStatusChange(
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
-  toStatus: IssueStatus,
+  requestedStatus: IssueStatus,
   actor: TransitionActor,
   options: ApplyStatusTransitionOptions = {},
 ): Promise<StatusTransitionResult> {
   const fromStatus = issue.status;
-  if (fromStatus === toStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
+  if (fromStatus === requestedStatus) {
+    throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
       status: fromStatus,
     });
   }
@@ -174,37 +175,37 @@ export async function transitionIssueStatus(
   // Transitions are intentionally permissive (the system prompt guides the
   // happy path); only `draft` is a forbidden target. `skip` still bypasses
   // even that for the orchestrator's curated soft-skip chain.
-  if (!options.skip && !canTransitionFree(fromStatus, toStatus)) {
+  if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
     throw new TransitionError(
       'ILLEGAL_TRANSITION',
-      `'${toStatus}' is not a valid runtime status target`,
-      { from: fromStatus, to: toStatus },
+      `'${requestedStatus}' is not a valid runtime status target`,
+      { from: fromStatus, to: requestedStatus },
     );
   }
 
   // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
   // cm:guard `skip: true` is exempt ON PURPOSE — that is the orchestrator's curated soft-skip/guard chain, and every one of those paths posts its own operator comment first (plan-gate-guard.ts); requiring a second one would double-comment, and refusing the write would freeze the chain
-  if (requiresAuthoredReason(fromStatus, toStatus) && options.skip !== true) {
+  if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
     const reason = options.transitionReason?.trim();
     if (!reason) {
       throw new TransitionError(
         'TRANSITION_REASON_REQUIRED',
-        `a transition to \`${toStatus}\` must carry a reason saying what is needed or what is wrong`,
-        { from: fromStatus, to: toStatus },
+        `a transition to \`${requestedStatus}\` must carry a reason saying what is needed or what is wrong`,
+        { from: fromStatus, to: requestedStatus },
       );
     }
-    if (toStatus === 'waiting' && !options.waitingKind) {
+    if (requestedStatus === 'waiting' && !options.waitingKind) {
       throw new TransitionError(
         'WAITING_KIND_REQUIRED',
         'a `waiting` park must say which kind it is: `needs_decision` or `needs_resource`',
-        { from: fromStatus, to: toStatus },
+        { from: fromStatus, to: requestedStatus },
       );
     }
     await postTransitionReasonComment({
       issueId: issue.id,
       authorId: actor.type === 'user' ? actor.id : actor.ownerId,
       fromStatus,
-      toStatus,
+      toStatus: requestedStatus,
       reason,
       waitingKind: options.waitingKind ?? null,
       isAi: actor.type !== 'user',
@@ -214,7 +215,7 @@ export async function transitionIssueStatus(
   // cm:why skip exempts auto-skip/failover (both pass {skip:true} into `approved`) — only an unskipped device write is the fabrication class this guards against
   const violation = await checkTransitionEvidence({
     issue: { id: issue.id, projectId: issue.projectId },
-    toStatus,
+    toStatus: requestedStatus,
     actorType: actor.type,
     skip: options.skip === true,
   });
@@ -222,7 +223,16 @@ export async function transitionIssueStatus(
     throw new TransitionError(violation.code, violation.detail, violation.details);
   }
 
-  const reopening = isReopenEntry(fromStatus, toStatus);
+  const reopening = isReopenEntry(fromStatus, requestedStatus);
+
+  // cm:guard everything ABOVE this line reads `requestedStatus` (what the caller asked for) and everything BELOW writes `toStatus` (what the kernel will store); mixing the two either drops the reopen reason and counter or drops the rewrite, and each failure is silent
+  const toStatus = await resolveAutonomousReopenTarget(issue.projectId, requestedStatus);
+  if (fromStatus === toStatus) {
+    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
+      status: fromStatus,
+      requested: requestedStatus,
+    });
+  }
 
   // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
   // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
