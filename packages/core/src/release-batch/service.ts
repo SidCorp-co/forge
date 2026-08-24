@@ -301,6 +301,8 @@ export async function finishReleaseBatch(
         },
         'closed',
         actor,
+        // cm:edge protocol -> packages/core/src/issues/release-gate-hold.ts — the ONLY caller allowed to pass this. It is what makes `finish` the single writer of `closed` past the gate; an agent's own close is rewritten back to the gate without it
+        { viaReleasePath: true },
       );
       closed.push(issue.id);
     } catch (err) {

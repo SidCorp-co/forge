@@ -11,6 +11,7 @@ import { roomManager } from '../ws/server.js';
 import { resolveAutonomousReopenTarget } from './autonomous-reopen.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
+import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import { postTransitionReasonComment, requiresAuthoredReason } from './transition-reason.js';
 
@@ -107,6 +108,11 @@ export interface ApplyStatusTransitionOptions {
    */
   // cm:guard REQUIRED but never DEFAULTED (RFC 0002 INV-5) — refusing the write is not the same as picking a value: an unstated kind must never be guessed, because the five-way derivation this replaced guessed wrong on ISS-163 and rendered the wrong button
   waitingKind?: WaitingKind | undefined;
+  /**
+   * This close is the release itself, so it may write `closed` past the gate.
+   */
+  // cm:guard `release_batch finish` is the ONLY caller entitled to set this, and it must never be plumbed through a route parameter or an MCP argument — the flag IS the gate, and anything that can ask for it can close an unshipped issue
+  viaReleasePath?: boolean;
 }
 
 export interface StatusTransitionResult {
@@ -226,7 +232,13 @@ export async function transitionIssueStatus(
   const reopening = isReopenEntry(fromStatus, requestedStatus);
 
   // cm:guard everything ABOVE this line reads `requestedStatus` (what the caller asked for) and everything BELOW writes `toStatus` (what the kernel will store); mixing the two either drops the reopen reason and counter or drops the rewrite, and each failure is silent
-  const toStatus = await resolveAutonomousReopenTarget(issue.projectId, requestedStatus);
+  const reopenTarget = await resolveAutonomousReopenTarget(issue.projectId, requestedStatus);
+  const { status: toStatus, held } = await resolveAgentCloseTarget({
+    projectId: issue.projectId,
+    requested: reopenTarget,
+    actorType: actor.type,
+    viaReleasePath: options.viaReleasePath === true,
+  });
   if (fromStatus === toStatus) {
     throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
       status: fromStatus,
@@ -267,11 +279,10 @@ export async function transitionIssueStatus(
           fromStatus,
           toStatus: toStatus,
         });
-        // closed = done: a close from ANY surface satisfies the L2 blocks
-        // gate. No-op when merged_at is already stamped (pipeline path).
+        // cm:guard pass the REQUESTED status, not the written one: a close held at the release gate has merged into the base branch, and that is exactly what `merged_at` means — dropping the stamp would keep every `blocks` dependent waiting for a release rather than for the merge
         const closeStamp = await markMergedOnClose(t, {
           issueId: issue.id,
-          toStatus: toStatus,
+          toStatus: requestedStatus,
         });
         stampedOnClose = closeStamp.stamped;
       }
@@ -301,7 +312,25 @@ export async function transitionIssueStatus(
   // path stamped earlier on leaving the base merge state, so it stays quiet).
   // Best-effort: the transition already committed; losing the comment must
   // not fail the caller.
-  if (txResult?.stampedOnClose) {
+  if (held) {
+    try {
+      // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
+      await db.insert(comments).values({
+        issueId: issue.id,
+        authorId: actor.type === 'user' ? actor.id : actor.ownerId,
+        body: `Held at the release gate — merged, not shipped. \`merged_at\` is stamped, so every \`blocks\`-dependent can dispatch now; the issue closes when a release ships it.`,
+        parentId: null,
+        isAi: true,
+      });
+    } catch (err) {
+      logger.warn(
+        { err, issueId: issue.id },
+        'transition: release-gate hold comment failed (transition already committed)',
+      );
+    }
+  }
+
+  if (txResult?.stampedOnClose && !held) {
     try {
       // ISS-786 child B, requirement 5 — name whether any code evidence
       // exists so a false unblock (ISS-75/76/77/78 shape) becomes visible
@@ -337,8 +366,10 @@ export async function transitionIssueStatus(
   // RUN_CLOSING_STATUSES entries. No-ops when no open run exists (e.g. an
   // issue that transitions before any job is queued).
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
-  const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
-  if (RUN_CLOSING_STATUSES.has(toStatus)) {
+  // cm:guard a held close is terminal FOR DISPATCH even though the status is not: `merged_at` is stamped, so the L2 blocks gate is satisfied and the dependents are ready now — leaving this false makes them wait for the 60s reconciler backstop instead of the fan-out
+  const terminal = TERMINAL_FOR_DISPATCH.has(toStatus) || held;
+  // cm:guard the run must close on a hold too. The driver's session is over; a run left `running` while the issue waits days for a release is the state-never-lies breach the gate exists to fix, and the loop monitor would eventually reap it as a stall.
+  if (RUN_CLOSING_STATUSES.has(toStatus) || held) {
     await closeOpenRunForIssue(issue.id, 'completed');
   }
 

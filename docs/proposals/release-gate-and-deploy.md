@@ -214,21 +214,43 @@ to be an enforcement problem at all.
 
 ### Wave 2 — the gate · this is where terminal behaviour changes
 
-- [ ] **L1.1 · gate resolver.** `release-batch/gate.ts:16-19` keys on `states.tested.mode` and
+**Shipped 2026-08-24.** L0.1 and L0.2 collapsed into one mechanism, which is why they are one tick:
+rejecting an agent's close would have stranded the session with nowhere legal to go, so the close is
+**rewritten** to the gate instead — the same write-time shape as L0.4. That makes the skill's
+cooperation unnecessary rather than required, which was L0.2's whole point.
+
+- [x] **L1.1 · gate resolver.** `release-batch/gate.ts:16-19` keys on `states.tested.mode` and
   returns `null` when it is `'auto'` — autonomous projects never write a `tested` config, so they
   read as *no gate*. Add: autonomous + a production `integration_binding` (or an explicit
   `pipelineConfig.release.enabled`) ⇒ gate is `'tested'`. Export one predicate
   (`hasReleaseGate(projectId)`) — L0.2 and L1.4 both consume it, and two copies of this condition is
   the bug.
-- [ ] **L0.2 · close gate.** `issues/apply-transition.ts` (the same tx as `:252-266`): reject
+  *Shipped, and the open decision resolved the other way:* no new declaration was invented. A
+  staged project keeps its default gate; an **autonomous** project gets one only where
+  `states.tested.mode === 'manual'` is explicitly set. That already distinguishes the fleet —
+  apiflow and epodsystem have it, getcontent and kinetrak set `{enabled:false}` — so the per-project
+  rollout runs on config that exists rather than on a flag nobody has set yet. Defaulting it on
+  would have parked every issue of every autonomous project with nothing able to release them.
+- [x] **L0.2 · close gate.** `issues/apply-transition.ts` (the same tx as `:252-266`): reject
   `→ closed` when the actor is an agent **and** `hasReleaseGate` **and** the issue is at the gate.
   The rejection names the release path. **Done when** an edited skill cannot re-open the hole —
   test it by asking an agent to close a gated issue and asserting the transition throws.
-- [ ] **L0.1 · ship skill.** `packages/runner/skills/forge-ship/SKILL.md`: phase 6 calls
+  *Shipped as a rewrite, not a rejection* (`issues/release-gate-hold.ts`). A held close still stamps
+  `merged_at` — the branch DID land, and dropping the stamp would trade a false "shipped" for a
+  stalled dependency graph — reports `terminal` so dependents fan out immediately instead of waiting
+  for the 60s backstop, closes the run (the session is over even though the issue is not), and
+  comments *"merged, not shipped"*. `dropped` passes through: it means "this was not work", and
+  holding it for a release it will never join parks it forever. `viaReleasePath` is the single
+  bypass and `release_batch finish` is its only caller.
+- [x] **L0.1 · ship skill.** `packages/runner/skills/forge-ship/SKILL.md`: phase 6 calls
   `forge_issues action='mark_merged'` (the action already exists, `mcp/tools/forge-issues.ts:1200`);
   phase 7 exits to the gate, never `closed`. The current "## Close" block teaches the opposite and
   must go. **Done when** a merged autonomous issue sits at `awaiting_release` with `merged_at`
   stamped at merge time.
+  *Shipped smaller:* the kernel stamps and parks, so no `mark_merged` call was added — a step the
+  skill cannot skip beats a step it is asked to perform. `forge-ship`'s "## Close" now says what
+  actually happens and forbids the words *shipped / deployed / live* in the close comment, because
+  the agent has no way to know whether anything was released.
 
 > Waves 1–2 land together per project. A project with no release config keeps today's behaviour —
 > L0.2 no-ops for it — so there is no window where issues stop closing and nothing can release them.

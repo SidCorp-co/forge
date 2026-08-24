@@ -56,10 +56,16 @@ is noise in a file people read to find out what changed for them.
 
 ## Close
 
-`done` when the work shipped. It stamps `merged_at`, which unblocks every issue that declared a
-`blocks` edge on this one — so closing something that did not actually land releases work that is
-not ready.
+`done` when your work is on the base branch. It stamps `merged_at`, which unblocks every issue that
+declared a `blocks` edge on this one — so closing something that did not actually land releases work
+that is not ready.
 
-`dropped` when it turned out not to be work. It closes without stamping.
+On a project with a release gate the cloud does not take your `done` at face value: it stamps the
+merge, closes your session, and parks the issue at the gate. It is `awaiting release`, not done, and
+a release closes it later. You cannot write past that, so do not try, and do not describe the issue
+as shipped, deployed or live in your comment — say what you merged. You do not know whether anything
+was released, and the comment is the record a human reads.
+
+`dropped` when it turned out not to be work. It closes without stamping and is never held.
 
 Never leave it `running` because you are unsure which. Say which in a comment and pick.
