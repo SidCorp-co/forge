@@ -168,6 +168,12 @@ for (const r of rows) {
   );
 }
 
+// cm:guard PRINT what the ratchet compared against. A silent direction check is indistinguishable from one that skipped — which is exactly what shipped: depth-1 CI made every comparison a no-op and the log looked identical to a real pass. This line is the difference between inferring it ran and seeing it.
+if (ratchetable.length > 0) {
+  const short = BASE_REV.slice(0, 8);
+  console.log(`\n  ${ratchetable.length} baseline(s) judged for direction against ${short}`);
+}
+
 const gates = ciGates();
 if (gates) console.log(`\n  ci-passed needs ${gates.length} job(s): ${gates.join(' ')}`);
 
