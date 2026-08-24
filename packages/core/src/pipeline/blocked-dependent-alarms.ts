@@ -8,8 +8,9 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+// cm:why LoopScope at its source rather than sweeper.ts's `SweepScope` alias — importing the alias made these two files a cycle in the resolved graph (type-only, so erased at runtime, but the checker cannot know that) for a name that adds nothing
+import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
-import type { SweepScope } from './sweeper.js';
 import { emitPipelineWedge } from './wedge.js';
 
 /**
@@ -67,7 +68,7 @@ const COPY = {
 // cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — L2 `blockedBy` is what actually holds these jobs; if that predicate stops treating a `draft` or `dropped` blocker as unsatisfied, this pass starts alarming about jobs that are dispatching fine
 export async function alarmUnrunnableBlockedDependents(
   now: Date = new Date(),
-  scope: SweepScope = {},
+  scope: LoopScope = {},
 ): Promise<BlockedDependentAlarmResult> {
   try {
     const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();

@@ -4,7 +4,7 @@
 // Altitude (NT1): teach an agent how to behave when a gate says something
 // inconvenient. Not what each checker measures — scripts/README.md owns that.
 
-import type { ForgeGuide } from './registry.js';
+import type { ForgeGuide } from './types.js';
 
 // cm:edge lockstep -> packages/core/src/guides/registry.ts — must appear in FORGE_GUIDES there or it is unreachable; the registry test asserts every slug is unique and reachable
 export const CONFORMANCE_GUIDE: ForgeGuide = {
