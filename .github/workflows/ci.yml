@@ -80,7 +80,13 @@ jobs:
   conformance:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 is load-bearing — conformance-status compares each baseline
+      # against the same file at the base revision, and a depth-1 checkout has no
+      # HEAD~1 and no origin/main to compare against. It exits 2 rather than passing
+      # on nothing, so this is what lets the ratchet run at all.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-workspace
       # Size budget: biome OWNS the two length rules; what it lacks is a
       # baseline, so both sit at `warn` and `biome check` exits 0 with 143

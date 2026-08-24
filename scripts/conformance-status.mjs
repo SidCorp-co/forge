@@ -122,6 +122,20 @@ if (error) {
 }
 
 const declared = manifest.axes ?? {};
+
+// cm:guard a missing base revision must EXIT 2, never pass quietly. Measured 2026-08-24: the `conformance` job checked out at depth 1, so `HEAD~1` and `origin/main` were both absent, `baseRev` returned null, every ratchet comparison was skipped and CI went green on a check that never ran. A shallow checkout is a gate that could not run, which is the one thing this repo refuses to read as a pass.
+const ratchetable = Object.values(declared).filter(
+  (a) => a?.level === 2 && a?.baseline?.path && IMPROVES.includes(a.baseline.improves),
+);
+if (ratchetable.length > 0 && BASE_REV === null) {
+  console.error(
+    `conformance-status: ${ratchetable.length} axis/axes declare a baseline direction, and there is\n` +
+      'no revision to compare against — no origin/main and no HEAD~1. That is a shallow or\n' +
+      'single-commit checkout, so the direction check would silently pass on nothing.\n' +
+      'Fetch history (actions/checkout with fetch-depth: 0) and re-run.\n',
+  );
+  process.exit(2);
+}
 const axes = [...new Set([...Object.keys(PROBES), ...Object.keys(declared)])].sort();
 const rows = [];
 let disagreements = 0;
