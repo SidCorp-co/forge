@@ -5,15 +5,12 @@
  * it can push with no manual SSH setup.
  *
  *   1. POST /api/devices/login/init    — the CLI mints a short code; backend
- *                                         hashes + persists it; returns the
- *                                         formatted code + the /pair verify URL.
+ *      hashes + persists it; returns the formatted code + the /pair verify URL.
  *   2. POST /api/devices/login/approve — the browser (cookie-auth) approves a
- *                                         typed/linked code, binding it to the
- *                                         signed-in user.
+ *      typed/linked code, binding it to the signed-in user.
  *   3. GET  /api/devices/login/poll    — the CLI polls every 2 s; 204 while
- *                                         pending, 200 + {device_token, …} when
- *                                         approved (single-use), 410 when
- *                                         expired or already consumed.
+ *      pending, 200 + {device_token, …} when approved (single-use), 410 when
+ *      expired or already consumed.
  *
  * Codes are 7 Crockford base32 chars displayed as `XXX-XXXX`. Server stores
  * only sha256(canonical). 10-minute TTL. Live pending→approved is broadcast on
