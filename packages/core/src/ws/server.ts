@@ -13,11 +13,13 @@ import {
   handleRunnerUnregister,
   handleRunnerUpdate,
 } from '../runners/heartbeat-ws.js';
-import { GLOBAL_ROOM, RoomManager } from './rooms.js';
+import { roomManager } from './room-manager.js';
+import { GLOBAL_ROOM } from './rooms.js';
 
 type AnyServer = HttpServer | HttpsServer;
 
-export const roomManager = new RoomManager();
+// cm:edge naming -> packages/core/src/ws/room-manager.ts — re-exported so the 27 existing `from '../ws/server.js'` imports keep working; the instance lives there because importing it from here dragged the whole server, and its heartbeat handlers, into every publisher
+export { roomManager };
 
 let wss: WebSocketServer | null = null;
 let heartbeatTimer: NodeJS.Timeout | null = null;

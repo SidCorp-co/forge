@@ -48,7 +48,7 @@ import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-rou
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
-import { registerFeedbackNormalizer } from './feedback/normalizer.js';
+import { registerEagerSubscribers } from './eager-subscribers.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
@@ -74,6 +74,7 @@ import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
+import { registerDispatchSubscribers } from './jobs/dispatch-subscribers.js';
 import {
   registerDispatcher,
   registerPmDispatcher,
@@ -98,20 +99,14 @@ import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { registerCandidatesDecay } from './memory/candidates-decay.js';
-import {
-  registerCandidatesObserver,
-  registerCandidatesWorker,
-} from './memory/candidates-observer.js';
+import { registerCandidatesWorker } from './memory/candidates-observer.js';
 import { memoryCandidatesRoutes } from './memory/candidates-routes.js';
 import {
   registerMemoryConsolidation,
-  registerMemoryReconcileTrigger,
   registerMemoryReconcileWorker,
 } from './memory/consolidation.js';
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
-import { registerMemoryExtraction } from './memory/extraction.js';
-import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { memoryWriteRoutes } from './memory/write-routes.js';
@@ -120,8 +115,6 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
-import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
-import { registerTransitionNotifications } from './notifications/notify-transitions.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -132,7 +125,6 @@ import {
   projectCostAnalyticsRoutes,
 } from './pipeline/analytics-routes.js';
 import { registerAnswerResume } from './pipeline/answer-resume.js';
-import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
 import { hooks } from './pipeline/hooks.js';
 import { runMissingSkillPauseBackfillIfRequested } from './pipeline/missing-skill-backfill.js';
@@ -146,9 +138,7 @@ import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
-import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs.js';
 import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
-import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
 import { verdictRoutes } from './pipeline/verdict-routes.js';
 import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
@@ -158,7 +148,6 @@ import {
 } from './pm/escalation-sweeper.js';
 import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
 import { pmRoutes } from './pm/routes.js';
-import { registerPmSubscribers } from './pm/subscribers.js';
 import { gitCredentialRoutes } from './projects/git-credential-routes.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
@@ -167,7 +156,6 @@ import { projectRoutes } from './projects/routes.js';
 import { uxContractProjectRoutes, uxContractRuleRoutes } from './projects/ux-contract-routes.js';
 import { promptRoutes } from './prompt/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
-import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subscriber.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
@@ -190,7 +178,6 @@ import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
-import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
@@ -289,19 +276,7 @@ export async function runShutdown(
   return 0;
 }
 
-registerActivitySubscribers(hooks);
-registerPipelineSentryBreadcrumbs(hooks);
-registerWsBroadcastSubscribers(hooks);
-registerMemoryIndexer(hooks);
-registerMemoryReconcileTrigger(hooks);
-registerCiFixPatternLearner(hooks);
-registerMemoryExtraction(hooks);
-registerNotifyMentionsSubscriber(hooks);
-registerTransitionNotifications(hooks);
-registerPmSubscribers(hooks);
-registerCandidatesObserver(hooks);
-registerFeedbackNormalizer(hooks);
-registerReleaseBatchClaimSubscriber(hooks);
+registerEagerSubscribers(hooks);
 
 app.use('/mcp', requirePatOrDevice());
 app.post('/mcp', mcpHandler);
@@ -539,6 +514,7 @@ if (isMain) {
   await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
+  registerDispatchSubscribers(hooks);
   registerDecompositionSubscribers(hooks);
   registerAnswerResume(hooks);
   registerPhaseJournalClose(hooks);
