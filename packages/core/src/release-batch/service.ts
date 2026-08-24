@@ -23,6 +23,7 @@ import {
 } from '../pipeline/pipeline-config-schema.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { selectRunnerForJob } from '../runners/select.js';
+import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
 import { resolveReleaseGateStatus } from './gate.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
@@ -30,6 +31,18 @@ export class NoReleaseGateError extends Error {
   constructor() {
     super('NO_RELEASE_GATE');
     this.name = 'NoReleaseGateError';
+  }
+}
+
+/**
+ * The project named a release pool and no runner is in it. Distinct from
+ * `NoRunnerOnlineError` on purpose: "nobody is online" and "the box that holds
+ * the deploy credential lost its label" need different remedies.
+ */
+export class ReleasePoolEmptyError extends Error {
+  constructor(public readonly label: string) {
+    super('RELEASE_POOL_EMPTY');
+    this.name = 'ReleasePoolEmptyError';
   }
 }
 
@@ -120,7 +133,16 @@ export async function createReleaseBatch(
   );
   if (notClaimable.length > 0) throw new ClaimConflictError(notClaimable.map((r) => r.id));
 
-  const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {} });
+  const plan = await resolveReleasePlan(projectId);
+  // cm:guard an empty pool must REFUSE, never fall back to the fleet: the pool exists because one box holds the production credential, and a release that lands anywhere else fails halfway through with the merge already pushed
+  const allowDeviceIds = plan.releaseRunnerLabel
+    ? await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel)
+    : null;
+  if (allowDeviceIds && allowDeviceIds.length === 0) {
+    throw new ReleasePoolEmptyError(plan.releaseRunnerLabel as string);
+  }
+
+  const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {}, allowDeviceIds });
   if (!runner) throw new NoRunnerOnlineError();
 
   const branchCfg = await loadProjectBranchConfig(projectId);
@@ -160,6 +182,7 @@ export async function createReleaseBatch(
     projectId,
     baseBranch,
     productionBranch,
+    plan,
     issues: issueRows.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? `ISS-${r.issSeq}` : r.id,
@@ -371,6 +394,74 @@ export async function isOpenReleaseBatchRun(projectId: string, runId: string): P
     meta.source === 'release-batch' &&
     (run.status === 'running' || run.status === 'paused')
   );
+}
+
+export interface ReleaseRosterEntry {
+  id: string;
+  displayId: string;
+  title: string;
+  /** When the branch landed on the base branch. Null only for legacy rows. */
+  mergedAt: string | null;
+  /** Whole days since the merge, so "oldest 6 days" is a read, not a sum. */
+  waitingDays: number | null;
+  claimedByRunId: string | null;
+}
+
+export interface ReleaseRoster {
+  /** `null` when the project has no gate — the UI hides the whole surface. */
+  gateStatus: IssueStatus | null;
+  channel: string | null;
+  releaseRunnerLabel: string | null;
+  issues: ReleaseRosterEntry[];
+}
+
+/**
+ * Everything waiting for a release, oldest merge first. The point of the
+ * ordering is that "12 waiting, oldest 6 days" becomes a query rather than
+ * something a person reconstructs from a notification they may not have read.
+ */
+export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoster> {
+  const cfg = await loadProjectPipelineConfig(projectId);
+  const gateStatus = resolveReleaseGateStatus(cfg);
+  const channel = await resolveReleaseChannel(projectId);
+  if (!gateStatus) {
+    return {
+      gateStatus: null,
+      channel: channel.provider,
+      releaseRunnerLabel: channel.releaseRunnerLabel,
+      issues: [],
+    };
+  }
+
+  const rows = await db
+    .select({
+      id: issues.id,
+      issSeq: issues.issSeq,
+      title: issues.title,
+      mergedAt: issues.mergedAt,
+      releaseBatchRunId: issues.releaseBatchRunId,
+    })
+    .from(issues)
+    .where(and(eq(issues.projectId, projectId), eq(issues.status, gateStatus)))
+    // cm:guard NULLS LAST, not NULLS FIRST: a row with no merge stamp predates the gate, and floating it to the top would present the least-known issue as the most overdue
+    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`);
+
+  const now = Date.now();
+  return {
+    gateStatus,
+    channel: channel.provider,
+    releaseRunnerLabel: channel.releaseRunnerLabel,
+    issues: rows.map((r) => ({
+      id: r.id,
+      displayId: r.issSeq != null ? `ISS-${r.issSeq}` : r.id,
+      title: r.title ?? '(untitled)',
+      mergedAt: r.mergedAt ? r.mergedAt.toISOString() : null,
+      waitingDays: r.mergedAt
+        ? Math.floor((now - r.mergedAt.getTime()) / (24 * 60 * 60 * 1000))
+        : null,
+      claimedByRunId: r.releaseBatchRunId,
+    })),
+  };
 }
 
 export interface ActiveReleaseBatchInfo {

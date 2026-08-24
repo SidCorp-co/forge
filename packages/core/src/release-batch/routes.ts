@@ -14,8 +14,10 @@ import {
   ClaimConflictError,
   createReleaseBatch,
   getActiveReleaseBatch,
+  loadReleaseRoster,
   NoReleaseGateError,
   NoRunnerOnlineError,
+  ReleasePoolEmptyError,
 } from './service.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -65,6 +67,12 @@ releaseBatchRoutes.post(
       if (err instanceof NoReleaseGateError) {
         throw conflict('NO_RELEASE_GATE', 'This project has no release gate configured');
       }
+      if (err instanceof ReleasePoolEmptyError) {
+        throw serviceUnavailable(
+          'RELEASE_POOL_EMPTY',
+          `No runner carries the release label \`${err.label}\`, so nothing here may deploy`,
+        );
+      }
       if (err instanceof NoRunnerOnlineError) {
         throw serviceUnavailable('NO_RUNNER_ONLINE', 'No runner is online for this project');
       }
@@ -100,5 +108,22 @@ releaseBatchRoutes.get(
 
     const active = await getActiveReleaseBatch(projectId);
     return c.json(active ?? null);
+  },
+);
+
+releaseBatchRoutes.get(
+  '/:projectId/release-batches/roster',
+  zValidator('param', projectParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'member');
+
+    return c.json(await loadReleaseRoster(projectId));
   },
 );

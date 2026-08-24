@@ -257,19 +257,36 @@ cooperation unnecessary rather than required, which was L0.2's whole point.
 
 ### Wave 3 — the release path
 
-- [ ] **L1.2 · protocol vs procedure.** `prompt/state-prompts/release-batch.ts`: keep
+**Shipped 2026-08-24.** One thing the plan did not foresee: **no gated project has a
+`release-procedure`** — measured, all 17 of them — so "no procedure declared" could not mean
+"refuse", or every existing release would have broken the day this shipped. The old hardcoded text
+became an explicit default *floor* instead, named as such in the prompt.
+
+- [x] **L1.2 · protocol vs procedure.** `prompt/state-prompts/release-batch.ts`: keep
   `get → … → finish/abort` hard in the prompt; move merge/version/changelog/deploy to
   `projectFacts.release-procedure` + `binding.instructions`. **Done when** epodsystem cuts with its
   own `release.sh` (no-squash + tag) and no Forge code changed.
-- [ ] **L1.3 · release runner pool.** `release-batch/service.ts:123` passes
+  *Shipped:* the state prompt is protocol-only; `release-batch/channel.ts` injects
+  `projectFacts.release-procedure` and the production binding's `instructions` into the task
+  prompt, and the prompt always names WHICH procedure the agent got — *"this project's"* or
+  *"Forge default"* — because that is the difference between a step it may adapt and one an
+  operator wrote on purpose. A project with no channel is told so out loud; left blank the agent
+  fills the gap with the deploy it has seen in every other prompt.
+- [x] **L1.3 · release runner pool.** `release-batch/service.ts:123` passes
   `requiredCapabilities:{}` and no pool. Resolve device ids by matching D3's label against
   `runners.labels` (`schema.ts:910`) and pass `allowDeviceIds` — `selectRunnerForJob` already
   takes it (`runners/select.ts:178`), so this is wiring, not new machinery. Empty pool ⇒
   `NoRunnerOnlineError`, **never** a fleet fallback. **Done when** a release job cannot land on a
   box without the deploy credential, and a rebuilt box keeps working because the label, not the
   uuid, is the key.
-- [ ] **L1.4 · roster query.** `release-batch/routes.ts`: issues at the gate + age since
+  *Shipped* with its own error: `RELEASE_POOL_EMPTY` (503), not `NO_RUNNER_ONLINE` — "nobody is
+  online" and "the box holding the deploy credential lost its label" need different remedies, and
+  the old message would have sent an operator to the wrong one.
+- [x] **L1.4 · roster query.** `release-batch/routes.ts`: issues at the gate + age since
   `merged_at`. **Done when** "12 waiting, oldest 6 days" is a query, not a notification.
+  *Shipped* as `GET /:projectId/release-batches/roster`, oldest merge first, `NULLS LAST` so a
+  pre-gate row with no stamp is not presented as the most overdue. It also returns the channel and
+  the pool label, which is what L3.3's *"which boxes can release"* reads.
 
 ### Wave 4 — deploy and proof · only for projects whose channel is not `none`
 

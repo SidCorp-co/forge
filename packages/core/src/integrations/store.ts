@@ -137,6 +137,36 @@ export async function listActiveBindingsForProjectProvider(
   );
 }
 
+/**
+ * Every active binding for a project in one environment, across ALL providers.
+ * The release path asks "what ships this project", which is a question about
+ * the environment rather than about any one provider.
+ */
+export async function listActiveBindingsForEnvironment(
+  projectId: string,
+  environment: IntegrationEnvironment,
+): Promise<BindingWithConnection[]> {
+  return (
+    db
+      .select({ binding: integrationBindings, connection: integrationConnections })
+      .from(integrationBindings)
+      .innerJoin(
+        integrationConnections,
+        eq(integrationBindings.connectionId, integrationConnections.id),
+      )
+      .where(
+        and(
+          eq(integrationBindings.projectId, projectId),
+          eq(integrationBindings.environment, environment),
+          eq(integrationBindings.active, true),
+          eq(integrationConnections.active, true),
+        ),
+      )
+      // cm:edge protocol -> packages/core/src/integrations/store.ts — same oldest-first rule as listActiveBindingsForProjectProvider, and for the same reason: a caller that injects row [0] must not have its pick flipped by adding a second binding
+      .orderBy(asc(integrationBindings.createdAt))
+  );
+}
+
 /** Decrypt a connection's secrets blob, or `{}` when it has none. */
 export function decryptConnectionSecrets<
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
