@@ -24,6 +24,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { baseRev, ratchetFault } from './lib/baseline-ratchet.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
@@ -58,6 +59,7 @@ const PROBES = {
 };
 
 const IMPROVES = ['down', 'shrink', 'tighten'];
+const BASE_REV = baseRev(ROOT);
 
 // cm:guard level 2 IS the claim "old debt frozen, new debt blocked", so a level-2 axis whose declared baseline is absent, or whose direction is undeclared, has no frozen half — report the axis at the level it can actually prove, never at the one it claims.
 function baselineFault(level, decl) {
@@ -69,7 +71,8 @@ function baselineFault(level, decl) {
   if (!IMPROVES.includes(decl.improves)) {
     return `${decl.path} declares improves=${decl.improves ?? 'nothing'}, not one of ${IMPROVES.join('/')}`;
   }
-  return null;
+  // cm:edge protocol -> scripts/lib/baseline-ratchet.mjs — everything above judges the DECLARATION, this line judges the FILE against its own previous state; for most of this repo's life only the declaration was checked, so `--update-baseline` could re-freeze any baseline larger and every gate stayed green
+  return ratchetFault(ROOT, BASE_REV, decl);
 }
 
 function readManifest() {
