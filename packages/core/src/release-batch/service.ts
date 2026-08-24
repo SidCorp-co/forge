@@ -8,7 +8,7 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
+import { comments, type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import {
   type TransitionActor,
   TransitionError,
@@ -16,11 +16,6 @@ import {
 } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import {
-  PIPELINE_CONFIG_DEFAULTS,
-  type PipelineConfig,
-  pipelineConfigSchema,
-} from '../pipeline/pipeline-config-schema.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { selectRunnerForJob } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';

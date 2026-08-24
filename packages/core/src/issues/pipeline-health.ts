@@ -19,7 +19,7 @@
  * clients on another process see stale liveness (closed by ISS-163's probe).
  */
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentSessions,

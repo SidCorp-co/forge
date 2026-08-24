@@ -9,7 +9,6 @@ import {
   feedbackSeverities,
   feedbackTargets,
   issues,
-  jobs,
   projects,
 } from '../../db/schema.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';

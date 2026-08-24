@@ -58,11 +58,11 @@ function selectChain() {
 const updateSetMock = vi.fn((_values: unknown) => undefined);
 
 // cm:why the jsonb-merge value is a drizzle `sql` fragment holding its interpolation as a Param, and the object graph is circular — so the payload is probed by walking it rather than by JSON.stringify
-function mentions(value: unknown, needle: string, seen = new Set<unknown>()): boolean {
+function _mentions(value: unknown, needle: string, seen = new Set<unknown>()): boolean {
   if (typeof value === 'string') return value.includes(needle);
   if (value === null || typeof value !== 'object' || seen.has(value)) return false;
   seen.add(value);
-  return Object.values(value as Record<string, unknown>).some((v) => mentions(v, needle, seen));
+  return Object.values(value as Record<string, unknown>).some((v) => _mentions(v, needle, seen));
 }
 vi.mock('../db/client.js', () => ({
   db: {

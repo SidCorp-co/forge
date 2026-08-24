@@ -59,7 +59,7 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     return { id: row.id, reopenCount: row.reopen_count };
   }
 
-  async function insertComment(
+  async function _insertComment(
     issueId: string,
     authorId: string,
     opts: { isAi: boolean; authorDeviceId: string | null; createdAt: Date },
@@ -89,7 +89,7 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     `);
   }
 
-  async function logTransition(
+  async function _logTransition(
     issueId: string,
     actorId: string,
     from: string,

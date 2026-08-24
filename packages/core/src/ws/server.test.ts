@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 // /ws upgrade auth — exercises the canonical Sec-WebSocket-Protocol
 // subprotocol path, Bearer header, cookie, and rejection cases. The

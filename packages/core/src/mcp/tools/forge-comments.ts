@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   AttachmentError,
@@ -10,12 +10,11 @@ import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { comments, issues, projectMembers, projects } from '../../db/schema.js';
+import { comments, issues } from '../../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
-  assertPrincipalIsMember,
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   zodToMcpSchema,

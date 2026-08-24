@@ -19,7 +19,7 @@ import {
   serializeWithAttachments,
 } from './forge-issues.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
-import { assertPrincipalIsMember, assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
+import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
 
 /**
  * `forge_step_start` — the check-in an agent makes as its FIRST action on a

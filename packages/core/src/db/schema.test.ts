@@ -65,7 +65,7 @@ function columnByName(table: AnyTable, name: string) {
   return col;
 }
 
-function withTimezone(col: unknown): boolean | undefined {
+function _withTimezone(col: unknown): boolean | undefined {
   return (col as { config?: { withTimezone?: boolean } }).config?.withTimezone;
 }
 

@@ -1344,7 +1344,7 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
 });
 
 describe('GET /api/projects/:projectId/integrations/mcp-preview — epodsystem multi-entry (ISS-558)', () => {
-  const TOKEN_MOCK = { headers: { authorization: '' } };
+  const _TOKEN_MOCK = { headers: { authorization: '' } };
 
   async function previewEpod(pairs: unknown[]) {
     const token = await signUserToken(USER_ID);

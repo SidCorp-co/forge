@@ -75,7 +75,7 @@ describe('ISS-40 dispatch-tick E2E', () => {
     return { owner, project };
   }
 
-  async function insertSession(
+  async function _insertSession(
     projectId: string,
     args: { issueId?: string | null; status?: string } = {},
   ): Promise<string> {

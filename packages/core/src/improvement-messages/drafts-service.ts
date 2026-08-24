@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { improvementMessageDrafts, memoryCandidates } from '../db/schema.js';
+import { improvementMessageDrafts } from '../db/schema.js';
 
 export type ImprovementMessageDraftRow = typeof improvementMessageDrafts.$inferSelect;
 

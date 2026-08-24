@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import { mcpAuditLog, personalAccessTokens, projectMembers, projects } from '../db/schema.js';
+import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';

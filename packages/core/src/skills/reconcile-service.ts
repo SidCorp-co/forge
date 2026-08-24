@@ -20,8 +20,6 @@ import {
   deviceSkills,
   divergenceCharters,
   jobs,
-  organizationMembers,
-  projectMembers,
   projects,
   type ReconcileBundleSnapshot,
   type ReconcileGate,

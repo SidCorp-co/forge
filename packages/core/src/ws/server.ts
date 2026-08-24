@@ -6,7 +6,7 @@ import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
-import { devices, projectMembers, runners } from '../db/schema.js';
+import { devices, runners } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import {
   handleRunnerRegister,

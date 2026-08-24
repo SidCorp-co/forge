@@ -152,7 +152,6 @@ const {
   detectStalledDependencies,
   alarmClosedUnmergedBlockedDependents,
 } = await import('./sweeper.js');
-const { alarmUnrunnableBlockedDependents } = await import('./blocked-dependent-alarms.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
 function sqlText(arg: unknown): string {

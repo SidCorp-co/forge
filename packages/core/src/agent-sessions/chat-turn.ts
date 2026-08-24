@@ -321,7 +321,7 @@ const SKILL_NAME_RE = /^[a-z][a-z0-9-]{0,127}$/;
  * fresh Claude session instead of 409-ing on a pin nobody ever set.
  */
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
-  const { session, project, client, origin } = args;
+  const { session, project, client } = args;
   const { deviceId, isLocal } = client;
   const migrated = !!client.migrated;
   const broadcastEvent = args.broadcastEvent ?? 'agent-session.updated';

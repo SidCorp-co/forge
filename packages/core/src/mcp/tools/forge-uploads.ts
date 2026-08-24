@@ -20,7 +20,6 @@ import {
   UploadTicketError,
 } from '../../uploads/ticket-service.js';
 import {
-  assertPrincipalIsMember,
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   principalUserId,

@@ -5,14 +5,7 @@ import {
   resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
-import {
-  agentSessions,
-  projects,
-  type ScheduleKind,
-  type ScheduleMode,
-  scheduleRuns,
-  schedules,
-} from '../db/schema.js';
+import { agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -23,7 +16,7 @@ import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
 import { buildFeedbackDigestPrompt } from './messages/feedback-digest-prompt.js';
 import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-prompt.js';
 import { getImprovementMessage } from './messages/registry.js';
-import { type AppliedVersions, buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
+import { buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
 import {
   dispatchScheduleReleaseBatchRun,

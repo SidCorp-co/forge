@@ -26,8 +26,6 @@ import {
   usageSessionMatch,
   usageTotalsSelection,
 } from '../usage-records/rollup.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { createChatSessionRow } from './chat-turn.js';

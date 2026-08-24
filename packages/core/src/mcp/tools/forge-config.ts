@@ -4,11 +4,7 @@ import { type IssueBranchOverride, resolveIssueBranches } from '../../branches/r
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';
-import {
-  deleteKnowledgeEntry,
-  listKnowledgeEntries,
-  upsertKnowledgeEntry,
-} from '../../knowledge/service.js';
+import { deleteKnowledgeEntry, upsertKnowledgeEntry } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
 import { pipelineConfigPatchSchema } from '../../pipeline/pipeline-config-schema.js';
 import {

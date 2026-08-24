@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { activityLog, issues, jobTypes, projectMembers, projects } from '../db/schema.js';
+import { activityLog, issues, jobTypes } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { driverComparison } from './driver-comparison.js';

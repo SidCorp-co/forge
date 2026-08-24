@@ -1,6 +1,5 @@
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { StatusCode } from 'hono/utils/http-status';
 import { getLogger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';

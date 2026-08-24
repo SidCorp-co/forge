@@ -28,7 +28,7 @@ function mockRow(label: string, config: Record<string, unknown> = {}) {
   };
 }
 
-function mockActiveRow(config: Record<string, unknown> = {}, label = '') {
+function _mockActiveRow(config: Record<string, unknown> = {}, label = '') {
   listBindingsMock.mockResolvedValueOnce([mockRow(label, config)]);
   decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_secret_key_123456' });
 }

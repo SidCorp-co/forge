@@ -6,7 +6,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/coverage", "!**/node_modules"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/coverage",
+      "!**/node_modules"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -14,7 +19,13 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -24,7 +35,9 @@
         "useImportType": "error",
         "noExcessiveLinesPerFile": {
           "level": "warn",
-          "options": { "maxLines": 500 }
+          "options": {
+            "maxLines": 500
+          }
         }
       },
       "suspicious": {
@@ -33,8 +46,16 @@
       "complexity": {
         "noExcessiveLinesPerFunction": {
           "level": "warn",
-          "options": { "maxLines": 150, "skipBlankLines": true, "skipIifes": true }
+          "options": {
+            "maxLines": 150,
+            "skipBlankLines": true,
+            "skipIifes": true
+          }
         }
+      },
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
       }
     }
   },
@@ -47,7 +68,10 @@
   },
   "overrides": [
     {
-      "includes": ["**/*.test.ts", "**/tests/**"],
+      "includes": [
+        "**/*.test.ts",
+        "**/tests/**"
+      ],
       "linter": {
         "rules": {
           "suspicious": {

@@ -8,7 +8,7 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectOffset = vi.fn(() => Promise.resolve([]));
+const _selectOffset = vi.fn(() => Promise.resolve([]));
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectGroupBy = vi.fn();
 const selectWhere = vi.fn(() => ({
