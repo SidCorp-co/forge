@@ -26,8 +26,11 @@ things: deploy and close. Everything else is yours.
 | 6 · merge | the branch in the base it came from | `merge` |
 | 7 · ship | changelog line, close comment | `ship` |
 
-Declare each phase with `forge_step_start` **before** you begin it. That call is your resume point:
-if this session dies, the next one restarts from the last phase you declared, not from phase 1.
+Declare each phase with `forge_phase` **before** you begin it (action `start`), and close it when it
+finishes (action `end`, with an outcome). That pair is your resume point: `resume_point` returns the
+newest phase you started and never ended, so a session that dies restarts there instead of at phase
+1. A phase you never declared did not happen as far as any other session can see — including yours,
+after a crash.
 
 Phase 5 can send you back to phase 3. That loop has no counter — go around as many times as the
 verdict requires. Re-declare `code` each time so the journal shows the rounds.

@@ -297,6 +297,32 @@ mod tests {
         }
     }
 
+    /// Measured on forge-beta 2026-08-24: 76 `drive` jobs had finished `done`
+    /// and exactly ONE carried a row in `phase_journal`. The cause was not the
+    /// agent ignoring its skill — the driver's instruction named
+    /// `forge_step_start`, a staged-pipeline tool that writes no journal, while
+    /// every other mention in the same file said `forge_phase`. So the resume
+    /// point silently did not exist: a session that died restarted at phase 1.
+    #[test]
+    fn the_driver_declares_phases_with_the_tool_that_writes_the_journal() {
+        let driver = BUNDLED_FILES
+            .iter()
+            .find(|(rel, _)| *rel == "forge-drive/SKILL.md")
+            .expect("the driver skill is embedded")
+            .1;
+        assert!(
+            driver.contains("`forge_phase` **before** you begin it"),
+            "the driver must name forge_phase where it tells the agent to declare a phase"
+        );
+        for (rel, body) in BUNDLED_FILES {
+            assert!(
+                !body.contains("forge_step_start"),
+                "{rel} names forge_step_start; the autonomous lane has no steps, and that tool \
+                 writes no phase journal"
+            );
+        }
+    }
+
     #[test]
     fn the_driver_and_the_reviewer_survive_the_kill_switch() {
         let (on, off) = enabled(&cfg(true, &[]));
