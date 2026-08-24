@@ -157,24 +157,60 @@ release gate"* is the condition those two are gated on, and the resolver is what
 
 ### Wave 1 — kernel truths · no terminal behaviour changes, ship in any order
 
-- [ ] **L0.3 · label map.** `packages/contracts/src/issue-vocabulary.ts`: add a 7th label
+**Shipped 2026-08-24.** Two things came out differently than written, both recorded below at the
+item: L0.5 landed inside the autonomous driver rather than by reordering the staged checks, and it
+needed a second half nobody had noticed (the Run button was dead in this mode). L0.6 turned out not
+to be an enforcement problem at all.
+
+- [x] **L0.3 · label map.** `packages/contracts/src/issue-vocabulary.ts`: add a 7th label
   `awaiting_release`; `LABEL_TO_KERNEL.awaiting_release = 'tested'`; `KERNEL_TO_LABEL.tested` →
   `awaiting_release`; `KERNEL_TO_LABEL.reopen` → `open` (line 55, today `running`). The module
   header says "six" and why — it must say seven and why, or it becomes the next stale claim.
   **Done when** no board cell reads `running` for an issue with no session.
-- [ ] **L0.4 · `reopen` normalization.** `issues/apply-transition.ts`: on an autonomous project,
+  *Shipped:* the 7th label, `tested → awaiting_release`, `reopen → open`, and the web label
+  `Awaiting release`. The round-trip test in `issue-vocabulary.test.ts` proves the map stays total.
+- [x] **L0.4 · `reopen` normalization.** `issues/apply-transition.ts`: on an autonomous project,
   rewrite `→ reopen` at write time to `→ open` while keeping the `reopen_count` increment and the
   `🔁 Reopened from X` comment. Same write-time-rewrite shape as `issues/intake-gate.ts`.
   **Done when** a reopened issue dispatches a drive job, and the reconciler's 60s
   `rescued++` no-op loop is gone. Regression test: ISS-141's exact sequence.
-- [ ] **L0.5 · gate ordering.** `pipeline/orchestrator.ts`: move the three checks at `:501-503`
+  *Shipped:* `issues/autonomous-reopen.ts` + a rewrite point in `apply-transition.ts` that lands
+  AFTER the guards, so the authored reason and the reopen counter both survive. Six tests, including
+  one asserting no project row is read for any target that is not `reopen`.
+- [x] **L0.5 · gate ordering.** `pipeline/orchestrator.ts`: move the three checks at `:501-503`
   (`enabled === false`, `mode === 'manual'`, step toggles) **above** the
   `dispatchAutonomous` return at `:495`. **Done when** `states.open.mode='manual'` blocks a drive
   dispatch — the thing the user configured and did not get.
-- [ ] **L0.6 · real phase declaration.** `packages/runner/skills/forge-drive/SKILL.md` + the runner
+  *Shipped differently:* the gate lives in `dispatchAutonomous` instead, because moving the staged
+  block up would also have applied `isToggleEnabled` — and the per-step `auto*` toggles name stages
+  this mode does not have, so `autoTriage` would have become "may the driver start", a meaning no
+  operator set. **A second half was missing:** `triggerPipelineStepManual` resolves skills from
+  `skill_registrations`, and `forge-drive` ships in the runner binary, so Run threw
+  `NO_SKILL_REGISTERED` on every autonomous project. Gating without fixing that would have made
+  `mode: 'manual'` a dead end. `dispatchDriveManual` is the escape, and it bypasses the gate on
+  purpose. Verified against forge-beta first: all four autonomous projects sit at
+  `states.open = {mode:'auto', enabled:true}`, so nothing freezes on landing.
+- [x] **L0.6 · real phase declaration.** `packages/runner/skills/forge-drive/SKILL.md` + the runner
   turn loop: `forge_phase` before each phase, and the runner **fails the turn loudly** when a phase
   ran undeclared. **Done when** the 1-in-76 journal ratio moves; measure again after 10 drive jobs
   before calling it done.
+  *Root cause, and no enforcement needed:* the driver's one instruction to declare a phase named
+  **`forge_step_start`** — a staged-pipeline tool that writes no journal — while every other mention
+  in the same file said `forge_phase`. The agents were obeying their skill. Fixed in
+  `forge-drive/SKILL.md` (both `start` and `end`, since `resume_point` returns the phase started and
+  never ended), with a Rust test over the embedded skill table asserting no bundled skill names
+  `forge_step_start` again. **Still open:** re-measure the ratio after 10 more drive jobs.
+
+- [ ] **L0.7 · the reconciler counts rescues it did not perform.** `pipeline/reconciler.ts:132`
+  increments `rescued` and emits an `enqueued_missing` breadcrumb unconditionally, but
+  `reEnqueueForIssue → considerEnqueue` returns `void` and has ~10 paths that enqueue nothing. Any
+  issue parked where no job can be enqueued is re-read every 60s and counted as a rescue forever —
+  the same shape L0.4 just removed for `reopen`, and it predates all of this: a staged project with
+  any `mode: 'manual'` stage has always done it. Found while landing L0.5, not fixed there: making
+  it honest means `considerEnqueue` reporting whether it enqueued, and `dispatchAutonomous`
+  currently returns *"I own this decision"* rather than *"I enqueued"* — two different booleans that
+  have to be separated first. No autonomous project is in the looping state today (all four have an
+  automatic entry stage), so this is a lying metric rather than a live wedge.
 
 ### Wave 2 — the gate · this is where terminal behaviour changes
 
