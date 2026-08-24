@@ -218,8 +218,6 @@
     "**/.forge/**",
     "**/.claude/**",
     "**/*.d.ts",
-    "packages/tests/**",
-    "packages/web/**",
     "packages/runner/**",
     "packages/observability/**",
     "packages/contracts/**"
