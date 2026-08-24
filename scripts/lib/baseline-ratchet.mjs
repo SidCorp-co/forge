@@ -105,7 +105,7 @@ function compareDown(before, now) {
   const sum = (m) => [...m.values()].reduce((a, x) => a + x, 0);
   const faults = [];
   const [tb, tn] = [sum(b), sum(n)];
-  if (tn > tb) faults.push(`total rose ${tb} -> ${tn}`);
+  if (tn > tb) faults.push(`frozen total rose ${tb} -> ${tn}`);
   for (const [k, v] of n) {
     const was = b.get(k);
     if (was !== undefined && v > was) faults.push(`${k}: ${was} -> ${v}`);
@@ -116,7 +116,8 @@ function compareDown(before, now) {
 function compareShrink(before, now) {
   const b = members(before);
   const n = members(now);
-  return n.size > b.size ? [`frozen set grew ${b.size} -> ${n.size}`] : [];
+  // cm:guard counts EVERY entry, including codemap's `b:`-prefixed block hashes, so this number is deliberately larger than `cm doctor`'s comment count — it is a relative measure and dropping the duplicates would hide growth that lands only in them
+  return n.size > b.size ? [`frozen entries grew ${b.size} -> ${n.size}`] : [];
 }
 
 // cm:guard a contract that DISAPPEARS is loosening, not tidying: the graph it constrained is now unconstrained, which is the same outcome as flipping it to draft and reads as progress in a diff.
@@ -136,6 +137,13 @@ function compareTighten(before, now) {
 }
 
 const COMPARE = { down: compareDown, shrink: compareShrink, tighten: compareTighten };
+
+/** The direction check over two parsed baselines. Exported so it is testable without a git tree. */
+export function compareBaseline(improves, before, now) {
+  const cmp = COMPARE[improves];
+  if (!cmp) return [`unknown direction ${improves}`];
+  return cmp(before, now);
+}
 
 /**
  * Judge one declared baseline against the same file at `rev`.
