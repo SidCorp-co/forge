@@ -125,7 +125,6 @@ export function SkillStudioDrawer({
     create.reset();
     update.reset();
     // Re-seed only when the drawer opens or switches target skill.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, skill?.id]);
 
   const activeFile = active === SKILL_MD ? null : (files.find((f) => f.path === active) ?? null);

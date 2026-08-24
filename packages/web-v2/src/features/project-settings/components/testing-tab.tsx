@@ -54,7 +54,6 @@ function parse(raw: unknown): Form {
 
 function isValidUrl(value: string): boolean {
   try {
-    // eslint-disable-next-line no-new -- validation only
     new URL(value);
     return true;
   } catch {

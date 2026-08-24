@@ -52,7 +52,6 @@ const components: Components = {
   },
   pre: ({ children }) => <pre className="my-2 overflow-x-auto">{children}</pre>,
   img: ({ src, alt }) => (
-    // biome-ignore lint/a11y/useAltText: alt is forwarded from markdown
     <img
       src={typeof src === "string" ? coreFileUrl(src) : undefined}
       alt={alt ?? ""}

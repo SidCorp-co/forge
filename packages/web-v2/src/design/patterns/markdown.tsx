@@ -68,7 +68,6 @@ function makeDocLinkRenderer(docBasePath: string): Components["a"] {
 }
 
 const imgRenderer: Components["img"] = ({ src, alt }) => (
-  // biome-ignore lint/a11y/useAltText: alt is forwarded from markdown
   <img
     src={typeof src === "string" ? coreFileUrl(src) : undefined}
     alt={alt ?? ""}

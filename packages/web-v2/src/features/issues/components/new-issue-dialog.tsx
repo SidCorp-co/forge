@@ -132,7 +132,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       create.reset();
     }
     // `create` is stable from React Query; resetting only on `open` is intended.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Validate + stage picked/dropped/pasted files. Mirrors the V1 create page

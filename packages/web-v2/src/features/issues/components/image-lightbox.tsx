@@ -320,7 +320,6 @@ export function ImageLightbox({
           onWheel={onWheel}
           onDoubleClick={toggleZoom}
         >
-          {/* biome-ignore lint/a11y/useAltText: alt is the file name */}
           <img
             src={current.href}
             alt={current.name}
@@ -364,7 +363,6 @@ export function ImageLightbox({
                   : "border-transparent opacity-60 hover:opacity-100"
               }`}
             >
-              {/* biome-ignore lint/a11y/useAltText: alt is the file name */}
               <img
                 src={img.href}
                 alt={img.name}

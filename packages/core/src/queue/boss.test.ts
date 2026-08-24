@@ -72,7 +72,6 @@ describe('queue/boss', () => {
   });
 
   it('throws at import time when DATABASE_URL is missing', async () => {
-    // biome-ignore lint/performance/noDelete: assigning undefined to process.env coerces to the string "undefined"
     delete process.env.DATABASE_URL;
 
     await expect(import('./boss.js')).rejects.toThrow(/DATABASE_URL/);

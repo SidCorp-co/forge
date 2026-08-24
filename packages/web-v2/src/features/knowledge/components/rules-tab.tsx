@@ -127,7 +127,6 @@ function RulesEditor({
     }));
     setEditRows(seeded);
     setNextRid(seeded.length + 1);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverRows]);
 
   // Budget: sum of always-inject body chars (approximated for rows with empty body = not loaded).
@@ -194,7 +193,6 @@ function RulesEditor({
         });
     }
     return m;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editRows]);
 
   function saveRow(row: EditRow) {
@@ -333,7 +331,6 @@ function RuleBodyLoader({
     if (entryQ.data?.body) {
       onLoad(entryQ.data.body, (entryQ.data.metadata as Record<string, unknown>) ?? {});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryQ.data?.body]);
   return null;
 }

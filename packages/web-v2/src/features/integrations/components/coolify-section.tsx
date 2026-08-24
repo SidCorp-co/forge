@@ -342,7 +342,6 @@ function EnvironmentPanel({
         </p>
         {targets.map((t, idx) => (
           <div
-            // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional + reorder-free
             key={t.id ?? idx}
             className="flex items-end gap-2"
           >

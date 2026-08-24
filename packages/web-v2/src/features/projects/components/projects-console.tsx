@@ -125,7 +125,6 @@ export function ProjectsConsole() {
       ) : isLoading ? (
         <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]">
           {Array.from({ length: 6 }).map((_, i) => (
-            // eslint-disable-next-line react/no-array-index-key -- static skeletons
             <ProjectCardSkeleton key={i} />
           ))}
         </div>

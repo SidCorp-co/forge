@@ -67,9 +67,7 @@ async function freshFavicon() {
 }
 
 afterEach(() => {
-  // biome-ignore lint/performance/noDelete: test global teardown
   delete (globalThis as { document?: unknown }).document;
-  // biome-ignore lint/performance/noDelete: test global teardown
   delete (globalThis as { Image?: unknown }).Image;
   vi.restoreAllMocks();
 });

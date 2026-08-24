@@ -59,7 +59,6 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                   title={`${a.name} · ${formatBytes(a.size)}`}
                   className="block overflow-hidden rounded-md border border-line transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                 >
-                  {/* biome-ignore lint/a11y/useAltText: alt is the file name */}
                   <img src={href} alt={a.name} className="h-28 w-28 object-cover" loading="lazy" />
                 </button>
               ) : (

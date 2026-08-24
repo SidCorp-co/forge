@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-22T18:31:33.722Z",
+  "generatedAt": "2026-08-24T17:39:20.980Z",
   "files": {
     "packages/web-v2/src/app/(workspace)/layout.tsx": {
       "lint/correctness/useExhaustiveDependencies": 2
@@ -25,12 +25,10 @@
       "lint/correctness/useExhaustiveDependencies": 1
     },
     "packages/web-v2/src/design/patterns/knowledge-markdown.tsx": {
-      "lint/performance/noImgElement": 1,
-      "suppressions/unused": 1
+      "lint/performance/noImgElement": 1
     },
     "packages/web-v2/src/design/patterns/markdown.tsx": {
-      "lint/performance/noImgElement": 1,
-      "suppressions/unused": 1
+      "lint/performance/noImgElement": 1
     },
     "packages/web-v2/src/design/patterns/mascot-loaders.tsx": {
       "lint/performance/noImgElement": 3
@@ -116,9 +114,6 @@
       "lint/style/noNonNullAssertion": 4,
       "lint/suspicious/noArrayIndexKey": 1
     },
-    "packages/web-v2/src/features/integrations/components/coolify-section.tsx": {
-      "suppressions/unused": 1
-    },
     "packages/web-v2/src/features/integrations/components/epodsystem-section.tsx": {
       "lint/a11y/noLabelWithoutControl": 1
     },
@@ -139,8 +134,7 @@
       "lint/correctness/noUnusedImports": 1
     },
     "packages/web-v2/src/features/issues/components/attachment-list.tsx": {
-      "lint/performance/noImgElement": 1,
-      "suppressions/unused": 1
+      "lint/performance/noImgElement": 1
     },
     "packages/web-v2/src/features/issues/components/comment-thread.tsx": {
       "lint/a11y/noStaticElementInteractions": 1,
@@ -149,11 +143,7 @@
     "packages/web-v2/src/features/issues/components/image-lightbox.tsx": {
       "lint/a11y/noStaticElementInteractions": 4,
       "lint/a11y/useKeyWithClickEvents": 3,
-      "lint/performance/noImgElement": 2,
-      "suppressions/unused": 2
-    },
-    "packages/web-v2/src/features/issues/components/inline-edit-cell.tsx": {
-      "lint/style/useImportType": 1
+      "lint/performance/noImgElement": 2
     },
     "packages/web-v2/src/features/issues/components/issue-detail-screen.tsx": {
       "lint/correctness/useExhaustiveDependencies": 2,
@@ -347,13 +337,9 @@
     "packages/web-v2/src/features/whats-new/components/whats-new-screen.tsx": {
       "lint/correctness/useExhaustiveDependencies": 1
     },
-    "packages/web-v2/src/lib/notifications/favicon.test.ts": {
-      "suppressions/unused": 2
-    },
     "packages/web-v2/src/lib/notifications/sound.test.ts": {
       "lint/complexity/useArrowFunction": 1,
-      "lint/suspicious/noAssignInExpressions": 1,
-      "suppressions/unused": 1
+      "lint/suspicious/noAssignInExpressions": 1
     },
     "packages/web-v2/src/lib/utils/use-persisted-state.ts": {
       "lint/correctness/useExhaustiveDependencies": 3

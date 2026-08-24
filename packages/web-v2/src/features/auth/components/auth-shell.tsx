@@ -23,7 +23,6 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
         <div className="mb-7 flex flex-col items-center gap-4">
           {/* Plain <img> (not next/image) — small static mark; assetPath adds
               the basePath so it resolves under /v2. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={assetPath('/forge-mark-180.png')} alt="Forge" width={60} height={60} />
           <div className="text-center">
             <div className="fg-h2">Forge</div>

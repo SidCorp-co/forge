@@ -61,7 +61,6 @@ async function freshSound() {
 }
 
 afterEach(() => {
-  // biome-ignore lint/performance/noDelete: test global teardown
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
 });

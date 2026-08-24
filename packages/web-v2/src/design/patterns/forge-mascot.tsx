@@ -124,14 +124,11 @@ export function ForgeMascot({
       />
 
       <div className="fm-breathe" style={{ position: "absolute", inset: 0 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={MASCOT_SRC} width={size} height={size} alt="Forge" draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
 
         {flicker && (
           <Fragment>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={MASCOT_SRC} width={size} height={size} alt="" draggable={false} className="fm-flameA" style={{ position: "absolute", inset: 0, clipPath: leftHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={MASCOT_SRC} width={size} height={size} alt="" draggable={false} className="fm-flameB" style={{ position: "absolute", inset: 0, clipPath: rightHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
           </Fragment>
         )}
