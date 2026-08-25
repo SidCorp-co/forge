@@ -64,6 +64,12 @@ Record the couplings no tool can see, as one-line annotations on line comments (
 | `// cm:hack ISS-<n> until:<cond> — <text>` | live workaround with an exit condition |
 | `// cm:why <text>` | one-line rationale |
 
+**One line means one line, however long.** `cm fmt` does not join a wrapped annotation — measured
+2026-08-25, it normalizes 0 of them — so a continuation `//` line stays prose and the prose tier
+flags it. Write the whole rule on the single `//` that carries the `cm:` verb, at 300 characters if
+that is what it takes. And an annotation makes you the owner of the comment block it lands in:
+delete the legacy restatement glued to it, or the file comes back red on comments you never wrote.
+
 Before changing a file with declared couplings: `cm impact <path>` (declared half) **plus** LSP
 references (derivable half) — neither is a substitute for the other. `cm verify` before pushing;
 `cm fmt` normalizes. Full verb list: `cm` with no args, or the `codemap` skill.

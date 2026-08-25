@@ -180,7 +180,7 @@ const CI_COVERAGE = {
   'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
   'Lockfile sync + fmt + clippy + test (same gates as runner-ci)':
     'verify, via scripts/check-runner-gates.mjs when packages/runner changed',
-  'Check Markdown links': 'docs job, lychee action',
+  'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',
   'Require every CI job to have passed or been skipped': 'the ci-passed gate itself',
 };
 
