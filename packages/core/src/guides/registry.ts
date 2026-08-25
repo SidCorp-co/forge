@@ -209,8 +209,8 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park needs a human or an operator sentinel, the four things `waiting` means, and who owns which derived fields.',
-    version: 5,
+      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
+    version: 6,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
