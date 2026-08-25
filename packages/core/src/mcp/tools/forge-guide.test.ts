@@ -12,7 +12,7 @@ const { INTEGRATION_GUIDE_SLUG_PREFIX } = await import('../../guides/integration
 
 // cm:why no projectSlug / boundProjectId — this is the "no project context" caller the code tier must keep serving, and it is what keeps these cases DB-free
 const tool = forgeGuideTool({
-  principal: { kind: 'pat', userId: 'u1', tokenId: 't1' },
+  principal: { kind: 'pat', agency: 'human' as const, userId: 'u1', tokenId: 't1' },
   device: { id: 'd1', ownerId: 'u1' },
   projectSlug: null,
 } as unknown as Parameters<typeof forgeGuideTool>[0]);

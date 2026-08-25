@@ -116,24 +116,23 @@ function deviceCtx() {
   };
 }
 
-function patCtx(opts: {
+const patCtx = (opts: {
   userId?: string;
   scopes?: readonly string[];
   projectIds?: readonly string[] | null;
-}) {
-  return {
-    principal: {
-      kind: 'pat' as const,
-      userId: opts.userId ?? OWNER_ID,
-      tokenId: 'token-id',
-      scopes: opts.scopes ?? ['read', 'write'],
-      projectIds: opts.projectIds ?? null,
-      boundProjectId: null,
-    },
-    device: fakeDevice,
-    projectSlug: null,
-  };
-}
+}) => ({
+  principal: {
+    kind: 'pat' as const,
+    agency: 'human' as const,
+    userId: opts.userId ?? OWNER_ID,
+    tokenId: 'token-id',
+    scopes: opts.scopes ?? ['read', 'write'],
+    projectIds: opts.projectIds ?? null,
+    boundProjectId: null,
+  },
+  device: fakeDevice,
+  projectSlug: null,
+});
 
 describe('forge_projects.list', () => {
   it('returns visible projects with effective (org-aware) role mapping', async () => {

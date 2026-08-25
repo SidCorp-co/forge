@@ -14,7 +14,7 @@ import {
   tasks,
   waitingKinds,
 } from '../../db/schema.js';
-import { applyStatusTransition } from '../../issues/apply-transition.js';
+import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import {
   AttachmentError,
   type DecodedAttachment,
@@ -42,6 +42,8 @@ import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
+  principalActor,
+  principalHookActor,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -1113,7 +1115,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         // cm:edge ordering -> packages/core/src/issues/transition-evidence.ts — field writes MUST commit before the status transition below, which re-reads issues.plan for PLAN_REQUIRED; reversed order throws PLAN_REQUIRED on a legal { plan, status:'approved' } call and discards the submitted plan
         if (Object.keys(updates).length > 0 || labelIds !== undefined) {
-          // cm:why sql`now()`, matching applyStatusTransition below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
+          // cm:why sql`now()`, matching transitionIssueStatus below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
           updates.updatedAt = sql`now()`;
           const actor = { type: 'device' as const, id: device.id };
           await db.transaction(async (tx) => {
@@ -1161,7 +1163,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         if (input.data.status && input.data.status !== issue.status) {
-          await applyStatusTransition(issue, input.data.status, device, {
+          await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {
             transitionReason: input.data.reason ?? input.data.note,
             waitingKind: input.data.waitingKind,
           });
@@ -1183,7 +1185,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
-        await applyStatusTransition(issue, target, device, {
+        await transitionIssueStatus(issue, target, principalActor(principal, device), {
           transitionReason: input.data?.reason ?? input.data?.note,
           waitingKind: input.data?.waitingKind,
         });
@@ -1237,8 +1239,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .set({ mergedAt: sql`COALESCE(${issues.mergedAt}, ${stampExpr})`, updatedAt: sql`now()` })
           .where(eq(issues.id, issueId));
 
-        const note = input.data?.note;
-        const body = `mark_merged target=${target}${note ? ` — ${note}` : ''}`;
+        const body = `mark_merged target=${target}${input.data?.note ? ` — ${input.data.note}` : ''}`;
         // cm:guard ISS-820 — this is an automated MCP-surface audit comment; isAi:true or it reads as a human answer and can release a needs_info bounce
         const [auditComment] = await db
           .insert(comments)
@@ -1248,7 +1249,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           await hooks.emit('commentCreated', {
             issueId,
             projectId: issue.projectId,
-            actor: { type: 'device', id: device.id },
+            actor: principalHookActor(principal, device),
             commentId: auditComment.id,
             body: auditComment.body,
             parentId: auditComment.parentId,
@@ -1259,7 +1260,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('issueUpdated', {
           issueId,
           projectId: issue.projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           fields: ['mergedAt'],
           before: { mergedAt: issue.mergedAt },
           after: { mergedAt: fresh.mergedAt },
@@ -1288,8 +1289,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .set({ mergedAt: null, updatedAt: sql`now()` })
           .where(eq(issues.id, issueId));
 
-        const note = input.data?.note;
-        const body = `unmark${note ? ` — ${note}` : ''}`;
+        const body = `unmark${input.data?.note ? ` — ${input.data.note}` : ''}`;
         // cm:guard ISS-820 — automated MCP-surface audit comment; isAi:true so it can't release a needs_info bounce
         const [auditComment] = await db
           .insert(comments)
@@ -1299,7 +1299,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           await hooks.emit('commentCreated', {
             issueId,
             projectId: issue.projectId,
-            actor: { type: 'device', id: device.id },
+            actor: principalHookActor(principal, device),
             commentId: auditComment.id,
             body: auditComment.body,
             parentId: auditComment.parentId,
@@ -1310,7 +1310,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('issueUpdated', {
           issueId,
           projectId: issue.projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           fields: ['mergedAt'],
           before: { mergedAt: issue.mergedAt },
           after: { mergedAt: null },

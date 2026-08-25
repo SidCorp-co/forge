@@ -3,12 +3,14 @@ import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
 import { projects, runners } from '../../db/schema.js';
+import type { DeviceLite, TransitionActor } from '../../issues/apply-transition.js';
 import {
   effectiveProjectRole,
   loadVisibleProjectIds,
   projectRoleAtLeast,
 } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import type { Actor } from '../../pipeline/activity.js';
 import type { McpTool } from './forge-version.js';
 
 /**
@@ -274,6 +276,29 @@ export async function assertPrincipalIsAdmin(
  */
 export function principalUserId(principal: McpPrincipal): string {
   return principal.kind === 'device' ? principal.device.ownerId : principal.userId;
+}
+
+/**
+ * Who this MCP call records as having acted.
+ *
+ * Attribution follows the token's owner — a person holding a PAT is written
+ * down as that person, not as the synthetic device the PAT is carried on.
+ * Everything downstream that branches on `actor.type` then lands correctly on
+ * its own: the ISS-812 fabrication guard skips a human and covers an agent,
+ * `isAi` labels a comment honestly, and `publishIssueStatusChange` names a user
+ * id that exists.
+ */
+// cm:guard branch on `agency`, NEVER on `kind`. A `kind === 'pat'` test reads the agent-driven chat surface (chat/tools/principal.ts) as a human and hands it the ISS-812 exemption — the guard added because agents were fabricating evidence. `agency` is the only field that separates the two.
+export function principalActor(principal: McpPrincipal, device: DeviceLite): TransitionActor {
+  return principal.kind === 'pat' && principal.agency === 'human'
+    ? { type: 'user', id: principal.userId }
+    : { type: 'device', id: device.id, ownerId: device.ownerId };
+}
+
+/** The same decision, in the shape the hooks bus and `activity_log` take. */
+export function principalHookActor(principal: McpPrincipal, device: DeviceLite): Actor {
+  const actor = principalActor(principal, device);
+  return { type: actor.type, id: actor.id };
 }
 
 /**

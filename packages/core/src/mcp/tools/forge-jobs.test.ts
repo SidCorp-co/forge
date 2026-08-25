@@ -286,20 +286,19 @@ function makeDeviceCtx() {
   };
 }
 
-function makePatCtx(projectIds: string[] | null) {
-  return {
-    principal: {
-      kind: 'pat' as const,
-      userId: OWNER_ID,
-      tokenId: '77777777-7777-4777-8777-777777777777',
-      scopes: ['read', 'write'],
-      projectIds,
-      boundProjectId: null,
-    },
-    device: fakeDevice,
-    projectSlug: null,
-  };
-}
+const makePatCtx = (projectIds: string[] | null) => ({
+  principal: {
+    kind: 'pat' as const,
+    agency: 'human' as const,
+    userId: OWNER_ID,
+    tokenId: '77777777-7777-4777-8777-777777777777',
+    scopes: ['read', 'write'],
+    projectIds,
+    boundProjectId: null,
+  },
+  device: fakeDevice,
+  projectSlug: null,
+});
 
 describe('forge_jobs.get', () => {
   it('returns the job + agentSessionId when device owner is member', async () => {

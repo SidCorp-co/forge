@@ -17,6 +17,7 @@ import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
+  principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -280,7 +281,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('commentCreated', {
           issueId,
           projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           commentId: inserted.id,
           body: inserted.body,
           parentId: inserted.parentId,
@@ -353,7 +354,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('commentDeleted', {
           issueId: comment.issueId,
           projectId: comment.projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           commentId: comment.id,
         });
 

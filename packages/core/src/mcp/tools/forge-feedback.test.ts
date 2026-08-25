@@ -195,20 +195,20 @@ describe('forge_feedback submit', () => {
   });
 
   it('interactive (PAT / no active job): submits with null context fields', async () => {
-    const patCtx = {
+    const tool = forgeFeedbackTool({
       principal: {
-        kind: 'pat' as const,
+        kind: 'pat',
+        agency: 'human',
         userId: OWNER_ID,
         tokenId: 'tok-1',
-        scopes: ['read', 'write'] as string[],
-        projectIds: null as string[] | null,
+        scopes: ['read', 'write'],
+        projectIds: null,
         boundProjectId: PROJECT_ID,
       },
       device: fakeDevice,
-      projectSlug: null as string | null,
+      projectSlug: null,
       boundProjectId: PROJECT_ID,
-    };
-    const tool = forgeFeedbackTool(patCtx);
+    });
 
     // resolveEffectiveProjectId from boundProjectId (no slug, no explicit arg)
     // assertPrincipalIsMember (PAT path, effectiveProjectRole)

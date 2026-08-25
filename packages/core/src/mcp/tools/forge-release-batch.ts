@@ -28,6 +28,7 @@ import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
+  principalActor,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -82,10 +83,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         await assertPrincipalIsWriter(principal, context.projectId);
 
-        const actor =
-          principal.kind === 'pat'
-            ? ({ type: 'user', id: principal.userId } as const)
-            : ({ type: 'device', id: device.id, ownerId: device.ownerId } as const);
+        const actor = principalActor(principal, device);
 
         try {
           return await finishReleaseBatch(input.runId, actor, { commit: input.commit });

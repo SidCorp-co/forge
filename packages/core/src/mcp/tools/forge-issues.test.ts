@@ -217,6 +217,17 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const humanPat = (userId: string, tokenId: string, projectIds: string[] | null) =>
+  ({
+    kind: 'pat',
+    agency: 'human',
+    userId,
+    tokenId,
+    scopes: ['read', 'write'],
+    projectIds,
+    boundProjectId: null,
+  }) as const;
+
 describe('forge_issues tool', () => {
   it('rejects unknown action', async () => {
     const tool = forgeIssuesTool({
@@ -1479,14 +1490,7 @@ describe('forge_issues tool', () => {
 
     function makePatTool(projectIds: string[] | null) {
       return forgeIssuesTool({
-        principal: {
-          kind: 'pat',
-          userId: PAT_USER,
-          tokenId: PAT_TOKEN,
-          scopes: ['read', 'write'],
-          projectIds,
-          boundProjectId: null,
-        },
+        principal: humanPat(PAT_USER, PAT_TOKEN, projectIds),
         device: fakeDevice,
         projectSlug: null,
       });
@@ -1783,14 +1787,7 @@ describe('forge_issues tool', () => {
 
     it('mark_merged does NOT evidence-gate a PAT (human) principal', async () => {
       const tool = forgeIssuesTool({
-        principal: {
-          kind: 'pat',
-          userId: OWNER_ID,
-          tokenId: '55555555-5555-4555-8555-555555555555',
-          scopes: ['read', 'write'],
-          projectIds: null,
-          boundProjectId: null,
-        },
+        principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', null),
         device: fakeDevice,
         projectSlug: PROJECT_SLUG,
       });
@@ -1812,14 +1809,9 @@ describe('forge_issues tool', () => {
 
     it("unmark rejects with NOT_FOUND when the issue's project is outside the PAT allowlist", async () => {
       const tool = forgeIssuesTool({
-        principal: {
-          kind: 'pat',
-          userId: OWNER_ID,
-          tokenId: '55555555-5555-4555-8555-555555555555',
-          scopes: ['read', 'write'],
-          projectIds: ['66666666-6666-4666-8666-666666666666'],
-          boundProjectId: null,
-        },
+        principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', [
+          '66666666-6666-4666-8666-666666666666',
+        ]),
         device: fakeDevice,
         projectSlug: null,
       });

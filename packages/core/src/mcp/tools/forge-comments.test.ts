@@ -111,6 +111,17 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const humanPat = (projectIds: string[] | null) =>
+  ({
+    kind: 'pat',
+    agency: 'human',
+    userId: OWNER_ID,
+    tokenId: '55555555-5555-4555-8555-555555555555',
+    scopes: ['read', 'write'],
+    projectIds,
+    boundProjectId: null,
+  }) as const;
+
 describe('forge_comments tool', () => {
   it('rejects unknown action', async () => {
     const tool = forgeCommentsTool({
@@ -287,14 +298,7 @@ describe('forge_comments tool', () => {
   // non-device principals; authorId still resolves to the PAT's owning user.
   it('create with a PAT principal inserts authorDeviceId: null and succeeds', async () => {
     const tool = forgeCommentsTool({
-      principal: {
-        kind: 'pat',
-        userId: OWNER_ID,
-        tokenId: '55555555-5555-4555-8555-555555555555',
-        scopes: ['read', 'write'],
-        projectIds: null,
-        boundProjectId: null,
-      },
+      principal: humanPat(null),
       // ctx.device is the transient stub the MCP handler builds for a PAT
       // principal — its id is the PAT token id, never a real devices row.
       device: { ...fakeDevice, id: '55555555-5555-4555-8555-555555555555' },
@@ -420,14 +424,7 @@ describe('forge_comments tool', () => {
 
     function makePatTool(projectIds: string[] | null) {
       return forgeCommentsTool({
-        principal: {
-          kind: 'pat',
-          userId: OWNER_ID,
-          tokenId: '55555555-5555-4555-8555-555555555555',
-          scopes: ['read', 'write'],
-          projectIds,
-          boundProjectId: null,
-        },
+        principal: humanPat(projectIds),
         device: fakeDevice,
         projectSlug: null,
       });
