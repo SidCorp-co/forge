@@ -94,7 +94,7 @@
     {
       "id": "packages/runner",
       "kind": "service",
-      "purpose": "Headless CLI device agent (Rust forge-runner daemon — CI runners, servers)",
+      "purpose": "Headless CLI device agent (Rust forge-runner daemon \u2014 CI runners, servers)",
       "status": "active",
       "decisions": [
         "ADR-0001"
@@ -158,7 +158,7 @@
     {
       "id": "feature.issue-pipeline-18status",
       "kind": "feature",
-      "purpose": "open → confirmed → clarified → … → closed (max 5 reopen cycles)",
+      "purpose": "open \u2192 confirmed \u2192 clarified \u2192 \u2026 \u2192 closed (max 5 reopen cycles)",
       "status": "active",
       "docs": "docs/modules/issues-pipeline/status-pipeline.md"
     },
@@ -178,8 +178,7 @@
       "id": "feature.cost-aware-routing",
       "kind": "feature",
       "purpose": "Route jobs to thrifty/standard/premium model tier",
-      "status": "proposed",
-      "docs": "docs/proposals/cost-aware-model-routing.md"
+      "status": "proposed"
     },
     {
       "id": "postgres",
@@ -250,7 +249,7 @@
       "from": "control-plane",
       "to": "forge/strapi",
       "relation": "contains",
-      "note": "frozen — replaced_by packages/core"
+      "note": "frozen \u2014 replaced_by packages/core"
     },
     {
       "from": "runtime-plane",

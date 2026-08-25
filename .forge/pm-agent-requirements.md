@@ -251,7 +251,7 @@ PM begins each cycle context-empty. The strategy is layered to keep the prompt b
 - Raw `messages` jsonb of other agent sessions (huge; dispatcher + completion summaries are enough).
 - Chat sessions / chat logs (different domain — user/widget conversations, not project ops).
 - Source code or repo state (PM is not a coder; per-issue worker agents handle that).
-- `usage_records` / cost data (out of scope for v1; revisit if cost-aware routing per `docs/proposals/cost-aware-model-routing.md` lands).
+- `usage_records` / cost data (out of scope for v1; revisit if cost-aware model routing is ever built — the 2026-04 proposal was retired unimplemented).
 - Old PM decisions older than 14 days unless surfaced by `forge_memory.search`.
 
 ### Recall vs dump
