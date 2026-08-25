@@ -42,6 +42,15 @@ const CHECKS = [
     // cm:edge naming -> scripts/check-test-signal.mjs — same coupling as above
     scanned: /^test-signal: (\d+) test file/m,
   },
+  // cm:guard this runs BEFORE test-signal reads anything, in the order that matters conceptually: test-signal asks whether a test asserts behaviour, and a file no runner collects cannot assert anything. `packages/tests` held 64 such files for six weeks and test-signal's 493 never included one of them, because a checker scoped to what the runner sees cannot see what it does not.
+  {
+    axis: 'behaviour',
+    label: 'test-reachability',
+    // cm:edge naming -> scripts/check-test-reachability.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-test-reachability.mjs'],
+    scanned: /^test-reachability: (\d+) tracked test file/m,
+    unit: 'test files',
+  },
   {
     axis: 'behaviour',
     label: 'flow-coverage',
@@ -157,6 +166,7 @@ const CI_COVERAGE = {
   '.forge/codemap/cm verify --tier referential': 'verify',
   '.forge/codemap/cm verify --tier structural': 'verify',
   './.forge/archmap/archmap check': 'verify',
+  'node scripts/check-test-reachability.mjs': 'verify',
   'pnpm exec biome check scripts': 'verify',
   'pnpm --filter @forge/core lint': 'verify',
   'pnpm --filter @forge/core typecheck': 'verify',

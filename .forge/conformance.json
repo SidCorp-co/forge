@@ -41,8 +41,8 @@
     },
     "behaviour": {
       "level": 2,
-      "gate": "check-test-signal + check-flow-coverage",
-      "owns": "whether a test asserts behaviour or restates a declaration; whether every declared flow step is executed end-to-end",
+      "gate": "check-test-signal + check-flow-coverage + check-test-reachability",
+      "owns": "whether a test asserts behaviour or restates a declaration; whether every declared flow step is executed end-to-end; whether every tracked test file is collected by a runner at all",
       "baseline": {
         "path": ".forge/test-signal-baseline.json",
         "keyBy": "path",

@@ -95,6 +95,12 @@ jobs:
       # config were fixed, not frozen. Lives in this job rather than lang-check
       # because `pnpm exec biome` needs node_modules and that job installs
       # nothing on purpose.
+      # Every tracked test file must be collected by some runner. `packages/tests`
+      # held 64 that none did — no package.json, so pnpm never saw the directory
+      # — while they tested two packages deleted on 2026-08-23. A file no runner
+      # collects emits nothing, so it reads exactly like a suite that passed.
+      # Spawns `vitest list` per project, hence this job rather than lang-check.
+      - run: node scripts/check-test-reachability.mjs
       - run: pnpm exec biome check scripts
       # Size budget: biome OWNS the two length rules; what it lacks is a
       # baseline, so both sit at `warn` and `biome check` exits 0 with 143

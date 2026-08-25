@@ -48,9 +48,13 @@ const PROBES = {
   },
   // cm:guard an axis with several checkers measures at the WEAKEST of them. Reporting the strongest would let one locked checker hide a sibling that stopped blocking, which is the drift this whole script exists to catch.
   behaviour: {
-    gate: 'check-test-signal + check-flow-coverage',
+    gate: 'check-test-signal + check-flow-coverage + check-test-reachability',
     probe: ['node', 'scripts/check-test-signal.mjs', '--all'],
-    also: [{ from: 'alsoBaseline', probe: ['node', 'scripts/check-flow-coverage.mjs', '--all'] }],
+    also: [
+      { from: 'alsoBaseline', probe: ['node', 'scripts/check-flow-coverage.mjs', '--all'] },
+      // cm:why `from: 'none'` rather than the default, because this checker has no baseline and must not borrow test-signal's — borrowing would report it as level 2 `baseline frozen` when it is level 3 at zero debt, and an axis that overstates one checker is how a sibling's rot stays hidden
+      { from: 'none', probe: ['node', 'scripts/check-test-reachability.mjs'] },
+    ],
   },
   language: {
     gate: 'check-source-language',
@@ -104,6 +108,8 @@ function measure(_axis, spec, decl) {
   const paths = {
     baseline: decl.baseline?.path ?? null,
     alsoBaseline: decl.alsoBaseline?.path ?? null,
+    // cm:guard an explicit slot, not a missing key. A checker with no baseline needs to resolve to null on purpose; leaving it to `paths[undefined]` works today and breaks silently the moment someone adds a key by that name, and the breakage is a checker quietly reporting a stricter level than it holds.
+    none: null,
   };
   return [spec, ...(spec.also ?? [])]
     .map((s) => measureOne(s, paths[s.from ?? 'baseline']))

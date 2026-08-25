@@ -95,7 +95,7 @@ the file**; `cm:edge` drives `cm impact`; **`cm:why` has no consumer at all** �
 not even `cm impact`. So anything a future editor must *obey* belongs in `cm:guard`, never
 `cm:why`. Filler accumulates in `cm:why` precisely because nothing surfaces it.
 
-## Nine gates, five axes
+## Ten gates, five axes
 
 Each sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks the
 merge. **That, not this file, is why they hold.** Both halves are load-bearing: `ci-passed` runs
@@ -106,15 +106,15 @@ mismatch, which is why this sentence can be trusted. Every gate that drifted did
 `typecheck` to 84, and the two length rules to 143 — and each stopped drifting the day it was
 baselined and gated (see the comments on the `core` job in `.github/workflows/ci.yml`).
 
-Nine gates over five axes: `form` is gated four times (biome for `core`'s rules, `check-size-budget`
+Ten gates over five axes: `form` is gated four times (biome for `core`'s rules, `check-size-budget`
 for the length baseline biome cannot hold, `check-lint-budget` for `web-v2`, where biome carries 216
 violations at rest and so had the same error-or-nothing choice `core` had, and a bare `biome check
-scripts` for the checkers themselves) and `behaviour` twice
-(`check-test-signal` for whether a test asserts anything, `check-flow-coverage` for whether the flows
-are walked). **An axis measures at its weakest gate** — reporting the strongest would let one locked
+scripts` for the checkers themselves) and `behaviour` three times
+(`check-test-reachability` for whether a test file runs at all, `check-test-signal` for whether it
+asserts anything, `check-flow-coverage` for whether the flows are walked). **An axis measures at its weakest gate** — reporting the strongest would let one locked
 checker hide a sibling that stopped blocking, which is the whole failure mode here.
 
-All nine run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify` neither runs nor
+All ten run from one command: **`pnpm verify`**. A step in `ci.yml` that `verify` neither runs nor
 declares fails `verify --ci-parity`, which is itself a CI step — so the local command and the
 workflow cannot drift apart.
 
@@ -144,9 +144,17 @@ profile, and be perfectly conformant. Its seven rules and what each was born fro
 | checkers | `biome check scripts` — job `conformance` | the ten files in `scripts/` that implement every other gate | anything under `packages/` — those have their own configs |
 | knowledge | `cm verify` — job `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
 | relations | `archmap check` — job `archmap` | which module may depend on which | how a file is written |
+| reachability | `check-test-reachability` — job `conformance` | whether every tracked test file is collected by a runner, and whether a skipped suite says why | what a test asserts once it runs |
 | behaviour | `check-test-signal` — job `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | flows | `check-flow-coverage` — job `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
 | language | `check-source-language` — job `lang-check` | English-only source policy | everything else |
+
+The reachability row is prior to the behaviour one and that order is the point: `check-test-signal`
+scopes itself to what a runner collects, so it measured 493 files while `packages/tests` held 64 that
+no runner collected — a checker cannot see what it is not given. Frozen at zero on 2026-08-25, the
+one day it cost nothing: 495 tracked test files, 495 collected. Declared skips live in
+`.forge/test-skips.json` with a reason each, because *"waiting on ISS-214's endpoints"* is what the
+device-runner E2E said for months after those endpoints shipped.
 
 The flows row is the only place the two axes meet. codemap says *which line is step 4 of the
 dispatch flow*; the integration suite's v8 report says *which lines ran*. A step named in the map
