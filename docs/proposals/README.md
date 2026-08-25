@@ -3,18 +3,24 @@
 Planned features that are not yet implemented. When a proposal ships, its doc moves to
 [../modules/](../modules/) (if a new feature) or gets absorbed into an existing module doc.
 
-**Every row carries the date its status was last checked against the tree.** Without that, a
-`Status` column is a claim nobody re-reads: on 2026-08-25 this table said `rocketchat-bot` and
+**Every row carries the date its status was last checked against the tree, and the check is
+reading the file's body — not copying its `Status:` header.** Without that, a `Status` column is a
+claim nobody re-reads: on 2026-08-25 this table said `rocketchat-bot` and
 `chat-provider-standardization` were "not implemented" while both had shipped seven weeks earlier —
 one of them in a commit naming that proposal's own issue. Four of the seven rows were wrong, and
 three files in this directory were missing from the table entirely. A reader saw seven open items
 where there were two.
 
+The second half of that rule was added the same day and cost one more wrong row:
+`release-gate-and-deploy.md` was written into this table as *"not implemented"* straight from its own
+stale header, while all five of its waves were marked shipped 200 lines further down and every
+anchor verified in the tree. **A proposal's header is the least-maintained line in it** — the body
+carries the evidence.
+
 ## Current proposals
 
 | Proposal | Status | Verified | Target |
 |---|---|---|---|
-| [release-gate-and-deploy.md](release-gate-and-deploy.md) | Draft — design agreed in an owner session, not implemented | 2026-08-25 | 5 waves, gated per project: kernel truths → the gate → release path → deploy+proof → schedule+UI |
 | [agent-driven-pipeline.md](agent-driven-pipeline.md) | Phases 0–4 shipped; phase 5 instrumented and **awaiting evidence, not code** | 2026-08-25 | upgrade to an RFC once the mode switch + status vocabulary are agreed |
 | [fan-out-scope.md](fan-out-scope.md) | Draft — needs `scope: "module"` in archmap; unblocked once that ships | 2026-08-25 | one archmap change, then the `index.ts` split it currently forbids |
 | [mcp-principal-agency.md](mcp-principal-agency.md) | Blocked on a **decision**, not on code — it changes who the ISS-812 fabrication guard applies to | 2026-08-25 | an `agency: 'human' \| 'agent'` field on `McpPrincipal` |
@@ -25,8 +31,13 @@ Shipped or consumed proposals are **deleted** — git history is the design reco
 `git log --all --full-history -- docs/proposals/<name>.md` brings any of them back. Leaving one in
 place costs more than it saves: it reads as open work.
 
+The exception is a proposal **cited by path from source**: deleting it turns every one of those
+comments into a dangling pointer, so it moves to `modules/` and the citations move with it. That is
+the only reason `release-gate-and-deploy.md` still exists as a file.
+
 | Retired | Why | Where it lives now |
 |---|---|---|
+| `release-gate-and-deploy.md` | All five waves shipped 2026-08-24; six modules in `core`/`contracts` name it as their design record, so it moved instead of being deleted | [../modules/issues-pipeline/release-gate.md](../modules/issues-pipeline/release-gate.md) |
 | `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | [../modules/chat/README.md](../modules/chat/README.md) § RocketChat inbound flow |
 | `chat-provider-standardization.md` | P1 shipped 2026-07-02 in `934dab4a`, the commit naming its own ISS-604; P2 2026-07-03 (ISS-609); P3 write tools live in `chat/tools/` | [../modules/chat/README.md](../modules/chat/README.md) |
 | `pm-lane-audit.md` | An audit whose decision was consumed — ISS-795 and its step 5 (ISS-801) both closed and merged 2026-08-08/09 | git history |

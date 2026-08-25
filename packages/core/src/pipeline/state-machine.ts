@@ -94,9 +94,7 @@ export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
   return true;
 }
 
-export const REOPEN_CAP = 5;
-
-// cm:why ISS-781 — ANY entry into `reopen` is a reopen, not just `closed → reopen`. The pipeline's own rejection paths (developed → reopen on a review REQUEST CHANGES, testing → reopen on a failed live E2E) are precisely the churn this counter exists to measure, and gating on `closed` left reopenCount at 0 for all of them — which silently disabled the REOPEN_CAP gate and ISS-535 model escalation (escalateModel returns early at reopenCount <= 0).
+// cm:why ISS-781 — ANY entry into `reopen` is a reopen, not just `closed → reopen`. The pipeline's own rejection paths (developed → reopen on a review REQUEST CHANGES, testing → reopen on a failed live E2E) are precisely the churn this counter exists to measure, and gating on `closed` left reopenCount at 0 for all of them — which silently disabled the reopen cap (deleted 2026-08-25 — RFC 0002 INV-8 replaced it with the advisory `noProgressRounds`, see pipeline/reopen-policy.ts) and ISS-535 model escalation (escalateModel returns early at reopenCount <= 0).
 // cm:why ISS-766 — excludes `in_progress → reopen`: that hop is the SYSTEM's own mechanical recovery, not an agent-requested rejection — finalize-failure's retry revert (jobs/finalize-failure.ts) and the reconciler's in-flight wedge reset (pipeline/reconciler.ts) both land here for infra flakes/usage-limit cuts, and counting them burned reopen-cap budget and bumped fix sonnet→opus (escalateModel) for churn that was never a real review/test rejection.
 export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
   return to === 'reopen' && from !== 'reopen' && from !== 'in_progress';

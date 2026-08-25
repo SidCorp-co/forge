@@ -15,7 +15,7 @@
 // requested status: the reopen counter still increments and the authored reason
 // is still required and still posted under its `🔁 Reopened from X` heading.
 //
-// Design: docs/proposals/release-gate-and-deploy.md (L0.4)
+// Design: docs/modules/issues-pipeline/release-gate.md (L0.4)
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

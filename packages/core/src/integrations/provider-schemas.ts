@@ -226,7 +226,7 @@ export const createSchema = z.discriminatedUnion('provider', [
     provider: z.literal('agent'),
     environment: environmentSchema.default('prod'),
     config: agentReleaseConfigSchema,
-    // cm:guard NO secrets, ever. The whole point of this channel is that the production credential stays on the runner box: a deploy key in Forge would put every project's production behind one decryption path, which is the blast radius `docs/proposals/release-gate-and-deploy.md` refuses under "Not doing".
+    // cm:guard NO secrets, ever. The whole point of this channel is that the production credential stays on the runner box: a deploy key in Forge would put every project's production behind one decryption path, which is the blast radius `docs/modules/issues-pipeline/release-gate.md` refuses under "Not doing".
     secrets: z.object({}).strict().default({}),
     orgId: z.uuid().optional(),
   }),

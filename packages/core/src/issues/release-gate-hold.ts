@@ -16,7 +16,7 @@
 // `dropped` is untouched on purpose: it means "this was not work", and holding
 // a non-issue for a release it will never be part of parks it forever.
 //
-// Design: docs/proposals/release-gate-and-deploy.md (L0.1 + L0.2)
+// Design: docs/modules/issues-pipeline/release-gate.md (L0.1 + L0.2)
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

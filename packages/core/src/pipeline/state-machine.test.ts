@@ -6,7 +6,6 @@ import {
   getAllowedTransitions,
   isReopenEntry,
   MAX_SKIP_CHAIN,
-  REOPEN_CAP,
   resolveSkipTarget,
   SKIPPABLE_STAGES,
   STAGE_FORWARD,
@@ -104,10 +103,6 @@ describe('state machine', () => {
     expect(isReopenEntry('in_progress', 'reopen')).toBe(false);
     expect(isReopenEntry('developed', 'reopen')).toBe(true);
     expect(isReopenEntry('testing', 'reopen')).toBe(true);
-  });
-
-  it('REOPEN_CAP is 5', () => {
-    expect(REOPEN_CAP).toBe(5);
   });
 
   describe('canTransitionFree (permissive runtime guard)', () => {

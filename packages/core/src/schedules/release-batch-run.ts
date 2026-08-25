@@ -9,7 +9,7 @@
 // normal state of a healthy project, and a nightly cron that reports failure on
 // a quiet night trains everyone to ignore it.
 //
-// Design: docs/proposals/release-gate-and-deploy.md (L3.1)
+// Design: docs/modules/issues-pipeline/release-gate.md (L3.1)
 
 import { logger } from '../logger.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';

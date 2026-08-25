@@ -12,7 +12,6 @@ const FRIENDLY_CODES: Record<string, string> = {
   CONFLICT: 'Conflicts with the current state of the resource.',
   ILLEGAL_TRANSITION: 'That status change is not allowed from the current state.',
   STALE_TRANSITION: 'Someone else changed this item while you were editing — refresh and retry.',
-  REOPEN_CAP_EXCEEDED: 'Reopen limit reached for this issue.',
   NO_OP: 'Already in that state.',
   NOT_IMPLEMENTED: 'This action is not implemented yet.',
   INVALID_CREDENTIALS: 'Email or password is incorrect.',

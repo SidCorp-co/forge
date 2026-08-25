@@ -12,7 +12,7 @@
 // already lives — `projectFacts.release-procedure` for the repo-side ritual,
 // and the production binding's `instructions` for the channel-side one.
 //
-// Design: docs/proposals/release-gate-and-deploy.md (L1.2, L1.3)
+// Design: docs/modules/issues-pipeline/release-gate.md (L1.2, L1.3)
 
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

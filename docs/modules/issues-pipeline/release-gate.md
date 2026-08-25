@@ -1,8 +1,19 @@
-# Release gate & deploy — closing the autonomous pipeline
+# Release gate & deploy
 
-- Status: **Draft (owner session 2026-08-24)** — design agreed in-session, not implemented.
-- Visual: [mockups/release-flow.html](mockups/release-flow.html) — open in a browser.
-- Related: [agent-driven-pipeline.md](agent-driven-pipeline.md) (the mode this completes) · [../integrations/framework.md](../integrations/framework.md) (the model the deploy layer reuses) · [RFC 0002](../rfcs/0002-park-axis-separation.md)
+- Status: **Shipped 2026-08-24** — all five waves; verified against the tree again on 2026-08-25.
+  Two things are open on purpose: **L2.1** (wave 4 records the decision not to do it) and the three
+  **epodsystem-side prerequisites**, which are that project's work, not Forge's.
+- Visual: [release-flow.html](release-flow.html) — open in a browser.
+- Related: [status-pipeline.md](status-pipeline.md) (the lifecycle this gate sits in) ·
+  [../../proposals/agent-driven-pipeline.md](../../proposals/agent-driven-pipeline.md) (the mode it
+  completes) · [../../integrations/framework.md](../../integrations/framework.md) (the model the
+  deploy layer reuses) · [RFC 0002](../../rfcs/0002-park-axis-separation.md)
+
+This shipped from `docs/proposals/release-gate-and-deploy.md` and is kept rather than deleted: six
+modules across `packages/core` and `packages/contracts` name this file in their module headers as
+the design record for what they implement. Everything above the implementation checklist is the
+design **as it was agreed**, deliberately not edited after the fact — where the build came out
+differently, the wave notes say so at the box that changed.
 
 ## Summary
 
