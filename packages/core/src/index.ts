@@ -1,15 +1,11 @@
-// handoff-test ISS marker
+// cm:guard FIRST import in this file, and it must stay first. ESM evaluates every imported module before any statement in this one, so an `initSentry()` call placed among the imports runs after all of them — which is what this file did until 2026-08-25, leaving import-time crashes unreported by the very thing meant to report them. Module evaluation follows import order, so only position buys the guarantee.
+// cm:edge ordering -> packages/core/src/observability/sentry-init.ts — that module's whole job is to be imported before the rest; moving this line down, or letting a formatter sort it down, silently restores the bug
+import './observability/sentry-init.js';
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-// Sentry init runs before any other module that might throw at import time —
-// see observability/sentry.ts for the opt-in / scrubbing contract.
-import { initSentry } from './observability/sentry.js';
-
-initSentry();
-
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
