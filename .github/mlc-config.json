@@ -3,7 +3,10 @@
     { "pattern": "^http://localhost" },
     { "pattern": "^https?://localhost" },
     { "pattern": "^http://127\\.0\\.0\\.1" },
-    { "pattern": "^https?://github\\.com/SidCorp-co/forge" },
+    {
+      "comment": "Every SidCorp-co repo is private, and the checker runs unauthenticated — so a link to one answers 404 whether or not it exists. Scoped to the org rather than to `forge` because a cross-repo reference (e.g. an archmap issue cited from a Forge doc) hits exactly the same wall. What this mutes is a typo inside a SidCorp-co URL; what it would otherwise block is every correct one.",
+      "pattern": "^https?://github\\.com/SidCorp-co/"
+    },
     {
       "comment": "GitHub's advisory pages answer an unauthenticated CI request with no response at all — `Status: 0`, not 404 — so every CHANGELOG entry citing the GHSA it closed reads as a dead link. A GHSA id is an immutable identifier; the risk this mutes is a typo in one, which the advisory text beside it already makes visible.",
       "pattern": "^https://github\\.com/advisories/GHSA-"
