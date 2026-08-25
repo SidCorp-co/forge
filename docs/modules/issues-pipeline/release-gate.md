@@ -3,7 +3,6 @@
 - Status: **Shipped 2026-08-24** — all five waves; verified against the tree again on 2026-08-25.
   Two things are open on purpose: **L2.1** (wave 4 records the decision not to do it) and the three
   **epodsystem-side prerequisites**, which are that project's work, not Forge's.
-- Visual: [release-flow.html](release-flow.html) — open in a browser.
 - Related: [status-pipeline.md](status-pipeline.md) (the lifecycle this gate sits in) ·
   [../../proposals/agent-driven-pipeline.md](../../proposals/agent-driven-pipeline.md) (the mode it
   completes) · [../../integrations/framework.md](../../integrations/framework.md) (the model the
@@ -41,7 +40,7 @@ whose terminal state is a claim nobody verified.
 
 ## Target state
 
-See the diagram. In words: `open` → one drive session (7 phases) → phase 6 merges to base and stamps
+`open` → one drive session (7 phases) → phase 6 merges to base and stamps
 `merged_at` → phase 7 writes the changelog line and lands the issue at **`awaiting_release`** → a batch
 (cron, hand-picked, or single) cuts the version, merges production, deploys through the project's
 channel, and **verifies**; `finish` is the only writer of `done`.
