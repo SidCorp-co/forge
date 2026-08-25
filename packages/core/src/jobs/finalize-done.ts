@@ -34,7 +34,6 @@ import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { dispatchTickForProject } from './dispatch-tick.js';
 import { deriveSessionFinal } from './session-transcript.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -107,7 +106,6 @@ export async function finalizeJobDone(job: JobRow, reason: string): Promise<bool
     type: updated.type,
   });
 
-  void dispatchTickForProject(updated.projectId);
   if (updated.issueId) await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
   return true;
 }

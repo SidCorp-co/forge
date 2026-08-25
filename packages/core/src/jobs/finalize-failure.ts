@@ -41,7 +41,6 @@ import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import { holdAutoReleases, holdJobForReason } from './hold.js';
 import type { RetryOutcome } from './retry.js';
@@ -304,10 +303,6 @@ export async function finalizeFailedJob(
     failureKind: updated.failureKind ?? null,
     failureReason: updated.failureReason ?? null,
   });
-
-  // ISS-40 PR-E — re-tick the project so newly-freed slots get filled.
-  // Fire-and-forget; never await.
-  void dispatchTickForProject(updated.projectId);
 
   // ISS-164 — refresh pipelineHealth for the linked issue (activeSession
   // clears, queued siblings may now classify differently).

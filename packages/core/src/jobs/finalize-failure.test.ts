@@ -10,7 +10,8 @@
  *      `waiting` AND reaps the open run;
  *  (c) a verify-first recovery skip touches neither status nor run;
  *  (d) a job with no issue never touches issue state;
- *  (e) every path frees the slot + broadcasts job.failed + emits jobFailed;
+ *  (e) every path broadcasts job.failed + emits jobFailed — freeing the runner
+ *      slot now rides on that emit, asserted in dispatch-subscribers.test.ts;
  *  (f) a precomputedRetry short-circuits scheduleAutoRetryWithVerify.
  */
 
@@ -151,11 +152,6 @@ vi.mock('./agent-session-link.js', () => ({
   syncAgentSessionLifecycle: (...args: unknown[]) => syncSessionMock(...args),
 }));
 
-const dispatchTickMock = vi.fn(async (..._args: unknown[]) => undefined);
-vi.mock('./dispatch-tick.js', () => ({
-  dispatchTickForProject: (...args: unknown[]) => dispatchTickMock(...args),
-}));
-
 const publishHealthMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../issues/pipeline-health.js', () => ({
   publishPipelineHealthChanged: (...args: unknown[]) => publishHealthMock(...args),
@@ -227,7 +223,6 @@ describe('finalizeFailedJob', () => {
       { skip: true },
     );
     expect(closeRunMock).not.toHaveBeenCalled();
-    expect(dispatchTickMock).toHaveBeenCalledWith('p1');
     expect(syncSessionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'j1' }), 'failed', {
       retryPending: true,
     });
@@ -300,7 +295,6 @@ describe('finalizeFailedJob', () => {
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(publishHealthMock).not.toHaveBeenCalled();
-    expect(dispatchTickMock).toHaveBeenCalledWith('p1');
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
@@ -314,7 +308,6 @@ describe('finalizeFailedJob', () => {
       // The issue already recovered — no revert, no waiting, no run close.
       expect(applyTransitionMock).not.toHaveBeenCalled();
       expect(closeRunMock).not.toHaveBeenCalled();
-      expect(dispatchTickMock).toHaveBeenCalledWith('p1');
       expect(syncSessionMock).toHaveBeenCalledWith(expect.any(Object), 'failed', {
         retryPending: false,
       });

@@ -45,6 +45,16 @@ describe('registerDispatchSubscribers', () => {
     expect(dispatchTickForProject).not.toHaveBeenCalled();
   });
 
+  // cm:guard the finalize paths no longer call the tick themselves — this IS the wiring that frees a runner slot when a job ends. Assert both terminal events: `jobCompleted` and `jobFailed` free the same slot, and a suite covering one would pass while half the fleet's queued work waited on the sweeper's backstop.
+  it.each(['jobCompleted', 'jobFailed'] as const)('ticks the project on %s', async (event) => {
+    const bus = new HooksBus();
+    registerDispatchSubscribers(bus);
+
+    await bus.emit(event, { jobId: 'j-1', projectId: 'p-3', issueId: null, type: 'code' });
+
+    expect(dispatchTickForProject).toHaveBeenCalledWith('p-3');
+  });
+
   it('reports the subscriber under a name a failure can be traced to', async () => {
     const bus = new HooksBus();
     registerDispatchSubscribers(bus);

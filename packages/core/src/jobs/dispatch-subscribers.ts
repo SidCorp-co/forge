@@ -4,6 +4,12 @@
 // `runners/heartbeat-ws.ts` inside a 52-file import cycle spanning issues,
 // pipeline, jobs, ws, chat and mcp. The transport layer announces what happened;
 // deciding that a tick follows belongs here.
+//
+// The two finalize paths joined it for the same reason: `finalize-done.ts` and
+// `finalize-failure.ts` each imported `dispatch-tick.js`, closing
+// dispatch-tick -> dispatcher -> finalize-failure -> {finalize-done ->} dispatch-tick.
+// Both already emitted `jobCompleted` / `jobFailed` on the line above the call,
+// so the announcement was there and only the decision needed moving.
 
 import type { HooksBus } from '../pipeline/hooks.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
@@ -19,4 +25,15 @@ export function registerDispatchSubscribers(bus: HooksBus): void {
     },
     { name: 'dispatch-tick-on-runner-online' },
   );
+
+  // cm:guard BOTH terminal events, not just failure. A job that ends `done` frees the same runner slot a failed one does, and dropping either half leaves that project's queued work waiting on the sweeper's backstop — a delay rather than a stall, which is how it would stay unnoticed.
+  for (const event of ['jobCompleted', 'jobFailed'] as const) {
+    bus.on(
+      event,
+      (p) => {
+        void dispatchTickForProject(p.projectId);
+      },
+      { name: `dispatch-tick-on-${event}` },
+    );
+  }
 }
