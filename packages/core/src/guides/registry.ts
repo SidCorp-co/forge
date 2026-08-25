@@ -198,10 +198,10 @@ Finding a filed item that fails the gates is not someone else's job. You are the
 2. **Then move it**: \`needs_info\` when a human owes you requirements and it could become real work; \`closed\` when it is not work at all.
 3. **Closing non-work needs \`unmark\`.** \`closed\` auto-stamps \`merged_at\`, and that stamp releases every \`blocks\` dependent as if the work had shipped. Call \`forge_issues action=unmark\` right after, or you silently unblock work that is still genuinely blocked.
 
-Do not move it INTO \`draft\` — nothing may transition into \`draft\`, by design. \`closed\` + \`unmark\` is the exit for something that turned out not to be work.
+Do not move it INTO \`draft\` — nothing may transition into \`draft\`, by design. \`dropped\` is the exit for something that turned out not to be work: unlike \`closed\` it never stamps \`merged_at\`, so it cannot unblock the dependents of work that never happened.
 
 ### Then read
-Statuses, the three exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
+Statuses, the four exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
 
 Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.md\`.`,
   },
@@ -209,7 +209,7 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park needs a human or an operator sentinel, the four things `waiting` means, and who owns which derived fields.',
+      'What belongs in a description, the four exits from draft (including the direct-ship route and the discard that stamps nothing), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park needs a human or an operator sentinel, the four things `waiting` means, and who owns which derived fields.',
     version: 5,
     body: `## Pipeline & issue lifecycle
 
@@ -219,7 +219,7 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
 But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later, and for decompose children awaiting parent approval. Red flags: \`open-as-note\` AND \`draft-as-note\`.
 
 ### Working an issue directly, outside the pipeline
-\`draft\` vs \`open\` is not the whole choice. \`draft\` has **three** exits, and picking the wrong one is what makes a direct session expensive:
+\`draft\` vs \`open\` is not the whole choice. \`draft\` has **four** exits, and picking the wrong one is what makes a direct session expensive:
 
 | You have | Set | Why |
 |---|---|---|
@@ -227,7 +227,7 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 | Written AND pushed the \`ISS-*\` branch yourself; you want review → test → release run on it | \`developed\` **+ \`sessionContext.branch\`** | Enters at the REVIEW gate. Walking \`open\` instead re-runs triage/clarify/plan/code over already-finished work |
 | Not started it; you want the pipeline to do the whole thing | \`open\` | Full ladder from triage |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
-| It turned out not to be work at all | delete it; write the content to memory/docs | \`draft-as-note\` |
+| It turned out not to be work at all | \`dropped\` | Discards it without stamping \`merged_at\`, so nothing downstream unblocks. Put the content in memory/docs — \`draft-as-note\` |
 
 The \`developed\` route is the one people miss. It is the direct-ship path: you did the coding, the pipeline still gates it.
 

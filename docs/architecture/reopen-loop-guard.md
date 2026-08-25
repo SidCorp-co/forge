@@ -33,6 +33,6 @@ Considered making `REOPEN_CAP` scale with issue complexity (larger cap for `l`/`
 
 ## Deliberately out of scope
 
-Retuning `REOPEN_CAP`. ISS-766's job was to make the guard behave correctly at whatever value was set, not to say what that value should be. The knob that replaced it is `pipelineConfig.reopenPolicy.noProgressRounds`, and it is advisory — nothing in core branches on it.
+Retuning `REOPEN_CAP`. ISS-766's job was to make the guard behave correctly at whatever value was set, not to say what that value should be. The knob that replaced it is `pipelineConfig.reopenPolicy.noProgressRounds`, and it is advisory: it is rendered into the agent's `## Project Config` block for the agent to judge, and read by `inv7-alarms.ts` to raise an alarm. No dispatch gate or transition branches on it.
 
 `ESCALATION_FREE_REOPENS` is gone: the reopen-driven model escalation it gated (`escalateModel`) was deleted when per-stage tiers became fixed. `reopenCount` still drives the `maxResumeReopenCycles` resume bound — it no longer drives model choice. See `docs/modules/agents-jobs/prompt-config.md` § Default model-routing policy.

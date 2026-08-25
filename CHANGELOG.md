@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
-- An issue paused for a person now names what it actually needs — a decision, or something only you can supply — instead of always saying its plan is awaiting approval, and its button no longer restarts work that is already done.
+- An issue paused for a person now names what it actually needs — a decision, or something only you can supply — instead of always saying its plan is awaiting approval.
 - Fixed scheduled runs sometimes showing as succeeded even after the run actually failed.
 - Every failed scheduled run now records why, instead of sometimes leaving the reason blank.
 - A late report from a retried scheduled run can no longer overwrite a newer run's status.
@@ -38,7 +38,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Agents now flag memory notes a newer release has made outdated, instead of repeating stale guidance.
 - Desktop: multi-pane split-view for side-by-side conversations in a project.
 - forge_issues MCP tool now supports attaching/detaching labels directly, enabling pipeline skills to set filterable categories on issues.
-- Fixed documentation of reopen cap behavior — now accurately describes that rejected reopens stay at `reopen` for human review and may be routed to `needs_info` if they lack a prior code/fix job.
 - Skill rebases can now mark the project copy as reconciled with its global template, so the template-drift sweep stops re-drafting rebase reminders for skills that were already brought up to date.
 - forge-runner login now retries through transient gateway errors (502/520/timeouts) during pairing instead of aborting the whole session on the first blip.
 - Workspace Overview now correctly identifies issues awaiting your reply and displays per-project workload and recent changes.
@@ -73,7 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Projects can now subscribe to improvement messages that automatically propose or apply per-project skill refinements on a schedule.
 - Forge now blocks skills with hardcoded secrets or prompt-injection patterns from being saved, and warns when pipeline stage configurations grant over-broad permissions.
 - Pipeline agents now address open questions from prior stages before advancing, reducing context loss across steps.
-- Pipeline stages now run on a deliberate model tier (cheaper models for mechanical steps, stronger models for planning and review), and harder issues automatically escalate to a higher tier after a reopen.
+- Pipeline stages now run on a deliberate model tier — cheaper models for mechanical steps, stronger models for planning and review.
 - Pipeline jobs that hit a transient failure now retry and recover correctly instead of getting stuck in a loop where every retry immediately fails
 - Auto-retry now rotates fairly across all healthy runners instead of pinning to the primary device after one sweep, so a flaky stage no longer burns the whole retry budget on one runner.
 - The workspace Integrations page (your shared connections directory) is now on the left navigation rail instead of being reachable only through the command palette.
