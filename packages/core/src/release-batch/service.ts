@@ -154,7 +154,10 @@ export async function createReleaseBatch(
     UPDATE issues
     SET release_batch_run_id = ${run.id}, updated_at = now()
     WHERE project_id = ${projectId}
-      AND id = ANY(${issueIds}::uuid[])
+      AND id IN (${sql.join(
+        issueIds.map((id) => sql`${id}`),
+        sql`, `,
+      )})
       AND status = ${gateStatus}
       AND release_batch_run_id IS NULL
     RETURNING id

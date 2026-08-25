@@ -33,14 +33,18 @@ const WORKSPACE_READY = sql`AND (provision_status IS NULL OR provision_status = 
  * Per-state runner pool (`pipelineConfig.states[x].deviceIds`) as a candidate
  * filter. `null`/empty pool → no fragment, so the fleet stays fully eligible.
  * Remote/server runners (NULL `device_id`) drop out of a non-empty pool by
- * construction — a pool names devices, and `NULL = ANY(...)` is never true.
+ * construction — a pool names devices, and `NULL IN (...)` is never true.
  *
  * `column` lets a caller that aliases `runners` pass `sql`r.device_id``.
  */
 // cm:guard this belongs in the same WHERE as rate_limited_until, NOT in excludeDeviceIds — selectRunnerForJob's two wrap-arounds re-run with the exclude set EMPTIED, so a pool expressed as an exclusion evaporates exactly when every pool member is tripped
+// cm:guard build a parenthesised parameter list and use `IN (...)`. Drizzle expands an interpolated JS array as a ROW CONSTRUCTOR ($4,$5,$6,$7), so `= ANY(tuple::uuid[])` dies with `cannot cast type record to uuid[]` — the handler throws, pg-boss dead-letters after 2 retries, and the job row stays `queued` with `gateReason: null` forever. That killed EVERY dispatch on forge-dev for 11 days (2026-08-14 to 2026-08-25), because a pool is configured on every one of its states. Same idiom as lib/device-pool.ts.
 function poolClause(deviceIds: string[] | null | undefined, column = sql`device_id`) {
   if (!deviceIds || deviceIds.length === 0) return sql``;
-  return sql`AND ${column} = ANY(${deviceIds}::uuid[])`;
+  return sql`AND ${column} IN (${sql.join(
+    deviceIds.map((id) => sql`${id}`),
+    sql`, `,
+  )})`;
 }
 
 /**
