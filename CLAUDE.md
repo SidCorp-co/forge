@@ -203,6 +203,14 @@ Do not add a rule to one axis that another already owns:
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.
 
+`.arch.json` declares each contract `draft` or `locked`; `archmap lock <id>` (0.1.4) freezes that
+contract's current violations into `.arch.baseline.json`, which is what lets a rule with existing
+debt block the *next* violation instead of waiting for someone to fix all of them first. The last
+`draft` contract, `no-coordinator-blob`, locked that way on 2026-08-25 with 13 frozen — so every
+declared contract now blocks. That file is declared in `conformance.json` under `improves: down`,
+because without a direction `archmap lock` is an amnesty button: the ratchet fails a re-freeze that
+adds a file or lets a frozen blob grow, and allows one that shrinks.
+
 `archmap check` exit codes: `0` clean · `1` a new violation · `2` **the gate could not run** (bad flag,
 unreadable manifest, a scope matching no files). Never read `2` as a pass — the same 1-vs-2 split
 `cm verify` uses.

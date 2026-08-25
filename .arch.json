@@ -260,7 +260,7 @@
       "type": "fan-out",
       "scope": "file",
       "max_modules": 6,
-      "status": "draft",
+      "status": "locked",
       "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files."
     },
     {

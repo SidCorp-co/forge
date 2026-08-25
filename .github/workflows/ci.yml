@@ -153,8 +153,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
-      # Seven contracts are locked and green at zero debt (four core purity, three web boundary);
-      # `fan-out` is draft, so it reports without blocking. exit 1 = a NEW violation · exit 2 = the
+      # All eight contracts are locked. Seven are green at zero debt (four core
+      # purity, three web boundary); `no-coordinator-blob` carries 13 violations
+      # frozen in .arch.baseline.json by `archmap lock`, so it blocks the 14th
+      # while the debt stays visible. exit 1 = a NEW violation · exit 2 = the
       # gate could not run (unreadable manifest, a scope matching no files) — never read 2 as a pass.
       # The three web contracts only mean anything because `.arch.json` declares a tsConfig: without
       # it dependency-cruiser resolves nothing through web-v2's `@/*` alias, and an unresolvable edge

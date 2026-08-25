@@ -31,12 +31,18 @@
     },
     "relations": {
       "level": 2,
-      "gate": "arch check",
+      "gate": "archmap check",
       "owns": "which module may depend on which",
       "baseline": {
         "path": ".arch.json",
         "keyBy": "contract",
         "improves": "tighten"
+      },
+      "alsoBaseline": {
+        "$why": "archmap lock writes this, and without a direction that command is an amnesty button: run it and today's violations stop blocking. `down` means the frozen TOTAL may not rise and no per-key count may rise, so freezing a new file in fails and letting a blob grow inside its own entry fails, while fixing one and re-freezing is free.",
+        "path": ".arch.baseline.json",
+        "keyBy": "contract|subject",
+        "improves": "down"
       }
     },
     "behaviour": {

@@ -42,7 +42,7 @@ const PROBES = {
     probe: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
   },
   relations: {
-    gate: 'arch check',
+    gate: 'archmap check',
     // cm:why archmap carries its baseline INSIDE .arch.json as each contract's draft/locked status rather than in a separate frozen file — `locked` already means "no new violations", not "zero violations", which is level 2 by the same definition the other axes use
     probe: ['./.forge/archmap/archmap', 'check'],
   },
@@ -66,6 +66,11 @@ const IMPROVES = ['down', 'shrink', 'tighten'];
 const BASE_REV = baseRev(ROOT);
 
 // cm:guard level 2 IS the claim "old debt frozen, new debt blocked", so a level-2 axis whose declared baseline is absent, or whose direction is undeclared, has no frozen half — report the axis at the level it can actually prove, never at the one it claims.
+/** Every baseline an axis declares, primary first. */
+function declaredBaselines(decl) {
+  return [decl.baseline, decl.alsoBaseline].filter((b) => b !== undefined);
+}
+
 function baselineFault(level, decl) {
   if (level !== 2) return null;
   if (decl === undefined) return 'declares no baseline — level 2 needs one';
@@ -138,9 +143,11 @@ if (error) {
 const declared = manifest.axes ?? {};
 
 // cm:guard a missing base revision must EXIT 2, never pass quietly. Measured 2026-08-24: the `conformance` job checked out at depth 1, so `HEAD~1` and `origin/main` were both absent, `baseRev` returned null, every ratchet comparison was skipped and CI went green on a check that never ran. A shallow checkout is a gate that could not run, which is the one thing this repo refuses to read as a pass.
-const ratchetable = Object.values(declared).filter(
-  (a) => a?.level === 2 && a?.baseline?.path && IMPROVES.includes(a.baseline.improves),
-);
+// cm:guard counts BASELINES, not axes. It filtered axes and the line below called the result "N baseline(s) judged" — 4 axes reported as 4 baselines while 6 were declared, so the number that was supposed to prove the ratchet ran was measuring the wrong thing and could not have shown the two it skipped.
+const ratchetable = Object.values(declared)
+  .filter((a) => a?.level === 2)
+  .flatMap((a) => declaredBaselines(a))
+  .filter((b) => b?.path && IMPROVES.includes(b.improves));
 if (ratchetable.length > 0 && BASE_REV === null) {
   console.error(
     `conformance-status: ${ratchetable.length} axis/axes declare a baseline direction, and there is\n` +
@@ -180,7 +187,11 @@ for (const axis of axes) {
   }
   const m = measure(axis, spec, declared[axis]);
   const d = declared[axis].level;
-  const fault = baselineFault(d, declared[axis].baseline);
+  // cm:guard EVERY declared baseline, not just the primary. `alsoBaseline` was skipped here from the day the ratchet landed: 6 baselines declared, 4 judged, and the visibility line said "4 baseline(s) judged" without ever saying out of how many. `.forge/lint-baseline.json` and `.forge/flow-coverage-baseline.json` could be re-frozen larger and nothing anywhere went red — the same fail-open the ratchet was written to close, one level up in the thing that runs it.
+  const fault =
+    declaredBaselines(declared[axis])
+      .map((b) => baselineFault(d, b))
+      .find(Boolean) ?? null;
   if (d !== m.level || fault) disagreements++;
   rows.push({
     axis,
