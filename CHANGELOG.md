@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Fixed scheduled runs sometimes showing as succeeded even after the run actually failed.
+- Every failed scheduled run now records why, instead of sometimes leaving the reason blank.
+- A late report from a retried scheduled run can no longer overwrite a newer run's status.
 - Pipeline rescue metrics now visible per project with configurable threshold alerts.
 - Stopped duplicate status-change notifications and activity entries from appearing when a status update had to be retried.
 - Fixed a bug where the release step could wrongly reopen an issue that had already passed testing, based on an outdated status snapshot.
