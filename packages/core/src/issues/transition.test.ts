@@ -14,12 +14,10 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 // The where step resolves to an array of dependent rows.
 const dependentsAwait = vi.fn(
   async () =>
-    [] as Array<{
-      fromIssueId: string;
-      toIssueId: string;
-      depProjectId: string;
-      toIssSeq: number;
-    }>,
+    [] as Array<
+      | { fromIssueId: string; toIssueId: string; depProjectId: string; toIssSeq: number }
+      | { issueId: string; issSeq: number; projectId: string }
+    >,
 );
 const dependentsWhere = vi.fn(() => dependentsAwait());
 const dependentsInnerJoin = vi.fn(() => ({ where: dependentsWhere }));
@@ -30,7 +28,7 @@ const selectFrom = vi.fn(() => ({
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((_values: Record<string, unknown>) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 // ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
 // before the UPDATE. Stub `tx.execute` so it does not throw under the
@@ -365,5 +363,38 @@ describe('POST /api/issues/:id/transition', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('STALE_TRANSITION');
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/issues/:id/transition — dropping a blocker', () => {
+  it('a drop announces the dependents it released, though the edges are already expired', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open', issSeq: 7 });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'dropped', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    dependentsAwait.mockResolvedValueOnce([
+      { issueId: '44444444-4444-4444-8444-444444444444', issSeq: 12, projectId: PROJECT_ID },
+    ]);
+
+    const res = await req({ toStatus: 'dropped' }, token);
+    expect(res.status).toBe(200);
+    // cm:guard exactly ONE read. A second would run after the expiry, and every dependent query filters `valid_until > now()`, so it would return nothing and this cascade would be silent — the whole reason the list is carried instead of re-derived.
+    expect(dependentsAwait).toHaveBeenCalledTimes(1);
+
+    const expiry = updateSet.mock.calls.find(
+      (c) => (c[0] as Record<string, unknown> | undefined)?.validUntil !== undefined,
+    );
+    expect(expiry).toBeDefined();
+
+    const cascade = publish.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'issue.unblockCascade',
+    );
+    expect(cascade).toHaveLength(1);
+    expect((cascade[0] as [string, { data: Record<string, unknown> }])[1].data).toMatchObject({
+      blockerId: ISSUE_ID,
+      blockerIssSeq: 7,
+      dependents: [{ issueId: '44444444-4444-4444-8444-444444444444', issSeq: 12 }],
+    });
   });
 });

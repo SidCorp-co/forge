@@ -13,7 +13,11 @@ const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
 const txSelectLimit = vi.fn(async () => [] as unknown[]);
 const txSelectWhere = vi.fn(() => ({ limit: txSelectLimit }));
-const txSelectFrom = vi.fn(() => ({ where: txSelectWhere }));
+const txDependentsWhere = vi.fn(async () => [] as unknown[]);
+const txSelectFrom = vi.fn(() => ({
+  where: txSelectWhere,
+  innerJoin: () => ({ where: txDependentsWhere }),
+}));
 
 const projectSelectLimit = vi.fn(async () => [] as unknown[]);
 const projectSelectWhere = vi.fn(() => ({ limit: projectSelectLimit }));
@@ -143,7 +147,7 @@ describe('an agent closing on a project that declared a release gate', () => {
   });
 
   // cm:guard `dropped` means "this was not work" — holding it for a release it will never be part of parks it forever, and it is the one close that deliberately does not stamp
-  it('lets `dropped` through untouched', async () => {
+  it('lets `dropped` through the gate untouched', async () => {
     queueUpdate('dropped');
 
     const result = await transitionIssueStatus(AT_WORK, 'dropped', AGENT);

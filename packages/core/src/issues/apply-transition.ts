@@ -9,6 +9,7 @@ import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { resolveAutonomousReopenTarget } from './autonomous-reopen.js';
+import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
@@ -16,9 +17,15 @@ import { checkTransitionEvidence } from './transition-evidence.js';
 import { postTransitionReasonComment, requiresAuthoredReason } from './transition-reason.js';
 
 /**
- * Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2) and
- * fire the terminal dispatch fan-out. Does NOT imply the run closes here —
- * see `RUN_CLOSING_STATUSES`.
+ * Issue statuses that free a `kind='blocks'` dependent (Layer 2) and fire the
+ * terminal dispatch fan-out. Does NOT imply the run closes here — see
+ * `RUN_CLOSING_STATUSES`.
+ *
+ * `released` and `closed` free a dependent by SATISFYING the edge — they stamp
+ * `merged_at`, which is what the gate reads. `dropped` frees it the other way:
+ * the edge is expired (`drop-cascade.ts`), so the gate finds no edge at all.
+ * The two mechanisms are not interchangeable, and the difference is the whole
+ * reason `dropped` exists — see `RUN_CLOSING_STATUSES` below.
  */
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed', 'dropped']);
 
@@ -30,7 +37,7 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed',
  * Leaving the run open on `released` lets the release step run inside it;
  * the run closes when release finishes and sets `closed`.
  */
-// cm:guard `dropped` closes the run like `closed` but must NEVER reach markMergedOnClose — that split is the whole point of the status, and merging the two sets re-creates the silent unblock it exists to prevent
+// cm:guard `dropped` closes the run like `closed` but must NEVER reach markMergedOnClose. Since 2026-08-25 dropping DOES release the dependents (owner's call), so this split is no longer what stops that — `drop-cascade.ts` expires the edges and records why on each dependent. What the split still stops is the shipped claim: `merged_at` means the code reached the base branch, a dropped issue's never did, and stamping it would make every downstream reader (release notes, the L2 gate's satisfied arm, pipeline-health) count work that does not exist.
 export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed', 'dropped']);
 
 export type DeviceLite = { id: string; ownerId: string };
@@ -128,6 +135,13 @@ export interface StatusTransitionResult {
    * is in `RUN_CLOSING_STATUSES` (ISS-669 — `released` no longer closes it).
    */
   terminal: boolean;
+  /**
+   * Dependents whose `blocks` edge this transition expired, collected before
+   * the expiry ran. Non-empty only on a `dropped` transition. The caller hands
+   * this to `triggerTerminalDispatch` — it cannot be re-derived, because every
+   * dependent query filters expired edges out.
+   */
+  unblockedDependents: UnblockedDependent[];
 }
 
 /**
@@ -270,6 +284,7 @@ export async function transitionIssueStatus(
           updatedAt: issues.updatedAt,
         });
       let stampedOnClose = false;
+      let unblockedDependents: UnblockedDependent[] = [];
       if (row) {
         // ISS-232 — stamp `merged_at` inside the same tx so a rollback
         // drops the column write alongside the status flip.
@@ -285,8 +300,11 @@ export async function transitionIssueStatus(
           toStatus: requestedStatus,
         });
         stampedOnClose = closeStamp.stamped;
+        if (toStatus === 'dropped') {
+          unblockedDependents = await expireBlocksEdgesOnDrop(t, issue.id);
+        }
       }
-      return row ? { row, stampedOnClose } : undefined;
+      return row ? { row, stampedOnClose, unblockedDependents } : undefined;
     }),
   );
   const updated = txResult?.row;
@@ -359,6 +377,10 @@ export async function transitionIssueStatus(
     }
   }
 
+  if (txResult && txResult.unblockedDependents.length > 0) {
+    await recordDropUnblock(issue, txResult.unblockedDependents, actor);
+  }
+
   // ISS-164 — refresh derived pipelineHealth (stage mirrors issues.status).
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
@@ -379,7 +401,47 @@ export async function transitionIssueStatus(
     reopenCount: updated.reopenCount,
     updatedAt: updated.updatedAt,
     terminal,
+    unblockedDependents: txResult?.unblockedDependents ?? [],
   };
+}
+
+/**
+ * Durable record of a drop-unblock, one comment per released dependent.
+ *
+ * The WS cascade is transient and `pipeline-health.ts` filters expired edges
+ * out, so without this the dependent simply starts moving one day with nothing
+ * anywhere saying why.
+ */
+// cm:guard write this on each DEPENDENT, never only on the dropped issue. The question it answers — "why did this start?" — is asked on the issue that moved, and once the edge is expired no surface in this repo can still show the pair.
+async function recordDropUnblock(
+  issue: TransitionIssueRow,
+  dependents: UnblockedDependent[],
+  actor: TransitionActor,
+): Promise<void> {
+  try {
+    const [blocker] = await db
+      .select({ issSeq: issues.issSeq })
+      .from(issues)
+      .where(eq(issues.id, issue.id))
+      .limit(1);
+    const label = blocker ? `ISS-${blocker.issSeq}` : issue.id;
+    const authorId = actor.type === 'user' ? actor.id : actor.ownerId;
+    // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
+    await db.insert(comments).values(
+      dependents.map((d) => ({
+        issueId: d.issueId,
+        authorId,
+        body: `Unblocked — ${label} was dropped, so its \`blocks\` edge on this issue expired and this issue can dispatch. \`merged_at\` was NOT stamped on ${label}: dropped means the work will not happen, not that it shipped. If this issue genuinely needs that work, re-point the dependency rather than letting it proceed.`,
+        parentId: null,
+        isAi: true,
+      })),
+    );
+  } catch (err) {
+    logger.warn(
+      { err, issueId: issue.id, dependents: dependents.length },
+      'transition: drop-unblock audit comments failed (transition already committed)',
+    );
+  }
 }
 
 /**

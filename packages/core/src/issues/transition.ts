@@ -21,6 +21,7 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from './apply-transition.js';
+import type { UnblockedDependent } from './drop-cascade.js';
 
 const transitionBodySchema = z
   .object({
@@ -81,39 +82,61 @@ const UNBLOCK_CASCADE_DEPENDENT_CAP = 10;
  * blocker has at least one outgoing `kind='blocks'` dependent — the toast
  * confirms the cascade fired before the dispatcher tick lands.
  */
+// cm:guard an entry carrying `dependents` must NOT be re-queried — a `dropped` blocker has already had its edges expired inside the transition and the query below filters expired edges out, so re-deriving finds nothing and the cascade goes unannounced on the one status that needs it most
 export async function triggerTerminalDispatch(
-  terminal: Array<{ issueId: string; projectId: string; issSeq?: number | null; at?: Date }>,
+  terminal: Array<{
+    issueId: string;
+    projectId: string;
+    issSeq?: number | null;
+    at?: Date;
+    dependents?: UnblockedDependent[];
+  }>,
 ): Promise<void> {
   if (terminal.length === 0) return;
   const parentProjectIds = new Set(terminal.map((t) => t.projectId));
 
   const childTargets = new Map<string, string>(); // childProjectId -> blockerIssueId
   try {
-    const issueIds = terminal.map((t) => t.issueId);
-    const dependents = await db
-      .select({
-        fromIssueId: issueDependencies.fromIssueId,
-        toIssueId: issueDependencies.toIssueId,
-        depProjectId: issueDependencies.projectId,
-        toIssSeq: issues.issSeq,
-      })
-      .from(issueDependencies)
-      .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
-      .where(
-        and(
-          inArray(issueDependencies.fromIssueId, issueIds),
-          eq(issueDependencies.kind, 'blocks'),
-          sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
-        ),
-      );
-
     const byBlocker = new Map<string, Array<{ issueId: string; issSeq: number }>>();
-    for (const row of dependents) {
-      if (row.depProjectId && !parentProjectIds.has(row.depProjectId)) {
-        if (!childTargets.has(row.depProjectId)) {
-          childTargets.set(row.depProjectId, row.fromIssueId);
-        }
+    const noteChild = (depProjectId: string | null, blockerId: string) => {
+      if (depProjectId && !parentProjectIds.has(depProjectId) && !childTargets.has(depProjectId)) {
+        childTargets.set(depProjectId, blockerId);
       }
+    };
+
+    for (const t of terminal) {
+      if (!t.dependents) continue;
+      for (const d of t.dependents) {
+        noteChild(d.projectId, t.issueId);
+        const list = byBlocker.get(t.issueId) ?? [];
+        list.push({ issueId: d.issueId, issSeq: d.issSeq });
+        byBlocker.set(t.issueId, list);
+      }
+    }
+
+    const issueIds = terminal.filter((t) => !t.dependents).map((t) => t.issueId);
+    const dependents =
+      issueIds.length === 0
+        ? []
+        : await db
+            .select({
+              fromIssueId: issueDependencies.fromIssueId,
+              toIssueId: issueDependencies.toIssueId,
+              depProjectId: issueDependencies.projectId,
+              toIssSeq: issues.issSeq,
+            })
+            .from(issueDependencies)
+            .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
+            .where(
+              and(
+                inArray(issueDependencies.fromIssueId, issueIds),
+                eq(issueDependencies.kind, 'blocks'),
+                sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
+              ),
+            );
+
+    for (const row of dependents) {
+      noteChild(row.depProjectId, row.fromIssueId);
       const list = byBlocker.get(row.fromIssueId) ?? [];
       list.push({ issueId: row.toIssueId, issSeq: row.toIssSeq });
       byBlocker.set(row.fromIssueId, list);
@@ -213,6 +236,7 @@ transitionRoutes.post(
           projectId: issue.projectId,
           issSeq: issue.issSeq,
           at: result.updatedAt,
+          ...(toStatus === 'dropped' ? { dependents: result.unblockedDependents } : {}),
         },
       ]);
     }

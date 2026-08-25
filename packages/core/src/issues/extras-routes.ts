@@ -174,16 +174,9 @@ issueExtrasRoutes.patch(
       accessMap.set(projectId, state);
     }
 
-    // Track terminal transitions across the batch so we can fan out the
-    // Layer-2 dispatch tick once at the end (parent project + cross-project
-    // children via outgoing `kind='blocks'` edges). A single inArray query
-    // for the children read keeps the cost flat regardless of N.
-    const terminalTransitions: Array<{
-      issueId: string;
-      projectId: string;
-      issSeq: number;
-      at: Date;
-    }> = [];
+    // cm:why collected across the whole batch and fanned out ONCE at the end — the children read is a single inArray, so the cost stays flat in N rather than one query per transitioned issue
+    // cm:guard derive this from the fan-out's own parameter type, never restate it — a local copy is how the batch path silently stops carrying a field the single-issue path added
+    const terminalTransitions: Parameters<typeof triggerTerminalDispatch>[0] = [];
 
     for (const row of rows) {
       const access = accessMap.get(row.projectId);
@@ -228,6 +221,7 @@ issueExtrasRoutes.patch(
                 projectId: row.projectId,
                 issSeq: row.issSeq,
                 at: transitioned.updatedAt,
+                ...(toStatus === 'dropped' ? { dependents: transitioned.unblockedDependents } : {}),
               });
             }
           } catch (err) {

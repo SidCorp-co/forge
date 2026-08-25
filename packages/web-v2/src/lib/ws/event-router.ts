@@ -260,8 +260,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		}
 		case "issue.unblockCascade":
 		case "dependency.unblocked": {
-			// Subscribers in `features/issue/hooks/use-unblock-cascade.ts` consume
-			// these directly via `wsClient.on`; React Query has nothing to refetch.
+			// cm:edge protocol -> packages/web-v2/src/features/issues/use-unblock-cascade.ts — consumed there via wsClient.on, which is why this branch refetches nothing; delete that hook and both events go silent with nothing here going red
 			return;
 		}
 		case "pm.escalation": {

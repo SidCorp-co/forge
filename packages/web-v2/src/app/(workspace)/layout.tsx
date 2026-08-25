@@ -28,6 +28,7 @@ import { ActiveOrgProvider } from "@/features/orgs/active-org";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
+import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
 import { useUnreadCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
 import {
@@ -72,6 +73,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // deep-link (ISS-436 — pathname-only matching lit up EVERY pin on the route).
   const locationSearch = useLocationSearch();
   const { user, isLoading, logout } = useAuth();
+  useUnblockCascadeToasts();
   const { toast } = useToast();
   const { data: projects } = useProjects();
   const sidebar = useSidebarContext();
