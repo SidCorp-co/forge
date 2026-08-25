@@ -1,14 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../config/env.js', () => ({
-  env: { NODE_ENV: 'test' },
-}));
+vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 
 const dispatchTick = vi.fn(async (_projectId: string) => {});
 
-vi.mock('../jobs/dispatch-tick.js', () => ({
-  dispatchTickForProject: (projectId: string) => dispatchTick(projectId),
-}));
+vi.mock('../jobs/dispatch-tick.js', () => ({ dispatchTickForProject: dispatchTick }));
 
 const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
 
@@ -33,15 +29,15 @@ vi.mock('./wedge.js', () => ({
 
 const alarmAgedHoldsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
 const alarmChurningIssuesMock = vi.fn(async () => ({ alerted: 0 }));
+const alarmStalledQueuedJobsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
 vi.mock('./inv7-alarms.js', () => ({
   alarmAgedHolds: (now?: Date) => alarmAgedHoldsMock(now),
   alarmChurningIssues: () => alarmChurningIssuesMock(),
+  alarmStalledQueuedJobs: (now?: Date) => alarmStalledQueuedJobsMock(now),
 }));
 
 const resumeOrphanedPausesMock = vi.fn(async () => ({ detected: 0, resumed: 0 }));
-vi.mock('./run-pause.js', () => ({
-  resumeOrphanedPauses: () => resumeOrphanedPausesMock(),
-}));
+vi.mock('./run-pause.js', () => ({ resumeOrphanedPauses: () => resumeOrphanedPausesMock() }));
 
 const detectRetryRescueThresholdsMock = vi.fn(async (_now?: Date) => ({
   detected: 0,
@@ -219,18 +215,21 @@ describe('runPipelineSweep — retry rescue thresholds', () => {
   });
 });
 
-describe('runPipelineSweep — INV-7 alarms (RFC 0002)', () => {
-  // cm:guard both passes must stay in the sweep AND in SweepResult — a pass wired into the driver but dropped from the result is invisible to every caller, which is how a defence stops being noticed before it stops working
-  it('runs both alarm passes and exposes their counts', async () => {
+describe('runPipelineSweep — watch-only alarm passes', () => {
+  // cm:guard every pass here must stay in the sweep AND in SweepResult — a pass wired into the driver but dropped from the result is invisible to every caller, which is how a defence stops being noticed before it stops working
+  it('runs each alarm pass and exposes its count', async () => {
     alarmAgedHoldsMock.mockResolvedValueOnce({ alerted: 2 });
     alarmChurningIssuesMock.mockResolvedValueOnce({ alerted: 1 });
+    alarmStalledQueuedJobsMock.mockResolvedValueOnce({ alerted: 3 });
 
     const result = await runPipelineSweep();
 
     expect(alarmAgedHoldsMock).toHaveBeenCalledTimes(1);
     expect(alarmChurningIssuesMock).toHaveBeenCalledTimes(1);
+    expect(alarmStalledQueuedJobsMock).toHaveBeenCalledTimes(1);
     expect(result.agedHolds).toEqual({ alerted: 2 });
     expect(result.churningIssues).toEqual({ alerted: 1 });
+    expect(result.stalledQueuedJobs).toEqual({ alerted: 3 });
   });
 
   // cm:guard this pass must stay in the sweep AND in SweepResult — it is the only thing that frees a run paused by a mechanism a later build deleted, and the reopen_cap residue it exists for produced no alarm anywhere for 3 days

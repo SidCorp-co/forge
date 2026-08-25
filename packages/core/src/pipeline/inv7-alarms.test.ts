@@ -19,11 +19,20 @@ vi.mock('../jobs/hold.js', () => ({
     reason === 'verify_unavailable',
 }));
 
+const gateReasons = vi.fn(async (_projectId: string) => new Map<string, string>());
+vi.mock('../jobs/dispatch-gates.js', () => ({
+  gateReasonsForQueuedJobs: (projectId: string) => gateReasons(projectId),
+}));
+
+// cm:edge contract -> packages/core/src/jobs/loop-monitor.ts — RESULT_QUIET_MINUTES sets this alarm's default threshold; importing the real module pulls queue/boss.ts, whose load-time env validation throws under vitest
+vi.mock('../jobs/loop-monitor.js', () => ({ RESULT_QUIET_MINUTES: 60 }));
+
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { alarmAgedHolds, alarmChurningIssues, HOLD_AGE_ALARM_MS } = await import('./inv7-alarms.js');
+const { alarmAgedHolds, alarmChurningIssues, alarmStalledQueuedJobs, HOLD_AGE_ALARM_MS } =
+  await import('./inv7-alarms.js');
 
 const NOW = new Date('2026-08-14T12:00:00.000Z');
 
@@ -35,6 +44,8 @@ beforeEach(() => {
   dbExecute.mockReset();
   dbExecute.mockResolvedValue([]);
   emitWedgeMock.mockClear();
+  gateReasons.mockReset();
+  gateReasons.mockResolvedValue(new Map());
 });
 
 describe('alarmAgedHolds', () => {
@@ -155,5 +166,53 @@ describe('alarmChurningIssues', () => {
 
     expect(res.alerted).toBe(0);
     expect(emitWedgeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('alarmStalledQueuedJobs', () => {
+  const candidate = {
+    job_id: 'job-1',
+    project_id: 'proj-1',
+    issue_id: 'iss-1',
+    job_type: 'code',
+    created_at: '2026-08-14T09:00:00.000Z',
+    iss_seq: 42,
+  };
+
+  it('surfaces a job the dispatcher says it could run', async () => {
+    dbExecute.mockResolvedValue([candidate]);
+
+    const result = await alarmStalledQueuedJobs(NOW);
+
+    expect(result.alerted).toBe(1);
+    expect(wedge()).toMatchObject({
+      projectId: 'proj-1',
+      issueId: 'iss-1',
+      entityId: 'job-1',
+      reason: 'queued_over_60m:no_gate',
+    });
+    expect(wedge().title).toContain('ISS-42');
+  });
+
+  it('stays silent when a gate explains the wait, which is what waiting for a runner looks like', async () => {
+    dbExecute.mockResolvedValue([candidate]);
+    gateReasons.mockResolvedValue(new Map([['job-1', 'runner_stale']]));
+
+    const result = await alarmStalledQueuedJobs(NOW);
+
+    expect(result.alerted).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
+  });
+
+  it('reads the gate once per project, not once per job', async () => {
+    dbExecute.mockResolvedValue([
+      candidate,
+      { ...candidate, job_id: 'job-2', iss_seq: 43 },
+      { ...candidate, job_id: 'job-3', project_id: 'proj-2', iss_seq: 44 },
+    ]);
+
+    await alarmStalledQueuedJobs(NOW);
+
+    expect(gateReasons).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,15 +1,19 @@
-// RFC 0002 INV-7 — the two things the deleted gates used to "handle" by
-// stopping the pipeline are now only WATCHED.
+// Passes that WATCH and write nothing.
 //
-// A held job whose condition never clears, and an issue reopening round after
-// round, are both real problems. Neither is one a status write can fix: the
+// Two came from RFC 0002 INV-7: a held job whose condition never clears, and an
+// issue reopening round after round. Neither is fixable by a status write — the
 // mechanical park told a human "your turn" when nothing was being asked, and the
-// reopen cap parked issues that were making progress. Both passes here emit a
-// wedge notification and touch no state at all.
+// reopen cap parked issues that were making progress. The third, a job queued
+// with every gate passing, is the same shape from the other direction: nothing
+// is wrong with the row, so there is nothing to reap.
+//
+// Every pass here emits a wedge notification and touches no state at all.
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { gateReasonsForQueuedJobs } from '../jobs/dispatch-gates.js';
 import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
+import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { emitPipelineWedge } from './wedge.js';
@@ -83,6 +87,82 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
     logger.info({ alerted: rows.length }, 'inv7: aged holds surfaced');
   }
   return { alerted: rows.length };
+}
+
+interface StalledQueuedRow extends Record<string, unknown> {
+  job_id: string;
+  project_id: string;
+  issue_id: string | null;
+  job_type: string;
+  created_at: string;
+  iss_seq: number | null;
+}
+
+/** How long a job may sit `queued` with nothing gating it before it is worth a human's attention. */
+export const QUEUED_STALL_ALARM_MS = (() => {
+  const raw = Number(process.env.FORGE_QUEUED_STALL_ALARM_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : RESULT_QUIET_MINUTES * 60_000;
+})();
+
+/**
+ * Jobs the dispatcher says it could run, that have not run.
+ */
+// cm:guard the test is ABSENCE from `gateReasonsForQueuedJobs`, and nothing else. A job the map explains — `runner_stale`, `runner_full`, `blocked_by`, `project_cap` — is queued for a reason and must stay silent: waiting for a runner is the normal state of a queue, and an alarm that fires on it is one operators learn to ignore. Only "the picker offers this job and it still has not moved" has no innocent reading; that is the picker-offers/selector-rejects deadlock, measured 2026-08-14 at 11 jobs queued 6-22 days across 5 projects with no surface able to say why.
+// cm:guard alarm ONLY (RFC 0002 INV-7) — never cancel, re-queue or re-dispatch here. A plain `queued` job holds NO capacity (`running_ids` counts it only while `retry_after_at > now()`, and `issueBusyJob` only counts dispatched/running/held), so nothing is freed by killing it and a wrong reap deletes real work.
+export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<Inv7AlarmResult> {
+  const cutoffIso = new Date(now.getTime() - QUEUED_STALL_ALARM_MS).toISOString();
+  const rows = await db.execute<StalledQueuedRow>(sql`
+    SELECT j.id AS job_id,
+           j.project_id,
+           j.issue_id,
+           j.type AS job_type,
+           j.created_at,
+           i.iss_seq
+    FROM jobs j
+    JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+    LEFT JOIN issues i ON i.id = j.issue_id
+    WHERE j.status = 'queued'
+      AND pr.status = 'running'
+      AND j.created_at < ${cutoffIso}
+      AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
+  `);
+  if (rows.length === 0) return { alerted: 0 };
+
+  const byProject = new Map<string, StalledQueuedRow[]>();
+  for (const row of rows) {
+    const bucket = byProject.get(row.project_id) ?? [];
+    bucket.push(row);
+    byProject.set(row.project_id, bucket);
+  }
+
+  const minutes = Math.round(QUEUED_STALL_ALARM_MS / 60_000);
+  let alerted = 0;
+  for (const [projectId, candidates] of byProject) {
+    const gated = await gateReasonsForQueuedJobs(projectId);
+    for (const row of candidates) {
+      if (gated.has(row.job_id)) continue;
+      const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A step';
+      await emitPipelineWedge({
+        projectId,
+        issueId: row.issue_id,
+        hop: 'dispatch',
+        entity: 'job',
+        entityId: row.job_id,
+        reason: `queued_over_${minutes}m:no_gate`,
+        title: `${label} has been ready to run for over ${minutes}m and has not started`,
+        summary: `The \`${row.job_type}\` step has been queued since ${row.created_at} and every dispatch gate passes — no dependency, no busy issue, no project cap, and a runner is online with a free slot. The picker is offering this job to a selector that keeps declining it, so nothing in the pipeline will move this issue on its own.`,
+        nextStep:
+          "Compare the picker and the selector: a runner counted as available by the gate but filtered out by `selectRunnerForJob` produces exactly this. Check the runner's labels, capabilities and required device against what the job asks for.",
+        action: 'Nothing is blocking it and nothing will start it — it needs you.',
+      });
+      alerted++;
+    }
+  }
+
+  if (alerted > 0) {
+    logger.info({ alerted, candidates: rows.length }, 'inv7: stalled queued jobs surfaced');
+  }
+  return { alerted };
 }
 
 interface ChurnRow extends Record<string, unknown> {

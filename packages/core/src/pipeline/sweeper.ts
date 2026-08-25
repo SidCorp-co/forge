@@ -49,12 +49,18 @@ import {
   type BlockedDependentAlarmResult,
   STALL_GRACE_MS,
 } from './blocked-dependent-alarms.js';
-import { alarmAgedHolds, alarmChurningIssues, type Inv7AlarmResult } from './inv7-alarms.js';
+import {
+  alarmAgedHolds,
+  alarmChurningIssues,
+  alarmStalledQueuedJobs,
+  type Inv7AlarmResult,
+} from './inv7-alarms.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
+import { blockerStatusLabel, humanizeDuration } from './wedge-copy.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
@@ -127,6 +133,7 @@ export interface SweepResult {
   draftBlockedAlarms: BlockedDependentAlarmResult;
   /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
   agedHolds: Inv7AlarmResult;
+  stalledQueuedJobs: Inv7AlarmResult;
   /** RFC 0002 INV-7 — issues at or past `noProgressRounds` (alarm only). */
   churningIssues: Inv7AlarmResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
@@ -216,6 +223,10 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     alarmUnrunnableBlockedDependents(now),
   );
   const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
+  // cm:why alarm, not a reap: a plain `queued` job holds no capacity, so cancelling it frees nothing and only destroys work — and the state it reports (every gate passes, nothing started it) is one only a human can resolve, because the picker and the selector disagreeing is a configuration mismatch, not a stuck row
+  const stalledQueuedJobs = await runPass('alarmStalledQueuedJobs', () =>
+    alarmStalledQueuedJobs(now),
+  );
   // cm:why an ACTIVE reaper, not an alarm: a run paused by a mechanism this build no longer has is not a state anyone can act on — there is nothing left to clear the reason, so surfacing it would ask a human to do the resume every time
   const orphanedPauses = await runPass('resumeOrphanedPauses', () => resumeOrphanedPauses());
   const churningIssues = await runPass('alarmChurningIssues', () => alarmChurningIssues());
@@ -258,6 +269,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     closedUnmergedAlarms: closedUnmergedAlarms as ClosedUnmergedAlarmResult,
     draftBlockedAlarms: draftBlockedAlarms as BlockedDependentAlarmResult,
     agedHolds: agedHolds as Inv7AlarmResult,
+    stalledQueuedJobs: stalledQueuedJobs as Inv7AlarmResult,
     churningIssues: churningIssues as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
@@ -282,29 +294,6 @@ type StalledRow = {
   kind: string;
   queued_secs: number;
 };
-
-// ISS-619 — EN label for the blocker's internal status, used in the
-// business-language wedge summary. Falls back to a title-cased status for
-// any value not explicitly mapped (new statuses shouldn't need a code change
-// here to render legibly).
-const BLOCKER_STATUS_LABELS: Record<string, string> = {
-  needs_info: 'Needs info',
-  waiting: 'Waiting for review',
-  on_hold: 'On hold',
-  draft: 'Draft',
-  reopen: 'Reopened',
-};
-
-function blockerStatusLabel(status: string): string {
-  return (
-    BLOCKER_STATUS_LABELS[status] ??
-    status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
-  );
-}
-
-function humanizeDuration(mins: number): string {
-  return mins < 60 ? `~${mins}m` : `~${Math.round(mins / 60)}h`;
-}
 
 /**
  * ISS-442 — detect dependency deadlocks the dispatcher will never resolve and
