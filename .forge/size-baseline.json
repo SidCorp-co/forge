@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-24T12:50:47.971Z",
+  "generatedAt": "2026-08-25T03:22:52.992Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -18,7 +18,7 @@
       "maxFunctionLines": 164
     },
     "packages/core/src/agent-sessions/routes.ts": {
-      "fileLines": 897,
+      "fileLines": 895,
       "maxFunctionLines": 180
     },
     "packages/core/src/chat/providers/litellm.test.ts": {
@@ -38,7 +38,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.ts": {
-      "fileLines": 3402,
+      "fileLines": 3401,
       "maxFunctionLines": 0
     },
     "packages/core/src/devices/routes.test.ts": {
@@ -50,7 +50,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/index.ts": {
-      "fileLines": 588,
+      "fileLines": 564,
       "maxFunctionLines": 0
     },
     "packages/core/src/integrations/rocketchat/agent-chat-bridge.test.ts": {
@@ -66,7 +66,7 @@
       "maxFunctionLines": 165
     },
     "packages/core/src/integrations/routes.test.ts": {
-      "fileLines": 1385,
+      "fileLines": 1383,
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/attachment-routes.test.ts": {
@@ -106,7 +106,7 @@
       "maxFunctionLines": 588
     },
     "packages/core/src/jobs/dispatcher.ts": {
-      "fileLines": 872,
+      "fileLines": 858,
       "maxFunctionLines": 259
     },
     "packages/core/src/jobs/events-routes.test.ts": {
@@ -242,7 +242,7 @@
       "maxFunctionLines": 180
     },
     "packages/core/src/pipeline/sweeper.test.ts": {
-      "fileLines": 801,
+      "fileLines": 800,
       "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/sweeper.ts": {
@@ -286,7 +286,7 @@
       "maxFunctionLines": 203
     },
     "packages/core/src/schedules/dispatch.ts": {
-      "fileLines": 598,
+      "fileLines": 540,
       "maxFunctionLines": 0
     },
     "packages/core/src/schedules/routes.test.ts": {
@@ -302,7 +302,7 @@
       "maxFunctionLines": 166
     },
     "packages/core/src/skills/reconcile-service.ts": {
-      "fileLines": 1352,
+      "fileLines": 1350,
       "maxFunctionLines": 160
     },
     "packages/core/src/skills/service.ts": {
@@ -354,7 +354,7 @@
       "maxFunctionLines": 228
     },
     "packages/core/tests/integration/mcp-tools.test.ts": {
-      "fileLines": 561,
+      "fileLines": 560,
       "maxFunctionLines": 368
     },
     "packages/core/tests/integration/memory-live.test.ts": {

@@ -789,33 +789,56 @@ async function maybeRecordL5Skip(
   }
 }
 
+// cm:guard 0.5 is pg-boss's own floor (`MIN_POLLING_INTERVAL_MS`), and only these three DISPATCH queues get it — the five maintenance queues (stale-detector, retention, memory-decay, memory-candidates, device-prune) keep the 2000ms default, where a cron waking a second late costs nothing and four times the queue queries buys nothing.
+// cm:why measured 2026-08-25 on the device-runner E2E: at the 2000ms default, enqueue to `job.assigned` took 1418/1554/1667/1716ms — a mean ~1s of pure poll wait before dispatch work begins. At 0.5 it is 191/217/802ms. That hop is nearly all of the `request -> running-pipeline-issue` metric, which is one dispatch rather than a whole pipeline.
+const WORKER_OPTS = { batchSize: 1, pollingIntervalSeconds: 0.5 } as const;
+
+/**
+ * Create the queue and start one worker on it, returning pg-boss's worker id.
+ *
+ * `label` appears in the handler-threw log line and is the only thing that
+ * differed between the three registrations besides the queue and the handler.
+ */
+// cm:guard rethrow after logging. pg-boss decides retry/dead-letter from whether the handler threw, so swallowing here turns a failed dispatch into a job pg-boss believes it delivered — silently dropped rather than retried.
+async function startDispatchWorker(
+  queue: string,
+  label: string,
+  handler: (message: DispatchMessage) => Promise<unknown>,
+  extraOpts: Record<string, unknown> = {},
+): Promise<string> {
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (createQueue before work, handler receives an array) is stable.
+  const b = boss as any;
+  await b.createQueue(queue);
+  const id = await b.work(
+    queue,
+    { ...WORKER_OPTS, ...extraOpts },
+    // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
+    async (arg: any) => {
+      for (const entry of Array.isArray(arg) ? arg : [arg]) {
+        const data = entry?.data as DispatchMessage | undefined;
+        if (!data || typeof data.jobId !== 'string') continue;
+        try {
+          await handler(data);
+        } catch (err) {
+          logger.error({ err, jobId: data.jobId }, `${label}: handler threw`);
+          throw err;
+        }
+      }
+    },
+  );
+  return id as string;
+}
+
 export async function registerDispatcher(): Promise<void> {
   if (workerId) return;
-  // pg-boss v10 requires explicit createQueue before work().
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(JOB_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (handler receives an array) is stable.
-  const id = (await (boss as any).work(JOB_QUEUE_NAME, { batchSize: 1 }, async (arg: any) => {
-    const entries = Array.isArray(arg) ? arg : [arg];
-    for (const entry of entries) {
-      const data = entry?.data as DispatchMessage | undefined;
-      if (!data || typeof data.jobId !== 'string') continue;
-      try {
-        await handleDispatch(data);
-      } catch (err) {
-        logger.error({ err, jobId: data.jobId }, 'dispatcher: handler threw');
-        throw err;
-      }
-    }
-  })) as string;
-  workerId = id;
+  workerId = await startDispatchWorker(JOB_QUEUE_NAME, 'dispatcher', handleDispatch);
 }
 
 export async function unregisterDispatcher(): Promise<void> {
   if (!workerId) return;
   const id = workerId;
   workerId = null;
-  // biome-ignore lint/suspicious/noExplicitAny: see registerDispatcher above.
+  // biome-ignore lint/suspicious/noExplicitAny: see startDispatchWorker above.
   await (boss as any).offWork(id);
 }
 
@@ -825,38 +848,18 @@ export function isDispatcherRegistered(): boolean {
 
 export async function registerPmDispatcher(): Promise<void> {
   if (pmWorkerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_QUEUE_NAME);
-  // teamSize/teamConcurrency=1 caps in-flight PM work per process at one,
-  // matching the per-project DB-level cap from `jobs_pm_per_project_unique_idx`.
-  // The DB index is the source of truth; this is defence-in-depth.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  const id = (await (boss as any).work(
-    PM_QUEUE_NAME,
-    { batchSize: 1, teamSize: 1, teamConcurrency: 1 },
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
-    async (arg: any) => {
-      const entries = Array.isArray(arg) ? arg : [arg];
-      for (const entry of entries) {
-        const data = entry?.data as DispatchMessage | undefined;
-        if (!data || typeof data.jobId !== 'string') continue;
-        try {
-          await handlePmDispatch(data);
-        } catch (err) {
-          logger.error({ err, jobId: data.jobId }, 'pm-dispatcher: handler threw');
-          throw err;
-        }
-      }
-    },
-  )) as string;
-  pmWorkerId = id;
+  // cm:why teamSize/teamConcurrency=1 caps in-flight PM work per process at one, mirroring the per-project DB cap from `jobs_pm_per_project_unique_idx`; the index is the source of truth and this is defence in depth
+  pmWorkerId = await startDispatchWorker(PM_QUEUE_NAME, 'pm-dispatcher', handlePmDispatch, {
+    teamSize: 1,
+    teamConcurrency: 1,
+  });
 }
 
 export async function unregisterPmDispatcher(): Promise<void> {
   if (!pmWorkerId) return;
   const id = pmWorkerId;
   pmWorkerId = null;
-  // biome-ignore lint/suspicious/noExplicitAny: see registerPmDispatcher above.
+  // biome-ignore lint/suspicious/noExplicitAny: see startDispatchWorker above.
   await (boss as any).offWork(id);
 }
 
@@ -867,23 +870,11 @@ export function isPmDispatcherRegistered(): boolean {
 // cm:edge contract -> packages/core/src/jobs/enqueue.ts#enqueueReconcileJob — separate queue so a reconcile backlog never stalls coder dispatch (ISS-801, BLOCKER E).
 export async function registerReconcileDispatcher(): Promise<void> {
   if (reconcileWorkerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RECONCILE_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (handler receives an array) is stable.
-  const id = (await (boss as any).work(RECONCILE_QUEUE_NAME, { batchSize: 1 }, async (arg: any) => {
-    const entries = Array.isArray(arg) ? arg : [arg];
-    for (const entry of entries) {
-      const data = entry?.data as DispatchMessage | undefined;
-      if (!data || typeof data.jobId !== 'string') continue;
-      try {
-        await handleDispatch(data);
-      } catch (err) {
-        logger.error({ err, jobId: data.jobId }, 'reconcile-dispatcher: handler threw');
-        throw err;
-      }
-    }
-  })) as string;
-  reconcileWorkerId = id;
+  reconcileWorkerId = await startDispatchWorker(
+    RECONCILE_QUEUE_NAME,
+    'reconcile-dispatcher',
+    handleDispatch,
+  );
 }
 
 export async function unregisterReconcileDispatcher(): Promise<void> {

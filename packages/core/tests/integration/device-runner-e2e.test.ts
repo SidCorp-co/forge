@@ -113,8 +113,8 @@ describe('F2 device-runner E2E', () => {
 
     const assign = await device.waitForAssign(5_000);
     expect(assign.jobId).toBe(jobId);
-    // cm:guard 4s, and it is a REGRESSION bound, not the 500ms AC ISS-218 wrote. Dispatch is queue-mediated now: `enqueueJob` hands to pg-boss, whose `pollingInterval` defaults to 2000ms, so enqueue-to-assign waits a mean ~1s on the poll before any dispatch work starts — measured 1418/1554/1667/1716ms across four runs. 500ms cannot hold even at pg-boss's own 500ms floor. Do not lower this to make a slow run green; a value above ~4s means the tick path broke and the 60s sweeper backstop picked the job up instead, which is the failure worth catching.
-    expect(assign.at - t1).toBeLessThan(4_000);
+    // cm:guard 2s is a REGRESSION bound, not ISS-218's 500ms AC. Dispatch is queue-mediated: `enqueueJob` hands to pg-boss, so enqueue-to-assign is poll wait plus work. At the 2000ms default that measured 1418/1554/1667/1716ms; at the 0.5s floor `dispatcher.ts` now sets, 191/217/802ms — still not 500ms every run, because a poll can land at the far end of its own window. Do not lower this to chase the AC. A value above ~2s means the tick path broke and the 60s sweeper backstop picked the job up instead, which is the failure worth catching.
+    expect(assign.at - t1).toBeLessThan(2_000);
 
     // 6. Mock claude-cli streams JobEvents (AC: first event <5s observer-visible)
     const t2 = performance.now();
