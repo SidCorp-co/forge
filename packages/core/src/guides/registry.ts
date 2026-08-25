@@ -236,7 +236,7 @@ The \`developed\` route is the one people miss. It is the direct-ship path: you 
 ### What is actually enforced, and what is only advice
 The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`closed\` or \`developed\`. That is the whole rule.
 
-The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (a reopen cap, a content guard) — reason from that error, never from the shape of the ladder.
+The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (\`TRANSITION_REASON_REQUIRED\` on a park with no rationale, \`WAITING_KIND_REQUIRED\` on a \`waiting\` that does not say which kind, \`ILLEGAL_TRANSITION\` on \`draft\` as a target) — reason from that error, never from the shape of the ladder.
 
 ### The description is a requirements contract, not an implementation script
 A description is the one context channel every downstream step trusts without re-verifying, so what you put in it decides whether plan and code explore the repo or just obey a stale snapshot.

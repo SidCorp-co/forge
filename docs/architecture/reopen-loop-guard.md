@@ -20,10 +20,12 @@ Review/test rejections reopen an issue for another fix pass. Nothing bounded how
 
 At the cap, `transitionIssueStatus` threw `REOPEN_CAP_EXCEEDED` unconditionally. A device actor's reopen attempt failed, leaving the issue at `developed`/`testing` — an auto-dispatch trigger status — so the reconciler re-enqueued another full-tier review/test job roughly every 60s until the stage-stall guard tripped at 3 consecutive `done` jobs and paused the run with a comment naming the wrong cause (a missing skill on the device). Separately, `isReopenEntry` counted `in_progress → reopen` (the system's own mechanical reverts) as churn, so infra flakes ate cap budget and escalated `fix` to opus for cost that was never a real rejection.
 
-## Operator exits at the cap
+## Operator exits at the cap — both deleted with it
 
-- **Override and resume**: a project admin forces the reopen (`overrideReopenCap`, increments the count for real) and resumes the paused run.
-- **Split the issue**: if the churn pattern suggests the issue itself is too large (see ISS-801's ~30-blocker volume), decompose it instead of continuing to reopen the same one.
+Neither of these exists any more; they are recorded because the escalation comments the cap posted still sit in the issue history, and they name actions the product no longer offers.
+
+- ~~**Override and resume**: a project admin forces the reopen (`overrideReopenCap`, increments the count for real) and resumes the paused run.~~ `overrideReopenCap` is gone from core, REST and the UI. RFC 0002 INV-6 made leaving a park symmetric with entering one, so there is nothing to override: any actor sets the next status through MCP, REST or the UI and the next step dispatches. A run left paused by the cap before the deletion is freed by `resumeOrphanedPauses` (`pipeline/run-pause.ts`, run from the sweeper), which resumes any run whose pause kind this build no longer recognises — not by an operator.
+- **Split the issue**: still good advice, and now the only advice — if the churn pattern suggests the issue itself is too large (see ISS-801's ~30-blocker volume), decompose it instead of continuing to reopen the same one. The `noProgressRounds` alert is what surfaces the pattern; nothing forces the split.
 
 ## Rejected: complexity-scaled cap
 
@@ -33,4 +35,4 @@ Considered making `REOPEN_CAP` scale with issue complexity (larger cap for `l`/`
 
 Retuning `REOPEN_CAP` — deleted; the knob is now `pipelineConfig.reopenPolicy.noProgressRounds` (advisory) — a tuning knob; ISS-766 makes the guard behave correctly at whatever value is set, not what that value should be.
 
-`ESCALATION_FREE_REOPENS` is gone: the reopen-driven model escalation it gated (`escalateModel`) was deleted when per-stage tiers became fixed. `reopenCount` still drives this cap and the `maxResumeReopenCycles` resume bound — it no longer drives model choice. See `docs/modules/agents-jobs/prompt-config.md` § Default model-routing policy.
+`ESCALATION_FREE_REOPENS` is gone: the reopen-driven model escalation it gated (`escalateModel`) was deleted when per-stage tiers became fixed. `reopenCount` still drives the `maxResumeReopenCycles` resume bound — it no longer drives model choice. See `docs/modules/agents-jobs/prompt-config.md` § Default model-routing policy.
