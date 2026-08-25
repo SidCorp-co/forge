@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
-- An issue paused for a person now says which kind of input it needs — a decision or something only you can supply — instead of always claiming its plan is awaiting approval, and its button no longer restarts work that is already done.
+- An issue paused for a person now names what it actually needs — a decision, or something only you can supply — instead of always saying its plan is awaiting approval, and its button no longer restarts work that is already done.
 - Fixed scheduled runs sometimes showing as succeeded even after the run actually failed.
 - Every failed scheduled run now records why, instead of sometimes leaving the reason blank.
 - A late report from a retried scheduled run can no longer overwrite a newer run's status.
