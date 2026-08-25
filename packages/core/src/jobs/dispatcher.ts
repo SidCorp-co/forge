@@ -12,6 +12,7 @@ import {
   recordRunnerDeathDetection,
 } from '../observability/hold-metrics.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
@@ -227,8 +228,6 @@ export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatche
     return 'skipped';
   }
   if (job.type !== 'pm') {
-    // Defensive: a non-PM job should never land on this queue. Skip rather
-    // than dispatch via the PM-only path.
     logger.warn({ jobId, type: job.type }, 'pm-dispatcher: non-pm job on pm queue, skipping');
     return 'skipped';
   }
@@ -311,7 +310,8 @@ async function dispatchViaRunner(
   let priorClaudeSessionId: string | null = null;
   let pinDeviceId: string | null = null;
   const stagePool = preDispatchOverrides.deviceIds;
-  if (preDispatchOverrides.sessionGroup && job.issueId) {
+  // cm:guard a drive job must never inherit a staged step's CLI session: it resumes through `forge_phase` action `resume_point`, and --resume onto a stale triage session would hand the driver another step's transcript as its own history
+  if (preDispatchOverrides.sessionGroup && job.issueId && job.type !== AUTONOMOUS_JOB_TYPE) {
     const prior = await findPriorSessionInGroup({
       issueId: job.issueId,
       sessionGroup: preDispatchOverrides.sessionGroup,

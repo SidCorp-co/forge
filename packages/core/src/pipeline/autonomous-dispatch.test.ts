@@ -75,6 +75,18 @@ describe('dispatchAutonomous', () => {
     });
   });
 
+  // cm:guard without `stageStatus` on the payload, `resolveStageOverrides` returns EMPTY and the operator's `states.open` deviceIds / disallowedTools / model never reach the one job type that runs unattended for an hour
+  it('stamps the entry status so the operator per-state config governs the drive job', async () => {
+    selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
+
+    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
+
+    expect(insertAndEnqueueJob.mock.calls[0]?.[0]?.payloadExtras).toEqual({
+      mode: 'autonomous',
+      stageStatus: 'open',
+    });
+  });
+
   // cm:guard forge_phase takes runId as a REQUIRED argument, so a prompt without it instructs the agent to make a call it cannot make — and the failure looks like the agent ignoring its skill
   it('tells the agent which run it is on, since forge_phase cannot be called without it', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);

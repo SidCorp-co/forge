@@ -103,7 +103,8 @@ async function enqueueDriveJob(args: {
       projectId: args.projectId,
       runId: args.runId,
     }),
-    payloadExtras: { mode: 'autonomous' },
+    // cm:guard stamp the entry status so `resolveStageOverrides` finds a stage at all: with no `stageStatus` the resolver returns EMPTY, and the operator's `states.open` deviceIds / disallowedTools / model are silently dropped for the ONE job type that runs unattended for an hour. Core already reads that same stage to decide whether the driver may start (`isEntryGateClosed`), so dropping the half that constrains it is the inconsistency, not the fix.
+    payloadExtras: { mode: 'autonomous', stageStatus: AUTONOMOUS_ENTRY_STATUS },
     resolveRacingJobId: async () => {
       const [row] = await db
         .select({ id: jobs.id })
