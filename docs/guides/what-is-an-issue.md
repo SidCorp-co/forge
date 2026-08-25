@@ -95,9 +95,9 @@ runner slot. `draft` never dispatches.
 | You want work to start now | `open` |
 | Real work, but for later | `draft` |
 | You looked at it and are not doing it now | leave `draft` |
-| It turned out not to be work | `dropped`; put the content in memory or docs |
+| It turned out not to be work | delete it; put the content in memory or docs |
 
-`draft` has four exits, and picking the wrong one is what makes a hands-on
+`draft` has three exits, and picking the wrong one is what makes a hands-on
 session expensive:
 
 | You have | Set |
@@ -105,12 +105,11 @@ session expensive:
 | Finished it entirely by hand; nothing left for the pipeline | `closed` |
 | Wrote **and pushed** the branch yourself; you want review → test → release | `developed` + `sessionContext.branch` |
 | Not started; you want the whole thing done for you | `open` |
-| It turned out not to be work at all | `dropped` |
 
 Closing is not free: `closed` stamps `merged_at`, and that is exactly what
 releases everything waiting on this issue. Closing something you *abandoned*
-silently unblocks work that should still be blocked — that is what `dropped`
-is for, and on an already-closed issue you clear the stamp instead.
+silently unblocks work that should still be blocked — clear the stamp in that
+case.
 
 ## Writing one
 
