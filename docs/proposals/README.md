@@ -22,7 +22,6 @@ carries the evidence.
 | Proposal | Status | Verified | Target |
 |---|---|---|---|
 | [agent-driven-pipeline.md](agent-driven-pipeline.md) | Phases 0–4 shipped; phase 5 instrumented and **awaiting evidence, not code** | 2026-08-25 | upgrade to an RFC once the mode switch + status vocabulary are agreed |
-| [fan-out-scope.md](fan-out-scope.md) | Draft — needs `scope: "module"` in archmap; unblocked once that ships | 2026-08-25 | one archmap change, then the `index.ts` split it currently forbids |
 | [mcp-principal-agency.md](mcp-principal-agency.md) | Blocked on a **decision**, not on code — it changes who the ISS-812 fabrication guard applies to | 2026-08-25 | an `agency: 'human' \| 'agent'` field on `McpPrincipal` |
 
 ## Retired
@@ -38,6 +37,7 @@ the only reason `release-gate-and-deploy.md` still exists as a file.
 | Retired | Why | Where it lives now |
 |---|---|---|
 | `release-gate-and-deploy.md` | All five waves shipped 2026-08-24; six modules in `core`/`contracts` name it as their design record, so it moved instead of being deleted | [../modules/issues-pipeline/release-gate.md](../modules/issues-pipeline/release-gate.md) |
+| `fan-out-scope.md` | The fix belongs to archmap, which is its own repo now — a Forge proposal describing another repo's work is filed in the wrong tracker | [SidCorp-co/archmap#1](https://github.com/SidCorp-co/archmap/issues/1) |
 | `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | [../modules/chat/README.md](../modules/chat/README.md) § RocketChat inbound flow |
 | `chat-provider-standardization.md` | P1 shipped 2026-07-02 in `934dab4a`, the commit naming its own ISS-604; P2 2026-07-03 (ISS-609); P3 write tools live in `chat/tools/` | [../modules/chat/README.md](../modules/chat/README.md) |
 | `pm-lane-audit.md` | An audit whose decision was consumed — ISS-795 and its step 5 (ISS-801) both closed and merged 2026-08-08/09 | git history |
@@ -56,7 +56,7 @@ framework → [../integrations/framework.md](../integrations/framework.md) · pr
 
 ## Naming convention
 
-`<topic>.md` — short, kebab-case, topic-focused (e.g. `fan-out-scope.md`). No `proposal-` prefix;
+`<topic>.md` — short, kebab-case, topic-focused (e.g. `mcp-principal-agency.md`). No `proposal-` prefix;
 the directory already says "proposal."
 
 This is also the home for **no-code pipeline deliverables**: when an issue's only output is a
