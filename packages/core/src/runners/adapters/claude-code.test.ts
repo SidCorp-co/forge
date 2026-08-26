@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DispatchInput } from '../types.js';
 
 const publish = vi.fn((..._args: unknown[]) => 0);
 
@@ -18,6 +19,31 @@ vi.mock('../../db/client.js', () => ({
 const { claudeCodeAdapter } = await import('./claude-code.js');
 const { deviceRoom } = await import('../../ws/rooms.js');
 
+type Runner = DispatchInput['runner'];
+
+function runner(over: Partial<Runner> = {}): Runner {
+  return {
+    id: 'r-1',
+    projectId: 'p-1',
+    type: 'claude-code',
+    host: 'device',
+    deviceId: 'd-1',
+    name: 'desk',
+    labels: [],
+    capabilities: {},
+    config: {},
+    status: 'online',
+    lastSeenAt: new Date(),
+    lastError: null,
+    limitReason: null,
+    rateLimitedUntil: null,
+    limitDetail: null,
+    quarantinedUntil: null,
+    quarantineReason: null,
+    ...over,
+  };
+}
+
 describe('claude-code adapter', () => {
   beforeEach(() => {
     publish.mockClear();
@@ -36,25 +62,7 @@ describe('claude-code adapter', () => {
         payload: {},
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
       },
-      runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner(),
     });
     const data = (publish.mock.calls[0]?.[1] as { data: Record<string, unknown> }).data;
     expect(data.issueKey).toBe('ISS-862');
@@ -73,25 +81,7 @@ describe('claude-code adapter', () => {
         payload: {},
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
       },
-      runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner(),
     });
     expect(result.status).toBe('dispatched');
     const data = (publish.mock.calls[0]?.[1] as { data: Record<string, unknown> }).data;
@@ -109,25 +99,7 @@ describe('claude-code adapter', () => {
         payload: { prompt: 'hi' },
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
       },
-      runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner(),
     });
     expect(result.status).toBe('dispatched');
     expect(publish).toHaveBeenCalledTimes(1);
@@ -148,25 +120,7 @@ describe('claude-code adapter', () => {
         dispatchedAt: new Date(),
         agentSessionId: 'sess-abc',
       },
-      runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner(),
     });
     const call = publish.mock.calls[0];
     const data = (call?.[1] as { data: { agentSessionId?: string } }).data;
@@ -187,25 +141,7 @@ describe('claude-code adapter', () => {
         systemPrompt: sp,
         dispatchedAt: new Date(),
       },
-      runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner(),
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: string } }).data;
     expect(data.systemPrompt).toBe(sp);
@@ -222,25 +158,7 @@ describe('claude-code adapter', () => {
         payload: {},
         dispatchedAt: new Date(),
       },
-      runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner(),
     });
     const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: unknown } }).data;
     expect(data.systemPrompt).toBeNull();
@@ -257,25 +175,7 @@ describe('claude-code adapter', () => {
         payload: {},
         dispatchedAt: new Date(),
       },
-      runner: {
-        id: 'r-1',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'desk',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner(),
     });
     const call = publish.mock.calls[0];
     const data = (call?.[1] as { data: Record<string, unknown> }).data;
@@ -293,25 +193,7 @@ describe('claude-code adapter', () => {
         payload: {},
         dispatchedAt: new Date(),
       },
-      runner: {
-        id: 'r-2',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: null,
-        name: 'orphan',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: null,
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner({ id: 'r-2', deviceId: null, name: 'orphan', lastSeenAt: null }),
     });
     expect(result.status).toBe('failed');
     expect(publish).not.toHaveBeenCalled();
@@ -325,25 +207,7 @@ describe('claude-code adapter', () => {
 
   it('health reports stale when lastSeenAt is too old', async () => {
     const r = await claudeCodeAdapter.health({
-      runner: {
-        id: 'r-3',
-        projectId: 'p-1',
-        type: 'claude-code',
-        host: 'device',
-        deviceId: 'd-1',
-        name: 'old',
-        labels: [],
-        capabilities: {},
-        config: {},
-        status: 'online',
-        lastSeenAt: new Date(Date.now() - 200_000),
-        lastError: null,
-        limitReason: null,
-        rateLimitedUntil: null,
-        limitDetail: null,
-        quarantinedUntil: null,
-        quarantineReason: null,
-      },
+      runner: runner({ id: 'r-3', name: 'old', lastSeenAt: new Date(Date.now() - 200_000) }),
     });
     expect(r.ok).toBe(false);
   });

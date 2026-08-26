@@ -170,6 +170,16 @@ beforeEach(() => {
   txExecute.mockResolvedValue([{ max_seq: 0 }]);
 });
 
+function postAsDevice(verb: string, body: unknown, deviceToken = 'dev-1-token') {
+  return buildApp().fetch(
+    req(`/api/jobs/${validJobId}/${verb}`, {
+      method: 'POST',
+      deviceToken,
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
   it('the first ack ends any open kill episode — the columns are cleared with the same CAS (ISS-785 review round 2)', async () => {
     selectLimit.mockResolvedValueOnce([
@@ -184,14 +194,7 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
       { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
     ]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({}),
-      }),
-    );
+    const r = await postAsDevice('ack', {});
 
     expect(r.status).toBe(200);
     expect(txUpdateSet).toHaveBeenCalledWith(
@@ -212,14 +215,7 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
       { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
     ]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ skillsRanWith: { 'forge-code': 'hash-abc' } }),
-      }),
-    );
+    const r = await postAsDevice('ack', { skillsRanWith: { 'forge-code': 'hash-abc' } });
     expect(r.status).toBe(200);
     const json = (await r.json()) as { acked: boolean };
     expect(json.acked).toBe(true);
@@ -246,14 +242,7 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
       { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
     ]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ skillsRanWith: { 'unregistered-skill': 'hash-xyz' } }),
-      }),
-    );
+    const r = await postAsDevice('ack', { skillsRanWith: { 'unregistered-skill': 'hash-xyz' } });
     expect(r.status).toBe(200);
     expect(txInsertValues).toHaveBeenCalledTimes(1);
     const [call] = txInsertValues.mock.calls[0] as [Record<string, unknown>];
@@ -268,14 +257,7 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
       { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
     ]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({}),
-      }),
-    );
+    const r = await postAsDevice('ack', {});
     expect(r.status).toBe(200);
     expect(txInsertValues).not.toHaveBeenCalled();
   });
@@ -286,14 +268,7 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
       { id: jobRow.id, status: jobRow.status, ackedAt: new Date() },
     ]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ skillsRanWith: {} }),
-      }),
-    );
+    const r = await postAsDevice('ack', { skillsRanWith: {} });
     expect(r.status).toBe(200);
     expect(txInsertValues).not.toHaveBeenCalled();
   });
@@ -304,14 +279,7 @@ describe('POST /:id/complete (device)', () => {
     selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
     updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'done', exitCode: 0 }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 0 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string; retry: unknown };
     expect(json.status).toBe('done');
@@ -329,14 +297,7 @@ describe('POST /:id/complete (device)', () => {
     updateReturning.mockResolvedValueOnce([updatedRow]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true, newJobId: 'j2', attempt: 2 });
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 1, error: 'crashed' }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 1, error: 'crashed' });
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string; retry: { scheduled: boolean } };
     expect(json.status).toBe('failed');
@@ -351,14 +312,7 @@ describe('POST /:id/complete (device)', () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
     updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'cancelled', exitCode: -1 }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: -1 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: -1 });
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string };
     expect(json.status).toBe('cancelled');
@@ -371,27 +325,13 @@ describe('POST /:id/complete (device)', () => {
 
   it('403 when job is dispatched to another device', async () => {
     selectLimit.mockResolvedValueOnce([{ ...jobRow, deviceId: 'dev-other' }]);
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 0 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(403);
   });
 
   it('409 when job is terminal', async () => {
     selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'done' }]);
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 0 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(409);
   });
 });
@@ -405,14 +345,7 @@ describe('POST /:id/complete — idempotent late reconcile (ISS-378)', () => {
       { ...reaped, status: 'done', exitCode: 0, error: null },
     ]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 0 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string; reconciled?: boolean };
     expect(json.status).toBe('done');
@@ -429,14 +362,7 @@ describe('POST /:id/complete — idempotent late reconcile (ISS-378)', () => {
     selectLimit.mockResolvedValueOnce([reaped]); // loadJob
     selectLimit.mockResolvedValueOnce([{ id: 'retry-1' }]); // activeRetry probe → in flight
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 0 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(409);
     expect(updateReturning).not.toHaveBeenCalled();
   });
@@ -446,14 +372,7 @@ describe('POST /:id/complete — idempotent late reconcile (ISS-378)', () => {
     // synthetic-reap marker — so a later success POST must not silently flip it.
     selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'failed', error: 'crashed' }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 0 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(409);
     expect(updateReturning).not.toHaveBeenCalled();
   });
@@ -466,14 +385,7 @@ describe('POST /:id/fail (device)', () => {
     updateReturning.mockResolvedValueOnce([updatedRow]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true, newJobId: 'j3', attempt: 2 });
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/fail`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ error: 'segfault' }),
-      }),
-    );
+    const r = await postAsDevice('fail', { error: 'segfault' });
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string; retry: { scheduled: boolean } };
     expect(json.status).toBe('failed');
@@ -487,49 +399,36 @@ describe('POST /:id/fail — salvage (ISS-862 L1)', () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
     updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'failed' }]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
-    return buildApp().fetch(
-      req(`/api/jobs/${validJobId}/fail`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify(body),
-      }),
-    );
+    return postAsDevice('fail', body);
+  }
+
+  function lastFailureMeta() {
+    const args = updateSet.mock.calls.at(-1) as unknown[] | undefined;
+    return (args?.[0] as Record<string, unknown> | undefined)?.failureMeta;
   }
 
   it('accepts the exact object the runner emits and merges it into failure_meta', async () => {
-    const r = await failWith({
-      error: 'boom',
-      salvage: {
-        outcome: 'pushed',
-        branch: 'ISS-862-runner-health',
-        sha: 'a1b2c3d',
-        files: 7,
-        insertions: 214,
-      },
-    });
-    expect(r.status).toBe(200);
-    const set = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
-    expect(set.failureMeta).toBeDefined();
-  });
-
-  it('rejects a field neither side declared, rather than dropping it silently', async () => {
-    const r = await failWith({
-      error: 'boom',
-      salvage: { outcome: 'pushed', worktree: '/repo/.claude/worktrees/iss-862' },
-    });
-    expect(r.status).toBe(400);
-  });
-
-  it('rejects an outcome the renderer cannot render', async () => {
-    const r = await failWith({ error: 'boom', salvage: { outcome: 'partially_pushed' } });
-    expect(r.status).toBe(400);
+    const salvage = {
+      outcome: 'pushed',
+      branch: 'ISS-862-runner-health',
+      sha: 'a1b2c3d',
+      files: 7,
+      insertions: 214,
+    };
+    expect((await failWith({ error: 'boom', salvage })).status).toBe(200);
+    expect(lastFailureMeta()).toBeDefined();
   });
 
   it('still records the failure when the runner reports no salvage at all', async () => {
-    const r = await failWith({ error: 'boom' });
-    expect(r.status).toBe(200);
-    const set = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
-    expect(set.failureMeta).toBeUndefined();
+    expect((await failWith({ error: 'boom' })).status).toBe(200);
+    expect(lastFailureMeta()).toBeUndefined();
+  });
+
+  it.each([
+    ['a field neither side declared', { outcome: 'pushed', worktree: '/repo/.claude/wt' }],
+    ['an outcome the renderer cannot render', { outcome: 'partially_pushed' }],
+  ])('rejects %s rather than dropping it silently', async (_name, salvage) => {
+    expect((await failWith({ error: 'boom', salvage })).status).toBe(400);
   });
 });
 
@@ -537,14 +436,7 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
   it('device-scoped: 403s a kill-ack from a device the job is not dispatched to', async () => {
     selectLimit.mockResolvedValueOnce([{ ...jobRow, deviceId: 'someone-else' }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/kill-ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ outcome: 'killed' }),
-      }),
-    );
+    const r = await postAsDevice('kill-ack', { outcome: 'killed' });
 
     expect(r.status).toBe(403);
     expect(txInsertValues).not.toHaveBeenCalled();
@@ -553,14 +445,7 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
   it('stamps killConfirmedAt/killOutcome and writes a kill_ack job_event', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/kill-ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ outcome: 'killed' }),
-      }),
-    );
+    const r = await postAsDevice('kill-ack', { outcome: 'killed' });
 
     expect(r.status).toBe(200);
     const json = (await r.json()) as {
@@ -591,14 +476,7 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
   it('audits but does NOT stamp an ack for a job with no kill requested (ISS-785 review round 2)', async () => {
     selectLimit.mockResolvedValueOnce([{ ...jobRow, killRequestedAt: null }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/kill-ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ outcome: 'not_found' }),
-      }),
-    );
+    const r = await postAsDevice('kill-ack', { outcome: 'not_found' });
 
     expect(r.status).toBe(200);
     expect((await r.json()) as { recorded: boolean }).toMatchObject({ recorded: false });
@@ -613,14 +491,7 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
   it('reports not_found (the important value — no process ever existed to kill)', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/kill-ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ outcome: 'not_found' }),
-      }),
-    );
+    const r = await postAsDevice('kill-ack', { outcome: 'not_found' });
 
     expect(r.status).toBe(200);
     const json = (await r.json()) as { killOutcome: string };
@@ -635,14 +506,7 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
   it('is idempotent and returns 200 even when the job is already terminal', async () => {
     selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'failed' }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/kill-ack`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ outcome: 'killed' }),
-      }),
-    );
+    const r = await postAsDevice('kill-ack', { outcome: 'killed' });
 
     expect(r.status).toBe(200);
     // cm:guard first-ack-wins is enforced by the UPDATE's WHERE (killConfirmedAt IS NULL) — the route must never reject a terminal job, the ack is evidence not a transition
@@ -818,14 +682,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
   it('emits jobCompleted exactly once on exitCode=0, never jobFailed', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
     updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'done', exitCode: 0 }]);
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 0 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(200);
     expect(completedSpy).toHaveBeenCalledTimes(1);
     expect(completedSpy).toHaveBeenCalledWith(
@@ -847,14 +704,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
       },
     ]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: 1, error: 'crashed' }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: 1, error: 'crashed' });
     expect(r.status).toBe(200);
     expect(failedSpy).toHaveBeenCalledTimes(1);
     expect(failedSpy).toHaveBeenCalledWith(
@@ -866,14 +716,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
   it('emits neither on exitCode=-1 (cancelled)', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
     updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'cancelled', exitCode: -1 }]);
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/complete`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ exitCode: -1 }),
-      }),
-    );
+    const r = await postAsDevice('complete', { exitCode: -1 });
     expect(r.status).toBe(200);
     expect(failedSpy).not.toHaveBeenCalled();
     expect(completedSpy).not.toHaveBeenCalled();
@@ -891,14 +734,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
       },
     ]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/fail`, {
-        method: 'POST',
-        deviceToken: 'dev-1-token',
-        body: JSON.stringify({ error: 'segfault' }),
-      }),
-    );
+    const r = await postAsDevice('fail', { error: 'segfault' });
     expect(r.status).toBe(200);
     expect(failedSpy).toHaveBeenCalledTimes(1);
     expect(failedSpy).toHaveBeenCalledWith(
