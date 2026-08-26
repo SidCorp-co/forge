@@ -26,6 +26,16 @@ export function total(files) {
   return Object.values(files ?? {}).reduce((a, rules) => a + fileTotal(rules), 0);
 }
 
+// cm:guard MEASURE, do not enumerate. Three rounds of review each found another config that empties this checker's input while biome still exits 0 — top-level `linter.enabled`, the same switch behind `extends`, then a single `overrides` block with no second file at all — and each fix closed one instance of "biome scans the scope but lints nothing". This closes the class instead: a scope whose baseline holds debt and which now measures zero is either genuinely drained or not being linted, and BOTH deserve a human look before the frozen debt is deleted. It parses no config, so whatever biome adds next is covered on the day it ships.
+/** Scopes whose baseline records debt but which measured nothing — the shape a silent wipe takes. */
+export function emptiedScopes(currentByScope, baselineByScope) {
+  const out = [];
+  for (const [scope, now] of currentByScope) {
+    if (now === 0 && (baselineByScope.get(scope) ?? 0) > 0) out.push(scope);
+  }
+  return out;
+}
+
 /**
  * Compile one scope's `drain` declaration into a predicate over repo-relative paths.
  *

@@ -234,6 +234,14 @@ skipped** — an unprinted skip reads exactly like a pass.
 the invariant is violated" into "silently evaluate to undefined" — VISION №10 backwards, and the one
 change that improves the number while making the codebase worse.
 
+A scope whose baseline freezes debt and which measures **zero** exits 2 rather than reporting clean.
+Four review rounds each found a different config that empties the checker's input while biome still
+exits 0 — `linter.enabled`, the same switch behind `extends`, an `overrides` block, a narrowed
+`files.includes` — so the gate measures rather than enumerates: it does not matter which line did it.
+Draining a scope to zero is real and stays recordable with
+`--update-baseline --accept-emptied-scope`; what it may never be is silent, because a silent one
+deletes the frozen debt and `improves: down` accepts it, faulting only on a rise.
+
 Size is its own row because biome **declares** the two length rules but cannot gate them: it has no
 baseline, so the only choices were `warn` (143 violations, `biome check` exits 0, nothing held) and
 `error` (143 violations, every build red). `check-size-budget.mjs` reads biome's own JSON, freezes

@@ -3,6 +3,7 @@ import {
   drainedLine,
   drainFaults,
   drainMatcher,
+  emptiedScopes,
   freezeFaults,
   mergeOriginal,
 } from './lint-budget.mjs';
@@ -170,5 +171,32 @@ describe('original', () => {
 
   it('says so rather than dividing by nothing', () => {
     expect(drainedLine('a', 215, undefined)).toBe('  a: 215 (no original recorded)');
+  });
+});
+
+describe('emptiedScopes', () => {
+  const at = (o) => new Map(Object.entries(o));
+
+  it('refuses a scope that measured nothing while its baseline holds debt', () => {
+    expect(emptiedScopes(at({ 'packages/web-v2': 0 }), at({ 'packages/web-v2': 210 }))).toEqual([
+      'packages/web-v2',
+    ]);
+  });
+
+  // cm:guard this is the case round 2 broke and round 5 must not break again: a scope legitimately drained to zero has a baseline of zero too, because recording the drain is what --update-baseline is for. Faulting on it would make the gate's own success condition a red build.
+  it('asks nothing of a scope already frozen at zero', () => {
+    expect(emptiedScopes(at({ 'packages/web-v2': 0 }), at({ 'packages/web-v2': 0 }))).toEqual([]);
+  });
+
+  it('ignores a scope that still measures debt', () => {
+    expect(emptiedScopes(at({ 'packages/core': 277 }), at({ 'packages/core': 280 }))).toEqual([]);
+  });
+
+  it('names every emptied scope, not just the first', () => {
+    expect(emptiedScopes(at({ a: 0, b: 0, c: 5 }), at({ a: 1, b: 2, c: 5 }))).toEqual(['a', 'b']);
+  });
+
+  it('treats a scope absent from the baseline as nothing to protect', () => {
+    expect(emptiedScopes(at({ 'packages/new': 0 }), at({}))).toEqual([]);
   });
 });

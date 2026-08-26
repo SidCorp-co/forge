@@ -25,6 +25,7 @@ import {
   drainedLine,
   drainFaults,
   drainMatcher,
+  emptiedScopes,
   freezeFaults,
   mergeOriginal,
   SIZE_RULES,
@@ -63,9 +64,8 @@ function config() {
 
 // cm:guard ORTHOGONAL to the files-scanned guard, and both must stay. A disabled linter scans every file and reports nothing, so it passes a scanned-count check while emptying this checker's input — measured 2026-08-27: flipping `linter.enabled` to false in packages/web-v2/biome.json made --all exit 0 at "0 / 226 original (100% drained)" and made --update-baseline DELETE 95 files and 210 frozen diagnostics at exit 0, which compareDown accepts because it only faults on a rise. Counting diagnostics cannot tell that from a scope legitimately drained to zero; only the config can, which is why this reads the config instead.
 // cm:guard follow `extends`, and REFUSE what cannot be followed. Reading only the scope's own biome.json left the identical hole one file away: a base config carrying `linter.enabled: false` and an `extends` pointing at it reproduced the whole failure — --all exit 0 at "100% drained", --update-baseline deleting all 95 web-v2 entries. A partial read of a config chain is not a weaker check, it is the same absent one wearing the previous fix's name.
-function effectiveLinterEnabled(file, seen = new Set()) {
-  if (seen.has(file)) return { error: `${relative(ROOT, file)} extends itself` };
-  seen.add(file);
+function effectiveLinterEnabled(file, stack = []) {
+  if (stack.includes(file)) return { error: `${relative(ROOT, file)} is part of an extends cycle` };
   let doc;
   try {
     doc = JSON.parse(readFileSync(file, 'utf8'));
@@ -87,7 +87,7 @@ function effectiveLinterEnabled(file, seen = new Set()) {
           error: `${relative(ROOT, file)} extends ${JSON.stringify(entry)}, which this checker cannot resolve — declare a relative path or stop disabling the linter behind one`,
         };
       }
-      const parent = effectiveLinterEnabled(join(dirname(file), entry), seen);
+      const parent = effectiveLinterEnabled(join(dirname(file), entry), [...stack, file]);
       if (parent.error) return parent;
       if (parent.enabled !== undefined) enabled = parent.enabled;
     }
@@ -272,6 +272,20 @@ if (mode === '--update-baseline') {
     console.error(`check-lint-budget: ${BASELINE_PATH} is unreadable — refusing to overwrite it`);
     process.exit(2);
   }
+  // cm:guard a re-freeze that DELETES a scope's whole debt needs saying out loud, because that is what every bypass found in review looked like from here: 95 files and 210 frozen diagnostics gone at exit 0, accepted by `improves: down` since it only faults on a rise. Draining a scope to zero is a real achievement and must stay recordable, so this is a confirmation rather than a refusal — but never the default, and never silent.
+  const emptied = emptiedScopes(
+    currentByScope,
+    totalsByScope(previous.files, new Map(), cfg.scopes),
+  );
+  if (emptied.length > 0 && !process.argv.includes('--accept-emptied-scope')) {
+    console.error(
+      `check-lint-budget: ${emptied.join(', ')} measured ZERO diagnostics but the baseline freezes debt for it.\n` +
+        'Either that scope genuinely drained to zero, or it is no longer being linted — an\n' +
+        '`overrides` block, a narrowed `files.includes` or an ignore file all look identical from here.\n' +
+        'Confirm it is the first, then re-run with --accept-emptied-scope to record it.\n',
+    );
+    process.exit(2);
+  }
   const files = sortDeep(measured);
   const original = mergeOriginal(previous.original, currentByScope);
   writeFileSync(
@@ -288,6 +302,18 @@ if (mode === '--update-baseline') {
 const baseline = loadBaseline();
 if (baseline === null) {
   console.error(`check-lint-budget: ${BASELINE_PATH} is unreadable — refusing to report clean`);
+  process.exit(2);
+}
+
+// cm:guard this is the guard that does NOT enumerate, and it is why the two config-reading guards above are a second opinion rather than the defence. Whatever stops biome linting a scope — a rule set emptied, an `overrides` block, an ignore file, something biome ships next year — ends here, because a baseline holding debt against a measurement of zero is the one observable every version of the bypass shares. AC 8 word for word: zero diagnostics from a scope that should have some is an exit 2, never a clean report.
+const emptied = emptiedScopes(currentByScope, totalsByScope(baseline.files, new Map(), cfg.scopes));
+if (emptied.length > 0) {
+  console.error(
+    `check-lint-budget: ${emptied.join(', ')} measured ZERO diagnostics but the baseline freezes debt for it.\n` +
+      'A scope that stopped being linted and a scope that drained to zero look identical by count,\n' +
+      'so this refuses rather than reporting clean. If it genuinely drained, record it with:\n' +
+      '  node scripts/check-lint-budget.mjs --update-baseline --accept-emptied-scope\n',
+  );
   process.exit(2);
 }
 

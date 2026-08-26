@@ -13,7 +13,7 @@
 // therefore is not a violation — the same property that lets codemap's baseline
 // survive a refactor.
 //
-// Modes: --all (CI) · --staged (pre-commit) · --update-baseline
+// Modes: --all (CI) · --staged (freeze-only; no hook runs it today) · --update-baseline
 // Exit: 0 clean · 1 a file got longer or a new one is over budget · 2 could not run.
 
 import { execFileSync } from 'node:child_process';
