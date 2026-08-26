@@ -28,7 +28,8 @@ type FailureAction = 'terminal' | 'quarantine' | 'failover' | 'retry';
 
 ```mermaid
 flowchart TD
-  F([job failed]) --> C{"cancellation requested?"}
+  F([job failed]) --> S["classify + stamp kind/reason/action<br/>(every path, no exceptions)"]
+  S --> C{"cancellation requested?"}
   C -- yes --> Z1["no retry — Cancel is a hard stop"]
   C -- no --> V{"verify-first: did the work already land?"}
   V -- advanced --> Z2["completed_via_recovery"]
