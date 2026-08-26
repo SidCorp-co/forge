@@ -44,8 +44,12 @@ flowchart TD
   B -- "no · fleet was healthy" --> P4["HOLD retry_rounds_exhausted<br/>(waits for a human)"]
 ```
 
-The two structural guards run BEFORE any classification, because either can make a retry
-meaningless or destructive. Hold reasons land on the successor job's `payload.__hold` (see below).
+The two structural guards short-circuit before the action branch is ever read, because either can
+make a retry meaningless or destructive — but both run *after* the row is classified and stamped.
+Recording is not a decision: a failure the engine declines to retry is still a failure someone has
+to be able to read afterwards, and skipping the stamp is how the cancellation path came to leave
+rows with a real error string and no class at all (see the AC2 row below). Hold reasons land on the
+successor job's `payload.__hold` (see below).
 
 ## Hold semantics: capacity vs judgement
 
@@ -83,7 +87,7 @@ wedge notification says so in its copy rather than telling the reader to clear a
 | 760 | The schedule terminal path calls the SAME `classifyFailure` the job path calls (`finalizeScheduleSessionFailure`), not a bespoke regex — `failureReason` is now unconditional (never left `NULL`). `schedules.lastStatus` is written only by the session's real terminal report (`writeBackScheduleLastStatus`), gated on `lastSessionId = sessionId` so a superseded session's late report cannot clobber a newer run. Dispatch itself only ever writes `running`/`skipped`. | `agent-sessions/session-failure.ts`, `schedules/service.ts` |
 | 811 | `retry_rescues` (migration `0175`) — a recursive view over `jobs.retry_of` chains, collapsing each rescued leaf to its furthest **failed** ancestor. Retroactive (works over historical data, no new write-time counter); a 24h per-project/per-reason threshold alert fires once per window via a partial unique index on `notifications.resolution_key`. | `pipeline/retry-rescue-alert.ts`, drizzle view `retry_rescues` |
 | 630/804 | `jobs/dispatcher.ts`'s pre-dispatch budget gate stamps `failureAction: 'terminal'` with the real `CLASSIFIER_VERSION` and routes through `finalizeFailedJob` — the same terminal outcome (hold + wedge notification) as any other terminal action, instead of a private strand. | `jobs/dispatcher.ts`, `jobs/finalize-failure.ts` |
-| 760 (job path) | The classify-and-persist block runs BEFORE `scheduleAutoRetryWithVerify`'s `cancellationRequested` return, so a job that fails carrying real error text while a cancel is pending records a class like any other failure. This was the last no-retry path that recorded nothing: measured on forge-beta 2026-08-26, 4 rows over 60 days sat at `status='failed'` with `[NO_RESULT_EXIT]`/`[RESULT_ERROR]` in `jobs.error` and `failure_kind`, `failure_reason` and `classifier_version` all NULL. Every other no-retry path (budget gate, kill-gate reap, resume-abort) pre-stamps the row at flip time. The retry decision itself is unchanged — the guard still returns `cancellation_requested` and still schedules nothing. | `jobs/retry.ts` |
+| AC2 (job path) | The classify-and-persist block runs BEFORE `scheduleAutoRetryWithVerify`'s `cancellationRequested` return, so a job that fails carrying real error text while a cancel is pending records a class like any other failure. This was the last no-retry path that recorded nothing: measured on forge-beta 2026-08-26, 4 rows over 60 days sat at `status='failed'` with `[NO_RESULT_EXIT]`/`[RESULT_ERROR]` in `jobs.error` and `failure_kind`, `failure_reason` and `classifier_version` all NULL. Every other no-retry path (budget gate, kill-gate reap, resume-abort) pre-stamps the row at flip time. The retry decision itself is unchanged — the guard still returns `cancellation_requested` and still schedules nothing. | `jobs/retry.ts` |
 
 ## Spec correction: spend-cap is `failover`, not `terminal`
 
