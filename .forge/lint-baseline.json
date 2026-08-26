@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T18:09:42.006Z",
+  "generatedAt": "2026-08-26T18:50:06.592Z",
   "original": {
     "packages/web-v2": 226,
     "packages/core": 280
@@ -72,9 +72,6 @@
     },
     "packages/core/src/issues/intake-gate.test.ts": {
       "lint/correctness/noUnusedFunctionParameters": 1
-    },
-    "packages/core/src/issues/pipeline-health.ts": {
-      "lint/style/noNonNullAssertion": 2
     },
     "packages/core/src/jobs/agent-session-link.test.ts": {
       "lint/correctness/noUnusedFunctionParameters": 1,
