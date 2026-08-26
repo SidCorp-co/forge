@@ -337,7 +337,8 @@ async function buildAndEnqueueStepJob(args: {
           stageStatus: args.status,
           mergeStates: resolveMergeStates(args.cfg),
           branches: issueSnapshot?.branchConfig ?? null,
-          stageOwnsMergeProtocol: skill.type === 'release',
+          stageOwnsMergeProtocol:
+            skill.scope === 'project' && inverseJobTypeToStatus(skill.type) === args.status,
           issueId: args.issueId,
         });
         // Proposal Y — pre-fetch step handoffs scoped to this issue's current run
@@ -437,9 +438,14 @@ export async function triggerPipelineStepManual(args: {
     if (!skill) {
       const step = PIPELINE_STEPS.find((s) => s.jobType === stageType);
       if (step) {
-        skill = { type: stageType, ...step };
+        skill = { type: stageType, ...step, scope: 'global' };
       } else {
-        skill = { type: stageType, toggle: 'autoTriage', skillName: `forge-${stageType}` };
+        skill = {
+          type: stageType,
+          toggle: 'autoTriage',
+          skillName: `forge-${stageType}`,
+          scope: 'global',
+        };
       }
     }
   } else {

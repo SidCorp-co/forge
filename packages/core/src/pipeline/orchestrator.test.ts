@@ -251,7 +251,7 @@ function cfgResolved(cfg: unknown) {
 }
 
 function skillRegistered(skillName: string, type: string, toggle: string) {
-  resolverResolve.mockResolvedValueOnce({ skillName, type, toggle });
+  resolverResolve.mockResolvedValueOnce({ skillName, type, toggle, scope: 'project' });
 }
 
 function noSkillRegistered() {
