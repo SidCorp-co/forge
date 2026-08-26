@@ -292,12 +292,12 @@ const RULES = [
   },
   {
     id: 'R9',
-    text: 'every lint rule at a non-blocking severity is counted by a baselined checker',
+    text: 'every DECLARED non-blocking lint severity is counted by a baselined checker',
     pass: uncounted.length === 0,
     detail: uncounted.length
       ? `uncounted: ${uncounted.join(' · ')}`
-      : 'every warn/info-severity rule is frozen somewhere',
-    why: 'biome exits 0 on a warning and on an info, so such a rule with no baseline counting it is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis',
+      : 'every declared warn/info/on rule is frozen somewhere; rules left non-blocking by preset default are not read',
+    why: 'biome exits 0 on a warning and on an info, so such a rule with no baseline counting it is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis. The bound is real: this reads the config, so a package whose biome.json is only `{"recommended": true}` passes it while carrying preset-default warn/info debt — caught only where a lint-budget scope already measures that directory',
   },
   {
     id: 'R10',

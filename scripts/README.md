@@ -81,12 +81,12 @@ Each package's `biome.json` owns the rules; this owns only the baseline biome la
 as `check-size-budget.mjs`, which keeps the two length rules because it freezes them by line count.
 
 It counts **every** diagnostic biome emits in a scope except the two length rules
-`check-size-budget.mjs` owns — error severity included, and today 151 of web-v2's 215 frozen
+`check-size-budget.mjs` owns — error severity included, and today 147 of web-v2's 210 frozen
 diagnostics are errors. Severity decides only whether biome itself would have failed the build:
 `error` meant red builds nobody could clear, and a severity biome exits 0 on (`warn`, `info`, or a
 rule left at its default by `on`) held nothing. So both packages' debt is frozen per (file, rule) in
-`.forge/lint-baseline.json` and only growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Today: **493 violations
-across 178 files** — web-v2 215 of an original 226 (97 files), core 278 of 280 (81 files, of which
+`.forge/lint-baseline.json` and only growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Today: **486 violations
+across 175 files** — web-v2 210 of an original 226 (95 files), core 276 of 280 (80 files, of which
 53 diagnostics across 32 files are drainable).
 
 `web-v2` had no biome config at all until 2026-08-23 — 748 diagnostics on the day it got one, 409
@@ -235,7 +235,7 @@ printing `0 violations`.
 | R6 | no blocking level without CI to block with | — |
 | R7 | the relations gate can resolve the graph it claims to cover | `archmap check` dropped 841 of 997 edges, 2026-08-23 |
 | R8 | no CI step runs where it cannot fail | the desktop Rust gate, `continue-on-error: true` for months behind a comment promising cleanup |
-| R9 | every lint rule at a severity biome exits 0 on (`warn`, `info`) is counted by a baselined checker | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
+| R9 | every **declared** severity biome exits 0 on (`warn`, `info`, `on`) is counted by a baselined checker — it reads the configs, so a rule left non-blocking by preset default is out of its reach | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
 | R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes

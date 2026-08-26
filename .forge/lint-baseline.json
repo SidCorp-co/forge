@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T18:50:06.592Z",
+  "generatedAt": "2026-08-26T21:19:11.042Z",
   "original": {
     "packages/web-v2": 226,
     "packages/core": 280
@@ -147,9 +147,6 @@
       "lint/complexity/useOptionalChain": 1
     },
     "packages/core/src/projects/routes.test.ts": {
-      "lint/style/noNonNullAssertion": 2
-    },
-    "packages/core/src/prompt/merge-required.test.ts": {
       "lint/style/noNonNullAssertion": 2
     },
     "packages/core/src/prompt/sanitize.test.ts": {
@@ -396,10 +393,6 @@
       "lint/a11y/useKeyWithClickEvents": 3,
       "lint/performance/noImgElement": 2
     },
-    "packages/web-v2/src/features/issues/components/issue-detail-screen.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 2,
-      "lint/suspicious/noArrayIndexKey": 1
-    },
     "packages/web-v2/src/features/issues/components/issue-row-actions.tsx": {
       "lint/a11y/noStaticElementInteractions": 1,
       "lint/correctness/noUnusedImports": 1
@@ -421,10 +414,6 @@
     },
     "packages/web-v2/src/features/issues/components/properties-rail.tsx": {
       "lint/style/noNonNullAssertion": 1
-    },
-    "packages/web-v2/src/features/issues/components/step-artifact-card.tsx": {
-      "lint/complexity/useOptionalChain": 1,
-      "lint/suspicious/noArrayIndexKey": 1
     },
     "packages/web-v2/src/features/knowledge/components/graph-tab.tsx": {
       "lint/suspicious/noArrayIndexKey": 1

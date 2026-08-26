@@ -35,19 +35,19 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'lint-baseline.json');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
-const DEFAULT_SCOPES = [{ cwd: 'packages/web-v2', args: ['check', 'src'] }];
-
+// cm:guard an ABSENT registry is not a default, it is a broken checkout. Falling back to a built-in scope list made a missing .forge/conformance.json quietly demote this to web-v2-only — core uncounted, drain gone, exit 0 — while an unreadable one exited 2, so the more complete failure got the softer answer. The file is committed; both spellings of "cannot read it" now fail closed.
 function config() {
-  if (!existsSync(CONFIG_PATH)) return { scopes: DEFAULT_SCOPES };
   try {
     const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
-    return { scopes: raw?.checkers?.['lint-budget']?.scopes ?? DEFAULT_SCOPES };
+    const scopes = raw?.checkers?.['lint-budget']?.scopes;
+    if (!Array.isArray(scopes) || scopes.length === 0) return null;
+    return { scopes };
   } catch {
     return null;
   }
 }
 
-// cm:edge contract -> packages/web-v2/biome.json — reads whatever that config decides to report. Turning the linter off there empties this checker's input; the zero-diagnostics guard below is what makes that an exit 2 instead of a green run.
+// cm:edge contract -> packages/web-v2/biome.json — reads whatever that config decides to report. Turning the linter off there empties this checker's input; the files-scanned guard below is what makes that an exit 2 instead of a green run.
 // cm:edge contract -> packages/core/biome.json — same for the second scope: `noNonNullAssertion` / `noExplicitAny` / the test override's `noUnsafeOptionalChaining` are `warn` there, which is exactly why they need a baseline — biome exits 0 on a warning, so the blocking `core` lint step passed over 280 of them (measured 2026-08-27)
 function collect(scopes) {
   const measured = {};
@@ -82,7 +82,10 @@ function collect(scopes) {
       return { error: `biome output in ${scope.cwd} was not JSON` };
     }
     const diags = parsed.diagnostics ?? [];
-    if (diags.length === 0) silent.push(scope.cwd);
+    // cm:guard count FILES SCANNED, never diagnostics found. Keying the empty-scope guard off an empty report made "this scope drained to zero" — the outcome the drain rule exists to produce — indistinguishable from "this scope stopped matching", so the success condition of the whole initiative was a build that exits 2. biome's own summary separates them; a scope that scanned files and found nothing is clean.
+    const summary = parsed.summary ?? {};
+    const scanned = (summary.changed ?? 0) + (summary.unchanged ?? 0);
+    if (!Number.isFinite(scanned) || scanned === 0) silent.push(scope.cwd);
 
     // cm:guard `internalError/*` is biome saying it could not READ the scope, not a violation in it. Counted as debt it lands under a nonsense file key and exits 1, so the run blames the code for a registry that points at nothing — and it prints a drained percentage first, which for a scope biome never opened reads as 100%.
     const broken = diags.find((d) => String(d.category ?? '').startsWith('internalError'));
@@ -101,10 +104,10 @@ function collect(scopes) {
     }
   }
 
-  // cm:guard PER SCOPE, never "any scope saw something". Both scopes carry debt at rest, so an empty report from one means its files stopped matching or its config stopped loading — and with two scopes a global flag lets a healthy sibling vouch for a broken one, which reads as that whole package having drained to zero and lets every drain payment pass unpaid.
+  // cm:guard PER SCOPE, never "any scope was scanned". With two scopes a global flag lets a healthy sibling vouch for a broken one, which reads as that whole package having drained to zero and lets every drain payment pass unpaid.
   if (silent.length > 0) {
     return {
-      error: `biome reported zero diagnostics for ${silent.join(', ')} — scope matched nothing`,
+      error: `biome scanned no files in ${silent.join(', ')} — scope matched nothing`,
     };
   }
   return { measured, scopeOf };
@@ -247,6 +250,7 @@ try {
   process.exit(2);
 }
 let drainNote = null;
+let drainFailed = false;
 if (mode === '--all' && matchers.length > 0) {
   const delta = branchDelta();
   if (delta.error) {
@@ -257,15 +261,15 @@ if (mode === '--all' && matchers.length > 0) {
     drainNote = `drain skipped — ${delta.skip}; freeze-only this run`;
   } else {
     drainNote = `drain judged over ${delta.changed.size} changed file(s) since ${delta.base.slice(0, 8)}`;
-    failures.push(
-      ...drainFaults({
-        measured,
-        baseline: baseline.files,
-        changed: delta.changed,
-        renamed: delta.renamed,
-        matchers,
-      }),
-    );
+    const unpaid = drainFaults({
+      measured,
+      baseline: baseline.files,
+      changed: delta.changed,
+      renamed: delta.renamed,
+      matchers,
+    });
+    drainFailed = unpaid.length > 0;
+    failures.push(...unpaid);
   }
 }
 
@@ -297,7 +301,11 @@ console.error(
     'assertion behind a `// biome-ignore <rule>: <the invariant>` that states why it holds.\n' +
     'Never `biome check --write` these rules — it rewrites `a!.b` to `a?.b`, turning "throw\n' +
     'when the invariant is violated" into "silently undefined".\n' +
-    'If the growth is deliberate, re-freeze it:\n' +
-    '  node scripts/check-lint-budget.mjs --update-baseline\n',
+    // cm:guard offer the re-freeze ONLY for a freeze fault. `--update-baseline` re-measures the file it is failing on, so against a drain fault it writes the unchanged count straight back and the next run fails identically — advice that cannot work reads as a broken checker, and a contributor who follows it twice concludes the gate is the bug.
+    (drainFailed
+      ? 'A drain has no re-freeze escape: --update-baseline re-measures the file and writes the\n' +
+        'same count back, so the next run fails the same way. Remove one diagnostic.\n'
+      : 'If the growth is deliberate, re-freeze it:\n' +
+        '  node scripts/check-lint-budget.mjs --update-baseline\n'),
 );
 process.exit(1);

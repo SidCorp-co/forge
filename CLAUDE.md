@@ -214,7 +214,7 @@ it, and it is a separate decision from the linter.
 `packages/core` joined it on 2026-08-27 (ISS-833) with 280 diagnostics that nothing counted, and
 that registration is the whole argument for one shared ratchet: a scope entry in
 `.forge/conformance.json` plus one `--update-baseline` run, no second script and no second baseline
-file. **493 violations across 178 files frozen today — web-v2 215 of an `original` 226, core 278 of
+file. **486 violations across 175 files frozen today — web-v2 210 of an `original` 226, core 276 of
 280** — and that `original` map is immutable, because a denominator `--update-baseline` recomputes
 makes every percentage relative to the last re-freeze and can never fall.
 
