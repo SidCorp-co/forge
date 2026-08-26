@@ -1,13 +1,3 @@
-/**
- * ISS-242 — MCP tool tests for `forge_coolify_deploy` (list/deploy/status).
- *
- * The contract under test is "auth gating + action routing + input/output
- * shape". The dispatch semantics + the manual/auto idempotency guard live in
- * `release-coolify.ts` and are covered in `release-coolify.test.ts`, so here we
- * mock `tryDispatchCoolifyRelease` / `resolveLatestIssueRunId` and assert the
- * tool delegates correctly and passes the outcome through unchanged.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../config/env.js', () => ({
@@ -18,9 +8,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// FIFO result queue: each awaited drizzle chain consumes the next entry, so
-// tests just push results in call order (membership check first, then the
-// integration query).
 const resultQueue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: minimal chainable drizzle stub
 function makeThenable(): any {
@@ -52,10 +39,8 @@ vi.mock('../../pipeline/release-coolify.js', () => ({
   isIssueAtReleaseStage: (a: unknown) => isIssueAtReleaseStageSpy(a),
 }));
 
-const findLastOutboundSpy = vi.fn();
-const findLastOutboundForTargetSpy = vi.fn();
-const fetchDeploymentLogsSpy = vi.fn();
-const fetchRuntimeLogsSpy = vi.fn();
+const findLastOutboundSpy = vi.fn(), findLastOutboundForTargetSpy = vi.fn();
+const fetchDeploymentLogsSpy = vi.fn(), fetchRuntimeLogsSpy = vi.fn();
 vi.mock('../../integrations/coolify/log-fetch.js', () => ({
   fetchCoolifyDeploymentLogs: (...a: unknown[]) => fetchDeploymentLogsSpy(...a),
   fetchCoolifyRuntimeLogs: (...a: unknown[]) => fetchRuntimeLogsSpy(...a),
@@ -100,12 +85,8 @@ function makeDeviceCtx() {
   };
 }
 
-/** Push the single effective-role row (lib/authz.ts) for a project member. */
-function pushMemberOk() {
-  resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-}
+function pushMemberOk() { resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); }
 
-/** A binding+connection pair as `listActiveBindingsForProjectProvider` returns. */
 function pair(
   id: string,
   environment: string,
@@ -498,7 +479,6 @@ describe('forge_coolify_deploy → status', () => {
       }>;
     };
 
-    // One row per target (Backend + Frontend).
     expect(result.deliveries).toHaveLength(2);
     expect(result.deliveries).toEqual(
       expect.arrayContaining([
