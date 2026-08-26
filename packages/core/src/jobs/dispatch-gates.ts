@@ -20,7 +20,7 @@
  */
 
 import { and, eq, type SQL, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { jobs, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
@@ -62,6 +62,8 @@ export type GateResult =
 export type DispatchBarrier = { ok: true } | { ok: false; reason: GateSkipReason; hint?: string };
 
 const PASS: GateResult = { pass: true };
+
+type DispatchGateExecutor = Pick<Db, 'select' | 'execute'>;
 
 /**
  * DEFAULT per-project cap on simultaneously-active issues, applied to any
@@ -297,6 +299,7 @@ export async function checkLayer4RunnerFull(
  * or `'lost'` if the job was no longer `queued` (another dispatcher won the CAS).
  * Makes exceeding the per-runner cap IMPOSSIBLE regardless of dispatch races.
  */
+// cm:guard lock the queued job and its issue before re-reading the shared stale-trigger arm and claiming the runner slot — a trigger can move between the dispatcher's first read and the claim, and without this transaction the stale job can still create a session after the gate rejected it.
 export async function claimRunnerSlot(args: {
   jobId: string;
   runnerId: string;
@@ -304,6 +307,18 @@ export async function claimRunnerSlot(args: {
   dispatchedAt: Date;
 }): Promise<'claimed' | 'runner_full' | 'lost'> {
   return db.transaction(async (tx) => {
+    const locked = await tx.execute<{ issue_id: string | null }>(sql`
+      SELECT issue_id FROM jobs
+      WHERE id = ${args.jobId} AND status = 'queued'
+      FOR UPDATE
+    `);
+    const issueId = locked[0]?.issue_id;
+    if (!locked[0]) return 'lost' as const;
+    if (issueId) await tx.execute(sql`SELECT 1 FROM issues WHERE id = ${issueId} FOR UPDATE`);
+
+    const barrier = await assertDispatchable(args.jobId, tx);
+    if (!barrier.ok && barrier.reason === 'stale_trigger') return 'lost' as const;
+
     await tx.execute(sql`SELECT 1 FROM runners WHERE id = ${args.runnerId} FOR UPDATE`);
     const rows = await tx.execute<{ in_flight: number }>(sql`
       SELECT COUNT(*)::int AS in_flight
@@ -697,8 +712,11 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates'], cap: nu
       END`;
 }
 
-export async function assertDispatchable(jobId: string): Promise<DispatchBarrier> {
-  const [job] = await db
+export async function assertDispatchable(
+  jobId: string,
+  exec: DispatchGateExecutor = db,
+): Promise<DispatchBarrier> {
+  const [job] = await exec
     .select({ projectId: jobs.projectId })
     .from(jobs)
     .where(eq(jobs.id, jobId))
@@ -713,7 +731,7 @@ export async function assertDispatchable(jobId: string): Promise<DispatchBarrier
     baseStampable,
   });
 
-  const rows = await db.execute<{ reason: string | null }>(sql`
+  const rows = await exec.execute<{ reason: string | null }>(sql`
     WITH ${ctes}
     SELECT ${buildGateReasonCase(predicates, cap)} AS reason
     FROM jobs j

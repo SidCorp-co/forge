@@ -11,6 +11,7 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ _and: args }),
   eq: (...args: unknown[]) => ({ _eq: args }),
   inArray: (...args: unknown[]) => ({ _inArray: args }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
 }));
 
 vi.mock('../db/schema.js', () => ({ jobs: { id: 'jobs.id', status: 'jobs.status' } }));
@@ -28,13 +29,13 @@ vi.mock('./agent-session-link.js', () => ({
 }));
 
 const gateReasonsMock = vi.fn(async (_projectId: string) => new Map<string, string>());
-const assertDispatchableMock = vi.fn(async (_jobId: string) => ({
+const assertDispatchableMock = vi.fn(async (_jobId: string, _exec?: unknown) => ({
   ok: false as const,
   reason: 'stale_trigger' as const,
 }));
 vi.mock('./dispatch-gates.js', () => ({
   gateReasonsForQueuedJobs: (projectId: string) => gateReasonsMock(projectId),
-  assertDispatchable: (jobId: string) => assertDispatchableMock(jobId),
+  assertDispatchable: (jobId: string, exec?: unknown) => assertDispatchableMock(jobId, exec),
 }));
 
 const applyKernelTransitionMock = vi.fn();
@@ -44,6 +45,7 @@ vi.mock('../lifecycle/transition.js', () => ({
 
 let queuedRows: Record<string, unknown>[] = [];
 const whereSpy = vi.fn();
+const txExecute = vi.fn(async () => [{ issue_id: 'iss-1' }]);
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
@@ -54,6 +56,7 @@ vi.mock('../db/client.js', () => ({
         },
       }),
     }),
+    transaction: (fn: (tx: { execute: typeof txExecute }) => unknown) => fn({ execute: txExecute }),
   },
 }));
 
@@ -75,6 +78,7 @@ function jobRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  txExecute.mockResolvedValue([{ issue_id: 'iss-1' }]);
   queuedRows = [];
   gateReasonsMock.mockResolvedValue(new Map());
   assertDispatchableMock.mockResolvedValue({ ok: false, reason: 'stale_trigger' });
@@ -108,6 +112,8 @@ describe('discardStaleTriggerJobs', () => {
     expect(await discardStaleTriggerJobs(PROJECT_ID)).toEqual(['job-stale']);
 
     expect(applyKernelTransitionMock).toHaveBeenCalledTimes(1);
+    const executor = applyKernelTransitionMock.mock.calls[0]?.[0];
+    expect(executor).toBe(assertDispatchableMock.mock.calls[0]?.[1]);
     const args = applyKernelTransitionMock.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(args.entity).toBe('job');
     expect(args.to).toBe('cancelled');
@@ -191,7 +197,7 @@ describe('discardStaleTriggerJobs', () => {
 
     await discardStaleTriggerJobs(PROJECT_ID);
 
-    expect(assertDispatchableMock).toHaveBeenCalledWith('job-stale');
+    expect(assertDispatchableMock).toHaveBeenCalledWith('job-stale', expect.anything());
   });
 
   it('keeps sweeping when closing the linked session throws', async () => {
