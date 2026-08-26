@@ -24,11 +24,11 @@
  */
 
 import { z } from 'zod';
+import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import {
   fetchCoolifyDeploymentLogs,
   fetchCoolifyRuntimeLogs,
-} from '../../integrations/coolify/adapter.js';
-import { CoolifyApiError } from '../../integrations/coolify/client.js';
+} from '../../integrations/coolify/log-fetch.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../../integrations/deliveries.js';
 import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
