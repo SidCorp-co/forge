@@ -23,6 +23,7 @@ carries the evidence.
 |---|---|---|---|
 | [agent-driven-pipeline.md](agent-driven-pipeline.md) | Phases 0–4 shipped; phase 5 instrumented and **awaiting evidence, not code** | 2026-08-25 | upgrade to an RFC once the mode switch + status vocabulary are agreed |
 | [picker-selector-parity.md](picker-selector-parity.md) | Open residual — the dispatch picker and the runner selector filter on different clauses, so a job no runner can take reports `gateReason: null` | 2026-08-25 | mirror the pool predicate into `fresh_capable_runners` and assert the parity in a test |
+| [release-permission-parity.md](release-permission-parity.md) | Open residual — the server requires `admin` to release, the three client surfaces require member / nothing / nothing, so a member is shown a button that always 403s | 2026-08-26 | one `useCanRelease` hook consumed by all three, disabled control stating its reason |
 
 ## Retired
 
