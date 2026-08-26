@@ -18,7 +18,7 @@ use crate::transport::events::{post_job_events, JobEventInput};
 use crate::transport::frames::JobAssigned;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
-use crate::workspace::{provision, refresh, skill_sync};
+use crate::workspace::{provision, refresh, salvage, skill_sync, worktree};
 
 /// Resolved working dir for one assigned project. The server (`/me/runners`)
 /// is the source of truth for `repo_path`; `config.toml` is only a local
@@ -483,6 +483,13 @@ pub async fn handle(
         _ => ja.prompt_string.clone(),
     };
 
+    // cm:guard salvage is offered ONLY to a job core cut a branch for. A triage/plan/review job runs in the repo ROOT, which sits on the project's base branch — committing its leftovers there would put unreviewed WIP on `main`, and no retry could use it anyway.
+    let salvage_ctx = worktree_branch.as_ref().map(|branch| SalvageCtx {
+        worktree: worktree::path(&resolved.repo_path.to_string_lossy(), branch),
+        branch: branch.clone(),
+        attempt: ja.attempts.unwrap_or(0),
+    });
+
     let spec = JobSpec {
         job_id: job_id.clone(),
         project_id: ja.project_id.clone(),
@@ -512,13 +519,26 @@ pub async fn handle(
         return Ok(());
     }
 
-    consume(client, &job_id, rx).await;
+    consume(client, &job_id, rx, salvage_ctx).await;
     Ok(())
+}
+
+/// What a failed job needs before its working copy can be preserved. `None` for
+/// a job that runs in the repo root — see the guard on [`consume`].
+struct SalvageCtx {
+    worktree: PathBuf,
+    branch: String,
+    attempt: u32,
 }
 
 /// Drain runner events, batching job events and posting on a 500ms cadence,
 /// then call complete/fail on the terminal event.
-async fn consume(client: &CoreClient, job_id: &str, mut rx: mpsc::Receiver<RunnerEvent>) {
+async fn consume(
+    client: &CoreClient,
+    job_id: &str,
+    mut rx: mpsc::Receiver<RunnerEvent>,
+    salvage_ctx: Option<SalvageCtx>,
+) {
     let mut buf: Vec<JobEventInput> = Vec::new();
     let mut flush = tokio::time::interval(FLUSH_INTERVAL);
     flush.tick().await;
@@ -588,17 +608,33 @@ async fn consume(client: &CoreClient, job_id: &str, mut rx: mpsc::Receiver<Runne
             }
         }
         Some(Terminal::Failed(err)) => {
-            if let Err(e) = lifecycle::fail(client, job_id, &err).await {
+            let salvage = salvage_for(salvage_ctx.as_ref(), job_id, &err).await;
+            if let Err(e) = lifecycle::fail_with_salvage(client, job_id, &err, salvage).await {
                 tracing::warn!("[job {job_id}] fail: {e}");
             } else {
                 tracing::info!("[job {job_id}] failed: {err}");
             }
         }
         None => {
-            // Channel closed with no terminal event — treat as failure.
-            let _ = lifecycle::fail(client, job_id, "runner ended without a result").await;
+            // cm:guard this arm salvages too, and it is the one that matters most: a runner that dies mid-stream leaves the LARGEST uncommitted diff, having neither committed nor reported. Skipping it because the error string is generic loses exactly the work worth keeping.
+            let err = "runner ended without a result";
+            let salvage = salvage_for(salvage_ctx.as_ref(), job_id, err).await;
+            let _ = lifecycle::fail_with_salvage(client, job_id, err, salvage).await;
         }
     }
+}
+
+/// Preserve the failed job's working copy, best-effort. Never propagates a
+/// failure of its own: `lifecycle::fail` must run whatever happened here.
+async fn salvage_for(
+    ctx: Option<&SalvageCtx>,
+    job_id: &str,
+    err: &str,
+) -> Option<serde_json::Value> {
+    let ctx = ctx?;
+    let s = salvage::salvage_wip(&ctx.worktree, &ctx.branch, job_id, ctx.attempt, err).await;
+    tracing::info!("[job {job_id}] salvage: {s:?}");
+    Some(s.to_json())
 }
 
 fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {

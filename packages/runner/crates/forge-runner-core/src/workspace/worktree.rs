@@ -28,6 +28,15 @@ fn create_argv<'a>(rel: &'a str, branch: &'a str, start_point: Option<&'a str>) 
     argv
 }
 
+/// Where `create` puts (or found) the worktree for `branch`.
+///
+/// Split out so the failure path can reach the same directory without
+/// re-deriving the sanitising rule — a salvage that guessed the path wrong
+/// would report `refused` on a worktree that is sitting right there.
+pub fn path(repo: &str, branch: &str) -> PathBuf {
+    PathBuf::from(repo).join(format!(".worktrees/{}", sanitize(branch)))
+}
+
 /// Create (or reuse) a worktree for `branch` and return its absolute path.
 ///
 /// `start_point` is the commit-ish a NEW branch is cut from; `None` falls back
@@ -49,7 +58,7 @@ pub async fn create(repo: &str, branch: &str, start_point: Option<&str>) -> Resu
         }
     }
 
-    let abs = PathBuf::from(repo).join(&rel);
+    let abs = path(repo, branch);
     // Carry skills into the worktree (mirrors the Tauri behavior).
     let _ = copy_skills(repo, &abs).await;
     Ok(abs)

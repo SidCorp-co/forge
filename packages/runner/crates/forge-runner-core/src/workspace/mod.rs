@@ -9,12 +9,14 @@
 //! - `provision`  — workspace provisioning (clone + skills + .mcp.json) on bind
 //! - `plugin_sync`— device-level shared-skill plugin channel (ISS-739)
 //! - `refresh`    — fetch + fast-forward before an agent reads the workspace
+//! - `salvage`    — commit + push a failed job's uncommitted work
 
 pub mod bundled_skills;
 pub mod orientation;
 pub mod plugin_sync;
 pub mod provision;
 pub mod refresh;
+pub mod salvage;
 pub mod skill_sync;
 pub mod verdict;
 pub mod worktree;

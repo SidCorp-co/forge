@@ -67,6 +67,8 @@ export const claudeCodeAdapter: RunnerAdapter = {
         runnerId: runner.id,
         runnerType: runner.type,
         dispatchedAt: job.dispatchedAt.toISOString(),
+        // cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/salvage.rs — the runner writes this into the salvage commit's `forge-attempt` trailer, which is how a human reading `git log` on an ISS-* branch tells three salvage commits apart. It reads the field as optional, so dropping it degrades to an untrailered commit rather than a break.
+        attempts: job.attempts,
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner keys its local session by `jobId`, so this field is its only route back to the agent_sessions row; drop it and the transcript, claudeSessionId and diff are never written.
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
       },

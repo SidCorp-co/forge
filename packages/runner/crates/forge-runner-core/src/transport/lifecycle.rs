@@ -38,8 +38,22 @@ pub async fn complete(
 
 /// Force-fail a job with an error message.
 pub async fn fail(client: &CoreClient, job_id: &str, error: &str) -> Result<()> {
+    fail_with_salvage(client, job_id, error, None).await
+}
+
+/// Force-fail a job, carrying what the runner preserved of its working copy.
+// cm:edge contract -> packages/core/src/jobs/lifecycle-routes.ts — `failBodySchema` there is `.strict()`, so an unknown key in `salvage` rejects the WHOLE request with a 400 and the failure itself is never recorded. `workspace::salvage::Salvage::to_json` is the only thing that should build this value.
+pub async fn fail_with_salvage(
+    client: &CoreClient,
+    job_id: &str,
+    error: &str,
+    salvage: Option<serde_json::Value>,
+) -> Result<()> {
     let url = client.url(&format!("/api/jobs/{job_id}/fail"));
-    let body = serde_json::json!({ "error": error });
+    let mut body = serde_json::json!({ "error": error });
+    if let Some(s) = salvage {
+        body["salvage"] = s;
+    }
     send(client, &url, body).await
 }
 

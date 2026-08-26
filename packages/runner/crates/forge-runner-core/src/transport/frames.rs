@@ -46,6 +46,11 @@ pub struct JobAssigned {
     pub runner_type: Option<String>,
     #[serde(default)]
     pub agent_session_id: Option<String>,
+    /// `jobs.attempts` — which try this is. `None` from a core that predates
+    /// the field; the salvage commit then simply omits its `forge-attempt`
+    /// trailer rather than guessing a number.
+    #[serde(default)]
+    pub attempts: Option<u32>,
 }
 
 /// Extract a `jobId` from a `job.cancel` / `job.cancelRequested` frame.
