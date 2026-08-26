@@ -64,7 +64,7 @@ export interface PipelineWedgeEvent {
   hop: WedgeHop;
   // cm:guard `issue` carries NO job/session id, so it only fits an alarm whose subject is the issue itself (RFC 0002 INV-7 churn) — the dedup key is `wedge:<entityId>`, so passing an issue id under `entity:'job'` silently makes the once-per-entity guard mean once-per-issue while the payload claims a job that does not exist
   // cm:guard `capacity` is the one entity whose id is NOT a row id — build it with `capacityWedgeEntityId`, never by hand, because its whole purpose is that many jobs hitting the same empty pool collapse into ONE notification. Passing a job id here would emit per failed job, which is the spam this type exists to avoid.
-  entity: 'job' | 'session' | 'run' | 'outbox' | 'issue' | 'capacity';
+  entity: 'job' | 'session' | 'run' | 'outbox' | 'issue' | 'capacity' | 'runner';
   entityId: string;
   /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
   reason: string;

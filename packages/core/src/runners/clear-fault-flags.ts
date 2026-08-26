@@ -13,6 +13,7 @@ import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { broadcastRunnerChanged } from './apply-runner-limit.js';
 
 // cm:guard every fault-flag column on `runners` must be listed here AND in the guard below — a column this reset forgets is one the operator cannot clear from the UI, which is how a box ends up permanently un-dispatchable
@@ -48,5 +49,7 @@ export async function clearRunnerFaultFlags(runnerId: string, projectId: string)
   if (!cleared) return false;
   logger.info({ runnerId, projectId }, 'runner fault flags cleared by operator');
   broadcastRunnerChanged(projectId, runnerId);
+  // cm:guard forgetting the fault MUST also clear the notification it raised — the quarantine wedge is keyed per runner and re-notifies at most daily, so an operator who fixes the box by hand and clears it here would otherwise keep an alarm in their bell for a fault that no longer exists, and see nothing new if it comes back the same day
+  await resolvePipelineWedge(runnerId);
   return true;
 }

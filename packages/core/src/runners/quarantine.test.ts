@@ -18,9 +18,11 @@ vi.mock('../db/client.js', () => ({
 const broadcastRunnerChanged = vi.fn();
 vi.mock('./apply-runner-limit.js', () => ({ broadcastRunnerChanged }));
 
-const { parsePreflightCheck, maybeQuarantineRunner, clearRunnerQuarantine } = await import(
-  './quarantine.js'
-);
+const emitPipelineWedge = vi.fn();
+const resolvePipelineWedge = vi.fn();
+vi.mock('../pipeline/wedge.js', () => ({ emitPipelineWedge, resolvePipelineWedge }));
+
+const { maybeQuarantineRunner, clearRunnerQuarantine } = await import('./quarantine.js');
 
 const PROJECT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const RUNNER_A = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -38,36 +40,8 @@ beforeEach(() => {
   returning.mockReset();
   returning.mockResolvedValue([]);
   broadcastRunnerChanged.mockClear();
-});
-
-describe('parsePreflightCheck', () => {
-  it('extracts the check token from a box-attributable error', () => {
-    expect(
-      parsePreflightCheck(
-        'preflight_failed: push_credentials: git@github.com: Permission denied (publickey).',
-      ),
-    ).toBe('push_credentials');
-  });
-
-  it('trims whitespace around the token', () => {
-    expect(parsePreflightCheck('preflight_failed:  work_tree : dirty checkout')).toBe('work_tree');
-  });
-
-  it('returns null for a non-box-attributable error', () => {
-    expect(parsePreflightCheck('[RESULT_ERROR] success: spend limit hit')).toBeNull();
-    expect(parsePreflightCheck('job_failed')).toBeNull();
-  });
-
-  it('returns null for null/undefined/empty', () => {
-    expect(parsePreflightCheck(null)).toBeNull();
-    expect(parsePreflightCheck(undefined)).toBeNull();
-    expect(parsePreflightCheck('')).toBeNull();
-  });
-
-  it('returns null when the prefix carries no check token', () => {
-    expect(parsePreflightCheck('preflight_failed:')).toBeNull();
-    expect(parsePreflightCheck('preflight_failed:   ')).toBeNull();
-  });
+  emitPipelineWedge.mockClear();
+  resolvePipelineWedge.mockClear();
 });
 
 describe('maybeQuarantineRunner', () => {
@@ -152,6 +126,70 @@ describe('maybeQuarantineRunner', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  // cm:why the no-ack class: on pixelight one runner took 10 consecutive dispatches without a single ack over 4h41m and nothing here could see it
+  it('trips on a streak of never-claimed dispatches', async () => {
+    limit.mockResolvedValueOnce([
+      { status: 'failed', error: 'dispatch_unclaimed' },
+      { status: 'failed', error: 'dispatch_unclaimed' },
+    ]);
+    expect(
+      await maybeQuarantineRunner(RUNNER_A, PROJECT_A, JOB_CURRENT, 'dispatch_unclaimed'),
+    ).toBe(true);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ quarantineReason: 'dispatch_unclaimed' }),
+    );
+  });
+
+  it('does not trip on two never-claimed dispatches (streak is 3)', async () => {
+    limit.mockResolvedValueOnce([{ status: 'failed', error: 'dispatch_unclaimed' }]);
+    expect(
+      await maybeQuarantineRunner(RUNNER_A, PROJECT_A, JOB_CURRENT, 'dispatch_unclaimed'),
+    ).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not let a no-ack and a preflight failure extend each other', async () => {
+    limit.mockResolvedValueOnce([
+      { status: 'failed', error: 'dispatch_unclaimed' },
+      { status: 'failed', error: 'preflight_failed: push_credentials: x' },
+    ]);
+    expect(
+      await maybeQuarantineRunner(RUNNER_A, PROJECT_A, JOB_CURRENT, 'dispatch_unclaimed'),
+    ).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  // cm:guard `session_lost` must keep tripping nothing — a session that started and then died can die from the agent's own work, so a streak of them says nothing about the box
+  it('ignores a streak of lost sessions entirely', async () => {
+    expect(await maybeQuarantineRunner(RUNNER_A, PROJECT_A, JOB_CURRENT, 'session_lost')).toBe(
+      false,
+    );
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('alarms the project owner once when it trips', async () => {
+    limit.mockResolvedValueOnce([
+      { status: 'failed', error: 'dispatch_unclaimed' },
+      { status: 'failed', error: 'dispatch_unclaimed' },
+    ]);
+    await maybeQuarantineRunner(RUNNER_A, PROJECT_A, JOB_CURRENT, 'dispatch_unclaimed');
+    expect(emitPipelineWedge).toHaveBeenCalledTimes(1);
+    expect(emitPipelineWedge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: PROJECT_A,
+        entity: 'runner',
+        entityId: RUNNER_A,
+        reason: 'quarantined:dispatch_unclaimed',
+      }),
+    );
+  });
+
+  it('alarms nobody when it does not trip', async () => {
+    limit.mockResolvedValueOnce([{ status: 'failed', error: 'dispatch_unclaimed' }]);
+    await maybeQuarantineRunner(RUNNER_A, PROJECT_A, JOB_CURRENT, 'dispatch_unclaimed');
+    expect(emitPipelineWedge).not.toHaveBeenCalled();
+  });
+
   it('never throws when the DB query fails (best-effort contract)', async () => {
     limit.mockRejectedValueOnce(new Error('db down'));
     await expect(
@@ -175,10 +213,18 @@ describe('clearRunnerQuarantine', () => {
     expect(broadcastRunnerChanged).toHaveBeenCalledWith(PROJECT_A, RUNNER_A);
   });
 
-  it('no-ops (no broadcast) when the runner was not quarantined', async () => {
+  // cm:why the alarm is cleared by a job SUCCEEDING on the box, never by the quarantine expiring
+  it('resolves the runner alarm when a row was actually cleared', async () => {
+    returning.mockResolvedValueOnce([{ id: RUNNER_A }]);
+    await clearRunnerQuarantine(RUNNER_A, PROJECT_A);
+    expect(resolvePipelineWedge).toHaveBeenCalledWith(RUNNER_A);
+  });
+
+  it('no-ops (no broadcast, no resolve) when the runner was not quarantined', async () => {
     returning.mockResolvedValueOnce([]);
     await clearRunnerQuarantine(RUNNER_A, PROJECT_A);
     expect(broadcastRunnerChanged).not.toHaveBeenCalled();
+    expect(resolvePipelineWedge).not.toHaveBeenCalled();
   });
 
   it('never throws when the DB update fails (best-effort contract)', async () => {
