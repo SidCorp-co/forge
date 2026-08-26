@@ -48,3 +48,21 @@ curl -sS -A "$UA" \
 Refreshing means new binaries: re-check the axis range against the `weight` string in
 `../layout.tsx` (an axis that no longer spans a weight in use renders that weight
 synthesised), and update the table above.
+
+## Verifying on a live page
+
+The generated `font-family` names changed with the move to `next/font/local`. They are derived
+from the **variable name in `../layout.tsx`**, not the family name, so the compiled CSS now says
+`font-family: hanken` and `font-family: jetbrainsMono` where it used to say
+`__Hanken_Grotesk_<hash>` and `__JetBrains_Mono_<hash>`.
+
+ISS-306 left a live check behind — `getComputedStyle(document.body).fontFamily` must start with
+the next/font family — and it is still the right check, because a correct-looking compiled CSS
+bundle has already shipped a live page rendering system sans once. Only the expected string
+moved:
+
+```js
+getComputedStyle(document.body).fontFamily.startsWith('hanken')   // was '__Hanken_Grotesk_'
+```
+
+Reading the old string as a regression is the mistake this section exists to prevent.
