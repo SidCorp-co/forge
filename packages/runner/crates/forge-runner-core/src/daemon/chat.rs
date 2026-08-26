@@ -423,11 +423,8 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
             ev = rx.recv() => match ev {
                 Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); dirty = true; }
                 Some(RunnerEvent::Stdout(json)) => {
-                    let uses = count_tool_uses(&json);
-                    if uses > 0 {
-                        tool_calls = tool_calls.saturating_add(uses);
-                        dirty = true;
-                    }
+                    // cm:guard counting must NOT set `dirty` — a tool-heavy stretch emits no assistant text, so marking it dirty turns a silent period into one full-transcript PATCH every FLUSH_INTERVAL. Session 5250d5e1 (15 min, 17 text turns, dozens of tool calls) would have gone from ~17 writes to ~1200, each carrying the whole growing messages array. The count rides the next text flush and the terminal patch, which always fires; nothing reads the interim value.
+                    tool_calls = tool_calls.saturating_add(count_tool_uses(&json));
                     if let Some(msg) = parse_assistant_message(&json) {
                         turn_msgs.push(msg);
                         dirty = true;
