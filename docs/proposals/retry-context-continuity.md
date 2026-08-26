@@ -1,6 +1,6 @@
 # Retry context continuity
 
-Status: **L1, L2 and L3 shipped** (`da2a2189` core, `948d50f6` runner) · L4 open · Verified against
+Status: **L1, L2 and L3 shipped** (`da2a2189` core, `948d50f6`+`c1080aa9` runner) · L4 open · Verified against
 the tree 2026-08-26
 
 L1 reaches a runner only on its next release; core has always treated `salvage` as optional, so a
@@ -303,7 +303,7 @@ should land there rather than as separate work.
 | Order | Layer | Depends on | Surface | State |
 |---|---|---|---|---|
 | 1 | **L2** | nothing | core prompt only | shipped `da2a2189` |
-| 2 | **L1** | L2 for the sha to be read | Rust + `fail` contract + `failure_meta` | shipped `948d50f6` |
+| 2 | **L1** | L2 for the sha to be read | Rust + `fail` contract + `failure_meta` | shipped `c1080aa9` — `948d50f6` targeted a directory that does not exist, see the correction above |
 | 3 | **L4** | nothing | core classifier/retry | open |
 | 4 | **L3** | nothing | core dispatcher | shipped `da2a2189` |
 
