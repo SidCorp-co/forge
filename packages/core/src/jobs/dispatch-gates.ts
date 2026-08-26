@@ -489,7 +489,7 @@ function buildBarrierFragments(args: {
       : sql``;
 
   // cm:guard scope the gate to job types that HAVE a trigger status, i.e. the staged pipeline steps — `drive` is the one that must stay out, and leaving it in is unrecoverable rather than merely wrong: the autonomous driver is stamped `stageStatus:'open'` yet owns the issue's WHOLE walk, so a retry clone or a released-from-hold successor reads as stale the moment the driver has moved the issue anywhere, and `dispatchAutonomous` enqueues at the entry status only — nothing re-creates the job, and the issue is left permanently dead with zero jobs.
-  // cm:edge lockstep -> packages/core/src/pipeline/recovery-verifier.ts — `JOB_TYPE_EXPECTED_EXIT_STATUS.drive` is deliberately EMPTY for this same reason ("the driver owns the issue's whole walk"); a job type given an exit mapping there belongs in this scope, and one taken away must leave it
+  // cm:edge lockstep -> packages/core/src/pipeline/recovery-verifier.ts — `JOB_TYPE_ENTRY_STATUS` is the twin of this scope (the same 8 keys, and `drive` absent from both for the reason above); NOT `JOB_TYPE_EXPECTED_EXIT_STATUS`, whose retired `staging: ['reopen']` entry names a type no status dispatches, so keying the scope off exit mappings would re-admit a type the registry has already dropped
   const gatedJobTypes = Object.keys(TRIGGER_STATUS_BY_JOB_TYPE);
   const stageJobTypeScope = sql`j.type IN (${sql.join(
     gatedJobTypes.map((t) => sql`${t}`),

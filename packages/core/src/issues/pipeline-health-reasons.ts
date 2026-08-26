@@ -33,21 +33,39 @@ export function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['w
   };
 }
 
+/** The `retry_cooldown` waitingOn for a candidate parked under a provider
+ *  Retry-After hint, or `null`. */
+// cm:guard this arm is what keeps the cooldown honest, and it predates nothing — for every cooldown-gated job on `main` this classifier reported NO waitingOn at all, i.e. exactly the idle-and-actionable render the file's own guard forbids, because `retry_cooldown` had no member in `PipelineWaitingReason` while `buildGateReasonCase` has returned it since ISS-197
+export function retryCooldownWaitingOn(
+  candidate: PipelineHealthJob,
+  sinceIso: string,
+  now: Date,
+): PipelineHealth['waitingOn'] {
+  if (!candidate.retryAfterAt || candidate.retryAfterAt <= now) return undefined;
+  return {
+    reason: 'retry_cooldown',
+    since: sinceIso,
+    details: {
+      queuedJobId: candidate.id,
+      queuedJobType: candidate.type,
+      retryAfterAt: candidate.retryAfterAt.toISOString(),
+    },
+  };
+}
+
 /** The `stale_trigger` waitingOn for a queued candidate answering a trigger the
  *  issue has already left, or `null`. */
-// cm:guard every clause below mirrors one in `predicates.staleTrigger`, in the same order, and the two must agree on EVERY input — this arm claims the step is about to be discarded, so a clause present here and absent there tells the reader a discard is coming that will never happen, and the reverse hides one that is
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `predicates.staleTrigger` is the authority: the job-type scope (which keeps `drive` out), the per-type `workingStatus` allowance, and the retry-cooldown arm that outranks it in `buildGateReasonCase` all have to be reflected here
+// cm:guard every clause here mirrors one in `predicates.staleTrigger`, and the two must agree on EVERY input — this arm claims the step is about to be discarded, so a clause here the gate lacks promises a discard that never comes, and one the gate has and this lacks hides a discard that does. The cooldown is NOT among them: the gate resolves it in an earlier CASE arm, so the classifier's caller must reach `retryCooldownWaitingOn` first, in that same order.
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `predicates.staleTrigger` is the authority for both the job-type scope (which keeps `drive` out) and the per-type `workingStatus` allowance
 export function staleTriggerWaitingOn(
   candidate: PipelineHealthJob,
   liveStatus: string,
   sinceIso: string,
-  now: Date,
 ): PipelineHealth['waitingOn'] {
   const declared = candidate.stageStatus;
   if (!declared || declared === liveStatus) return undefined;
   if (!TRIGGER_STATUS_BY_JOB_TYPE[candidate.type as JobType]) return undefined;
   if (WORKING_STATUS_BY_JOB_TYPE[candidate.type as JobType] === liveStatus) return undefined;
-  if (candidate.retryAfterAt && candidate.retryAfterAt > now) return undefined;
   return {
     reason: 'stale_trigger',
     since: sinceIso,

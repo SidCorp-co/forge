@@ -36,6 +36,7 @@ import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import {
   heldWaitingOn,
+  retryCooldownWaitingOn,
   runnerWaitingOn,
   staleTriggerWaitingOn,
 } from './pipeline-health-reasons.js';
@@ -198,6 +199,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
+  // cm:guard the cooldown arm belongs HERE, third, exactly where `retry_cooldown` sits in the dispatch CASE — ahead of both issue_busy arms and of staleness. Until ISS-789 the reason had no member in `PipelineWaitingReason` at all, so every cooldown-gated job rendered as an idle, actionable issue while the picker was refusing it.
+  const cooldown = retryCooldownWaitingOn(candidate, sinceIso, input.now ?? new Date());
+  if (cooldown) {
+    out.waitingOn = cooldown;
+    return out;
+  }
+
   const blockingSession = sessions.find(
     (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
   );
@@ -217,7 +225,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   }
 
   // cm:guard this arm must sit exactly where `stale_trigger` sits in the dispatch CASE — after both issue_busy arms, before blocked_by. Reporting it earlier would claim a job is stale during the one window where a non-trigger status is legitimate (a sibling step mid-flight), and omitting it renders the issue idle-and-actionable for the up-to-a-tick window before `jobs/stale-trigger.ts` discards the job.
-  const stale = staleTriggerWaitingOn(candidate, issue.status, sinceIso, input.now ?? new Date());
+  const stale = staleTriggerWaitingOn(candidate, issue.status, sinceIso);
   if (stale) {
     out.waitingOn = stale;
     return out;

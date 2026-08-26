@@ -141,7 +141,8 @@ describe('stale_trigger — the gate whose job answers a trigger the issue has l
         ],
       }),
     );
-    expect(out.waitingOn).toBeUndefined();
+    // cm:guard yields TO the cooldown reason, never to silence — reporting nothing is the idle-and-actionable render this file's sibling guard forbids, and it is what `main` did for every cooldown-gated job
+    expect(out.waitingOn?.reason).toBe('retry_cooldown');
   });
 
   it('reports it again once the cooldown has expired', () => {
