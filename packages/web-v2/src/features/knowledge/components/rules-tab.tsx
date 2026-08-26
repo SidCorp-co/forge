@@ -11,7 +11,7 @@ import {
   Field,
   Icon,
   Input,
-  KnowledgeMarkdown,
+  Markdown,
   Skeleton,
   Textarea,
   Toggle,
@@ -449,7 +449,7 @@ function RuleRow({
             </Button>
             {showPreview && (
               <div className="mt-2 overflow-x-auto rounded-md border border-line bg-sunken p-3">
-                <KnowledgeMarkdown>{debouncedBody}</KnowledgeMarkdown>
+                <Markdown>{debouncedBody}</Markdown>
               </div>
             )}
           </div>

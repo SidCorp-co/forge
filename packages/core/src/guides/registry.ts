@@ -206,6 +206,52 @@ Statuses, the three exits from \`draft\`, and the description contract: guide \`
 Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.md\`.`,
   },
   {
+    slug: 'writing-an-issue',
+    title: 'Writing an issue',
+    summary:
+      'The six-block shape an issue body takes, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
+    version: 1,
+    // cm:guard the HTML-artifact paragraph must keep saying "attach, never paste": `prompt/user.ts` truncates `description` at DEFAULT_FIELD_CAPS.description before an agent sees it, so an inlined page evicts the requirements instead of merely bloating them
+    body: `## Writing an issue
+
+A reader must get the problem in about fifteen seconds. Six blocks, in this order. The first four are required; the last two appear only when they earn it.
+
+| Block | Rule |
+|---|---|
+| **Opening line** | One or two sentences in a blockquote: what is wrong, and what it costs. Plain language — no function, table or file names. |
+| **Who it hurts** | A table, at most four rows: *who · what they hit · how often or how wide*. If no row can be filled, this is probably not an issue — check the four gates in \`what-is-an-issue\`. |
+| **Now → wanted** | Exactly one diagram, at most eight nodes. It replaces a paragraph; it never accompanies one. |
+| **What to do** | At most six bullets, each an outcome someone can observe. Not function names — and not acceptance criteria, which are decided when the issue RUNS, not when it is filed. |
+| **Waiting on a decision** | Only when genuinely blocked. State the question and what each answer costs. |
+| **Evidence** | Always last. Every row carries *date · what was measured · source*. If it cannot be measured it is an opinion — cut it. |
+
+### Technical detail is placed, not deleted
+
+\`file:line\`, column names, SQL, commit hashes, schema fields: these belong in **Evidence**, or in a comment. Never in the first four blocks.
+
+This is a placement rule, not a ban. A verified constraint — *"this table has no \`started_at\` column"* — cost real work to establish, and whoever builds the thing still needs it. Its problem is standing in the reader's way, not existing.
+
+### Diagrams
+
+A fenced \`mermaid\` block renders as a diagram in issue descriptions, plans and comments. Prefer it over prose and over ASCII art: it is a few hundred characters, and an agent reading the issue through MCP still understands it as text.
+
+\`\`\`mermaid
+flowchart LR
+  A["Rebase finishes"] --> B{"Can the warning<br/>be cleared?"}
+  B -->|no path exists| C["Still flagged stale"]
+\`\`\`
+
+### When mermaid is not enough
+
+Attach a self-contained \`.html\` file. It renders inline as a sandboxed artifact, in issues and in comments alike.
+
+Do NOT paste that HTML into the description. The description is truncated before it reaches an agent's prompt (8,000 characters by default), and a styled page is large enough on its own to push the real content past that limit — the agent then receives markup and loses the requirements. An attachment sits outside the prompt path, so it costs nothing.
+
+### Comments
+
+Same discipline, shorter. Lead with the outcome, put the trace underneath. A comment is the right home for detail the description should not carry — which is what makes the placement rule above affordable.`,
+  },
+  {
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:

@@ -750,7 +750,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'description a requirements contract (outcome, business rules, invariants, ' +
     'out-of-scope) — not an implementation script naming files, endpoints or ' +
     '"follow the pattern at <path>"; those claims go stale and outrank live ' +
-    'exploration in practice. See guide pipeline-and-issue-lifecycle. ' +
+    'exploration in practice. See guides pipeline-and-issue-lifecycle and writing-an-issue (body shape; mermaid fences render; ATTACH .html, never paste it into description). ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
     'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
     'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +

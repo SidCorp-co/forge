@@ -7,11 +7,13 @@
 // arrow keys) instead of dumping each into its own browser tab; everything else
 // is a download link with name + size. Accepts the minimal
 // `{ id; name; mime; size; url }` shape so it works for both issue attachments
-// and comment attachments.
+// and comment attachments. `text/html` renders inline as a sandboxed artifact
+// (ISS-format work, 2026-08-26) rather than as a download link.
 
 import { Icon } from "@/design";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { useMemo, useState } from "react";
+import { HtmlAttachmentCard } from "./html-attachment-card";
 import { ImageLightbox, type LightboxImage } from "./image-lightbox";
 
 export interface AttachmentListItem {
@@ -47,6 +49,13 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
         {rows.map((a) => {
           const href = coreFileUrl(a.url);
           const isImage = a.mime.startsWith("image/");
+          if (a.mime === "text/html") {
+            return (
+              <li key={a.id} className="w-full">
+                <HtmlAttachmentCard name={a.name} url={a.url} size={a.size} />
+              </li>
+            );
+          }
           const galleryIndex = isImage
             ? images.findIndex((img) => img.id === a.id)
             : -1;
