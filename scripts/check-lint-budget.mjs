@@ -122,9 +122,11 @@ function git(args) {
   }
 }
 
+// cm:guard a failed `git diff --cached` must NOT become an empty staged set. freezeFaults skips every file outside the set, so null-to-empty makes --staged print a clean report and exit 0 over nothing — the same null-reads-as-clean shape branchDelta guards against, and the reason this returns an error instead of a Set.
 function stagedFiles() {
   const out = git(['diff', '--cached', '--name-only', '--diff-filter=ACM']);
-  return new Set((out ?? '').split('\n').filter(Boolean));
+  if (out === null) return { error: 'git diff --cached failed — cannot tell what is staged' };
+  return { files: new Set(out.split('\n').filter(Boolean)) };
 }
 
 // cm:guard drain needs a base that is not HEAD, and a push to `main` has none — origin/main IS HEAD there, so the delta is empty and every drainable file would look untouched. Freeze still runs; drain is skipped and the skip is PRINTED, because an unprinted skip reads exactly like a pass and that is how the prose gate ran over zero files while printing success.
@@ -225,7 +227,16 @@ if (baseline === null) {
   process.exit(2);
 }
 
-const failures = freezeFaults(measured, baseline.files, mode === '--staged' ? stagedFiles() : null);
+let staged = null;
+if (mode === '--staged') {
+  staged = stagedFiles();
+  if (staged.error) {
+    console.error(`check-lint-budget: ${staged.error}`);
+    process.exit(2);
+  }
+}
+
+const failures = freezeFaults(measured, baseline.files, staged?.files ?? null);
 
 // cm:guard drain is an --all rule only. --staged runs in .githooks/pre-commit, which must stay cheap and must not judge a payment against a half-staged tree; the branch delta this measures is what CI sees, and that is where the payment is due.
 let matchers;
@@ -266,12 +277,19 @@ for (const [scope, n] of currentByScope)
 if (drainNote) console.log(`  ${drainNote}`);
 if (failures.length === 0) process.exit(0);
 
+// cm:guard one block per FILE, so the count is files-to-fix. Freeze and drain can both fault the same file — a new diagnostic in a file frozen at zero fails both — and printing it twice reported "2 file(s) failed" for one file, which is a checker overstating the work it is asking for.
+const byFile = new Map();
 for (const f of failures) {
-  console.error(`\n${f.file}`);
-  for (const r of f.reasons) console.error(`  ${r}`);
+  const reasons = byFile.get(f.file) ?? [];
+  reasons.push(...f.reasons);
+  byFile.set(f.file, reasons);
+}
+for (const [file, reasons] of byFile) {
+  console.error(`\n${file}`);
+  for (const r of reasons) console.error(`  ${r}`);
 }
 console.error(
-  `\n${failures.length} file(s) failed the lint budget.\n` +
+  `\n${byFile.size} file(s) failed the lint budget.\n` +
     'A file already carrying debt may keep it, but it may not gain more — and a file you\n' +
     'touched in a draining scope must come back strictly lower than its baseline.\n' +
     'See the diagnostics in full with: pnpm --filter <pkg> exec biome check src\n' +

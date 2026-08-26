@@ -135,28 +135,38 @@ so each such axis must also name where its debt is frozen and which direction im
 lives in the manifest, not in the baseline file, because `--update-baseline` rewrites those files
 and a rule a re-freeze can silently drop is not a rule.
 
-**Level 1 is forbidden, and two rules say so rather than this paragraph.** A check that runs,
+**Level 1 is forbidden, and three rules say so rather than this paragraph.** A check that runs,
 prints, and blocks nothing has no baseline to be held to, and every gate this repo lost was at
 level 1 while documented as blocking — so a check you cannot pass on the day you add it gets frozen
-at level 2 that same day, never merged at level 1 with a comment promising cleanup. `continue-on-error: true`
-is the same shape written in YAML. Audit **R8** fails on any CI step carrying it (zero across
-`.github/workflows/` since the desktop job was deleted) and **R9** fails on any biome rule set to
-`warn` that no baselined checker counts — biome exits 0 on a warning, so `packages/core` carried 280
-uncounted diagnostics through a `hardened` profile with ten gates over it, invisible to every audit
-rule that judges a *declared* axis. Neither of those is a number; both are a build that goes red.
+at level 2 that same day, never merged at level 1 with a comment promising cleanup. Each rule below
+is a build that goes red, not a number:
 
-A `down` baseline's total is compared **per area** (a key's first two path segments) and only over
-areas the base revision already had. Registering a new scope on an existing checker therefore
-freezes that scope's debt on arrival instead of being rejected for raising the total — the
-`--update-baseline` amnesty is still closed where it matters, because debt on a *new file inside an
-already-covered area* raises that area's total and still fails.
+- **R8** fails on any CI step carrying `continue-on-error: true` — level 1 written in YAML. Zero
+  across `.github/workflows/` since the desktop job was deleted, which is what made freezing it free.
+- **R9** fails on any biome rule set to `warn` or `info` that no baselined checker counts. biome
+  exits 0 on both (measured in `core`: *"Found 409 warnings. Found 10 infos."*, status 0), so
+  `packages/core` carried 280 uncounted diagnostics through a `hardened` profile with ten gates over
+  it, invisible to every audit rule that judges a *declared* axis. It reads the configs, so a rule
+  left non-blocking by preset default is caught only where a lint-budget scope already measures it.
+- **R10** fails on any axis the manifest declares at level 1. R1–R9 all skip an axis that is not
+  level 2, and `hardened` needs 4 of 5 axes at ≥ 2, so before R10 a sixth axis could declare 1 and
+  pass the whole audit while this paragraph said it could not.
+
+A `down` baseline's totals are compared **per area** (a key's first two path segments), one total
+each, and only over areas the base revision already had. Registering a new scope on an existing
+checker therefore freezes that scope's debt on arrival instead of being rejected for raising a global
+total. Two properties matter: debt on a *new file inside an already-covered area* raises that area's
+total and fails, and debt *moved between two covered areas* fails too — which one global sum allowed.
+The declared cost is that a re-freeze moving a debt-carrying file into a first-time-seen area escapes
+its old area's total; from the baseline alone that edit and a genuine new scope are the same thing.
+A test in `scripts/lib/baseline-ratchet.test.mjs` pins it so it stays declared rather than rediscovered.
 
 The manifest also declares a `profile` — the shape the whole repo claims, never the tools it uses:
 `baseline` one axis measures · `standard` two axes block and both meta-checks are present ·
 `hardened` every declared axis blocks and every `ci-passed` needs-job is asserted. Today: hardened.
 `conformance-audit.mjs` is the only check whose subject is the **setup** rather than the code, and
 it exists because the protocol is otherwise content-free — a repo could gate nothing, declare a
-profile, and be perfectly conformant. Its nine rules and what each was born from: `scripts/README.md`.
+profile, and be perfectly conformant. Its ten rules and what each was born from: `scripts/README.md`.
 
 | Axis | Gate | Owns | Must not touch |
 |---|---|---|---|
@@ -198,24 +208,24 @@ rather than per line, so moving code inside a file is not a violation. The forma
 there on purpose: enabling it is a 313-file, 22k-line diff that would bury every real change under
 it, and it is a separate decision from the linter.
 
-`packages/core` joined it on 2026-08-27 (ISS-833) with 280 diagnostics across 82 files, and that
-registration is the whole argument for one shared ratchet: a scope entry in
+`packages/core` joined it on 2026-08-27 (ISS-833) with 280 diagnostics that nothing counted, and
+that registration is the whole argument for one shared ratchet: a scope entry in
 `.forge/conformance.json` plus one `--update-baseline` run, no second script and no second baseline
-file. **495 violations across 179 files frozen today, from an `original` of 226 (web-v2) + 280
-(core)** — that `original` map is immutable, because a denominator `--update-baseline` recomputes
+file. **493 violations across 178 files frozen today — web-v2 215 of an `original` 226, core 278 of
+280** — and that `original` map is immutable, because a denominator `--update-baseline` recomputes
 makes every percentage relative to the last re-freeze and can never fall.
 
 Core's scope additionally declares `drain`, which is the half freezing does not do: **touch a file
 under `packages/core/src` that is not a test, and its count must come back strictly lower.** Equal
 is a failure. Freezing alone does not reduce — the codemap baseline sat frozen for months at 3%
-drained — and one diagnostic per PR clears core's 55 production sites in weeks with no cleanup
-project. Pay it by restructuring so the compiler narrows (`issues/pipeline-health.ts` splits one
-ternary into two early returns and loses two assertions with no behaviour change) or with a
-`// biome-ignore <rule>: <the invariant>` that states why the assertion holds. Test files and
-`web-v2` are freeze-only and are never asked to pay: `rows[0]!` in a test is idiomatic, and a wrong
-one is a test failure rather than a production crash. Drain needs a branch delta, so a push straight
-to `main` runs freeze-only and **prints that it skipped** — an unprinted skip reads exactly like a
-pass.
+drained — and one diagnostic per PR clears core's remaining 53 drainable diagnostics across 32 files
+in weeks with no cleanup project. Pay it by restructuring so the compiler narrows
+(`issues/pipeline-health.ts` hoists a ternary that `!` had propped up and narrows with `&&`, losing
+two assertions with no behaviour change) or with a `// biome-ignore <rule>: <the invariant>` that
+states why the assertion holds. Test files and `web-v2` are freeze-only and are never asked to pay:
+`rows[0]!` in a test is idiomatic, and a wrong one is a test failure rather than a production crash.
+Drain needs a branch delta, so a push straight to `main` runs freeze-only and **prints that it
+skipped** — an unprinted skip reads exactly like a pass.
 
 **Never `biome check --write` these rules.** It rewrites `a!.b` to `a?.b`, converting "throw when
 the invariant is violated" into "silently evaluate to undefined" — VISION №10 backwards, and the one

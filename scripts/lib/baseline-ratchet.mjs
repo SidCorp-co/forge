@@ -108,18 +108,33 @@ function area(key) {
   return seg.length >= 2 ? `${seg[0]}/${seg[1]}` : '';
 }
 
-// cm:guard TOTAL first, per-key second — and renames are why. A path-keyed baseline re-freezes a moved file under its new key, so "no new keys" fails every rename and a rule that fires on renames is a rule someone turns off. A total that may not rise cannot be gamed: debt has to leave for debt to arrive.
-// cm:guard the total is per AREA, and only over areas the base revision already had, because a total over EVERY key made widening a baseline's scope impossible: registering `packages/core` on check-lint-budget takes .forge/lint-baseline.json from 216 frozen to ~496 and `improves: down` rejected it, so the manifest's promise that declaring a new rule is never punished was false for any checker sharing an existing baseline file. New debt on a new FILE inside a covered area still raises that area's total and still fails, which is the anti-gaming property the guard above is about.
+/** Per-area totals over a flattened baseline, restricted to the areas in `only` when given. */
+function areaTotals(m, only) {
+  const out = new Map();
+  for (const [k, v] of m) {
+    const a = area(k);
+    if (only && !only.has(a)) continue;
+    out.set(a, (out.get(a) ?? 0) + v);
+  }
+  return out;
+}
+
+// cm:guard TOTALS first, per-key second — and renames are why. A path-keyed baseline re-freezes a moved file under its new key, so "no new keys" fails every rename and a rule that fires on renames is a rule someone turns off. A total that may not rise cannot be gamed: debt has to leave for debt to arrive.
+// cm:guard one total PER AREA, not one total over the covered areas together. A single covered-wide sum let debt move between two areas that both already existed — 50 fixes in web-v2 paying for 50 new diagnostics in core, net flat, accepted — and the pre-ISS-833 global sum had exactly the same hole. Per-area is what makes "debt has to leave for debt to arrive" true of the area it arrives in.
+// cm:guard an area the base revision did NOT have is exempt, and that is the price of letting a baseline's scope widen at all. A total over every area made registering a new checker scope impossible: `packages/core` joining check-lint-budget takes .forge/lint-baseline.json from 216 frozen to 493, which `improves: down` rejected, so the manifest's promise that declaring a new rule is never punished was false for any checker sharing a baseline file. The declared cost: a re-freeze that MOVES a debt-carrying file into a first-time-seen area escapes its old area's total and may grow on the way (pinned by a test in baseline-ratchet.test.mjs). Both halves sit behind a reviewed --update-baseline, and the widening shows up in the same diff as the scope entry that caused it.
 function compareDown(before, now) {
   const b = counts(before);
   const n = counts(now);
-  const covered = new Set([...b.keys()].map(area));
   // cm:guard an EMPTY previous baseline covers everything, never nothing. `covered` is derived from the base revision's keys, so an empty one would exempt every area and turn a first fill of `{files:{}}` into an accept-anything pass — the fail-open shape this file exists to close, arrived at by making it stricter elsewhere.
-  const scoped = (k) => covered.size === 0 || covered.has(area(k));
-  const sum = (m) => [...m].reduce((a, [k, v]) => (scoped(k) ? a + v : a), 0);
+  const covered = new Set([...b.keys()].map(area));
+  const only = covered.size === 0 ? null : covered;
+  const wasBy = areaTotals(b, only);
+  const nowBy = areaTotals(n, only);
   const faults = [];
-  const [tb, tn] = [sum(b), sum(n)];
-  if (tn > tb) faults.push(`frozen total rose ${tb} -> ${tn}`);
+  for (const [a, tn] of nowBy) {
+    const tb = wasBy.get(a) ?? 0;
+    if (tn > tb) faults.push(`frozen total for ${a || '.'} rose ${tb} -> ${tn}`);
+  }
   for (const [k, v] of n) {
     const was = b.get(k);
     if (was !== undefined && v > was) faults.push(`${k}: ${was} -> ${v}`);

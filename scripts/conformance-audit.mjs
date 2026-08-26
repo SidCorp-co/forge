@@ -122,19 +122,22 @@ for (const [name, spec] of Object.entries(axes)) {
 // cm:guard a step that runs and cannot fail is stage 0 by construction — the ONE configuration this repo has measured failing. `continue-on-error: true` carried the desktop Rust gate for months next to a comment promising cleanup "as a separate ISS"; the drift ended when the package was deleted, not when the debt was paid. Zero across .github/workflows/ on 2026-08-27, which is the one day freezing it costs nothing.
 const unfailable = [...ciText.matchAll(/continue-on-error:\s*true/g)].length;
 
-/** Every rule in a biome config set to `warn`, as biome category ids. */
-function warnRules(doc) {
+// cm:guard `info` counts, not only `warn`. biome exits 0 on both — measured in packages/core: "Found 409 warnings. Found 10 infos." with status 0 — so a rule set to `info` is the identical produced-and-discarded signal, and reading only `warn` would leave a one-word edit that turns this rule from FAIL to ok while changing nothing about what is gated.
+const NON_BLOCKING = new Set(['warn', 'info']);
+
+/** Every rule a biome config sets to a severity biome exits 0 on, as biome category ids. */
+function nonBlockingRules(doc) {
   const out = new Set();
   const walk = (rules) => {
     for (const [group, body] of Object.entries(rules ?? {})) {
       // cm:why `preset` and `recommended` name a rule SET, not a rule, so a severity read off them would be a category id no diagnostic ever carries
       if (group === 'preset' || group === 'recommended') continue;
       if (typeof body === 'string') {
-        if (body === 'warn') out.add(`lint/${group}/*`);
+        if (NON_BLOCKING.has(body)) out.add(`lint/${group}/*`);
         continue;
       }
       for (const [name, spec] of Object.entries(body ?? {})) {
-        if ((typeof spec === 'string' ? spec : spec?.level) === 'warn') {
+        if (NON_BLOCKING.has(typeof spec === 'string' ? spec : spec?.level)) {
           out.add(`lint/${group}/${name}`);
         }
       }
@@ -173,7 +176,7 @@ function uncountedWarnRules() {
       gaps.push(`${cfg} is unreadable`);
       continue;
     }
-    for (const rule of warnRules(doc)) {
+    for (const rule of nonBlockingRules(doc)) {
       if (!(SIZE_RULES.has(rule) ? size : lint).includes(dir)) gaps.push(`${dir || '.'} ${rule}`);
     }
   }
@@ -181,6 +184,11 @@ function uncountedWarnRules() {
 }
 
 const uncounted = uncountedWarnRules();
+
+// cm:guard read the DECLARED level, because nothing else here does. R1-R9 all skip an axis whose level is not 2, and `hardened` needs 4 of 5 axes at >= 2, so a sixth axis declared at level 1 passed the whole audit — while CLAUDE.md said level 1 was forbidden and that a rule enforced it. That is the gate-described-but-not-gating shape this file exists to catch, one level up.
+const atLevelOne = Object.entries(axes)
+  .filter(([, s]) => (s.level ?? 0) === 1)
+  .map(([a]) => a);
 
 const overclaimed = Object.entries(axes)
   .filter(([, s]) => (s.level ?? 0) > 1 && !hasCI)
@@ -287,8 +295,15 @@ const RULES = [
     pass: uncounted.length === 0,
     detail: uncounted.length
       ? `uncounted: ${uncounted.join(' · ')}`
-      : 'every warn-severity rule is frozen somewhere',
-    why: 'biome exits 0 on a warning, so a `warn` rule no baseline counts is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis',
+      : 'every warn/info-severity rule is frozen somewhere',
+    why: 'biome exits 0 on a warning and on an info, so such a rule with no baseline counting it is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis',
+  },
+  {
+    id: 'R10',
+    text: 'no declared axis sits at level 1 — measuring without blocking',
+    pass: atLevelOne.length === 0,
+    detail: atLevelOne.length ? `level 1: ${atLevelOne.join(', ')}` : 'every declared axis blocks',
+    why: 'level 1 is where every gate this repo lost was standing while documented as blocking; R1-R9 skip any axis that is not level 2, so without this an axis could declare 1 and pass the whole audit',
   },
 ];
 
