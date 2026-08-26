@@ -23,3 +23,19 @@ export function formatRelativeTime(
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
+
+/**
+ * Compact forward countdown, e.g. `in 40 min` / `in 6h` / `in 3 days`, and
+ * `any moment now` once the moment has passed. Returns "" for null/invalid,
+ * so callers can branch on truthiness the way `formatRelativeTime` allows.
+ */
+export function formatCountdown(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const ms = new Date(iso).getTime() - Date.now();
+  if (Number.isNaN(ms)) return "";
+  if (ms <= 0) return "any moment now";
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 1) return `in ${Math.max(1, Math.round(ms / 60_000))} min`;
+  if (hours < 48) return `in ${hours}h`;
+  return `in ${Math.ceil(ms / 86_400_000)} days`;
+}

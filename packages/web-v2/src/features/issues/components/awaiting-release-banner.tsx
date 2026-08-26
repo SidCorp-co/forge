@@ -1,18 +1,8 @@
 "use client";
 
 import { Banner, Button } from "@/design";
+import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
-
-function countdown(iso: string | null): string {
-	if (!iso) return "";
-	const ms = new Date(iso).getTime() - Date.now();
-	if (Number.isNaN(ms)) return "";
-	if (ms <= 0) return "any moment now";
-	const hours = Math.floor(ms / 3_600_000);
-	if (hours < 1) return `in ${Math.max(1, Math.round(ms / 60_000))} min`;
-	if (hours < 48) return `in ${hours}h`;
-	return `in ${Math.ceil(ms / 86_400_000)} days`;
-}
 
 /**
  * What "awaiting release" means, on the issue a person is actually reading:
@@ -35,12 +25,9 @@ export function AwaitingReleaseBanner({
 	if (!data?.gateStatus || !entry) return null;
 	const baseBranch = data.baseBranch;
 
-	const merged =
-		entry.waitingDays == null
-			? "Merged"
-			: entry.waitingDays === 0
-				? `Merged into ${baseBranch ?? "the base branch"} today`
-				: `Merged into ${baseBranch ?? "the base branch"} ${entry.waitingDays} day${entry.waitingDays === 1 ? "" : "s"} ago`;
+	const merged = entry.mergedAt
+		? `Merged into ${baseBranch ?? "the base branch"} ${formatRelativeTime(entry.mergedAt)}`
+		: "Merged";
 
 	if (entry.claimedByRunId) {
 		return <Banner tone="info">{`${merged} — a release is shipping it now`}</Banner>;
@@ -63,7 +50,7 @@ export function AwaitingReleaseBanner({
 		>
 			<span className="font-medium">{merged} — not shipped yet.</span>{" "}
 			{data.nextCutAt
-				? `The next release cut runs ${countdown(data.nextCutAt)}.`
+				? `The next release cut runs ${formatCountdown(data.nextCutAt)}.`
 				: "No release is scheduled, so this ships when a person cuts one."}
 		</Banner>
 	);

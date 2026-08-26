@@ -6,13 +6,15 @@ export interface ErrorStateProps {
   /** Plain cause + remedy — never apologetic. */
   message: string;
   onRetry?: () => void;
+  /** Lead with the mascot (default). Set false for dense inline spots. */
+  mascot?: boolean;
 }
 
 /** Failure state — mascot (flame stilled) + one line + a retry. Never a dead end. */
-export function ErrorState({ title = "Couldn't load", message, onRetry }: ErrorStateProps) {
+export function ErrorState({ title = "Couldn't load", message, onRetry, mascot = true }: ErrorStateProps) {
   return (
     <div className="flex flex-col items-center justify-center gap-3.5 px-6 py-12 text-center">
-      <ForgeMascot size={88} mode="blink" ring={false} flicker={false} progress={0.4} />
+      {mascot && <ForgeMascot size={88} mode="blink" ring={false} flicker={false} progress={0.4} />}
       <div>
         <p className="fg-h3">{title}</p>
         <p className="fg-body-sm mx-auto mt-1 max-w-[260px]">{message}</p>
