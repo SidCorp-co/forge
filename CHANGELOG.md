@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- A runner that accepts jobs and never starts them is now set aside after three in a row, with the reason recorded, instead of silently keeping its share of the work.
+- A job handed to a machine whose connection had dropped is no longer reported as dispatched — it fails immediately and retries, instead of dying four minutes later as if the machine were at fault.
+- A runner whose login has expired now raises a notification, and a later successful job clears it, so it can no longer sit unusable for hours with nothing saying why.
+- Cancelling a job now reaches the agent even if the runner has restarted since the job began, instead of reporting that nothing was there to stop.
 - A retry now starts from what the failed attempt did instead of from nothing — it is told which attempt failed and why, and where to read that attempt's transcript.
 - When a retry stays on the same machine after a recoverable failure, it resumes the same Claude session rather than opening a fresh one.
 - Work a job left uncommitted when it failed is now committed and pushed on the job's own branch, so the next attempt can carry on from it instead of redoing it.
