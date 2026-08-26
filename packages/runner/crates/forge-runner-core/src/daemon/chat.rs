@@ -371,7 +371,7 @@ async fn run_turn(
     if let Err(e) = runner.start(spec, tx).await {
         let msg = format!("failed to start chat turn: {e}");
         tracing::error!("[chat {session_id}] {msg}");
-        let _ = patch_failed(client, &session_id, &[], None, &msg).await;
+        let _ = patch_failed(client, &session_id, &[], None, &msg, None).await;
         cleanup_attachments(turn.attachment_dir.as_deref()).await;
         return Ok(());
     }
@@ -406,6 +406,7 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
 
     let mut turn_msgs: Vec<Value> = Vec::new();
     let mut claude_sid: Option<String> = None;
+    let mut tool_calls: u32 = 0;
     let mut dirty = false;
 
     let mut flush = tokio::time::interval(FLUSH_INTERVAL);
@@ -422,6 +423,8 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
             ev = rx.recv() => match ev {
                 Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); dirty = true; }
                 Some(RunnerEvent::Stdout(json)) => {
+                    // cm:guard counting must NOT set `dirty` — a tool-heavy stretch emits no assistant text, so marking it dirty turns a silent period into one full-transcript PATCH every FLUSH_INTERVAL. Session 5250d5e1 (15 min, 17 text turns, dozens of tool calls) would have gone from ~17 writes to ~1200, each carrying the whole growing messages array. The count rides the next text flush and the terminal patch, which always fires; nothing reads the interim value.
+                    tool_calls = tool_calls.saturating_add(count_tool_uses(&json));
                     if let Some(msg) = parse_assistant_message(&json) {
                         turn_msgs.push(msg);
                         dirty = true;
@@ -438,6 +441,7 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
                         status: Some("running".into()),
                         messages: Some(merged(&baseline, &turn_msgs)),
                         claude_session_id: claude_sid.clone(),
+                        tool_call_count: Some(tool_calls),
                     };
                     if let Err(e) = agent_sessions::patch_session(client, session_id, &patch).await {
                         if e.to_string().contains("SESSION_TERMINATED") {
@@ -459,6 +463,7 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
                 status: Some("completed".into()),
                 messages: Some(merged(&baseline, &turn_msgs)),
                 claude_session_id: claude_sid.clone(),
+                tool_call_count: Some(tool_calls),
             };
             if let Err(e) = agent_sessions::patch_session(client, session_id, &patch).await {
                 tracing::warn!("[chat {session_id}] final patch: {e}");
@@ -467,7 +472,15 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
             }
         }
         Some(Terminal::Failed(err)) => {
-            let _ = patch_failed(client, session_id, &baseline, claude_sid.clone(), &err).await;
+            let _ = patch_failed(
+                client,
+                session_id,
+                &baseline,
+                claude_sid.clone(),
+                &err,
+                Some(tool_calls),
+            )
+            .await;
             tracing::info!("[chat {session_id}] turn failed: {err}");
         }
         None => {
@@ -477,6 +490,7 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
                 &baseline,
                 claude_sid.clone(),
                 "runner ended without a result",
+                Some(tool_calls),
             )
             .await;
         }
@@ -492,6 +506,7 @@ async fn patch_failed(
     baseline: &[Value],
     claude_sid: Option<String>,
     error: &str,
+    tool_calls: Option<u32>,
 ) -> Result<()> {
     let mut msgs = baseline.to_vec();
     msgs.push(json!({
@@ -504,6 +519,7 @@ async fn patch_failed(
         status: Some("failed".into()),
         messages: Some(msgs),
         claude_session_id: claude_sid,
+        tool_call_count: tool_calls,
     };
     agent_sessions::patch_session(client, session_id, &patch).await
 }
@@ -520,6 +536,34 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+/// Count the `tool_use` blocks on one `stream-json` line.
+///
+/// This is the ONLY record that a chat/schedule turn used a tool. The
+/// transcript is not one: [`parse_assistant_message`] keeps assistant TEXT and
+/// discards every tool frame, so `agent_sessions.messages` contains no
+/// tool_use entry for any run, working or not. Measured 2026-08-26 on
+/// forge-dev: session 5250d5e1 ran 17 assistant turns over dozens of tool
+/// calls and stored zero tool frames, while 98692d6b (2 turns, wrote two
+/// issue comments and a memory note) and b2f63f9c (2 turns, fabricated its
+/// findings) are byte-identical in shape. Core cannot tell those two apart
+/// without this counter.
+fn count_tool_uses(json: &Value) -> u32 {
+    if json.get("type").and_then(Value::as_str) != Some("assistant") {
+        return 0;
+    }
+    let Some(content) = json
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_array)
+    else {
+        return 0;
+    };
+    content
+        .iter()
+        .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_use"))
+        .count() as u32
 }
 
 /// Turn one `stream-json` assistant line into the `AgentMessage` shape the web
@@ -589,6 +633,49 @@ mod tests {
         assert_eq!(msg["model"], "claude-opus-4-8");
         assert_eq!(msg["usage"]["output_tokens"], 5);
         assert!(msg["id"].as_str().is_some());
+    }
+
+    #[test]
+    fn counts_tool_use_blocks_the_transcript_discards() {
+        let line = json!({
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "text", "text": "Let me look."},
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {}},
+                {"type": "tool_use", "id": "t2", "name": "Grep", "input": {}}
+            ]}
+        });
+        assert_eq!(count_tool_uses(&line), 2);
+        let msg = parse_assistant_message(&line).expect("text block still surfaces");
+        assert_eq!(msg["content"], json!("Let me look."));
+        assert!(msg.get("toolCalls").is_none());
+    }
+
+    #[test]
+    fn counts_a_tool_only_turn_the_transcript_drops_entirely() {
+        let line = json!({
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}
+        });
+        assert_eq!(count_tool_uses(&line), 1);
+        assert!(parse_assistant_message(&line).is_none());
+    }
+
+    #[test]
+    fn counts_zero_for_a_text_only_reply_and_for_non_assistant_frames() {
+        assert_eq!(
+            count_tool_uses(&json!({
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": "Backlog reviewed: 47 issues."}]}
+            })),
+            0
+        );
+        assert_eq!(
+            count_tool_uses(&json!({"type": "result", "num_turns": 1})),
+            0
+        );
+        assert_eq!(count_tool_uses(&json!({"type": "user"})), 0);
+        assert_eq!(count_tool_uses(&json!({"type": "assistant"})), 0);
     }
 
     #[test]

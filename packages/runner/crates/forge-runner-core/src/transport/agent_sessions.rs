@@ -55,6 +55,10 @@ pub struct SessionPatch {
     // `null` is meaningful (clear), so serialize Some(None) as null but omit None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_session_id: Option<String>,
+    // cm:guard OMIT rather than send 0 when the count is unknown — core reads absent as "this runner cannot report" and a reported 0 as "this run called nothing", and only the second one fails a schedule session. Send 0 from a path that never counted and every run on that path is recorded blind.
+    // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `toolCallCount` on patchSchema there; the transcript carries no tool frames (parse_assistant_message keeps assistant text only), so this counter is core's ONLY evidence that a scheduled run read anything
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_count: Option<u32>,
 }
 
 const MAX_ATTEMPTS: u32 = 4;
