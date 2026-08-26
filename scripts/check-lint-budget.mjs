@@ -35,19 +35,48 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'lint-baseline.json');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
-// cm:guard an ABSENT registry is not a default, it is a broken checkout. Falling back to a built-in scope list made a missing .forge/conformance.json quietly demote this to web-v2-only — core uncounted, drain gone, exit 0 — while an unreadable one exited 2, so the more complete failure got the softer answer. The file is committed; both spellings of "cannot read it" now fail closed.
+// cm:guard an ABSENT registry is not a default, it is a broken checkout. Falling back to a built-in scope list made a missing .forge/conformance.json quietly demote this to web-v2-only — core uncounted, drain gone, exit 0 — while an unreadable one exited 2, so the more complete failure got the softer answer. The file is committed; every spelling of "cannot read it" now fails closed, and each says WHICH — one message for four conditions sent a reader to check permissions on a file that parses fine.
 function config() {
+  let raw;
   try {
-    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
-    const scopes = raw?.checkers?.['lint-budget']?.scopes;
-    if (!Array.isArray(scopes) || scopes.length === 0) return null;
-    return { scopes };
-  } catch {
-    return null;
+    raw = readFileSync(CONFIG_PATH, 'utf8');
+  } catch (err) {
+    return { error: `${CONFIG_PATH} could not be read: ${err.code ?? err.message}` };
   }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { error: `${CONFIG_PATH} is not valid JSON: ${err.message}` };
+  }
+  const scopes = parsed?.checkers?.['lint-budget']?.scopes;
+  if (!Array.isArray(scopes)) {
+    return { error: `${CONFIG_PATH} declares no checkers['lint-budget'].scopes array` };
+  }
+  if (scopes.length === 0) {
+    return {
+      error: `${CONFIG_PATH} declares an empty lint-budget scope list — nothing would be measured`,
+    };
+  }
+  return { scopes };
 }
 
-// cm:edge contract -> packages/web-v2/biome.json — reads whatever that config decides to report. Turning the linter off there empties this checker's input; the files-scanned guard below is what makes that an exit 2 instead of a green run.
+// cm:guard ORTHOGONAL to the files-scanned guard, and both must stay. A disabled linter scans every file and reports nothing, so it passes a scanned-count check while emptying this checker's input — measured 2026-08-27: flipping `linter.enabled` to false in packages/web-v2/biome.json made --all exit 0 at "0 / 226 original (100% drained)" and made --update-baseline DELETE 95 files and 210 frozen diagnostics at exit 0, which compareDown accepts because it only faults on a rise. Counting diagnostics cannot tell that from a scope legitimately drained to zero; only the config can, which is why this reads the config instead.
+function linterFault(scope) {
+  const path = join(ROOT, scope.cwd, 'biome.json');
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (err) {
+    return `${scope.cwd}/biome.json could not be read: ${err.code ?? err.message}`;
+  }
+  if (doc?.linter?.enabled === false) {
+    return `${scope.cwd}/biome.json disables its linter — this scope would report clean while measuring nothing`;
+  }
+  return null;
+}
+
+// cm:edge contract -> packages/web-v2/biome.json — reads whatever that config decides to report. Turning the linter off there empties this checker's input; `linterFault` above is what makes that an exit 2 instead of a green run, and the files-scanned guard below catches the different case of a scope that matched no files at all.
 // cm:edge contract -> packages/core/biome.json — same for the second scope: `noNonNullAssertion` / `noExplicitAny` / the test override's `noUnsafeOptionalChaining` are `warn` there, which is exactly why they need a baseline — biome exits 0 on a warning, so the blocking `core` lint step passed over 280 of them (measured 2026-08-27)
 function collect(scopes) {
   const measured = {};
@@ -57,6 +86,9 @@ function collect(scopes) {
   for (const scope of scopes) {
     const cwd = join(ROOT, scope.cwd);
     if (!existsSync(cwd)) return { error: `scope directory missing: ${scope.cwd}` };
+
+    const disabled = linterFault(scope);
+    if (disabled) return { error: disabled };
 
     let stdout;
     try {
@@ -192,8 +224,8 @@ if (!['--all', '--staged', '--update-baseline'].includes(mode)) {
 }
 
 const cfg = config();
-if (!cfg) {
-  console.error(`check-lint-budget: ${CONFIG_PATH} is unreadable`);
+if (cfg.error) {
+  console.error(`check-lint-budget: ${cfg.error}`);
   process.exit(2);
 }
 

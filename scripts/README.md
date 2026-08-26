@@ -85,8 +85,8 @@ It counts **every** diagnostic biome emits in a scope except the two length rule
 diagnostics are errors. Severity decides only whether biome itself would have failed the build:
 `error` meant red builds nobody could clear, and a severity biome exits 0 on (`warn`, `info`, or a
 rule left at its default by `on`) held nothing. So both packages' debt is frozen per (file, rule) in
-`.forge/lint-baseline.json` and only growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Today: **486 violations
-across 175 files** — web-v2 210 of an original 226 (95 files), core 276 of 280 (80 files, of which
+`.forge/lint-baseline.json` and only growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Measured 2026-08-27: **487 violations
+across 175 files** — web-v2 210 of an original 226 (95 files), core 277 of 280 (80 files, of which
 53 diagnostics across 32 files are drainable).
 
 `web-v2` had no biome config at all until 2026-08-23 — 748 diagnostics on the day it got one, 409
@@ -137,10 +137,19 @@ unfalsifiable as it was before anyone printed it. web-v2's `226` is its measured
 2026-08-23, seeded by hand because the field did not exist yet; core's `280` was measured the day it
 was registered.
 
-Exit `0` clean · `1` a file gained a violation or skipped its payment · `2` could not run. That last
-one includes biome reporting **zero** diagnostics: both scopes carry debt at rest, so an empty report
-means the scope matched nothing or the config stopped loading, and reporting clean there is the
-fail-open shape every other checker exits 2 on.
+Exit `0` clean · `1` a file gained a violation or skipped its payment · `2` could not run. Two
+independent guards produce that last one, and both are needed because a scope legitimately drained to
+zero and a scope nobody is measuring both report **zero** diagnostics:
+
+- **files scanned** — biome's own `summary` says how many files it looked at, and zero means the
+  scope matched nothing. Counting diagnostics instead would make a fully drained scope, the outcome
+  the drain rule exists to produce, indistinguishable from a broken one.
+- **the linter is on** — a scope whose `biome.json` sets `linter.enabled: false` scans every file and
+  reports nothing, which passes the count check while measuring nothing. Measured 2026-08-27: that
+  one-word edit made `--all` exit 0 at `0 / 226 original (100% drained)` and made
+  `--update-baseline` delete 95 files and 210 frozen diagnostics at exit 0, which `improves: down`
+  accepts because it only faults on a *rise*. Only the config can tell the two apart, so this guard
+  reads the config rather than the numbers.
 
 Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-v2 lint`) ·
 `--staged` (pre-commit, **freeze-only** — the payment is due against the branch, not a half-staged
