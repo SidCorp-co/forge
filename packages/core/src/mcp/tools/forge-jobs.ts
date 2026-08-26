@@ -176,6 +176,7 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
       .limit(overfetch(eventsLimit));
 
     // cm:guard `lastSeq` must come from the RETURNED tail, never the overfetched probe row — it is the cursor the caller passes back as `sinceSeq`, so reading it off the dropped row skips one event on every page and the replay silently loses it
+    // cm:edge lockstep -> packages/core/src/mcp/tools/list-envelope.ts — the ONE list surface that builds the envelope by hand, because buildListEnvelope cannot emit `lastSeq` or a notice carrying the next cursor; every field name and `truncatedBy` value here must stay identical to what it returns, or an agent reading `hasMore` gets a different answer per surface
     const hasMore = fetched.length > eventsLimit;
     const items = hasMore ? fetched.slice(0, eventsLimit) : fetched;
     const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);

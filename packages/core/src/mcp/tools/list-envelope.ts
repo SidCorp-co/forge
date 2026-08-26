@@ -77,18 +77,30 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
 
   envelope.truncated = true;
   envelope.truncatedBy = truncatedBy;
-  envelope.notice = buildNotice(kept.length, truncatedBy, limit, hint);
+  envelope.notice = buildNotice(kept.length, truncatedBy, limit, hint, args.oldestAt);
   return envelope;
 }
 
 // cm:guard never state a count that reads as a DB total — the only numbers here are `returned` and the caller's own `limit`, both of which the caller can verify. forge_feedback and forge_ux_findings used to say "the N most recent of M" where M was the rows already bounded by the limit; an agent read that as a total and it never was one.
-function buildNotice(returned: number, by: TruncatedBy, limit: number, hint: string): string {
+// cm:guard name WHICH rows survived, not just how many — the two trims drop from opposite ends on an `oldestAt:'head'` list (the limit sheds the newest, the size cap sheds the oldest), so "the N most recent" is false there and sends the caller looking for rows it already has
+function buildNotice(
+  returned: number,
+  by: TruncatedBy,
+  limit: number,
+  hint: string,
+  oldestAt?: 'tail' | 'head',
+): string {
+  const ascending = oldestAt === 'head';
+  const underLimit = ascending ? `the first ${returned} in order` : `the ${returned} most recent`;
+  const underSize = ascending
+    ? `the ${returned} most recent of them`
+    : `the ${returned} most recent`;
   const cause =
     by === 'response-size'
-      ? `the response-size cap cut this to the ${returned} most recent`
+      ? `the response-size cap cut this to ${underSize}`
       : by === 'limit'
-        ? `your limit of ${limit} bound this to the ${returned} most recent`
-        : `your limit of ${limit} and then the response-size cap bound this to the ${returned} most recent`;
+        ? `your limit of ${limit} bound this to ${underLimit}`
+        : `your limit of ${limit} bound this to the first ${limit}, and the response-size cap then cut those to ${underSize}`;
   const remedy =
     by === 'limit'
       ? `Raise limit or ${hint} to see the rest.`

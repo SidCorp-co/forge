@@ -104,3 +104,44 @@ describe('buildListEnvelope', () => {
     expect((result.issues as unknown[]).length).toBe(1);
   });
 });
+
+describe('buildListEnvelope notice — an oldest-first list is not described as newest-first', () => {
+  it('says "the first N in order" when the limit bound an ascending list', () => {
+    const res = buildListEnvelope({
+      key: 'comments',
+      items: [1, 2, 3],
+      limit: 2,
+      hint: 'read the thread in the UI',
+      oldestAt: 'head',
+    });
+
+    expect(res.notice).toContain('the first 2 in order');
+    expect(res.notice).not.toContain('most recent');
+  });
+
+  it('keeps "most recent" for the default newest-first list', () => {
+    const res = buildListEnvelope({
+      key: 'issues',
+      items: [1, 2, 3],
+      limit: 2,
+      hint: 'add filters',
+    });
+
+    expect(res.notice).toContain('the 2 most recent');
+  });
+
+  it('names both ends when an ascending list hit the limit and then the size cap', () => {
+    const res = buildListEnvelope({
+      key: 'comments',
+      items: [{ body: 'x'.repeat(400) }, { body: 'y'.repeat(400) }, { body: 'z'.repeat(400) }],
+      limit: 2,
+      hint: 'read the thread in the UI',
+      oldestAt: 'head',
+      maxChars: 500,
+    });
+
+    expect(res.truncatedBy).toBe('limit+response-size');
+    expect(res.notice).toContain('bound this to the first 2');
+    expect(res.notice).toContain('most recent of them');
+  });
+});
