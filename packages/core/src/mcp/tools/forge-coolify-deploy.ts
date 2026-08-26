@@ -64,7 +64,7 @@ const inputSchema = z
     resourceUuid: z.string().optional(),
     /** logs + runtime-logs: number of recent lines to keep (clamped 1..1000).
      *  Coerced — MCP transports routinely deliver numeric args as strings. */
-    lines: z.coerce.number().int().positive().optional(),
+    lines: z.coerce.number().int().min(1).max(1000).optional(),
   })
   .strict();
 
@@ -161,19 +161,13 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Requires integrationId when multiple active Coolify integrations exist. ' +
     'Secrets (Authorization/Cookie/X-Api-Key headers, token/apiKey/password/jwt fields, tokenized ' +
     "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
-<<<<<<< HEAD
-    'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
-    'error returns { error, httpStatus } with no raw body. Tailed to last ~100 lines / ~16KB ' +
-    '(truncated:true when cut). ' +
-=======
-    'preserved. Returns { integrationId, deploymentUuid, status, logs, truncated, fetchedAt, logsDigest }; ' +
-    'on a Coolify API error returns { error, httpStatus } with no raw body. Tailed to the last `lines` ' +
-    '(default 100) / ~16KB, truncated:true when cut. ' +
+    'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated, fetchedAt, logsDigest }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
+    'error returns { error, httpStatus } with no raw body. Tailed to the last `lines` ' +
+    '(1..1000, default 100) / ~16KB, truncated:true when cut. ' +
     'A build log that has not moved is INDISTINGUISHABLE from a stale snapshot by eye, so compare ' +
     '`logsDigest` across calls: identical digest + advancing `fetchedAt` means Coolify really is ' +
     'returning the same bytes, not that this tool cached them. Neither proves the build is hung — ' +
     'read `status` for that. ' +
->>>>>>> 7bd21194 (fix(mcp): the tool surface says what it did not return)
     'runtime-logs: tail the LIVE application container log (NOT the build log) via Coolify ' +
     'applications/{uuid}/logs. Resolves the target from resourceUuid (else the integration sole ' +
     'target; multiple targets => pass resourceUuid, see list); optional `lines` (1..1000, default 100). ' +

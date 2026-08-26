@@ -46,7 +46,8 @@ const attachmentInputSchema = z
   })
   .strict();
 
-const dataSchema = z
+// cm:edge contract -> packages/core/skills — the shipped SKILL.md templates carry `forge_comments → create` examples an agent copies verbatim; this schema is `.strict()`, so a key in an example that is not here is a hard rejection at the agent's first call. `skills/shipped-templates.test.ts` parses those examples against this export.
+export const commentCreateDataSchema = z
   .object({
     body: z.string().trim().min(1).max(10_000).optional(),
     issue: z.uuid().optional(),
@@ -61,7 +62,7 @@ const inputSchema = z
     action: z.enum(['list', 'create', 'delete']),
     documentId: z.uuid().optional(),
     filters: filtersSchema,
-    data: dataSchema,
+    data: commentCreateDataSchema,
     limit: z.number().int().min(1).max(200).optional(),
   })
   .strict();

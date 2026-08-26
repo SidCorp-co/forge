@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updateConnectionMock = vi.fn();
 const findConnectionByIdMock = vi.fn();
+const buildContextMock = vi.fn();
 vi.mock('../store.js', () => ({
   updateConnection: (...a: unknown[]) => updateConnectionMock(...(a as [])),
   findConnectionById: (...a: unknown[]) => findConnectionByIdMock(...(a as [])),
-  buildContextFromBinding: vi.fn(),
+  buildContextFromBinding: (...a: unknown[]) => buildContextMock(...(a as [])),
 }));
 
 // Stub the modules whose import chains pull in the db client / env (not needed
@@ -42,7 +43,7 @@ vi.mock('../../observability/sentry.js', () => ({
   Sentry: { addBreadcrumb: vi.fn(), captureMessage: vi.fn() },
 }));
 
-const { coolifyAdapter } = await import('./adapter.js');
+const { coolifyAdapter, fetchCoolifyDeploymentLogs } = await import('./adapter.js');
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const CONN_ID = 'conn-cf-1';
@@ -244,5 +245,72 @@ describe('coolifyAdapter.handleInbound — multi-target run aggregation', () => 
     expect(closeRunMock).toHaveBeenCalledWith(RUN_ID, 'failed');
     // Fail-fast: no need to scan siblings.
     expect(listDispatchedMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchCoolifyDeploymentLogs — a snapshot that cannot be mistaken for live (ISS-787)', () => {
+  function deploymentLog(lineCount: number) {
+    return Array.from({ length: lineCount }, (_, i) => `step ${i}`).join('\n');
+  }
+
+  function stubDeployment(logs: string) {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: 'in_progress', commit: 'abc1234', logs }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as unknown as typeof fetch;
+  }
+
+  beforeEach(() => {
+    buildContextMock.mockReturnValue(buildCtx({ apiToken: 'cf-current' }));
+  });
+
+  it('honours `lines`, which the tool advertised and silently ignored', async () => {
+    stubDeployment(deploymentLog(50));
+
+    const res = await fetchCoolifyDeploymentLogs({} as never, 'dep-1', 3);
+
+    expect(res.logs.split('\n')).toEqual(['step 47', 'step 48', 'step 49']);
+    expect(res.truncated).toBe(true);
+  });
+
+  it('defaults to the 100-line tail when `lines` is omitted', async () => {
+    stubDeployment(deploymentLog(50));
+
+    const res = await fetchCoolifyDeploymentLogs({} as never, 'dep-1');
+
+    expect(res.logs.split('\n')).toHaveLength(50);
+    expect(res.truncated).toBe(false);
+  });
+
+  it('stamps fetchedAt and a digest over the returned text, so two reads are comparable', async () => {
+    stubDeployment(deploymentLog(5));
+
+    const first = await fetchCoolifyDeploymentLogs({} as never, 'dep-1');
+    const second = await fetchCoolifyDeploymentLogs({} as never, 'dep-1');
+
+    expect(first.logsDigest).toBe(second.logsDigest);
+    expect(Date.parse(first.fetchedAt)).not.toBeNaN();
+    expect(Date.parse(second.fetchedAt)).toBeGreaterThanOrEqual(Date.parse(first.fetchedAt));
+  });
+
+  it('moves the digest when one byte of the log advances', async () => {
+    stubDeployment(deploymentLog(5));
+    const before = await fetchCoolifyDeploymentLogs({} as never, 'dep-1');
+
+    stubDeployment(`${deploymentLog(5)}\nstep 5`);
+    const after = await fetchCoolifyDeploymentLogs({} as never, 'dep-1');
+
+    expect(after.logsDigest).not.toBe(before.logsDigest);
+  });
+
+  it('still reports the deployment record commit alongside the new fields', async () => {
+    stubDeployment(deploymentLog(2));
+
+    const res = await fetchCoolifyDeploymentLogs({} as never, 'dep-1');
+
+    expect(res.commit).toBe('abc1234');
   });
 });
