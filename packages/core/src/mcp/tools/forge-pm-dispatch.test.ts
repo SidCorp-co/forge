@@ -157,7 +157,7 @@ describe('forge_pm.dispatch', () => {
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]); // states lookup
-    queue.push([{ stage: 'approved', name: 'forge-code' }]); // skill resolver rows
+    queue.push([{ stage: 'approved', name: 'forge-code', scope: 'project' }]); // skill resolver rows
     queue.push([{ id: JOB_ID }]); // jobs insert returning
     queue.push([{ id: 'run-1', status: 'running' }]); // ISS-102 pipeline_run lookup
 
@@ -224,7 +224,7 @@ describe('forge_pm.dispatch', () => {
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]);
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
-    queue.push([{ stage: 'approved', name: 'forge-code' }]);
+    queue.push([{ stage: 'approved', name: 'forge-code', scope: 'project' }]);
     queue.push([{ id: JOB_ID }]);
     queue.push([]); // pipeline_runs lookup returns nothing — defensive path
 
@@ -244,7 +244,7 @@ describe('forge_pm.dispatch', () => {
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
-    queue.push([{ stage: 'approved', name: 'forge-code' }]);
+    queue.push([{ stage: 'approved', name: 'forge-code', scope: 'project' }]);
     // jobs insert throws 23505
     insertSpy.mockReturnValueOnce({
       values: () => ({
