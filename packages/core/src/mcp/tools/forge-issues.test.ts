@@ -464,9 +464,9 @@ describe('forge_issues tool', () => {
     const result = (await tool.handler({
       action: 'list',
       filters: { label: 'nonexistent-label' },
-    })) as { issues: unknown[] };
+    })) as { issues: unknown[]; returned: number; limit: number; hasMore: boolean };
 
-    expect(result.issues).toHaveLength(0);
+    expect(result).toMatchObject({ issues: [], returned: 0, limit: 25, hasMore: false });
   });
 
   it('list filters.label array mixes uuid and name, deduplicates resolved ids', async () => {

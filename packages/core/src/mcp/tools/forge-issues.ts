@@ -804,6 +804,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
 
+        const issuesLimit = input.limit ?? 25;
         const conds = [eq(issues.projectId, projectId)];
         const f = input.filters;
         if (f?.status) conds.push(eq(issues.status, f.status));
@@ -832,8 +833,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           const resolvedIds = await resolveLabelIdsTolerant(projectId, rawValues);
 
           if (resolvedIds.length === 0) {
-            // Caller supplied a label filter but no ids resolved (unknown name or empty input).
-            return { issues: [] };
+            return { issues: [], returned: 0, limit: issuesLimit, hasMore: false };
           }
 
           conds.push(
@@ -851,7 +851,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           );
         }
 
-        const issuesLimit = input.limit ?? 25;
         // ISS-562 — SQL-level light-column projection: never load heavy TOAST
         // columns (description/plan/acceptanceCriteria/sessionContext/ai*/
         // releaseNotes) from disk. serializeListRow already omits them at the
