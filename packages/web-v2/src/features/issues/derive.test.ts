@@ -705,6 +705,7 @@ describe("deriveBlockerState", () => {
 		for (const reason of [
 			"issue_busy",
 			"run_not_running",
+			"stale_trigger",
 			"waiting_on_dep",
 			"waiting_on_decomp_children",
 			"project_full",

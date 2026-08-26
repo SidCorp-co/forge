@@ -1,39 +1,22 @@
 /**
- * ISS-162 — Stateless Gates. `pickNextDispatchableJobForProject` evaluates
- * the gate layers inline on every call; no gate signal is persisted on
- * the job row. A job that fails any gate is simply absent from the SELECT
- * result, and the next tick recomputes the gate from scratch.
+ * ISS-162 — Stateless Gates. Nothing is persisted on the job row: a job
+ * failing any gate is simply absent from the picker's SELECT, and the next
+ * tick recomputes every gate from scratch.
  *
- * ISS-228 — Single SSOT dispatch barrier. The picker SELECT and the
- * {@link assertDispatchable} CASE share one {@link buildBarrierFragments}
- * builder for (a) the `running_ids` / `runner_load` / `fresh_capable_runners`
- * CTEs and (b) the EXISTS sub-queries that encode each gate. Two call sites,
- * one source of truth — so a future contributor extending one gate can no
- * longer drift the other (the failure mode that ISS-226's narrower L1 mirror
- * had to patch). pg-boss-direct dispatches now enforce the full gate set
- * (blocked_by, project_cap, runner_full, retry_cooldown,
- * pipeline_run_running) instead of just L1 issue_busy.
+ * ISS-228 — one {@link buildBarrierFragments} builder feeds BOTH readers (the
+ * picker's WHERE and the {@link buildGateReasonCase} CASE behind
+ * {@link assertDispatchable} and {@link gateReasonsForQueuedJobs}), so
+ * extending one can no longer drift the other — the failure mode ISS-226's
+ * narrower L1-only mirror had to patch, and what lets a pg-boss-direct dispatch
+ * enforce the full gate set. What each gate asserts is documented per-member on
+ * {@link BarrierFragments}; the CASE arm order is the precedence between them.
  *
- * Gate layers (single-source, see {@link buildBarrierFragments}):
- *   L1 issue_busy               — at most one active session per issue
- *   L2 waiting_on_dep / decomp  — every `kind='blocks'` parent must be
- *                                 terminal; release jobs additionally wait
- *                                 for their `kind='decomposes'` parent
- *   L3 project_full              — DISTINCT running issue_ids per project
- *                                 must be below the project cap (or the
- *                                 candidate's own issue is already counted)
- *   L4 runner_full + L5 runner_heartbeat — selectable runners must be online,
- *                                 fresh per the dispatch-liveness window, AND
- *                                 have free capacity. Implemented inline in
- *                                 `fresh_capable_runners`.
- *
- * Invariants:
- *   - No temporal predicates beyond dependency-edge `valid_until` expiry,
- *     stale-runner heartbeat (L5), runner-load (L4), and `retry_after_at`
- *     (ISS-197). A future contributor adding a `gate_at + N seconds`
- *     debouncer should trip the regression assertion in
- *     `dispatch-gates.test.ts`.
- *   - No writes from the picker / asserter. Both are read-only.
+ * Two invariants, both with a regression assertion in `dispatch-gates.test.ts`:
+ * no temporal predicate beyond `valid_until`, the L5 heartbeat, L4 runner-load
+ * and `retry_after_at` (ISS-197) — a `gate_at + N seconds` debouncer trips it;
+ * and no writes from either reader. ISS-789's `stale_trigger` is the one gate
+ * that never clears by waiting, so the write ending such a job lives in
+ * `jobs/stale-trigger.ts`, not here.
  */
 
 import { and, eq, type SQL, sql } from 'drizzle-orm';
@@ -46,7 +29,7 @@ import {
   type PipelineConfig,
 } from '../pipeline/pipeline-config-schema.js';
 import { isBaseBranchStampable } from '../pipeline/pipeline-config-service.js';
-import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
+import { RUNNER_CAPABILITIES, WORKING_STATUS_BY_STATUS } from '../pipeline/registry.js';
 
 export type GateSkipReason =
   | 'not_found'
@@ -54,8 +37,10 @@ export type GateSkipReason =
   | 'pipeline_run_not_running'
   | 'retry_cooldown'
   | 'issue_busy'
+  | 'stale_trigger'
   | 'blocked_by'
-  | 'release_decompose_pending'
+  // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. `release_decompose_pending` sat here for months naming an arm that never existed while `decompose_children_pending`, the one that does, was absent, and `observability/hold-metrics.ts` keyed its counter Map by a value outside its own key type.
+  | 'decompose_children_pending'
   | 'project_cap'
   | 'runner_full'
   | 'runner_stale';
@@ -358,6 +343,11 @@ interface BarrierFragments {
      *  not, e.g. an in-flight job whose agent_session row hasn't landed
      *  yet. */
     issueBusyJob: SQL;
+    /** L1b — the job's declared trigger (`payload.stageStatus`) is no longer
+     *  the issue's live status, so the stage would run on a trigger that has
+     *  moved on. The step's own in-flight `workingStatus` is allowed, so a
+     *  retry of a code/fix job is not caught. */
+    staleTrigger: SQL;
     /** L2 — at least one `kind='blocks'` dependency parent is non-terminal.
      *  Folded `j.type <> 'pm'` into the predicate so PM jobs auto-skip the
      *  gate (PM has no issue deps). */
@@ -482,6 +472,17 @@ function buildBarrierFragments(args: {
   const blockReopenArm = sql` OR p.status = 'reopen'`;
   const decompReopenArm = sql` OR c2.status = 'reopen'`;
 
+  // cm:guard derive these arms from WORKING_STATUS_BY_STATUS, never hand-list them — a code/fix step flips its own issue to `in_progress` via forge_step_start, so a retry clone of that job legitimately finds a status that is not its trigger, and without the allowance the stale gate below reaps the recovery attempt instead of the stale job. Hand-listing means the next step that gains a `workingStatus` silently loses its retries.
+  // cm:edge lockstep -> packages/core/src/pipeline/registry.ts — `PIPELINE_STEPS[].workingStatus` is the source; a step whose working status changes there without this reading it turns every retry of that step into a discard
+  const workingStatusArms = Object.entries(WORKING_STATUS_BY_STATUS).map(
+    ([trigger, working]) =>
+      sql`((j.payload->>'stageStatus') = ${trigger} AND i.status::text = ${working})`,
+  );
+  const workingStatusAllowance =
+    workingStatusArms.length > 0
+      ? sql` AND NOT (${sql.join(workingStatusArms, sql` OR `)})`
+      : sql``;
+
   const predicates = {
     issueBusySession: sql`EXISTS (
       SELECT 1 FROM agent_sessions s
@@ -497,6 +498,13 @@ function buildBarrierFragments(args: {
         AND other.id <> j.id
         AND other.status IN ('dispatched','running','held')
     )`,
+    // cm:guard eligibility is the PRESENCE of `payload.stageStatus`, i.e. the enqueuer declaring which trigger this job answers — widening it to every job would reap the ones nothing declared a trigger for (`pm`, `custom`, PM-dispatched steps), and `j.issue_id IS NOT NULL` is what keeps the smoke canaries out (skills/smoke-verify.ts stamps a stage but inserts with a null issue).
+    // cm:guard this arm must be read STRICTLY AFTER both issue_busy arms in `buildGateReasonCase` — a sibling job mid-flight is exactly when the issue legitimately sits at a status that is nobody's trigger, so judging staleness first turns "another step is working" into a discard of the step queued behind it.
+    // cm:edge lockstep -> packages/core/src/jobs/stale-trigger.ts — that sweep is what makes this gate terminal instead of a permanent hide: `jobs_active_unique` covers `queued`, so a stale job merely skipped by the picker blocks the replacement job for the same (issue, type) forever.
+    staleTrigger: sql`j.issue_id IS NOT NULL
+      AND (j.payload->>'stageStatus') IS NOT NULL
+      AND i.status IS NOT NULL
+      AND i.status::text <> (j.payload->>'stageStatus')${workingStatusAllowance}`,
     // ISS-232 — Layer 2 is git-aware: a `blocks` parent is satisfied when its
     // `merged_at` is stamped (transition out of `pipelineConfig.mergeStates
     // .baseBranch`, see `issues/merged-at.ts:markMergedIfLeavingBase`), OR —
@@ -602,6 +610,7 @@ export async function pickNextDispatchableJobForProject(
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
       AND NOT (${predicates.issueBusySession})
       AND NOT (${predicates.issueBusyJob})
+      AND NOT (${predicates.staleTrigger})
       AND NOT (${predicates.blockedBy})
       AND NOT (${predicates.decomposeChildrenPending})
       AND EXISTS (
@@ -658,6 +667,7 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates'], cap: nu
         WHEN j.retry_after_at IS NOT NULL AND j.retry_after_at > now() THEN 'retry_cooldown'
         WHEN ${predicates.issueBusySession} THEN 'issue_busy'
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
+        WHEN ${predicates.staleTrigger} THEN 'stale_trigger'
         WHEN ${predicates.blockedBy} THEN 'blocked_by'
         WHEN ${predicates.decomposeChildrenPending} THEN 'decompose_children_pending'
         WHEN j.issue_id IS NOT NULL

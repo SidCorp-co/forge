@@ -218,6 +218,7 @@ export type WaitingReason =
   | "issue_busy"
   | "job_held"
   | "run_not_running"
+  | "stale_trigger"
   | "waiting_on_dep"
   | "waiting_on_decomp_children"
   | "project_full"

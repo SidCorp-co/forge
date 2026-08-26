@@ -27,6 +27,7 @@ import { roomManager } from '../ws/server.js';
 import { pickNextDispatchableJobForProject } from './dispatch-gates.js';
 import { handleDispatch } from './dispatcher.js';
 import { releaseHeldJobs } from './hold.js';
+import { discardStaleTriggerJobs } from './stale-trigger.js';
 
 /** Per-project promise tail. */
 const projectLocks = new Map<string, Promise<unknown>>();
@@ -97,6 +98,13 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
     await releaseHeldJobs(projectId);
   } catch (err) {
     logger.warn({ err, projectId }, 'dispatch-tick: hold release failed');
+  }
+
+  // cm:guard discard AFTER the hold release and BEFORE the picker (ISS-789) — a job released from hold is `queued` again and its trigger may have moved on while it waited, so releasing after would leave the stale job to be judged a whole tick later; and running after the pick would let the picker's own skip hide it for another cycle while `jobs_active_unique` blocks its replacement.
+  try {
+    await discardStaleTriggerJobs(projectId);
+  } catch (err) {
+    logger.warn({ err, projectId }, 'dispatch-tick: stale-trigger discard failed');
   }
 
   // ISS-164 — issues with queued work at sweep start; the post-sweep

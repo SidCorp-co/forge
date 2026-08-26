@@ -22,6 +22,12 @@ vi.mock('./hold.js', () => ({
   releaseHeldJobs: (...args: unknown[]) => releaseHeldJobsMock(...args),
 }));
 
+// cm:edge contract -> packages/core/src/jobs/stale-trigger.ts — stubbed for the same load-time reason as hold.js; stale-trigger.test.ts owns what a discard does, this file owns only WHERE in the sweep it runs
+const discardStaleTriggerJobsMock = vi.fn(async (..._args: unknown[]) => [] as string[]);
+vi.mock('./stale-trigger.js', () => ({
+  discardStaleTriggerJobs: (...args: unknown[]) => discardStaleTriggerJobsMock(...args),
+}));
+
 // dispatch-tick statically imports `handleDispatch` from './dispatcher.js'.
 // vi.mock hoists above the static import so the mocked module is in place
 // before runTickInner ever runs.
@@ -54,6 +60,8 @@ beforeEach(() => {
   // queue and the impl; we re-stub per-test.
   pickFn.mockReset();
   handleDispatch.mockReset();
+  discardStaleTriggerJobsMock.mockReset();
+  discardStaleTriggerJobsMock.mockResolvedValue([]);
   setDispatchTickDebounceMs(0); // disable debounce for deterministic tests
   wsPublish.mockClear();
 });
@@ -211,6 +219,38 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
 
     expect(releaseHeldJobsMock).toHaveBeenCalledWith('p1');
     expect(order).toEqual(['releaseHeldJobs', 'pick']);
+  });
+
+  // cm:guard ordering, not just presence (ISS-789) — after the release so a job whose trigger moved on while it was held is judged in the SAME sweep, and before the pick because the picker's own skip would otherwise hide it for another cycle while `jobs_active_unique` blocks its replacement
+  it('discards stale-trigger jobs after the hold release and before the first pick', async () => {
+    const order: string[] = [];
+    releaseHeldJobsMock.mockImplementation(async () => {
+      order.push('releaseHeldJobs');
+      return 0;
+    });
+    discardStaleTriggerJobsMock.mockImplementation(async () => {
+      order.push('discardStaleTriggerJobs');
+      return [];
+    });
+    pickFn.mockImplementation(async () => {
+      order.push('pick');
+      return null;
+    });
+
+    await dispatchTickForProject('p1');
+
+    expect(discardStaleTriggerJobsMock).toHaveBeenCalledWith('p1');
+    expect(order).toEqual(['releaseHeldJobs', 'discardStaleTriggerJobs', 'pick']);
+  });
+
+  it('a throwing discard does not stop the sweep', async () => {
+    discardStaleTriggerJobsMock.mockRejectedValueOnce(new Error('db blip'));
+    pickFn.mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID }).mockResolvedValueOnce(null);
+    handleDispatch.mockResolvedValue('dispatched');
+
+    await dispatchTickForProject('p1');
+
+    expect(handleDispatch).toHaveBeenCalledWith({ jobId: 'j1' });
   });
 
   it('a throwing release does not stop the sweep', async () => {

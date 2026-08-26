@@ -337,11 +337,12 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   if (!row) return null;
 
-  const [steps, cost, attemptRollup, issueRefs] = await Promise.all([
+  const [steps, cost, attemptRollup, issueRefs, liveMap] = await Promise.all([
     loadStepsForRun(runId),
     loadCostForRun(runId),
     loadAttemptsForRun(runId),
     loadIssueRefs(row.issueId ? [row.issueId] : []),
+    loadLiveJobCountsByRunIds([runId]),
   ]);
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
@@ -349,6 +350,8 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     ...rowToListItem(row),
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
+    // cm:guard load this from the same batched helper as the list surface and never leave the `rowToListItem` default standing — a spread whose `liveJobs: 0` is not overridden makes the detail endpoint answer 0 for EVERY run, which is the run-liveness lie ISS-789 exists to remove and is what it shipped as for the whole of ISS-789's first half
+    liveJobs: liveMap.get(runId) ?? 0,
     steps,
     cost,
     attempts: attemptRollup.attempts,

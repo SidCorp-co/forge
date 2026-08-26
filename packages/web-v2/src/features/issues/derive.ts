@@ -637,6 +637,12 @@ const WAITING_REASON_COPY: Record<
 			"No runner is online for this project — every host is offline, stale, or rate-limited.",
 		who: "Bring a runner back (check the Runners tab); the step dispatches on the next tick.",
 	},
+	// cm:guard this is the one queued reason that means the ISSUE is fine — the step answers a trigger the issue has already left, so the copy must not read as "your issue is blocked". Saying so would send the reader looking for a blocker that moved on by definition, which is the mislabel this reason was added to avoid.
+	stale_trigger: {
+		reason:
+			"A queued step answers a trigger this issue has already moved past.",
+		who: "No action — the step is discarded on the next dispatch sweep and the current stage takes over.",
+	},
 	waiting_on_dep: {
 		reason:
 			"Blocked by a dependency that hasn't merged to the base branch yet.",
