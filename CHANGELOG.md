@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Pipeline runs now show their real live job count, and outdated stage jobs are stopped before they can run.
 - Pipeline merge prompts now use the configured Git branches, and test verification preserves fixture blocks instead of reporting them as failures.
 - Scheduled audits that make no tool calls now fail as blind instead of reporting a clean result.
 - A runner that accepts jobs and never starts them is now set aside after three in a row, with the reason recorded, instead of silently keeping its share of the work.
