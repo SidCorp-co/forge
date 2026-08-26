@@ -102,11 +102,21 @@ function statuses(doc) {
   return out;
 }
 
+// cm:guard the AREA a key belongs to, and the `::` split is load-bearing — a key is `<path>::<rule>` once `counts` flattens a nested baseline, so splitting the whole key would make every rule its own area and the total check would compare one number against itself. Fewer than two segments collapses to the root area on purpose: `.arch.baseline.json`'s keys all reduce to `frozen`, so they stay one area and its ratchet is unchanged.
+function area(key) {
+  const seg = key.split('::')[0].split('/');
+  return seg.length >= 2 ? `${seg[0]}/${seg[1]}` : '';
+}
+
 // cm:guard TOTAL first, per-key second — and renames are why. A path-keyed baseline re-freezes a moved file under its new key, so "no new keys" fails every rename and a rule that fires on renames is a rule someone turns off. A total that may not rise cannot be gamed: debt has to leave for debt to arrive.
+// cm:guard the total is per AREA, and only over areas the base revision already had, because a total over EVERY key made widening a baseline's scope impossible: registering `packages/core` on check-lint-budget takes .forge/lint-baseline.json from 216 frozen to ~496 and `improves: down` rejected it, so the manifest's promise that declaring a new rule is never punished was false for any checker sharing an existing baseline file. New debt on a new FILE inside a covered area still raises that area's total and still fails, which is the anti-gaming property the guard above is about.
 function compareDown(before, now) {
   const b = counts(before);
   const n = counts(now);
-  const sum = (m) => [...m.values()].reduce((a, x) => a + x, 0);
+  const covered = new Set([...b.keys()].map(area));
+  // cm:guard an EMPTY previous baseline covers everything, never nothing. `covered` is derived from the base revision's keys, so an empty one would exempt every area and turn a first fill of `{files:{}}` into an accept-anything pass — the fail-open shape this file exists to close, arrived at by making it stricter elsewhere.
+  const scoped = (k) => covered.size === 0 || covered.has(area(k));
+  const sum = (m) => [...m].reduce((a, [k, v]) => (scoped(k) ? a + v : a), 0);
   const faults = [];
   const [tb, tn] = [sum(b), sum(n)];
   if (tn > tb) faults.push(`frozen total rose ${tb} -> ${tn}`);

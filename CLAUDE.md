@@ -113,8 +113,8 @@ mismatch, which is why this sentence can be trusted. Every gate that drifted did
 baselined and gated (see the comments on the `core` job in `.github/workflows/ci.yml`).
 
 Ten gates over five axes: `form` is gated four times (biome for `core`'s rules, `check-size-budget`
-for the length baseline biome cannot hold, `check-lint-budget` for `web-v2`, where biome carries 216
-violations at rest and so had the same error-or-nothing choice `core` had, and a bare `biome check
+for the length baseline biome cannot hold, `check-lint-budget` for every biome rule set to `warn` in
+`core` and `web-v2`, which both had the same error-or-nothing choice, and a bare `biome check
 scripts` for the checkers themselves) and `behaviour` three times
 (`check-test-reachability` for whether a test file runs at all, `check-test-signal` for whether it
 asserts anything, `check-flow-coverage` for whether the flows are walked). **An axis measures at its weakest gate** — reporting the strongest would let one locked
@@ -135,18 +135,34 @@ so each such axis must also name where its debt is frozen and which direction im
 lives in the manifest, not in the baseline file, because `--update-baseline` rewrites those files
 and a rule a re-freeze can silently drop is not a rule.
 
+**Level 1 is forbidden, and two rules say so rather than this paragraph.** A check that runs,
+prints, and blocks nothing has no baseline to be held to, and every gate this repo lost was at
+level 1 while documented as blocking — so a check you cannot pass on the day you add it gets frozen
+at level 2 that same day, never merged at level 1 with a comment promising cleanup. `continue-on-error: true`
+is the same shape written in YAML. Audit **R8** fails on any CI step carrying it (zero across
+`.github/workflows/` since the desktop job was deleted) and **R9** fails on any biome rule set to
+`warn` that no baselined checker counts — biome exits 0 on a warning, so `packages/core` carried 280
+uncounted diagnostics through a `hardened` profile with ten gates over it, invisible to every audit
+rule that judges a *declared* axis. Neither of those is a number; both are a build that goes red.
+
+A `down` baseline's total is compared **per area** (a key's first two path segments) and only over
+areas the base revision already had. Registering a new scope on an existing checker therefore
+freezes that scope's debt on arrival instead of being rejected for raising the total — the
+`--update-baseline` amnesty is still closed where it matters, because debt on a *new file inside an
+already-covered area* raises that area's total and still fails.
+
 The manifest also declares a `profile` — the shape the whole repo claims, never the tools it uses:
 `baseline` one axis measures · `standard` two axes block and both meta-checks are present ·
 `hardened` every declared axis blocks and every `ci-passed` needs-job is asserted. Today: hardened.
 `conformance-audit.mjs` is the only check whose subject is the **setup** rather than the code, and
 it exists because the protocol is otherwise content-free — a repo could gate nothing, declare a
-profile, and be perfectly conformant. Its seven rules and what each was born from: `scripts/README.md`.
+profile, and be perfectly conformant. Its nine rules and what each was born from: `scripts/README.md`.
 
 | Axis | Gate | Owns | Must not touch |
 |---|---|---|---|
 | format + lint | `biome check` — job `core` | whitespace, import order, recommended rules | comment content |
 | size | `check-size-budget` — job `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
-| lint debt | `check-lint-budget` — job `web` | per (file, rule) biome violations in `web-v2`, frozen | which rules exist — `packages/web-v2/biome.json` declares them |
+| lint debt | `check-lint-budget` — job `conformance` | per (file, rule) biome violations in `core` + `web-v2`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — job `conformance` | the ten files in `scripts/` that implement every other gate | anything under `packages/` — those have their own configs |
 | knowledge | `cm verify` — job `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
 | relations | `archmap check` — job `archmap` | which module may depend on which | how a file is written |
@@ -173,14 +189,37 @@ end-to-end today and `.forge/flow-coverage-baseline.json` freezes one uncovered 
 `release/deploy`; freeze into it with
 `--update-baseline` so declaring a new flow is never punished, only visible.
 
-Lint debt is its own row for the same reason, one package over. `web-v2` had no biome config at all
-until 2026-08-23; measured on the day it got one, 748 diagnostics — 409 formatter, 185 import order,
-151 real lint errors. Turning the linter on as `error` would have been 151 red builds and turning it
-on as `warn` would have held nothing, so `check-lint-budget.mjs` freezes today's 216 violations across 98 files per
-(file, rule) in `.forge/lint-baseline.json` and fails only on growth. Frozen per rule rather than
-per line, so moving code inside a file is not a violation. The formatter stays **off** there on
-purpose: enabling it is a 313-file, 22k-line diff that would bury every real change under it, and
-it is a separate decision from the linter.
+Lint debt is its own row for the same reason, and it now covers two packages. `web-v2` had no biome
+config at all until 2026-08-23; measured on the day it got one, 748 diagnostics — 409 formatter, 185
+import order, 151 real lint errors. Turning the linter on as `error` would have been 151 red builds
+and turning it on as `warn` would have held nothing, so `check-lint-budget.mjs` freezes each
+violation per (file, rule) in `.forge/lint-baseline.json` and fails only on growth. Frozen per rule
+rather than per line, so moving code inside a file is not a violation. The formatter stays **off**
+there on purpose: enabling it is a 313-file, 22k-line diff that would bury every real change under
+it, and it is a separate decision from the linter.
+
+`packages/core` joined it on 2026-08-27 (ISS-833) with 280 diagnostics across 82 files, and that
+registration is the whole argument for one shared ratchet: a scope entry in
+`.forge/conformance.json` plus one `--update-baseline` run, no second script and no second baseline
+file. **495 violations across 179 files frozen today, from an `original` of 226 (web-v2) + 280
+(core)** — that `original` map is immutable, because a denominator `--update-baseline` recomputes
+makes every percentage relative to the last re-freeze and can never fall.
+
+Core's scope additionally declares `drain`, which is the half freezing does not do: **touch a file
+under `packages/core/src` that is not a test, and its count must come back strictly lower.** Equal
+is a failure. Freezing alone does not reduce — the codemap baseline sat frozen for months at 3%
+drained — and one diagnostic per PR clears core's 55 production sites in weeks with no cleanup
+project. Pay it by restructuring so the compiler narrows (`issues/pipeline-health.ts` splits one
+ternary into two early returns and loses two assertions with no behaviour change) or with a
+`// biome-ignore <rule>: <the invariant>` that states why the assertion holds. Test files and
+`web-v2` are freeze-only and are never asked to pay: `rows[0]!` in a test is idiomatic, and a wrong
+one is a test failure rather than a production crash. Drain needs a branch delta, so a push straight
+to `main` runs freeze-only and **prints that it skipped** — an unprinted skip reads exactly like a
+pass.
+
+**Never `biome check --write` these rules.** It rewrites `a!.b` to `a?.b`, converting "throw when
+the invariant is violated" into "silently evaluate to undefined" — VISION №10 backwards, and the one
+change that improves the number while making the codebase worse.
 
 Size is its own row because biome **declares** the two length rules but cannot gate them: it has no
 baseline, so the only choices were `warn` (143 violations, `biome check` exits 0, nothing held) and
@@ -195,7 +234,9 @@ for most of this repo's life that claim was false.
 `call?.[1]` idiom, where the optional chain is asserted safe one line above; the second is Drizzle's
 thenable query builder. Both are downgrades of rules the preset makes errors, so they belong in this
 accounting rather than only in the config — an undocumented severity downgrade is how an axis stops
-meaning what its row says. Measured 2026-08-25.
+meaning what its row says. Measured 2026-08-25. The `warn` half is now counted by
+`check-lint-budget` and audit rule R9 fails if a future downgrade is not: a severity dropped to
+`warn` with nothing freezing it is a rule switched off in everything but the config file.
 
 Do not add a rule to one axis that another already owns:
 

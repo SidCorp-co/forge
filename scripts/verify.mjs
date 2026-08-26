@@ -159,6 +159,7 @@ const CI_COVERAGE = {
   'node scripts/check-source-language.mjs --all': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',
+  'node scripts/check-lint-budget.mjs --all': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',

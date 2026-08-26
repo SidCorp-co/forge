@@ -42,6 +42,39 @@ describe('improves: down', () => {
   it('reads a flat {path: n} baseline the same way as a nested one', () => {
     expect(compareBaseline('down', at({ 'a.ts': 5 }), at({ 'a.ts': 6 }))).toContain('a.ts: 5 -> 6');
   });
+
+  // cm:guard these four are the widening rule, and the third is the one that keeps it honest. A total over every key made registering a new checker scope impossible — .forge/lint-baseline.json went 216 -> 495 when packages/core joined check-lint-budget, which `down` rejected — so the manifest's promise that declaring a new rule is never punished was false for any checker sharing a baseline file.
+  it('accepts a first-time-covered area arriving with its debt frozen', () => {
+    const faults = compareBaseline(
+      'down',
+      at({ 'packages/web-v2/src/a.tsx': { r: 216 } }),
+      at({ 'packages/web-v2/src/a.tsx': { r: 216 }, 'packages/core/src/b.ts': { r: 280 } }),
+    );
+    expect(faults).toEqual([]);
+  });
+
+  it('still refuses debt on a new file inside an area it already covered', () => {
+    const faults = compareBaseline(
+      'down',
+      at({ 'packages/core/src/a.ts': { r: 10 } }),
+      at({ 'packages/core/src/a.ts': { r: 10 }, 'packages/core/src/b.ts': { r: 1 } }),
+    );
+    expect(faults).toEqual(['frozen total rose 10 -> 11']);
+  });
+
+  it('still refuses an existing offender getting worse in a widening re-freeze', () => {
+    const faults = compareBaseline(
+      'down',
+      at({ 'packages/web-v2/src/a.tsx': { r: 5 } }),
+      at({ 'packages/web-v2/src/a.tsx': { r: 6 }, 'packages/core/src/b.ts': { r: 280 } }),
+    );
+    expect(faults).toContain('packages/web-v2/src/a.tsx::r: 5 -> 6');
+  });
+
+  it('treats an empty previous baseline as covering everything, not nothing', () => {
+    const faults = compareBaseline('down', at({}), at({ 'packages/core/src/a.ts': { r: 1 } }));
+    expect(faults).toEqual(['frozen total rose 0 -> 1']);
+  });
 });
 
 describe('improves: shrink', () => {

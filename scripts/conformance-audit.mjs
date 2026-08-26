@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SIZE_RULES } from './lib/lint-budget.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const at = (p) => join(ROOT, p);
@@ -93,20 +94,93 @@ const asserted = [...ciText.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.
 const unasserted = needs.filter((j) => j !== 'changes' && !asserted.includes(j));
 
 const badBaselines = [];
+// cm:guard judge EVERY declared baseline, `alsoBaseline` included. This loop read only `spec.baseline` from the day it landed, so 3 of the 6 baselines the manifest declares were never audited for a direction — the identical hole conformance-status.mjs closed for itself, in the one check whose whole subject is whether the setup does what it claims.
 for (const [name, spec] of Object.entries(axes)) {
   // cm:why level 3 means zero violations and NO baseline, so an absent one is the point rather than a fault — auditing it would punish the strictest level
   if ((spec.level ?? 0) !== 2) continue;
-  const b = spec.baseline;
-  if (b === undefined || b === null) badBaselines.push([name, 'level 2 with no baseline declared']);
-  else if (!b.path) badBaselines.push([name, 'baseline entry has no path']);
-  else if (!has(b.path)) badBaselines.push([name, `${b.path} declared but absent`]);
-  else if (!IMPROVES.includes(b.improves)) {
-    badBaselines.push([
-      name,
-      `improves=${b.improves ?? 'nothing'}, not one of ${IMPROVES.join('/')}`,
-    ]);
+  if (spec.baseline === undefined) {
+    badBaselines.push([name, 'level 2 with no baseline declared']);
+    continue;
+  }
+  for (const [slot, b] of [
+    ['baseline', spec.baseline],
+    ['alsoBaseline', spec.alsoBaseline],
+  ]) {
+    if (b === undefined) continue;
+    if (b === null) badBaselines.push([name, `${slot} is null at level 2 — nothing is frozen`]);
+    else if (!b.path) badBaselines.push([name, `${slot} has no path`]);
+    else if (!has(b.path)) badBaselines.push([name, `${b.path} declared but absent`]);
+    else if (!IMPROVES.includes(b.improves)) {
+      badBaselines.push([
+        name,
+        `${b.path} declares improves=${b.improves ?? 'nothing'}, not one of ${IMPROVES.join('/')}`,
+      ]);
+    }
   }
 }
+
+// cm:guard a step that runs and cannot fail is stage 0 by construction — the ONE configuration this repo has measured failing. `continue-on-error: true` carried the desktop Rust gate for months next to a comment promising cleanup "as a separate ISS"; the drift ended when the package was deleted, not when the debt was paid. Zero across .github/workflows/ on 2026-08-27, which is the one day freezing it costs nothing.
+const unfailable = [...ciText.matchAll(/continue-on-error:\s*true/g)].length;
+
+/** Every rule in a biome config set to `warn`, as biome category ids. */
+function warnRules(doc) {
+  const out = new Set();
+  const walk = (rules) => {
+    for (const [group, body] of Object.entries(rules ?? {})) {
+      // cm:why `preset` and `recommended` name a rule SET, not a rule, so a severity read off them would be a category id no diagnostic ever carries
+      if (group === 'preset' || group === 'recommended') continue;
+      if (typeof body === 'string') {
+        if (body === 'warn') out.add(`lint/${group}/*`);
+        continue;
+      }
+      for (const [name, spec] of Object.entries(body ?? {})) {
+        if ((typeof spec === 'string' ? spec : spec?.level) === 'warn') {
+          out.add(`lint/${group}/${name}`);
+        }
+      }
+    }
+  };
+  walk(doc?.linter?.rules);
+  // cm:guard walk `overrides` too. packages/core drops `noUnsafeOptionalChaining` to `warn` there for 43 test-file sites, and a scan of the top-level rules alone would report that config fully covered while an entire severity downgrade went uncounted.
+  for (const o of doc?.overrides ?? []) walk(o?.linter?.rules);
+  return out;
+}
+
+function biomeConfigs(dir = '', depth = 0, acc = []) {
+  if (depth > 3) return acc;
+  for (const e of readdirSync(at(dir), { withFileTypes: true })) {
+    if (e.name.startsWith('.') || ['node_modules', 'dist', 'coverage'].includes(e.name)) continue;
+    const p = dir ? `${dir}/${e.name}` : e.name;
+    if (e.isDirectory()) biomeConfigs(p, depth + 1, acc);
+    else if (e.name === 'biome.json') acc.push(p);
+  }
+  return acc;
+}
+
+// cm:guard the checker that OWNS a rule decides which baseline must count it: the two length rules are frozen by line count in .forge/size-baseline.json, everything else per (file, rule) in .forge/lint-baseline.json. Reading both scope lists from the manifest rather than restating them is what makes registering a scope enough to satisfy this rule.
+function uncountedWarnRules() {
+  const scopesOf = (key) =>
+    (manifest?.checkers?.[key]?.scopes ?? []).map((s) => s.cwd).filter(Boolean);
+  const lint = scopesOf('lint-budget');
+  const size = scopesOf('size-budget');
+  const gaps = [];
+  for (const cfg of biomeConfigs()) {
+    const dir = dirname(cfg) === '.' ? '' : dirname(cfg);
+    let doc;
+    try {
+      doc = JSON.parse(read(cfg) ?? '');
+    } catch {
+      gaps.push(`${cfg} is unreadable`);
+      continue;
+    }
+    for (const rule of warnRules(doc)) {
+      if (!(SIZE_RULES.has(rule) ? size : lint).includes(dir)) gaps.push(`${dir || '.'} ${rule}`);
+    }
+  }
+  return gaps;
+}
+
+const uncounted = uncountedWarnRules();
 
 const overclaimed = Object.entries(axes)
   .filter(([, s]) => (s.level ?? 0) > 1 && !hasCI)
@@ -199,6 +273,22 @@ const RULES = [
           ? 'archmap check --stats printed no unresolvable count'
           : `${resolution.measured} unresolvable (ceiling ${resolution.declared})`,
     why: 'an unresolvable edge is dropped, not reported — a gate that resolves nothing prints the same "0 violations" a clean repo does',
+  },
+  {
+    id: 'R8',
+    text: 'no CI step runs where it cannot fail',
+    pass: hasCI ? unfailable === 0 : null,
+    detail: !hasCI ? 'no CI' : `${unfailable} step(s) with continue-on-error: true`,
+    why: 'a check that runs and cannot fail is stage 0 — it produces a number nobody is held to, which is how the desktop Rust gate drifted behind a comment promising cleanup',
+  },
+  {
+    id: 'R9',
+    text: 'every lint rule at a non-blocking severity is counted by a baselined checker',
+    pass: uncounted.length === 0,
+    detail: uncounted.length
+      ? `uncounted: ${uncounted.join(' · ')}`
+      : 'every warn-severity rule is frozen somewhere',
+    why: 'biome exits 0 on a warning, so a `warn` rule no baseline counts is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis',
   },
 ];
 
