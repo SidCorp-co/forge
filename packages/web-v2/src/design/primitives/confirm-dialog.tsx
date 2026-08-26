@@ -1,10 +1,11 @@
 "use client";
 
 // Small reusable confirm modal for destructive/irreversible actions (remove
-// member, revoke invitation, delete org, override the reopen cap). Wraps the
+// member, revoke invitation, delete org, delete a private key). Wraps the
 // SlideOver pattern (focus-trap + Esc-to-close + focus-restore already built
 // in). Presentational only — the caller owns the mutation and clears state in
 // onConfirm/onClose.
+
 import type { ReactNode } from "react";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { Button } from "@/design/primitives/button";

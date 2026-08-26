@@ -209,8 +209,8 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park needs a human or an operator sentinel, the four things `waiting` means, and who owns which derived fields.',
-    version: 5,
+      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
+    version: 6,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -234,9 +234,9 @@ The \`developed\` route is the one people miss. It is the direct-ship path: you 
 **Closing is not free.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue. Closing something you ABANDONED rather than finished silently unblocks work that should still be blocked — call \`forge_issues\` \`unmark\` to clear the stamp in that case.
 
 ### What is actually enforced, and what is only advice
-The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`closed\` or \`developed\`. That is the whole rule.
+The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`developed\`, \`closed\` or \`dropped\`. That is the whole rule. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.
 
-The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (a reopen cap, a content guard) — reason from that error, never from the shape of the ladder.
+The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (\`TRANSITION_REASON_REQUIRED\` on a park with no rationale, \`WAITING_KIND_REQUIRED\` on a \`waiting\` that does not say which kind, \`ILLEGAL_TRANSITION\` on either half of the rule above — \`draft\` as a target, or a \`draft\` leaving to anything else) — reason from that error, never from the shape of the ladder.
 
 ### The description is a requirements contract, not an implementation script
 A description is the one context channel every downstream step trusts without re-verifying, so what you put in it decides whether plan and code explore the repo or just obey a stale snapshot.
