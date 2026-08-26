@@ -199,4 +199,11 @@ describe('emptiedScopes', () => {
   it('treats a scope absent from the baseline as nothing to protect', () => {
     expect(emptiedScopes(at({ 'packages/new': 0 }), at({}))).toEqual([]);
   });
+
+  // cm:guard this DECLARES a hole rather than closing one. Measured 2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 of 210 over a full 459 scanned files, so nothing here fires and the next --update-baseline drops 9 files and 24 frozen diagnostics at exit 0, which `improves: down` accepts because it only faults on a rise. Delete this test and the next reader will believe a partly-unlinted scope is caught, which is the overclaim ISS-833 exists to remove rather than to add.
+  it('does NOT catch a scope emptied in part — declared, not closed', () => {
+    expect(emptiedScopes(at({ 'packages/web-v2': 186 }), at({ 'packages/web-v2': 210 }))).toEqual(
+      [],
+    );
+  });
 });

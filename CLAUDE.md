@@ -239,8 +239,11 @@ Four review rounds each found a different config that empties the checker's inpu
 exits 0 — `linter.enabled`, the same switch behind `extends`, an `overrides` block, a narrowed
 `files.includes` — so the gate measures rather than enumerates: it does not matter which line did it.
 Draining a scope to zero is real and stays recordable with
-`--update-baseline --accept-emptied-scope`; what it may never be is silent, because a silent one
-deletes the frozen debt and `improves: down` accepts it, faulting only on a rise.
+`--update-baseline --accept-emptied-scope=<scope>`; what it may never be is silent, because a silent
+one deletes the frozen debt and `improves: down` accepts it, faulting only on a rise. **A scope
+emptied in PART still slips through** — an `overrides` block over one directory left web-v2 at 186 of
+210 and dropped 24 frozen diagnostics on the next re-freeze — because telling an unlinted file from a
+fixed one needs a signal biome's reporter does not emit. Declared and pinned by a test, not closed.
 
 Size is its own row because biome **declares** the two length rules but cannot gate them: it has no
 baseline, so the only choices were `warn` (143 violations, `biome check` exits 0, nothing held) and

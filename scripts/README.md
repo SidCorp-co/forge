@@ -146,12 +146,20 @@ guards produce that last one, because a scope legitimately drained to zero and a
 linting report identical numbers:
 
 - **the baseline disagrees with the measurement** — a scope whose baseline freezes debt and which now
-  measures **zero** exits 2. This is the one that closes the class rather than an instance of it. Three
-  review rounds each found another config that empties the input while biome still exits 0 — top-level
+  measures **zero** exits 2, whatever config line did it, because this parses no config. Three review
+  rounds each found another way to empty the input while biome still exits 0 — top-level
   `linter.enabled`, the same switch behind `extends`, then a single `overrides` block needing no second
-  file at all — and enumeration lost every round. This parses no config, so it covers whatever biome
-  adds next. Draining a scope to zero is a real achievement and stays recordable, but never silently:
-  `--update-baseline --accept-emptied-scope` writes it, and the bare re-freeze refuses.
+  file at all — and enumeration lost every round. Draining a scope to zero is a real achievement and
+  stays recordable, but never silently: `--update-baseline --accept-emptied-scope=<scope>` writes it,
+  and the bare re-freeze refuses.
+
+  **It catches a scope emptied entirely, not one emptied in part, and that gap is open.** Measured
+  2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 diagnostics
+  over a full 459 scanned files, so no guard here fires and the next `--update-baseline` drops 9 files
+  and 24 frozen diagnostics at exit 0 — accepted by `improves: down`, which only faults on a rise.
+  Closing it needs a per-file "was this linted" signal biome's JSON reporter does not expose, and
+  refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block. A test
+  in `lib/lint-budget.test.mjs` pins it as declared rather than left to be rediscovered.
 - **files scanned** — biome's own `summary` says how many files it looked at, and zero means the scope
   matched nothing. A narrowed `files.includes` lands here.
 - **the linter is on** — the scope's resolved config, following `extends` to the end of the chain, must

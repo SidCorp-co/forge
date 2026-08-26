@@ -26,7 +26,9 @@ export function total(files) {
   return Object.values(files ?? {}).reduce((a, rules) => a + fileTotal(rules), 0);
 }
 
-// cm:guard MEASURE, do not enumerate. Three rounds of review each found another config that empties this checker's input while biome still exits 0 — top-level `linter.enabled`, the same switch behind `extends`, then a single `overrides` block with no second file at all — and each fix closed one instance of "biome scans the scope but lints nothing". This closes the class instead: a scope whose baseline holds debt and which now measures zero is either genuinely drained or not being linted, and BOTH deserve a human look before the frozen debt is deleted. It parses no config, so whatever biome adds next is covered on the day it ships.
+// cm:guard MEASURE, do not enumerate. Three rounds of review each found another config that empties this checker's input while biome still exits 0 — top-level `linter.enabled`, the same switch behind `extends`, then a single `overrides` block with no second file at all — and each fix closed one instance of "biome scans the scope but lints nothing". This catches a scope emptied ENTIRELY, whatever line did it, because it parses no config.
+// cm:guard it does NOT catch a scope emptied in PART, and do not write that it does. Measured 2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 diagnostics over 459 scanned files, so this never fires, `linterFault` cannot see it, and the next `--update-baseline` drops 9 files and 24 frozen diagnostics at exit 0. Closing it needs a per-file signal distinguishing "unlinted" from "fixed" that biome's JSON reporter does not expose, and refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block. Pinned by a test in lint-budget.test.mjs.
+/** Scopes whose baseline records debt but which measured nothing — the shape a silent wipe takes. */
 /** Scopes whose baseline records debt but which measured nothing — the shape a silent wipe takes. */
 export function emptiedScopes(currentByScope, baselineByScope) {
   const out = [];

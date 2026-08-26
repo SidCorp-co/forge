@@ -277,12 +277,21 @@ if (mode === '--update-baseline') {
     currentByScope,
     totalsByScope(previous.files, new Map(), cfg.scopes),
   );
-  if (emptied.length > 0 && !process.argv.includes('--accept-emptied-scope')) {
+  // cm:guard the confirmation NAMES its scope, because one bare flag accepted both at once and deleted all 487 frozen diagnostics across 175 files at exit 0. The realistic shape is a contributor genuinely draining scope A on a branch where a config change or a bad merge emptied scope B — an unqualified yes answers a question nobody read.
+  const accepted = new Set(
+    process.argv
+      .filter((a) => a.startsWith('--accept-emptied-scope='))
+      .map((a) => a.slice('--accept-emptied-scope='.length)),
+  );
+  const unconfirmed = emptied.filter((s) => !accepted.has(s));
+  if (unconfirmed.length > 0) {
     console.error(
-      `check-lint-budget: ${emptied.join(', ')} measured ZERO diagnostics but the baseline freezes debt for it.\n` +
+      `check-lint-budget: ${unconfirmed.join(', ')} measured ZERO diagnostics but the baseline freezes debt for it.\n` +
         'Either that scope genuinely drained to zero, or it is no longer being linted — an\n' +
         '`overrides` block, a narrowed `files.includes` or an ignore file all look identical from here.\n' +
-        'Confirm it is the first, then re-run with --accept-emptied-scope to record it.\n',
+        'Confirm it is the first, then name it to record it:\n' +
+        unconfirmed.map((s) => `  --accept-emptied-scope=${s}`).join('\n') +
+        '\n',
     );
     process.exit(2);
   }
@@ -312,7 +321,7 @@ if (emptied.length > 0) {
     `check-lint-budget: ${emptied.join(', ')} measured ZERO diagnostics but the baseline freezes debt for it.\n` +
       'A scope that stopped being linted and a scope that drained to zero look identical by count,\n' +
       'so this refuses rather than reporting clean. If it genuinely drained, record it with:\n' +
-      '  node scripts/check-lint-budget.mjs --update-baseline --accept-emptied-scope\n',
+      '  node scripts/check-lint-budget.mjs --update-baseline --accept-emptied-scope=<scope>\n',
   );
   process.exit(2);
 }
