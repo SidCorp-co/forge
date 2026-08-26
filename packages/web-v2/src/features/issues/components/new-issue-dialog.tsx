@@ -45,12 +45,14 @@ import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 // (docx, csv, xls, xlsx) are allowed alongside images, video, PDF, and text.
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
+// cm:edge lockstep -> packages/core/src/issues/attachment-service.ts — this set exists only to reject before an upload round-trip, so a mime core accepts and this omits is invisible: the picker silently filters the file and the person is told the type is unsupported, while an agent posting the same file through forge_uploads succeeds. `image/svg+xml` is STILL omitted deliberately — core serves it `Content-Disposition: attachment`, and whether an <img> thumbnail renders under that header is unverified here; route it through the sandboxed HtmlArtifact path before adding it.
 const ALLOWED_MIMES = new Set([
   "image/png",
   "image/jpeg",
   "image/gif",
   "image/webp",
   "application/pdf",
+  "text/html",
   "video/mp4",
   "video/webm",
   "video/quicktime",
@@ -62,7 +64,7 @@ const ALLOWED_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 const ACCEPT_ATTR =
-  "image/png,image/jpeg,image/gif,image/webp,application/pdf,video/mp4,video/webm,video/quicktime,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.mp4,.webm,.mov,.txt,.md,.csv,.docx,.xls,.xlsx";
+  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,video/mp4,video/webm,video/quicktime,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.mp4,.webm,.mov,.txt,.md,.csv,.docx,.xls,.xlsx";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

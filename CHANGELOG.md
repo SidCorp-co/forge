@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - Diagrams now render in issue descriptions, plans and comments — write a `mermaid` code block and it draws instead of showing its own source.
 - An HTML file attached to an issue or comment now displays inline as a live page instead of only offering a download.
+- The file picker on issues and comments now accepts HTML files, which the server already allowed — attaching one no longer reports the type as unsupported.
 - Cancelling a job that had already failed no longer discards the reason it failed — the failure is recorded and readable like any other.
 - An issue paused for a person now names what it actually needs — a decision, or something only you can supply — instead of always saying its plan is awaiting approval.
 - Fixed scheduled runs sometimes showing as succeeded even after the run actually failed.
