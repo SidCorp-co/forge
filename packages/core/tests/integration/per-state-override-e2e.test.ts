@@ -150,7 +150,7 @@ describe('ISS-194 per-state override end-to-end', () => {
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-        'Issue', 'open', 'medium', ${ownerId}
+        'Issue', 'approved', 'medium', ${ownerId}
       )
     `);
     return id;
