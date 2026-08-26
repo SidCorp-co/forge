@@ -11,11 +11,9 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
-// Named spy so tests can inspect the projection map passed to db.select(...).
 const selectSpy = vi.fn(() => ({ from: selectFrom }));
 
 vi.mock('../../db/client.js', () => ({
@@ -32,10 +30,6 @@ vi.mock('../../jobs/dispatch-gates.js', () => ({
   assertDispatchable: (jobId: string) => assertDispatchableMock(jobId),
 }));
 
-// ISS-442 C0 — the MCP cancel tool delegates to the shared cancelJob() helper.
-// Mock it here so these tests cover only the MCP layer (writer gate, arg
-// passthrough, JobCancelError → Error mapping); the helper's transactional
-// behaviour is exercised through the REST path tests.
 const cancelJobMock = vi.fn();
 class JobCancelError extends Error {
   constructor(
@@ -202,10 +196,6 @@ describe('forge_jobs.list', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
-  // ISS-478 (sibling of ISS-428) — the list query must use a body-free column
-  // projection (never a bare db.select()) so the heavy payload/promptBlocks/
-  // failureMeta jsonb + unbounded userPromptSnapshot/error text can't overflow
-  // the MCP token cap. Assert the projection map of the final (jobs) select.
   it('projects a body-free column set (no payload/promptBlocks/failureMeta/userPromptSnapshot/error)', async () => {
     const tool = forgeJobsListTool(fakeDevice);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
@@ -227,16 +217,9 @@ describe('forge_jobs.list', () => {
     }
   });
 
-  // ISS-478 fix-forward — the projection alone bounds per-row size but NOT the
-  // total response: at the old default limit of 50 a real-history project still
-  // produced ~52K chars and spilled to a file. The handler now trims from the
-  // tail to a hard char budget. Assert a large list is trimmed and the
-  // serialized result stays well under the live spill threshold.
   it('caps the total response size and flags truncation for a large list', async () => {
     const tool = forgeJobsListTool(fakeDevice);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
-    // 200 realistically-sized projected rows (every scalar column populated incl.
-    // a bounded failureReason) → well over the char budget before trimming.
     const fatRows = Array.from({ length: 200 }, (_, i) => ({
       ...baseJobRow,
       id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
@@ -251,8 +234,6 @@ describe('forge_jobs.list', () => {
       limit?: number;
     };
 
-    // Trimmed below the requested 200, flagged, and serialized well under the
-    // ~45K live spill threshold.
     expect(result.truncated).toBe(true);
     expect(result.jobs.length).toBeLessThan(200);
     expect(result.returned).toBe(result.jobs.length);
@@ -303,9 +284,7 @@ const makePatCtx = (projectIds: string[] | null) => ({
 describe('forge_jobs.get', () => {
   it('returns the job + agentSessionId when device owner is member', async () => {
     const tool = forgeJobsGetTool(makeDeviceCtx());
-    // load job
     selectLimit.mockResolvedValueOnce([baseJobRow]);
-    // membership
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ jobId: JOB_ID })) as {
@@ -340,11 +319,8 @@ describe('forge_jobs.get', () => {
 describe('forge_jobs.events', () => {
   it('returns paginated { items, lastSeq } with sinceSeq filter', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
-    // load job
     selectLimit.mockResolvedValueOnce([baseJobRow]);
-    // membership
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    // events query
     selectLimit.mockResolvedValueOnce([
       { id: 'e1', jobId: JOB_ID, ts: new Date(), kind: 'stdout', data: {}, seq: 5 },
       { id: 'e2', jobId: JOB_ID, ts: new Date(), kind: 'stdout', data: {}, seq: 7 },
@@ -356,6 +332,31 @@ describe('forge_jobs.events', () => {
     };
     expect(result.items).toHaveLength(2);
     expect(result.lastSeq).toBe(7);
+  });
+
+  it('discloses response-size truncation and retains a usable cursor', async () => {
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([
+      { id: 'e1', jobId: JOB_ID, ts: new Date(), kind: 'stdout', data: { blob: 'x'.repeat(50_000) }, seq: 5 },
+    ]);
+
+    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 4 })) as {
+      items: unknown[];
+      lastSeq: number;
+      returned: number;
+      hasMore: boolean;
+      truncatedBy: string;
+    };
+
+    expect(result).toMatchObject({
+      items: [],
+      lastSeq: 4,
+      returned: 0,
+      hasMore: true,
+      truncatedBy: 'response-size',
+    });
   });
 
   it('returns lastSeq = sinceSeq when no items match', async () => {

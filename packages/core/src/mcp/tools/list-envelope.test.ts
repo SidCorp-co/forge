@@ -92,7 +92,7 @@ describe('buildListEnvelope', () => {
     expect((result.comments as Array<{ id: number }>).at(-1)?.id).toBe(4);
   });
 
-  it('always keeps one row rather than answering with an empty list', () => {
+  it('drops a row that alone exceeds the response-size cap and discloses it', () => {
     const huge = [{ id: 0, blob: 'x'.repeat(50_000) }];
     const result = buildListEnvelope({
       key: 'issues',
@@ -101,7 +101,14 @@ describe('buildListEnvelope', () => {
       hint: 'f',
       maxChars: 100,
     });
-    expect((result.issues as unknown[]).length).toBe(1);
+    expect(result).toMatchObject({
+      issues: [],
+      returned: 0,
+      hasMore: true,
+      truncated: true,
+      truncatedBy: 'response-size',
+    });
+    expect(JSON.stringify({ issues: result.issues }).length).toBeLessThanOrEqual(100);
   });
 });
 

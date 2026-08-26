@@ -58,7 +58,7 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
 
   const beforeSizeTrim = kept.length;
   const dropOne = args.oldestAt === 'head' ? (r: T[]) => r.slice(1) : (r: T[]) => r.slice(0, -1);
-  while (kept.length > 1 && JSON.stringify({ [key]: kept }).length > maxChars) {
+  while (kept.length > 0 && JSON.stringify({ [key]: kept }).length > maxChars) {
     kept = dropOne(kept);
   }
   const boundBySize = kept.length < beforeSizeTrim;
