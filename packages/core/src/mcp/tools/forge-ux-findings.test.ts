@@ -73,6 +73,22 @@ function makeCtx(projectSlug = PROJECT_SLUG) {
   };
 }
 
+function makePatCtx(projectSlug = PROJECT_SLUG) {
+  return {
+    principal: {
+      kind: 'pat' as const,
+      agency: 'human' as const,
+      userId: OWNER_ID,
+      tokenId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      scopes: ['read', 'write'],
+      projectIds: [PROJECT_ID],
+      boundProjectId: null,
+    },
+    device: fakeDevice,
+    projectSlug,
+  };
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   selectFrom.mockImplementation(() => ({
@@ -136,6 +152,24 @@ describe('forge_ux_findings write', () => {
 
     const inserted = (insertValues.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
     expect(inserted.ruleId).toBeUndefined();
+  });
+
+  it('soft-rejects a non-device principal with the actionable pipeline-context cause', async () => {
+    const tool = forgeUxFindingsTool(makePatCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    const result = (await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'A finding from an interactive session',
+    })) as { ok: boolean; reason: string; detail: string };
+
+    expect(result).toMatchObject({ ok: false, reason: 'not_pipeline_context' });
+    expect(result.detail).toMatch(/issueId/);
+    expect(insertValues).not.toHaveBeenCalled();
   });
 
   it('soft-rejects with no_active_job, naming the cause, when nothing is running', async () => {

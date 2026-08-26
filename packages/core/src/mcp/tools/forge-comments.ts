@@ -46,7 +46,7 @@ const attachmentInputSchema = z
   })
   .strict();
 
-// cm:edge contract -> packages/core/skills — the shipped SKILL.md templates carry `forge_comments → create` examples an agent copies verbatim; this schema is `.strict()`, so a key in an example that is not here is a hard rejection at the agent's first call. `skills/shipped-templates.test.ts` parses those examples against this export.
+// cm:edge contract -> packages/core/skills — shipped Markdown templates carry `forge_comments → create` examples an agent copies verbatim; this schema is `.strict()`, so a key in an example that is not here is a hard rejection at the agent's first call. `skills/shipped-templates.test.ts` parses every template against this export.
 export const commentCreateDataSchema = z
   .object({
     body: z.string().trim().min(1).max(10_000).optional(),

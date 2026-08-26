@@ -32,13 +32,19 @@ const SCHEMA_PLACEHOLDER: Record<string, unknown> = {
   attachments: [],
 };
 
+function markdownFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return markdownFiles(entryPath);
+    return entry.isFile() && entry.name.endsWith('.md') ? [entryPath] : [];
+  });
+}
+
 function shippedTemplates(): { name: string; text: string }[] {
-  return readdirSync(SKILLS_ROOT, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => ({
-      name: e.name,
-      text: readFileSync(path.join(SKILLS_ROOT, e.name, 'SKILL.md'), 'utf8'),
-    }));
+  return markdownFiles(SKILLS_ROOT).map((filePath) => ({
+    name: path.relative(SKILLS_ROOT, filePath),
+    text: readFileSync(filePath, 'utf8'),
+  }));
 }
 
 /** Key names shown inside a `data: { … }` block of a create example. */
@@ -55,7 +61,7 @@ function exampleDataKeys(text: string): string[] {
   return [...keys];
 }
 
-describe('shipped SKILL.md templates type-check against the live schema (ISS-787)', () => {
+describe('shipped Markdown templates type-check against the live schema (ISS-787)', () => {
   const templates = shippedTemplates();
 
   it('finds the templates it claims to check', () => {

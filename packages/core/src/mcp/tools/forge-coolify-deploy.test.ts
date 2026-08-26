@@ -54,6 +54,12 @@ vi.mock('../../pipeline/release-coolify.js', () => ({
 
 const findLastOutboundSpy = vi.fn();
 const findLastOutboundForTargetSpy = vi.fn();
+const fetchDeploymentLogsSpy = vi.fn();
+const fetchRuntimeLogsSpy = vi.fn();
+vi.mock('../../integrations/coolify/log-fetch.js', () => ({
+  fetchCoolifyDeploymentLogs: (...a: unknown[]) => fetchDeploymentLogsSpy(...a),
+  fetchCoolifyRuntimeLogs: (...a: unknown[]) => fetchRuntimeLogsSpy(...a),
+}));
 vi.mock('../../integrations/deliveries.js', () => ({
   findLastOutbound: (a: unknown) => findLastOutboundSpy(a),
   findLastOutboundForTarget: (...a: unknown[]) => findLastOutboundForTargetSpy(...(a as [])),
@@ -138,6 +144,8 @@ beforeEach(() => {
   isIssueAtReleaseStageSpy.mockReset();
   findLastOutboundSpy.mockReset();
   findLastOutboundForTargetSpy.mockReset();
+  fetchDeploymentLogsSpy.mockReset();
+  fetchRuntimeLogsSpy.mockReset();
 });
 
 describe('forge_coolify_deploy → list', () => {
@@ -392,6 +400,69 @@ describe('forge_coolify_deploy → deploy', () => {
       runId: 'run-1',
       integrationId: null,
       allowProd: true,
+    });
+  });
+});
+
+describe('forge_coolify_deploy → logs', () => {
+  it('passes lines to deployment-log reads and returns their freshness metadata', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    const integration = pair(STAGING_INT, 'staging');
+    resultQueue.push([integration]);
+    findLastOutboundSpy.mockResolvedValueOnce({
+      response: { deployment_uuid: 'dep-1' },
+    });
+    fetchDeploymentLogsSpy.mockResolvedValueOnce({
+      deploymentUuid: 'dep-1',
+      status: 'running',
+      commit: null,
+      logs: 'step 1',
+      truncated: false,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'deadbeefcafe',
+    });
+
+    const result = await tool.handler({
+      action: 'logs',
+      projectId: PROJECT_ID,
+      lines: 3,
+    });
+
+    expect(fetchDeploymentLogsSpy).toHaveBeenCalledWith(integration, 'dep-1', 3);
+    expect(result).toMatchObject({
+      integrationId: STAGING_INT,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'deadbeefcafe',
+    });
+  });
+
+  it('passes lines to runtime-log reads and returns their freshness metadata', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    const integration = pair(STAGING_INT, 'staging', {
+      config: { targets: [{ id: 'target-1', label: 'Core', resourceUuid: 'app-1' }] },
+    });
+    resultQueue.push([integration]);
+    fetchRuntimeLogsSpy.mockResolvedValueOnce({
+      resourceUuid: 'app-1',
+      logs: 'ready',
+      truncated: false,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'facefeedcafe',
+    });
+
+    const result = await tool.handler({
+      action: 'runtime-logs',
+      projectId: PROJECT_ID,
+      lines: 7,
+    });
+
+    expect(fetchRuntimeLogsSpy).toHaveBeenCalledWith(integration, 'app-1', 7);
+    expect(result).toMatchObject({
+      integrationId: STAGING_INT,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'facefeedcafe',
     });
   });
 });

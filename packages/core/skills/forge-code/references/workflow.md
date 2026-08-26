@@ -170,7 +170,7 @@ git push -u origin ISS-XX-short-title
 Post a summary on the issue (see `references/comments.md` for style):
 
 ```
-forge_comments → create → { data: { body: "<markdown>", issue: "<documentId>", author: "Charizard" } }
+forge_comments → create → { data: { body: "<markdown>", issue: "<documentId>" } }
 ```
 
 What was implemented, notable decisions. No file paths or code snippets.
