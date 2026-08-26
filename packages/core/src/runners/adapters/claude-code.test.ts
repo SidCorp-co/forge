@@ -6,8 +6,13 @@ vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => publish(...args) },
 }));
 
+const selectLimit = vi.fn(async () => [] as Array<{ issSeq: number }>);
 vi.mock('../../db/client.js', () => ({
-  db: {},
+  db: {
+    select: () => ({
+      from: () => ({ where: () => ({ limit: () => selectLimit() }) }),
+    }),
+  },
 }));
 
 const { claudeCodeAdapter } = await import('./claude-code.js');
@@ -18,12 +23,88 @@ describe('claude-code adapter', () => {
     publish.mockClear();
   });
 
+  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — without `issueKey` the runner declines to salvage a failed job's working copy at all (it cannot tell this job's checkout from a stale one), so dropping this field disables L1 with nothing going red.
+  it('forwards issueKey so a failed job can have its working copy salvaged', async () => {
+    selectLimit.mockResolvedValueOnce([{ issSeq: 862 }]);
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-9',
+        projectId: 'p-1',
+        issueId: 'i-1',
+        attempts: 3,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
+      },
+      runner: {
+        id: 'r-1',
+        projectId: 'p-1',
+        type: 'claude-code',
+        host: 'device',
+        deviceId: 'd-1',
+        name: 'desk',
+        labels: [],
+        capabilities: {},
+        config: {},
+        status: 'online',
+        lastSeenAt: new Date(),
+        lastError: null,
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
+      },
+    });
+    const data = (publish.mock.calls[0]?.[1] as { data: Record<string, unknown> }).data;
+    expect(data.issueKey).toBe('ISS-862');
+    expect(data.attempts).toBe(3);
+  });
+
+  it('omits issueKey rather than failing the dispatch when the lookup throws', async () => {
+    selectLimit.mockRejectedValueOnce(new Error('db down'));
+    const result = await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-10',
+        projectId: 'p-1',
+        issueId: 'i-1',
+        attempts: 1,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
+      },
+      runner: {
+        id: 'r-1',
+        projectId: 'p-1',
+        type: 'claude-code',
+        host: 'device',
+        deviceId: 'd-1',
+        name: 'desk',
+        labels: [],
+        capabilities: {},
+        config: {},
+        status: 'online',
+        lastSeenAt: new Date(),
+        lastError: null,
+        limitReason: null,
+        rateLimitedUntil: null,
+        limitDetail: null,
+        quarantinedUntil: null,
+        quarantineReason: null,
+      },
+    });
+    expect(result.status).toBe('dispatched');
+    const data = (publish.mock.calls[0]?.[1] as { data: Record<string, unknown> }).data;
+    expect(data.issueKey).toBeUndefined();
+  });
+
   it('publishes job.assigned to the device room and returns dispatched', async () => {
     const result = await claudeCodeAdapter.dispatch({
       job: {
         id: 'job-1',
         projectId: 'p-1',
         issueId: null,
+        attempts: 1,
         type: 'code',
         payload: { prompt: 'hi' },
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
@@ -61,6 +142,7 @@ describe('claude-code adapter', () => {
         id: 'job-1',
         projectId: 'p-1',
         issueId: null,
+        attempts: 1,
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -98,6 +180,7 @@ describe('claude-code adapter', () => {
         id: 'job-sp',
         projectId: 'p-1',
         issueId: null,
+        attempts: 1,
         type: 'code',
         payload: {},
         promptString: '/forge-code iss-1',
@@ -134,6 +217,7 @@ describe('claude-code adapter', () => {
         id: 'job-no-sp',
         projectId: 'p-1',
         issueId: null,
+        attempts: 1,
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -168,6 +252,7 @@ describe('claude-code adapter', () => {
         id: 'job-1',
         projectId: 'p-1',
         issueId: null,
+        attempts: 1,
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -203,6 +288,7 @@ describe('claude-code adapter', () => {
         id: 'job-2',
         projectId: 'p-1',
         issueId: null,
+        attempts: 1,
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),

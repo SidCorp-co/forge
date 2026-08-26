@@ -56,6 +56,8 @@ export interface DispatchInput {
     type: string;
     payload: unknown;
     dispatchedAt: Date;
+    /** `jobs.attempts` — which try this is. */
+    attempts: number;
     /**
      * Linked `agent_sessions` row id (when the job was created via a pipeline
      * transition). The runner uses `jobId` as its local session key

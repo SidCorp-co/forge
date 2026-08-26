@@ -481,6 +481,58 @@ describe('POST /:id/fail (device)', () => {
   });
 });
 
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/salvage.rs — this body is what `Salvage::to_json` emits, field for field. `failBodySchema` is `.strict()`, so drift on either side is a 400 that discards the WHOLE failure report rather than only the salvage; reading both files is not the same as exercising the boundary, which is why this test posts the literal shape.
+describe('POST /:id/fail — salvage (ISS-862 L1)', () => {
+  function failWith(body: Record<string, unknown>) {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'failed' }]);
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
+    return buildApp().fetch(
+      req(`/api/jobs/${validJobId}/fail`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  it('accepts the exact object the runner emits and merges it into failure_meta', async () => {
+    const r = await failWith({
+      error: 'boom',
+      salvage: {
+        outcome: 'pushed',
+        branch: 'ISS-862-runner-health',
+        sha: 'a1b2c3d',
+        files: 7,
+        insertions: 214,
+      },
+    });
+    expect(r.status).toBe(200);
+    const set = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(set.failureMeta).toBeDefined();
+  });
+
+  it('rejects a field neither side declared, rather than dropping it silently', async () => {
+    const r = await failWith({
+      error: 'boom',
+      salvage: { outcome: 'pushed', worktree: '/repo/.claude/worktrees/iss-862' },
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it('rejects an outcome the renderer cannot render', async () => {
+    const r = await failWith({ error: 'boom', salvage: { outcome: 'partially_pushed' } });
+    expect(r.status).toBe(400);
+  });
+
+  it('still records the failure when the runner reports no salvage at all', async () => {
+    const r = await failWith({ error: 'boom' });
+    expect(r.status).toBe(200);
+    const set = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(set.failureMeta).toBeUndefined();
+  });
+});
+
 describe('POST /:id/kill-ack (device) — ISS-785', () => {
   it('device-scoped: 403s a kill-ack from a device the job is not dispatched to', async () => {
     selectLimit.mockResolvedValueOnce([{ ...jobRow, deviceId: 'someone-else' }]);

@@ -1,4 +1,7 @@
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { db } from '../../db/client.js';
+import { issues } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { deviceRoom } from '../../ws/rooms.js';
 import { roomManager } from '../../ws/server.js';
@@ -9,6 +12,24 @@ import type {
   HealthResult,
   RunnerAdapter,
 } from '../types.js';
+
+/** `ISS-<seq>` for an issue-bound job. Null for `pm`/`interactive`/`system`
+ *  jobs, and on any lookup failure — the runner treats an absent key as "do not
+ *  salvage", which is the safe direction. */
+async function issueKeyOf(issueId: string | null): Promise<string | null> {
+  if (!issueId) return null;
+  try {
+    const [row] = await db
+      .select({ issSeq: issues.issSeq })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    return row ? `ISS-${row.issSeq}` : null;
+  } catch (err) {
+    logger.warn({ err, issueId }, 'claude-code adapter: issue key lookup failed');
+    return null;
+  }
+}
 
 export const claudeCodeConfigSchema = z
   .object({
@@ -53,6 +74,8 @@ export const claudeCodeAdapter: RunnerAdapter = {
       if (key in payload) overrideForwards[key] = payload[key];
     }
 
+    const issueKey = await issueKeyOf(job.issueId);
+
     roomManager.publish(deviceRoom(runner.deviceId), {
       event: 'job.assigned',
       data: {
@@ -67,7 +90,8 @@ export const claudeCodeAdapter: RunnerAdapter = {
         runnerId: runner.id,
         runnerType: runner.type,
         dispatchedAt: job.dispatchedAt.toISOString(),
-        // cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/salvage.rs — the runner writes this into the salvage commit's `forge-attempt` trailer, which is how a human reading `git log` on an ISS-* branch tells three salvage commits apart. It reads the field as optional, so dropping it degrades to an untrailered commit rather than a break.
+        // cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/salvage.rs — the runner matches `issueKey` against the branches of the agent's own worktrees to find the one worth salvaging when this job fails, and writes `attempts` into that commit's `forge-attempt` trailer. Without `issueKey` the runner declines to salvage at all rather than guess between checkouts, so dropping this field silently disables the feature; both are read as optional, so an older runner ignores them.
+        ...(issueKey ? { issueKey } : {}),
         attempts: job.attempts,
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner keys its local session by `jobId`, so this field is its only route back to the agent_sessions row; drop it and the transcript, claudeSessionId and diff are never written.
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),

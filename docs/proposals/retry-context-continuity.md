@@ -1,6 +1,10 @@
 # Retry context continuity
 
-Status: proposed, not implemented · Verified against the tree 2026-08-26
+Status: **L1, L2 and L3 shipped** (`da2a2189` core, `948d50f6` runner) · L4 open · Verified against
+the tree 2026-08-26
+
+L1 reaches a runner only on its next release; core has always treated `salvage` as optional, so a
+fleet that lags reports failures exactly as it did before.
 
 A job that fails and retries starts its Claude conversation from zero. Nothing carries the previous
 attempt's reasoning, and nothing carries its uncommitted code. This proposal closes both, in four
@@ -64,7 +68,20 @@ committed is the thing that died. The runner already has every part needed:
 | git invocation | `workspace/worktree.rs:15`, `daemon/preflight.rs:118`, `workspace/worktree_reap.rs:33` |
 | push credentials | `auth/git_cred.rs` (`write_git_credential`) |
 | push, proven | `workspace/worktree_reap.rs:138,147` |
-| the job's worktree path | `workspace/worktree.rs::create` → `<repo>/.worktrees/<branch>` |
+| the job's worktree path | **found, not derived** — see the correction below |
+
+### Correction, measured 2026-08-26
+
+The path above is wrong, and shipping it as written would have been a fleet-wide no-op. Core has
+**never** sent `worktreeBranch` (grep: the field appears only in the runner and in one doc line), so
+`worktree::create` is dead code. On dev1, `<repo>/.worktrees/` did not exist at all, while six
+worktrees sat under `.claude/worktrees/` — the agent's own convention, one of them ISS-862's.
+
+Salvage therefore **finds** the checkout: `git worktree list --porcelain` from the repo root,
+excluding the root itself and the base branch, narrowed to branches matching the job's `ISS-<seq>`.
+Core sends that key on `job.assigned`; without it the runner declines rather than guessing, because
+a real box carries stale dirty worktrees from other issues (two on dev1, dirty since 2026-08-12 —
+the reaper spares a dirty worktree by design).
 
 ### Hook point
 
@@ -114,6 +131,18 @@ forge-failure: [RESULT_ERROR] success: You've hit your org's monthly spend limit
 
 Trailers rather than prose so `git log --grep='forge-salvage: true'` is exact, and so a review step
 can refuse to treat a salvage commit as a deliverable.
+
+### What L1 does not cover
+
+Salvage runs on the terminal events the runner's own `consume` loop observes. A **core-side reap** —
+`reapAckMisses` / `reapResultMisses` (quiet threshold 60 min) / `reapSessionLostJobs` in
+`jobs/loop-monitor.ts` — fails and retries a job without the runner reporting anything, so `consume`
+never reaches a terminal arm and no salvage happens.
+
+That is ISS-862's own shape: attempt 4 hung at `release.deploy.in_flight` and was reaped, not
+failed. L2 still carries the transcript pointer for a reaped attempt, because core writes the
+failure; only the working copy is lost. Closing the reaped class needs a different mechanism (core
+asking the runner to salvage before it reaps) and is not in this proposal.
 
 ### Contract change
 
@@ -271,12 +300,12 @@ should land there rather than as separate work.
 
 ## Sequencing
 
-| Order | Layer | Depends on | Surface |
-|---|---|---|---|
-| 1 | **L2** | nothing | core prompt only |
-| 2 | **L1** | L2 for the sha to be read | Rust + `fail` contract + `failure_meta` |
-| 3 | **L4** | nothing | core classifier/retry |
-| 4 | **L3** | nothing | core dispatcher |
+| Order | Layer | Depends on | Surface | State |
+|---|---|---|---|---|
+| 1 | **L2** | nothing | core prompt only | shipped `da2a2189` |
+| 2 | **L1** | L2 for the sha to be read | Rust + `fail` contract + `failure_meta` | shipped `948d50f6` |
+| 3 | **L4** | nothing | core classifier/retry | open |
+| 4 | **L3** | nothing | core dispatcher | shipped `da2a2189` |
 
 L2 first, deliberately: it is the only layer that works for **every** failure mode, needs no runner
 release, and it is what makes L1's commits reachable. L1 before L2 produces salvage commits nobody

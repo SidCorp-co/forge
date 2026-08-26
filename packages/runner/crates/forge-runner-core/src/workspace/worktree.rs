@@ -28,11 +28,8 @@ fn create_argv<'a>(rel: &'a str, branch: &'a str, start_point: Option<&'a str>) 
     argv
 }
 
-/// Where `create` puts (or found) the worktree for `branch`.
-///
-/// Split out so the failure path can reach the same directory without
-/// re-deriving the sanitising rule — a salvage that guessed the path wrong
-/// would report `refused` on a worktree that is sitting right there.
+/// Where `create` puts (or finds) the worktree for `branch`. Split out so the
+/// sanitising rule has one home.
 pub fn path(repo: &str, branch: &str) -> PathBuf {
     PathBuf::from(repo).join(format!(".worktrees/{}", sanitize(branch)))
 }

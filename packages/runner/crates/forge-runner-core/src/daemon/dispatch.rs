@@ -18,7 +18,7 @@ use crate::transport::events::{post_job_events, JobEventInput};
 use crate::transport::frames::JobAssigned;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
-use crate::workspace::{provision, refresh, salvage, skill_sync, worktree};
+use crate::workspace::{provision, refresh, salvage, skill_sync};
 
 /// Resolved working dir for one assigned project. The server (`/me/runners`)
 /// is the source of truth for `repo_path`; `config.toml` is only a local
@@ -483,10 +483,11 @@ pub async fn handle(
         _ => ja.prompt_string.clone(),
     };
 
-    // cm:guard salvage is offered ONLY to a job core cut a branch for. A triage/plan/review job runs in the repo ROOT, which sits on the project's base branch — committing its leftovers there would put unreviewed WIP on `main`, and no retry could use it anyway.
-    let salvage_ctx = worktree_branch.as_ref().map(|branch| SalvageCtx {
-        worktree: worktree::path(&resolved.repo_path.to_string_lossy(), branch),
-        branch: branch.clone(),
+    // cm:guard salvage is offered only to a job that serves an ISSUE. Without `issueKey` it cannot tell the job's checkout from a stale one — dev1 carried five agent worktrees on 2026-08-26, two dirty since 2026-08-12 — and a `pm`/`interactive` job has no branch of its own to preserve anything on.
+    let salvage_ctx = ja.issue_key.clone().map(|issue_key| SalvageCtx {
+        repo_root: resolved.repo_path.clone(),
+        base_branch: resolved.base_branch.clone(),
+        issue_key,
         attempt: ja.attempts.unwrap_or(0),
     });
 
@@ -523,11 +524,13 @@ pub async fn handle(
     Ok(())
 }
 
-/// What a failed job needs before its working copy can be preserved. `None` for
-/// a job that runs in the repo root — see the guard on [`consume`].
+/// What a failed job needs before its working copy can be preserved. The
+/// checkout is not named here: `salvage` finds the agent's own worktree for
+/// this issue, because the agent, not the runner, is what cut it.
 struct SalvageCtx {
-    worktree: PathBuf,
-    branch: String,
+    repo_root: PathBuf,
+    base_branch: Option<String>,
+    issue_key: String,
     attempt: u32,
 }
 
@@ -632,7 +635,15 @@ async fn salvage_for(
     err: &str,
 ) -> Option<serde_json::Value> {
     let ctx = ctx?;
-    let s = salvage::salvage_wip(&ctx.worktree, &ctx.branch, job_id, ctx.attempt, err).await;
+    let s = salvage::salvage_wip(salvage::SalvageInput {
+        repo_root: &ctx.repo_root,
+        base_branch: ctx.base_branch.as_deref(),
+        issue_key: Some(ctx.issue_key.as_str()),
+        job_id,
+        attempt: ctx.attempt,
+        failure: err,
+    })
+    .await;
     tracing::info!("[job {job_id}] salvage: {s:?}");
     Some(s.to_json())
 }

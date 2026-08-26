@@ -541,6 +541,7 @@ async function dispatchViaRunner(
       promptString: runnerPromptString,
       systemPrompt: runnerSystemPrompt,
       dispatchedAt,
+      attempts: job.attempts,
       agentSessionId,
     },
     runner,
