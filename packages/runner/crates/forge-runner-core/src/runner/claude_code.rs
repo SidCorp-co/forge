@@ -16,6 +16,7 @@ use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
 
+use super::inflight;
 use super::process::{build_command, graceful_kill};
 use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
 use crate::config::SkillSettings;
@@ -503,6 +504,10 @@ impl Runner for ClaudeCodeRunner {
             .take()
             .ok_or_else(|| Error::Other("no stderr".into()))?;
 
+        // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/inflight.rs — every path that inserts into `sessions` must record, and every path that removes must forget, or a `job.cancel` after a daemon restart answers `not_found` for a child that is still writing git
+        if let Some(pid) = child.id() {
+            inflight::record(&job_id, pid);
+        }
         self.sessions.lock().await.insert(
             job_id.clone(),
             Session {
@@ -807,6 +812,7 @@ impl Runner for ClaudeCodeRunner {
                     .await;
             }
             sessions.lock().await.remove(&job_id);
+            inflight::forget(&job_id);
         });
 
         Ok(job_id)

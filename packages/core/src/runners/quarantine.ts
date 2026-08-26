@@ -8,13 +8,19 @@
 // state on the runner row instead, enforced INSIDE every candidate query in
 // select.ts alongside `rateLimitedUntil`, so it survives both wrap-arounds by
 // construction.
+//
+// Which failures count is `classifyBoxFault` in attribute-failure.ts, not this
+// file. ISS-862 widened it past preflight: a box that accepts a dispatch and
+// never claims it is as broken as one that fails its own checks, and for
+// 4h41m on pixelight nothing here could see that.
 
 import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/wedge.js';
 import { broadcastRunnerChanged } from './apply-runner-limit.js';
-import { isBoxAttributable } from './attribute-failure.js';
+import { classifyBoxFault } from './attribute-failure.js';
 
 /**
  * Consecutive identical box-scoped failures on one runner that trip
@@ -51,19 +57,6 @@ export function quarantineTtlMs(level: number): number {
 }
 
 /**
- * Extract the box-scoped check token from a `preflight_failed: <check>:
- * <detail>` error, or null when the error is not box-attributable (or the
- * prefix carries no check token). Two failures "match" when this token is
- * identical, not merely when both are box-attributable.
- */
-export function parsePreflightCheck(error: string | null | undefined): string | null {
-  if (!isBoxAttributable(error)) return null;
-  const rest = (error as string).trimStart().slice('preflight_failed:'.length);
-  const check = rest.split(':')[0]?.trim();
-  return check ? check : null;
-}
-
-/**
  * Trip quarantine on `runnerId` when the current failure extends a streak of
  * `RUNNER_QUARANTINE_STREAK` identical box-scoped failures. Walks back through
  * the runner's terminal jobs (excluding `currentJobId` so this is race-free
@@ -83,8 +76,8 @@ export async function maybeQuarantineRunner(
   currentError: string | null | undefined,
 ): Promise<boolean> {
   if (!runnerId) return false;
-  const check = parsePreflightCheck(currentError);
-  if (!check) return false;
+  const fault = classifyBoxFault(currentError);
+  if (!fault) return false;
 
   const priorCount = RUNNER_QUARANTINE_STREAK - 1;
   // cm:why one rung deeper than the ladder needs, so the top rung is reached by a real streak rather than by the LIMIT running out — read a row short and a 30-failure box would keep drawing the same middle rung forever
@@ -110,7 +103,7 @@ export async function maybeQuarantineRunner(
     if (priorRows.length < priorCount) return false;
     let matching = 0;
     for (const row of priorRows) {
-      if (row.status !== 'failed' || parsePreflightCheck(row.error) !== check) break;
+      if (row.status !== 'failed' || classifyBoxFault(row.error)?.key !== fault.key) break;
       matching += 1;
     }
     if (matching < priorCount) return false;
@@ -118,25 +111,52 @@ export async function maybeQuarantineRunner(
     // cm:guard the level MUST come from the streak length and nothing else — there is no strike counter on the runner row, and adding one would be a second source of truth that `clearRunnerQuarantine` (which only nulls the two columns) would leave stale. The job history IS the counter: one success breaks the run, so a repaired box drops straight back to rung 0.
     const level = matching + 1 - RUNNER_QUARANTINE_STREAK;
     const ttlMs = quarantineTtlMs(level);
-    const reason = `preflight_failed: ${check}`;
     await db
       .update(runners)
       .set({
         quarantinedUntil: new Date(Date.now() + ttlMs),
-        quarantineReason: reason,
+        quarantineReason: fault.key,
         updatedAt: new Date(),
       })
       .where(eq(runners.id, runnerId));
     logger.warn(
-      { runnerId, check, streak: matching + 1, level, ttlMs },
+      { runnerId, fault: fault.key, streak: matching + 1, level, ttlMs },
       'runner: quarantined after repeated identical box-scoped failure',
     );
     broadcastRunnerChanged(projectId, runnerId);
+    await alarmQuarantine(runnerId, projectId, fault.key, matching + 1, ttlMs);
     return true;
   } catch (err) {
     logger.warn({ err, runnerId }, 'maybeQuarantineRunner failed, continuing');
     return false;
   }
+}
+
+/**
+ * Tell the project owner one box has been set aside, and why.
+ */
+// cm:guard the wedge is resolved ONLY where the fault is actually gone — `clearRunnerQuarantine` (a job succeeded on this box, or an admin lifted the exclusion) and `clearRunnerFaultFlags` (the operator repaired it and said so). Expiry must never resolve it: the ladder hands a permanently-broken box one more probe every rung, so clearing on expiry would drop the alarm on a runner that is still broken and re-raise it on the next trip, which teaches an operator the notification means nothing.
+// cm:why the streak is what makes this early — three no-acks cost ackMs + killGraceMs each (4.5 min at the defaults) plus retry backoff, so it fires ~15 min into an outage rather than on one WS blip, and pixelight's only alarm in a 4h41m outage was `alarmAgedHolds` at the 6h mark
+async function alarmQuarantine(
+  runnerId: string,
+  projectId: string,
+  faultKey: string,
+  streak: number,
+  ttlMs: number,
+): Promise<void> {
+  const minutes = Math.round(ttlMs / 60_000);
+  await emitPipelineWedge({
+    projectId,
+    hop: 'dispatch',
+    entity: 'runner',
+    entityId: runnerId,
+    reason: `quarantined:${faultKey}`,
+    action: `Dispatch is now routing around this runner. Fix the box, or clear the quarantine once it is repaired; it lifts on its own in ${minutes}m and re-trips for longer if the fault is still there.`,
+    title: 'A runner has been set aside after repeated identical failures',
+    summary: `The same failure — \`${faultKey}\` — has now happened ${streak} times in a row on this runner, so it has been excluded from dispatch for ${minutes} minutes. Other runners on this project keep taking work.`,
+    nextStep:
+      'Check the box itself: its daemon, its workspace, and its credentials. The failure text above names which check keeps failing.',
+  });
 }
 
 /**
@@ -162,6 +182,7 @@ export async function clearRunnerQuarantine(
     if (cleared) {
       logger.info({ runnerId }, 'runner quarantine cleared');
       broadcastRunnerChanged(projectId, runnerId);
+      await resolvePipelineWedge(runnerId);
     }
   } catch (err) {
     logger.warn({ err, runnerId }, 'clearRunnerQuarantine failed, continuing');

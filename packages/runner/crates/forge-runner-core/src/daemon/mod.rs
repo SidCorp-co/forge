@@ -20,6 +20,7 @@ use tokio::sync::{mpsc, watch, Semaphore};
 use crate::config::Config;
 use crate::error::Result;
 use crate::runner::claude_code::ClaudeCodeRunner;
+use crate::runner::inflight;
 use crate::runner::Runner;
 use crate::transport::frames::{job_id_of, session_id_of, Frame};
 use crate::transport::runners;
@@ -487,9 +488,13 @@ pub async fn run(
                             // on the ack POST.
                             let (client, runner) = (client.clone(), runner.clone());
                             tokio::spawn(async move {
+                                // cm:guard an `abort` error means this daemon has no SESSION for the job, which is not the same as there being no PROCESS — the agent child is setsid-detached and outlives a daemon restart. Answering `not_found` from an empty map told core the process was dead and it retried a second agent onto the same worktree (ISS-837). Ask the on-disk record instead.
                                 let outcome = match runner.abort(&jid).await {
-                                    Ok(_) => "killed",
-                                    Err(_) => "not_found",
+                                    Ok(_) => {
+                                        inflight::forget(&jid);
+                                        "killed"
+                                    }
+                                    Err(_) => inflight::reap_orphan(&jid).await.wire(),
                                 };
                                 if let Err(e) = lifecycle::kill_ack(&client, &jid, outcome).await {
                                     tracing::warn!("[cancel] kill-ack job={jid}: {e}");

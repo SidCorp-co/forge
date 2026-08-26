@@ -59,9 +59,11 @@ pub async fn fail_with_salvage(
 
 /// ISS-785 — answer a `job.cancel` frame with the real outcome (`"killed"` or
 /// `"not_found"`). Core's kill-before-reap gate treats `not_found` as
-/// positive confirmation the job is safe to fail-and-retry (no process ever
-/// existed to kill) — without it, every ordinary reap on an online runner
-/// would park at `waiting` forever.
+/// positive confirmation the job is safe to fail-and-retry (no process exists
+/// to kill) — without it, every ordinary reap on an online runner would park
+/// at `waiting` forever. ISS-862 made that word earn its meaning: the caller
+/// asks `runner::inflight` before saying it, so an empty session map after a
+/// restart no longer passes for a dead process.
 pub async fn kill_ack(client: &CoreClient, job_id: &str, outcome: &str) -> Result<()> {
     let url = client.url(&format!("/api/jobs/{job_id}/kill-ack"));
     let body = serde_json::json!({ "outcome": outcome });
