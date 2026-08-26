@@ -13,6 +13,7 @@
 //! `not_found` becomes a fact rather than an assumption.
 
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,10 @@ use serde::{Deserialize, Serialize};
 const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
 
 /// How long a SIGTERM'd group gets before SIGKILL. Mirrors `graceful_kill`.
+// cm:why cfg-gated with the signalling path that reads them: `cargo clippy` on the windows-latest leg of runner-ci warns on an unused const, and the runner-release workflow re-runs that same leg, where a warning is one more line of noise over the failure that actually stops a binary shipping
+#[cfg(unix)]
 const TERM_GRACE: Duration = Duration::from_secs(5);
+#[cfg(unix)]
 const TERM_POLL: Duration = Duration::from_millis(200);
 
 /// What the daemon may honestly report for a `job.cancel` it could not serve
