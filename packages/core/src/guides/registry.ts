@@ -209,12 +209,24 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
     slug: 'writing-an-issue',
     title: 'Writing an issue',
     summary:
-      'The six-block shape an issue body takes, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
-    version: 1,
+      'The three shapes an issue body takes and how to tell which one you are writing, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
+    version: 2,
     // cm:guard the HTML-artifact paragraph must keep saying "attach, never paste": `prompt/user.ts` truncates `description` at DEFAULT_FIELD_CAPS.description before an agent sees it, so an inlined page evicts the requirements instead of merely bloating them
     body: `## Writing an issue
 
-A reader must get the problem in about fifteen seconds. Six blocks, in this order. The first four are required; the last two appear only when they earn it.
+A reader must get the problem in about fifteen seconds. How you get them there depends on which of three things you are writing, so pick the shape FIRST — most of the unreadable issue bodies in this tracker are the wrong shape, not bad writing.
+
+| You are writing | Shape | Required |
+|---|---|---|
+| **One symptom** with one cause — a missing focus ring, a rule to add, a slice already scoped elsewhere | Opening line, then **Evidence** | 2 blocks |
+| **A problem** whose cost, spread or mechanism a reader will not guess | The six blocks below | 4 blocks + Evidence |
+| **An epic or a design record** — locked decisions, tiers, children | The six blocks below, then a **Decisions** block kept intact | 4 blocks + Decisions + Evidence |
+
+Do not inflate the first shape into the second. A diagram of *"tab to the toggle → no ring appears"* has two nodes and tells the reader nothing the title did not; a *Who it hurts* table with one row is a sentence in a costume. Both make the issue longer and no clearer, which is the one thing this format exists to prevent.
+
+Do not compress the third shape into the second either. In an epic the locked decisions ARE the deliverable, and an agent that re-derives a rejected option has done the work twice. Summarise the problem in the four blocks, then keep every decision, its rejected alternatives and its sequencing under **Decisions**. The four blocks are for the reader deciding whether to care; **Decisions** is for whoever builds it.
+
+The six blocks, in this order. The last two appear only when they earn it.
 
 | Block | Rule |
 |---|---|
