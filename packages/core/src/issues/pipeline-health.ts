@@ -29,16 +29,39 @@ import {
   jobs,
   pipelineRuns,
   runners,
-  type WaitingKind,
 } from '../db/schema.js';
-import {
-  freshRunnerAvailability,
-  type RunnerAvailability,
-  resolveGateSettings,
-  runnerSupportsJobType,
-} from '../jobs/dispatch-gates.js';
+import { freshRunnerAvailability, resolveGateSettings } from '../jobs/dispatch-gates.js';
+import { extractStageStatus } from '../jobs/stage-overrides.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
+import {
+  heldWaitingOn,
+  retryCooldownWaitingOn,
+  runnerWaitingOn,
+  staleTriggerWaitingOn,
+} from './pipeline-health-reasons.js';
+import type {
+  ClassifyInput,
+  PipelineHealth,
+  PipelineHealthDecompChild,
+  PipelineHealthDep,
+  PipelineHealthJob,
+  PipelineHealthRunnerSat,
+  PipelineHealthSession,
+} from './pipeline-health-types.js';
+
+// cm:edge contract -> packages/core/src/issues/pipeline-health-types.ts — every consumer imports these names from THIS path, so the re-export is the public surface; dropping it moves the break to eleven call sites rather than one
+export type {
+  ClassifyInput,
+  PipelineHealth,
+  PipelineHealthDecompChild,
+  PipelineHealthDep,
+  PipelineHealthJob,
+  PipelineHealthRunnerSat,
+  PipelineHealthSession,
+  PipelineWaitingReason,
+  WaitingCause,
+} from './pipeline-health-types.js';
 
 /**
  * Per-project in-memory dispatcher heartbeat. Set by `recordTickAt` from
@@ -60,157 +83,6 @@ export function resetLastTickAtForTest(): void {
   lastTickAtByProject.clear();
 }
 
-// cm:guard `job_held` is the ONLY thing that makes RFC 0002 honest — a held job leaves the issue at its stage entry-status, so without this reason the board shows an issue that looks idle and actionable while a step is in fact waiting on a machine. Delete it and you have rebuilt the ambiguity the RFC removed, on the other axis.
-// cm:guard every reason the dispatch CASE can return needs a member here, or the issue renders as idle-and-actionable while the picker refuses it — `run_not_running` and `runner_stale` were the two missing ones, and they are the two that never clear on their own: measured 2026-08-14, forge-dev ISS-576/ISS-652 sat under a `paused` run since 08-11 and 11 jobs across 5 projects sat behind dead runners for 6-22 days, all of them showing NO waitingOn at all.
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts#buildGateReasonCase — that CASE is the authority on which gates exist; a reason added there and not here is invisible to every UI
-export type PipelineWaitingReason =
-  | 'issue_busy'
-  | 'job_held'
-  | 'run_not_running'
-  | 'waiting_on_dep'
-  | 'waiting_on_decomp_children'
-  | 'project_full'
-  | 'runner_stale'
-  | 'runner_full';
-
-/**
- * Why an issue is at `status='waiting'` — AUTHORED by whoever parked it, never
- * derived. Both values mean "a human is needed"; they differ in what the human
- * has to supply.
- */
-// cm:guard this is now a pass-through of `issues.waiting_kind`, and it must stay one (RFC 0002 INV-5) — the five-way derivation it replaced read `merged_at`, the decompose-child count and a best-effort jsonb `pauseReason`, and on ISS-163 that jsonb write had silently failed, so a reopen-cap park read back as `merged_parked` and the UI rendered no override button at all. A NULL kind renders generic copy; inferring one is how that bug returns.
-export type WaitingCause = WaitingKind;
-
-export interface PipelineHealth {
-  stage: IssueStatus;
-  activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
-  waitingOn?: {
-    reason: PipelineWaitingReason;
-    since: string;
-    details: Record<string, unknown>;
-  };
-  queuedAt?: string;
-  lastTickAt?: string;
-  /** Only set when `stage === 'waiting'`. */
-  waitingCause?: { kind: WaitingCause };
-}
-
-export interface PipelineHealthSession {
-  id: string;
-  status: string;
-  metadata: Record<string, unknown> | null;
-}
-
-export interface PipelineHealthJob {
-  id: string;
-  type: string;
-  status: string;
-  queuedAt: Date;
-  runnerId: string | null;
-  agentSessionId: string | null;
-  /** The hold reason when `status === 'held'` (`jobs/hold.ts`). */
-  failureReason?: string | null;
-  /** Parent `pipeline_runs.status`. The picker requires `running`. */
-  pipelineRunStatus?: string | null;
-}
-
-export interface PipelineHealthDep {
-  fromIssueId: string;
-  kind: string;
-  fromStatus: string;
-  /** Blocker's `issues.merged_at` — the L2 gate keys on this, not status. */
-  fromMergedAt: Date | null;
-}
-
-/** Outgoing `kind='decomposes'` edge: this issue is the decompose PARENT and
- *  its forward jobs wait for every child to land (gate
- *  `decomposeChildrenPending`). */
-export interface PipelineHealthDecompChild {
-  childIssueId: string;
-  status: string;
-  mergedAt: Date | null;
-}
-
-export interface PipelineHealthRunnerSat {
-  type: string;
-  cap: number;
-  inFlight: number;
-}
-
-export interface ClassifyInput {
-  issue: { id: string; status: string; mergedAt: Date | null; waitingKind: WaitingKind | null };
-  sessions: PipelineHealthSession[];
-  jobs: PipelineHealthJob[];
-  deps: PipelineHealthDep[];
-  decompChildren: PipelineHealthDecompChild[];
-  runningIssueIds: ReadonlySet<string>;
-  runningIssueCount: number;
-  cap: number;
-  /** From `resolveGateSettings` — when the base merge state can never stamp
-   *  `merged_at`, the gate honors `status='closed'` as satisfaction. */
-  baseStampable: boolean;
-  runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
-  /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
-  runnerPool: RunnerAvailability;
-  lastTickAt: Date | null;
-}
-
-/** The `job_held` waitingOn for an issue with a held job, or `null`. */
-function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['waitingOn'] {
-  const held = issueJobs.find((j) => j.status === 'held');
-  if (!held) return undefined;
-  return {
-    reason: 'job_held',
-    since: held.queuedAt.toISOString(),
-    details: {
-      heldJobId: held.id,
-      heldJobType: held.type,
-      holdReason: held.failureReason ?? null,
-    },
-  };
-}
-
-/** The runner-layer (L4/L5) `waitingOn` for a queued candidate, or `null`. */
-// cm:guard report the EMPTY pool before a saturated one — "no runner is online" and "every runner is busy" read almost identically in the UI but need opposite actions (bring a host back vs. wait), and the empty-pool arm is the one that was missing while 11 jobs sat behind dead runners for up to 22 days
-function runnerWaitingOn(
-  candidate: PipelineHealthJob,
-  sinceIso: string,
-  runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>,
-  runnerPool: RunnerAvailability,
-): PipelineHealth['waitingOn'] {
-  if (runnerPool.total === 0) {
-    return { reason: 'runner_stale', since: sinceIso, details: { freshRunners: 0 } };
-  }
-
-  const sat = candidate.runnerId ? runnerInFlight.get(candidate.runnerId) : undefined;
-  if (
-    candidate.runnerId &&
-    sat &&
-    sat.inFlight >= sat.cap &&
-    runnerSupportsJobType(
-      sat.type as Parameters<typeof runnerSupportsJobType>[0],
-      candidate.type as Parameters<typeof runnerSupportsJobType>[1],
-    )
-  ) {
-    return {
-      reason: 'runner_full',
-      since: sinceIso,
-      details: { runnerId: candidate.runnerId, cap: sat.cap, inFlight: sat.inFlight },
-    };
-  }
-
-  // cm:why the pinned-runner branch above only covers a candidate that ALREADY has a runner_id; an unpinned job whose whole pool is busy fails the picker's pool-coarse EXISTS with nothing said about it here
-  if (runnerPool.withCapacity === 0) {
-    return {
-      reason: 'runner_full',
-      since: sinceIso,
-      details: { freshRunners: runnerPool.total, runnersWithCapacity: 0 },
-    };
-  }
-
-  return undefined;
-}
-
 /**
  * Q3 — the issue's live jobs, bucketed by issue id.
  */
@@ -230,6 +102,8 @@ async function loadActiveJobsByIssue(
       issueId: jobs.issueId,
       failureReason: jobs.failureReason,
       pipelineRunStatus: pipelineRuns.status,
+      payload: jobs.payload,
+      retryAfterAt: jobs.retryAfterAt,
     })
     .from(jobs)
     .leftJoin(pipelineRuns, eq(pipelineRuns.id, jobs.pipelineRunId))
@@ -253,6 +127,8 @@ async function loadActiveJobsByIssue(
       agentSessionId: r.agentSessionId,
       failureReason: r.failureReason,
       pipelineRunStatus: r.pipelineRunStatus,
+      stageStatus: extractStageStatus(r.payload),
+      retryAfterAt: r.retryAfterAt,
     });
     byIssue.set(r.issueId, bucket);
   }
@@ -323,6 +199,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
+  // cm:guard the cooldown arm belongs HERE, third, exactly where `retry_cooldown` sits in the dispatch CASE — ahead of both issue_busy arms and of staleness. Until ISS-789 the reason had no member in `PipelineWaitingReason` at all, so every cooldown-gated job rendered as an idle, actionable issue while the picker was refusing it.
+  const cooldown = retryCooldownWaitingOn(candidate, sinceIso, input.now ?? new Date());
+  if (cooldown) {
+    out.waitingOn = cooldown;
+    return out;
+  }
+
   const blockingSession = sessions.find(
     (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
   );
@@ -338,6 +221,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
             blockingJobType: blockingJob!.type,
           },
     };
+    return out;
+  }
+
+  // cm:guard this arm must sit exactly where `stale_trigger` sits in the dispatch CASE — after both issue_busy arms, before blocked_by. Reporting it earlier would claim a job is stale during the one window where a non-trigger status is legitimate (a sibling step mid-flight), and omitting it renders the issue idle-and-actionable for the up-to-a-tick window before `jobs/stale-trigger.ts` discards the job.
+  const stale = staleTriggerWaitingOn(candidate, issue.status, sinceIso);
+  if (stale) {
+    out.waitingOn = stale;
     return out;
   }
 

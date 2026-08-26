@@ -13,6 +13,7 @@ const costQueue: SelectQueue = [];
 const runRowQueue: SelectQueue = [];
 const bulkCostQueue: SelectQueue = [];
 const issueQueue: SelectQueue = [];
+const liveJobsQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
 
@@ -88,13 +89,16 @@ vi.mock('../db/schema.js', () => ({
 
 vi.mock('../db/client.js', () => ({
   db: {
-    select: () => ({
+    // cm:why discriminate the two `jobs` selects by PROJECTION, not by call order — the attempts timeline and the ISS-789 live-job count both read that table from the same `Promise.all`, and an order-based queue silently mis-feeds them the day a loader is added to that array
+    select: (projection?: Record<string, unknown>) => ({
       from: (table: unknown) => {
         const tableKey = typeof table === 'object' && table !== null ? Object.values(table)[0] : '';
         const isAgentSessions = String(tableKey).startsWith('agent_sessions');
         const isUsageRecords = String(tableKey).startsWith('usage_records');
         const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
         const isIssues = String(tableKey).startsWith('issues');
+        const isLiveJobCount =
+          String(tableKey).startsWith('jobs.') && !!projection && 'n' in projection;
 
         const result = isAgentSessions
           ? stepsQueue.shift()
@@ -102,11 +106,13 @@ vi.mock('../db/client.js', () => ({
             ? runRowQueue.shift()
             : isIssues
               ? issueQueue.shift()
-              : isUsageRecords
-                ? nextSelectKind === 'bulkCost'
-                  ? bulkCostQueue.shift()
-                  : costQueue.shift()
-                : [];
+              : isLiveJobCount
+                ? liveJobsQueue.shift()
+                : isUsageRecords
+                  ? nextSelectKind === 'bulkCost'
+                    ? bulkCostQueue.shift()
+                    : costQueue.shift()
+                  : [];
 
         return makeChain(Promise.resolve(result ?? []));
       },
@@ -136,6 +142,7 @@ beforeEach(() => {
   runRowQueue.length = 0;
   bulkCostQueue.length = 0;
   issueQueue.length = 0;
+  liveJobsQueue.length = 0;
   nextSelectKind = 'steps';
 });
 
@@ -256,6 +263,28 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.steps).toEqual([]);
     expect(result?.cost.sampleCount).toBe(0);
   });
+
+  // cm:guard assert a NON-ZERO count here, never just "the field is present" — the bug this covers was a spread whose `liveJobs: 0` default was never overridden, so every assertion that only checked for 0 passed against the broken build for the whole of ISS-789's first half
+  it('ISS-789: reports the run live-job count, not the rowToListItem zero default', async () => {
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    liveJobsQueue.push([{ runId: RUN_ID, n: 2 }]);
+
+    const result = await loadPipelineRunSummary(RUN_ID);
+    expect(result?.liveJobs).toBe(2);
+  });
+
+  it('ISS-789: a run with no live jobs reads 0, so a dead run is distinguishable from a live one', async () => {
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    liveJobsQueue.push([]);
+
+    const result = await loadPipelineRunSummary(RUN_ID);
+    expect(result?.status).toBe('running');
+    expect(result?.liveJobs).toBe(0);
+  });
 });
 
 describe('listItemsFromRows', () => {
@@ -309,5 +338,14 @@ describe('listItemsFromRows', () => {
     expect(item.cost.sampleCount).toBe(3);
     expect(item.issueRef).toBe('ISS-460');
     expect(item.issueTitle).toBe('Live run data');
+  });
+
+  it('ISS-789: the list surface keeps reporting the batched live-job count', async () => {
+    nextSelectKind = 'bulkCost';
+    bulkCostQueue.push([]);
+    liveJobsQueue.push([{ runId: RUN_ID, n: 3 }]);
+
+    const items = await listItemsFromRows([runRow]);
+    expect(items[0]!.liveJobs).toBe(3);
   });
 });

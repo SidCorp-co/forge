@@ -23,6 +23,8 @@ export type PipelineWaitingReason =
   | 'issue_busy'
   | 'job_held'
   | 'run_not_running'
+  | 'retry_cooldown'
+  | 'stale_trigger'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_children'
   | 'project_full'

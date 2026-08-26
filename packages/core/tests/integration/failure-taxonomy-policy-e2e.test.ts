@@ -164,13 +164,13 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     return runId;
   }
 
-  async function insertIssue(projectId: string): Promise<string> {
+  async function insertIssue(projectId: string, status = 'approved'): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-        'Issue', 'approved', 'medium',
+        'Issue', ${status}, 'medium',
         (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
@@ -463,7 +463,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
   it('ISS-630/804: a budget-exhausted stage holds the job, leaving the issue and run untouched (the 3x-vs-0x asymmetry)', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    // cm:why the cap sits on `confirmed` (a stage `triage` runs under) because the ISS-630 asymmetry was per-STAGE: one capped stage died with zero retries while an uncapped one retried normally
+    // cm:why the cap sits on `open`, triage's trigger status, so the direct-dispatch fixture follows the same status contract as an orchestrator-enqueued job while preserving the per-stage asymmetry this case covers
     await harness.db.execute(sql`
       UPDATE projects
       SET agent_config = COALESCE(agent_config, '{}'::jsonb)
@@ -471,7 +471,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
                             'pipelineConfig',
                             jsonb_build_object(
                               'states', jsonb_build_object(
-                                'confirmed', jsonb_build_object(
+                                'open', jsonb_build_object(
                                   'budget', jsonb_build_object('perMonthUsd', 1, 'action', 'pause')
                                 )
                               )
@@ -481,7 +481,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     const { deviceId } = await seedRunner(project.id, owner.id);
     void deviceId;
 
-    const issueId = await insertIssue(project.id);
+    const issueId = await insertIssue(project.id, 'open');
     // Historical spend already over the cap for this (project, jobType).
     const sessionId = randomUUID();
     const runId = randomUUID();
@@ -523,7 +523,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       )
       VALUES (
         ${jobId}, ${project.id}, ${issueId}, 'triage', 'queued',
-        ${JSON.stringify({ stageStatus: 'confirmed' })}::jsonb,
+        ${JSON.stringify({ stageStatus: 'open' })}::jsonb,
         ${owner.id}, ${openRunId}, now()
       )
     `);

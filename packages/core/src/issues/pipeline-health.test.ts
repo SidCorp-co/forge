@@ -56,6 +56,8 @@ function job(
     runnerId: string | null;
     agentSessionId: string | null;
     pipelineRunStatus: string | null;
+    stageStatus: string | null;
+    retryAfterAt: Date | null;
   }> = {},
 ) {
   return {
@@ -66,6 +68,8 @@ function job(
     runnerId: over.runnerId ?? null,
     agentSessionId: over.agentSessionId ?? null,
     pipelineRunStatus: over.pipelineRunStatus ?? 'running',
+    stageStatus: over.stageStatus ?? null,
+    retryAfterAt: over.retryAfterAt ?? null,
   };
 }
 

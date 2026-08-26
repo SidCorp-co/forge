@@ -87,6 +87,18 @@ function mockProjectAgentConfigOnce(value: Record<string, unknown> | null): void
   selectChainOnce(value ? [{ agentConfig: value }] : []);
 }
 
+// cm:why the cap read and the CASE row are queued ONLY when `job` is non-null, mirroring the asserter's short-circuit to not_found — queueing them unconditionally leaves two stubs unconsumed, and vitest carries a `mockResolvedValueOnce` queue across tests
+function mockAssertChain(opts: {
+  job: { projectId: string } | null;
+  cap?: Record<string, unknown> | null;
+  caseResult: { reason: string | null } | null | undefined;
+}): void {
+  selectChainOnce(opts.job ? [opts.job] : []);
+  if (!opts.job) return;
+  selectChainOnce(opts.cap ? [{ agentConfig: opts.cap }] : []);
+  dbExecute.mockResolvedValueOnce(opts.caseResult ? [opts.caseResult] : []);
+}
+
 describe('checkLayer4RunnerFull', () => {
   function runnerCapsOnce(
     value: { type: string; capabilities: Record<string, unknown> } | null,
@@ -554,28 +566,6 @@ describe('checkLayer5RunnerHeartbeat', () => {
 // pg-boss-direct path (`handleDispatch` / `handlePmDispatch`) enforces the
 // same invariants the picker does on every tick.
 describe('assertDispatchable', () => {
-  function mockAssertChain(opts: {
-    job: { projectId: string } | null;
-    /** `agent_config` row `resolveProjectCap` should read for this assert
-     *  (e.g. `{ pipelineConfig: { maxConcurrentIssues: 3 } }`), or null to
-     *  simulate a missing project → DEFAULT cap. Only consulted when `job`
-     *  is non-null (the asserter short-circuits to not_found otherwise). */
-    cap?: Record<string, unknown> | null;
-    caseResult: { reason: string | null } | null | undefined;
-  }): void {
-    // 1) jobs lookup → returns [job] or []
-    selectChainOnce(opts.job ? [opts.job] : []);
-    if (opts.job) {
-      // 2) resolveProjectCap → reads projects.agent_config. Queued only when a
-      // job exists, mirroring the asserter's short-circuit on a missing job.
-      selectChainOnce(opts.cap ? [{ agentConfig: opts.cap }] : []);
-      // 3) the CASE-driven SQL — returns 0 or 1 row.
-      const rows =
-        opts.caseResult === undefined ? [] : opts.caseResult === null ? [] : [opts.caseResult];
-      dbExecute.mockResolvedValueOnce(rows);
-    }
-  }
-
   it('returns not_found when the job row is missing', async () => {
     mockAssertChain({ job: null, caseResult: undefined });
     const r = await assertDispatchable('missing');
@@ -624,7 +614,10 @@ describe('assertDispatchable', () => {
     expect(text).not.toMatch(/'manual_hold'/);
     expect(text).toMatch(/'retry_cooldown'/);
     expect(text).toMatch(/'issue_busy'/);
+    expect(text).toMatch(/'stale_trigger'/);
     expect(text).toMatch(/'blocked_by'/);
+    // cm:why asserting the ABSENCE of `release_decompose_pending` is the only way this stays fixed — it sat in `GateSkipReason` for months naming an arm the CASE never had, and `assertDispatchable` casts the raw reason into that union, so tsc cannot tell a member from a fiction
+    expect(text).not.toMatch(/'release_decompose_pending'/);
     expect(text).toMatch(/'decompose_children_pending'/);
     expect(text).toMatch(/'project_cap'/);
     expect(text).toMatch(/'runner_stale'/);
@@ -719,6 +712,7 @@ describe('assertDispatchable', () => {
     const predicateSignatures = [
       /FROM\s+agent_sessions\s+s/, // issueBusySession
       /FROM\s+jobs\s+other/, // issueBusyJob
+      /payload->>'stageStatus'/,
       /d\.kind\s*=\s*'blocks'/, // blockedBy
       /d2\.kind\s*=\s*'decomposes'/, // decomposeChildrenPending
     ];

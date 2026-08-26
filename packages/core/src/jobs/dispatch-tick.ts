@@ -27,6 +27,7 @@ import { roomManager } from '../ws/server.js';
 import { pickNextDispatchableJobForProject } from './dispatch-gates.js';
 import { handleDispatch } from './dispatcher.js';
 import { releaseHeldJobs } from './hold.js';
+import { discardStaleTriggerJobs } from './stale-trigger.js';
 
 /** Per-project promise tail. */
 const projectLocks = new Map<string, Promise<unknown>>();
@@ -120,6 +121,13 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
     for (const r of rows) if (r.issue_id) affectedIssueIds.add(r.issue_id);
   } catch (err) {
     logger.warn({ err, projectId }, 'dispatch-tick: queued-issue pre-snapshot failed');
+  }
+
+  // cm:guard sits AFTER the hold release, AFTER the pre-snapshot, and BEFORE the picker (ISS-789), and all three edges are load-bearing: a job released from hold may have had its trigger move on while it waited; the snapshot must still see the job as `queued` or the discarded job's issue gets no pipelineHealth broadcast and the board keeps showing the reason for a job that no longer exists; and running after the pick would let the picker's own skip hide it for another cycle while `jobs_active_unique` blocks its replacement.
+  try {
+    await discardStaleTriggerJobs(projectId);
+  } catch (err) {
+    logger.warn({ err, projectId }, 'dispatch-tick: stale-trigger discard failed');
   }
 
   try {

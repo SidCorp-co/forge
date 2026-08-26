@@ -1,13 +1,16 @@
 /**
- * ISS-789 — `liveJobs` on both run-list surfaces, against real Postgres.
+ * ISS-789 — `liveJobs` on all three run surfaces, against real Postgres.
  *
  * Shipped in 65bb8a0b and immediately wrong in production: the MCP list returned
  * `liveJobs: 0` for runs that `forge_project_pipeline_runs get` reported as
  * having a `dispatched` job. Typecheck cannot catch a subquery that compiles and
  * counts the wrong rows, and the consumer-side tests mocked the number, so only
- * a real query proves it. The two surfaces compute the count differently (batched
- * loader vs correlated subquery), which is exactly why both are asserted here —
- * and cross-checked against `jobCounts`, the pre-existing independent path.
+ * a real query proves it. The surfaces compute the count differently (MCP
+ * correlated subquery, batched loader for the list, and the single-run detail
+ * rollup, which for the whole of ISS-789's first half returned a hard-coded 0
+ * because its spread of `rowToListItem` was never overridden) — which is exactly
+ * why all three are asserted here, cross-checked against `jobCounts`, the
+ * pre-existing independent path.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -29,6 +32,8 @@ type Mods = {
   pipelineRunsGetHandler: typeof import('../../src/mcp/tools/forge-pipeline-runs.js').pipelineRunsGetHandler;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   listItemsFromRows: typeof import('../../src/pipeline/runs-rollup.js').listItemsFromRows;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  loadPipelineRunSummary: typeof import('../../src/pipeline/runs-rollup.js').loadPipelineRunSummary;
 };
 
 describe('run liveJobs E2E (ISS-789)', () => {
@@ -55,6 +60,7 @@ describe('run liveJobs E2E (ISS-789)', () => {
       pipelineRunsListHandler: mcp.pipelineRunsListHandler,
       pipelineRunsGetHandler: mcp.pipelineRunsGetHandler,
       listItemsFromRows: rollup.listItemsFromRows,
+      loadPipelineRunSummary: rollup.loadPipelineRunSummary,
     } as Mods;
   }, 60_000);
 
@@ -104,8 +110,13 @@ describe('run liveJobs E2E (ISS-789)', () => {
     return (items[0] as { liveJobs?: number } | undefined)?.liveJobs;
   }
 
+  async function liveViaDetail(runId: string): Promise<number | undefined> {
+    const summary = await mods.loadPipelineRunSummary(runId);
+    return summary?.liveJobs;
+  }
+
   // cm:guard the production bug this file exists for — a run with one dispatched job reported liveJobs 0 while the independent jobCounts path reported {dispatched: 1}
-  it('counts a dispatched job on BOTH surfaces, agreeing with jobCounts', async () => {
+  it('counts a dispatched job on all three surfaces, agreeing with jobCounts', async () => {
     const s = await seed(['dispatched']);
     const got = await mods.pipelineRunsGetHandler(
       { kind: 'device', device: s.device } as never,
@@ -115,12 +126,14 @@ describe('run liveJobs E2E (ISS-789)', () => {
 
     await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(1);
     await expect(liveViaRest(s.runId)).resolves.toBe(1);
+    await expect(liveViaDetail(s.runId)).resolves.toBe(1);
   });
 
-  it.each([['queued'], ['running']])('counts a %s job on both surfaces', async (status) => {
+  it.each([['queued'], ['running']])('counts a %s job on all three surfaces', async (status) => {
     const s = await seed([status]);
     await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(1);
     await expect(liveViaRest(s.runId)).resolves.toBe(1);
+    await expect(liveViaDetail(s.runId)).resolves.toBe(1);
   });
 
   it.each([['done'], ['failed'], ['cancelled']])(
@@ -129,6 +142,7 @@ describe('run liveJobs E2E (ISS-789)', () => {
       const s = await seed([status]);
       await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(0);
       await expect(liveViaRest(s.runId)).resolves.toBe(0);
+      await expect(liveViaDetail(s.runId)).resolves.toBe(0);
     },
   );
 
@@ -136,12 +150,14 @@ describe('run liveJobs E2E (ISS-789)', () => {
     const s = await seed(['done', 'failed', 'dispatched', 'queued', 'done']);
     await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(2);
     await expect(liveViaRest(s.runId)).resolves.toBe(2);
+    await expect(liveViaDetail(s.runId)).resolves.toBe(2);
   });
 
   it('reports 0, not null, for a run with no jobs at all', async () => {
     const s = await seed([]);
     await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(0);
     await expect(liveViaRest(s.runId)).resolves.toBe(0);
+    await expect(liveViaDetail(s.runId)).resolves.toBe(0);
   });
 
   it('does not bleed another run job count into this one', async () => {
@@ -161,5 +177,15 @@ describe('run liveJobs E2E (ISS-789)', () => {
     }
     await expect(liveViaRest(s.runId)).resolves.toBe(1);
     await expect(liveViaRest(otherRun)).resolves.toBe(3);
+    await expect(liveViaDetail(s.runId)).resolves.toBe(1);
+    await expect(liveViaDetail(otherRun)).resolves.toBe(3);
+  });
+
+  // cm:guard the two surfaces must be asserted on the SAME run in one test, not only in separate ones — the detail rollup returned a constant 0 while the list returned the truth, and every per-surface assertion passed the whole time. Only comparing them catches a divergence that each half reports consistently.
+  it('detail and list agree on the same run, so no reader can be shown two answers', async () => {
+    const s = await seed(['running', 'queued', 'done']);
+    const [viaList, viaDetail] = await Promise.all([liveViaRest(s.runId), liveViaDetail(s.runId)]);
+    expect(viaDetail).toBe(viaList);
+    expect(viaDetail).toBe(2);
   });
 });
