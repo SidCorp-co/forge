@@ -52,6 +52,9 @@ describe('renderPriorAttemptsBlock', () => {
     expect(out).toContain('a1b2c3d');
     expect(out).toContain('7 file(s), +214');
     expect(out).toContain('WIP, not reviewed work');
+    // cm:guard the next attempt cuts its checkout from the BASE branch, so the salvage commit is not in its history: without naming the fetch, the pointer is unactionable and the agent's own push is rejected non-fast-forward. Deleting either assertion lets that regress silently.
+    expect(out).toContain('git fetch origin ISS-862-runner-health');
+    expect(out).toContain('origin/ISS-862-runner-health');
   });
 
   it('tells the agent to redo the work when the salvage commit never reached the remote', () => {
