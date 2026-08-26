@@ -29,7 +29,11 @@ import {
   type PipelineConfig,
 } from '../pipeline/pipeline-config-schema.js';
 import { isBaseBranchStampable } from '../pipeline/pipeline-config-service.js';
-import { RUNNER_CAPABILITIES, WORKING_STATUS_BY_STATUS } from '../pipeline/registry.js';
+import {
+  RUNNER_CAPABILITIES,
+  TRIGGER_STATUS_BY_JOB_TYPE,
+  WORKING_STATUS_BY_JOB_TYPE,
+} from '../pipeline/registry.js';
 
 export type GateSkipReason =
   | 'not_found'
@@ -345,8 +349,10 @@ interface BarrierFragments {
     issueBusyJob: SQL;
     /** L1b — the job's declared trigger (`payload.stageStatus`) is no longer
      *  the issue's live status, so the stage would run on a trigger that has
-     *  moved on. The step's own in-flight `workingStatus` is allowed, so a
-     *  retry of a code/fix job is not caught. */
+     *  moved on. Scoped to the staged pipeline step types (so the autonomous
+     *  `drive` job, which owns the issue's whole walk, is never caught) and
+     *  exempting each type's own in-flight `workingStatus` (so a code/fix
+     *  retry is never caught). */
     staleTrigger: SQL;
     /** L2 — at least one `kind='blocks'` dependency parent is non-terminal.
      *  Folded `j.type <> 'pm'` into the predicate so PM jobs auto-skip the
@@ -472,16 +478,23 @@ function buildBarrierFragments(args: {
   const blockReopenArm = sql` OR p.status = 'reopen'`;
   const decompReopenArm = sql` OR c2.status = 'reopen'`;
 
-  // cm:guard derive these arms from WORKING_STATUS_BY_STATUS, never hand-list them — a code/fix step flips its own issue to `in_progress` via forge_step_start, so a retry clone of that job legitimately finds a status that is not its trigger, and without the allowance the stale gate below reaps the recovery attempt instead of the stale job. Hand-listing means the next step that gains a `workingStatus` silently loses its retries.
-  // cm:edge lockstep -> packages/core/src/pipeline/registry.ts — `PIPELINE_STEPS[].workingStatus` is the source; a step whose working status changes there without this reading it turns every retry of that step into a discard
-  const workingStatusArms = Object.entries(WORKING_STATUS_BY_STATUS).map(
-    ([trigger, working]) =>
-      sql`((j.payload->>'stageStatus') = ${trigger} AND i.status::text = ${working})`,
+  // cm:guard key the allowance on the job TYPE, never on the stamped trigger — `POST /run-pipeline-step` exists to re-fire a stage WITHOUT bouncing the issue status, so it stamps `stageStatus = issue.status`; re-fire `code` at `developed`, the agent flips the issue to `in_progress`, and a trigger-keyed arm ('approved','in_progress') matches nothing while the real pair is ('developed','in_progress'). Same concept, same key, same reason as `JOB_TYPE_INFLIGHT_STATUS` in pipeline/recovery-verifier.ts.
+  // cm:edge lockstep -> packages/core/src/pipeline/recovery-verifier.ts — `JOB_TYPE_INFLIGHT_STATUS` is the failure-path twin of this allowance (both answer "is this retry still wanted?"); a type present in one and absent from the other means the retry engine keeps a job alive that this gate then discards
+  const workingStatusArms = Object.entries(WORKING_STATUS_BY_JOB_TYPE).map(
+    ([jobType, working]) => sql`(j.type = ${jobType} AND i.status::text = ${working})`,
   );
   const workingStatusAllowance =
     workingStatusArms.length > 0
       ? sql` AND NOT (${sql.join(workingStatusArms, sql` OR `)})`
       : sql``;
+
+  // cm:guard scope the gate to job types that HAVE a trigger status, i.e. the staged pipeline steps — `drive` is the one that must stay out, and leaving it in is unrecoverable rather than merely wrong: the autonomous driver is stamped `stageStatus:'open'` yet owns the issue's WHOLE walk, so a retry clone or a released-from-hold successor reads as stale the moment the driver has moved the issue anywhere, and `dispatchAutonomous` enqueues at the entry status only — nothing re-creates the job, and the issue is left permanently dead with zero jobs.
+  // cm:edge lockstep -> packages/core/src/pipeline/recovery-verifier.ts — `JOB_TYPE_EXPECTED_EXIT_STATUS.drive` is deliberately EMPTY for this same reason ("the driver owns the issue's whole walk"); a job type given an exit mapping there belongs in this scope, and one taken away must leave it
+  const gatedJobTypes = Object.keys(TRIGGER_STATUS_BY_JOB_TYPE);
+  const stageJobTypeScope = sql`j.type IN (${sql.join(
+    gatedJobTypes.map((t) => sql`${t}`),
+    sql`, `,
+  )})`;
 
   const predicates = {
     issueBusySession: sql`EXISTS (
@@ -502,6 +515,7 @@ function buildBarrierFragments(args: {
     // cm:guard this arm must be read STRICTLY AFTER both issue_busy arms in `buildGateReasonCase` — a sibling job mid-flight is exactly when the issue legitimately sits at a status that is nobody's trigger, so judging staleness first turns "another step is working" into a discard of the step queued behind it.
     // cm:edge lockstep -> packages/core/src/jobs/stale-trigger.ts — that sweep is what makes this gate terminal instead of a permanent hide: `jobs_active_unique` covers `queued`, so a stale job merely skipped by the picker blocks the replacement job for the same (issue, type) forever.
     staleTrigger: sql`j.issue_id IS NOT NULL
+      AND ${stageJobTypeScope}
       AND (j.payload->>'stageStatus') IS NOT NULL
       AND i.status IS NOT NULL
       AND i.status::text <> (j.payload->>'stageStatus')${workingStatusAllowance}`,

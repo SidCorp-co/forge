@@ -28,8 +28,13 @@ vi.mock('./agent-session-link.js', () => ({
 }));
 
 const gateReasonsMock = vi.fn(async (_projectId: string) => new Map<string, string>());
+const assertDispatchableMock = vi.fn(async (_jobId: string) => ({
+  ok: false as const,
+  reason: 'stale_trigger' as const,
+}));
 vi.mock('./dispatch-gates.js', () => ({
   gateReasonsForQueuedJobs: (projectId: string) => gateReasonsMock(projectId),
+  assertDispatchable: (jobId: string) => assertDispatchableMock(jobId),
 }));
 
 const applyKernelTransitionMock = vi.fn();
@@ -72,6 +77,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   queuedRows = [];
   gateReasonsMock.mockResolvedValue(new Map());
+  assertDispatchableMock.mockResolvedValue({ ok: false, reason: 'stale_trigger' });
   applyKernelTransitionMock.mockImplementation(async () => [jobRow({ status: 'cancelled' })]);
 });
 
@@ -163,6 +169,29 @@ describe('discardStaleTriggerJobs', () => {
     );
 
     expect(await discardStaleTriggerJobs(PROJECT_ID)).toEqual(['job-a', 'job-b']);
+  });
+
+  // cm:guard the re-check must go through `assertDispatchable`, not a local copy of the staleness test — the batch gate read and the write are separate statements, so a human moving the issue back onto this job's trigger in between must leave the job alone, and routing through the asserter is what stops the re-check drifting from the gate
+  it.each([
+    ['the job became dispatchable again', { ok: true } as const],
+    ['another gate now holds it', { ok: false, reason: 'issue_busy' } as const],
+  ])('writes nothing when the re-check says %s', async (_label, verdict) => {
+    gateReasonsMock.mockResolvedValue(new Map([['job-stale', 'stale_trigger']]));
+    queuedRows = [jobRow()];
+    assertDispatchableMock.mockResolvedValue(verdict as never);
+
+    expect(await discardStaleTriggerJobs(PROJECT_ID)).toEqual([]);
+    expect(applyKernelTransitionMock).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('re-checks each candidate by id before writing', async () => {
+    gateReasonsMock.mockResolvedValue(new Map([['job-stale', 'stale_trigger']]));
+    queuedRows = [jobRow()];
+
+    await discardStaleTriggerJobs(PROJECT_ID);
+
+    expect(assertDispatchableMock).toHaveBeenCalledWith('job-stale');
   });
 
   it('keeps sweeping when closing the linked session throws', async () => {

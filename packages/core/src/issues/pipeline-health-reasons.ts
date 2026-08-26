@@ -5,13 +5,13 @@
  * `jobs/dispatch-gates.ts#buildGateReasonCase`. They live apart from the
  * classifier because the classifier owns only the PRECEDENCE between arms;
  * what each arm reports, and the incident each shape came from, belongs
- * beside the arm itself. Pure — no db, no clock.
+ * beside the arm itself. Pure: no db, and any clock is injected.
  */
 
-import type { IssueStatus } from '../db/schema.js';
+import type { JobType } from '../db/schema.js';
 import type { RunnerAvailability } from '../jobs/dispatch-gates.js';
 import { runnerSupportsJobType } from '../jobs/dispatch-gates.js';
-import { WORKING_STATUS_BY_STATUS } from '../pipeline/registry.js';
+import { TRIGGER_STATUS_BY_JOB_TYPE, WORKING_STATUS_BY_JOB_TYPE } from '../pipeline/registry.js';
 import type {
   PipelineHealth,
   PipelineHealthJob,
@@ -35,15 +35,19 @@ export function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['w
 
 /** The `stale_trigger` waitingOn for a queued candidate answering a trigger the
  *  issue has already left, or `null`. */
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `predicates.staleTrigger` is the authority; both halves must accept the step's own `workingStatus`, or the gate dispatches a retry this reports as stale (or worse, the reverse)
+// cm:guard every clause below mirrors one in `predicates.staleTrigger`, in the same order, and the two must agree on EVERY input — this arm claims the step is about to be discarded, so a clause present here and absent there tells the reader a discard is coming that will never happen, and the reverse hides one that is
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `predicates.staleTrigger` is the authority: the job-type scope (which keeps `drive` out), the per-type `workingStatus` allowance, and the retry-cooldown arm that outranks it in `buildGateReasonCase` all have to be reflected here
 export function staleTriggerWaitingOn(
   candidate: PipelineHealthJob,
   liveStatus: string,
   sinceIso: string,
+  now: Date,
 ): PipelineHealth['waitingOn'] {
   const declared = candidate.stageStatus;
   if (!declared || declared === liveStatus) return undefined;
-  if (WORKING_STATUS_BY_STATUS[declared as IssueStatus] === liveStatus) return undefined;
+  if (!TRIGGER_STATUS_BY_JOB_TYPE[candidate.type as JobType]) return undefined;
+  if (WORKING_STATUS_BY_JOB_TYPE[candidate.type as JobType] === liveStatus) return undefined;
+  if (candidate.retryAfterAt && candidate.retryAfterAt > now) return undefined;
   return {
     reason: 'stale_trigger',
     since: sinceIso,

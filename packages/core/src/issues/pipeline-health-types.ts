@@ -67,6 +67,10 @@ export interface PipelineHealthJob {
   /** `payload.stageStatus` — the trigger status the enqueuer declared this job
    *  answers. Null for jobs nobody declared one for (pm, custom). */
   stageStatus?: string | null;
+  /** `jobs.retry_after_at` — the picker's L1 cooldown gate outranks the
+   *  staleness arm, so a job parked under a provider Retry-After hint is not
+   *  reported stale however stale it is. */
+  retryAfterAt?: Date | null;
 }
 
 export interface PipelineHealthDep {
@@ -108,4 +112,6 @@ export interface ClassifyInput {
   /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
   runnerPool: RunnerAvailability;
   lastTickAt: Date | null;
+  /** Injectable clock for the retry-cooldown comparison; defaults to now. */
+  now?: Date;
 }

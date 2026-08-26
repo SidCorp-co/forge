@@ -20,7 +20,7 @@ import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { gateReasonsForQueuedJobs } from './dispatch-gates.js';
+import { assertDispatchable, gateReasonsForQueuedJobs } from './dispatch-gates.js';
 
 /** `jobs.failure_reason` written on a discard — the string an operator greps. */
 export const STALE_TRIGGER_REASON = 'stale_trigger';
@@ -48,6 +48,10 @@ export async function discardStaleTriggerJobs(projectId: string): Promise<string
 
   const discarded: string[] = [];
   for (const job of rows) {
+    // cm:guard re-read the gate through `assertDispatchable`, never a local copy of the staleness test — the batch read above and this write are separate statements, so a transition that landed between them (a human moving the issue back onto this job's trigger, a reconciler rollback) would otherwise cancel the job that had just become the right one. Going through the asserter means the re-check cannot drift from the gate it is re-checking.
+    const recheck = await assertDispatchable(job.id);
+    if (recheck.ok || recheck.reason !== STALE_TRIGGER_REASON) continue;
+
     // cm:guard `failureAction: 'terminal'` and deliberately NO `failureKind` — a trigger that moved on is not a fault of the code, the box or the provider, so every member of that taxonomy would be a false attribution; `terminal` is the field that actually says "never retry this", and it is what keeps the discard out of the retry engine pixelight `59affc88` measured at 254 attempts leaving no trace on the issue.
     const [updated] = await applyKernelTransition(db, {
       entity: 'job',

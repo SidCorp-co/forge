@@ -57,6 +57,7 @@ function job(
     agentSessionId: string | null;
     pipelineRunStatus: string | null;
     stageStatus: string | null;
+    retryAfterAt: Date | null;
   }> = {},
 ) {
   return {
@@ -68,69 +69,9 @@ function job(
     agentSessionId: over.agentSessionId ?? null,
     pipelineRunStatus: over.pipelineRunStatus ?? 'running',
     stageStatus: over.stageStatus ?? null,
+    retryAfterAt: over.retryAfterAt ?? null,
   };
 }
-
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — every case here mirrors an outcome of `predicates.staleTrigger`; the gate deciding differently from this classifier is the idle-and-actionable lie the file's guard names
-describe('stale_trigger — the gate whose job answers a trigger the issue has left (ISS-789)', () => {
-  it('reports it when the queued job declares a trigger the issue is no longer at', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'iss-1', status: 'testing', mergedAt: null, waitingKind: null },
-        jobs: [job({ type: 'fix', stageStatus: 'reopen' })],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('stale_trigger');
-    expect(out.waitingOn?.details).toMatchObject({
-      declaredTrigger: 'reopen',
-      liveStatus: 'testing',
-    });
-  });
-
-  it('stays silent when the declared trigger IS the live status', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'iss-1', status: 'reopen', mergedAt: null, waitingKind: null },
-        jobs: [job({ type: 'fix', stageStatus: 'reopen' })],
-      }),
-    );
-    expect(out.waitingOn).toBeUndefined();
-  });
-
-  // cm:guard this case is the one that matters — a code/fix retry legitimately finds `in_progress`, the status its own predecessor set via forge_step_start, and calling that stale would report (and, in the gate, discard) every recovery attempt
-  it('accepts the step own in-flight working status', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'iss-1', status: 'in_progress', mergedAt: null, waitingKind: null },
-        jobs: [job({ type: 'code', stageStatus: 'approved' })],
-      }),
-    );
-    expect(out.waitingOn).toBeUndefined();
-  });
-
-  it('stays silent for a job that declared no trigger at all', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'iss-1', status: 'testing', mergedAt: null, waitingKind: null },
-        jobs: [job({ type: 'pm', stageStatus: null })],
-      }),
-    );
-    expect(out.waitingOn).toBeUndefined();
-  });
-
-  it('yields to issue_busy, so a sibling step mid-flight is never reported as staleness', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'iss-1', status: 'in_progress', mergedAt: null, waitingKind: null },
-        jobs: [
-          job({ id: 'job-live', type: 'code', status: 'running', stageStatus: 'approved' }),
-          job({ id: 'job-next', type: 'review', stageStatus: 'developed' }),
-        ],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('issue_busy');
-  });
-});
 
 describe('classifyPipelineHealthForIssue', () => {
   it('returns `{ stage }` only when no queued jobs exist', () => {

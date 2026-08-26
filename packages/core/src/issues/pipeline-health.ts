@@ -102,6 +102,7 @@ async function loadActiveJobsByIssue(
       failureReason: jobs.failureReason,
       pipelineRunStatus: pipelineRuns.status,
       payload: jobs.payload,
+      retryAfterAt: jobs.retryAfterAt,
     })
     .from(jobs)
     .leftJoin(pipelineRuns, eq(pipelineRuns.id, jobs.pipelineRunId))
@@ -126,6 +127,7 @@ async function loadActiveJobsByIssue(
       failureReason: r.failureReason,
       pipelineRunStatus: r.pipelineRunStatus,
       stageStatus: extractStageStatus(r.payload),
+      retryAfterAt: r.retryAfterAt,
     });
     byIssue.set(r.issueId, bucket);
   }
@@ -215,7 +217,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   }
 
   // cm:guard this arm must sit exactly where `stale_trigger` sits in the dispatch CASE — after both issue_busy arms, before blocked_by. Reporting it earlier would claim a job is stale during the one window where a non-trigger status is legitimate (a sibling step mid-flight), and omitting it renders the issue idle-and-actionable for the up-to-a-tick window before `jobs/stale-trigger.ts` discards the job.
-  const stale = staleTriggerWaitingOn(candidate, issue.status, sinceIso);
+  const stale = staleTriggerWaitingOn(candidate, issue.status, sinceIso, input.now ?? new Date());
   if (stale) {
     out.waitingOn = stale;
     return out;
