@@ -22,6 +22,7 @@ import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/wedge.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import type { RunnerLimit } from './limit-detect.js';
@@ -68,9 +69,36 @@ export async function stampRunnerLimit(
       'runner limit stamped',
     );
     broadcastRunnerChanged(projectId, runnerId);
+    if (limit.reason === 'auth') await alarmAuthDeadRunner(runnerId, projectId, limit.detail);
   } catch (err) {
     logger.warn({ err, runnerId }, 'stampRunnerLimit failed, continuing');
   }
+}
+
+/**
+ * Tell the project owner a box has gone auth-dead, because nothing else will.
+ */
+// cm:guard ONLY `auth` alarms here. A rate or usage limit carries a reset time and lifts itself, so alarming on one is noise the operator learns to ignore; `auth` has `until: null` BY DESIGN, is excluded from dispatch by name, and `clearRunnerLimit` can only fire on a job the runner will never be given — so it is the one limit that sits at online-and-idle until a human acts, which is exactly the state ISS-862 asked to be told about. Device dev1-ai013 held it for 5.5h across 421 jobs and nothing anywhere said so.
+// cm:edge naming -> packages/core/src/runners/quarantine.ts — both alarms key the wedge on the RUNNER id (`wedge:<runnerId>`), and `emitPipelineWedge` returns early on an unresolved notification with that key inside WEDGE_RENOTIFY_MS, so whichever fault lands first is the only one the operator is told about for a day. That is deliberate, and it is only sound because BOTH faults exclude the box from dispatch — an auth stamp by name, a quarantine by `quarantinedUntil` — so the second fault cannot accumulate while the first stands, and clearing the first resolves the wedge, which is what lets the next real fault alarm. Break either exclusion and this becomes a silenced alarm: `resolvePipelineWedge(runnerId)` must therefore be called from EVERY clear on this row.
+async function alarmAuthDeadRunner(
+  runnerId: string,
+  projectId: string,
+  detail: string,
+): Promise<void> {
+  await emitPipelineWedge({
+    projectId,
+    hop: 'dispatch',
+    entity: 'runner',
+    entityId: runnerId,
+    reason: `auth_dead:${detail}`,
+    action:
+      'Re-authenticate the agent CLI on that box, then clear the error on the runner so dispatch tries it again.',
+    title: 'A runner can no longer authenticate, and will take no more work',
+    summary:
+      'This runner is excluded from dispatch until someone signs its agent CLI back in. Unlike a rate limit, an expired session has no reset time, so it will not come back on its own.',
+    nextStep:
+      'Sign in again on the box, then use "Clear error" on the Runners screen to put it back in rotation.',
+  });
 }
 
 /**
@@ -105,6 +133,8 @@ export async function clearRunnerLimit(
     if (cleared) {
       logger.info({ runnerId }, 'runner limit / lastError cleared');
       broadcastRunnerChanged(projectId, runnerId);
+      // cm:guard a job succeeded on this box, so whatever wedge its fault raised is over — resolve it here as well as in `clearRunnerQuarantine`, because the auth alarm is raised from this file and the wedge re-notifies at most daily: leave it standing and the operator both keeps a dead alarm and misses the next real one the same day
+      await resolvePipelineWedge(runnerId);
     }
   } catch (err) {
     logger.warn({ err, runnerId }, 'clearRunnerLimit failed, continuing');

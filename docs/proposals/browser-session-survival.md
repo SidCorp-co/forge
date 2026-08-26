@@ -26,6 +26,34 @@ need more than the CLI default to connect. Both are bounds on *hanging*.
 Neither is a bound on *crashing*. A browser that dies takes the agent's session state with it, and
 nothing brings one back.
 
+## Half the instrumentation is already there, and one line forecloses the other half
+
+A browser MCP that fails to connect **at startup** is already a named, distinguishable failure:
+`classify_failure_reason` in `runner/claude_code.rs` returns
+`[MCP_INIT_FAILED] chrome-devtools(failed) did not connect at startup`, per server, and core's
+failure classifier matches that token.
+
+What is not distinguishable is a server that connected and then **died mid-session** — which is the
+symptom the p95 above measures. The reason is one line in the stdout reader:
+
+```rust
+if !got_init {
+    if let Some(failed) = mcp_failed_servers(&json) { got_init = true; ... }
+}
+```
+
+`mcp_failed_servers` reads any `system` event carrying `mcp_servers`, but `got_init` makes the reader
+consume the FIRST one and ignore every later one. So the shape of the fix is small and local — keep
+reading those events past init — and it is still not safe to make blind, because nothing here can
+say whether the CLI emits a `system`/`mcp_servers` event when a server dies mid-turn. If it does not,
+the change is inert; if it emits one for an unrelated reason, `mcp_failed` gets overwritten late and
+`[MCP_INIT_FAILED]` starts being reported for jobs that connected fine.
+
+That is the whole prerequisite, reduced from "instrument the runner" to a question someone with a
+crashing browser in front of them can answer in one session: **does a mid-session MCP death produce a
+`system` event with `mcp_servers`?** Yes → drop `got_init` for that branch and give the death its own
+token. No → the signal has to come from somewhere else, and that is a bigger piece of work.
+
 ## Why it is recorded rather than fixed
 
 Its evidence is a p95 on another project from June, with no specimen reachable from the session that
@@ -48,6 +76,7 @@ Two shapes, and picking between them is the first piece of work, not an implemen
 The first is cheaper per call and shares the failure; the second is more expensive and contains it.
 Deciding needs the crash rate broken down by cause, which is the actual prerequisite:
 
-- instrument the runner so a browser death is a distinguishable failure, not a slow stage
+- answer the `got_init` question above, then make a browser death a distinguishable failure rather
+  than a slow stage (startup failures already are)
 - report the rate per stage, per project, so "roughly 1 in 2" stops being an estimate
 - then choose, and re-measure the same p50/p95 pair on a project that runs UI stages

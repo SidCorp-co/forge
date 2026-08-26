@@ -76,7 +76,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
 
     const issueKey = await issueKeyOf(job.issueId);
 
-    roomManager.publish(deviceRoom(runner.deviceId), {
+    const delivered = roomManager.publish(deviceRoom(runner.deviceId), {
       event: 'job.assigned',
       data: {
         jobId: job.id,
@@ -97,8 +97,17 @@ export const claudeCodeAdapter: RunnerAdapter = {
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
       },
     });
+    // cm:guard `publish` returns the number of OPEN sockets it wrote to, and a job.assigned frame is the ONLY delivery — the runner has no catch-up fetch, so 0 means this job will never be claimed. Reporting `dispatched` anyway is what made a WS-dead / HTTP-heartbeat-alive device produce `dispatch_unclaimed` 4.5 minutes later, and since ISS-862 taught quarantine to count those, a core-side WS fault would have set aside every runner on the project at once. Never drop this return value again.
+    // cm:why traced before shipping: the dispatcher stamps this `failed` as failureKind 'infra' with no failureAction, so `deriveActionFromKind` yields 'retry' and the job re-dispatches after RETRY_COOLDOWN_MS on the same box (3 tries, then rotate, 10 rounds) — a core deploy that drops every socket therefore costs one attempt and 60s per in-flight job, not the retry budget. No pattern in failure-classifier.ts matches this text, so nothing reclassifies it terminal.
+    if (delivered === 0) {
+      return {
+        status: 'failed',
+        errorReason:
+          'dispatch not delivered: no open websocket on the device (job.assigned reached 0 subscribers)',
+      };
+    }
     logger.info(
-      { jobId: job.id, runnerId: runner.id, deviceId: runner.deviceId },
+      { jobId: job.id, runnerId: runner.id, deviceId: runner.deviceId, delivered },
       'claude-code adapter: published job.assigned',
     );
     return { status: 'dispatched' };

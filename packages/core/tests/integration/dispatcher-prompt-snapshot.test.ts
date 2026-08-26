@@ -19,6 +19,7 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
+  openDeviceSocket,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -51,8 +52,11 @@ describe('ISS-186 prompt-snapshot write path', () => {
     if (harness) await harness.cleanup();
   });
 
+  const sockets: Array<{ close(): void }> = [];
+
   beforeEach(async () => {
     await truncateAll(harness.db);
+    while (sockets.length) sockets.pop()?.close();
   });
 
   async function seedRunner() {
@@ -71,6 +75,8 @@ describe('ISS-186 prompt-snapshot write path', () => {
         ${`runner-${runnerId.slice(0, 8)}`}, ${'{"pm": true}'}::jsonb, 'online', now()
       )
     `);
+    // cm:guard the `runners` row is what the SQL gates read, but `job.assigned` is what CARRIES the job — since ISS-862 the adapter reports `failed` when the frame reaches no open socket, so every dispatch below needs one open. Seeding only the row is a device that is online in Postgres and unreachable in memory, which is a real production state and deliberately no longer dispatchable.
+    sockets.push(openDeviceSocket(device.id));
     return { owner, project, device, runnerId };
   }
 

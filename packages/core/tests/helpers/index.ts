@@ -2,6 +2,8 @@ export type { TestServer } from './app-server.js';
 export { startTestServer } from './app-server.js';
 export type { TestDatabase, TestDb } from './db.js';
 export { setupTestDatabase } from './db.js';
+export type { OpenDeviceSocket } from './device-socket.js';
+export { openDeviceSocket } from './device-socket.js';
 export {
   type CreateTestDeviceOverrides,
   type CreateTestProjectMemberOverrides,

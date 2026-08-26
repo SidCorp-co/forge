@@ -11,6 +11,9 @@
 //! One small file per in-flight job closes that gap: after a restart the
 //! daemon can look up what it started, kill it for real, and say `killed`.
 //! `not_found` becomes a fact rather than an assumption.
+//!
+//! A pid only means anything within one boot, so every marker carries a boot
+//! identity and nothing is recorded — or acted on — without one.
 
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
@@ -18,8 +21,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-/// Linux exposes an id that changes on every boot; elsewhere this reads empty
-/// and the boot check below simply never rejects anything.
+#[cfg(target_os = "linux")]
 const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
 
 /// How long a SIGTERM'd group gets before SIGKILL. Mirrors `graceful_kill`.
@@ -58,10 +60,42 @@ struct Marker {
     boot_id: String,
 }
 
-fn boot_id() -> String {
+/// Something that changes on every boot, or `None` on a platform where this
+/// daemon cannot obtain one.
+// cm:guard a platform with NO boot identity MUST return None here, and `record` + `marker_is_current` must both refuse to act on that — the empty-string fallback this replaced made `marker.boot_id != current` compare "" against "", which never rejects, so on macOS (a shipped release target) a marker that outlived a reboot went straight to kill_group on a pid something else now owns. Reporting `not_found` for a process we cannot vouch for is wrong-but-honest; killing a stranger is not.
+#[cfg(target_os = "linux")]
+fn boot_identity() -> Option<String> {
     std::fs::read_to_string(BOOT_ID_PATH)
+        .ok()
         .map(|s| s.trim().to_string())
-        .unwrap_or_default()
+        .filter(|s| !s.is_empty())
+}
+
+/// `kern.boottime` is a fixed wall-clock instant per boot, so it separates
+/// boots exactly as well as Linux's random id.
+#[cfg(target_os = "macos")]
+fn boot_identity() -> Option<String> {
+    std::process::Command::new("sysctl")
+        .args(["-n", "kern.boottime"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn boot_identity() -> Option<String> {
+    None
+}
+
+/// Whether a marker was written by the boot we are running now.
+// cm:why a pure function taking the identity as an argument, because the cases that matter are the ones the test host cannot be put into: a platform with no boot identity at all, and a marker left by the version of this file that wrote an empty one
+fn marker_is_current(marker_boot: &str, current: Option<&str>) -> bool {
+    match current {
+        Some(now) => !now.is_empty() && marker_boot == now,
+        None => false,
+    }
 }
 
 fn default_dir() -> Option<PathBuf> {
@@ -83,9 +117,11 @@ fn marker_path(dir: &Path, job_id: &str) -> Option<PathBuf> {
 
 /// Remember that `pid` is running `job_id`, so a later daemon can kill it.
 pub fn record(job_id: &str, pid: u32) {
-    if let Some(dir) = default_dir() {
-        record_in(&dir, job_id, pid);
-    }
+    // cm:guard no boot identity means no marker: a record this daemon could never verify would be read back as a live pid after the next reboot, so the honest state is the pre-ISS-862 one (no record, `not_found`) rather than a record nobody may act on
+    let (Some(dir), Some(boot)) = (default_dir(), boot_identity()) else {
+        return;
+    };
+    record_in(&dir, job_id, pid, &boot);
 }
 
 /// Drop the record — the job reached a terminal state under this daemon.
@@ -99,18 +135,18 @@ pub fn forget(job_id: &str) {
 /// whatever it recorded and reporting what actually happened.
 pub async fn reap_orphan(job_id: &str) -> Reaped {
     match default_dir() {
-        Some(dir) => reap_orphan_in(&dir, job_id).await,
+        Some(dir) => reap_orphan_in(&dir, job_id, boot_identity().as_deref()).await,
         None => Reaped::NotFound,
     }
 }
 
-fn record_in(dir: &Path, job_id: &str, pid: u32) {
+fn record_in(dir: &Path, job_id: &str, pid: u32, boot: &str) {
     let Some(p) = marker_path(dir, job_id) else {
         return;
     };
     let marker = Marker {
         pid,
-        boot_id: boot_id(),
+        boot_id: boot.to_string(),
     };
     let Ok(body) = serde_json::to_string(&marker) else {
         return;
@@ -130,7 +166,7 @@ fn forget_in(dir: &Path, job_id: &str) {
     }
 }
 
-async fn reap_orphan_in(dir: &Path, job_id: &str) -> Reaped {
+async fn reap_orphan_in(dir: &Path, job_id: &str, current_boot: Option<&str>) -> Reaped {
     let Some(p) = marker_path(dir, job_id) else {
         return Reaped::NotFound;
     };
@@ -142,7 +178,7 @@ async fn reap_orphan_in(dir: &Path, job_id: &str) -> Reaped {
         return Reaped::NotFound;
     };
     // cm:why a pid only means anything within one boot — after a reboot the child is gone by definition and the number may already belong to something else, so a marker from another boot is discarded rather than signalled
-    if marker.boot_id != boot_id() {
+    if !marker_is_current(&marker.boot_id, current_boot) {
         return Reaped::NotFound;
     }
     let outcome = kill_group(marker.pid).await;
@@ -220,6 +256,9 @@ mod tests {
     }
 
     const JOB: &str = "6c0cd286-7428-4795-8dbb-e4a9377e5fe5";
+    /// A boot identity, spelled out so every test runs the same on a host that
+    /// has one (Linux, macOS) and one that has none (Windows).
+    const BOOT: &str = "this-boot";
 
     #[test]
     fn a_job_id_that_is_not_an_id_gets_no_path() {
@@ -233,7 +272,10 @@ mod tests {
 
     #[tokio::test]
     async fn no_record_at_all_reports_not_found() {
-        assert_eq!(reap_orphan_in(&scratch(), JOB).await, Reaped::NotFound);
+        assert_eq!(
+            reap_orphan_in(&scratch(), JOB, Some(BOOT)).await,
+            Reaped::NotFound
+        );
     }
 
     #[tokio::test]
@@ -249,10 +291,48 @@ mod tests {
             .expect("serialize"),
         )
         .expect("write");
-        assert_eq!(reap_orphan_in(&d, JOB).await, Reaped::NotFound);
+        assert_eq!(reap_orphan_in(&d, JOB, Some(BOOT)).await, Reaped::NotFound);
         assert!(
             !marker_path(&d, JOB).expect("valid id").exists(),
             "the marker is consumed either way"
+        );
+    }
+
+    // The macOS regression: `boot_identity` used to fall back to an empty
+    // string there, so `"" != ""` never rejected and a marker that outlived a
+    // reboot went straight to `kill_group` on a pid something else now owns.
+    #[test]
+    fn a_marker_is_never_current_without_a_boot_identity_to_compare_against() {
+        assert!(!marker_is_current(BOOT, None));
+        assert!(!marker_is_current("", None));
+        assert!(!marker_is_current("", Some("")));
+        assert!(!marker_is_current(BOOT, Some("")));
+        assert!(!marker_is_current("", Some(BOOT)));
+        assert!(!marker_is_current("another-boot", Some(BOOT)));
+        assert!(marker_is_current(BOOT, Some(BOOT)));
+    }
+
+    #[tokio::test]
+    async fn a_live_pid_is_left_alone_on_a_platform_with_no_boot_identity() {
+        let d = scratch();
+        // pid 1 again: reaching kill_group here would signal init.
+        record_in(&d, JOB, 1, BOOT);
+        assert_eq!(reap_orphan_in(&d, JOB, None).await, Reaped::NotFound);
+    }
+
+    #[test]
+    fn nothing_is_recorded_when_this_daemon_has_no_boot_identity() {
+        // `record` (not `record_in`) owns that refusal, so drive it through the
+        // same gate by asserting the platform contract it reads.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        assert!(
+            boot_identity().is_some(),
+            "a supported host has an identity"
+        );
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        assert!(
+            boot_identity().is_none(),
+            "an unanchored host must record nothing"
         );
     }
 
@@ -268,7 +348,7 @@ mod tests {
             .expect("serialize"),
         )
         .expect("write");
-        record_in(&d, JOB, 1);
+        record_in(&d, JOB, 1, BOOT);
         assert!(!d.join("00000000-0000-4000-8000-00000000beef.json").exists());
         assert!(marker_path(&d, JOB).expect("valid id").exists());
     }
@@ -282,8 +362,8 @@ mod tests {
             .expect("spawn /bin/true");
         let pid = child.id();
         child.wait().expect("reap");
-        record_in(&d, JOB, pid);
-        assert_eq!(reap_orphan_in(&d, JOB).await, Reaped::NotFound);
+        record_in(&d, JOB, pid, BOOT);
+        assert_eq!(reap_orphan_in(&d, JOB, Some(BOOT)).await, Reaped::NotFound);
     }
 
     // The ISS-837 scenario: the daemon restarted, the setsid child did not.
@@ -303,13 +383,13 @@ mod tests {
             });
         }
         let mut child = cmd.spawn().expect("spawn sleep");
-        record_in(&d, JOB, child.id());
+        record_in(&d, JOB, child.id(), BOOT);
 
-        assert_eq!(reap_orphan_in(&d, JOB).await, Reaped::Killed);
+        assert_eq!(reap_orphan_in(&d, JOB, Some(BOOT)).await, Reaped::Killed);
         let status = child.wait().expect("reap");
         assert!(!status.success(), "the child was signalled: {status}");
         assert_eq!(
-            reap_orphan_in(&d, JOB).await,
+            reap_orphan_in(&d, JOB, Some(BOOT)).await,
             Reaped::NotFound,
             "the record is consumed, so a second cancel does not re-claim a kill"
         );
@@ -318,7 +398,7 @@ mod tests {
     #[test]
     fn forget_removes_the_record() {
         let d = scratch();
-        record_in(&d, JOB, 1);
+        record_in(&d, JOB, 1, BOOT);
         assert!(marker_path(&d, JOB).expect("valid id").exists());
         forget_in(&d, JOB);
         assert!(!marker_path(&d, JOB).expect("valid id").exists());

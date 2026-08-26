@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DispatchInput } from '../types.js';
 
-const publish = vi.fn((..._args: unknown[]) => 0);
+const publish = vi.fn((..._args: unknown[]) => 1);
 
 vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => publish(...args) },
@@ -18,6 +18,7 @@ vi.mock('../../db/client.js', () => ({
 
 const { claudeCodeAdapter } = await import('./claude-code.js');
 const { deviceRoom } = await import('../../ws/rooms.js');
+const { classifyBoxFault } = await import('../attribute-failure.js');
 
 type Runner = DispatchInput['runner'];
 
@@ -47,6 +48,7 @@ function runner(over: Partial<Runner> = {}): Runner {
 describe('claude-code adapter', () => {
   beforeEach(() => {
     publish.mockClear();
+    publish.mockReturnValue(1);
   });
 
   // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — without `issueKey` the runner declines to salvage a failed job's working copy at all (it cannot tell this job's checkout from a stale one), so dropping this field disables L1 with nothing going red.
@@ -180,6 +182,43 @@ describe('claude-code adapter', () => {
     const call = publish.mock.calls[0];
     const data = (call?.[1] as { data: Record<string, unknown> }).data;
     expect('agentSessionId' in data).toBe(false);
+  });
+
+  // cm:why the frame is the only delivery — the runner has no catch-up fetch — so reporting `dispatched` for 0 subscribers spends a runner slot on a job that can only die at the ack reaper, and since ISS-862 counts those toward quarantine it would set aside every runner on a project during a core-side WS fault
+  it('reports failed, not dispatched, when the frame reached no open socket', async () => {
+    publish.mockReturnValueOnce(0);
+    const result = await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-undelivered',
+        projectId: 'p-1',
+        issueId: null,
+        attempts: 1,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date(),
+      },
+      runner: runner(),
+    });
+    expect(result.status).toBe('failed');
+    expect(result.errorReason).toContain('0 subscribers');
+  });
+
+  // cm:guard this string must stay unrecognisable to `classifyBoxFault` (attribute-failure.ts) — an undelivered dispatch is as likely to be core's websocket as the box's, so it must NOT extend a quarantine streak; the moment it reads `dispatch_unclaimed` or starts `preflight_failed:` this whole fix inverts into the fleet-wide quarantine it exists to prevent
+  it('names the undelivered dispatch in words quarantine does not count', async () => {
+    publish.mockReturnValueOnce(0);
+    const result = await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-undelivered-2',
+        projectId: 'p-1',
+        issueId: null,
+        attempts: 1,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date(),
+      },
+      runner: runner(),
+    });
+    expect(classifyBoxFault(result.errorReason ?? null)).toBeNull();
   });
 
   it('returns failed when runner has no deviceId', async () => {
