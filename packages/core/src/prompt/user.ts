@@ -456,6 +456,19 @@ export function injectTurnLevelRules(
   return `${promptString.slice(0, firstNl)}${block}${promptString.slice(firstNl)}`;
 }
 
+/**
+ * Splice a block in immediately after the first line (the `/<skill> <id>` invocation), so the
+ * agent reads it before any issue context. Returns the prompt unchanged when `block` is empty.
+ */
+export function injectAfterInvocation(promptString: string, block: string): string {
+  const b = block.trim();
+  if (b.length === 0) return promptString;
+  const wrapped = `\n\n${b}`;
+  const firstNl = promptString.indexOf('\n');
+  if (firstNl === -1) return `${promptString}${wrapped}`;
+  return `${promptString.slice(0, firstNl)}${wrapped}${promptString.slice(firstNl)}`;
+}
+
 export function buildJobPromptString(args: {
   skillName?: string | null;
   jobType: JobType;

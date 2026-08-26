@@ -24,6 +24,7 @@ import { cancelJob, JobCancelError } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
+import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
@@ -58,9 +59,7 @@ const completeBodySchema = z
   .strict();
 
 const failBodySchema = z
-  .object({
-    error: z.string().max(10_000),
-  })
+  .object({ error: z.string().max(10_000), salvage: salvageSchema.optional() })
   .strict();
 
 const cancelBodySchema = z
@@ -455,10 +454,7 @@ jobLifecycleDeviceRoutes.post(
     let [updated] = await applyKernelTransition(db, {
       entity: 'job',
       to: 'failed',
-      set: {
-        error: input.error,
-        finishedAt: new Date(),
-      },
+      set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
       where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
       fromStatus: job.status,
       reason: input.error,

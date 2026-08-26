@@ -1,25 +1,23 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
-import { issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
+import { issueLabels, jobs, labels, projects, runners } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   recordDispatchBarrierSkip,
-  recordResumeBoundFresh,
   recordRunnerDeathDetection,
 } from '../observability/hold-metrics.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
-import { AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
-import { injectTurnLevelRules } from '../prompt/user.js';
+import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { boss } from '../queue/boss.js';
 import { getRunnerAdapter } from '../runners/registry.js';
-import { getTrippedDeviceIds, selectRunnerForJob } from '../runners/select.js';
+import { selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
@@ -30,18 +28,13 @@ import {
   runnerSupportsJobType,
 } from './dispatch-gates.js';
 import { finalizeFailedJob } from './finalize-failure.js';
+import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME, RECONCILE_QUEUE_NAME } from './queue-name.js';
 import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
-import { readAutoRetryPayload } from './retry.js';
-import {
-  estimateGroupContextTokens,
-  findPriorSessionInGroup,
-  loadResumeBounds,
-} from './session-resume.js';
+import { resolveResumePolicy } from './resume-policy.js';
 import {
   applySkillMaintenanceCarveout,
-  extractStageStatus,
   resolveStageOverrides,
   SKILL_MAINTENANCE_LABEL,
   type StageOverrides,
@@ -301,143 +294,15 @@ async function dispatchViaRunner(
     fallbackChain = resolveRunnerChainForJob(job.type, cachedAgentConfig);
   }
 
-  // PR-5 — if this job belongs to a sessionGroup AND a prior session of the
-  // same (issue, group) exists, pin selection to that device so the runner
-  // can resume the same CLI session file. Source `sessionGroup` from the
-  // per-state config resolver (same SoT as the legacy dispatchViaDevice
-  // path) so the two paths can never disagree on the group name.
   const preDispatchOverrides = await resolveStageOverrides(job.projectId, job.payload);
-  let priorClaudeSessionId: string | null = null;
-  let pinDeviceId: string | null = null;
+  const resume = await resolveResumePolicy({
+    job,
+    overrides: preDispatchOverrides,
+    agentConfig: cachedAgentConfig,
+  });
+  const priorClaudeSessionId = resume.priorClaudeSessionId;
+  const { pinDeviceId, excludeDeviceIds, skipPrimary } = resume;
   const stagePool = preDispatchOverrides.deviceIds;
-  // cm:guard a drive job must never inherit a staged step's CLI session: it resumes through `forge_phase` action `resume_point`, and --resume onto a stale triage session would hand the driver another step's transcript as its own history
-  if (preDispatchOverrides.sessionGroup && job.issueId && job.type !== AUTONOMOUS_JOB_TYPE) {
-    const prior = await findPriorSessionInGroup({
-      issueId: job.issueId,
-      sessionGroup: preDispatchOverrides.sessionGroup,
-    });
-    if (prior) {
-      priorClaudeSessionId = prior.claudeSessionId;
-      pinDeviceId = prior.deviceId;
-    }
-  }
-
-  // cm:why the stage pool outranks the session-group resume pin: a resume is an optimisation, but "this stage ran on the box the operator pinned" is the guarantee the pool exists to make — so a prior session on an out-of-pool box loses BOTH the pin and the --resume (same shape as the stale-pin path below)
-  if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) {
-    logger.info(
-      { jobId: job.id, pinDeviceId, stagePool, stageStatus: extractStageStatus(job.payload) },
-      'dispatcher: session-group resume pin is outside the stage runner pool — dispatching fresh inside the pool',
-    );
-    pinDeviceId = null;
-    priorClaudeSessionId = null;
-  }
-
-  // Compute isRetry here so the bound check below can skip the 3-query block
-  // (+ metric/Sentry side effects) on retry dispatches — the retry path nulls
-  // priorClaudeSessionId at its own site unconditionally.
-  const isRetry = job.retryOf != null;
-
-  // ISS-580 — bound check: if the accumulated context of the sessionGroup
-  // exceeds the configured token limit, or the issue has been reopened more
-  // than the cycle limit, drop the resume and dispatch fresh. Continuity is
-  // preserved via the existing handoff/sessionContext mechanism (ISS-537).
-  // Skip on retries — the retry block unconditionally nulls priorClaudeSessionId
-  // anyway, so running this block on a retry is pure wasted work + spurious
-  // resume_bound_fresh_total increments.
-  if (!isRetry && priorClaudeSessionId && preDispatchOverrides.sessionGroup && job.issueId) {
-    const bounds = await loadResumeBounds(job.projectId, cachedAgentConfig);
-    const estTokens = await estimateGroupContextTokens({
-      issueId: job.issueId,
-      sessionGroup: preDispatchOverrides.sessionGroup,
-    });
-    let reopenCount = 0;
-    try {
-      const [issueRow] = await db
-        .select({ reopenCount: issues.reopenCount })
-        .from(issues)
-        .where(eq(issues.id, job.issueId))
-        .limit(1);
-      reopenCount = issueRow?.reopenCount ?? 0;
-    } catch (err) {
-      logger.warn(
-        { err, jobId: job.id, issueId: job.issueId },
-        'dispatcher: failed to read reopenCount, treating as 0',
-      );
-    }
-    const overTokens = bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens;
-    const overCycles =
-      bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
-    if (overTokens || overCycles) {
-      const reason = overTokens ? ('tokens' as const) : ('reopen_cycles' as const);
-      logger.info(
-        {
-          jobId: job.id,
-          issueId: job.issueId,
-          sessionGroup: preDispatchOverrides.sessionGroup,
-          estTokens,
-          reopenCount,
-          maxResumeTokens: bounds.maxResumeTokens,
-          maxResumeReopenCycles: bounds.maxResumeReopenCycles,
-          reason,
-        },
-        'dispatcher: sessionGroup resume bound exceeded — dispatching fresh session',
-      );
-      recordResumeBoundFresh(reason);
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'pipeline.resume_bound',
-          data: { reason, estTokens, reopenCount },
-        });
-      }
-      priorClaudeSessionId = null;
-      pinDeviceId = null;
-    }
-  }
-
-  // Device selection splits cleanly into two cases (jobs/retry.ts owns the
-  // retry side):
-  //
-  //   - FIRST dispatch (`job.retryOf == null`): keep the primary-pinned
-  //     behaviour, plus the circuit breaker — skip devices whose runner is
-  //     failing repeatedly so the first dispatch doesn't land on a known-bad
-  //     device. The selector's wrap-around still probes a tripped device when
-  //     EVERY device is tripped, so a single-device project never wedges.
-  //
-  //   - RETRY (`job.retryOf != null`): the uniform round-robin drives it. Pin
-  //     the rotation `target`, exclude the devices already `done` this round,
-  //     and set `skipPrimary` so no device gets preferential treatment. The
-  //     circuit breaker is intentionally NOT applied here — the round-robin
-  //     already cycles devices fairly, and layering the breaker on top would
-  //     fight it (a device tripped after its 3 tries would be skipped for the
-  //     rest of the chain instead of getting its turn next round).
-  const autoRetry = readAutoRetryPayload(job.payload);
-  // isRetry was hoisted above to gate the ISS-580 bound check block.
-
-  let excludeDeviceIds: string[];
-  let skipPrimary: boolean;
-  if (isRetry) {
-    skipPrimary = true;
-    excludeDeviceIds = autoRetry.done;
-    // Rotation moves devices on purpose → never resume a prior session.
-    pinDeviceId = autoRetry.target;
-    priorClaudeSessionId = null;
-    // cm:why a rotation target computed before the pool was configured (or from a wider fleet) is dropped rather than honoured — selection then picks a standby INSIDE the pool instead of returning null and stalling the retry chain
-    if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) pinDeviceId = null;
-  } else {
-    skipPrimary = false;
-    const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
-    excludeDeviceIds = trippedDeviceIds;
-    if (trippedDeviceIds.length > 0) {
-      logger.warn(
-        { jobId: job.id, projectId: job.projectId, trippedDeviceIds },
-        'dispatcher: device circuit breaker tripped — rotating away from failing device(s)',
-      );
-    }
-    if (pinDeviceId && excludeDeviceIds.includes(pinDeviceId)) {
-      pinDeviceId = null;
-      priorClaudeSessionId = null;
-    }
-  }
 
   // ISS-232 Phase 2 — `selectRunnerForJob` no longer takes `fallbackChain`.
   // Runner-type filtering is enforced post-select via `runnerSupportsJobType`
@@ -637,14 +502,20 @@ async function dispatchViaRunner(
       mcpDiagnostics: { resolved: resolvedMcp.resolvedNames, dropped: resolvedMcp.droppedNames },
     });
 
-  // PR-5 fallback — when resuming a prior CLI session via --resume, the CLI
-  // may ignore --append-system-prompt (undocumented). Embed the state's
-  // system prompt redundantly at the head of the user prompt so the agent
-  // sees the right rules either way. No-op for fresh dispatches.
-  const runnerPromptString =
+  // cm:why on --resume the Claude CLI may ignore --append-system-prompt (undocumented), so the state's system prompt is embedded redundantly at the head of the user prompt; a fresh dispatch gets it through the flag and needs no copy
+  const resumedPromptString =
     priorClaudeSessionId && runnerBasePromptString
       ? injectTurnLevelRules(runnerBasePromptString, runnerSystemPrompt)
       : runnerBasePromptString;
+
+  // cm:edge contract -> packages/core/src/jobs/prior-attempts.ts — spliced HERE, at dispatch, not by `buildJobPromptString` at enqueue: `retry.ts` copies the parent's `payload.promptString` verbatim, so a block added at enqueue time would describe the parent's own attempt rather than the one that just failed
+  const runnerPromptString =
+    resume.isRetry && resumedPromptString
+      ? injectAfterInvocation(
+          resumedPromptString,
+          renderPriorAttemptsBlock(await loadPriorAttempts(job), job.attempts),
+        )
+      : resumedPromptString;
 
   await persistPromptSnapshot({
     jobId: job.id,
