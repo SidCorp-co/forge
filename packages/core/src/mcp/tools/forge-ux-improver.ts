@@ -8,8 +8,8 @@ import { z } from 'zod';
 import { applyUxImproverProposals, loadUxImproverReport } from '../../projects/ux-improver.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
+  assertPrincipalIsAdmin,
   assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
@@ -28,7 +28,7 @@ export const forgeUxImproverTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'UX Completeness Contract learning loop (ISS-579): turn accumulated ux_findings into PROPOSED contract rules. ' +
     'action=candidates: read the deterministic aggregation — recurring gap clusters with evidence issue ids, plus `refused[]` saying which clusters the detector declined and why (one-off / already-covered / already-proposed). Read-only, project-member. ' +
-    'action=propose: commit selected candidates by `key` — writes ux_contract_rules at status="proposed", source="learned", never `active`, so a human approves them in project settings. Idempotent: a re-run unions evidence onto the existing proposal instead of queueing a duplicate. Requires writer. ' +
+    'action=propose: commit selected candidates by `key` — writes ux_contract_rules at status="proposed", source="learned", never `active`, so a human approves them in project settings. Idempotent: a re-run unions evidence onto the existing proposal instead of queueing a duplicate. Requires project admin, same as the REST propose route. ' +
     'A candidate is only recurring when it spans >=3 DISTINCT issues; a single finding never becomes a rule. Refute each candidate yourself before proposing it — the detector counts, it does not judge.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
@@ -56,7 +56,8 @@ export const forgeUxImproverTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { ok: false, reason: 'keys_required' };
     }
 
-    await assertPrincipalIsWriter(principal, projectId);
+    // cm:guard Keep this at ADMIN, matching POST /api/projects/:id/ux-improver/propose and the rule-CRUD routes next to it. Two surfaces writing the same table at different levels is an escalation path, whichever one is wrong.
+    await assertPrincipalIsAdmin(principal, projectId);
     const { outcomes } = await applyUxImproverProposals(projectId, input.keys);
     return { ok: true, outcomes };
   },

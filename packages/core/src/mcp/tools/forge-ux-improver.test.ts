@@ -16,13 +16,13 @@ vi.mock('../../projects/ux-improver.js', () => ({
 }));
 
 const assertMember = vi.fn();
-const assertWriter = vi.fn();
+const assertAdmin = vi.fn();
 vi.mock('./lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./lib.js')>();
   return {
     ...actual,
+    assertPrincipalIsAdmin: (...a: unknown[]) => assertAdmin(...a),
     assertPrincipalIsMember: (...a: unknown[]) => assertMember(...a),
-    assertPrincipalIsWriter: (...a: unknown[]) => assertWriter(...a),
     resolveEffectiveProjectId: async (_ctx: unknown, explicit?: string) => explicit ?? PROJECT_ID,
   };
 });
@@ -125,22 +125,22 @@ describe('forge_ux_improver action=candidates', () => {
     expect(result.thresholds.minRecurrenceIssues).toBe(3);
   });
 
-  it('reads with member rights only — it never asks for writer', async () => {
+  it('reads with member rights only — it never asks for admin', async () => {
     await forgeUxImproverTool(makeCtx()).handler({ action: 'candidates' });
 
-    expect(assertWriter).not.toHaveBeenCalled();
+    expect(assertAdmin).not.toHaveBeenCalled();
   });
 });
 
 describe('forge_ux_improver action=propose', () => {
-  it('gates on writer and forwards the selected keys', async () => {
+  it('gates on ADMIN — the same level the REST propose route demands — and forwards the keys', async () => {
     const result = (await forgeUxImproverTool(makeCtx()).handler({
       action: 'propose',
       projectId: PROJECT_ID,
       keys: ['add:states:abc123'],
     })) as { ok: boolean; outcomes: Array<{ action: string }> };
 
-    expect(assertWriter).toHaveBeenCalledWith(expect.anything(), PROJECT_ID);
+    expect(assertAdmin).toHaveBeenCalledWith(expect.anything(), PROJECT_ID);
     expect(applyProposals).toHaveBeenCalledWith(PROJECT_ID, ['add:states:abc123']);
     expect(result.ok).toBe(true);
     expect(result.outcomes[0]?.action).toBe('proposed');
@@ -154,6 +154,6 @@ describe('forge_ux_improver action=propose', () => {
 
     expect(result).toEqual({ ok: false, reason: 'keys_required' });
     expect(applyProposals).not.toHaveBeenCalled();
-    expect(assertWriter).not.toHaveBeenCalled();
+    expect(assertAdmin).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,7 @@ import type {
   UxRuleGroup,
   UxRuleSeverity,
 } from '@forge/contracts';
+import { sanitizeUntrusted, stripFrameTokens } from '../prompt/sanitize.js';
 
 /** How far back findings are considered fuel. Older gaps describe a UI that has moved on. */
 export const LOOKBACK_DAYS = 90;
@@ -212,6 +213,11 @@ function medoid(cluster: Cluster): UxImproverFindingInput {
   return best;
 }
 
+// cm:guard An APPROVED rule is injected verbatim into every agent prompt on the project, and this text came from an agent-authored ux_findings.detail — so it must go through the same chokepoint as any other untrusted prompt input. The human approving it in the inbox is the second control, not the first.
+function proposedRuleText(detail: string): string {
+  return stripFrameTokens(sanitizeUntrusted(detail)).trim();
+}
+
 function distinctIssueIds(cluster: Cluster): string[] {
   const seen: string[] = [];
   for (const m of cluster.members) if (!seen.includes(m.issueId)) seen.push(m.issueId);
@@ -352,7 +358,7 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
       ...shared,
       key: candidateKey('add', group, signature),
       kind: 'add',
-      text: rep.detail.trim(),
+      text: proposedRuleText(rep.detail),
       severity: cluster.members.some((m) => m.severity === 'must') ? 'must' : 'should',
       targetRuleId: null,
       rationale: `Same gap observed ${cluster.members.length} times across ${issues.length} issues, and no active rule covers it.`,

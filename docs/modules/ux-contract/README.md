@@ -64,7 +64,7 @@ Two Hono routers: project-scoped (`/api/projects/:id/...`) and rule-id-scoped
 | `POST` | `/api/projects/:id/ux-contract-rules` | admin | creates one rule, recompiles |
 | `GET` | `/api/projects/:id/ux-findings` | viewer | optional `?issueId=` filter |
 | `GET` | `/api/projects/:id/ux-improver/candidates` | viewer | dry run — candidates + refusals, no write |
-| `POST` | `/api/projects/:id/ux-improver/propose` | admin | commits selected candidate `keys` at status `proposed` |
+| `POST` | `/api/projects/:id/ux-improver/propose` | admin | commits selected candidate `keys` at status `proposed`; `forge_ux_improver action=propose` gates at the same level |
 | `POST` | `/api/projects/:id/ux-contract/apply-preset` | admin | replaces the rule set (see Invariants) |
 | `PATCH` | `/api/ux-contract-rules/:ruleId` | admin | recompiles |
 | `DELETE` | `/api/ux-contract-rules/:ruleId` | admin | recompiles |
@@ -110,7 +110,12 @@ Two tiers, split so the testable half is not a prompt.
    `should` rule does — proposed as the same text at `must`, linked by `supersedesRuleId`),
    or nothing. `retire` covers only the improver withdrawing its OWN `learned` proposals
    after `STALE_PROPOSAL_DAYS` (60) with the gap no longer recurring.
-4. Everything refused is RETURNED, with a reason (`one-off` / `already-covered` /
+4. The `add` text is the cluster medoid's finding detail, run through
+   `prompt/sanitize.ts` first (`sanitizeUntrusted` + `stripFrameTokens`). An approved rule is
+   injected verbatim into every agent prompt on the project, and the detail was authored by an
+   agent — so it goes through the same chokepoint as any other untrusted prompt input. The
+   human approving it in the inbox is the second control, not the first.
+5. Everything refused is RETURNED, with a reason (`one-off` / `already-covered` /
    `already-proposed`). A refusal the caller cannot read is indistinguishable from a gap the
    detector never saw.
 
