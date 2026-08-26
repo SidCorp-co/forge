@@ -103,6 +103,47 @@ describe('stepHandoffSchema', () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it.each(['blocked_fixture', 'verified_by_test'] as const)(
+    'accepts %s with a stated reason',
+    (result) => {
+      const r = stepHandoffSchema.safeParse({
+        step: 'test',
+        schema_version: 1,
+        result,
+        resultReason: 'The shared fixture cannot be changed safely.',
+        failures: [],
+        flakyTests: [],
+      });
+      expect(r.success).toBe(true);
+    },
+  );
+
+  it.each(['blocked_fixture', 'verified_by_test'] as const)(
+    'rejects %s without a stated reason',
+    (result) => {
+      const r = stepHandoffSchema.safeParse({
+        step: 'test',
+        schema_version: 1,
+        result,
+        failures: [],
+        flakyTests: [],
+      });
+      expect(r.success).toBe(false);
+    },
+  );
+
+  it('rejects a whitespace-only result reason', () => {
+    const r = stepHandoffSchema.safeParse({
+      step: 'test',
+      schema_version: 1,
+      result: 'blocked_fixture',
+      resultReason: '   ',
+      failures: [],
+      flakyTests: [],
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe('HANDOFF_STEPS + isHandoffStep', () => {

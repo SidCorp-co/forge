@@ -16,7 +16,7 @@ const where = vi.fn(() => ({ limit }));
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
 // .where().limit() — route the join chain back into the same where/limit FIFO.
 const leftJoin = vi.fn((): Record<string, unknown> => ({ leftJoin, where }));
-const from = vi.fn(() => ({ where, leftJoin }));
+const from = vi.fn(() => ({ where, leftJoin, innerJoin: () => ({ where }) }));
 
 vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from })) },

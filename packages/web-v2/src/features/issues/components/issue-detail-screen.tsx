@@ -141,26 +141,32 @@ export function IssueDetailScreen({
 
   const issue = issueQ.data;
   const checklist = useMemo(() => {
-    if (issue?.aiAcceptanceCriteria && issue.aiAcceptanceCriteria.length > 0) {
-      return issue.aiAcceptanceCriteria.map((text) => ({
-        text,
-        checked: false,
-      }));
-    }
-    return parseChecklist(issue?.acceptanceCriteria);
+    const criteria =
+      issue?.aiAcceptanceCriteria && issue.aiAcceptanceCriteria.length > 0
+        ? issue.aiAcceptanceCriteria.map((text) => ({ text, checked: false }))
+        : parseChecklist(issue?.acceptanceCriteria);
+    const counts = new Map<string, number>();
+
+    return criteria.map((item) => {
+      const count = counts.get(item.text) ?? 0;
+      counts.set(item.text, count + 1);
+      return { ...item, key: `${item.text}-${count}` };
+    });
   }, [issue?.aiAcceptanceCriteria, issue?.acceptanceCriteria]);
+  const issueDisplayId = issue?.displayId;
+  const issueTitle = issue?.title;
 
   // Track this issue as recently-viewed (surfaces in the ⌘K Recent group).
   useEffect(() => {
-    if (!issue) return;
+    if (!issueDisplayId || !issueTitle) return;
     pushRecent({
       kind: "issue",
       id,
-      label: `${issue.displayId} · ${issue.title}`,
+      label: `${issueDisplayId} · ${issueTitle}`,
       href: `/projects/${slug}/issues/${id}`,
       icon: "list",
     });
-  }, [issue?.displayId, issue?.title, id, slug, pushRecent]);
+  }, [issueDisplayId, issueTitle, id, slug, pushRecent]);
 
   function copyLink() {
     const url = buildShareLink(`/projects/${slug}/issues/${id}`);
@@ -217,7 +223,7 @@ export function IssueDetailScreen({
     runStatus,
     handoffsQ.data,
     durationsQ.data,
-    null,
+    runStatus === "failed" ? stage : null,
   );
   const liveSession = pickActiveSession(issue.agentSessions);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? stage;
@@ -519,8 +525,8 @@ export function IssueDetailScreen({
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {checklist.map((item, i) => (
-                    <li key={i}>
+                  {checklist.map((item) => (
+                    <li key={item.key}>
                       <Checkbox
                         checked={item.checked}
                         disabled

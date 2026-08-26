@@ -3,12 +3,13 @@ import { STAGES, STAGE_INDEX, type StageKey } from "@/design/stages";
 import { Icon } from "@/design/icons/icon";
 
 type RunStatus = "running" | "done" | "failed" | "blocked" | "queued" | "review";
-type BeadState = "done" | "active" | "error" | "todo";
+type BeadState = "done" | "active" | "error" | "blocked" | "todo";
 
 function stageState(i: number, currentIdx: number, status: RunStatus): BeadState {
   if (i < currentIdx) return "done";
   if (i === currentIdx) {
-    if (status === "failed" || status === "blocked") return "error";
+    if (status === "failed") return "error";
+    if (status === "blocked") return "blocked";
     if (status === "done") return "done";
     return "active";
   }
@@ -24,6 +25,7 @@ function Bead({ state, size = 26 }: { state: BeadState; size?: number }) {
     // "In progress" bar; the halo follows in cobalt-100.
     active: { background: "var(--pipeline-active)", border: "2px solid var(--pipeline-active)", boxShadow: `0 0 0 ${ring}px var(--cobalt-100)` },
     error: { background: "var(--red-500)", border: "2px solid var(--red-500)", boxShadow: `0 0 0 ${ring}px var(--red-50)` },
+    blocked: { background: "var(--ink-500)", border: "2px solid var(--ink-500)", boxShadow: `0 0 0 ${ring}px var(--paper-200)` },
     todo: { background: "var(--bg-surface)", border: "2px solid var(--border-default)" },
   };
   return (
@@ -33,6 +35,7 @@ function Bead({ state, size = 26 }: { state: BeadState; size?: number }) {
     >
       {state === "done" && <Icon name="check" size={size * 0.5} strokeWidth={3} style={{ color: "#fff" }} />}
       {state === "error" && <Icon name="x" size={size * 0.5} strokeWidth={3} style={{ color: "#fff" }} />}
+      {state === "blocked" && <Icon name="pause" size={size * 0.5} strokeWidth={3} style={{ color: "var(--fg-on-accent)" }} />}
       {state === "active" && (
         <span className="forge-pulse" style={{ width: size * 0.34, height: size * 0.34, borderRadius: 999, background: "#fff" }} />
       )}
@@ -45,7 +48,7 @@ function Bead({ state, size = 26 }: { state: BeadState; size?: number }) {
  *  bead vocabulary) instead of being inferred from `stage` + `status`, and the
  *  short `outcomeLabel` renders under the label in the `full` variant. */
 export interface PipelineTrackerCell {
-  state: "done" | "current" | "pending" | "error";
+  state: "done" | "current" | "pending" | "error" | "blocked";
   outcomeLabel?: string;
 }
 
@@ -54,6 +57,7 @@ const CELL_TO_BEAD: Record<PipelineTrackerCell["state"], BeadState> = {
   current: "active",
   pending: "todo",
   error: "error",
+  blocked: "blocked",
 };
 
 export interface PipelineTrackerProps {
@@ -87,7 +91,7 @@ export function PipelineTracker({
     const done = status === "done" ? STAGES.length : currentIdx;
     const pct =
       ((status === "done" ? STAGES.length : currentIdx + (status === "running" ? 0.5 : 0)) / STAGES.length) * 100;
-    const isErr = status === "failed" || status === "blocked";
+    const isErr = status === "failed";
     return (
       <div className="flex items-center gap-[9px]" style={{ minWidth: 116 }}>
         <span className="whitespace-nowrap font-mono text-muted" style={{ fontSize: 12 }}>
@@ -98,7 +102,7 @@ export function PipelineTracker({
             className="h-full rounded-pill transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{
               width: `${pct}%`,
-              background: isErr ? "var(--red-500)" : status === "done" ? "var(--green-500)" : "var(--pipeline-active)",
+              background: isErr ? "var(--red-500)" : status === "blocked" ? "var(--ink-500)" : status === "done" ? "var(--green-500)" : "var(--pipeline-active)",
             }}
           />
           {/* active run → a cobalt sliver sweeps to signal "in progress, % unknown" */}
@@ -141,7 +145,9 @@ export function PipelineTracker({
                     ? "var(--green-600)"
                     : st === "error"
                       ? "var(--red-600)"
-                      : "var(--fg-subtle)",
+                      : st === "blocked"
+                        ? "var(--ink-700)"
+                        : "var(--fg-subtle)",
             }}
           >
             {s.label}
@@ -182,7 +188,12 @@ export function PipelineTracker({
               <div
                 className="h-0.5 flex-1 transition-[background] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
                 style={{
-                  background: st === "done" ? "var(--green-500)" : "var(--border-default)",
+                  background:
+                    st === "done"
+                      ? "var(--green-500)"
+                      : st === "blocked"
+                        ? "var(--ink-500)"
+                        : "var(--border-default)",
                   margin: variant === "compact" ? "7px 2px 0" : "12px 3px 0",
                 }}
               />

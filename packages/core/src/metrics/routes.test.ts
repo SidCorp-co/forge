@@ -292,8 +292,6 @@ describe('GET …/metrics/timeseries — series shape', () => {
     expect(body.series).toHaveLength(48);
   });
 
-  // ── ISS-381 (Part 2) new-collection metrics ──────────────────────────────
-
   it('pass_rate: ratio of test verdict=pass over issue_step_contexts', async () => {
     authVerified();
     accessAsOwner();
@@ -312,10 +310,9 @@ describe('GET …/metrics/timeseries — series shape', () => {
     expect(body.series[0]?.rate).toBeNull();
     const serialized = JSON.stringify(executedSql);
     expect(serialized).toContain('issue_step_contexts');
-    expect(serialized).toContain('verdict');
+    expect(serialized).toMatch(/verified_by_test.*blocked_fixture/);
     expect(serialized).toContain('step = ');
   });
-
   it('approve_rate: targets review handoffs', async () => {
     authVerified();
     accessAsOwner();

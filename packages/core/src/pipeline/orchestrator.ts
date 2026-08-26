@@ -293,7 +293,7 @@ async function buildAndEnqueueStepJob(args: {
   issueId: string;
   status: IssueStatus;
   createdBy: string;
-  skill: { type: JobType; skillName: string };
+  skill: ResolvedSkill;
   stageCfg: StageConfig | undefined;
   cfg: PipelineConfig | null;
   reason: Record<string, unknown>;
@@ -333,13 +333,11 @@ async function buildAndEnqueueStepJob(args: {
           return;
         }
 
-        // ISS-232 — inject merge-required block when this stage is configured
-        // as the project's merge point. The state-machine writer keys on the
-        // same `mergeStates.baseBranch`; without the prompt block the skill has
-        // no signal it must merge + push before transitioning.
         const mergeRequiredText = buildMergeRequiredBlock({
           stageStatus: args.status,
           mergeStates: resolveMergeStates(args.cfg),
+          branches: issueSnapshot?.branchConfig ?? null,
+          stageOwnsMergeProtocol: skill.type === 'release',
           issueId: args.issueId,
         });
         // Proposal Y — pre-fetch step handoffs scoped to this issue's current run
@@ -433,18 +431,13 @@ export async function triggerPipelineStepManual(args: {
 
   let skill: ResolvedSkill | null;
   if (args.stage) {
-    // Caller picked the jobType explicitly. Resolve the registered skill for
-    // the matching status; if there's no row, fall back to the canonical
-    // PIPELINE_STEPS entry for the conventional skill name and toggle.
-    // Operator-defined `custom` isn't in PIPELINE_STEPS — it falls through
-    // to the `forge-<type>` convention.
     const stageType = args.stage;
     const status = inverseJobTypeToStatus(stageType);
     skill = status ? await resolver.resolve(status) : null;
     if (!skill) {
       const step = PIPELINE_STEPS.find((s) => s.jobType === stageType);
       if (step) {
-        skill = { type: stageType, toggle: step.toggle, skillName: step.skillName };
+        skill = { type: stageType, ...step };
       } else {
         skill = { type: stageType, toggle: 'autoTriage', skillName: `forge-${stageType}` };
       }

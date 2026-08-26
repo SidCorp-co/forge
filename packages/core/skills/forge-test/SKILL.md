@@ -206,7 +206,8 @@ Report format:
 **Verification:** what I actually walked — which flows, at which viewports, which states/roles exercised, and what I did NOT cover. "Looks right" is not verification; name the evidence. For UI changes, attach a screenshot of the final state.
 
 **Summary:** X/Y passed
-**Verdict:** PASS / FAIL
+**Verdict:** PASS / FAIL / BLOCKED_FIXTURE / VERIFIED_BY_TEST
+**Result reason:** Required for BLOCKED_FIXTURE or VERIFIED_BY_TEST; name the unavailable fixture or the automated evidence that verified the criterion.
 ```
 
 `Source` ∈ `AC #N` / `Plan` / `Review` / `Regression` / `UX` / `A11y` / `Responsive`. See `references/result-format.md` for full template and failure detail format, and `references/ui-quality-checklist.md` for the Pass-B quality bar.
@@ -222,7 +223,9 @@ Report format:
      - **same-branch topology (Step 0.7)** — do **NOT** call `mark_merged` here. forge-code deferred the merge to forge-release, so the code still sits only on the `ISS-*` branch — stamping now would assert it already landed on base before it has (the exact state-never-lies failure forge-release's own verified-land gate exists to prevent). forge-release's Step 8 gate confirms the real land and stamps `merged_at` from there — directly, or via the kernel's automatic stamp on leaving `mergeStates.baseBranch`, or on the issue reaching `closed` (a guaranteed backstop regardless of `mergeStates` config).
      - **Skip for a decomposed-epic issue** (`metadata.branchConfig`/`useIntegrationBranch`) regardless of topology — Step 0.6 stamps those against the integration branch (`target:'feature'`); don't double-stamp.
   2. Then set status as the LAST action → `forge_issues → update → { data: { status: "tested" } }`
-- **Any fail** → `forge_issues → update → { data: { status: "reopen" } }` + detailed failure report with actionable info for forge-fix
+- **Fixture blocked** → write handoff `result: "blocked_fixture"` with `resultReason`, then make the final `forge_issues.update` call with `{ data: { status: "waiting", waitingKind: "needs_resource", reason: "<the fixture/resource needed to resume and why>" } }`. Post the QA report separately. Do not stamp `merged_at`.
+- **Verified by automated test** → write handoff `result: "verified_by_test"` with `resultReason`, then make the final `forge_issues.update` call with `{ data: { status: "waiting", waitingKind: "needs_decision", reason: "<the automated evidence and the decision needed to satisfy the release gate>" } }`. Post the QA report separately. Do not stamp `merged_at`.
+- **Any fail** → write handoff `result: "fail"`, then `forge_issues → update → { data: { status: "reopen" } }` + detailed failure report with actionable info for forge-fix
 
 ## Test-specific output reminder
 

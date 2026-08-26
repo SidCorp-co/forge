@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { JobType } from '../db/schema.js';
+import { type JobType, testResults } from '../db/schema.js';
 
 /**
  * Step-handoff payload schema (proposal: docs/proposals/step-handoff-memory.md).
@@ -86,13 +86,19 @@ const reviewHandoff = z.object({
   reviewedDiffSha: z.string().min(1),
 });
 
-const testHandoff = z.object({
-  step: z.literal('test'),
-  schema_version: z.literal(1),
-  result: z.enum(['pass', 'fail']),
-  failures: z.array(z.object({ test: z.string().min(1), trace: z.string().max(500) })).max(20),
-  flakyTests: z.array(z.string().min(1)).max(10),
-});
+const testHandoff = z
+  .object({
+    step: z.literal('test'),
+    schema_version: z.literal(1),
+    result: z.enum(testResults),
+    resultReason: z.string().trim().min(1).max(500).optional(),
+    failures: z.array(z.object({ test: z.string().min(1), trace: z.string().max(500) })).max(20),
+    flakyTests: z.array(z.string().min(1)).max(10),
+  })
+  .refine((value) => value.result === 'pass' || value.result === 'fail' || !!value.resultReason, {
+    message: 'resultReason is required when result is blocked_fixture or verified_by_test',
+    path: ['resultReason'],
+  });
 
 const fixHandoff = z.object({
   step: z.literal('fix'),
@@ -222,7 +228,8 @@ export function renderHandoffSchemaPrompt(step: HandoffStep): string {
         '{',
         '  "step": "test",',
         '  "schema_version": 1,',
-        '  "result": <"pass" | "fail">,',
+        '  "result": <"pass" | "fail" | "blocked_fixture" | "verified_by_test">,',
+        '  "resultReason": <string 1-500 chars, required for blocked_fixture / verified_by_test>,',
         '  "failures": [                             // max 20',
         '    { "test": <string>, "trace": <string ≤500 chars> },',
         '    ...',
@@ -293,8 +300,10 @@ export function renderTerminationBlock(opts: { step: HandoffStep; scope: Handoff
     '   `forge_issues.update` to move the issue `status` to the next state in the',
     '   Pipeline Rules ladder, even if your skill instructions did not mention a',
     '   transition. On success move forward; on a blocking problem branch to',
-    '   `reopen` / `needs_info` / `on_hold` instead. An issue left in its current',
-    '   status stalls the pipeline forever — never skip this step.',
+    '   `reopen` / `needs_info` / `waiting` / `on_hold` instead. Entering `waiting`',
+    '   requires a non-empty `reason` and the applicable `waitingKind`; follow any',
+    '   stage-specific exit instruction for the exact values. An issue left in its',
+    '   current status stalls the pipeline forever — never skip this step.',
     '',
     '3. Then respond with `DONE` on a new line as your final assistant text.',
     '',

@@ -827,7 +827,7 @@ export function stepToStage(step: string): StageKey | null {
 	return STEP_TO_STAGE[step] ?? null;
 }
 
-export type StageCellState = "done" | "current" | "pending" | "error";
+export type StageCellState = "done" | "current" | "pending" | "error" | "blocked";
 
 /** One stage's rolled-up view for the tracker spine + artifact card (AC#4/#5). */
 export interface StageCell {
@@ -885,14 +885,20 @@ export function deriveStageOutcomes(
 	const allDone = runStatus === "done";
 	const failureStage = failureStep ? stepToStage(failureStep) : null;
 
-	// Latest-attempt handoff per stage.
 	const handoffByStage = new Map<StageKey, StepHandoffRow>();
 	for (const row of handoffs ?? []) {
 		const stage = stepToStage(row.step);
 		if (!stage) continue;
 		const prev = handoffByStage.get(stage);
-		if (!prev || row.attempt > prev.attempt) handoffByStage.set(stage, row);
+		if (
+			!prev ||
+			row.updatedAt > prev.updatedAt ||
+			(row.updatedAt === prev.updatedAt && row.attempt > prev.attempt)
+		) {
+			handoffByStage.set(stage, row);
+		}
 	}
+
 
 	// Duration + cost per stage, scoped to the MOST-RECENT run for that stage so a
 	// reopened issue (multiple runs of the same step) doesn't double-count. Within
@@ -938,24 +944,24 @@ export function deriveStageOutcomes(
 	const cells = {} as Record<StageKey, StageCell>;
 	for (const { key } of STAGES) {
 		const i = STAGE_INDEX[key];
-		let state: StageCellState;
-		if (
-			failureStage === key &&
-			(runStatus === "failed" || runStatus === "blocked")
-		) {
-			state = "error";
-		} else if (allDone) {
-			state = "done";
-		} else if (i < currentIdx) {
-			state = "done";
-		} else if (i === currentIdx) {
-			state =
-				runStatus === "failed" || runStatus === "blocked" ? "error" : "current";
-		} else {
-			state = "pending";
-		}
 		const handoff = handoffByStage.get(key);
-		const dur = durByStage.get(key);
+			let state: StageCellState;
+			if (
+				failureStage === key &&
+				(runStatus === "failed" || runStatus === "blocked")
+			) {
+				state = "error";
+			} else if (allDone) {
+				state = "done";
+			} else if (i < currentIdx) {
+				state = "done";
+			} else if (i === currentIdx) {
+				state =
+					runStatus === "failed" || runStatus === "blocked" ? "error" : "current";
+			} else {
+				state = "pending";
+			}
+			const dur = durByStage.get(key);
 		cells[key] = {
 			state,
 			...(handoff

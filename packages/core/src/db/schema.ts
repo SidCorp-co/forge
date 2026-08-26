@@ -2942,11 +2942,8 @@ export const uploadTickets = pgTable(
 export const issueStepContextKinds = ['handoff'] as const;
 export type IssueStepContextKind = (typeof issueStepContextKinds)[number];
 
-// ISS-381 (2.1) — unified structured verdict promoted out of the handoff
-// payload. Maps the review handoff `verdict` (pass/needs_fix/no_change) and the
-// test handoff `result` (pass/fail) onto one queryable enum; `abstain` is
-// reserved for a review that could not run.
-export const stepVerdicts = ['pass', 'fail', 'needs_fix', 'no_change', 'abstain'] as const;
+export const testResults = ['pass', 'fail', 'blocked_fixture', 'verified_by_test'] as const;
+export const stepVerdicts = [...testResults, 'needs_fix', 'no_change', 'abstain'] as const;
 export type StepVerdict = (typeof stepVerdicts)[number];
 
 export const issueStepContexts = pgTable(

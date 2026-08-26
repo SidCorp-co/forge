@@ -1,7 +1,14 @@
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
+import {
+  type BranchConfig,
+  extractIssueBranchOverride,
+  resolveIssueBranches,
+} from '../branches/resolve.js';
 import { db } from '../db/client.js';
-import { issues, jobs } from '../db/schema.js';
+import { issues, jobs, projects } from '../db/schema.js';
 import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
+
+export type LoadedIssueSnapshot = IssueSnapshot & { branchConfig: BranchConfig };
 
 /**
  * Pre-load issue fields used by `buildJobPromptString` to inline an
@@ -18,7 +25,7 @@ import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
 export async function loadIssueSnapshot(
   issueId: string,
   projectId?: string,
-): Promise<IssueSnapshot | null> {
+): Promise<LoadedIssueSnapshot | null> {
   const [row] = await db
     .select({
       title: issues.title,
@@ -29,8 +36,12 @@ export async function loadIssueSnapshot(
       plan: issues.plan,
       acceptanceCriteria: issues.acceptanceCriteria,
       sessionContext: issues.sessionContext,
+      metadata: issues.metadata,
+      baseBranch: projects.baseBranch,
+      productionBranch: projects.productionBranch,
     })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(
       projectId
         ? and(eq(issues.id, issueId), eq(issues.projectId, projectId))
@@ -40,7 +51,18 @@ export async function loadIssueSnapshot(
   if (!row) return null;
 
   const ctx = (row.sessionContext ?? null) as SessionContextSnapshot | null;
+  const branchConfig = resolveIssueBranches(
+    {
+      metadata: {
+        branchConfig: extractIssueBranchOverride(
+          row as Parameters<typeof extractIssueBranchOverride>[0],
+        ),
+      },
+    },
+    { baseBranch: row.baseBranch, productionBranch: row.productionBranch },
+  );
   return {
+    branchConfig,
     supersededBy: await countStepsSince(issueId, ctx?.lastUpdated ?? null),
     title: row.title,
     status: row.status,

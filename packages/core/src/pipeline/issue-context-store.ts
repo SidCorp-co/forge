@@ -111,6 +111,8 @@ export async function writeIssueContext(
         target: [issueStepContexts.issueId, issueStepContexts.step, issueStepContexts.attempt],
         targetWhere: sql`${issueStepContexts.kind} = 'handoff'`,
         set: {
+          // cm:edge contract -> packages/core/src/pipeline/handoff-prefetch.ts — a re-run reuses (issue, step, attempt); conflict updates must move pipeline_run_id or current-run reads omit its replacement
+          pipelineRunId: sql`excluded.pipeline_run_id`,
           payload: sql`excluded.payload`,
           verdict: sql`excluded.verdict`,
           updatedAt: sql`now()`,

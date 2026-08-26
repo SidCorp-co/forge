@@ -5,10 +5,8 @@ vi.mock('../config/env.js', () => ({
   env: { PIPELINE_ADVISORY_LOCK_TIMEOUT_MS: 3_000 },
 }));
 
-// Unified thenable mock: each select() terminal consumes one `nextSelect` row.
 // Default to empty array so unmocked SELECT calls (eg. loadIssueSnapshot when
 // the test only cares about the dispatch path) behave like a row-not-found
-// query instead of returning undefined and TypeError-destructuring.
 const nextSelect = vi.fn(() => [] as unknown[]);
 function makeWhereChain() {
   let consumed = false;
@@ -20,7 +18,9 @@ function makeWhereChain() {
   const chain: Record<string, unknown> = {};
   const thenKey = 'then';
   chain[thenKey] = (onFulfilled: (v: unknown) => unknown) => resolver().then(onFulfilled);
+  chain.where = () => chain;
   chain.limit = (_n: number) => resolver();
+  chain.innerJoin = () => chain;
   return chain;
 }
 
@@ -32,7 +32,7 @@ const dbInsert = vi.fn(() => ({
 const txExecute = vi.fn(async (_query?: unknown) => undefined);
 vi.mock('../db/client.js', () => {
   const dbStub = {
-    select: () => ({ from: () => ({ where: () => makeWhereChain() }) }),
+    select: () => ({ from: () => makeWhereChain() }),
     insert: dbInsert,
     execute: txExecute,
   };

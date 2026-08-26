@@ -10,7 +10,7 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderByLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectOrderByLimit }));
-const selectInnerJoinWhere = vi.fn(() => ({ orderBy: selectOrderBy }));
+const selectInnerJoinWhere = vi.fn(() => ({ orderBy: selectOrderBy, limit: selectLimit }));
 const selectInnerJoin = vi.fn(() => ({ where: selectInnerJoinWhere }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));

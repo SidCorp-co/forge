@@ -78,7 +78,8 @@ exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=t
 "{
   "step": "test",
   "schema_version": 1,
-  "result": <"pass" | "fail">,
+  "result": <"pass" | "fail" | "blocked_fixture" | "verified_by_test">,
+  "resultReason": <string 1-500 chars, required for blocked_fixture / verified_by_test>,
   "failures": [                             // max 20
     { "test": <string>, "trace": <string ≤500 chars> },
     ...
@@ -123,8 +124,10 @@ completion gate, so it never blocks your real work.
    \`forge_issues.update\` to move the issue \`status\` to the next state in the
    Pipeline Rules ladder, even if your skill instructions did not mention a
    transition. On success move forward; on a blocking problem branch to
-   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
-   status stalls the pipeline forever — never skip this step.
+   \`reopen\` / \`needs_info\` / \`waiting\` / \`on_hold\` instead. Entering \`waiting\`
+   requires a non-empty \`reason\` and the applicable \`waitingKind\`; follow any
+   stage-specific exit instruction for the exact values. An issue left in its
+   current status stalls the pipeline forever — never skip this step.
 
 3. Then respond with \`DONE\` on a new line as your final assistant text.
 
@@ -180,8 +183,10 @@ completion gate, so it never blocks your real work.
    \`forge_issues.update\` to move the issue \`status\` to the next state in the
    Pipeline Rules ladder, even if your skill instructions did not mention a
    transition. On success move forward; on a blocking problem branch to
-   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
-   status stalls the pipeline forever — never skip this step.
+   \`reopen\` / \`needs_info\` / \`waiting\` / \`on_hold\` instead. Entering \`waiting\`
+   requires a non-empty \`reason\` and the applicable \`waitingKind\`; follow any
+   stage-specific exit instruction for the exact values. An issue left in its
+   current status stalls the pipeline forever — never skip this step.
 
 3. Then respond with \`DONE\` on a new line as your final assistant text.
 
@@ -240,8 +245,10 @@ completion gate, so it never blocks your real work.
    \`forge_issues.update\` to move the issue \`status\` to the next state in the
    Pipeline Rules ladder, even if your skill instructions did not mention a
    transition. On success move forward; on a blocking problem branch to
-   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
-   status stalls the pipeline forever — never skip this step.
+   \`reopen\` / \`needs_info\` / \`waiting\` / \`on_hold\` instead. Entering \`waiting\`
+   requires a non-empty \`reason\` and the applicable \`waitingKind\`; follow any
+   stage-specific exit instruction for the exact values. An issue left in its
+   current status stalls the pipeline forever — never skip this step.
 
 3. Then respond with \`DONE\` on a new line as your final assistant text.
 
@@ -299,8 +306,10 @@ completion gate, so it never blocks your real work.
    \`forge_issues.update\` to move the issue \`status\` to the next state in the
    Pipeline Rules ladder, even if your skill instructions did not mention a
    transition. On success move forward; on a blocking problem branch to
-   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
-   status stalls the pipeline forever — never skip this step.
+   \`reopen\` / \`needs_info\` / \`waiting\` / \`on_hold\` instead. Entering \`waiting\`
+   requires a non-empty \`reason\` and the applicable \`waitingKind\`; follow any
+   stage-specific exit instruction for the exact values. An issue left in its
+   current status stalls the pipeline forever — never skip this step.
 
 3. Then respond with \`DONE\` on a new line as your final assistant text.
 
@@ -352,8 +361,10 @@ completion gate, so it never blocks your real work.
    \`forge_issues.update\` to move the issue \`status\` to the next state in the
    Pipeline Rules ladder, even if your skill instructions did not mention a
    transition. On success move forward; on a blocking problem branch to
-   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
-   status stalls the pipeline forever — never skip this step.
+   \`reopen\` / \`needs_info\` / \`waiting\` / \`on_hold\` instead. Entering \`waiting\`
+   requires a non-empty \`reason\` and the applicable \`waitingKind\`; follow any
+   stage-specific exit instruction for the exact values. An issue left in its
+   current status stalls the pipeline forever — never skip this step.
 
 3. Then respond with \`DONE\` on a new line as your final assistant text.
 
@@ -407,8 +418,10 @@ completion gate, so it never blocks your real work.
    \`forge_issues.update\` to move the issue \`status\` to the next state in the
    Pipeline Rules ladder, even if your skill instructions did not mention a
    transition. On success move forward; on a blocking problem branch to
-   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
-   status stalls the pipeline forever — never skip this step.
+   \`reopen\` / \`needs_info\` / \`waiting\` / \`on_hold\` instead. Entering \`waiting\`
+   requires a non-empty \`reason\` and the applicable \`waitingKind\`; follow any
+   stage-specific exit instruction for the exact values. An issue left in its
+   current status stalls the pipeline forever — never skip this step.
 
 3. Then respond with \`DONE\` on a new line as your final assistant text.
 
@@ -422,7 +435,8 @@ Required JSON shape for the \`payload\` (step="test"):
 {
   "step": "test",
   "schema_version": 1,
-  "result": <"pass" | "fail">,
+  "result": <"pass" | "fail" | "blocked_fixture" | "verified_by_test">,
+  "resultReason": <string 1-500 chars, required for blocked_fixture / verified_by_test>,
   "failures": [                             // max 20
     { "test": <string>, "trace": <string ≤500 chars> },
     ...
@@ -462,8 +476,10 @@ completion gate, so it never blocks your real work.
    \`forge_issues.update\` to move the issue \`status\` to the next state in the
    Pipeline Rules ladder, even if your skill instructions did not mention a
    transition. On success move forward; on a blocking problem branch to
-   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
-   status stalls the pipeline forever — never skip this step.
+   \`reopen\` / \`needs_info\` / \`waiting\` / \`on_hold\` instead. Entering \`waiting\`
+   requires a non-empty \`reason\` and the applicable \`waitingKind\`; follow any
+   stage-specific exit instruction for the exact values. An issue left in its
+   current status stalls the pipeline forever — never skip this step.
 
 3. Then respond with \`DONE\` on a new line as your final assistant text.
 

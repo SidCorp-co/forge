@@ -882,7 +882,67 @@ describe("deriveStageOutcomes", () => {
 		expect(cells.code.state).toBe("error");
 	});
 
-	it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
+	it("keeps special test outcomes as handoff evidence without assigning current wait provenance", () => {
+		const cells = deriveStageOutcomes(
+			"plan",
+			"queued",
+			[
+				handoff("test", 1, {
+					result: "blocked_fixture",
+					resultReason: "The shared fixture is unavailable.",
+				}),
+			],
+			[],
+		);
+		expect(cells.plan.state).toBe("current");
+		expect(cells.test.state).toBe("pending");
+		expect(cells.test.outcomeLabel).toBe("blocked_fixture");
+	});
+
+	it("retains verified-by-test evidence on the test artifact", () => {
+		const cells = deriveStageOutcomes(
+			"plan",
+			"queued",
+			[handoff("test", 1, { result: "verified_by_test" })],
+			[],
+		);
+		expect(cells.test.outcomeLabel).toBe("verified_by_test");
+	});
+
+	it("keeps a real failed run above a special test handoff", () => {
+		const cells = deriveStageOutcomes(
+			"test",
+			"failed",
+			[handoff("test", 1, { result: "blocked_fixture" })],
+			[],
+			"test",
+		);
+		expect(cells.test.state).toBe("error");
+	});
+
+	it("uses a newer run's handoff instead of a prior attempt", () => {
+		const old = handoff("test", 2, { result: "blocked_fixture" });
+		const current = {
+			...handoff("test", 1, { result: "pass" }),
+			pipelineRunId: "run-2",
+			updatedAt: "2026-02-01T00:00:00.000Z",
+		};
+		const cells = deriveStageOutcomes("release", "running", [old, current], []);
+		expect(cells.test.handoff?.pipelineRunId).toBe("run-2");
+		expect(cells.test.state).toBe("done");
+	});
+
+	it("does not retain fixture-blocked state after completion", () => {
+		const cells = deriveStageOutcomes(
+			"release",
+			"done",
+			[handoff("test", 1, { result: "blocked_fixture" })],
+			[],
+		);
+		expect(cells.test.state).toBe("done");
+	});
+
+it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
 		const cells = deriveStageOutcomes(
 			"code",
 			"running",

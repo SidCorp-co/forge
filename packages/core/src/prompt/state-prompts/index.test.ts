@@ -3,6 +3,21 @@ import { ADDRESS_INHERITED_OPEN_ITEMS, CONSUMES_OPEN_ITEMS, getStatePrompt } fro
 
 const OBLIGATION_MARKER = 'Address inherited open items';
 
+describe('state-prompts — test verification outcomes', () => {
+  const test = getStatePrompt('test') ?? '';
+
+  it('parks fixture blocks with their required reason and resource kind', () => {
+    expect(test).toContain('blocked_fixture');
+    expect(test).toContain('resultReason');
+    expect(test).toContain("waitingKind: 'needs_resource'");
+  });
+
+  it('parks automated verification evidence for a human decision', () => {
+    expect(test).toContain('verified_by_test');
+    expect(test).toContain("waitingKind: 'needs_decision'");
+  });
+});
+
 describe('state-prompts — ADDRESS_INHERITED_OPEN_ITEMS obligation (ISS-537)', () => {
   it('consuming steps (plan/code/review/test/fix) carry the open-items obligation', () => {
     for (const step of ['plan', 'code', 'review', 'test', 'fix'] as const) {

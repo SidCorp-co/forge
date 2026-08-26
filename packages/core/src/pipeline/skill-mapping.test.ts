@@ -102,7 +102,11 @@ describe('createProjectSkillResolver', () => {
     ]);
     const resolver = createProjectSkillResolver(PROJECT_ID);
     const out = await resolver.resolve('approved');
-    expect(out).toEqual({ type: 'code', toggle: 'autoCode', skillName: 'custom-coder' });
+    expect(out).toEqual({
+      type: 'code',
+      toggle: 'autoCode',
+      skillName: 'custom-coder',
+    });
   });
 
   it('returns null when no registration exists for the stage', async () => {
@@ -135,7 +139,11 @@ describe('resolveSkillForStatus (single-shot wrapper)', () => {
   it('reads from the registration table for the given project', async () => {
     queue.push([{ stage: 'clarified', name: 'planner-skill' }]);
     const out = await resolveSkillForStatus('clarified', PROJECT_ID);
-    expect(out).toEqual({ type: 'plan', toggle: 'autoPlan', skillName: 'planner-skill' });
+    expect(out).toEqual({
+      type: 'plan',
+      toggle: 'autoPlan',
+      skillName: 'planner-skill',
+    });
   });
 
   it('returns null when no registration', async () => {
