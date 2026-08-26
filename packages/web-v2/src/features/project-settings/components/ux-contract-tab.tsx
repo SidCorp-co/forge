@@ -83,6 +83,10 @@ export function UxContractTab({
 		for (const r of activeRules) m.get(r.group)?.push(r);
 		return m;
 	}, [activeRules]);
+	const ruleById = useMemo(
+		() => new Map((rulesQ.data ?? []).map((r) => [r.id, r])),
+		[rulesQ.data],
+	);
 	const findingsByIssue = useMemo(() => {
 		const m = new Map<string, number>();
 		for (const f of findingsQ.data ?? []) m.set(f.issueId, (m.get(f.issueId) ?? 0) + 1);
@@ -233,45 +237,23 @@ export function UxContractTab({
 					) : (
 						<div className="space-y-2">
 							{proposedRules.map((rule) => (
-								<div
+								<ProposalRow
 									key={rule.id}
-									className="rounded-md border border-line bg-surface p-3"
-								>
-									<div className="flex items-start justify-between gap-3">
-										<div className="min-w-0">
-											<div className="mb-1 flex items-center gap-2">
-												<Badge>{UX_RULE_GROUP_LABELS[rule.group]}</Badge>
-												<Badge tone="amber">{UX_RULE_SOURCE_LABELS[rule.source]}</Badge>
-											</div>
-											<p className="fg-body-sm text-fg">{rule.text}</p>
-										</div>
-									</div>
-									{canEdit ? (
-										<div className="mt-3 flex justify-end gap-2">
-											<Button
-												variant="danger"
-												size="sm"
-												onClick={() => setRejectRuleId(rule.id)}
-											>
-												Reject
-											</Button>
-											<Button
-												variant="primary"
-												size="sm"
-												loading={patchRule.isPending}
-												onClick={() =>
-													patchRule.mutate({ ruleId: rule.id, patch: { status: "active" } })
-												}
-											>
-												Approve
-											</Button>
-										</div>
-									) : (
-										<p className="fg-caption mt-2 text-muted">
-											Read-only — approving/rejecting requires an org owner/admin.
-										</p>
-									)}
-								</div>
+									rule={rule}
+									supersedes={
+										rule.supersedesRuleId
+											? (ruleById.get(rule.supersedesRuleId) ?? null)
+											: null
+									}
+									slug={project.slug}
+									findingsByIssue={findingsByIssue}
+									canEdit={canEdit}
+									busy={patchRule.isPending}
+									onReject={() => setRejectRuleId(rule.id)}
+									onApprove={() =>
+										patchRule.mutate({ ruleId: rule.id, patch: { status: "active" } })
+									}
+								/>
 							))}
 						</div>
 					)}
@@ -336,6 +318,72 @@ function Field({ label, value }: { label: string; value: string }) {
 		<div>
 			<dt className="fg-caption text-muted">{label}</dt>
 			<dd className="fg-body-sm text-fg">{value}</dd>
+		</div>
+	);
+}
+
+// cm:guard ISS-579 — a proposal carrying `supersedesRuleId` RETIRES that rule the moment it is approved, so the "Replaces" block must keep rendering the target's text and severity. Drop it and an admin approves a rule removal they were never shown.
+function ProposalRow({
+	rule,
+	supersedes,
+	slug,
+	findingsByIssue,
+	canEdit,
+	busy,
+	onReject,
+	onApprove,
+}: {
+	rule: UxContractRule;
+	supersedes: UxContractRule | null;
+	slug: string;
+	findingsByIssue: Map<string, number>;
+	canEdit: boolean;
+	busy: boolean;
+	onReject: () => void;
+	onApprove: () => void;
+}) {
+	return (
+		<div className="rounded-md border border-line bg-surface p-3">
+			<div className="mb-1 flex flex-wrap items-center gap-2">
+				<Badge>{UX_RULE_GROUP_LABELS[rule.group]}</Badge>
+				<Badge tone={rule.severity === "must" ? "red" : "neutral"}>{rule.severity}</Badge>
+				<Badge tone="amber">{UX_RULE_SOURCE_LABELS[rule.source]}</Badge>
+				{rule.evidenceIssueIds.map((issueId) => (
+					<IssueRefBadge
+						key={issueId}
+						id={issueId}
+						slug={slug}
+						title={
+							findingsByIssue.has(issueId)
+								? `${findingsByIssue.get(issueId)} finding(s) cited this issue`
+								: undefined
+						}
+					/>
+				))}
+			</div>
+			<p className="fg-body-sm break-words text-fg">{rule.text}</p>
+			{supersedes ? (
+				<div className="mt-2 border-line border-l-2 pl-3">
+					<p className="fg-caption text-muted">
+						Replaces this rule ({supersedes.severity} → {rule.severity}). Approving retires it.
+					</p>
+					<p className="fg-body-sm break-words text-muted">{supersedes.text}</p>
+				</div>
+			) : null}
+			{canEdit ? (
+				<div className="mt-3 flex justify-end gap-2">
+					<Button variant="danger" size="sm" onClick={onReject}>
+						Reject
+					</Button>
+					<Button variant="primary" size="sm" loading={busy} onClick={onApprove}>
+						Approve
+					</Button>
+				</div>
+			) : (
+				<p className="fg-caption mt-2 text-muted">
+					Read-only — approving/rejecting requires an org owner/admin.
+				</p>
+			)}
 		</div>
 	);
 }

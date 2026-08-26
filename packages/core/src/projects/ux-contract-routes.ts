@@ -18,6 +18,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { compilePresetToRules, UX_PRESETS } from './ux-contract-presets.js';
 import { recompileAndPersistUxContract } from './ux-contract-recompile.js';
+import { applyUxImproverProposals, loadUxImproverReport } from './ux-improver.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const ruleIdParamSchema = z.object({ ruleId: z.uuid() });
@@ -226,6 +227,48 @@ uxContractProjectRoutes.post(
   },
 );
 
+// cm:why ISS-579 — returns the improver's refusals alongside its candidates: a gap it declined to propose and a gap it never noticed are indistinguishable to the caller otherwise, and the scheduled agent needs the difference to know whether it is looking at a quiet project or a broken detector.
+uxContractProjectRoutes.get(
+  '/:id/ux-improver/candidates',
+  zValidator('param', projectIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
+
+    return c.json(await loadUxImproverReport(projectId));
+  },
+);
+
+const improverProposeSchema = z
+  .object({ keys: z.array(z.string().min(1).max(200)).min(1).max(50) })
+  .strict();
+
+uxContractProjectRoutes.post(
+  '/:id/ux-improver/propose',
+  zValidator('param', projectIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', improverProposeSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const { keys } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'not a project admin');
+
+    const { outcomes } = await applyUxImproverProposals(projectId, keys);
+    return c.json({ outcomes });
+  },
+);
+
 // ─── Rule-id-scoped routes (/api/ux-contract-rules/:ruleId) ─────────────────
 
 export const uxContractRuleRoutes = new Hono<{ Variables: AuthVars }>();
@@ -233,7 +276,11 @@ uxContractRuleRoutes.use('*', requireAuth(), assertEmailVerified());
 
 async function loadRule(ruleId: string) {
   const [row] = await db
-    .select({ id: uxContractRules.id, projectId: uxContractRules.projectId })
+    .select({
+      id: uxContractRules.id,
+      projectId: uxContractRules.projectId,
+      supersedesRuleId: uxContractRules.supersedesRuleId,
+    })
     .from(uxContractRules)
     .where(eq(uxContractRules.id, ruleId))
     .limit(1);
@@ -258,7 +305,8 @@ uxContractRuleRoutes.patch(
     const access = await loadProjectAccess(rule.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    const updates: Record<string, unknown> = { ...patch, updatedAt: new Date() };
+    const now = new Date();
+    const updates: Record<string, unknown> = { ...patch, updatedAt: now };
 
     const [updated] = await db
       .update(uxContractRules)
@@ -266,6 +314,14 @@ uxContractRuleRoutes.patch(
       .where(eq(uxContractRules.id, ruleId))
       .returning();
     if (!updated) throw notFound('ux contract rule not found');
+
+    // cm:guard ISS-579 — approving a supersede proposal MUST retire its target before the recompile below, in this same request. Skip it and both rules are active, so compileUxContract emits the rule twice and the pipeline reads a contract stating the same requirement at two severities.
+    if (patch.status === 'active' && rule.supersedesRuleId) {
+      await db
+        .update(uxContractRules)
+        .set({ status: 'retired', updatedAt: now })
+        .where(eq(uxContractRules.id, rule.supersedesRuleId));
+    }
 
     await recompileAndPersistUxContract(rule.projectId);
 

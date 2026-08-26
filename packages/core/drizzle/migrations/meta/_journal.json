@@ -1296,6 +1296,13 @@
       "when": 1789516800000,
       "tag": "0186_drop_desktop_pairing_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1789603200000,
+      "tag": "0187_ux_rule_supersedes",
+      "breakpoints": true
     }
   ]
 }
