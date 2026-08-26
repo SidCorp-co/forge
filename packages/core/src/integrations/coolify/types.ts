@@ -91,6 +91,7 @@ export interface CoolifyDeploymentResponse {
   deployment_uuid?: string;
   status?: string; // 'queued' | 'in_progress' | 'finished' | 'failed' | 'cancelled' | ...
   logs?: string | CoolifyDeploymentLogLine[];
+  commit?: string;
   id?: number;
 }
 
