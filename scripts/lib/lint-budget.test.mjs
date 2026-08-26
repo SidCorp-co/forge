@@ -205,5 +205,7 @@ describe('emptiedScopes', () => {
     expect(emptiedScopes(at({ 'packages/web-v2': 186 }), at({ 'packages/web-v2': 210 }))).toEqual(
       [],
     );
+    // cm:guard the BOUNDARY case, and it is the one that shows how wide the declared gap is: a single surviving diagnostic hides the loss of the other 209. The assertion above it duplicates its sibling three lines up, so without this line the test names the gap without being able to discriminate against a fix for it — and a future "fire when the drop is large" heuristic would pass both.
+    expect(emptiedScopes(at({ 'packages/web-v2': 1 }), at({ 'packages/web-v2': 210 }))).toEqual([]);
   });
 });
