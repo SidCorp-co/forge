@@ -44,8 +44,7 @@ In local-only mode there is no preview/staging deployment to QA against. The bui
 forge_comments → create → {
   data: {
     body: "**QA skipped** — project is in local-only mode (no Coolify, no preview URL). Build and unit tests were executed by forge-code/forge-fix. The pipeline ends at `developed` for human review; the human closes the issue manually. Skip forge-test.",
-    issue: "<documentId>",
-    author: "Machamp"
+    issue: "<documentId>"
   }
 }
 ```
@@ -181,8 +180,7 @@ Tag quality failures distinctly (`UX` / `A11y` / `Responsive`) so forge-fix can 
 forge_comments → create → {
   data: {
     body: "<test report>",
-    issue: "<documentId>",
-    author: "Forge QA"
+    issue: "<documentId>"
   }
 }
 ```

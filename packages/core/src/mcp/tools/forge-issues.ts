@@ -47,10 +47,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
-
-// Hard total-response cap for list surfaces. ~38K leaves headroom under the
-// observed spill threshold (matches the forge-jobs.ts precedent, ISS-478).
-const MAX_RESPONSE_CHARS = 38_000;
+import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 // Kinds allowed in the create-time `relations` field. `decomposes` is excluded
 // because it triggers integration-branch side effects that belong in the
@@ -739,6 +736,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'to stay under the response token cap; fetch the full body with action=get. ' +
     'list supports filters.label (a label name or uuid, or an array of either — ' +
     'OR semantics; unknown names return an empty set). ' +
+    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'Token discipline: use list (projection) to browse/triage many issues, and ' +
     'get for the single full issue you are about to work on. When forge_step_start ' +
     'returned a lean manifest (bodyTruncated:true), pull only the fields you need ' +
@@ -853,6 +851,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           );
         }
 
+        const issuesLimit = input.limit ?? 25;
         // ISS-562 — SQL-level light-column projection: never load heavy TOAST
         // columns (description/plan/acceptanceCriteria/sessionContext/ai*/
         // releaseNotes) from disk. serializeListRow already omits them at the
@@ -877,31 +876,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .from(issues)
           .where(and(...conds))
           .orderBy(desc(issues.updatedAt))
-          .limit(input.limit ?? 25);
+          .limit(overfetch(issuesLimit));
 
-        // Hard total-response cap: trim from the tail (oldest) until the
-        // serialized payload fits MAX_RESPONSE_CHARS. Newest-first ordering
-        // means trimming the tail keeps the most-recent issues. Always keep
-        // at least one issue.
-        const serialized = rows.map((r) => serializeListRow(r));
-        let keptIssues = serialized;
-        while (
-          keptIssues.length > 1 &&
-          JSON.stringify({ issues: keptIssues }).length > MAX_RESPONSE_CHARS
-        ) {
-          keptIssues = keptIssues.slice(0, -1);
-        }
-
-        if (keptIssues.length < serialized.length) {
-          return {
-            issues: keptIssues,
-            truncated: true,
-            returned: keptIssues.length,
-            requested: input.limit ?? 25,
-            notice: `Response truncated to the ${keptIssues.length} most recent of ${serialized.length} issues to stay under the MCP output cap. Add status/priority/category filters or use a smaller limit.`,
-          };
-        }
-        return { issues: keptIssues };
+        return buildListEnvelope({
+          key: 'issues',
+          items: rows.map((r) => serializeListRow(r)),
+          limit: issuesLimit,
+          hint: 'add status/priority/category/label filters',
+        });
       }
 
       case 'get': {
@@ -1330,6 +1312,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ? and(eq(tasks.issueId, issueId), eq(tasks.status, input.filters.taskStatus))
           : eq(tasks.issueId, issueId);
 
+        const tasksLimit = input.limit ?? 25;
         // ISS-562 — SQL-level projection: omit description (up to 50KB each)
         // so the list query never loads heavy TOAST content from disk. Default
         // limit lowered 100→25 (100 tasks × 50KB = 5MB theoretical max).
@@ -1351,31 +1334,15 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .from(tasks)
           .where(where)
           .orderBy(asc(tasks.createdAt))
-          .limit(input.limit ?? 25);
+          .limit(overfetch(tasksLimit));
 
-        // Hard total-response cap: trim from the front (oldest) until the
-        // serialized payload fits MAX_RESPONSE_CHARS. Oldest-first ordering
-        // means trimming the front keeps the newest tasks. Always keep at
-        // least one task.
-        const tasksSerialized = rows.map((r) => serializeTaskListRow(r));
-        let keptTasks = tasksSerialized;
-        while (
-          keptTasks.length > 1 &&
-          JSON.stringify({ tasks: keptTasks }).length > MAX_RESPONSE_CHARS
-        ) {
-          keptTasks = keptTasks.slice(1);
-        }
-
-        if (keptTasks.length < tasksSerialized.length) {
-          return {
-            tasks: keptTasks,
-            truncated: true,
-            returned: keptTasks.length,
-            requested: input.limit ?? 25,
-            notice: `Response truncated to the ${keptTasks.length} most recent of ${tasksSerialized.length} tasks to stay under the MCP output cap. Use a smaller limit or fetch tasks individually.`,
-          };
-        }
-        return { tasks: keptTasks };
+        return buildListEnvelope({
+          key: 'tasks',
+          items: rows.map((r) => serializeTaskListRow(r)),
+          limit: tasksLimit,
+          hint: 'filter by taskStatus, or fetch tasks individually',
+          oldestAt: 'head',
+        });
       }
 
       case 'createTask': {

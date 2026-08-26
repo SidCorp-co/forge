@@ -138,7 +138,7 @@ describe('forge_ux_findings write', () => {
     expect(inserted.ruleId).toBeUndefined();
   });
 
-  it('soft-rejects with no_active_issue when no issue-bound job is running', async () => {
+  it('soft-rejects with no_active_job, naming the cause, when nothing is running', async () => {
     const tool = forgeUxFindingsTool(makeCtx());
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -152,7 +152,72 @@ describe('forge_ux_findings write', () => {
       detail: 'Layout breaks at 375px',
     });
 
-    expect(result).toMatchObject({ ok: false, reason: 'no_active_issue' });
+    expect(result).toMatchObject({ ok: false, reason: 'no_active_job' });
+    expect((result as { detail: string }).detail).toMatch(/issueId/);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('names job_not_issue_bound distinctly — a pm run is not the same miss', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([
+      { jobId: JOB_ID, runId: RUN_ID, issueId: null, stage: 'pm' },
+    ]);
+
+    const result = (await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'A finding from a pm run',
+    })) as { ok: boolean; reason: string; detail: string };
+
+    expect(result.reason).toBe('job_not_issue_bound');
+    expect(result.detail).toContain('pm');
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('writes against an explicit issueId when job resolution would have refused', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID }]);
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    insertReturning.mockResolvedValueOnce([{ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }]);
+
+    const result = await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'microcopy',
+      detail: 'Error copy apologises instead of naming the next action',
+      issueId: ISSUE_ID,
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    const inserted = (insertValues.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
+    expect(inserted.issueId).toBe(ISSUE_ID);
+    // cm:guard runId MUST stay undefined on this path — the finding is not attributable to a run, and inventing one would misreport which pass found it
+    expect(inserted.runId).toBeUndefined();
+  });
+
+  it('refuses an explicit issueId from another project, by name', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([]);
+
+    const result = (await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'Finding aimed at a foreign issue',
+      issueId: '12121212-1212-4121-8121-121212121212',
+    })) as { ok: boolean; reason: string };
+
+    expect(result.reason).toBe('issue_not_in_project');
     expect(insertValues).not.toHaveBeenCalled();
   });
 

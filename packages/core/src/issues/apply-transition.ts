@@ -1,6 +1,13 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
+import {
+  comments,
+  type IssueStatus,
+  issues,
+  jobs,
+  pipelineRuns,
+  type WaitingKind,
+} from '../db/schema.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
@@ -169,6 +176,57 @@ export function publishIssueStatusChange(
 }
 
 /**
+ * ISS-787 — `draft` is the safe entry status you only get by remembering to
+ * ask for it, and `open` (the default) auto-triages and spawns a pipeline run.
+ * Three agents on three projects made that mistake, and `ILLEGAL_TRANSITION`
+ * left them no way back: one parked at `on_hold`, another left the run going.
+ *
+ * So `draft` is reachable, but only while the mistake is still only a mistake:
+ * nothing has run. A run or a job means work exists, and demoting to `draft`
+ * would make the status claim the issue was never started.
+ */
+async function assertIssueNeverEnteredPipeline(
+  issueId: string,
+  fromStatus: IssueStatus,
+): Promise<void> {
+  const refuse = (detail: string, details: Record<string, unknown>): never => {
+    throw new TransitionError('ILLEGAL_TRANSITION', detail, {
+      from: fromStatus,
+      to: 'draft',
+      ...details,
+    });
+  };
+
+  let runCount: number;
+  let jobCount: number;
+  try {
+    const [[runRow], [jobRow]] = await Promise.all([
+      db
+        .select({ n: count() })
+        .from(pipelineRuns)
+        .where(eq(pipelineRuns.issueId, issueId))
+        .limit(1),
+      db.select({ n: count() }).from(jobs).where(eq(jobs.issueId, issueId)).limit(1),
+    ]);
+    runCount = Number(runRow?.n ?? 0);
+    jobCount = Number(jobRow?.n ?? 0);
+  } catch (err) {
+    // cm:guard this ONE guard fails CLOSED, unlike every sibling. Failing open here would GRANT the exemption on a database hiccup and demote an issue with real work to `draft` — a status that says nothing ever started. Refusing is also exactly the behaviour that shipped before this exemption existed, so an unavailable check costs nobody anything they had.
+    logger.warn({ err, issueId }, 'draft-exemption check failed; refusing the transition');
+    return refuse(
+      '`draft` is reachable only while the issue has never entered the pipeline, and that could not be checked just now. Retry, or use `on_hold` to pause active work.',
+      { checkFailed: true },
+    );
+  }
+
+  if (runCount === 0 && jobCount === 0) return;
+  return refuse(
+    `\`draft\` is reachable only while the issue has never entered the pipeline; this one has ${runCount} pipeline run(s) and ${jobCount} job(s). Use \`on_hold\` to pause active work, or \`dropped\` to abandon it.`,
+    { runCount, jobCount },
+  );
+}
+
+/**
  * THE issue state-machine writer. Every surface — REST `/transition`,
  * REST `PATCH /batch`, MCP `forge_issues`, orchestrator soft-skip,
  * reconciler, decompose cascade, finalize-failure — routes through here so
@@ -196,11 +254,15 @@ export async function transitionIssueStatus(
   // happy path); only `draft` is a forbidden target. `skip` still bypasses
   // even that for the orchestrator's curated soft-skip chain.
   if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
-    throw new TransitionError(
-      'ILLEGAL_TRANSITION',
-      `'${requestedStatus}' is not a valid runtime status target`,
-      { from: fromStatus, to: requestedStatus },
-    );
+    if (requestedStatus === 'draft') {
+      await assertIssueNeverEnteredPipeline(issue.id, fromStatus);
+    } else {
+      throw new TransitionError(
+        'ILLEGAL_TRANSITION',
+        `'${requestedStatus}' is not a valid runtime status target`,
+        { from: fromStatus, to: requestedStatus },
+      );
+    }
   }
 
   // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards

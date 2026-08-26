@@ -176,7 +176,7 @@ The exit behavior depends on complexity (from the triage comment, extracted in S
 
 **xs / s / m complexity:**
 ```
-forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>", author: "Alakazam" } }
+forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>" } }
 forge_issues → update → { documentId: "<id>", data: { status: "approved" } }
 ```
 
@@ -184,7 +184,7 @@ Auto-approving `xs/s/m` plans keeps the pipeline fast. **Status update is LAST**
 
 **l / xl complexity:**
 ```
-forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>", author: "Alakazam" } }
+forge_comments → create → { data: { body: "<plan comment>", issue: "<documentId>" } }
 forge_issues → update → { documentId: "<id>", data: { status: "waiting" } }
 ```
 

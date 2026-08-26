@@ -151,8 +151,7 @@ If no Coolify resources are configured within deploy mode, skip.
 forge_comments → create → {
   data: {
     body: "**Fix** — <what was fixed>\n\nAddressed N findings from <review/QA>.",
-    issue: "<documentId>",
-    author: "Blastoise"
+    issue: "<documentId>"
   }
 }
 ```

@@ -28,7 +28,7 @@ import type {
 } from '../types.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, CoolifyClient } from './client.js';
-import { flattenLogs, redactCoolifyEnvDump, tailLog } from './logs.js';
+import { flattenLogs, logDigest, redactCoolifyEnvDump, tailLog } from './logs.js';
 import type { CoolifyConfig, CoolifySecrets, CoolifyWebhookPayload } from './types.js';
 
 const BREADCRUMB_OUT = 'integration.coolify.dispatch';
@@ -421,6 +421,10 @@ export interface CoolifyDeploymentLogsResult {
   logs: string;
   /** True when the log was tailed (older lines or leading bytes dropped). */
   truncated: boolean;
+  /** When these bytes were read from Coolify, ISO-8601. */
+  fetchedAt: string;
+  /** Short sha256 of the returned text — see {@link logDigest}. */
+  logsDigest: string;
 }
 
 /**
@@ -434,6 +438,7 @@ export interface CoolifyDeploymentLogsResult {
 export async function fetchCoolifyDeploymentLogs(
   pair: BindingWithConnection,
   deploymentUuid: string,
+  lines?: number,
 ): Promise<CoolifyDeploymentLogsResult> {
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair);
   const client = buildClient(ctx);
@@ -447,7 +452,7 @@ export async function fetchCoolifyDeploymentLogs(
   // suffix-shaped secrets, PATs, header/URL tokens, and extraSecrets residue.
   const preRedacted = redactCoolifyEnvDump(raw);
   const scrubbed = scrubLogText(preRedacted, extraSecrets);
-  const { text, truncated } = tailLog(scrubbed);
+  const { text, truncated } = tailLog(scrubbed, lines);
   // cm:guard take the SHA from the deployment RECORD, never by parsing `SOURCE_COMMIT=` out of `text` — `redactCoolifyEnvDump` replaces every value in the runtime env block by design, so the log can never carry it, and this project's `deploy-policy` fact tells every agent to prove the deployed commit matches its merge.
   return {
     deploymentUuid,
@@ -455,6 +460,8 @@ export async function fetchCoolifyDeploymentLogs(
     commit: dep.commit ?? null,
     logs: text,
     truncated,
+    fetchedAt: new Date().toISOString(),
+    logsDigest: logDigest(text),
   };
 }
 
@@ -463,6 +470,10 @@ export interface CoolifyRuntimeLogsResult {
   logs: string;
   /** True when the log was tailed (older lines or leading bytes dropped). */
   truncated: boolean;
+  /** When these bytes were read from Coolify, ISO-8601. */
+  fetchedAt: string;
+  /** Short sha256 of the returned text — see {@link logDigest}. */
+  logsDigest: string;
 }
 
 /**
@@ -489,8 +500,14 @@ export async function fetchCoolifyRuntimeLogs(
     (s): s is string => typeof s === 'string' && s.length > 0,
   );
   const scrubbed = scrubLogText(redactCoolifyEnvDump(raw), extraSecrets);
-  const { text, truncated } = tailLog(scrubbed);
-  return { resourceUuid, logs: text, truncated };
+  const { text, truncated } = tailLog(scrubbed, lines);
+  return {
+    resourceUuid,
+    logs: text,
+    truncated,
+    fetchedAt: new Date().toISOString(),
+    logsDigest: logDigest(text),
+  };
 }
 
 export function registerCoolifyAdapter(): void {

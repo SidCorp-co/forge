@@ -383,14 +383,16 @@ describe('forge_issues tool', () => {
       issues: unknown[];
       truncated: boolean;
       returned: number;
-      requested: number;
+      limit: number;
+      truncatedBy: string;
       notice: string;
     };
 
     expect(result.truncated).toBe(true);
     expect(result.returned).toBeLessThan(50);
-    expect(result.requested).toBe(25);
-    expect(result.notice).toMatch(/truncated/i);
+    expect(result.limit).toBe(25);
+    expect(result.truncatedBy).toBe('limit+response-size');
+    expect(result.notice).toMatch(/more rows match/i);
     expect(JSON.stringify(result).length).toBeLessThan(50_000);
   });
 
@@ -2252,14 +2254,16 @@ describe('forge_issues tool', () => {
         tasks: unknown[];
         truncated: boolean;
         returned: number;
-        requested: number;
+        limit: number;
+        truncatedBy: string;
         notice: string;
       };
 
       expect(result.truncated).toBe(true);
       expect(result.returned).toBeLessThan(50);
-      expect(result.requested).toBe(25);
-      expect(result.notice).toMatch(/truncated/i);
+      expect(result.limit).toBe(25);
+      expect(result.truncatedBy).toBe('limit+response-size');
+      expect(result.notice).toMatch(/more rows match/i);
       expect(JSON.stringify(result).length).toBeLessThan(50_000);
     });
 

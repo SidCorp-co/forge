@@ -90,7 +90,6 @@ forge_comments → create → {
   data: {
     body: "<clarify report>",
     issue: "<documentId>",
-    author: "Jigglypuff",
     attachments: [<small inline base64 images, if any>]
   }
 }

@@ -186,16 +186,6 @@ describe('POST /api/issues/:id/transition', () => {
     expect(body.code).toBe('NO_OP');
   });
 
-  it('409 ILLEGAL_TRANSITION when target is draft (never a runtime target)', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'open' });
-    const res = await req({ toStatus: 'draft' }, token);
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect(dbUpdate).not.toHaveBeenCalled();
-  });
-
   // cm:guard the three cap tests deleted from this spot asserted a 422 at reopenCount>=5 and an admin-only override. RFC 0002 removed the cap outright — reopenCount still increments (ISS-535 model escalation reads it), it just gates nothing. A returning 422 here means someone re-added the ceiling.
   // cm:guard all three stopping statuses, not just reopen — `waiting` and `needs_info` mean "a human is needed", and one that does not say WHAT is needed is a question nobody can answer; on forge-beta 2026-08-14 all 43 issues at `waiting` were exactly that
   it.each([
@@ -396,5 +386,49 @@ describe('POST /api/issues/:id/transition — dropping a blocker', () => {
       blockerIssSeq: 7,
       dependents: [{ issueId: '44444444-4444-4444-8444-444444444444', issSeq: 12 }],
     });
+  });
+});
+
+describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () => {
+  it('409 ILLEGAL_TRANSITION naming the run/job counts when draft would demote real work', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    selectLimit.mockResolvedValueOnce([{ n: 2 }]);
+    selectLimit.mockResolvedValueOnce([{ n: 7 }]);
+    const res = await req({ toStatus: 'draft' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('ILLEGAL_TRANSITION');
+    expect(body.message).toContain('2 pipeline run(s)');
+    expect(body.message).toContain('7 job(s)');
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('allows draft while the issue has never entered the pipeline (ISS-787)', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'draft', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    const res = await req({ toStatus: 'draft' }, token);
+    expect(res.status).toBe(200);
+    expect(
+      updateSet.mock.calls.some(([values]) => (values as { status?: string }).status === 'draft'),
+    ).toBe(true);
+  });
+
+  it('refuses draft when the run/job check itself fails — fails CLOSED', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    selectLimit.mockRejectedValueOnce(new Error('connection reset'));
+    selectLimit.mockRejectedValueOnce(new Error('connection reset'));
+    const res = await req({ toStatus: 'draft' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('ILLEGAL_TRANSITION');
+    expect(body.message).toMatch(/could not be checked/i);
+    expect(dbUpdate).not.toHaveBeenCalled();
   });
 });

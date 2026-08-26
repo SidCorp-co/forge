@@ -248,7 +248,7 @@ describe('forge_jobs.list', () => {
       jobs: Array<{ id: string }>;
       truncated?: boolean;
       returned?: number;
-      requested?: number;
+      limit?: number;
     };
 
     // Trimmed below the requested 200, flagged, and serialized well under the
@@ -256,7 +256,7 @@ describe('forge_jobs.list', () => {
     expect(result.truncated).toBe(true);
     expect(result.jobs.length).toBeLessThan(200);
     expect(result.returned).toBe(result.jobs.length);
-    expect(result.requested).toBe(200);
+    expect(result.limit).toBe(200);
     expect(JSON.stringify(result).length).toBeLessThan(45_000);
     // Newest-first order preserved: the kept rows are the head of the input.
     expect(result.jobs[0]?.id).toBe(fatRows[0]?.id);
