@@ -122,8 +122,8 @@ for (const [name, spec] of Object.entries(axes)) {
 // cm:guard a step that runs and cannot fail is stage 0 by construction — the ONE configuration this repo has measured failing. `continue-on-error: true` carried the desktop Rust gate for months next to a comment promising cleanup "as a separate ISS"; the drift ended when the package was deleted, not when the debt was paid. Zero across .github/workflows/ on 2026-08-27, which is the one day freezing it costs nothing.
 const unfailable = [...ciText.matchAll(/continue-on-error:\s*true/g)].length;
 
-// cm:guard `info` counts, not only `warn`. biome exits 0 on both — measured in packages/core: "Found 409 warnings. Found 10 infos." with status 0 — so a rule set to `info` is the identical produced-and-discarded signal, and reading only `warn` would leave a one-word edit that turns this rule from FAIL to ok while changing nothing about what is gated.
-const NON_BLOCKING = new Set(['warn', 'info']);
+// cm:guard all three of `warn`, `info` and `on`, because biome's severity vocabulary is off|on|info|warn|error and only `off` and `error` are certainly not this. biome exits 0 on a warning AND on an info — measured in packages/core: "Found 409 warnings. Found 10 infos." with status 0 — and `on` means "the rule's DEFAULT severity", which for useOptionalChain is warning and for useLiteralKeys is info. Reading only some of the three leaves a ONE-WORD edit that turns this rule from FAIL to ok while changing nothing about what is gated; `on` is included even though a rule whose default is error needs no baseline, because the config cannot tell us which — and asking for an unnecessary baseline is a cheaper mistake than not asking for a needed one.
+const NON_BLOCKING = new Set(['warn', 'info', 'on']);
 
 /** Every rule a biome config sets to a severity biome exits 0 on, as biome category ids. */
 function nonBlockingRules(doc) {
@@ -185,10 +185,11 @@ function uncountedWarnRules() {
 
 const uncounted = uncountedWarnRules();
 
-// cm:guard read the DECLARED level, because nothing else here does. R1-R9 all skip an axis whose level is not 2, and `hardened` needs 4 of 5 axes at >= 2, so a sixth axis declared at level 1 passed the whole audit — while CLAUDE.md said level 1 was forbidden and that a rule enforced it. That is the gate-described-but-not-gating shape this file exists to catch, one level up.
-const atLevelOne = Object.entries(axes)
-  .filter(([, s]) => (s.level ?? 0) === 1)
-  .map(([a]) => a);
+// cm:guard read the DECLARED level, because nothing else here does. R1-R9 all skip an axis whose level is not 2, and `hardened` needs 4 of 5 axes at >= 2, so an axis declared at level 1 passed the whole audit — while CLAUDE.md said level 1 was forbidden and that a rule enforced it. That is the gate-described-but-not-gating shape this file exists to catch, one level up.
+// cm:guard require a NUMBER of at least 2, never `!== 1`. Level 0 (no checker) and an absent key are the same claim as level 1 with less typing, and `lvl()` compares with a coercing `>=`, so a quoted "1" satisfies `>= 1` and fails `>= 2` — three spellings that all mean "does not block" and would all have passed a test for the digit 1.
+const notBlocking = Object.entries(axes)
+  .filter(([, s]) => !(typeof s?.level === 'number' && s.level >= 2))
+  .map(([a, s]) => `${a} (level ${JSON.stringify(s?.level) ?? 'absent'})`);
 
 const overclaimed = Object.entries(axes)
   .filter(([, s]) => (s.level ?? 0) > 1 && !hasCI)
@@ -300,10 +301,12 @@ const RULES = [
   },
   {
     id: 'R10',
-    text: 'no declared axis sits at level 1 — measuring without blocking',
-    pass: atLevelOne.length === 0,
-    detail: atLevelOne.length ? `level 1: ${atLevelOne.join(', ')}` : 'every declared axis blocks',
-    why: 'level 1 is where every gate this repo lost was standing while documented as blocking; R1-R9 skip any axis that is not level 2, so without this an axis could declare 1 and pass the whole audit',
+    text: 'every declared axis declares a numeric level of at least 2',
+    pass: notBlocking.length === 0,
+    detail: notBlocking.length
+      ? `not blocking: ${notBlocking.join(' · ')}`
+      : `${Object.keys(axes).length} axes, all at level >= 2`,
+    why: 'levels 0 and 1 both mean "produces a number nobody is held to", which is where every gate this repo lost was standing while documented as blocking; R1-R9 skip any axis that is not level 2, so without this an axis could declare 1 — or omit the key, or quote the digit — and pass the whole audit',
   },
 ];
 

@@ -85,6 +85,16 @@ describe('improves: down', () => {
     expect(faults).toEqual(['frozen total for packages/core rose 10 -> 60']);
   });
 
+  // cm:guard a move ACROSS two covered areas is not a rename for this purpose, and the fault is intended rather than collateral: 10 diagnostics arriving in a package are 10 more diagnostics in that package, whatever left somewhere else. The global sum this replaced accepted it, so the message must stay specific enough that a contributor reads "pay the moved file down" and not "the ratchet is broken".
+  it('refuses a debt-carrying file moved from one covered area into another', () => {
+    const faults = compareBaseline(
+      'down',
+      at({ 'packages/web-v2/src/a.tsx': { r: 10 }, 'packages/core/src/x.ts': { r: 5 } }),
+      at({ 'packages/core/src/a.ts': { r: 10 }, 'packages/core/src/x.ts': { r: 5 } }),
+    );
+    expect(faults).toEqual(['frozen total for packages/core rose 5 -> 15']);
+  });
+
   // cm:guard this DECLARES a hole rather than closing one, and it is the price of letting a scope widen at all: from the baseline alone, a file moved into a first-time-seen area and a genuinely new scope arriving are the same edit. The pre-ISS-833 global sum caught this case and no longer does. Both sit behind a reviewed --update-baseline; delete this test and the next reader will believe the rule is tighter than it is.
   it('lets a move into a first-time-seen area escape its old total — declared, not closed', () => {
     const faults = compareBaseline(

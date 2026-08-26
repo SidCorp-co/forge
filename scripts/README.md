@@ -7,8 +7,9 @@ baseline may move, which are unit-tested rather than verified by hand.
 **No check may run at level 1** — running, printing, blocking nothing, with no baseline. A check you
 cannot pass on the day you add it gets frozen at level 2 that same day; `continue-on-error: true` is
 the same thing written in YAML. Three audit rules below make that a build rather than a convention:
-R8 on a CI step that cannot fail, R9 on a lint rule at a severity biome exits 0 on, R10 on an axis
-the manifest itself declares at level 1.
+R8 on a CI step that cannot fail, R9 on a lint rule at a severity biome exits 0 on (`warn`, `info`,
+or `on`, which means the rule's default), R10 on an axis the manifest does not declare at level 2 or
+above — including by omitting the key or quoting the digit.
 
 ## verify.mjs — the conformance entrypoint (`pnpm verify`)
 
@@ -74,14 +75,17 @@ Append to `CHECKS` with a `scanned` regex matching that checker's own success li
 fail-closed contract cannot hold for it. If you add the step to CI too, add it to `CI_COVERAGE` in
 the same commit — `--ci-parity` fails otherwise, which is the point.
 
-## check-lint-budget.mjs — every biome diagnostic short of an error, frozen per (file, rule)
+## check-lint-budget.mjs — every biome diagnostic that is not a length rule, frozen per (file, rule)
 
 Each package's `biome.json` owns the rules; this owns only the baseline biome lacks — the same split
 as `check-size-budget.mjs`, which keeps the two length rules because it freezes them by line count.
 
-`error` meant red builds nobody could clear, and a severity biome exits 0 on (`warn`, `info`) held
-nothing. So both packages' debt is frozen per (file, rule) in `.forge/lint-baseline.json` and only
-growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Today: **493 violations
+It counts **every** diagnostic biome emits in a scope except the two length rules
+`check-size-budget.mjs` owns — error severity included, and today 151 of web-v2's 215 frozen
+diagnostics are errors. Severity decides only whether biome itself would have failed the build:
+`error` meant red builds nobody could clear, and a severity biome exits 0 on (`warn`, `info`, or a
+rule left at its default by `on`) held nothing. So both packages' debt is frozen per (file, rule) in
+`.forge/lint-baseline.json` and only growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Today: **493 violations
 across 178 files** — web-v2 215 of an original 226 (97 files), core 278 of 280 (81 files, of which
 53 diagnostics across 32 files are drainable).
 
@@ -232,7 +236,7 @@ printing `0 violations`.
 | R7 | the relations gate can resolve the graph it claims to cover | `archmap check` dropped 841 of 997 edges, 2026-08-23 |
 | R8 | no CI step runs where it cannot fail | the desktop Rust gate, `continue-on-error: true` for months behind a comment promising cleanup |
 | R9 | every lint rule at a severity biome exits 0 on (`warn`, `info`) is counted by a baselined checker | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
-| R10 | no declared axis sits at level 1 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1 and pass the audit |
+| R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two

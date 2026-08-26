@@ -143,14 +143,17 @@ is a build that goes red, not a number:
 
 - **R8** fails on any CI step carrying `continue-on-error: true` — level 1 written in YAML. Zero
   across `.github/workflows/` since the desktop job was deleted, which is what made freezing it free.
-- **R9** fails on any biome rule set to `warn` or `info` that no baselined checker counts. biome
-  exits 0 on both (measured in `core`: *"Found 409 warnings. Found 10 infos."*, status 0), so
-  `packages/core` carried 280 uncounted diagnostics through a `hardened` profile with ten gates over
-  it, invisible to every audit rule that judges a *declared* axis. It reads the configs, so a rule
-  left non-blocking by preset default is caught only where a lint-budget scope already measures it.
-- **R10** fails on any axis the manifest declares at level 1. R1–R9 all skip an axis that is not
-  level 2, and `hardened` needs 4 of 5 axes at ≥ 2, so before R10 a sixth axis could declare 1 and
-  pass the whole audit while this paragraph said it could not.
+- **R9** fails on any biome rule set to `warn`, `info` or `on` that no baselined checker counts.
+  biome exits 0 on a warning and on an info (measured in `core`: *"Found 409 warnings. Found 10
+  infos."*, status 0), and `on` means the rule's *default* severity, which is often one of those — so
+  all three count, and only `off` and `error` do not. `packages/core` carried 280 uncounted
+  diagnostics through a `hardened` profile with ten gates over it, invisible to every audit rule that
+  judges a *declared* axis. R9 reads the configs, so a rule left non-blocking by preset default with
+  no entry at all is caught only where a lint-budget scope already measures it.
+- **R10** fails on any axis that does not declare a numeric level of 2 or more. R1–R9 all skip an
+  axis that is not level 2, and `hardened` needs 4 of 5 axes at ≥ 2, so before R10 an axis could
+  declare 1 — or omit the key, or quote the digit past `lvl()`'s coercing comparison — and pass the
+  whole audit while this paragraph said it could not.
 
 A `down` baseline's totals are compared **per area** (a key's first two path segments), one total
 each, and only over areas the base revision already had. Registering a new scope on an existing
