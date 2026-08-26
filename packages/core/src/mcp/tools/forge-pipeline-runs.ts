@@ -163,7 +163,9 @@ function recordDeprecation(ctx: McpContext | { deprecations?: Set<string> }, too
 export const forgePipelineRunsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pipeline_runs.list',
   description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=list)] List pipeline runs scoped to a project. Optional issueId/status filters. Ordered newest-first by started_at. Requires device owner to be a project member.',
+    '[DEPRECATED — use forge_project_pipeline_runs (action=list)] List pipeline runs scoped to a project. Optional issueId/status filters. Ordered newest-first by started_at. ' +
+    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
+    'Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(pipelineRunsListInputSchema),
   handler: async (args) => {
     recordDeprecation(ctx, 'forge_pipeline_runs.list');
