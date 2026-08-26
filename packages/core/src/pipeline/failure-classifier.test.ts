@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLASSIFIER_VERSION, classifyFailure, deriveActionFromKind } from './failure-classifier.js';
+import {
+  CLASSIFIER_VERSION,
+  classifyFailure,
+  deriveActionFromKind,
+  failureStamp,
+} from './failure-classifier.js';
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
@@ -362,6 +367,35 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
         meta: { headers: { 'retry-after': 'not-a-date' } },
       });
       expect(r.retryAfter).toBeNull();
+    });
+  });
+});
+
+describe('failureStamp — the payload every terminal write persists', () => {
+  it('failureStamp records the version in force, not a literal frozen at write time', () => {
+    const stamp = failureStamp('infra', 'session_lost');
+    expect(stamp.classifierVersion).toBe(CLASSIFIER_VERSION);
+    expect(stamp.failureKind).toBe('infra');
+    expect(stamp.failureReason).toBe('session_lost');
+  });
+
+  it('failureStamp derives the action from the kind, and an explicit action wins', () => {
+    expect(failureStamp('code', 'resume_failed').failureAction).toBe('terminal');
+    expect(failureStamp('timeout', 'no_progress').failureAction).toBe('retry');
+    expect(failureStamp('transient-cc', 'usage limit').failureAction).toBe('failover');
+    expect(failureStamp('infra', 'preflight_failed: work_tree', 'terminal').failureAction).toBe(
+      'terminal',
+    );
+  });
+
+  it('failureStamp agrees with the classifier for a string the classifier owns', () => {
+    const verdict = classifyFailure({ error: 'runner_unsupported_type:antigravity' });
+    const stamp = failureStamp(verdict.kind, verdict.reason, verdict.action);
+    expect(stamp).toEqual({
+      failureKind: 'code',
+      failureAction: 'terminal',
+      failureReason: 'runner_unsupported_type:antigravity',
+      classifierVersion: verdict.version,
     });
   });
 });

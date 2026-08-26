@@ -53,6 +53,30 @@ export function deriveActionFromKind(kind: FailureKind): FailureAction {
   }
 }
 
+/**
+ * The four failure columns every terminal job write persists together.
+ * `action` defaults to the kind's policy, so a caller that decides a failure
+ * structurally (no error text to classify) still records both axes.
+ */
+// cm:guard stamp the version in force AT WRITE TIME, never a literal — four writes froze `classifierVersion: 3` while the taxonomy reached 8, and 49 live rows from 2026-08-20/21 carry that five-version-old stamp with a NULL action, so an operator reads v3 semantics off a fresh row and every action-keyed query misses it
+export function failureStamp(
+  kind: FailureKind,
+  reason: string,
+  action: FailureAction = deriveActionFromKind(kind),
+): {
+  failureKind: FailureKind;
+  failureAction: FailureAction;
+  failureReason: string;
+  classifierVersion: number;
+} {
+  return {
+    failureKind: kind,
+    failureAction: action,
+    failureReason: reason,
+    classifierVersion: CLASSIFIER_VERSION,
+  };
+}
+
 const PERMISSION_PATTERNS: ReadonlyArray<RegExp> = [
   /\b(401|403)\b/,
   /\bunauthorized\b/i,

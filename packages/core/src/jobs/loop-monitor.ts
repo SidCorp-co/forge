@@ -22,6 +22,7 @@ import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { failureStamp } from '../pipeline/failure-classifier.js';
 import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
@@ -256,9 +257,7 @@ async function resolveKillGateDecision(
   const set: Partial<Omit<JobRow, 'id' | 'status'>> = {
     error: cfg.error,
     finishedAt: new Date(),
-    failureKind: cfg.failureKind,
-    failureReason: cfg.failureReason,
-    classifierVersion: 3,
+    ...failureStamp(cfg.failureKind, cfg.failureReason),
   };
   if (confirmed) set.killConfirmedAt = new Date();
   if (outcome) set.killOutcome = outcome;

@@ -18,8 +18,9 @@
 
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, projects } from '../db/schema.js';
+import { agentSessions, jobs, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { failureStamp } from '../pipeline/failure-classifier.js';
 
 const RESUME_TAG = '[RESUME_FAILED]';
 
@@ -124,4 +125,20 @@ export async function handleResumeFailed(job: {
   }
 
   return policy;
+}
+
+/**
+ * `abort` tail: convert the failed job to the permanent `resume_failed`
+ * verdict and hand back the updated row, so the caller keeps reading the
+ * state it just wrote.
+ */
+export async function markResumeAborted(
+  jobId: string,
+): Promise<typeof jobs.$inferSelect | undefined> {
+  const [row] = await db
+    .update(jobs)
+    .set(failureStamp('code', 'resume_failed'))
+    .where(eq(jobs.id, jobId))
+    .returning();
+  return row;
 }

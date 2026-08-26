@@ -13,7 +13,7 @@ import {
 } from '../observability/hold-metrics.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
-import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
+import { classifyFailure, failureStamp } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { injectTurnLevelRules } from '../prompt/user.js';
@@ -127,15 +127,12 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
       to: 'failed',
       set: {
         finishedAt: new Date(),
-        failureKind: 'code',
-        failureAction: 'terminal',
-        failureReason: 'monthly_budget_exhausted',
+        ...failureStamp('code', 'monthly_budget_exhausted', 'terminal'),
         failureMeta: {
           spent: budgetCheck.spent,
           budget: budgetCheck.budget,
           stageStatus: budgetCheck.stageStatus,
         } as never,
-        classifierVersion: CLASSIFIER_VERSION,
       },
       where: and(eq(jobs.id, job.id), eq(jobs.status, 'queued')),
       fromStatus: 'queued',
@@ -487,13 +484,15 @@ async function dispatchViaRunner(
   // are not in RUNNER_CAPABILITIES so we skip the check for them.
   if (job.type !== 'pm' && !runnerSupportsJobType(runner.type as RunnerType, job.type as JobType)) {
     const errorMsg = `runner_unsupported_type:${runner.type}`;
+    // cm:why ISS-812 — the classifier already owns this string (PERMANENT_PATTERNS), so the gate persists ITS verdict rather than hand-writing the kind: hand-writing left 17 kinetrak rows on 2026-08-20 with no action, no version and no finishedAt, unreadable to every action-keyed query
+    const verdict = classifyFailure({ error: errorMsg });
     await applyKernelTransition(db, {
       entity: 'job',
       to: 'failed',
       set: {
         error: errorMsg,
-        failureKind: 'code',
-        failureReason: errorMsg,
+        finishedAt: new Date(),
+        ...failureStamp(verdict.kind, verdict.reason, verdict.action),
       },
       where: eq(jobs.id, job.id),
       fromStatus: job.status,
@@ -691,10 +690,8 @@ async function dispatchViaRunner(
         // ISS-450 — adapter dispatch failures are environment problems by
         // construction (claim/spawn path); flag for review since no classifier
         // pattern matched a structured cause.
-        failureKind: 'infra',
-        failureReason: errorReason,
+        ...failureStamp('infra', errorReason),
         failureMeta: { needsReview: true } as never,
-        classifierVersion: 3,
       },
       where: and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)),
       fromStatus: 'dispatched',
