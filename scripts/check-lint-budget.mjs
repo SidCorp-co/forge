@@ -14,7 +14,7 @@
 // contract: a changed file with debt must come back STRICTLY lower. Adding a
 // scope is a `.forge/conformance.json` entry plus one --update-baseline run.
 //
-// Modes: --all (CI) · --staged (pre-commit, freeze-only) · --update-baseline
+// Modes: --all (CI) · --staged (freeze-only; no hook runs it today) · --update-baseline
 // Exit: 0 clean · 1 a file gained a violation or skipped its payment · 2 could not run.
 
 import { execFileSync } from 'node:child_process';
@@ -62,21 +62,50 @@ function config() {
 }
 
 // cm:guard ORTHOGONAL to the files-scanned guard, and both must stay. A disabled linter scans every file and reports nothing, so it passes a scanned-count check while emptying this checker's input — measured 2026-08-27: flipping `linter.enabled` to false in packages/web-v2/biome.json made --all exit 0 at "0 / 226 original (100% drained)" and made --update-baseline DELETE 95 files and 210 frozen diagnostics at exit 0, which compareDown accepts because it only faults on a rise. Counting diagnostics cannot tell that from a scope legitimately drained to zero; only the config can, which is why this reads the config instead.
-function linterFault(scope) {
-  const path = join(ROOT, scope.cwd, 'biome.json');
+// cm:guard follow `extends`, and REFUSE what cannot be followed. Reading only the scope's own biome.json left the identical hole one file away: a base config carrying `linter.enabled: false` and an `extends` pointing at it reproduced the whole failure — --all exit 0 at "100% drained", --update-baseline deleting all 95 web-v2 entries. A partial read of a config chain is not a weaker check, it is the same absent one wearing the previous fix's name.
+function effectiveLinterEnabled(file, seen = new Set()) {
+  if (seen.has(file)) return { error: `${relative(ROOT, file)} extends itself` };
+  seen.add(file);
   let doc;
   try {
-    doc = JSON.parse(readFileSync(path, 'utf8'));
+    doc = JSON.parse(readFileSync(file, 'utf8'));
   } catch (err) {
-    return `${scope.cwd}/biome.json could not be read: ${err.code ?? err.message}`;
+    return { error: `${relative(ROOT, file)} could not be read: ${err.code ?? err.message}` };
   }
-  if (doc?.linter?.enabled === false) {
-    return `${scope.cwd}/biome.json disables its linter — this scope would report clean while measuring nothing`;
+  let enabled;
+  const extend = doc?.extends;
+  // cm:guard a STRING `extends` is biome's package form (e.g. "//some-pkg"), which this cannot resolve from the filesystem — so it is an error, never a skip. Treating an unresolvable parent as "nothing to see" is how a config chain hides the one line that matters.
+  if (extend !== undefined) {
+    if (!Array.isArray(extend)) {
+      return {
+        error: `${relative(ROOT, file)} declares a non-array extends this checker cannot resolve`,
+      };
+    }
+    for (const entry of extend) {
+      if (typeof entry !== 'string' || !entry.startsWith('.')) {
+        return {
+          error: `${relative(ROOT, file)} extends ${JSON.stringify(entry)}, which this checker cannot resolve — declare a relative path or stop disabling the linter behind one`,
+        };
+      }
+      const parent = effectiveLinterEnabled(join(dirname(file), entry), seen);
+      if (parent.error) return parent;
+      if (parent.enabled !== undefined) enabled = parent.enabled;
+    }
+  }
+  if (doc?.linter?.enabled !== undefined) enabled = doc.linter.enabled;
+  return { enabled };
+}
+
+function linterFault(scope) {
+  const { enabled, error } = effectiveLinterEnabled(join(ROOT, scope.cwd, 'biome.json'));
+  if (error) return error;
+  if (enabled === false) {
+    return `${scope.cwd} resolves to a biome config with its linter disabled — this scope would report clean while measuring nothing`;
   }
   return null;
 }
 
-// cm:edge contract -> packages/web-v2/biome.json — reads whatever that config decides to report. Turning the linter off there empties this checker's input; `linterFault` above is what makes that an exit 2 instead of a green run, and the files-scanned guard below catches the different case of a scope that matched no files at all.
+// cm:edge contract -> packages/web-v2/biome.json — reads whatever that config decides to report. Turning the linter off there empties this checker's input; `linterFault` makes that an exit 2 by resolving the `extends` chain, so a base config one file away is caught too and an `extends` it cannot resolve is itself the error. The files-scanned guard below covers the different case of a scope that matched no files at all.
 // cm:edge contract -> packages/core/biome.json — same for the second scope: `noNonNullAssertion` / `noExplicitAny` / the test override's `noUnsafeOptionalChaining` are `warn` there, which is exactly why they need a baseline — biome exits 0 on a warning, so the blocking `core` lint step passed over 280 of them (measured 2026-08-27)
 function collect(scopes) {
   const measured = {};
@@ -273,7 +302,7 @@ if (mode === '--staged') {
 
 const failures = freezeFaults(measured, baseline.files, staged?.files ?? null);
 
-// cm:guard drain is an --all rule only. --staged runs in .githooks/pre-commit, which must stay cheap and must not judge a payment against a half-staged tree; the branch delta this measures is what CI sees, and that is where the payment is due.
+// cm:guard drain is an --all rule only. --staged exists for a pre-commit hook (none runs it today — .githooks/pre-commit runs check-source-language and check-test-signal only) and must not judge a payment against a half-staged tree; the branch delta this measures is what CI sees, and that is where the payment is due.
 let matchers;
 try {
   matchers = cfg.scopes.map(drainMatcher).filter(Boolean);

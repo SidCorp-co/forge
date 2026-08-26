@@ -106,6 +106,10 @@ no second script, no second baseline file. That is the contract to hold when the
   "drain": { "include": "^packages/<pkg>/src/", "exclude": "\\.test\\.tsx?$" } }
 ```
 
+The scope directory must hold a `biome.json` — the linter-enabled guard reads it, and reads any
+config it `extends`. A `biome.jsonc`, or a config resolved from a parent directory, exits 2 rather
+than being assumed healthy.
+
 `drain` is optional and a scope without it is freeze-only. `--update-baseline` then freezes the new
 scope's debt and seeds its `original`; the `improves: down` ratchet accepts the widened baseline
 because it compares totals per *area* and this one is new (see `lib/baseline-ratchet.mjs`).
@@ -144,16 +148,20 @@ zero and a scope nobody is measuring both report **zero** diagnostics:
 - **files scanned** — biome's own `summary` says how many files it looked at, and zero means the
   scope matched nothing. Counting diagnostics instead would make a fully drained scope, the outcome
   the drain rule exists to produce, indistinguishable from a broken one.
-- **the linter is on** — a scope whose `biome.json` sets `linter.enabled: false` scans every file and
+- **the linter is on** — a scope whose resolved biome config disables its linter scans every file and
   reports nothing, which passes the count check while measuring nothing. Measured 2026-08-27: that
   one-word edit made `--all` exit 0 at `0 / 226 original (100% drained)` and made
   `--update-baseline` delete 95 files and 210 frozen diagnostics at exit 0, which `improves: down`
   accepts because it only faults on a *rise*. Only the config can tell the two apart, so this guard
-  reads the config rather than the numbers.
+  reads the config rather than the numbers — following `extends` to the end of the chain, because
+  the same switch sitting in a base config one file away is the same hole. An `extends` it cannot
+  resolve from the filesystem (biome's package form, say) is itself an error, never a skip.
 
 Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-v2 lint`) ·
-`--staged` (pre-commit, **freeze-only** — the payment is due against the branch, not a half-staged
-tree) · `--update-baseline`.
+`--staged` (**freeze-only** — the payment is due against the branch, not a half-staged tree) ·
+`--update-baseline`. `--staged` exists for a pre-commit hook but **no hook runs it today**:
+`.githooks/pre-commit` runs `check-source-language` and `check-test-signal` and nothing else. The
+gate is the `conformance` job.
 
 ## check-branch-name.sh
 
