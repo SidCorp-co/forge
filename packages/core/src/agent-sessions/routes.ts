@@ -10,16 +10,12 @@ import {
   agentSessions,
   agentSessionTurns,
   issues,
-  runners,
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
-import { clearRunnerLimit, stampRunnerLimit } from '../runners/apply-runner-limit.js';
-import { detectRunnerLimit } from '../runners/limit-detect.js';
-import { clearRunnerQuarantine } from '../runners/quarantine.js';
 import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import {
   EMPTY_USAGE_TOTALS,
@@ -28,9 +24,11 @@ import {
 } from '../usage-records/rollup.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { extractTurnPreview } from './chat-preview.js';
+import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
+import { BLIND_SCHEDULE_RUN_REASON, isBlindScheduleRun } from './schedule-evidence.js';
 import {
   assertAgentChatOwner,
   assertDeviceOwnsSession,
@@ -45,11 +43,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import {
-  detectUnexpandedSkillFailure,
-  extractSessionFailureText,
-  finalizeScheduleSessionFailure,
-} from './session-failure.js';
+import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -96,6 +90,7 @@ const patchSchema = z
     usage: z.unknown().optional(),
     metadata: z.unknown().optional(),
     diff: z.unknown().optional(),
+    toolCallCount: z.number().int().min(0).optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -670,6 +665,31 @@ agentSessionRoutes.patch(
       updates.metadata = restMeta;
     }
 
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/agent_sessions.rs — SessionPatch.tool_call_count; the runner OMITS it when it cannot count, and isBlindScheduleRun turns only a reported 0 into a failure
+    if (patch.toolCallCount !== undefined && c.get('principal') === 'device') {
+      const metaBase =
+        (updates.metadata as Record<string, unknown> | undefined) ??
+        existingMetaForSkillCheck ??
+        {};
+      updates.metadata = { ...metaBase, toolCallCount: patch.toolCallCount };
+    }
+    if (
+      isBlindScheduleRun({
+        resolvedStatus: (updates.status as AgentSessionStatus | undefined) ?? patch.status,
+        metadata:
+          (updates.metadata as Record<string, unknown> | undefined) ?? existingMetaForSkillCheck,
+        toolCallCount: patch.toolCallCount,
+        principal: c.get('principal'),
+      })
+    ) {
+      updates.status = 'failed';
+      updates.failureReason = BLIND_SCHEDULE_RUN_REASON;
+      logger.warn(
+        { sessionId: id, scheduleId: existingMetaForSkillCheck?.scheduleId },
+        'agent-sessions: scheduled run reported completed having called no tool — recording it blind',
+      );
+    }
+
     // cm:edge naming -> packages/core/src/agent-sessions/lifecycle-routes.ts — chat/schedule sessions finalize HERE (the runner's patch_failed -> patch_session), not /desktop/status; both call the SAME finalizeScheduleSessionFailure
     const classification =
       patch.status === 'failed' && !isUserCancelled && existing.failureReason !== 'user_cancelled'
@@ -686,7 +706,7 @@ agentSessionRoutes.patch(
         : null;
 
     // cm:guard a session that settles `completed` MUST carry no failureReason. The I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on a session that was still ACTIVE when its run went terminal; the runner's own terminal patch then lands here, and without this clear the row reads completed-and-failed (ISS-759 recurred on session 228cdf03 two days after the job-lane fix shipped, because the chat lane finalizes HERE).
-    // cm:guard read the RESOLVED status and clear only AFTER the two blocks above — gating on `patch.status` instead would wipe the `skill_not_synced` reason and the classifier's reason, both of which rewrite a reported `completed` into `failed` before this point.
+    // cm:guard read the RESOLVED status and clear only AFTER the three blocks above — gating on `patch.status` instead would wipe the `skill_not_synced` reason, the `audit_ran_blind` reason and the classifier's reason, all three of which rewrite a reported `completed` into `failed` before this point.
     // cm:edge lockstep -> packages/core/src/jobs/agent-session-link.ts — the job-report writer of the same contract
     // cm:edge lockstep -> packages/core/src/pipeline/runs-cascade.ts — its completedSuccess branch is the third writer of the same contract
     if (
@@ -762,61 +782,16 @@ agentSessionRoutes.patch(
     }
 
     // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
-    // cm:guard gate on the DEVICE principal — a user/member PATCH can carry an arbitrary crafted `messages` array (patchSchema.messages is unvalidated), so classifying non-device-authored PATCHes would let a project member mis-stamp a healthy runner and DoS pipeline dispatch (dispatch-gates.ts hard-excludes a rate-limited runner)
-    if (
-      c.get('principal') === 'device' &&
-      patch.status === 'failed' &&
-      !isUserCancelled &&
-      updated.deviceId
-    ) {
-      try {
-        // cm:guard classify only runner-authored text — the transcript's first message is buildAgentChatPrompt's output (the user's own question), so an unfiltered blob lets user content trip isRateLimitError/isAuthError and mis-limit a healthy runner
-        const text = extractSessionFailureText(patch.messages ?? existing.messages, null, {
-          excludeRoles: ['user'],
-        });
-        const limit = detectRunnerLimit(text, null);
-        if (limit) {
-          const [runner] = await db
-            .select({ id: runners.id })
-            .from(runners)
-            .where(
-              and(eq(runners.projectId, updated.projectId), eq(runners.deviceId, updated.deviceId)),
-            )
-            .limit(1);
-          if (runner) {
-            await stampRunnerLimit(runner.id, updated.projectId, limit);
-          }
-        }
-      } catch (err) {
-        logger.warn(
-          { err, sessionId: id, deviceId: updated.deviceId },
-          'agent-sessions: stampRunnerLimit from chat limit-detect failed, continuing',
-        );
-      }
-    }
-
-    // cm:why clear the limit on session completion — symmetric to the stamp above; prevents a runner stamped 'auth' once from being excluded forever on chat-only projects
-    // cm:guard gate on the PERSISTED updated.status, not patch.status — the ISS-733 block above can rewrite a reported 'completed' into 'failed' before the write, and clearing on that rewritten outcome would hide the failure from the health gate
-    if (updated.status === 'completed' && updated.deviceId) {
-      try {
-        const [runner] = await db
-          .select({ id: runners.id })
-          .from(runners)
-          .where(
-            and(eq(runners.projectId, updated.projectId), eq(runners.deviceId, updated.deviceId)),
-          )
-          .limit(1);
-        if (runner) {
-          await clearRunnerLimit(runner.id, updated.projectId);
-          await clearRunnerQuarantine(runner.id, updated.projectId);
-        }
-      } catch (err) {
-        logger.warn(
-          { err, sessionId: id, deviceId: updated.deviceId },
-          'agent-sessions: clearRunnerLimit on chat completion failed, continuing',
-        );
-      }
-    }
+    await syncRunnerHealthFromChatTerminal({
+      sessionId: id,
+      projectId: updated.projectId,
+      deviceId: updated.deviceId,
+      principal: c.get('principal'),
+      reportedStatus: patch.status,
+      persistedStatus: updated.status,
+      isUserCancelled,
+      messages: patch.messages ?? existing.messages,
+    });
 
     // ISS-675 — this PATCH is the runner's happy-path completion write (a
     // direct db.update, NOT applyKernelTransition — see lifecycle/transition.ts
