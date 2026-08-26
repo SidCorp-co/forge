@@ -33,8 +33,8 @@ export function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['w
   };
 }
 
-/** The `retry_cooldown` waitingOn for a candidate parked under a provider
- *  Retry-After hint, or `null`. */
+/** The `retry_cooldown` waitingOn for a candidate inside the fixed inter-attempt
+ *  wait `retry.ts` stamps after a failure, or `null`. */
 // cm:guard this arm is what keeps the cooldown honest, and it predates nothing — for every cooldown-gated job on `main` this classifier reported NO waitingOn at all, i.e. exactly the idle-and-actionable render the file's own guard forbids, because `retry_cooldown` had no member in `PipelineWaitingReason` while `buildGateReasonCase` has returned it since ISS-197
 export function retryCooldownWaitingOn(
   candidate: PipelineHealthJob,

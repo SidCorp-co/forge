@@ -69,7 +69,7 @@ export interface PipelineHealthJob {
    *  answers. Null for jobs nobody declared one for (pm, custom). */
   stageStatus?: string | null;
   /** `jobs.retry_after_at` — the picker's L1 cooldown gate outranks the
-   *  staleness arm, so a job parked under a provider Retry-After hint is not
+   *  staleness arm, so a job inside the fixed inter-attempt wait is not
    *  reported stale however stale it is. */
   retryAfterAt?: Date | null;
 }

@@ -618,9 +618,11 @@ export async function pickNextDispatchableJobForProject(
       AND j.type <> 'pm'
       AND r.status = 'running'
       ${excludeClause}
-      -- ISS-197 — L1 cooldown gate. retry_after_at is set by the retry
-      -- engine when honouring a provider Retry-After hint; until the
-      -- timestamp passes, the job is invisible to the picker.
+      -- ISS-197 — L1 cooldown gate: the job is invisible to the picker until
+      -- retry_after_at passes. That value is a FIXED now + RETRY_COOLDOWN_MS
+      -- (60s, or 0 on an immediate device failover) written by retry.ts, NOT a
+      -- provider Retry-After hint as this comment claimed until ISS-789 began
+      -- reading the column on the pipelineHealth side.
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
       AND NOT (${predicates.issueBusySession})
       AND NOT (${predicates.issueBusyJob})

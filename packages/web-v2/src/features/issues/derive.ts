@@ -637,11 +637,11 @@ const WAITING_REASON_COPY: Record<
 			"No runner is online for this project — every host is offline, stale, or rate-limited.",
 		who: "Bring a runner back (check the Runners tab); the step dispatches on the next tick.",
 	},
-	// cm:guard this one must NOT say "no action" either — a provider rate-limit clears itself, but the wait is unbounded and invisible: nothing tells the reader a 60s hint from a 5-hour quota window is what they are looking at, and until ISS-789 this reason rendered as no banner at all
+	// cm:guard name the FIXED 60s inter-attempt wait, not a provider hint — `retry.ts` writes `retry_after_at` as `now + RETRY_COOLDOWN_MS` (or 0 on an immediate device failover) and nothing anywhere reads a Retry-After header into it, so copy about a provider quota sends the reader to a dashboard that has nothing to say about this wait
 	retry_cooldown: {
 		reason:
-			"The step is waiting out a provider rate-limit hint before it retries.",
-		who: "It retries itself. If the wait keeps renewing, the provider quota is the thing to check.",
+			"The step failed and is waiting out a 60-second cooldown before its next attempt.",
+		who: "No action — the retry fires itself. If the attempts keep failing, read the step's error rather than waiting.",
 	},
 	// cm:guard this is the one queued reason that means the ISSUE is fine — the step answers a trigger the issue has already left, so the copy must not read as "your issue is blocked". Saying so would send the reader looking for a blocker that moved on by definition, which is the mislabel this reason was added to avoid.
 	stale_trigger: {

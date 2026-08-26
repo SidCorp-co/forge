@@ -145,6 +145,71 @@ describe('stale_trigger — the gate whose job answers a trigger the issue has l
     expect(out.waitingOn?.reason).toBe('retry_cooldown');
   });
 
+  // cm:guard the cooldown arm's POSITION is what these three pin, and nothing else did — before them the arm could be moved below issue_busy or blocked_by and no test would notice, while the stale arm right below has ordering assertions at both levels
+  it('reports the cooldown ahead of issue_busy, matching the CASE arm order', () => {
+    const now = new Date('2026-05-17T08:00:30.000Z');
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        now,
+        issue: { id: 'iss-1', status: 'approved', mergedAt: null, waitingKind: null },
+        jobs: [
+          job({ id: 'job-live', type: 'code', status: 'running' }),
+          job({
+            id: 'job-next',
+            type: 'plan',
+            stageStatus: 'clarified',
+            retryAfterAt: new Date('2026-05-17T08:01:00.000Z'),
+          }),
+        ],
+      }),
+    );
+    expect(out.waitingOn?.reason).toBe('retry_cooldown');
+  });
+
+  it('reports the cooldown ahead of blocked_by, matching the CASE arm order', () => {
+    const now = new Date('2026-05-17T08:00:30.000Z');
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        now,
+        deps: [
+          {
+            fromIssueId: 'iss-blocker',
+            kind: 'blocks',
+            fromStatus: 'approved',
+            fromMergedAt: null,
+          },
+        ],
+        jobs: [
+          job({
+            type: 'plan',
+            stageStatus: 'clarified',
+            retryAfterAt: new Date('2026-05-17T08:01:00.000Z'),
+          }),
+        ],
+      }),
+    );
+    expect(out.waitingOn?.reason).toBe('retry_cooldown');
+  });
+
+  it('names the job and the deadline so the wait is not a mystery', () => {
+    const now = new Date('2026-05-17T08:00:30.000Z');
+    const retryAfterAt = new Date('2026-05-17T08:01:00.000Z');
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        now,
+        jobs: [job({ id: 'job-cool', type: 'plan', stageStatus: 'clarified', retryAfterAt })],
+      }),
+    );
+    expect(out.waitingOn).toMatchObject({
+      reason: 'retry_cooldown',
+      details: {
+        queuedJobId: 'job-cool',
+        queuedJobType: 'plan',
+        retryAfterAt: retryAfterAt.toISOString(),
+      },
+    });
+  });
+
   it('reports it again once the cooldown has expired', () => {
     const now = new Date('2026-05-17T08:02:00.000Z');
     const out = classifyPipelineHealthForIssue(
