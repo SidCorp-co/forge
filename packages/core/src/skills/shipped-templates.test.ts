@@ -22,8 +22,9 @@ const { commentCreateDataSchema } = await import('../mcp/tools/forge-comments.js
 
 const SKILLS_ROOT = path.resolve(import.meta.dirname, '../../skills');
 
-const CREATE_EXAMPLE = /forge_comments\s*(?:→|->|\.)\s*create[^\n]*\n?([\s\S]*?)(?:\n```|\n\n)/g;
-const DATA_KEY = /^\s{0,8}([A-Za-z][A-Za-z0-9_]*)\s*:/gm;
+const CREATE_DATA_BLOCK =
+  /forge_comments\s*(?:→|->|\.)\s*create[\s\S]{0,200}?data:\s*\{([\s\S]*?)\}/g;
+const DATA_KEY = /([A-Za-z][A-Za-z0-9_]*)\s*:/g;
 
 const SCHEMA_PLACEHOLDER: Record<string, unknown> = {
   body: 'x',
@@ -50,11 +51,8 @@ function shippedTemplates(): { name: string; text: string }[] {
 /** Key names shown inside a `data: { … }` block of a create example. */
 function exampleDataKeys(text: string): string[] {
   const keys = new Set<string>();
-  for (const example of text.matchAll(CREATE_EXAMPLE)) {
-    const block = example[1] ?? '';
-    const dataAt = block.indexOf('data:');
-    if (dataAt === -1) continue;
-    for (const key of block.slice(dataAt + 'data:'.length).matchAll(DATA_KEY)) {
+  for (const example of text.matchAll(CREATE_DATA_BLOCK)) {
+    for (const key of (example[1] ?? '').matchAll(DATA_KEY)) {
       if (key[1]) keys.add(key[1]);
     }
   }
@@ -64,9 +62,9 @@ function exampleDataKeys(text: string): string[] {
 describe('shipped Markdown templates type-check against the live schema (ISS-787)', () => {
   const templates = shippedTemplates();
 
-  it('finds the templates it claims to check', () => {
+  it('finds example data keys in the templates it claims to check', () => {
     expect(templates.length).toBeGreaterThan(0);
-    expect(templates.some((t) => t.text.includes('forge_comments'))).toBe(true);
+    expect(templates.flatMap((template) => exampleDataKeys(template.text))).toContain('body');
   });
 
   it.each(templates)('$name shows no forge_comments.create key the schema rejects', ({ text }) => {
