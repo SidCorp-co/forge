@@ -99,6 +99,8 @@ const {
   CAPACITY_DEFER_CEILING_MS,
 } = await import('./retry.js');
 
+const { CLASSIFIER_VERSION } = await import('../pipeline/failure-classifier.js');
+
 type JobRow = Record<string, unknown>;
 
 const FIXED_NOW = new Date('2026-05-23T12:00:00.000Z').getTime();
@@ -123,6 +125,10 @@ const baseJob: JobRow = {
   error: 'ECONNRESET',
 };
 
+/** `scheduleAutoRetryWithVerify` on `baseJob` with `overrides` applied. */
+const run = (overrides: JobRow, reason: string) =>
+  scheduleAutoRetryWithVerify({ ...baseJob, ...overrides } as never, reason);
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
@@ -140,7 +146,7 @@ afterEach(() => {
 describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
   it('schedules a retry with the uniform 60s cooldown', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    const result = await run({}, 'crashed');
     expect(result.scheduled).toBe(true);
     expect(result.newJobId).toBe('j2');
 
@@ -161,7 +167,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
   it('ISS-434 — clone never inherits a (terminal) session even though stats still use the parent link', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     // baseJob.agentSessionId='s1' is the parent's terminal session.
-    await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    await run({}, 'crashed');
     const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
     // The clone must carry no session link (born NULL) — otherwise
     // reconcileOrphanedJobs reaps it session_lost on the next sweeper tick.
@@ -173,12 +179,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
   it('ALWAYS uses 60s — ignores any Retry-After hint (no per-error handling)', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    await scheduleAutoRetryWithVerify(
+    await run(
       {
-        ...baseJob,
         error: '429 too many requests',
         failureMeta: { headers: { 'retry-after': '600' } },
-      } as never,
+      },
       'rate-limited',
     );
     const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -187,39 +192,27 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
   });
 
   it('does NOT retry a `code` classification (non_retryable_terminal)', async () => {
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'invalid_request_error' } as never,
-      'crashed',
-    );
+    const result = await run({ error: 'invalid_request_error' }, 'crashed');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('non_retryable_terminal');
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
   it('honours a pre-persisted failureKind=code without reclassifying', async () => {
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'whatever text', failureKind: 'code' } as never,
-      'crashed',
-    );
+    const result = await run({ error: 'whatever text', failureKind: 'code' }, 'crashed');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('non_retryable_terminal');
   });
 
   it('RETRIES an infra classification (401 → infra under v3)', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: '401 Unauthorized' } as never,
-      'crashed',
-    );
+    const result = await run({ error: '401 Unauthorized' }, 'crashed');
     expect(result.scheduled).toBe(true);
   });
 
   it('RETRIES an unmapped failure (infra + needsReview fallback)', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    const r1 = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: "You've hit your weekly limit" } as never,
-      'limit',
-    );
+    const r1 = await run({ error: "You've hit your weekly limit" }, 'limit');
     expect(r1.scheduled).toBe(true);
   });
 
@@ -227,8 +220,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     it('rotates straight to another device with zero cooldown', async () => {
       ccSignalRow = { total: 2, toolCalls: 0, messages: 2 };
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      const result = await scheduleAutoRetryWithVerify(
-        { ...baseJob, deviceId: 'device-A', error: 'Agent completed with errors' } as never,
+      const result = await run(
+        { deviceId: 'device-A', error: 'Agent completed with errors' },
         'cc-died',
       );
       expect(result.scheduled).toBe(true);
@@ -245,8 +238,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
     it('text fallback (Unknown command) also routes to failover', async () => {
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      const result = await scheduleAutoRetryWithVerify(
-        { ...baseJob, deviceId: 'device-A', error: 'Unknown command: /forge-review' } as never,
+      const result = await run(
+        { deviceId: 'device-A', error: 'Unknown command: /forge-review' },
         'unknown-cmd',
       );
       expect(result.scheduled).toBe(true);
@@ -263,8 +256,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       ccSignalRow = { total: 2, toolCalls: 0, messages: 1 };
       onlineDevicesMock.mockResolvedValue(['device-A']);
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      const result = await scheduleAutoRetryWithVerify(
-        { ...baseJob, deviceId: 'device-A', error: 'Agent completed with errors' } as never,
+      const result = await run(
+        { deviceId: 'device-A', error: 'Agent completed with errors' },
         'cc-died',
       );
       expect(result.scheduled).toBe(true);
@@ -284,8 +277,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       stagePoolMock.mockResolvedValue({ deviceIds: ['device-B'] });
       onlineDevicesMock.mockResolvedValue(['device-B']);
       insertReturning.mockResolvedValueOnce([{ id: 'j-pool' }]);
-      const result = await scheduleAutoRetryWithVerify(
-        { ...baseJob, deviceId: 'device-A', error: 'Agent completed with errors' } as never,
+      const result = await run(
+        { deviceId: 'device-A', error: 'Agent completed with errors' },
         'cc-died',
       );
       expect(result.scheduled).toBe(true);
@@ -303,15 +296,14 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     it('still respects the RETRY_MAX_ROUNDS budget', async () => {
       ccSignalRow = { total: 2, toolCalls: 0, messages: 1 };
       onlineDevicesMock.mockResolvedValue(['device-A']);
-      const result = await scheduleAutoRetryWithVerify(
+      const result = await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: 'Agent completed with errors',
           payload: {
             _autoRetry: { round: RETRY_MAX_ROUNDS, target: 'device-A', tries: 1, done: [] },
           },
-        } as never,
+        },
         'cc-died',
       );
       expect(result.scheduled).toBe(false);
@@ -321,7 +313,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
   it('skips retry + marks completed_via_recovery when verifier says advanced', async () => {
     verifyRecoveryMock.mockResolvedValueOnce('advanced');
-    const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    const result = await run({}, 'crashed');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('completed_via_recovery');
     expect(dbInsert).not.toHaveBeenCalled();
@@ -330,7 +322,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
   it('skips retry + marks cancelled_stale when verifier says reverted', async () => {
     verifyRecoveryMock.mockResolvedValueOnce('reverted');
-    const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    const result = await run({}, 'crashed');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('cancelled_stale');
     expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'cancelled_stale');
@@ -338,34 +330,49 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
   it('ISS-702: fails safe to verify_unavailable (no retry) when verifyRecovery throws', async () => {
     verifyRecoveryMock.mockRejectedValueOnce(new Error('db outage'));
-    const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    const result = await run({}, 'crashed');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('verify_unavailable');
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
   it('does NOT retry a cancelled job', async () => {
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, cancellationRequested: true } as never,
-      'cancelled',
-    );
+    const result = await run({ cancellationRequested: true }, 'cancelled');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('cancellation_requested');
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('increments recoveryStats even for a non-retryable code failure', async () => {
-    await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'invalid_request_error' } as never,
-      'crashed',
+  it('ISS-812: records a class on a cancelled job that still carries failure text', async () => {
+    const result = await run(
+      {
+        cancellationRequested: true,
+        error: '[NO_RESULT_EXIT] no exit code, no result event',
+      },
+      'cancelled',
     );
+
+    // cm:guard assert BOTH halves — the persist AND the no-retry return. Dropping the return half leaves a test that stays green if the cancellation guard is deleted outright and the job silently retries; dropping the persist half is the ISS-812 defect itself coming back.
+    expect(result).toEqual({ scheduled: false, reason: 'cancellation_requested' });
+    expect(dbInsert).not.toHaveBeenCalled();
+
+    const patch = updateSet.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(patch).toBeDefined();
+    expect(patch?.failureKind).toBe('transient-cc');
+    expect(patch?.failureAction).toBe('failover');
+    expect(patch?.failureReason).toEqual(expect.any(String));
+    expect(patch?.classifierVersion).toBe(CLASSIFIER_VERSION);
+  });
+
+  it('increments recoveryStats even for a non-retryable code failure', async () => {
+    await run({ error: 'invalid_request_error' }, 'crashed');
     expect(incrementRecoveryStatsMock).toHaveBeenCalledWith('s1', 'code');
     expect(publishMock).toHaveBeenCalledWith('p1', 's1');
   });
 
   it('emits session.recovery_attempted breadcrumb on successful schedule', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    await run({}, 'crashed');
     expect(
       addBreadcrumbMock.mock.calls.some(
         (c) => (c[0] as { category?: string }).category === 'session.recovery_attempted',
@@ -375,13 +382,13 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
   it('increments autoRetries after scheduling', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    await run({}, 'crashed');
     expect(incrementAutoRetryCountMock).toHaveBeenCalledWith('s1');
   });
 
   it('writes classification onto the failed job when not already set', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    await run({}, 'crashed');
     expect(updateSet).toHaveBeenCalled();
     const setArg = updateSet.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(setArg?.failureKind).toBe('infra');
@@ -400,15 +407,14 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
     it('rotates to the next online device after 3 tries on a device', async () => {
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      await scheduleAutoRetryWithVerify(
+      await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           payload: {
             skill: 'forge-plan',
             _autoRetry: { round: 1, target: 'device-A', tries: 3, done: [] },
           },
-        } as never,
+        },
         'x',
       );
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -426,14 +432,13 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
     it('advances to the next round (resets done) when every device is exhausted', async () => {
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      await scheduleAutoRetryWithVerify(
+      await run(
         {
-          ...baseJob,
           deviceId: 'device-C',
           payload: {
             _autoRetry: { round: 1, target: 'device-C', tries: 3, done: ['device-A', 'device-B'] },
           },
-        } as never,
+        },
         'x',
       );
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -443,9 +448,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     });
 
     it('stops (parks) after RETRY_MAX_ROUNDS full sweeps', async () => {
-      const result = await scheduleAutoRetryWithVerify(
+      const result = await run(
         {
-          ...baseJob,
           deviceId: 'device-C',
           payload: {
             _autoRetry: {
@@ -455,7 +459,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
               done: ['device-A', 'device-B'],
             },
           },
-        } as never,
+        },
         'x',
       );
       expect(result.scheduled).toBe(false);
@@ -465,12 +469,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
     it('preserves prior payload keys when writing rotation state', async () => {
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      await scheduleAutoRetryWithVerify(
+      await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           payload: { skill: 'forge-plan', custom: 'keep-me' },
-        } as never,
+        },
         'x',
       );
       const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -484,13 +487,12 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
   describe('ISS-823 — action axis overrides kind', () => {
     it('a persisted failureAction=terminal wins even over a non-terminal kind', async () => {
-      const result = await scheduleAutoRetryWithVerify(
+      const result = await run(
         {
-          ...baseJob,
           error: 'ECONNRESET',
           failureKind: 'infra',
           failureAction: 'terminal',
-        } as never,
+        },
         'crashed',
       );
       expect(result.scheduled).toBe(false);
@@ -499,8 +501,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     });
 
     it('a historical row (failureAction null) falls back to deriveActionFromKind', async () => {
-      const result = await scheduleAutoRetryWithVerify(
-        { ...baseJob, error: 'whatever text', failureKind: 'code', failureAction: null } as never,
+      const result = await run(
+        { error: 'whatever text', failureKind: 'code', failureAction: null },
         'crashed',
       );
       expect(result.scheduled).toBe(false);
@@ -515,12 +517,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         return opts?.includeLimited ? ['device-A', 'device-B'] : [];
       });
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      const result = await scheduleAutoRetryWithVerify(
+      const result = await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
-        } as never,
+        },
         'spend-limit',
       );
       // cm:guard the clone KEEPS its target, and the note this replaced was wrong about why it should not: it claimed a pin would make the job "wait on the one that just failed", but select.ts:322 falls through on a stale pin, so a pin to a limited box costs one lookup and then picks a standby. Nulling the target bought nothing and travelled with a `done` reset that did real harm.
@@ -541,15 +542,14 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         return opts?.includeLimited ? ['device-A', 'device-B'] : [];
       });
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      await scheduleAutoRetryWithVerify(
+      await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
           payload: {
             _autoRetry: { round: 3, target: 'device-A', tries: 1, done: ['device-B'] },
           },
-        } as never,
+        },
         'spend-limit',
       );
       const rotation = (insertValues.mock.calls[0]?.[0] as Record<string, unknown>).payload as {
@@ -565,9 +565,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         const opts = _args[2] as { includeLimited?: boolean } | undefined;
         return opts?.includeLimited ? ['device-A', 'device-B'] : [];
       });
-      const result = await scheduleAutoRetryWithVerify(
+      const result = await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
           payload: {
@@ -579,7 +578,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
               deferredSince: new Date(FIXED_NOW - CAPACITY_DEFER_CEILING_MS - 1000).toISOString(),
             },
           },
-        } as never,
+        },
         'spend-limit',
       );
       expect(result.scheduled).toBe(false);
@@ -594,12 +593,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         return opts?.includeLimited ? ['device-A', 'device-B'] : [];
       });
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      await scheduleAutoRetryWithVerify(
+      await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
-        } as never,
+        },
         'spend-limit',
       );
       expect(emitWedgeMock).toHaveBeenCalledTimes(1);
@@ -613,12 +611,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     it('names the no-runner-online case differently, since the human action differs', async () => {
       onlineDevicesMock.mockResolvedValue([]);
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      await scheduleAutoRetryWithVerify(
+      await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
-        } as never,
+        },
         'spend-limit',
       );
       const ev = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
@@ -629,12 +626,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     // cm:guard a successful rotation is the ONLY observer of recovery — without this resolve the capacity notification stays in the bell about a pool that came back
     it('clears the capacity notification as soon as a device is usable again', async () => {
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      await scheduleAutoRetryWithVerify(
+      await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
-        } as never,
+        },
         'spend-limit',
       );
       expect(emitWedgeMock).not.toHaveBeenCalled();
@@ -644,12 +640,11 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     it('keeps rotating (does not park) when every device is merely offline', async () => {
       onlineDevicesMock.mockResolvedValue([]);
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-      const result = await scheduleAutoRetryWithVerify(
+      const result = await run(
         {
-          ...baseJob,
           deviceId: 'device-A',
           error: "You've hit your org's monthly spend limit",
-        } as never,
+        },
         'spend-limit',
       );
       expect(result.scheduled).toBe(true);
@@ -661,7 +656,7 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     enqueueMock.mockImplementationOnce(async () => {
       throw new Error('pg-boss down');
     });
-    const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    const result = await run({}, 'crashed');
     expect(result.scheduled).toBe(true);
     expect(result.newJobId).toBe('j2');
   });

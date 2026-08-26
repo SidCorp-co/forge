@@ -291,10 +291,6 @@ export async function scheduleAutoRetryWithVerify(
   job: JobRow,
   reason: string,
 ): Promise<RetryOutcome> {
-  if (job.cancellationRequested) {
-    return { scheduled: false, reason: 'cancellation_requested' };
-  }
-
   // ISS-450 — the classification below DRIVES the per-class retry policy
   // (code → no retry, transient-cc → immediate device failover) as well as
   // labelling the row for the operator UI / recovery stats.
@@ -336,6 +332,12 @@ export async function scheduleAutoRetryWithVerify(
       logger.warn({ err, jobId: job.id }, 'retry: failed to persist classification, continuing');
     }
   }
+
+  // cm:guard ISS-812 AC2 — this guard must stay BELOW the persist block above: a cancelled job still failed, and returning before classification is what left 4 rows on forge-beta (measured 2026-08-26, 60d window) at status='failed' carrying real error text ([NO_RESULT_EXIT], [RESULT_ERROR]) with failure_kind, failure_reason and classifier_version all NULL. Every other no-retry path pre-stamps the row at flip time; this was the only one that recorded nothing, and silence is the defect the epic exists to remove.
+  if (job.cancellationRequested) {
+    return { scheduled: false, reason: 'cancellation_requested' };
+  }
+
   if (job.agentSessionId) {
     try {
       await incrementRecoveryStats(job.agentSessionId, classified.kind);
