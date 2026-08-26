@@ -100,13 +100,6 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
     logger.warn({ err, projectId }, 'dispatch-tick: hold release failed');
   }
 
-  // cm:guard discard AFTER the hold release and BEFORE the picker (ISS-789) — a job released from hold is `queued` again and its trigger may have moved on while it waited, so releasing after would leave the stale job to be judged a whole tick later; and running after the pick would let the picker's own skip hide it for another cycle while `jobs_active_unique` blocks its replacement.
-  try {
-    await discardStaleTriggerJobs(projectId);
-  } catch (err) {
-    logger.warn({ err, projectId }, 'dispatch-tick: stale-trigger discard failed');
-  }
-
   // ISS-164 — issues with queued work at sweep start; the post-sweep
   // pipelineHealth broadcast unions these with any issues whose jobs we end
   // up dispatching so still-gated rows get a refreshed `lastTickAt`.
@@ -128,6 +121,13 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
     for (const r of rows) if (r.issue_id) affectedIssueIds.add(r.issue_id);
   } catch (err) {
     logger.warn({ err, projectId }, 'dispatch-tick: queued-issue pre-snapshot failed');
+  }
+
+  // cm:guard sits AFTER the hold release, AFTER the pre-snapshot, and BEFORE the picker (ISS-789), and all three edges are load-bearing: a job released from hold may have had its trigger move on while it waited; the snapshot must still see the job as `queued` or the discarded job's issue gets no pipelineHealth broadcast and the board keeps showing the reason for a job that no longer exists; and running after the pick would let the picker's own skip hide it for another cycle while `jobs_active_unique` blocks its replacement.
+  try {
+    await discardStaleTriggerJobs(projectId);
+  } catch (err) {
+    logger.warn({ err, projectId }, 'dispatch-tick: stale-trigger discard failed');
   }
 
   try {
