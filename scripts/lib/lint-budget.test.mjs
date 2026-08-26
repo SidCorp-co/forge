@@ -131,6 +131,15 @@ describe('drain', () => {
     expect(faults[0].reasons[0]).toContain('a move may not add debt');
   });
 
+  // cm:guard a registry typo must reach the caller as an error, never as null. Null demotes that scope to freeze-only, so the run stays green while half the contract stopped applying — a checker doing less than it claims, which is the one outcome this whole issue is about.
+  it('refuses a drain block with no include pattern', () => {
+    expect(() => drainMatcher({ cwd: 'p', drain: {} })).toThrow('declares no include pattern');
+  });
+
+  it('refuses a drain pattern that will not compile', () => {
+    expect(() => drainMatcher({ cwd: 'p', drain: { include: '^(' } })).toThrow();
+  });
+
   it('asks nothing of a file outside the branch delta', () => {
     const faults = drain({
       measured: { 'packages/core/src/a.ts': { r: 3 } },

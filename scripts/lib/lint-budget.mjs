@@ -31,9 +31,11 @@ export function total(files) {
  *
  * Returns null when the scope declares no drain, which is how web-v2 stays freeze-only.
  */
+// cm:guard a `drain` block that will not compile is a REGISTRY error, so it throws rather than resolving to null. Returning null would silently demote that scope to freeze-only, which is a checker quietly stopping at half its contract on the strength of a typo — the caller turns this into exit 2.
 export function drainMatcher(scope) {
   const d = scope?.drain;
-  if (!d?.include) return null;
+  if (d === undefined || d === null) return null;
+  if (!d.include) throw new Error(`scope ${scope.cwd}: drain declares no include pattern`);
   const include = new RegExp(d.include);
   const exclude = d.exclude ? new RegExp(d.exclude) : null;
   return (file) => include.test(file) && !exclude?.test(file);

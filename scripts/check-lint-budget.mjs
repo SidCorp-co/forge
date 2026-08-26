@@ -52,7 +52,7 @@ function config() {
 function collect(scopes) {
   const measured = {};
   const scopeOf = new Map();
-  let sawAnyDiagnostic = false;
+  const silent = [];
 
   for (const scope of scopes) {
     const cwd = join(ROOT, scope.cwd);
@@ -82,7 +82,13 @@ function collect(scopes) {
       return { error: `biome output in ${scope.cwd} was not JSON` };
     }
     const diags = parsed.diagnostics ?? [];
-    if (diags.length > 0) sawAnyDiagnostic = true;
+    if (diags.length === 0) silent.push(scope.cwd);
+
+    // cm:guard `internalError/*` is biome saying it could not READ the scope, not a violation in it. Counted as debt it lands under a nonsense file key and exits 1, so the run blames the code for a registry that points at nothing — and it prints a drained percentage first, which for a scope biome never opened reads as 100%.
+    const broken = diags.find((d) => String(d.category ?? '').startsWith('internalError'));
+    if (broken) {
+      return { error: `biome could not read ${scope.cwd}: ${broken.category}` };
+    }
 
     for (const d of diags) {
       const rule = d.category;
@@ -95,9 +101,12 @@ function collect(scopes) {
     }
   }
 
-  // cm:guard biome emitting nothing at all means the scope matched no files or the config stopped loading, NOT a clean tree — web-v2 carries 151 error-level diagnostics at rest. Reporting clean here is the fail-open shape every other checker exits 2 on.
-  if (!sawAnyDiagnostic)
-    return { error: 'biome reported zero diagnostics — the scope matched nothing' };
+  // cm:guard PER SCOPE, never "any scope saw something". Both scopes carry debt at rest, so an empty report from one means its files stopped matching or its config stopped loading — and with two scopes a global flag lets a healthy sibling vouch for a broken one, which reads as that whole package having drained to zero and lets every drain payment pass unpaid.
+  if (silent.length > 0) {
+    return {
+      error: `biome reported zero diagnostics for ${silent.join(', ')} — scope matched nothing`,
+    };
+  }
   return { measured, scopeOf };
 }
 
@@ -126,11 +135,14 @@ function branchDelta() {
   if (!base) return { skip: 'no origin/main to compare against (shallow or detached checkout)' };
   if (base === head) return { skip: `merge-base is HEAD (${base.slice(0, 8)}) — no branch delta` };
 
-  const changed = new Set((git(['diff', '--name-only', base]) ?? '').split('\n').filter(Boolean));
+  // cm:guard a git command that FAILED must not read as an empty delta. `git()` returns null on failure and `null ?? ''` is the same value as a clean tree, so a broken diff would judge zero files while the run printed that drain had been judged — the difference between "nothing to pay" and "we never looked".
+  const names = git(['diff', '--name-only', base]);
+  const renames = git(['diff', '--diff-filter=R', '-M', '--name-status', base]);
+  if (names === null || renames === null) return { error: `git diff against ${base} failed` };
+
+  const changed = new Set(names.split('\n').filter(Boolean));
   const renamed = new Map();
-  for (const line of (git(['diff', '--diff-filter=R', '-M', '--name-status', base]) ?? '')
-    .split('\n')
-    .filter(Boolean)) {
+  for (const line of renames.split('\n').filter(Boolean)) {
     const [, from, to] = line.split('\t');
     if (from && to) renamed.set(to, from);
   }
@@ -216,10 +228,20 @@ if (baseline === null) {
 const failures = freezeFaults(measured, baseline.files, mode === '--staged' ? stagedFiles() : null);
 
 // cm:guard drain is an --all rule only. --staged runs in .githooks/pre-commit, which must stay cheap and must not judge a payment against a half-staged tree; the branch delta this measures is what CI sees, and that is where the payment is due.
-const matchers = cfg.scopes.map(drainMatcher).filter(Boolean);
+let matchers;
+try {
+  matchers = cfg.scopes.map(drainMatcher).filter(Boolean);
+} catch (err) {
+  console.error(`check-lint-budget: ${err.message}`);
+  process.exit(2);
+}
 let drainNote = null;
 if (mode === '--all' && matchers.length > 0) {
   const delta = branchDelta();
+  if (delta.error) {
+    console.error(`check-lint-budget: ${delta.error}`);
+    process.exit(2);
+  }
   if (delta.skip) {
     drainNote = `drain skipped — ${delta.skip}; freeze-only this run`;
   } else {

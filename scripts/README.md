@@ -127,7 +127,9 @@ pass, which is how the prose gate once ran over zero files while printing succes
 Every run prints, per scope, `current / original (N% drained)`. `original` is written once and
 `--update-baseline` may only add a missing key: a denominator that gets recomputed makes each
 percentage relative to the last re-freeze, so it can never fall and "trending to 0" stays exactly as
-unfalsifiable as it was before anyone printed it.
+unfalsifiable as it was before anyone printed it. web-v2's `226` is its measured freeze figure from
+2026-08-23, seeded by hand because the field did not exist yet; core's `280` was measured the day it
+was registered.
 
 Exit `0` clean · `1` a file gained a violation or skipped its payment · `2` could not run. That last
 one includes biome reporting **zero** diagnostics: both scopes carry debt at rest, so an empty report
