@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
@@ -9,16 +9,21 @@ import { SentryInit } from "@/providers/sentry-init";
 import { RouteProgress } from "@/design/patterns/route-progress";
 import "./globals.css";
 
-const hanken = Hanken_Grotesk({
+// cm:guard both families are VENDORED (fonts/*.woff2, provenance in fonts/README.md) and must stay that way — `next/font/google` fetches the binaries at build time, and one Coolify app builds core and web-v2 together, so a font host that does not answer fails the BACKEND deploy too (2026-08-13: deploy zs4ocksc8sokkcw0g0g0w4s0 exit 1, a core-only fix merged-but-not-live ~90 min). fonts.test.ts fails if the import comes back.
+const hanken = localFont({
+  src: "./fonts/hanken-grotesk-latin-variable.woff2",
   variable: "--font-hanken",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono-latin-variable.woff2",
   variable: "--font-jetbrains",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "400 800",
+  style: "normal",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -38,13 +43,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    // Font variable classes go on <html> (not <body>): tokens.css declares
-    // --font-sans/--font-mono at :root referencing var(--font-hanken)/
-    // var(--font-jetbrains), and a var() is substituted using the custom
-    // property value in scope at the DECLARING element (:root === <html>).
-    // With the vars only on <body>, :root resolved them to empty and the body
-    // fell back to system sans. Defining them on <html> makes :root see them,
-    // so --font-sans resolves to the real next/font family.
+    // cm:guard the two `.variable` classes belong on <html>, NEVER <body> — tokens.css declares `--font-sans: var(--font-hanken), …` at :root, and a var() is substituted with the custom-property value in scope at the DECLARING element (:root === <html>), so vars defined only on a descendant resolve to empty and every screen silently falls back to system sans (ISS-306's decisive root cause; the compiled CSS looks correct either way, so only getComputedStyle on a live page catches it).
     <html
       lang="en"
       data-theme="light"
