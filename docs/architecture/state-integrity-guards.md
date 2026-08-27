@@ -39,4 +39,4 @@ Every refuse path posts an operator-facing comment (`isAi: true`) before or inst
 
 ## Deliberately out of scope
 
-Re-verifying the specific cross-project incident evidence (getcontent/anhome reports) that motivated this epic — the fix is code in `packages/core`, and each gap was confirmed directly against this repo's live source rather than against those reports (see ISS-786 clarify step). Retuning `STAGE_STALL_CAP` (3) — a separate tuning knob. `REOPEN_CAP` is deleted (RFC 0002 INV-8); [reopen-loop-guard.md](reopen-loop-guard.md) is superseded on that point.
+Re-verifying the specific cross-project incident evidence (getcontent/anhome reports) that motivated this epic — the fix is code in `packages/core`, and each gap was confirmed directly against this repo's live source rather than against those reports (see ISS-786 clarify step). Retuning `STAGE_STALL_CAP` (3) — a separate tuning knob. `REOPEN_CAP` is deleted ([RFC 0002](../rfcs/0002-park-axis-separation.md) INV-8).

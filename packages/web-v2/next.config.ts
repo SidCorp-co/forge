@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 /**
- * web-v2 — the redesigned Forge cloud UI (parallel package, see
- * docs/proposals/web-v2-redesign.md). Shares the same `core` REST/WS
- * contract as `packages/web`.
+ * web-v2 — the Forge cloud UI, canonical at `/`. Speaks the same `core`
+ * REST/WS contract every other client does.
  *
  * When `E2E_CORE_PROXY_URL` is set (dev / CI / Playwright), Next.js proxies
  * `/api/*` and `/ws` to core so browser requests stay same-origin (the

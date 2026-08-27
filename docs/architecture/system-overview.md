@@ -51,7 +51,7 @@ runtime plane — your machine(s)
 
 ## Pipeline state machine
 
-15 statuses in `packages/core/src/db/schema.ts` (`issueStatuses`). Lifecycle, transitions, and skill mapping: [status-pipeline.md](../modules/issues-pipeline/status-pipeline.md) (source of truth). Per-project `pipelineConfig.auto*` decides auto-run vs human gate.
+16 statuses in `packages/core/src/db/schema.ts` (`issueStatuses`). Lifecycle, transitions, and skill mapping: [status-pipeline.md](../modules/issues-pipeline/status-pipeline.md) (source of truth). Per-project `pipelineConfig.auto*` decides auto-run vs human gate.
 
 ## Security boundaries
 

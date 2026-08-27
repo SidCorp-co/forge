@@ -984,7 +984,7 @@ verified the 19 ported product surfaces. Landing-page GSAP animation issue
 - Web Dockerfile rewritten to use pnpm + workspace context (npm ci can't resolve `workspace:*` for `@forge/contracts`)
 - SMTP env vars now optional: when `SMTP_HOST` is empty, email send is skipped (logged instead). Email verification still enforced server-side
 - `APP_BASE_URL` and `CORS_ORIGINS` default to `http://localhost:3000` when unset
-- Broken `[ROADMAP.md](ROADMAP.md)` link in `docs/architecture/system-overview.md` (resolved to `../ROADMAP.md`)
+- Broken `ROADMAP.md` link in `docs/architecture/system-overview.md` (resolved to `../ROADMAP.md`)
 - Added `docs/rfcs/0001-device-runner-architecture.md` stub (canonical content remains in ADR 0001)
 - Test mocks updated for pg-boss `createQueue` API
 - `pipeline-e2e.test.ts` multi-line `typeof import(...)` syntax (TS 5.7 strict)

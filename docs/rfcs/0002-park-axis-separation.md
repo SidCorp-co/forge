@@ -2,7 +2,7 @@
 
 - Status: **Implemented** — decided by the owner 2026-08-13, shipped 2026-08-14 in four commits (`77a100a4` `c5643907` `01d0e1f2` `0cddbaf9`) plus one repair (`0d7ee6f8`), and live on forge-beta the same day. See "As shipped" below for the four places the code differs from this document.
 - Author: owner + agent session 2026-08-13
-- Supersedes: [`docs/architecture/reopen-loop-guard.md`](../architecture/reopen-loop-guard.md) (ADR, ISS-766) — keep the file and mark it superseded; its ISS-801 cost data is the evidence behind the drawbacks section here.
+- Supersedes: the reopen-loop-guard ADR (ISS-766), deleted 2026-08-27 — its ISS-801 cost data is carried in the drawbacks section below; the file itself is in git history.
 
 ## Summary
 
@@ -179,7 +179,7 @@ This change removes more than it adds.
 | 2 | `prompt/facts/registry.ts:93` | the park-exit bullet in `PIPELINE_RULES_TEXT` — and line 92's reopen-cap sentence, which teaches the old rule to every agent |
 | 3 | `guides/registry.ts:264`, `:268` | the park-exit section and the "To resume" paragraph; the "`waiting` means five different things" table becomes two kinds |
 | 4 | `docs/modules/issues-pipeline/status-pipeline.md` | its mermaid diagram *is* the old park-exit rule |
-| 5 | `docs/architecture/reopen-loop-guard.md` | mark superseded; keep the ISS-801 data |
+| 5 | the reopen-loop-guard ADR | deleted; its ISS-801 data moved into Drawbacks |
 | 6 | `CLAUDE.md` — orphan-hygiene table | add `held` to the three defences, so a later reader does not "clean it up" |
 | 7 | the `PARK_EXIT_RULE` drift test | deleted in the same commit |
 
@@ -211,7 +211,7 @@ Accepted by the owner on 2026-08-13. These are choices, not oversights.
 
 | Drawback | Evidence it is real | Decision |
 |---|---|---|
-| No ceiling on reopen rounds. An agent that misjudges "no progress" can loop until the provider's own account limit stops it. | ISS-801 ran 8 fix + 9 review rounds serially at opus tier before a human saw it — with the cap rule already taught in `PIPELINE_RULES_TEXT:92`. Prose alone did not bound it. | Accepted. Safety moves to observation (INV-7), not enforcement. |
+| No ceiling on reopen rounds. An agent that misjudges "no progress" can loop until the provider's own account limit stops it. | ISS-801 ran 8 fix + 9 review rounds serially at opus tier before a human saw it — with the cap rule already taught in `PIPELINE_RULES_TEXT:92`. Prose alone did not bound it. ISS-766 measured that opus-on-rework loop at $698 of a $1,207 week. | Accepted. Safety moves to observation (INV-7), not enforcement. |
 | No budget backstop, in either form (park or hold). | — | Accepted. The de-facto ceiling is the provider account limit plus `noProgressRounds` as agent orientation. |
 | An agent can leave `needs_info` without a human answering, so it can effectively answer its own question. | ISS-820 exists because a fabricated "the owner decided" note overrode a real human answer. | ~~Accepted~~ → **resolved 2026-08-14 by extending INV-8**: entering `needs_info` (and `waiting`) now requires a `reason`, so the question is on the record and needs no check on who answers it. |
 | **Cancel narrows in meaning.** With no actor gate, Cancel cancels the current attempt (jobs cancelled, run `cancelled`, cascade) but no longer freezes the issue: a later status advance dispatches new work. | ISS-411 built the `on_hold` gate for exactly this. | Accepted. Cancel is a job-axis action and stays there. Freeze semantics would need a gate, which this RFC removes by design. |

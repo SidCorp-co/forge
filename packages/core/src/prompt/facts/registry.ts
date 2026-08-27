@@ -1,6 +1,6 @@
 // Forge Facts registry — the single source of truth for the FIXED Forge
 // process knowledge a skill author would otherwise have to rediscover and
-// hand-copy into every SKILL.md (see `docs/skill-facts-design.md`).
+// hand-copy into every SKILL.md (see `docs/modules/agents-jobs/skill-facts.md`).
 //
 // Two consumers read this module:
 //   1. `prompt/system.ts` renders the `tier: 'mandatory'` facts into the

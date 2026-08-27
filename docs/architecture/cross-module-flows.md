@@ -4,7 +4,7 @@ How modules chain for primary journeys. Module detail: [../modules/{module}/READ
 
 Each figure draws what the step list cannot: **which module boundary is crossed, and over what**
 (HTTP in, a DB lifecycle hook, pg-boss, WebSocket, HTTP back). The status ladder itself is drawn once
-in [../guides/pipeline-gates.md](../guides/pipeline-gates.md) and not repeated here.
+in [../modules/issues-pipeline/status-pipeline.md](../modules/issues-pipeline/status-pipeline.md) and not repeated here.
 
 ## Flow: Webhook issue → pipeline → close
 

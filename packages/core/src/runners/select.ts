@@ -237,8 +237,7 @@ function rowToRunner(r: RunnerRow): Runner {
  *      `fresh_capable_runners.in_flight < cap`, so the dispatcher won't
  *      pick a new job when the primary is full. We intentionally do NOT
  *      fall through to standby on "primary full" — that would let a load-
- *      balance pattern silently emerge against the spec
- *      ([docs/proposals/dispatch-load-balance-v2.md](primary-pinned)).
+ *      balance pattern silently emerge against the primary-pinned spec.
  *   3. **standby** — any other online + fresh runner on the project
  *      (device_id ≠ defaultDeviceId), ranked by `last_seen_at DESC, id
  *      ASC`. Deterministic — no `RANDOM()` tiebreaker — so a re-run with

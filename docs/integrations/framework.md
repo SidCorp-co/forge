@@ -156,6 +156,6 @@ Connection-level router, all under `/api/integration-connections` (`integrationC
 
 ## Not yet (unshipped)
 
-Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no Human-Task adapter; no `validateConfig`/`pollState` hooks, webhook-secret rotation window, or payload versioning. Future work lives in [../IDEAS.md](../IDEAS.md) / issues — not here.
+Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no Human-Task adapter; no `validateConfig`/`pollState` hooks, webhook-secret rotation window, or payload versioning. Future work lives in the issue tracker — not here.
 
 (Health-polling and delivery replay have *shipped*: an hourly health sweep — `integrations/health-sweep.ts`, queue `integrations-health-sweep`, cron `17 * * * *` — re-probes connections older than 30 min; delivery replay is the `POST /…/deliveries/:deliveryId/retry` route above.)

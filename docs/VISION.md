@@ -35,7 +35,7 @@ Direction (not built): **Idea → Spec → Design** as new stage types in the sa
 
 - Not a Claude Code replacement, not a chat UI, never an Anthropic-API credential holder.
 - No multi-tenant SaaS in core, no enterprise RBAC in `v0.x`, no agent-framework abstractions.
-- **Not yet (sequenced behind kernel trust, §5.10–11):** concurrency caps >1, skill marketplace, model-routing UI, UI polish beyond core loop. They unlock when metric ② trends down. Parked ideas → [IDEAS.md](IDEAS.md) (non-authoritative).
+- **Not yet (sequenced behind kernel trust, §5.10–11):** concurrency caps >1, skill marketplace, model-routing UI, UI polish beyond core loop. They unlock when metric ② trends down.
 
 ## 5. Principles
 

@@ -2,10 +2,8 @@
  * Widget API key middleware.
  *
  * Keys are stored in `projects.api_key` as plaintext and looked up by
- * equality. That trade-off is documented in
- * [ADR 0013](../../../../docs/decisions/0013-widget-api-key-storage.md) —
- * the secret is embedded in the page that loads the widget, so server-side
- * hashing does not change the threat model. Rotation (POST
+ * equality: the secret is embedded in the page that loads the widget, so
+ * server-side hashing does not change the threat model. Rotation (POST
  * /api/projects/:id/api-key/rotate) is the mitigation against a DB leak.
  */
 

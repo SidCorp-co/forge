@@ -62,7 +62,7 @@
         "react-query",
         "tailwind"
       ],
-      "docs": "docs/proposals/web-v2-redesign.md"
+      "docs": "docs/architecture/system-overview.md"
     },
     {
       "id": "packages/core",

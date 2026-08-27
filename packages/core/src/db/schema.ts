@@ -2459,23 +2459,7 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
 
-// Stateless coordinator agent supplementing the per-issue pipeline. See parent
-// epic ISS-16 and `.forge/pm-agent-requirements.md` for the design. Tables:
-//   - issue_dependencies: cross-issue edges (blocks/relates/duplicates/parent)
-//   - pm_decisions:       audit log of every PM session output
-//   - pm_config:          per-project enable/cadence/triggers (one row/project)
-//   - pm_policies:        free-text Markdown policies, embedded for retrieval
-//
-// Dispatcher convention (ISS-40 PR-E Layer 2): only rows with `kind='blocks'`
-// gate dispatch. An edge `(from=A, to=B, kind='blocks')` means **A must
-// reach a terminal status (`released`/`closed`) before B
-// can dispatch**. Other kinds (`relates`, `duplicates`, `parent`) are PM/UX
-// metadata only and do not affect dispatch. Cross-project edges are allowed.
-// The `decomposes` kind (epic→child) engages a separate decomposition
-// lifecycle (cascade approve on parent waiting→approved, watcher when all
-// children reach staging, atomic release gate on child release jobs, close
-// cascade on parent→closed). See `pipeline/decomposition.ts` and
-// `pipeline/decomposition-subscribers.ts`.
+// cm:guard only `kind='blocks'` gates dispatch: an edge (from=A, to=B, 'blocks') means A must reach a terminal status before B may dispatch, and cross-project edges are legal. `relates`/`duplicates`/`parent` are PM/UX metadata a dispatch path must never read, and `decomposes` (epic→child) engages the separate cascade in pipeline/decomposition.ts + decomposition-subscribers.ts rather than this gate.
 
 export const issueDependencyKinds = [
   'blocks',

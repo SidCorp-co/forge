@@ -78,7 +78,7 @@ with branches:
 
 - **Webhook → auto-triage**: external POST to `/api/webhooks/in/:slug` → auth via project webhook secret → issue created `open` → lifecycle hook fires `issue:created` → if `autoTriage`, `triage` job enqueued (execution: [../agents-jobs/README.md](../agents-jobs/README.md)).
 - **Human approves plan**: issue `waiting` with completed plan → user clicks "Approve" → status → `approved` → if `autoCode`, `forge-code` job enqueued → loop continues.
-- **Reopen cycle**: issue `testing`+ fails QA → status → `reopen` carrying a **required** `reason` (posted as a comment before the flip; 422 `REOPEN_REASON_REQUIRED` without it) → `forge-fix` job enqueued → on success status → `developed`, pipeline resumes. There is no cap: RFC 0002 replaced it with the required reason plus an advisory `noProgressRounds` alert, because a counter cannot distinguish five rounds that each fixed a different blocker from five that changed nothing ([reopen-loop-guard.md](../../architecture/reopen-loop-guard.md) is superseded on that point).
+- **Reopen cycle**: issue `testing`+ fails QA → status → `reopen` carrying a **required** `reason` (posted as a comment before the flip; 422 `REOPEN_REASON_REQUIRED` without it) → `forge-fix` job enqueued → on success status → `developed`, pipeline resumes. There is no cap: RFC 0002 replaced it with the required reason plus an advisory `noProgressRounds` alert, because a counter cannot distinguish five rounds that each fixed a different blocker from five that changed nothing.
 
 ## API Endpoints
 

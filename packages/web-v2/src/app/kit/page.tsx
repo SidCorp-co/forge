@@ -921,7 +921,7 @@ export default function KitPage() {
           </Section>
 
           <footer className="fg-caption pb-10 pt-4">
-            web-v2 design layer · see docs/proposals/web-v2-redesign.md
+            web-v2 design layer
           </footer>
         </main>
       </div>

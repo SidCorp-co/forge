@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { type JobType, testResults } from '../db/schema.js';
 
 /**
- * Step-handoff payload schema (proposal: docs/proposals/step-handoff-memory.md).
+ * Step-handoff payload schema (docs/modules/memory-knowledge/step-handoffs.md).
  *
  * Each pipeline state that emits a handoff (triage/clarify/plan/code/review/
  * test/fix) has a discriminator branch below. The same schema is:

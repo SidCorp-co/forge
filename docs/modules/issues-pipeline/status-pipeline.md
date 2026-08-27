@@ -2,8 +2,6 @@
 
 Issue lifecycle: 16 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
 
-> Configuring stages (Auto / Manual gate / Skip) + recommended presets: [guides/pipeline-gates.md](../../guides/pipeline-gates.md). This page is the reference; the guide is the practical how-to.
-
 ## Statuses
 
 Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 16 entries). Keep this table in lockstep.
@@ -141,7 +139,7 @@ Device runners share one repo checkout per project → one agent per project at 
 
 ### Reopen cycle protection
 
-`reopen`, `waiting` and `needs_info` — the three statuses that STOP the pipeline — each MUST carry a `reason` (`waiting` also a `waitingKind`) — posted as a comment *before* the status flips, and a failed post rejects the transition (422 `TRANSITION_REASON_REQUIRED` / `WAITING_KIND_REQUIRED`). Entering a park costs a sentence; leaving one costs nothing. There is no cap: the count that mattered was never "how many reopens" but "how many reopens changed nothing", and a cap could not tell those apart, so it parked issues that were making progress. `reopenCount` is still stamped for the alert. Superseded: [reopen-loop-guard.md](../../architecture/reopen-loop-guard.md).
+`reopen`, `waiting` and `needs_info` — the three statuses that STOP the pipeline — each MUST carry a `reason` (`waiting` also a `waitingKind`) — posted as a comment *before* the status flips, and a failed post rejects the transition (422 `TRANSITION_REASON_REQUIRED` / `WAITING_KIND_REQUIRED`). Entering a park costs a sentence; leaving one costs nothing. There is no cap: the count that mattered was never "how many reopens" but "how many reopens changed nothing", and a cap could not tell those apart, so it parked issues that were making progress. `reopenCount` is still stamped for the alert.
 
 ## Project pipeline configuration
 
