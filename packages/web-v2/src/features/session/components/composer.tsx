@@ -12,10 +12,14 @@ import { Banner, Button, Icon, IconButton, Textarea } from "@/design";
 import {
   type ClipboardEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useRef,
   useState,
 } from "react";
+import type { InvokableSkill } from "@/features/skills/types";
+import { filterSkillsByQuery, findSlashToken, replaceSlashToken } from "../slash-token";
+import { SlashSkillsMenu, type SlashSkillsSource } from "./slash-skills-menu";
 
 // Mirror core's session attachment allow-list (agent-sessions/attachment-service
 // ALLOWED_MIMES) + UPLOADS_MAX_BYTES so the server never 400s what we staged.
@@ -35,6 +39,11 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+interface StagedFile {
+  id: string;
+  file: File;
 }
 
 interface ComposerProps {
@@ -59,6 +68,19 @@ interface ComposerProps {
    * visible but unclickable in some browsers/zoom levels (ISS-506).
    */
   sticky?: boolean;
+  /**
+   * Controls rendered inside the bordered input row, left of the textarea and
+   * right of the attach `+` (ISS-718 — the model picker goes here). A slot
+   * rather than a prop per control so the run thread, which passes nothing,
+   * keeps exactly its current row.
+   */
+  actions?: ReactNode;
+  /**
+   * Enables the `/`-autocomplete (ISS-718). Absent, or `items` empty with
+   * nothing loading and no error, and the `/` trigger is not rendered at all —
+   * a control that can do nothing must not be shown, even greyed out.
+   */
+  slashSkills?: SlashSkillsSource;
 }
 
 /** Band wrapper styling shared by the Composer + the read-only note. `sticky`
@@ -86,13 +108,108 @@ export function Composer({
   placeholder = "Message the agent…",
   allowAttachments = false,
   sticky = true,
+  actions,
+  slashSkills,
 }: ComposerProps) {
   const [value, setValue] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<StagedFile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nextFileId = useRef(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const slashPanelRef = useRef<HTMLDivElement>(null);
   // Sendable when there's text OR at least one staged file.
   const canSend = !disabled && !busy && (value.trim().length > 0 || files.length > 0);
+
+  // cm:guard `slashOpen` must stay a separate flag from "a token exists" (ISS-718) — a token remains under the caret after Escape, so deriving openness from the token alone re-opens the panel the user just dismissed and makes Escape look broken
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashHighlight, setSlashHighlight] = useState(0);
+  const [slashCaret, setSlashCaret] = useState(0);
+  // cm:guard Escape has to be remembered against the DISMISSED TOKEN's start offset, not just as `slashOpen=false` — keeping on typing inside the same token calls syncSlash again, which would re-open the panel the user just dismissed and cost an Escape per keystroke. A new token (different start) is a new question and does re-open.
+  // cm:guard a REF, not state: React dispatches onSelect during the same keydown that pressed Escape, so a state value read from syncSlash's closure is the PRE-Escape render's and wipes the dismissal it just recorded. Nothing renders from this, so a ref is the right tool and the staleness cannot come back.
+  const slashDismissedAt = useRef<number | null>(null);
+  // cm:guard the trigger exists only once there is something to insert, but loading AND error keep it visible — otherwise the button appears and vanishes as the query settles, and a failed fetch becomes invisible instead of offering its retry
+  const skillsKnown = !!slashSkills;
+  const hasSkills =
+    skillsKnown &&
+    (slashSkills.items.length > 0 || slashSkills.loading || !!slashSkills.error);
+  const slashToken = skillsKnown ? findSlashToken(value, slashCaret) : null;
+  const slashMatches = slashToken
+    ? filterSkillsByQuery(slashSkills?.items ?? [], slashToken.query)
+    : [];
+  const slashMenuOpen = slashOpen && !!slashToken && hasSkills && !disabled;
+
+  /** Sync the token state from the live textarea after any edit / caret move. */
+  const syncSlash = useCallback(
+    (next: string, caret: number, reopen: boolean) => {
+      setSlashCaret(caret);
+      const token = findSlashToken(next, caret);
+      if (!token) {
+        setSlashOpen(false);
+        slashDismissedAt.current = null;
+        return;
+      }
+      setSlashHighlight(0);
+      const dismissed = slashDismissedAt.current === token.start;
+      if (!dismissed) slashDismissedAt.current = null;
+      if (reopen && !dismissed) setSlashOpen(true);
+    },
+    [],
+  );
+
+  /** Replace the active token with the picked skill and restore the caret. */
+  const insertSkill = useCallback(
+    (skill: InvokableSkill) => {
+      const el = textareaRef.current;
+      const caret = el?.selectionStart ?? slashCaret;
+      const token = findSlashToken(value, caret);
+      if (!token) return;
+      const next = replaceSlashToken(value, token, skill.name);
+      setValue(next.value);
+      setSlashOpen(false);
+      setSlashCaret(next.caret);
+      // cm:why the caret is restored after React commits the new value — set synchronously, the browser parks it at the end of the whole message instead of just past the inserted name
+      requestAnimationFrame(() => {
+        const node = textareaRef.current;
+        if (!node) return;
+        node.focus();
+        node.setSelectionRange(next.caret, next.caret);
+      });
+    },
+    [value, slashCaret],
+  );
+
+  /** The `/` trigger: open on an existing token, else insert one at the caret. */
+  const openSlashMenu = useCallback(() => {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    if (findSlashToken(value, caret)) {
+      setSlashCaret(caret);
+      setSlashHighlight(0);
+      slashDismissedAt.current = null;
+      setSlashOpen(true);
+      el?.focus();
+      return;
+    }
+    // cm:guard keep the token rule true — a `/` glued to the previous word is not a command, so the trigger has to insert a separating space or the menu it just opened would immediately close
+    const before = value.slice(0, caret);
+    const needsSpace = before.length > 0 && !/\s$/.test(before);
+    const insert = `${needsSpace ? " " : ""}/`;
+    const next = before + insert + value.slice(caret);
+    const nextCaret = caret + insert.length;
+    setValue(next);
+    setSlashCaret(nextCaret);
+    setSlashHighlight(0);
+    slashDismissedAt.current = null;
+    setSlashOpen(true);
+    requestAnimationFrame(() => {
+      const node = textareaRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(nextCaret, nextCaret);
+    });
+  }, [value]);
 
   // Validate + stage picked/pasted files against the allow-list (size/mime/count
   // caps) so the server never rejects what we accepted.
@@ -120,7 +237,13 @@ export function Composer({
       if (accepted.length > room) {
         errs.push(`Max ${MAX_FILES} attachments. Extras skipped.`);
       }
-      return [...prev, ...accepted.slice(0, Math.max(0, room))];
+      return [
+        ...prev,
+        ...accepted.slice(0, Math.max(0, room)).map((file) => ({
+          id: `file-${nextFileId.current++}`,
+          file,
+        })),
+      ];
     });
     setWarnings(errs);
   }, []);
@@ -160,15 +283,15 @@ export function Composer({
     [allowAttachments, acceptFiles],
   );
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = (id: string) => {
+    setFiles((prev) => prev.filter((file) => file.id !== id));
     setWarnings([]);
   };
 
   const submit = async () => {
     if (!canSend) return;
     const text = value.trim();
-    const staged = files;
+    const staged = files.map(({ file }) => file);
     try {
       await onSend(text, staged);
       // Clear only on success — a thrown send (e.g. 409 no online runner)
@@ -176,12 +299,51 @@ export function Composer({
       setValue("");
       setFiles([]);
       setWarnings([]);
+      setSlashOpen(false);
+      setSlashCaret(0);
     } catch {
       // Keep the text + files; the parent surfaces the error (Banner + toast).
     }
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // cm:guard the slash menu owns ↑/↓/Enter/Escape ONLY while it is open — widening that would regress Enter-to-send and Shift+Enter-for-newline (ISS-462 / ISS-714), which are the composer's oldest contracts
+    if (slashMenuOpen) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (!slashMatches.length) return;
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setSlashHighlight(
+          (h) => (h + step + slashMatches.length) % slashMatches.length,
+        );
+        return;
+      }
+      // cm:guard Tab has to be redirected INTO the panel while it is showing its error state, or the error's Retry is mouse-only: the next tabbable element is the send button, whose focus blurs the textarea and unmounts the panel before Tab arrives — and the panel deliberately refuses mouse focus (see slash-skills-menu.tsx). The skills query lives in the parent and never remounts, so without this a keyboard user's only recovery is to navigate away and back.
+      if (e.key === "Tab" && !e.shiftKey && slashSkills?.error) {
+        const focusable = slashPanelRef.current?.querySelector<HTMLElement>("button");
+        if (focusable) {
+          e.preventDefault();
+          focusable.focus();
+          return;
+        }
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        const picked = slashMatches[slashHighlight];
+        if (picked) {
+          e.preventDefault();
+          insertSkill(picked);
+          return;
+        }
+        // cm:why no match to insert, so this falls through to the send below and the typed text goes as-is
+      }
+      if (e.key === "Escape") {
+        // cm:guard Escape dismisses the menu ONLY — the typed text stays, which is the whole point of it here
+        e.preventDefault();
+        setSlashOpen(false);
+        slashDismissedAt.current = slashToken?.start ?? null;
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -197,8 +359,8 @@ export function Composer({
         {allowAttachments && warnings.length > 0 && (
           <Banner tone="attention">
             <ul className="space-y-0.5">
-              {warnings.map((w, i) => (
-                <li key={i}>{w}</li>
+              {warnings.map((w) => (
+                <li key={w}>{w}</li>
               ))}
             </ul>
           </Banner>
@@ -206,27 +368,27 @@ export function Composer({
 
         {allowAttachments && files.length > 0 && (
           <ul className="flex flex-col gap-1.5">
-            {files.map((f, i) => (
+            {files.map(({ id, file }) => (
               <li
-                key={`${f.name}-${i}`}
+                key={id}
                 className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
               >
                 <Icon
-                  name={f.type.startsWith("image/") ? "grid" : "folder"}
+                  name={file.type.startsWith("image/") ? "grid" : "folder"}
                   size={15}
                   className="flex-none text-subtle"
                 />
-                <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={f.name}>
-                  {f.name}
+                <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={file.name}>
+                  {file.name}
                 </span>
-                <span className="fg-caption flex-none">{formatSize(f.size)}</span>
+                <span className="fg-caption flex-none">{formatSize(file.size)}</span>
                 <IconButton
                   type="button"
                   icon="x"
                   size="sm"
-                  aria-label={`Remove ${f.name}`}
+                  aria-label={`Remove ${file.name}`}
                   disabled={busy}
-                  onClick={() => removeFile(i)}
+                  onClick={() => removeFile(id)}
                 />
               </li>
             ))}
@@ -237,7 +399,10 @@ export function Composer({
             send live inside ONE bordered box instead of three flex siblings,
             with the focus ring moving to the container so it reads as one
             control (ISS-714). */}
-        <div className="flex w-full items-end gap-1 rounded-2xl border border-line-strong bg-surface py-1.5 pl-1.5 pr-2 transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]">
+        <div
+          ref={rowRef}
+          className="flex w-full items-end gap-0.5 rounded-2xl border border-line-strong bg-surface py-1.5 pl-1.5 pr-2 transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)] sm:gap-1"
+        >
           {allowAttachments && (
             <>
               <IconButton
@@ -261,10 +426,39 @@ export function Composer({
               />
             </>
           )}
+          {hasSkills && (
+            <IconButton
+              type="button"
+              variant="ghost"
+              icon="command"
+              aria-label="Insert a skill"
+              aria-haspopup="listbox"
+              aria-expanded={slashMenuOpen}
+              className="h-11 w-11 flex-none"
+              // cm:guard NOT disabled by `busy` — the menu only edits the draft, the textarea stays editable while the agent works, and a control disabled with no stated reason is what the UX contract forbids
+              disabled={disabled}
+              onClick={openSlashMenu}
+            />
+          )}
+          {actions}
           <Textarea
+            ref={textareaRef}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              setValue(e.target.value);
+              syncSlash(e.target.value, e.target.selectionStart ?? 0, true);
+            }}
             onKeyDown={onKeyDown}
+            // cm:guard re-read the token on selection changes too — a click or an arrow key moves the caret out of (or into) a token without changing the text, so keying only off onChange leaves the menu stale
+            onSelect={(e) => {
+              const el = e.currentTarget;
+              syncSlash(el.value, el.selectionStart ?? 0, false);
+            }}
+            // cm:guard a focus move INTO the panel must not close it — closing here detaches the node the pointer is pressing, so its `click` never lands. The panel also cancels mousedown's focus default (slash-skills-menu.tsx), which is what covers Safari, where this relatedTarget is null.
+            onBlur={(e) => {
+              if (slashPanelRef.current?.contains(e.relatedTarget as Node | null)) return;
+              setSlashOpen(false);
+            }}
             disabled={disabled}
             rows={1}
             placeholder={
@@ -284,6 +478,31 @@ export function Composer({
             onClick={submit}
           />
         </div>
+        {slashSkills && (
+          <SlashSkillsMenu
+            open={slashMenuOpen}
+            onClose={() => setSlashOpen(false)}
+            query={slashToken?.query ?? ""}
+            matches={slashMatches}
+            highlight={slashHighlight}
+            onHighlight={setSlashHighlight}
+            onPick={insertSkill}
+            anchorRef={rowRef}
+            panelRef={slashPanelRef}
+            onLeave={(dismissed) => {
+              setSlashOpen(false);
+              if (dismissed) slashDismissedAt.current = slashToken?.start ?? null;
+              textareaRef.current?.focus();
+            }}
+            onReturnFocus={() => textareaRef.current?.focus()}
+            homeRef={textareaRef}
+            items={slashSkills.items}
+            loading={slashSkills.loading}
+            error={slashSkills.error}
+            fetching={slashSkills.fetching}
+            retry={slashSkills.retry}
+          />
+        )}
       </div>
     </div>
   );

@@ -108,6 +108,7 @@ describe('computeDeviceSkillStatus', () => {
     {
       skillId: 's-1',
       name: 'a',
+      description: '',
       version: 1,
       skillMd: '',
       files: [],
@@ -125,6 +126,7 @@ describe('computeDeviceSkillStatus', () => {
     {
       skillId: 's-2',
       name: 'b',
+      description: '',
       version: 1,
       skillMd: '',
       files: [],
@@ -142,6 +144,7 @@ describe('computeDeviceSkillStatus', () => {
     {
       skillId: 's-3',
       name: 'c',
+      description: '',
       version: 1,
       skillMd: '',
       files: [],
@@ -263,6 +266,7 @@ describe('pivotProjectSkillSyncStatus', () => {
     {
       skillId: 's-1',
       name: 'a',
+      description: '',
       version: 5,
       skillMd: '',
       files: [],
@@ -280,6 +284,7 @@ describe('pivotProjectSkillSyncStatus', () => {
     {
       skillId: 's-2',
       name: 'b',
+      description: '',
       version: 2,
       skillMd: '',
       files: [],

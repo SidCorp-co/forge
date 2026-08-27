@@ -171,6 +171,23 @@ describe('POST /api/agent-sessions/start', () => {
     expect(res.status).toBe(400);
   });
 
+  it('400s a model selection for a typed legacy session before creating it', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', type: 'qa', model: 'opus' }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(insertReturning).not.toHaveBeenCalled();
+    expect(publishSpy).not.toHaveBeenCalled();
+  });
+
   it('404 when project slug missing', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
@@ -273,80 +290,25 @@ describe('POST /api/agent-sessions/start', () => {
     expect(String(data.prompt)).toContain('hello');
   });
 
-  it('publishes agent:review for agent-type sessions, skips preamble', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
+  it.each(['qa', 'qa-reindex'])(
+    'rejects retired typed session %s before a row is created',
+    async (type) => {
+      const token = await signUserToken(USER_ID);
+      mockAuthVerified();
 
-    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
+      const res = await buildApp().fetch(
+        req('/api/agent-sessions/start', {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ projectSlug: 'apiflow', type }),
+        }),
+      );
 
-    insertReturning.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        deviceId: DEVICE_ID,
-        status: 'running',
-        title: 'qa Review',
-      },
-    ]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', type: 'qa' }),
-      }),
-    );
-    expect(res.status).toBe(201);
-    expect(buildChatPreamble).not.toHaveBeenCalled();
-    const reviewCall = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE_ID}` && (env as any).event === 'agent:review',
-    );
-    expect(reviewCall).toBeDefined();
-  });
-
-  it('publishes agent:reindex for *-reindex sessions', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
-    insertReturning.mockResolvedValueOnce([
-      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
-    ]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', type: 'qa-reindex' }),
-      }),
-    );
-    expect(res.status).toBe(201);
-    const reindexCall = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE_ID}` && (env as any).event === 'agent:reindex',
-    );
-    expect(reindexCall).toBeDefined();
-  });
+      expect(res.status).toBe(400);
+      expect(insertReturning).not.toHaveBeenCalled();
+      expect(publishSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it('409 NO_CLAUDE_CLIENT when no online Claude client is available (ISS-321)', async () => {
     // Previously this created a session that sat silent (no agent:start
@@ -381,37 +343,6 @@ describe('POST /api/agent-sessions/start', () => {
     expect(
       publishSpy.mock.calls.find(([_room, env]) => (env as any).event === 'agent:start'),
     ).toBeUndefined();
-  });
-
-  it('409 NO_CLAUDE_CLIENT for an agent-type session with no online client (ISS-420)', async () => {
-    // ISS-420: the guard used to EXEMPT agent-type sessions, so a review/reindex
-    // dispatched with no online device was created `running` and hung silently.
-    // It must now fail fast like a chat does.
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(null);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', type: 'qa' }),
-      }),
-    );
-    expect(res.status).toBe(409);
-    expect(((await res.json()) as { code?: string }).code).toBe('NO_CLAUDE_CLIENT');
-    expect(insertReturning).not.toHaveBeenCalled();
   });
 });
 

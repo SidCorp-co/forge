@@ -3,7 +3,7 @@
 // `packages/core/src/agent-sessions/routes.ts` for ISS-292.
 import { apiClient, apiClientList, apiMultipart } from "@/lib/api/client";
 import type { SessionMetadata, SessionRow } from "@/features/sessions/types";
-import type { SessionAttachment, TurnRow, TurnsResponse } from "./types";
+import type { ModelTier, SessionAttachment, TurnRow, TurnsResponse } from "./types";
 
 export interface GetTurnsOpts {
   /** Cursor — a turn id; returns turns *after* it. */
@@ -24,6 +24,13 @@ export interface SendOpts {
   deviceId?: string | null;
   /** ISS-499 — ids of already-uploaded session attachments to attach to this turn. */
   attachmentIds?: string[];
+  /**
+   * ISS-718 — the model tier this turn (and every later turn of the session)
+   * runs on. Three states: omitted keeps whatever the session last picked, a
+   * tier switches to it, and an explicit `null` clears the pick so the runner's
+   * own default applies again.
+   */
+  model?: ModelTier | null;
 }
 
 export interface ForkOpts {
@@ -57,7 +64,7 @@ export const sessionApi = {
   },
 
   /** `POST /api/agent-sessions/send` — queue a new user message to the device. */
-  send: ({ sessionId, message, claudeSessionId, deviceId, attachmentIds }: SendOpts) =>
+  send: ({ sessionId, message, claudeSessionId, deviceId, attachmentIds, model }: SendOpts) =>
     apiClient<SessionRow>("/agent-sessions/send", {
       method: "POST",
       body: JSON.stringify({
@@ -66,6 +73,8 @@ export const sessionApi = {
         ...(claudeSessionId ? { claudeSessionId } : {}),
         ...(deviceId ? { deviceId } : {}),
         ...(attachmentIds?.length ? { attachmentIds } : {}),
+        // cm:why `!== undefined`, not truthiness — `null` is the explicit "clear the pick" value and must reach the server, which a `??` or a falsy test would silently drop
+        ...(model !== undefined ? { model } : {}),
       }),
     }),
 
