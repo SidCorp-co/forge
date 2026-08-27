@@ -110,6 +110,21 @@ type OpsAlertRow = {
   body: string | null;
 };
 
+/** What an admin opening the bell does: read, but the condition is still live so `resolved_at` stays NULL. */
+async function acknowledge(userId: string, resolutionKey: string) {
+  await harness.db.execute(sql`
+    UPDATE notifications SET read = true
+    WHERE type = 'ops_alert' AND user_id = ${userId} AND resolution_key = ${resolutionKey}
+  `);
+}
+
+/** An A2 warn the admin has already opened: one stuck job, swept, then marked read with the condition still live. */
+async function openedThenAcknowledgedA2(runSweep: Mods['runAlertSweep'], userId: string) {
+  await seedStuckJobs(1, 700);
+  await runSweep(nextNow());
+  await acknowledge(userId, 'ops-alert:A2');
+}
+
 async function opsAlertRows(resolutionKey = 'ops-alert:A1'): Promise<OpsAlertRow[]> {
   const rows = await harness.db.execute<OpsAlertRow>(sql`
     SELECT id, user_id, severity, read, resolved_at, resolution_key, title, body FROM notifications
@@ -279,6 +294,29 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(critRows[0]?.user_id).toBe(admin.id);
     expect(critRows[0]?.severity).toBe('error');
     expect(critRows[0]?.read).toBe(false);
+  });
+
+  it('escalates an ACKNOWLEDGED row back to unread, so the bell shows the crit', async () => {
+    const admin = await seedAdmin();
+    await openedThenAcknowledgedA2(mods.runAlertSweep, admin.id);
+
+    await seedStuckJobs(2, 700);
+    await mods.runAlertSweep(nextNow());
+
+    const rows = await opsAlertRows('ops-alert:A2');
+    expect(rows[0]?.severity).toBe('error');
+    expect(rows[0]?.read).toBe(false);
+  });
+
+  it('leaves an acknowledged row read while the severity holds steady', async () => {
+    const admin = await seedAdmin();
+    await openedThenAcknowledgedA2(mods.runAlertSweep, admin.id);
+
+    await mods.runAlertSweep(nextNow());
+
+    const rows = await opsAlertRows('ops-alert:A2');
+    expect(rows[0]?.severity).toBe('warning');
+    expect(rows[0]?.read).toBe(true);
   });
 
   // cm:guard the active row's TEXT must track the condition on every sweep, while the recipient is pinged only on a severity move. Gating the whole UPDATE on the severity change froze the count for the life of the incident, so an A2 opened at 1 stuck job still read "1 job" once 2 were stuck — the operator's only number, stale, with no second notification coming to correct it.

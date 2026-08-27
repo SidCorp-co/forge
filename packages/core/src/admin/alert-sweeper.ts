@@ -72,6 +72,7 @@ async function claimOrEscalate(input: {
   if (!notificationId) {
     // cm:guard the CTE must be `FOR UPDATE`, not a plain `FROM notifications prev` self-join — a non-locked rowmark is re-read under EvalPlanQual, so with two core replicas sweeping at once BOTH read the pre-update severity, both report an escalation, and the recipient is notified twice for one move. Locking the row first serializes them: the loser sees the winner's severity and refreshes the text silently.
     // cm:guard refresh title/body on EVERY sweep, notify only on a severity move — gating the whole UPDATE on the severity change froze the text for the life of the incident, so an A2 opened at 3 stuck jobs still read "3 jobs" at 30, with no second notification coming to correct it. Reading `prev` is the only way to have both: RETURNING yields the NEW row, so the pre-update severity is otherwise unreachable.
+    // cm:guard clear `read` on a severity move, and ONLY on a severity move — an escalation on a row the admin had already opened otherwise reaches no channel at all: the toast needs a live socket, the bell counts unread, and the row keeps its original created_at so it does not resurface. It never self-heals either, because the next sweep finds severity already 'error' and fires nothing. Clearing it on every sweep instead would re-mark the row unread forever while the condition lasts.
     const updated = await db.execute<{ id: string; escalated: boolean }>(sql`
       WITH locked AS (
         SELECT id, severity FROM notifications
@@ -80,7 +81,8 @@ async function claimOrEscalate(input: {
         FOR UPDATE
       )
       UPDATE notifications n
-      SET severity = ${severity}, title = ${title}, body = ${body}
+      SET severity = ${severity}, title = ${title}, body = ${body},
+          read = CASE WHEN prev.severity IS DISTINCT FROM ${severity} THEN false ELSE n.read END
       FROM locked prev
       WHERE prev.id = n.id
       RETURNING n.id, (prev.severity IS DISTINCT FROM ${severity}) AS escalated

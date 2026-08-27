@@ -375,6 +375,7 @@ async function alertSpendSpike(now: Date): Promise<AdminAlert> {
             AND recorded_at < now() - (${w}::int * interval '1 hour')
         ), 0)::float AS base
       FROM usage_records
+      WHERE recorded_at >= now() - (${w * 2}::int * interval '1 hour')
     `),
     db.execute<SpendRow>(sql`
       SELECT p.id AS project_id, p.slug,
