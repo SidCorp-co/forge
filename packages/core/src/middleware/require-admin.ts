@@ -6,7 +6,8 @@ import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import type { AuthVars } from './auth.js';
 
-function parseAdminList(): string[] {
+// cm:edge lockstep -> packages/core/src/notifications/platform-admins.ts — platformAdminUserIds resolves the same allow-list against `users` so an ops-alert recipient is exactly someone who can also open the gated GET
+export function parseAdminList(): string[] {
   const raw = env.ADMIN_EMAILS;
   if (!raw) return [];
   return raw

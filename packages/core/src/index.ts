@@ -10,6 +10,7 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
+import { adminAlertRoutes } from './admin/alert-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
 import { agentSessionAttachmentRoutes } from './agent-sessions/attachment-routes.js';
@@ -239,8 +240,7 @@ export async function runShutdown(
 ): Promise<number> {
   logger.info({ signal }, '@forge/core shutdown initiated');
 
-  // server.close() stops accepting new connections immediately and resolves
-  // once all in-flight requests have finished.
+  // cm:guard build this promise BEFORE awaiting anything below — server.close() stops accepting new connections at the call, and only resolves once the in-flight requests drain, so constructing it later keeps the listener open across the whole shutdown sequence
   const httpClosed = new Promise<void>((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
   });
@@ -409,6 +409,7 @@ app.route('/api/pipeline-runs', pipelineRunRoutes);
 app.route('/api/projects', pipelineRunProjectRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/admin', adminAggregateRoutes);
+app.route('/api/admin', adminAlertRoutes);
 app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
 app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceLoginRoutes);

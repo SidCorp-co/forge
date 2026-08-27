@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Platform admins now get a notification when one of five conditions that quietly stall the pipeline — orphaned jobs, stuck jobs, runner starvation, spend spikes, failing automation — crosses into warning or critical, and it clears itself once the condition does.
 - Lists from the Forge tools now say whether they were cut short: each one reports how many rows came back, the limit that bound them, and whether more rows match.
 - A UX finding that cannot work out which issue it belongs to now names the condition that refused it, and can be written against an issue you name instead of being dropped.
 - An issue created in the wrong status can be moved back to draft for as long as nothing has run on it, instead of being stuck out of reach.
