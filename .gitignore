@@ -34,8 +34,15 @@ __pycache__
 *.pyc
 # `.claude/` is local-only working state — skills are distributed via the
 # server (Skill Studio / device skill sync), not committed here. Ignore the
-# whole directory (skills, worktrees, agents, settings, state, screenshots).
-.claude/
+# contents (skills, worktrees, agents, settings, state, screenshots).
+# `rules/` is the one exception: not a skill, but reviewed repo doctrine that must reach
+# teammates and runner boxes the same way CLAUDE.md does. Ignore the contents rather than
+# the directory — git does not descend into an ignored directory, so a `!` under `.claude/`
+# would never be reached.
+.claude/*
+!.claude/rules/
+.claude/rules/*
+!.claude/rules/*.md
 
 # IDE
 .idea

@@ -2,6 +2,142 @@
 
 Project-level utilities. Each script is standalone (no shared lib) and has a comment header explaining its contract.
 
+## Ten gates, five axes
+
+Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
+load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
+completes, is ignored, and cannot fail the gate. `archmap` was in exactly that state — measured
+2026-08-13, documented as the relations gate the whole time it could not block anything.
+`verify --ci-parity` now fails on the mismatch.
+
+Every gate that drifted did so while documented and non-blocking — biome to 366 errors, `typecheck`
+to 84, the two length rules to 143 — and each stopped drifting the day it was baselined and gated.
+
+**An axis measures at its weakest gate.** Reporting the strongest would let one locked checker hide
+a sibling that stopped blocking, which is the whole failure mode here. `form` is gated four times
+(biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
+`check-lint-budget` for `web-v2` · a bare `biome check scripts` for the checkers themselves) and
+`behaviour` three times (reachability · signal · flow coverage).
+
+| Axis | Gate (CI job) | Owns | Must not touch |
+|---|---|---|---|
+| format + lint | `biome check` — `core` | whitespace, import order, recommended rules | comment content |
+| size | `check-size-budget` — `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
+| lint debt | `check-lint-budget` — `web` | per (file, rule) biome violations in `web-v2`, frozen | which rules exist — `packages/web-v2/biome.json` declares them |
+| checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
+| knowledge | `cm verify` — `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
+| relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
+| reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
+| behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
+| flows | `check-flow-coverage` — `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
+| language | `check-source-language` — `lang-check` | English-only source policy | everything else |
+
+### Conformance levels
+
+`.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
+block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 2 ·
+relations 2 · behaviour 2 · language 3.
+
+Level 2 is the claim *"old debt frozen, new debt blocked"*, so each such axis must also name where
+its debt is frozen and which direction improves it — `baseline: {path, keyBy, improves}`, where
+`improves` is `down` (a per-key number may only fall), `shrink` (a set may only lose members) or
+`tighten` (a status may only get stricter). The direction lives in the manifest, not in the
+baseline file, because `--update-baseline` rewrites those files and a rule a re-freeze can silently
+drop is not a rule.
+
+The manifest also declares a `profile` — the shape the whole repo claims, never the tools it uses:
+`baseline` one axis measures · `standard` two axes block and both meta-checks are present ·
+`hardened` every declared axis blocks and every `ci-passed` needs-job is asserted. Today: hardened.
+
+### Why reachability is prior to behaviour
+
+`check-test-signal` scopes itself to what a runner collects, so it measured 493 files while
+`packages/tests` held 64 that no runner collected — a checker cannot see what it is not given.
+Frozen at zero on 2026-08-25, the one day it cost nothing: 495 tracked test files, 495 collected.
+Declared skips live in `.forge/test-skips.json` with a reason each, because *"waiting on ISS-214's
+endpoints"* is what the device-runner E2E said for months after those endpoints shipped.
+
+### Why flows is where the two axes meet
+
+codemap says *which line is step 4 of the dispatch flow*; the integration suite's v8 report says
+*which lines ran*. A step named in the map and executed by nothing is a step the next editor
+believes is defended. **A step reached only by unit tests does not count** — with 974 `vi.mock`
+calls in `packages/core`, a unit test can run a step's function with every neighbour stubbed, which
+proves the function runs, not that the flow connects. Nothing is self-reported: a
+`// covers dispatch/tick` comment in a test file would be the claim-instead-of-measurement the
+manifest exists to catch.
+
+### Why lint debt and size are their own rows
+
+`web-v2` had no biome config at all until 2026-08-23; measured on the day it got one, 748
+diagnostics — 409 formatter, 185 import order, 151 real lint errors. `error` would have been 151 red
+builds; `warn` would have held nothing. `check-lint-budget.mjs` freezes today's 216 violations
+across 98 files per (file, rule) and fails only on growth — per rule rather than per line, so moving
+code inside a file is not a violation. The formatter stays **off** there on purpose: enabling it is
+a 313-file, 22k-line diff that would bury every real change under it.
+
+Size is the same shape one package over. biome **declares** the two length rules but cannot gate
+them: it has no baseline, so the only choices were `warn` (143 violations, exit 0, nothing held) and
+`error` (every build red). `check-size-budget.mjs` reads biome's own JSON, freezes today's offenders
+per file, and fails only on growth. It adds no rule — `packages/core/biome.json` still owns the
+thresholds.
+
+### Declared severity downgrades
+
+`packages/core/biome.json` carries one `overrides` block, scoped to `**/*.test.ts` and
+`**/tests/**`: `correctness/noUnsafeOptionalChaining` drops to `warn` (41 sites) and
+`suspicious/noThenProperty` goes `off`. The first is the `expect(call).toBeDefined()` then
+`call?.[1]` idiom, where the optional chain is asserted safe one line above; the second is Drizzle's
+thenable query builder. Both are downgrades of rules the preset makes errors, so they belong in this
+accounting rather than only in the config — an undocumented severity downgrade is how an axis stops
+meaning what its row says. Measured 2026-08-25.
+
+### Do not add a rule to an axis another already owns
+
+- **No ESLint.** biome >= 2 covers `noExcessiveLinesPerFunction` and `noExcessiveLinesPerFile`,
+  which is the whole reason ESLint would have been added. A second linter on the same axis means two
+  configs drifting apart.
+- **No comment rules outside codemap.** A density or run-length rule contradicts it outright: the
+  19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation codemap exempts
+  by form, and 19 comment lines to a counter.
+- **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
+  enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
+  commit message.
+
+### archmap
+
+`.arch.json` declares each contract `draft` or `locked`; `archmap lock <id>` (0.1.4) freezes that
+contract's current violations into `.arch.baseline.json`, which is what lets a rule with existing
+debt block the *next* violation instead of waiting for someone to fix all of them first. The last
+`draft` contract, `no-coordinator-blob`, locked that way on 2026-08-25 with 13 frozen — so every
+declared contract now blocks. That file is declared in `conformance.json` under `improves: down`,
+because without a direction `archmap lock` is an amnesty button.
+
+Exit codes: `0` clean · `1` a new violation · `2` **the gate could not run** (bad flag, unreadable
+manifest, a scope matching no files). Never read `2` as a pass — the same 1-vs-2 split `cm verify`
+uses.
+
+`.arch.json` declares `tsConfig: .arch-tsconfig.json`, and that line is load-bearing:
+dependency-cruiser runs with `--no-config`, so without it nothing resolves through a tsconfig
+`paths` alias — and an unresolvable edge is **dropped, not reported**. Measured 2026-08-23: 841 of
+997 unresolvable edges were `web-v2`'s `@/*`, i.e. effectively that whole package's graph, while
+three contracts over it sat `locked` and passed on nothing. With the map: 5,206 edges resolved, 170
+unresolvable of 5,376 possible (3.2%) — all of them node_modules subpath exports, which belong to no
+module. Audit rule R7 holds the ceiling, because `.forge/archmap/` is vendored and a re-vendor could
+drop the support without a single test going red.
+
+### Vendored checkers
+
+**`.forge/` is committed, all of it.** Both checkers are vendored there (`.forge/codemap/`,
+`.forge/archmap/`) and the CI jobs run those copies, so a contributor without a global install and
+the gate are held to the same reviewed version — bump with `cm install --upgrade` / `archmap install
+--force` and commit the result. `.forge/.gitignore` is the only place an exception may be declared,
+and it carries the reason; a blanket `.forge/` in `.git/info/exclude` is a **local** rule teammates
+never see, and it is why `orientation.md` went uncommitted for months.
+
+Both vendored shims must stay mode `100755` — `git ls-files -s .forge/*/[ac]*` to check. A shim
+committed `100644` fails the job with permission denied, not with a violation.
+
 ## verify.mjs — the conformance entrypoint (`pnpm verify`)
 
 Run it after you finish coding, before you push — same slot as `pnpm build`. It runs every

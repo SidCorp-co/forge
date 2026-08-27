@@ -198,6 +198,32 @@ The legacy sweepers are DEMOTED to alarm-only (`alarmZombieSessions`, `alarmOrph
 | `POST` | `/api/jobs/:id/events` | device | Submit JobEvent batch |
 | `POST` | `/api/jobs/:id/complete` | device | Report completion |
 
+## Step-duration analytics
+
+The `pipeline_run_step_durations` SQL view (created in migration `0055`, reshaped by `0057` and
+`0128`) exposes **one row per finished job** (all terminal statuses):
+
+| column | source |
+|---|---|
+| `run_id`, `project_id`, `issue_id` | `pipeline_runs` (issue_id is NULL for kind `pm`/`interactive`/`system`) |
+| `step` | `jobs.type` (`triage`, `clarify`, `plan`, `code`, `review`, `test`, `release`, `fix`, `custom`, `pm`) |
+| `started_at` | `COALESCE(agent_sessions.started_at, jobs.dispatched_at)` |
+| `finished_at` | `jobs.finished_at` |
+| `duration_seconds` | NULL unless the job is `done` — aggregate with `count(duration_seconds)`, not `count(*)` |
+| `cost_usd` | sum of `usage_records.estimated_cost` for the job's `agent_session_id` (all statuses) |
+
+REST surface: `GET /api/pipeline/step-durations?projectId=&days=&step=` (one JSON row per view row,
+camelCase keys).
+
+Grafana starter — query the view, not raw tables:
+
+```sql
+SELECT step, percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_seconds) AS p95_s
+FROM pipeline_run_step_durations
+WHERE started_at >= now() - interval '7 days' AND duration_seconds IS NOT NULL
+GROUP BY step ORDER BY p95_s DESC;
+```
+
 ## Cross-Module Touchpoints
 
 | Direction | Module | What | When |

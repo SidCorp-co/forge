@@ -11,6 +11,31 @@ no terminal writes — a row they still match after this loop ran is a loop MISS
 `loop-miss` (coverage proof during the cutover; deletion happens at the ISS-442 parent
 integration).
 
+## The three defences
+
+**INVARIANT: no child `jobs` row stays non-terminal under a terminal `pipeline_run`.** One orphan
+wedges a cap=1 runner slot. The loop monitor is defence 2 of three; they must move in lockstep, and
+`runs-cascade.ts` carries the `cm:guard` and the two `cm:edge lockstep` that say so.
+
+| # | Defence | Where | Fires on |
+|---|---------|-------|----------|
+| 1 | Cascade on close — ALL terminal transitions route through `cascadeCancelChildJobs` | `packages/core/src/pipeline/runs-cascade.ts`; callers: `closeRun`, `closeRunIfOneShot`, `closeOpenRunForIssue` (`runs.ts`), `cancelPipelineRun` (`runs-control.ts`) | run goes terminal |
+| 2 | Loop monitor — the primary reaper: `runLoopMonitor` / `reapAckMisses` / `reapResultMisses`, quiet threshold `RESULT_QUIET_MINUTES = 60` (don't lower — legit merges run long). Sweeper passes are demoted to alarm-only, except session-lost propagation `reapSessionLostJobs`. | `packages/core/src/jobs/loop-monitor.ts` · `packages/core/src/pipeline/sweeper.ts` | never claimed / gone quiet / dead session |
+| 3 | Dispatch gates require `pr.status IN ('running','paused')` so terminal-parent orphans never count toward the runner cap | `packages/core/src/jobs/dispatch-gates.ts` (`countInFlightForRunner`, `checkLayer4RunnerFull`, `runner_load` CTE) | every dispatch |
+
+Cascade effects: jobs → `cancelled` (`failureKind='transient'`, `failureReason='pipeline_*'`);
+linked `agent_sessions` → `failed`; broadcasts `agent:abort`. New code that flips
+`pipeline_runs.status` terminal MUST route through a cascade-calling helper — no second mechanism
+cleans up after you.
+
+**`held` is a fourth, deliberate shape and is NOT an orphan** (RFC 0002). A `held` job is alive and
+non-terminal *under a run that is also non-terminal* — the invariant above still holds, because
+INV-4 forbids closing a run while any of its jobs is held. It is excluded from defence 3's
+`runner_load` and from the project serial gate (`running_ids`), so it burns no slot, and defence 2
+never reaps it. It IS counted by L1 `issueBusyJob`, so no duplicate job is enqueued for the same
+issue. Do not "clean up" a held job: `jobs/hold.ts` `releaseHeldJobs` re-queues the two
+condition-checked reasons and the other three wait for a human on purpose.
+
 ## Hops and their miss-handlers
 
 ```mermaid

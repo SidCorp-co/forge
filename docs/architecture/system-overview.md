@@ -62,6 +62,22 @@ runtime plane — your machine(s)
 - Email verification before first project. CORS via `CORS_ORIGINS`.
 - MCP: no cross-project flag — every call includes `projectId` + passes policy.
 
+## Observability — Sentry (opt-in)
+
+**OSS contract**: every Sentry init reads its DSN from env at build/run time. Source builds without
+those env vars compile cleanly with the SDK no-op'd — cloning and building never silently reports
+anywhere. Only official release artifacts bake DSNs (via CI secrets); self-hosted operators opt in
+by setting the env var in their own deploy environment.
+
+| Service | Init location | Enable via |
+|---------|---------------|-----------|
+| backend (Hono) | `packages/core/src/observability/sentry.ts` | runtime `SENTRY_DSN` |
+| cloud UI (Next.js) | `packages/web-v2/src/providers/sentry-init.tsx` | build-time `NEXT_PUBLIC_SENTRY_DSN` |
+
+All payloads pass through a scrubber that replaces Authorization, X-Device-Token, Cookie, X-API-Key
+headers; `authToken`/`auth_token`/`jwt`/`apiKey`/`api_key`/`password`/`token` body fields; and
+tokenized URL query params with `[Filtered]`.
+
 ## Non-goals
 
 - Not multi-tenant SaaS (one instance = one tenant). Not tuned for >~1000 concurrent WS sockets (Redis pub/sub later). No Linux headless agent in v0.x. Not the Anthropic API — orchestrates the user's Claude Code CLI.
