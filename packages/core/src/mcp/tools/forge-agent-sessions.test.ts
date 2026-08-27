@@ -91,8 +91,7 @@ describe('forge_agent_sessions.list', () => {
     expect(result.sessions[0]?.id).toBe(SESSION_ID);
   });
 
-  // ISS-787 — the disclosure is wiring, not a helper: the SAME limit must reach
-  // `.limit()` as limit+1 and reach the envelope as-is, or hasMore lies.
+  // cm:guard ISS-787 — the SAME limit must reach `.limit()` as limit+1 AND reach buildListEnvelope un-inflated: the disclosure is wiring, not a helper, so a tool that hands the overfetched value on as `limit` computes hasMore off the probe row and reports a bound page as complete
   it('over-fetches by one and discloses the limit that bound the page', async () => {
     const tool = forgeAgentSessionsListTool(fakeDevice);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);

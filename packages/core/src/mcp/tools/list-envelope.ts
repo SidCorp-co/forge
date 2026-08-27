@@ -82,7 +82,14 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
 
   envelope.truncated = true;
   envelope.truncatedBy = truncatedBy;
-  envelope.notice = buildNotice({ returned: kept.length, truncatedBy, limit, hint, ascending, shedsNewest });
+  envelope.notice = buildNotice({
+    returned: kept.length,
+    truncatedBy,
+    limit,
+    hint,
+    ascending,
+    shedsNewest,
+  });
   return envelope;
 }
 
@@ -116,7 +123,9 @@ function buildNotice(args: {
   shedsNewest: boolean;
 }): string {
   const { returned, truncatedBy: by, limit, hint } = args;
-  const underLimit = args.ascending ? `the first ${returned} in order` : `the ${returned} most recent`;
+  const underLimit = args.ascending
+    ? `the first ${returned} in order`
+    : `the ${returned} most recent`;
   const underSize = args.shedsNewest
     ? `the first ${returned} of them in order`
     : `the ${returned} most recent of them`;

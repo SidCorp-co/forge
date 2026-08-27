@@ -339,9 +339,7 @@ describe('forge_jobs.events', () => {
     expect(result.lastSeq).toBe(7);
   });
 
-  // An event whose data alone exceeds the response budget used to be dropped,
-  // which left lastSeq at the caller's own sinceSeq and the notice telling them
-  // to re-call with it — the replay never got past that event.
+  // cm:guard an event whose own data exceeds the response budget must be ELIDED, never dropped — dropping it left lastSeq at the caller's own sinceSeq while the notice told them to re-call with it, so the replay looped on that one event forever
   it('elides an oversized event payload rather than wedging the cursor', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     mockJobThenMember();
@@ -353,8 +351,7 @@ describe('forge_jobs.events', () => {
     expect(JSON.stringify(result).length).toBeLessThan(38_000);
   });
 
-  // The size trim must shed the NEWEST events: shedding the oldest would move
-  // lastSeq past pages the caller never received.
+  // cm:guard the size trim sheds the NEWEST events on this cursor-paginated surface — shedding the oldest moves lastSeq past pages the caller never received, and nothing ever replays them
   it('keeps the earliest events when the page as a whole is too big', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     mockJobThenMember();
