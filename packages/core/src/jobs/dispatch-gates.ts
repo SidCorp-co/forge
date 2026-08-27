@@ -399,7 +399,7 @@ export interface BarrierFragments {
  * without extending the other will flip a recorded scenario from
  * `ok:false` ⇔ "picker would not pick".
  */
-// cm:edge contract -> packages/core/src/admin/alert-queries.ts — A3 (alertRunnerStarved) replays these fragments per project so a job held by project_cap / a dependency / issue-busy / retry-cooldown is NOT miscounted as runner starvation; keep the two in lockstep
+// cm:edge contract -> packages/core/src/admin/alert-queries.ts — A3 (alertRunnerStarved) replays BOTH halves of this builder per project: the predicates, so a job held by project_cap / a dependency / issue-busy / retry-cooldown / a stale trigger is not miscounted as runner starvation, AND `fresh_capable_runners`, whose clauses are the definition of a usable runner. A3 inverts only the runner EXISTS; a gate added here and not replayed there turns a correctly-held queue into a false alert, and a runner clause added here alone makes a genuinely starved queue report ok.
 export function buildBarrierFragments(args: {
   projectIdRef: SQL;
   livenessSeconds: number;

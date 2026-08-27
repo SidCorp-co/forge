@@ -13,15 +13,14 @@ import type { RequiredCapabilities, Runner } from './types.js';
  * Remote/server runners (NULL device_id) have no matching device row → the
  * NOT EXISTS is satisfied and they stay eligible.
  */
-// cm:edge contract -> packages/core/src/admin/alert-queries.ts — A3's "usable runner" definition must mirror this dispatch gate or the alert reports ok while dispatch stays starved
-export const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
+const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
 
 // cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — every candidate predicate in this file must also sit in `fresh_capable_runners`; a clause here and not there makes the picker offer a job this selector then refuses, and the job spins `queued` forever with no gate reason
 // cm:why placed alongside rate_limited_until (not a bare column ref) so it
 // resolves correctly whether the enclosing query aliases `runners` as `r.` or not
-export const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
+const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
 
 // cm:guard `auth` MUST be excluded by NAME, never left to `rate_limited_until` — that column is NULL for an auth limit BY DESIGN (no parseable reset), so the time-based filter passes it and an auth-dead box reads as perfectly healthy. lib/device-pool.ts has carried this exact clause for the chat path all along; the job path did not, and device dev1-ai013 took 421 jobs on an expired OAuth session in 5.5h (forge-beta 2026-08-14).
 const NOT_AUTH_LIMITED = sql`AND limit_reason IS DISTINCT FROM 'auth'`;
