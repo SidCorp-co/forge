@@ -1,96 +1,129 @@
 # Autonomous session pooling
 
-- Status: **measured 2026-08-27, recommendation is yes-with-a-boundary** — the mechanism is real, the scope asked for is not the scope the numbers support.
-- Related: [agent-driven pipeline](agent-driven-pipeline.md) · [autonomous status](../modules/issues-pipeline/autonomous-status.md) · [retry continuity](retry-context-continuity.md)
+- Status: **withdrawn 2026-08-27** — the mechanism is real, but the case for it was priced against the wrong population and rests on two claims that are now refuted. Kept as the record of what was measured; the work it points at is elsewhere.
+- Related: [agent-driven pipeline](agent-driven-pipeline.md) · [autonomous status](../modules/issues-pipeline/autonomous-status.md) · [RFC 0002 park axis](../rfcs/0002-park-axis-separation.md)
 
 ## The ask
 
 Replace print mode: the runner spawns a Claude session that waits, and pools jobs to it.
 
-Workflow diagrams for all three shapes (today, rebuilt, refuted), rendered and reviewed:
-`docs/local/session-workflow-rebuild.html` — local only, not committed.
+## What is true
 
-## The mechanism exists
+`--input-format stream-json` is a long-lived process that reads newline-delimited user messages on
+stdin; `--replay-user-messages` echoes each one back as an accepted-ack. Both verified on
+`claude` 2.1.247. The runner already passes the output half.
 
-`--input-format stream-json` (with `--print` and `--output-format stream-json`) is a long-lived
-process that reads newline-delimited user messages on stdin and streams events on stdout. It stays
-alive between messages. `--replay-user-messages` re-emits each stdin message on stdout, which is the
-job-accepted acknowledgement a pool needs. Both are in `claude` 2.1.247.
+## What was wrong with the first version of this proposal
 
-The runner today (`crates/forge-runner-core/src/runner/claude_code.rs`, `build_args`) already passes
-`--output-format stream-json --verbose --include-partial-messages`, so the only change on the output
-side is none. The input side changes from `-p <prompt>` to a written stdin stream.
-
-## What the numbers say about pooling many issues into one session
-
-| Measured 2026-08-27 | Value |
-|---|---|
-| `claude` cold start, real `--mcp-config`, to first API request | **~7.5 s** wall (API itself 1.7–1.9 s) |
-| `drive` job duration, last 30 days, 59 finished jobs | **p50 4026 s** · p95 11654 s · avg 4701 s |
-| Startup as a share of a median drive job | **0.19 %** |
-| Prompt-cache read on a **second, separate** process | 44,684 tokens · $0.0058 vs $0.0439 cold — **7.5× cheaper** |
-
-Two things follow.
-
-**The startup cost pooling removes is 0.19 % of a drive job.** A 67-minute median job does not care
-about seven seconds.
-
-**The warm cache pooling is supposed to buy, you already have.** The 44,684-token cache read above
-happened in a *different process* from the one that created the entry — the prompt cache is
-server-side and keyed on the prefix, so consecutive jobs sharing a system prompt hit it without any
-pool. Cost per job is already at the warm number.
-
-## Why pooling many issues into one session is wrong, not merely unnecessary
-
-**Cross-job context bleed, verified.** One session, two messages 25 s apart:
+**1. The refutation of pooling was overstated.** It claimed *"there is no in-band control message to
+start a fresh conversation on a live stream-json session"*. That was asserted, not tested. Sending
+`/clear` as a user message mid-stream emits a first-class `conversation_reset` protocol event and
+the next turn answers `NONE`:
 
 ```
-→ "Remember this secret word: ZANZIBAR. Reply only: stored"     ← "stored"
-→ "What secret word were you told earlier?"                     ← "ZANZIBAR"
+→ "Remember the word: ZANZIBAR"        assistant: stored
+→ "/clear"                             conversation_reset
+→ "What word were you told earlier?"   assistant: NONE
 ```
 
-Job N+1 sees job N's whole transcript. There is no in-band control message to start a fresh
-conversation on a live stream-json session — `--fork-session` works only on `--resume`, at spawn.
-Three consequences, in order of how much they cost:
+So the context-bleed objection collapses. What survives is narrower and process-level: cwd, the
+per-issue worktree, env, and `FORGE_VERDICT_FILE` persist across `/clear`, so a pool serving
+different repos still has a real problem. Pooling within one repo is not refuted by this evidence.
 
-1. **The reviewer isolation breaks.** `forge-drive` forks a clean-context reviewer precisely so it
-   *"must be able to reach a different conclusion than you did"*. A shared transcript is the one
-   thing that design exists to prevent.
-2. **`--autocompact` fires mid-job.** Context accumulates across issues until the compact window
-   hits, and it will hit inside somebody's 67-minute drive rather than between jobs.
-3. **Leakage between projects.** One pooled session on a multi-project runner has read another
-   project's code and credentials-adjacent output.
+**2. The cache argument was measured wrong.** It ran the *same* prompt twice. Production never does:
+every drive job carries a different issue preamble via `--append-system-prompt`, which breaks the
+cache prefix. Re-measured with differing appended prompts: ~19k of ~45k tokens hit cache (43%) and
+25,700 are re-created per job — and the usage payload reports `ephemeral_1h_input_tokens`, a **1-hour
+TTL** against a p50 drive job of 67 minutes. Consecutive jobs routinely find it expired. *"The
+session is already warm"* is false.
 
-## Where the same mechanism does pay: one issue, across its park
+**3. The 758 hours belong to a different population.** Per status, on autonomous projects:
 
-The stated problem is that print mode leaves a dead process between interactions. That is true, and
-it costs something measurable — just not at job boundaries. It costs at the **park**:
+| status | n | avg h | median h | what it is |
+|---|---|---|---|---|
+| `on_hold` | 8 | **760** | 338 | `cancelPipelineRun`'s device-actor park, `skip: true` — **no question pending, no session to hold** |
+| `needs_info` | 3 | 355 | 360 | real driver questions — the population a held session would serve |
+| `waiting` | 6 | 55 | **13** | real driver parks written to a status nothing wakes |
 
-- The driver's only resuming park is `needs_info` ([S2](../modules/issues-pipeline/autonomous-status.md)).
-- Eight issues currently sit parked for an average of **758 hours**.
-- A human's answer today triggers a cold `--resume`, which is the failure path
-  `claude_code.rs` handles at `resume_failed` — a resume that cannot find its session is a job that
-  restarts from nothing.
+The headline number is the `on_hold` row: cancelled runs where nobody was asked anything. A held
+process fixes none of them. And on all 17 parked issues, human comments since the park: **zero**.
 
-Keeping **one issue's** session alive across its park turns that answer into a message written to a
-living process: no resume, no lost session, no re-derivation of where it stopped. Same flag set the
-ask names, applied to the boundary the evidence supports.
+**4. It optimises a path drive jobs do not take.** `jobs/resume-policy.ts:145` gates the
+session-group lookup on `job.type !== AUTONOMOUS_JOB_TYPE`, with a `cm:guard` saying why — a drive
+job resumes through `forge_phase resume_point`, never `--resume`. Measured over 90 days: drive jobs
+with `resume_failed` = **0**. The `[RESUME_FAILED]` branch this proposal was built around has never
+fired for the mode it targets.
 
-## Recommended params
+## What kills the held-session shape outright
 
-| Param | Why |
-|---|---|
-| `--input-format stream-json` | the persistent-process mechanism; keep `--output-format stream-json --verbose --include-partial-messages` as today |
-| `--replay-user-messages` | ack that a message was accepted, so the runner can distinguish "queued" from "picked up" |
-| `--session-id <uuid>` | the runner mints the id instead of scraping `session_id` off the stream (`claude_code.rs` line 552), so the ledger has it before the first event |
-| `--fork-session` | on the resume path only: a new id rather than reusing one, which sidesteps the `resume_failed` branch |
-| `--max-budget-usd` | a per-job ceiling, which a long-lived session needs more than a print-mode one |
-| `--autocompact <tokens>` | set it explicitly for a session held across a park, rather than inheriting `auto` |
+Three findings, any one of them sufficient.
 
-Not recommended: `--bare` and `--safe-mode` strip CLAUDE.md discovery and skill resolution, which the
-drive model depends on.
+**The answer has nowhere to go.** Held, the drive job stays `running`. `answer-resume` flips the
+issue to `open`, `dispatchAutonomous` hits the `jobs_active_unique` partial index (which covers
+`running`), and `autonomous-dispatch.ts:171-173` **swallows the conflict and returns `true`**. No
+job, no signal, nothing that knows to write into the living process's stdin. The design's central
+promise requires a core→runner answer channel that does not exist.
 
-## Decision needed
+**It would make the kernel lie.** `daemon/dispatch.rs:554` beats a synthetic `progress` event every
+`HEARTBEAT_INTERVAL = 25s` whenever no real batch went out. A process idling on stdin therefore
+reports itself healthy forever, and `reapResultMisses` (`RESULT_QUIET_MINUTES = 60`) never fires —
+every beat asserts progress for something that by definition is not progressing. That is a
+principle №10 *state-never-lies* violation at any duration. Suppress the beat instead and
+`HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 min` fails the session. There is no third option that leaves core
+untouched.
 
-One session per **issue**, held across that issue's park — yes, and it is a real fix for the 758-hour
-number. One session per **runner**, pooling issues — no, on four independent measurements above.
+**Capacity inverts.** A held job sits in both `running_ids` (project serial gate) and `runner_load`
+(per-runner, `RUNNER_CAP_PER_RUNNER = 1`). Today's parks are free, which is *why* several can
+coexist. Held, the first unanswered question takes the project's slot and throughput goes to zero
+until a human arrives. Live state: forge-dev has **7 parks against a cap of 3**; kinetrak has 1
+against a cap of **1**. And VISION §4 parks `concurrency caps >1` behind kernel trust, so raising the
+cap is not an available answer.
+
+`held` (RFC 0002) is not the escape hatch: it is slotless *because nothing is running*, and its
+`HOLD_REASONS` guard explicitly refuses business outcomes because doing so "would silently stop
+asking a human a question that only a human can answer".
+
+## Blast radius the first version did not name
+
+`ClaudeCodeRunner` is a single shared exec path — `daemon/mod.rs`, `daemon/chat.rs` and
+`daemon/dispatch.rs` all go through it, so this touches chat and schedules, not just `drive`. And
+`docs/architecture/skill-delivery.md:49` already recorded exactly this change as
+**"Deferred (high blast radius): switching the runner's shared `-p` exec path to stream-json +
+warm-up — pipeline-wide risk."**
+
+## Where the measured defect actually is
+
+Every parked issue has zero human replies, and the reason is an inversion in the notification set.
+`notifications/notify-transitions.ts` `NOTIFY_ON_STATUS` = `{tested, reopen, waiting, closed}`:
+
+- **`needs_info` is absent.** The one park `answer-resume.ts` wakes on a comment notifies nobody.
+- **`waiting` is present.** The park that never wakes is the one that notifies.
+
+`/me/attention`'s `awaitingInput` bucket further requires `issues.assigneeId = userId`, and MCP
+`forge_issues` cannot set an assignee — so an agent-filed issue appears in no bucket at all. A
+question is asked on a surface no human reads. 355 hours is what that costs, and a process holding
+stdin for a month is an expensive way to wait for a notification nobody sent.
+
+## Recommendation
+
+Withdraw the held-session change. Do these instead, in order:
+
+1. **Fix the notification inversion** — add `needs_info` to `NOTIFY_ON_STATUS`; make the attention
+   bucket reachable for an unassigned agent-filed issue. Smallest change, largest measured effect.
+2. **Alarm an aged park** — `pipeline/inv7-alarms.ts` already treats a 6-hour hold as a wedge worth
+   raising. A `needs_info` sitting 355 hours has no equivalent.
+3. **Decide what a cancelled autonomous run's issue is** — the 8 `on_hold` rows are core's own park,
+   silent by construction, and on an autonomous project no step serves `on_hold`. That is the same
+   argument that earned `reopen → open` a kernel rewrite.
+4. **Thicken the checkpoint** — `forge_phase resume_point` returns only `{phase, attempt, startedAt}`
+   and `phase_journal` has no read surface. Making a cold start cheap and correct buys what a held
+   process buys, survives restarts and device loss, and costs a fraction.
+
+Revisit a warm hold only if a later measurement shows parks answered in **minutes** once notified —
+that is the regime it wins in, and today there is no such observation because notification does not
+exist for this status.
+
+## Larger finding, out of this proposal's scope
+
+Over 90 days, **84 of 195 drive jobs failed (43%)**, dominated by `transient-cc` (48). That is a much
+larger problem than the park and is not addressed anywhere here.
