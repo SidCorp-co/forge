@@ -82,8 +82,8 @@ Indexes: unique `(project_id, source, source_ref)` (upsert target — exact-key 
 | `extraction.ts` | post-job (review/test/fix) LLM fact extraction → `source:'knowledge'` + `knowledge_edges`; gated, detached, off without `LITELLM_API_URL` |
 | `consolidation.ts` | nightly 03:00 LLM consolidation (CREATE/UPDATE/ARCHIVE, caps 5/5/10) from 24h pipeline signal; archive-only, id-validated, audit `decision` row |
 | `llm.ts` | shared non-streaming `LITELLM_*` completion for the background intelligence |
-| `write-routes.ts`, `list-routes.ts`, `search-routes.ts` | Hono REST routes; auth = `requireAuth` + email verified + per-user rate limit + `assertProjectMemberAccess` |
-| `step-handoff-schema.ts` | structured handoff payloads (separate `step_handoffs` table — see sub-doc) |
+| `write-routes.ts`, `list-routes.ts`, `search-routes.ts` | Hono REST routes; auth = `requireAuth` + email verified + per-user rate limit + `assertProjectAccess` (`lib/authz.ts`) |
+| `step-handoff-schema.ts` | structured handoff payloads (separate `issue_step_contexts` table — see sub-doc) |
 
 MCP tools (`mcp/tools/forge-memory.ts`): `forge_memory.search` / `.get` / `.write` / `.delete` / `.feedback`, device-scoped via `assertDeviceOwnerIsMember` (writes/feedback: `assertDeviceOwnerIsWriter`).
 

@@ -104,10 +104,12 @@ Project↔device routing is expressed through the **runners framework** (`runner
 
 ### Revocation
 
-1. User clicks **Revoke** on device card → `DELETE /api/devices/:id`
-2. Server sets `status = revoked`, invalidates `tokenHash`, closes the device's WebSocket
-3. Any `running` jobs on this device get `cancelled` with reason `device_revoked`
-4. Next reconnect attempt: 401, device surfaces "Device revoked, please re-pair"
+1. User clicks **Revoke** on device card → `DELETE /api/devices/:id` (needs auth fresher than 5 min)
+2. In one transaction: `status = 'revoked'` and every `runners` row for the device is deleted. `tokenHash` is left ALONE — what stops the token is `verifyDeviceToken` skipping revoked rows, not a hash change.
+3. A `device.revoked` event is published to the device and owner rooms, best-effort and outside the transaction. The socket is NOT closed server-side; the device reacts to the event.
+4. Next authenticated call: 401, device surfaces "Device revoked, please re-pair"
+
+Revoke does **not** touch in-flight jobs — `revoke` appears nowhere in `jobs/` or `pipeline/`. A job already dispatched to the device is reaped by the loop monitor's ack/result-miss path (`jobs/loop-monitor.ts`), on that path's timing rather than immediately.
 
 ## API Endpoints
 
