@@ -39,6 +39,7 @@ vi.mock('../db/client.js', () => {
   const txStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: dbUpdate,
+    insert: vi.fn(() => ({ values: async () => undefined })),
     execute: txExecute,
   };
   return {

@@ -5,7 +5,12 @@
  * from the caller's issue-relative shape to the graph's `from`/`to` shape.
  */
 
-import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
+import type { Db } from '../../db/client.js';
+import {
+  type DependencyMutation,
+  finalizeDependencyMutation,
+  mutateDependency,
+} from './forge-pm-set-dependency.js';
 import { type McpContext, principalHookActor } from './lib.js';
 
 /**
@@ -29,6 +34,16 @@ export type AppliedIssueRelation = {
   updated: boolean;
 };
 
+export type PendingIssueRelations = {
+  relations: AppliedIssueRelation[];
+  mutations: Array<{
+    input: IssueRelationInput & { projectId: string; fromIssueId: string; toIssueId: string };
+    mutation: DependencyMutation;
+  }>;
+};
+
+type RelationExecutor = Pick<Db, 'execute' | 'select' | 'insert' | 'update'>;
+
 // cm:guard `dependsOnId` puts the OTHER issue on the `from` side and this one on `to` — the repo's convention is `from` BLOCKS `to`, so swapping the two silently inverts every edge an agent declares and the dispatcher gates the wrong side
 // cm:edge contract -> packages/core/src/issues/dependency-routes.ts — same direction as POST /api/issues/:id/dependencies, whose `dependsOnId` also lands as (from=dependsOnId, to=:id)
 export async function applyIssueRelations(
@@ -36,34 +51,44 @@ export async function applyIssueRelations(
   projectId: string,
   issueId: string,
   relations: readonly IssueRelationInput[] | undefined,
-): Promise<AppliedIssueRelation[]> {
-  const { device } = ctx;
-  const actor = principalHookActor(ctx.principal, device);
-  const applied: AppliedIssueRelation[] = [];
+  executor: RelationExecutor,
+): Promise<PendingIssueRelations> {
+  const mutations: PendingIssueRelations['mutations'] = [];
   for (const rel of relations ?? []) {
     const fromIssueId = rel.dependsOnId ?? issueId;
     const toIssueId = rel.dependsOnId != null ? issueId : rel.blocksId;
     if (!toIssueId) throw new Error('BAD_REQUEST: relation needs dependsOnId or blocksId');
-    const result = await pmSetDependencyHandler(
-      device,
-      {
-        projectId,
-        fromIssueId,
-        toIssueId,
-        kind: rel.kind,
-        reason: rel.reason,
-        validUntil: rel.validUntil,
-      },
-      actor,
-    );
-    applied.push({
-      edgeId: result.id,
-      kind: rel.kind,
+    const input = {
+      ...rel,
+      projectId,
       fromIssueId,
       toIssueId,
-      created: result.created,
-      updated: result.updated ?? false,
-    });
+      kind: rel.kind,
+    };
+    const mutation = await mutateDependency(executor, input, ctx.device.ownerId);
+    mutations.push({ input, mutation });
   }
-  return applied;
+  return {
+    relations: mutations.map(({ input, mutation }) => ({
+      edgeId: mutation.id,
+      kind: input.kind,
+      fromIssueId: input.fromIssueId,
+      toIssueId: input.toIssueId,
+      created: mutation.created,
+      updated: mutation.updated,
+    })),
+    mutations,
+  };
+}
+
+export async function finalizeIssueRelations(
+  ctx: McpContext,
+  pending: PendingIssueRelations,
+): Promise<void> {
+  const actor = principalHookActor(ctx.principal, ctx.device);
+  await Promise.all(
+    pending.mutations.map(({ input, mutation }) =>
+      finalizeDependencyMutation(mutation, input, actor),
+    ),
+  );
 }

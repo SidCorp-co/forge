@@ -18,15 +18,18 @@
  * deprecation window closes.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import { db } from '../../db/client.js';
+import { type Db, db } from '../../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../../db/schema.js';
-import { decomposeParent } from '../../issues/decompose.js';
+import {
+  finalizeDecomposition,
+  type PendingDecomposition,
+  prepareDecomposition,
+} from '../../issues/decompose.js';
 import { detectCycle } from '../../issues/dependency-routes.js';
 import { publishPipelineHealthChanged } from '../../issues/pipeline-health.js';
-import { logger } from '../../logger.js';
 import { type Actor, safeRecordActivity } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { deprecationFor } from '../deprecation.js';
@@ -43,7 +46,7 @@ export const pmSetDependencyInputSchema = z
     fromIssueId: z.uuid(),
     toIssueId: z.uuid(),
     kind: z.enum(issueDependencyKinds),
-    reason: z.string().max(2000).optional(),
+    reason: z.string().trim().min(1).max(2000).optional(),
     validUntil: z.iso.datetime().optional(),
     // ISS-138 (PR-D) — opt-in to/out of integration-branch auto-creation
     // when `kind === 'decomposes'`. Ignored for other kinds.
@@ -51,25 +54,47 @@ export const pmSetDependencyInputSchema = z
   })
   .strict();
 
-// cm:guard pass `actor` whenever the caller knows its principal — a PAT reaches here behind a SYNTHETIC device (mcp/handler.ts stubDeviceForPat) whose id is an api_tokens row, so the default writes an activity_log actor_id that matches no `devices` row while the same request's status transition is attributed correctly through principalActor()
-export async function pmSetDependencyHandler(
-  device: Device,
-  input: z.infer<typeof pmSetDependencyInputSchema>,
-  actorOverride?: Actor,
-) {
-  // ISS-131 — was `assertPmActor`. Plan-pipeline agents legitimately need to
-  // declare `blocks`/`decomposes` edges as part of writing a plan, but they
-  // run on `claude-code` runners that do not carry the PM capability flag.
-  // The cycle guard below + the unique-index idempotency already cover the
-  // abuse surface; gate on plain project membership instead.
-  await assertDeviceOwnerIsMember(device, input.projectId);
+type DependencyExecutor = Pick<Db, 'execute' | 'select' | 'insert' | 'update'>;
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+type DependencyInput = z.infer<typeof pmSetDependencyInputSchema>;
+type DependencyEffect = {
+  action: 'added' | 'updated';
+  edgeId: string;
+  fromIssueId: string;
+  toIssueId: string;
+  kind: DependencyInput['kind'];
+  validUntil?: string;
+  reason?: string;
+};
 
+function isActiveDependency(validUntil: Date | null): boolean {
+  return validUntil === null || validUntil > new Date();
+}
+
+export type DependencyMutation = {
+  id: string;
+  created: boolean;
+  updated: boolean;
+  active: boolean;
+  effect: DependencyEffect | null;
+};
+
+export async function mutateDependency(
+  executor: DependencyExecutor,
+  input: DependencyInput,
+  createdById: string,
+): Promise<DependencyMutation> {
   if (input.fromIssueId === input.toIssueId) {
     throw new Error('BAD_REQUEST: self-edge not allowed');
   }
 
-  const sides = await db
-    .select({ id: issues.id, projectId: issues.projectId })
+  if (input.kind === 'blocks') {
+    // cm:guard serialize `blocks` mutations per project — concurrent cycle checks on opposite edges both see an acyclic snapshot, so without this transaction lock they can commit a dispatch-deadlocking cycle
+    await executor.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.projectId}))`);
+  }
+
+  const sides = await executor
+    .select({ id: issues.id, projectId: issues.projectId, status: issues.status })
     .from(issues)
     .where(inArray(issues.id, [input.fromIssueId, input.toIssueId]));
   if (sides.length !== 2) {
@@ -80,87 +105,8 @@ export async function pmSetDependencyHandler(
       throw new Error('BAD_REQUEST: both issues must belong to projectId');
     }
   }
-
-  // ISS-40 PR-E — only `blocks` edges gate dispatch, so they're the only
-  // ones that can deadlock the dispatcher. Cycle-check before insert.
-  if (input.kind === 'blocks') {
-    const cycle = await detectCycle(input.toIssueId, input.fromIssueId);
-    if (cycle === 'cycle') {
-      throw new Error('CYCLE_DETECTED: adding this blocks edge would form a loop');
-    }
-    if (cycle === 'depth_exceeded') {
-      throw new Error('CYCLE_DEPTH_EXCEEDED: dependency graph exceeds detection depth');
-    }
-  }
-
-  const inserted = await db
-    .insert(issueDependencies)
-    .values({
-      projectId: input.projectId,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-      reason: input.reason ?? null,
-      createdById: device.ownerId,
-      validUntil: input.validUntil ? new Date(input.validUntil) : null,
-    })
-    .onConflictDoNothing({
-      target: [
-        issueDependencies.projectId,
-        issueDependencies.fromIssueId,
-        issueDependencies.toIssueId,
-        issueDependencies.kind,
-      ],
-    })
-    .returning({ id: issueDependencies.id });
-
-  if (inserted.length > 0) {
-    const id = inserted[0]?.id;
-    if (!id) throw new Error('forge_pm.set_dependency: insert returned no row');
-    await hooks.emit('dependencyChanged', {
-      projectId: input.projectId,
-      edgeId: id,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-    });
-    const dependencyPayload: Record<string, unknown> = {
-      edgeId: id,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-      ...(input.reason ? { reason: input.reason } : {}),
-    };
-    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
-    await Promise.all([
-      safeRecordActivity({
-        issueId: input.fromIssueId,
-        actor,
-        action: 'issue.dependency.added',
-        payload: dependencyPayload,
-      }),
-      safeRecordActivity({
-        issueId: input.toIssueId,
-        actor,
-        action: 'issue.dependency.added',
-        payload: dependencyPayload,
-      }),
-    ]);
-    // ISS-138 (PR-D) — integration branch auto-fill on decomposes edges.
-    // The helper is idempotent: the edge we just inserted is detected as
-    // existing and skipped, but branch creation + metadata writes happen
-    // (or short-circuit if the parent already owns an integration branch).
-    await maybeRunDecomposeHelper(input, device.ownerId);
-    // ISS-164 — `blocks` / `decomposes` edges change the gated side's
-    // waiting reason; refresh pipelineHealth for the dependent (`to`) side.
-    if (input.kind === 'blocks' || input.kind === 'decomposes') {
-      await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
-    }
-    return { id, created: true };
-  }
-
-  const [existing] = await db
-    .select({ id: issueDependencies.id })
+  let [existing] = await executor
+    .select({ id: issueDependencies.id, validUntil: issueDependencies.validUntil })
     .from(issueDependencies)
     .where(
       and(
@@ -171,6 +117,78 @@ export async function pmSetDependencyHandler(
       ),
     )
     .limit(1);
+  const finalValidUntil =
+    input.validUntil === undefined ? (existing?.validUntil ?? null) : new Date(input.validUntil);
+  const requestedActive = isActiveDependency(finalValidUntil);
+  const fromIssue = sides.find((side) => side.id === input.fromIssueId);
+  if (input.kind === 'blocks' && requestedActive && fromIssue?.status === 'dropped') {
+    throw new Error('BAD_REQUEST: a dropped issue cannot block another issue');
+  }
+
+  if (input.kind === 'blocks' && requestedActive) {
+    const cycle = await detectCycle(input.projectId, input.toIssueId, input.fromIssueId, executor);
+    if (cycle === 'cycle') {
+      throw new Error('CYCLE_DETECTED: adding this blocks edge would form a loop');
+    }
+    if (cycle === 'depth_exceeded') {
+      throw new Error('CYCLE_DEPTH_EXCEEDED: dependency graph exceeds detection depth');
+    }
+  }
+
+  if (!existing) {
+    const inserted = await executor
+      .insert(issueDependencies)
+      .values({
+        projectId: input.projectId,
+        fromIssueId: input.fromIssueId,
+        toIssueId: input.toIssueId,
+        kind: input.kind,
+        reason: input.reason ?? null,
+        createdById,
+        validUntil: finalValidUntil,
+      })
+      .onConflictDoNothing({
+        target: [
+          issueDependencies.projectId,
+          issueDependencies.fromIssueId,
+          issueDependencies.toIssueId,
+          issueDependencies.kind,
+        ],
+      })
+      .returning({ id: issueDependencies.id });
+
+    const id = inserted[0]?.id;
+    if (id) {
+      return {
+        id,
+        created: true,
+        updated: false,
+        active: requestedActive,
+        effect: {
+          action: 'added',
+          edgeId: id,
+          fromIssueId: input.fromIssueId,
+          toIssueId: input.toIssueId,
+          kind: input.kind,
+          ...(input.validUntil ? { validUntil: input.validUntil } : {}),
+          ...(input.reason ? { reason: input.reason } : {}),
+        },
+      };
+    }
+
+    [existing] = await executor
+      .select({ id: issueDependencies.id, validUntil: issueDependencies.validUntil })
+      .from(issueDependencies)
+      .where(
+        and(
+          eq(issueDependencies.projectId, input.projectId),
+          eq(issueDependencies.fromIssueId, input.fromIssueId),
+          eq(issueDependencies.toIssueId, input.toIssueId),
+          eq(issueDependencies.kind, input.kind),
+        ),
+      )
+      .limit(1);
+  }
   if (!existing) {
     throw new Error('forge_pm.set_dependency: conflict but no existing row found');
   }
@@ -182,78 +200,128 @@ export async function pmSetDependencyHandler(
   if (input.reason) patch.reason = input.reason;
   const updated = Object.keys(patch).length > 0;
 
-  if (updated) {
-    await db.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
-    // cm:guard emit `dependencyChanged` on an update, not just an insert — expiring an edge can make the gated side dispatchable THIS INSTANT, and without the emit the unblock waits for whatever else happens to wake the dispatcher
-    await hooks.emit('dependencyChanged', {
-      projectId: input.projectId,
-      edgeId: existing.id,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-    });
-    const updatePayload: Record<string, unknown> = {
+  if (!updated) {
+    return {
+      id: existing.id,
+      created: false,
+      updated: false,
+      active: isActiveDependency(existing.validUntil),
+      effect: null,
+    };
+  }
+
+  await executor.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
+  return {
+    id: existing.id,
+    created: false,
+    updated: true,
+    active: isActiveDependency(patch.validUntil ?? existing.validUntil),
+    effect: {
+      action: 'updated',
       edgeId: existing.id,
       fromIssueId: input.fromIssueId,
       toIssueId: input.toIssueId,
       kind: input.kind,
       ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
-    };
-    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
-    await Promise.all([
-      safeRecordActivity({
-        issueId: input.fromIssueId,
-        actor,
-        action: 'issue.dependency.updated',
-        payload: updatePayload,
-      }),
-      safeRecordActivity({
-        issueId: input.toIssueId,
-        actor,
-        action: 'issue.dependency.updated',
-        payload: updatePayload,
-      }),
-    ]);
-    if (input.kind === 'blocks' || input.kind === 'decomposes') {
-      await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
-    }
-  }
-
-  // ISS-138 (PR-D) — even on conflict (edge was already there), run the
-  // helper so a parent whose first decompose call predated PR-D can still
-  // be brought up to date when a new edge is added later.
-  await maybeRunDecomposeHelper(input, device.ownerId);
-  return { id: existing.id, created: false, updated };
+    },
+  };
 }
 
-async function maybeRunDecomposeHelper(
-  input: z.infer<typeof pmSetDependencyInputSchema>,
-  ownerId: string,
+export async function finalizeDependencyMutation(
+  mutation: DependencyMutation,
+  input: DependencyInput,
+  actor: Actor,
 ): Promise<void> {
-  if (input.kind !== 'decomposes') return;
-  if (input.decomposeOpts?.useIntegrationBranch === false) {
-    // Honour explicit opt-out without invoking the helper at all — this keeps
-    // the no-git-side-effect contract for callers that just want to model
-    // decomposition without a shared integration branch.
-    return;
+  if (!mutation.effect) return;
+  const effect = mutation.effect;
+  // cm:guard emit `dependencyChanged` after the transaction commits — expiring an edge can make the gated side dispatchable THIS INSTANT, and a hook that runs before commit can dispatch against the old graph or publish an effect from a rolled-back relation batch
+  await hooks.emit('dependencyChanged', {
+    projectId: input.projectId,
+    edgeId: effect.edgeId,
+    fromIssueId: effect.fromIssueId,
+    toIssueId: effect.toIssueId,
+    kind: effect.kind,
+  });
+  await Promise.all([
+    safeRecordActivity({
+      issueId: effect.fromIssueId,
+      actor,
+      action: `issue.dependency.${effect.action}`,
+      payload: {
+        edgeId: effect.edgeId,
+        fromIssueId: effect.fromIssueId,
+        toIssueId: effect.toIssueId,
+        kind: effect.kind,
+        ...(effect.validUntil ? { validUntil: effect.validUntil } : {}),
+        ...(effect.reason ? { reason: effect.reason } : {}),
+      },
+    }),
+    safeRecordActivity({
+      issueId: effect.toIssueId,
+      actor,
+      action: `issue.dependency.${effect.action}`,
+      payload: {
+        edgeId: effect.edgeId,
+        fromIssueId: effect.fromIssueId,
+        toIssueId: effect.toIssueId,
+        kind: effect.kind,
+        ...(effect.validUntil ? { validUntil: effect.validUntil } : {}),
+        ...(effect.reason ? { reason: effect.reason } : {}),
+      },
+    }),
+  ]);
+  if (effect.kind === 'blocks' || effect.kind === 'decomposes') {
+    // cm:guard publish decompose health for its `from` parent — only the parent derives decomposeChildrenPending, while blocks gates `to`; selecting the child leaves a waiting parent stale
+    const healthIssueId = effect.kind === 'decomposes' ? effect.fromIssueId : effect.toIssueId;
+    await publishPipelineHealthChanged(input.projectId, [healthIssueId]);
   }
-  try {
-    await decomposeParent(
-      input.fromIssueId,
-      [{ existingIssueId: input.toIssueId }],
-      { userId: ownerId },
-      { useIntegrationBranch: input.decomposeOpts?.useIntegrationBranch },
-    );
-  } catch (err) {
-    // Do not fail the edge write if the integration branch could not be
-    // created — the agent's decomposition step still records the edge.
-    // PR-E will add an explicit reconciliation path.
-    logger.warn(
-      { err, parentId: input.fromIssueId, childId: input.toIssueId },
-      'forge_pm.set_dependency: decompose helper failed for decomposes edge',
-    );
-  }
+}
+
+// cm:guard pass `actor` whenever the caller knows its principal — a PAT reaches here behind a SYNTHETIC device (mcp/handler.ts stubDeviceForPat) whose id is an api_tokens row, so the default writes an activity_log actor_id that matches no `devices` row while the same request's status transition is attributed correctly through principalActor()
+export async function pmSetDependencyHandler(
+  device: Device,
+  input: DependencyInput,
+  actorOverride?: Actor,
+) {
+  // ISS-131 — was `assertPmActor`. Plan-pipeline agents legitimately need to
+  // declare `blocks`/`decomposes` edges as part of writing a plan, but they
+  // run on `claude-code` runners that do not carry the PM capability flag.
+  // The cycle guard below + the unique-index idempotency already cover the
+  // abuse surface; gate on plain project membership instead.
+  await assertDeviceOwnerIsMember(device, input.projectId);
+  let pendingDecomposition: PendingDecomposition | null = null;
+  const mutation = await db.transaction(async (tx) => {
+    const mutation = await mutateDependency(tx, input, device.ownerId);
+    // cm:guard prepare decomposition in the relation transaction — a branch or review-gate failure must roll back the edge that requested it, otherwise a successful edge response lies about integration state and a competing retry can make cleanup delete a valid edge
+    if (mutation.active) {
+      pendingDecomposition = await prepareDecompositionMutation(tx, input, device.ownerId);
+    }
+    return mutation;
+  });
+  if (pendingDecomposition) await finalizeDecomposition(pendingDecomposition);
+  const actor = actorOverride ?? { type: 'device' as const, id: device.id };
+  await finalizeDependencyMutation(mutation, input, actor);
+  return {
+    id: mutation.id,
+    created: mutation.created,
+    updated: mutation.updated,
+  };
+}
+
+async function prepareDecompositionMutation(
+  tx: Tx,
+  input: DependencyInput,
+  ownerId: string,
+): Promise<PendingDecomposition | null> {
+  if (input.kind !== 'decomposes') return null;
+  return prepareDecomposition(
+    tx,
+    input.fromIssueId,
+    [{ existingIssueId: input.toIssueId }],
+    { userId: ownerId },
+    { useIntegrationBranch: input.decomposeOpts?.useIntegrationBranch },
+  );
 }
 
 function recordDeprecation(ctx: McpContext, toolName: string) {

@@ -34,7 +34,7 @@ const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn((_values?: unknown) => ({ returning: insertReturning }));
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn((_set?: unknown) => ({ where: updateWhere }));
@@ -51,7 +51,14 @@ const txUpdateWhere = vi.fn(() => {
 });
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
-const txInsertValues = vi.fn(async (_values?: unknown) => undefined);
+const txInsertValues = vi.fn((values?: unknown) => {
+  insertValues(values);
+  return {
+    returning: insertReturning,
+    then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+      Promise.resolve(undefined).then(resolve, reject),
+  };
+});
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
 // ISS-633 — label replace-set delete (issueLabels) inside the update tx.
 const txDeleteWhere = vi.fn(async () => undefined);
@@ -65,8 +72,15 @@ const txExecute = vi.fn(async () => undefined);
 // Stub as an empty resolve so both helpers short-circuit with defaults under
 // the in-memory db mock unless a test stages a specific value.
 const txSelectLimit = vi.fn(async () => [] as unknown[]);
-const txSelectWhere = vi.fn(() => ({ limit: txSelectLimit }));
-const txSelectFrom = vi.fn(() => ({ where: txSelectWhere }));
+const txSelectWhere = vi.fn(() => ({
+  limit: txSelectLimit,
+  then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    txSelectLimit().then(resolve, reject),
+}));
+const txSelectFrom = vi.fn(() => ({
+  where: txSelectWhere,
+  innerJoin: vi.fn(() => ({ where: txSelectWhere })),
+}));
 const txSelect = vi.fn(() => ({ from: txSelectFrom }));
 const txProxy = {
   update: txUpdate,
@@ -145,15 +159,24 @@ vi.mock('../../issues/label-service.js', () => ({
 vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: vi.fn(async () => ({ blocks: [], blockedBy: [] })),
 }));
-// ISS-571 — stub pmSetDependencyHandler so create-with-relations tests don't
-// need to program the full DB query chain that the real handler executes.
-const pmSetDependencyMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
+const triggerTerminalDispatchMock = vi.fn(async () => undefined);
+vi.mock('../../issues/transition.js', () => ({
+  triggerTerminalDispatch: (...args: unknown[]) => triggerTerminalDispatchMock(...(args as [])),
+}));
+const mutateDependencyMock = vi.fn(async () => ({
+  id: 'dep-id-1',
+  created: true,
+  updated: false,
+  effect: null,
+}));
+const finalizeDependencyMutationMock = vi.fn(async () => undefined);
 vi.mock('./forge-pm-set-dependency.js', async (importActual) => {
   const actual = await importActual<typeof import('./forge-pm-set-dependency.js')>();
   return {
     ...actual,
-    // Assign mock directly to avoid TS2556 (spread of unknown[] into typed params).
-    pmSetDependencyHandler: pmSetDependencyMock as unknown as typeof actual.pmSetDependencyHandler,
+    mutateDependency: mutateDependencyMock as unknown as typeof actual.mutateDependency,
+    finalizeDependencyMutation:
+      finalizeDependencyMutationMock as unknown as typeof actual.finalizeDependencyMutation,
   };
 });
 
@@ -821,9 +844,9 @@ describe('forge_issues tool', () => {
 
       const { hooks } = await import('../../pipeline/hooks.js');
       const callOrder: string[] = [];
-      pmSetDependencyMock.mockImplementationOnce(async () => {
+      mutateDependencyMock.mockImplementationOnce(async () => {
         callOrder.push('setDep');
-        return { id: 'dep-id-1', created: true };
+        return { id: 'dep-id-1', created: true, updated: false, effect: null };
       });
       vi.mocked(hooks.emit).mockImplementationOnce(async (topic) => {
         callOrder.push('issueCreated');
@@ -840,15 +863,15 @@ describe('forge_issues tool', () => {
 
       // edge must be committed before the hook fires
       expect(callOrder).toEqual(['setDep', 'issueCreated']);
-      expect(pmSetDependencyMock).toHaveBeenCalledWith(
-        fakeDevice,
+      expect(mutateDependencyMock).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           projectId: PROJECT_ID,
           fromIssueId: BLOCKER_ID,
           toIssueId: ISSUE_ID,
           kind: 'blocks',
         }),
-        { type: 'device', id: fakeDevice.id },
+        OWNER_ID,
       );
     });
 
@@ -870,15 +893,15 @@ describe('forge_issues tool', () => {
         },
       });
 
-      expect(pmSetDependencyMock).toHaveBeenCalledWith(
-        fakeDevice,
+      expect(mutateDependencyMock).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           projectId: PROJECT_ID,
           fromIssueId: ISSUE_ID,
           toIssueId: BLOCKED_ID,
           kind: 'blocks',
         }),
-        { type: 'device', id: fakeDevice.id },
+        OWNER_ID,
       );
     });
 
@@ -894,7 +917,7 @@ describe('forge_issues tool', () => {
 
       await tool.handler({ action: 'create', data: { title: 'plain issue' } });
 
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(mutateDependencyMock).not.toHaveBeenCalled();
     });
 
     it('rejects a relation with both dependsOnId and blocksId set', async () => {
@@ -912,7 +935,7 @@ describe('forge_issues tool', () => {
           } as unknown as Record<string, unknown>,
         }),
       ).rejects.toThrow();
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(mutateDependencyMock).not.toHaveBeenCalled();
     });
 
     it('rejects a relation with neither dependsOnId nor blocksId set', async () => {
@@ -930,7 +953,7 @@ describe('forge_issues tool', () => {
           } as unknown as Record<string, unknown>,
         }),
       ).rejects.toThrow();
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(mutateDependencyMock).not.toHaveBeenCalled();
     });
 
     it('rejects a relation with kind=decomposes (must use forge_project_pm instead)', async () => {
@@ -948,7 +971,7 @@ describe('forge_issues tool', () => {
           } as unknown as Record<string, unknown>,
         }),
       ).rejects.toThrow();
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(mutateDependencyMock).not.toHaveBeenCalled();
     });
 
     it('propagates a pmSetDependencyHandler error and does not emit issueCreated', async () => {
@@ -962,7 +985,7 @@ describe('forge_issues tool', () => {
       insertReturning.mockResolvedValueOnce([baseIssueRow]);
 
       const { hooks } = await import('../../pipeline/hooks.js');
-      pmSetDependencyMock.mockRejectedValueOnce(
+      mutateDependencyMock.mockRejectedValueOnce(
         new Error('CYCLE_DETECTED: adding this blocks edge would form a loop'),
       );
 
@@ -1250,6 +1273,31 @@ describe('forge_issues tool', () => {
       data: { status: 'reopen', note: 'live checkout 500s on the payment step' },
     })) as Record<string, unknown>;
     expect(out.status).toBe('reopen');
+  });
+
+  it('triggers terminal dispatch after an MCP drop transition', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: ISSUE_ID,
+        status: 'dropped',
+        reopenCount: 0,
+        updatedAt: new Date('2026-08-27T00:00:00.000Z'),
+      },
+    ]);
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: 'dropped' }]);
+
+    await tool.handler({ action: 'transition', documentId: ISSUE_ID, data: { status: 'dropped' } });
+
+    expect(triggerTerminalDispatchMock).toHaveBeenCalledWith([
+      expect.objectContaining({ issueId: ISSUE_ID, projectId: PROJECT_ID, dependents: [] }),
+    ]);
   });
 
   it('transition open→confirmed updates status and emits hook', async () => {

@@ -14,14 +14,15 @@
  * on identical evidence and an identical decompose-parent exemption.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-/** Bounded scan limits — informational fields only, never gate correctness. */
 const JOB_SCAN_LIMIT = 50;
 const HANDOFF_SCAN_LIMIT = 50;
+
+type EvidenceExecutor = Pick<Db, 'select'>;
 
 export interface WorkEvidence {
   implementationJobCount: number;
@@ -30,19 +31,17 @@ export interface WorkEvidence {
   branch: string | null;
 }
 
-/**
- * Gather every in-DB signal that code exists for `issueId`. Does NOT catch —
- * callers fold this into their own fail-open handling (see
- * {@link findMissingWorkEvidence}).
- */
-export async function collectWorkEvidence(issueId: string): Promise<WorkEvidence> {
+export async function collectWorkEvidence(
+  issueId: string,
+  executor: EvidenceExecutor = db,
+): Promise<WorkEvidence> {
   const [jobRows, handoffRows, issueRows] = await Promise.all([
-    db
+    executor
       .select({ id: jobs.id })
       .from(jobs)
       .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, ['code', 'fix'])))
       .limit(JOB_SCAN_LIMIT),
-    db
+    executor
       .select({ payload: issueStepContexts.payload })
       .from(issueStepContexts)
       .where(
@@ -53,23 +52,16 @@ export async function collectWorkEvidence(issueId: string): Promise<WorkEvidence
         ),
       )
       .limit(HANDOFF_SCAN_LIMIT),
-    db
+    executor
       .select({ sessionContext: issues.sessionContext })
       .from(issues)
       .where(eq(issues.id, issueId))
       .limit(1),
   ]);
 
-  // Aggregate across every recorded code/fix handoff (not just the latest) —
-  // a real commit/files claim persists even if a later attempt's handoff is
-  // empty (e.g. a no-op fix pass after the real work already landed).
   let handoffCommitSha: string | null = null;
   let handoffFilesModified = 0;
   for (const row of handoffRows) {
-    // Stored payload is validated at write time against the discriminated
-    // `stepHandoffSchema` union (only `code` carries `commitSha`; `code`/
-    // `fix` both carry `filesModified`) but read back as opaque jsonb — treat
-    // it as an untyped record here rather than importing the write-side type.
     const payload = row.payload as Record<string, unknown> | null;
     if (!payload) continue;
     if (
@@ -98,7 +90,6 @@ export async function collectWorkEvidence(issueId: string): Promise<WorkEvidence
   };
 }
 
-/** A bare done `code`/`fix` job (`implementationJobCount`) is deliberately NOT evidence. */
 export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   return (
     Boolean(evidence.handoffCommitSha) ||
@@ -107,17 +98,19 @@ export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   );
 }
 
-/**
- * Decompose parents legitimately reach claiming statuses with no branch of
- * their own — their children carry the code (`issue_dependencies` outgoing
- * `kind='decomposes'` edge).
- */
-export async function isDecomposeParent(issueId: string): Promise<boolean> {
-  const [row] = await db
+export async function isDecomposeParent(
+  issueId: string,
+  executor: EvidenceExecutor = db,
+): Promise<boolean> {
+  const [row] = await executor
     .select({ id: issueDependencies.id })
     .from(issueDependencies)
     .where(
-      and(eq(issueDependencies.fromIssueId, issueId), eq(issueDependencies.kind, 'decomposes')),
+      and(
+        eq(issueDependencies.fromIssueId, issueId),
+        eq(issueDependencies.kind, 'decomposes'),
+        or(isNull(issueDependencies.validUntil), gt(issueDependencies.validUntil, sql`now()`)),
+      ),
     )
     .limit(1);
   return row != null;
@@ -128,15 +121,14 @@ export const NO_WORK_EVIDENCE_DETAIL =
   'sessionContext.branch or write the code/fix step handoff with commitSha/filesModified ' +
   'before advancing';
 
-/**
- * `null` = no violation (evidence found, or the issue is a decompose parent).
- * A string = the refusal detail to surface to the caller.
- */
 // cm:guard fails OPEN on any internal error — a broken evidence check must never freeze a legitimate advance
-export async function findMissingWorkEvidence(issueId: string): Promise<string | null> {
+export async function findMissingWorkEvidence(
+  issueId: string,
+  executor: EvidenceExecutor = db,
+): Promise<string | null> {
   try {
-    if (await isDecomposeParent(issueId)) return null;
-    const evidence = await collectWorkEvidence(issueId);
+    if (await isDecomposeParent(issueId, executor)) return null;
+    const evidence = await collectWorkEvidence(issueId, executor);
     if (hasCodeEvidence(evidence)) return null;
     return NO_WORK_EVIDENCE_DETAIL;
   } catch (err) {

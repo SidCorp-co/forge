@@ -36,4 +36,13 @@ export function registerDispatchSubscribers(bus: HooksBus): void {
       { name: `dispatch-tick-on-${event}` },
     );
   }
+
+  // cm:edge protocol -> packages/core/src/pipeline/hooks.ts — expiring or deleting an edge removes an L2 gate; this subscriber must tick immediately because PM graph-change handling is optional and cannot be the dispatcher wake path
+  bus.on(
+    'dependencyChanged',
+    (p) => {
+      void dispatchTickForProject(p.projectId);
+    },
+    { name: 'dispatch-tick-on-dependency-changed' },
+  );
 }

@@ -6,17 +6,18 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
+import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
@@ -48,9 +49,13 @@ const CYCLE_DEPTH_CAP = 100;
  * DFS forward from `start` following only `kind='blocks'` edges. If we reach
  * `target`, returns `'cycle'`. Caps depth defensively.
  */
+type DependencyReadExecutor = Pick<Db, 'select'>;
+
 async function detectCycle(
+  projectId: string,
   start: string,
   target: string,
+  executor: DependencyReadExecutor = db,
 ): Promise<'cycle' | 'depth_exceeded' | null> {
   if (start === target) return 'cycle';
   const visited = new Set<string>();
@@ -61,16 +66,71 @@ async function detectCycle(
     if (depth > CYCLE_DEPTH_CAP) return 'depth_exceeded';
     if (visited.has(node)) continue;
     visited.add(node);
-    const children = await db
+    const children = await executor
       .select({ to: issueDependencies.toIssueId })
       .from(issueDependencies)
-      .where(and(eq(issueDependencies.fromIssueId, node), eq(issueDependencies.kind, 'blocks')));
+      .where(
+        and(
+          eq(issueDependencies.projectId, projectId),
+          eq(issueDependencies.fromIssueId, node),
+          eq(issueDependencies.kind, 'blocks'),
+          or(isNull(issueDependencies.validUntil), gt(issueDependencies.validUntil, sql`now()`)),
+        ),
+      );
     for (const c of children) {
       if (c.to === target) return 'cycle';
       if (!visited.has(c.to)) stack.push({ node: c.to, depth: depth + 1 });
     }
   }
   return null;
+}
+
+async function finalizeDependencyChange(input: {
+  action: 'added' | 'removed' | 'updated';
+  edgeId: string;
+  projectId: string;
+  fromIssueId: string;
+  toIssueId: string;
+  kind: (typeof issueDependencyKinds)[number];
+  actorId: string;
+  reason?: string;
+  validUntil?: string;
+}): Promise<void> {
+  await hooks.emit('dependencyChanged', {
+    projectId: input.projectId,
+    edgeId: input.edgeId,
+    fromIssueId: input.fromIssueId,
+    toIssueId: input.toIssueId,
+    kind: input.kind,
+  });
+  const payload = {
+    edgeId: input.edgeId,
+    fromIssueId: input.fromIssueId,
+    toIssueId: input.toIssueId,
+    kind: input.kind,
+    ...(input.reason ? { reason: input.reason } : {}),
+    ...(input.validUntil ? { validUntil: input.validUntil } : {}),
+  };
+  const actor = { type: 'user' as const, id: input.actorId };
+  await Promise.all([
+    safeRecordActivity({
+      issueId: input.fromIssueId,
+      actor,
+      action: `issue.dependency.${input.action}`,
+      payload,
+    }),
+    safeRecordActivity({
+      issueId: input.toIssueId,
+      actor,
+      action: `issue.dependency.${input.action}`,
+      payload,
+    }),
+  ]);
+  if (input.kind === 'blocks' || input.kind === 'decomposes') {
+    // cm:guard publish decompose health for its `from` parent — only the parent derives decomposeChildrenPending, while blocks gates `to`; selecting the child leaves a waiting parent stale
+    const healthIssueId = input.kind === 'decomposes' ? input.fromIssueId : input.toIssueId;
+    await publishPipelineHealthChanged(input.projectId, [healthIssueId]);
+  }
 }
 
 export const issueDependencyRoutes = new Hono<{ Variables: AuthVars }>();
@@ -136,7 +196,7 @@ issueDependencyRoutes.post(
     }
 
     const sides = await db
-      .select({ id: issues.id, projectId: issues.projectId })
+      .select({ id: issues.id, projectId: issues.projectId, status: issues.status })
       .from(issues)
       .where(inArray(issues.id, [fromIssueId, toIssueId]));
     if (sides.length !== 2) throw notFound('one or both issues not found');
@@ -152,93 +212,122 @@ issueDependencyRoutes.post(
         'CROSS_PROJECT',
       );
     }
-
     const access = await loadProjectAccess(a.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    if (kind === 'blocks') {
-      const cycle = await detectCycle(toIssueId, fromIssueId);
-      if (cycle === 'cycle') {
-        throw conflict('cycle detected — adding this edge would form a loop', 'CYCLE_DETECTED', {
-          fromIssueId,
-          toIssueId,
-        });
+    const mutation = await db.transaction(async (tx) => {
+      if (kind === 'blocks') {
+        // cm:guard serialize `blocks` mutations per project and re-read the source after the lock — a concurrent drop otherwise expires its old edges, then this stale request creates a new impossible dropped-blocker edge that strands its dependent
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${a.projectId}))`);
       }
-      if (cycle === 'depth_exceeded') {
-        throw conflict('cycle detection depth exceeded', 'CYCLE_DEPTH_EXCEEDED');
-      }
-    }
 
-    const inserted = await db
-      .insert(issueDependencies)
-      .values({
+      const currentSides = await tx
+        .select({ id: issues.id, projectId: issues.projectId, status: issues.status })
+        .from(issues)
+        .where(inArray(issues.id, [fromIssueId, toIssueId]));
+      if (currentSides.length !== 2) throw notFound('one or both issues not found');
+      const currentFrom = currentSides.find((side) => side.id === fromIssueId);
+
+      let [existing] = await tx
+        .select({ id: issueDependencies.id, validUntil: issueDependencies.validUntil })
+        .from(issueDependencies)
+        .where(
+          and(
+            eq(issueDependencies.projectId, a.projectId),
+            eq(issueDependencies.fromIssueId, fromIssueId),
+            eq(issueDependencies.toIssueId, toIssueId),
+            eq(issueDependencies.kind, kind),
+          ),
+        )
+        .limit(1);
+      const finalValidUntil =
+        validUntil === undefined ? (existing?.validUntil ?? null) : new Date(validUntil);
+      const edgeIsActive = finalValidUntil === null || finalValidUntil > new Date();
+
+      if (kind === 'blocks' && edgeIsActive) {
+        if (currentFrom?.status === 'dropped') {
+          throw badRequest(
+            { message: 'a dropped issue cannot block another issue' },
+            'DROPPED_BLOCKER',
+          );
+        }
+        const cycle = await detectCycle(a.projectId, toIssueId, fromIssueId, tx);
+        if (cycle === 'cycle') {
+          throw conflict('cycle detected — adding this edge would form a loop', 'CYCLE_DETECTED', {
+            fromIssueId,
+            toIssueId,
+          });
+        }
+        if (cycle === 'depth_exceeded') {
+          throw conflict('cycle detection depth exceeded', 'CYCLE_DEPTH_EXCEEDED');
+        }
+      }
+
+      if (!existing) {
+        const [inserted] = await tx
+          .insert(issueDependencies)
+          .values({
+            projectId: a.projectId,
+            fromIssueId,
+            toIssueId,
+            kind,
+            reason: reason ?? null,
+            createdById: userId,
+            validUntil: validUntil ? new Date(validUntil) : null,
+          })
+          .onConflictDoNothing({
+            target: [
+              issueDependencies.projectId,
+              issueDependencies.fromIssueId,
+              issueDependencies.toIssueId,
+              issueDependencies.kind,
+            ],
+          })
+          .returning({ id: issueDependencies.id });
+        if (inserted) return { id: inserted.id, created: true, updated: false };
+        [existing] = await tx
+          .select({ id: issueDependencies.id, validUntil: issueDependencies.validUntil })
+          .from(issueDependencies)
+          .where(
+            and(
+              eq(issueDependencies.projectId, a.projectId),
+              eq(issueDependencies.fromIssueId, fromIssueId),
+              eq(issueDependencies.toIssueId, toIssueId),
+              eq(issueDependencies.kind, kind),
+            ),
+          )
+          .limit(1);
+        if (!existing)
+          throw new HTTPException(500, { message: 'conflict but no existing row found' });
+      }
+
+      const patch: { reason?: string; validUntil?: Date } = {};
+      if (reason !== undefined) patch.reason = reason;
+      if (validUntil !== undefined) patch.validUntil = new Date(validUntil);
+      const updated = Object.keys(patch).length > 0;
+      if (updated) {
+        await tx.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
+      }
+      return { id: existing.id, created: false, updated };
+    });
+
+    if (mutation.created || mutation.updated) {
+      await finalizeDependencyChange({
+        action: mutation.created ? 'added' : 'updated',
+        edgeId: mutation.id,
         projectId: a.projectId,
         fromIssueId,
         toIssueId,
         kind,
-        reason: reason ?? null,
-        createdById: userId,
-        validUntil: validUntil ? new Date(validUntil) : null,
-      })
-      .onConflictDoNothing({
-        target: [
-          issueDependencies.projectId,
-          issueDependencies.fromIssueId,
-          issueDependencies.toIssueId,
-          issueDependencies.kind,
-        ],
-      })
-      .returning({ id: issueDependencies.id });
-
-    if (inserted.length > 0) {
-      const edgeId = inserted[0]?.id;
-      if (!edgeId) throw new HTTPException(500, { message: 'insert returned no row' });
-      await hooks.emit('dependencyChanged', {
-        projectId: a.projectId,
-        edgeId,
-        fromIssueId,
-        toIssueId,
-        kind,
+        actorId: userId,
+        ...(reason !== undefined ? { reason } : {}),
+        ...(validUntil !== undefined ? { validUntil } : {}),
       });
-      const dependencyPayload: Record<string, unknown> = {
-        edgeId,
-        fromIssueId,
-        toIssueId,
-        kind,
-        ...(reason ? { reason } : {}),
-      };
-      const actor = { type: 'user' as const, id: userId };
-      await Promise.all([
-        safeRecordActivity({
-          issueId: fromIssueId,
-          actor,
-          action: 'issue.dependency.added',
-          payload: dependencyPayload,
-        }),
-        safeRecordActivity({
-          issueId: toIssueId,
-          actor,
-          action: 'issue.dependency.added',
-          payload: dependencyPayload,
-        }),
-      ]);
-      return c.json({ id: edgeId, created: true }, 201);
     }
-
-    const [existing] = await db
-      .select({ id: issueDependencies.id })
-      .from(issueDependencies)
-      .where(
-        and(
-          eq(issueDependencies.projectId, a.projectId),
-          eq(issueDependencies.fromIssueId, fromIssueId),
-          eq(issueDependencies.toIssueId, toIssueId),
-          eq(issueDependencies.kind, kind),
-        ),
-      )
-      .limit(1);
-    if (!existing) throw new HTTPException(500, { message: 'conflict but no existing row found' });
-    return c.json({ id: existing.id, created: false });
+    return c.json(
+      { id: mutation.id, created: mutation.created, updated: mutation.updated },
+      mutation.created ? 201 : 200,
+    );
   },
 );
 
@@ -275,35 +364,15 @@ issueDependencyRoutes.delete(
 
     await db.delete(issueDependencies).where(eq(issueDependencies.id, edgeId));
 
-    await hooks.emit('dependencyChanged', {
+    await finalizeDependencyChange({
+      action: 'removed',
+      edgeId,
       projectId: edge.projectId,
-      edgeId,
       fromIssueId: edge.fromIssueId,
       toIssueId: edge.toIssueId,
       kind: edge.kind,
+      actorId: userId,
     });
-
-    const removedPayload = {
-      edgeId,
-      fromIssueId: edge.fromIssueId,
-      toIssueId: edge.toIssueId,
-      kind: edge.kind,
-    };
-    const actor = { type: 'user' as const, id: userId };
-    await Promise.all([
-      safeRecordActivity({
-        issueId: edge.fromIssueId,
-        actor,
-        action: 'issue.dependency.removed',
-        payload: removedPayload,
-      }),
-      safeRecordActivity({
-        issueId: edge.toIssueId,
-        actor,
-        action: 'issue.dependency.removed',
-        payload: removedPayload,
-      }),
-    ]);
 
     return c.json({ deleted: true });
   },

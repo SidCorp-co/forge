@@ -55,6 +55,21 @@ describe('registerDispatchSubscribers', () => {
     expect(dispatchTickForProject).toHaveBeenCalledWith('p-3');
   });
 
+  it('ticks the project when a dependency changes', async () => {
+    const bus = new HooksBus();
+    registerDispatchSubscribers(bus);
+
+    await bus.emit('dependencyChanged', {
+      projectId: 'p-4',
+      edgeId: 'edge-1',
+      fromIssueId: 'from-1',
+      toIssueId: 'to-1',
+      kind: 'blocks',
+    });
+
+    expect(dispatchTickForProject).toHaveBeenCalledWith('p-4');
+  });
+
   it('reports the subscriber under a name a failure can be traced to', async () => {
     const bus = new HooksBus();
     registerDispatchSubscribers(bus);

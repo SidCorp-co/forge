@@ -121,6 +121,7 @@ describe('reopen on an autonomous project', () => {
 
     expect(postReasonMock).toHaveBeenCalledWith(
       expect.objectContaining({ fromStatus: 'closed', toStatus: 'reopen' }),
+      expect.anything(),
     );
   });
 

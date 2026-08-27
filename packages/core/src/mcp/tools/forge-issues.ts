@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import type { IssueLike } from '../../branches/resolve.js';
 import { db } from '../../db/client.js';
 import {
   comments,
@@ -14,7 +15,10 @@ import {
   tasks,
   waitingKinds,
 } from '../../db/schema.js';
-import { transitionIssueStatus } from '../../issues/apply-transition.js';
+import {
+  type StatusTransitionResult,
+  transitionIssueStatus,
+} from '../../issues/apply-transition.js';
 import {
   AttachmentError,
   type DecodedAttachment,
@@ -32,12 +36,13 @@ import {
   SHARED_ISSUE_PATCH_FIELDS,
 } from '../../issues/patch-fields.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
+import { triggerTerminalDispatch } from '../../issues/transition.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
-import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
-import { applyIssueRelations } from './issue-relations.js';
+import { applyIssueRelations, finalizeIssueRelations } from './issue-relations.js';
+import { writeIssueFields } from './issue-update-write.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -352,6 +357,7 @@ export type IssueRow = {
   plan: string | null;
   acceptanceCriteria: string | null;
   sessionContext: unknown;
+  metadata: NonNullable<IssueLike['metadata']> | null;
   releaseNotes: ReleaseNotes | null;
   mergedAt: Date | null;
   createdAt: Date;
@@ -397,6 +403,7 @@ export function serialize(row: IssueRow): Record<string, unknown> {
         ? null
         : markUntrusted(row.acceptanceCriteria, { source: 'issue.acceptanceCriteria' }),
     sessionContext: sanitizeDeep(row.sessionContext),
+    metadata: sanitizeDeep(row.metadata),
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
     createdAt: row.createdAt,
@@ -460,6 +467,44 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
   const [row] = await db.select().from(issues).where(eq(issues.id, documentId)).limit(1);
   if (!row) throw new Error('NOT_FOUND: issue not found');
   return row as IssueRow;
+}
+
+async function triggerTerminalIssueDispatch(
+  issue: Pick<IssueRow, 'id' | 'projectId' | 'issSeq'>,
+  transition: StatusTransitionResult,
+): Promise<void> {
+  if (!transition.terminal) return;
+  await triggerTerminalDispatch([
+    {
+      issueId: issue.id,
+      projectId: issue.projectId,
+      issSeq: issue.issSeq,
+      at: transition.updatedAt,
+      ...(transition.status === 'dropped' ? { dependents: transition.unblockedDependents } : {}),
+    },
+  ]);
+}
+
+async function handleIssueTransition(
+  ctx: McpContext,
+  input: z.infer<typeof inputSchema>,
+): Promise<Record<string, unknown>> {
+  if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for transition');
+  const target = input.data?.status;
+  if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
+  const issue = await loadIssue(input.documentId);
+  await assertPrincipalIsWriter(ctx.principal, issue.projectId);
+  const transition = await transitionIssueStatus(
+    issue,
+    target,
+    principalActor(ctx.principal, ctx.device),
+    {
+      transitionReason: input.data?.reason ?? input.data?.note,
+      waitingKind: input.data?.waitingKind,
+    },
+  );
+  await triggerTerminalIssueDispatch(issue, transition);
+  return serializeWithAttachments(await loadIssue(issue.id));
 }
 
 const LABEL_UUID_PATTERN =
@@ -884,7 +929,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'create': {
-        if (!input.data?.title) throw new Error('BAD_REQUEST: data.title is required for create');
+        const data = input.data;
+        const title = data?.title;
+        if (!data || !title) throw new Error('BAD_REQUEST: data.title is required for create');
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
 
@@ -893,7 +940,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // ISS-236 adds `draft` for AI-generated proposals that wait for human
         // promote/discard before entering the pipeline. Anything else must go
         // through the transition action so the state machine + activity log run.
-        const requestedStatus: IssueStatus = input.data.status ?? 'open';
+        const requestedStatus: IssueStatus = data.status ?? 'open';
         if (
           requestedStatus !== 'open' &&
           requestedStatus !== 'on_hold' &&
@@ -911,9 +958,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // Decode + size-cap attachments BEFORE insert so a bad payload doesn't
         // leave a half-created issue with no files.
         let decodedAttachments: DecodedAttachment[] = [];
-        if (input.data.attachments && input.data.attachments.length > 0) {
+        if (data.attachments && data.attachments.length > 0) {
           try {
-            decodedAttachments = decodeAndValidateAttachments(input.data.attachments);
+            decodedAttachments = decodeAndValidateAttachments(data.attachments);
           } catch (err) {
             if (err instanceof AttachmentError) {
               throw new Error(`${err.code}: ${err.message}`);
@@ -925,12 +972,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // ISS-633 — resolve + strictly validate label names/uuids BEFORE
         // insert (same "fail before half-created" discipline as attachments).
         let labelIds: string[] = [];
-        if (input.data.labels && input.data.labels.length > 0) {
-          labelIds = await resolveLabelIdsForWrite(projectId, input.data.labels);
+        if (data.labels && data.labels.length > 0) {
+          labelIds = await resolveLabelIdsForWrite(projectId, data.labels);
         }
 
         // cm:guard one live issue per detector — a recurring finding must land on the issue already tracking it, never as issue N+1
-        const detectorKey = input.data.detectorKey ?? null;
+        const detectorKey = data.detectorKey ?? null;
         if (detectorKey) {
           if (!isValidDetectorKey(detectorKey)) {
             throw new Error(
@@ -957,41 +1004,47 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
         }
 
-        const [inserted] = await db
-          .insert(issues)
-          .values({
+        const createdWithRelations = await db.transaction(async (tx) => {
+          const [inserted] = await tx
+            .insert(issues)
+            .values({
+              projectId,
+              title,
+              description: data.description ?? null,
+              status: createStatus,
+              priority: data.priority ?? 'medium',
+              category: data.category ?? null,
+              complexity: data.complexity ?? null,
+              createdById: device.ownerId,
+              createdVia: 'mcp',
+              detectorKey,
+              plan: data.plan ?? null,
+              acceptanceCriteria: data.acceptanceCriteria ?? null,
+              sessionContext: data.sessionContext ?? null,
+              releaseNotes: data.releaseNotes ?? null,
+            })
+            .returning();
+          if (!inserted) throw new Error('issues: insert returned no row');
+          const created = inserted as IssueRow;
+          if (labelIds.length > 0) {
+            await tx
+              .insert(issueLabels)
+              .values(labelIds.map((labelId) => ({ issueId: created.id, labelId })));
+          }
+          // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — the edges MUST commit before the issueCreated emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
+          const pendingRelations = await applyIssueRelations(
+            ctx,
             projectId,
-            title: input.data.title,
-            description: input.data.description ?? null,
-            status: createStatus,
-            priority: input.data.priority ?? 'medium',
-            category: input.data.category ?? null,
-            complexity: input.data.complexity ?? null,
-            createdById: device.ownerId,
-            createdVia: 'mcp',
-            detectorKey,
-            plan: input.data.plan ?? null,
-            acceptanceCriteria: input.data.acceptanceCriteria ?? null,
-            sessionContext: input.data.sessionContext ?? null,
-            releaseNotes: input.data.releaseNotes ?? null,
-          })
-          .returning();
-        if (!inserted) throw new Error('issues: insert returned no row');
+            created.id,
+            data.relations,
+            tx,
+          );
+          return { created, pendingRelations };
+        });
+        const { created, pendingRelations } = createdWithRelations;
 
-        const created = inserted as IssueRow;
-
-        // ISS-633 — attach labels (REST parity: issues/routes.ts ~284-288).
-        if (labelIds.length > 0) {
-          await db
-            .insert(issueLabels)
-            .values(labelIds.map((labelId) => ({ issueId: created.id, labelId })));
-        }
-
-        // ISS-606: label + owner notification for a gated (parked) create.
         if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
-
-        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — the edges MUST commit before the issueCreated emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
-        const r = await applyIssueRelations(ctx, projectId, created.id, input.data.relations);
+        await finalizeIssueRelations(ctx, pendingRelations);
 
         await hooks.emit('issueCreated', {
           issueId: created.id,
@@ -1011,7 +1064,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const result: Record<string, unknown> = serialize(created);
         result.labels = labelIds.length > 0 ? await listIssueLabels(created.id) : [];
-        if (r.length > 0) result.relations = r;
+        if (pendingRelations.relations.length > 0) result.relations = pendingRelations.relations;
         if (decodedAttachments.length > 0) {
           const { persisted, errors } = await persistDecodedIssueAttachments(
             created.id,
@@ -1027,6 +1080,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'update': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
+        const data = input.data;
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
 
@@ -1034,81 +1088,64 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // tx (mirrors REST PATCH's assertLabelsInProject running before its
         // own tx). `undefined` means "no change"; `[]` clears every label.
         const labelIds =
-          input.data.labels !== undefined
-            ? await resolveLabelIdsForWrite(issue.projectId, input.data.labels)
+          data.labels !== undefined
+            ? await resolveLabelIdsForWrite(issue.projectId, data.labels)
             : undefined;
 
-        if (input.data.detectorKey !== undefined && !isValidDetectorKey(input.data.detectorKey)) {
+        if (data.detectorKey !== undefined && !isValidDetectorKey(data.detectorKey)) {
           throw new Error(
-            `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${input.data.detectorKey}')`,
+            `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${data.detectorKey}')`,
           );
         }
 
         // Shared whitelist (issues/patch-fields.ts) — same plain columns as
         // REST PATCH plus the MCP-only agent-facing fields.
-        const updates = collectIssueFieldUpdates(input.data as Record<string, unknown>, [
+        const updates = collectIssueFieldUpdates(data as Record<string, unknown>, [
           ...SHARED_ISSUE_PATCH_FIELDS,
           ...MCP_ONLY_ISSUE_PATCH_FIELDS,
         ]);
 
+        const writeFields = (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) =>
+          writeIssueFields(tx, {
+            issueId: issue.id,
+            deviceId: device.id,
+            updates,
+            labelIds,
+          });
+
+        let pendingRelations: Awaited<ReturnType<typeof applyIssueRelations>> | undefined;
         // cm:edge ordering -> packages/core/src/issues/transition-evidence.ts — field writes MUST commit before the status transition below, which re-reads issues.plan for PLAN_REQUIRED; reversed order throws PLAN_REQUIRED on a legal { plan, status:'approved' } call and discards the submitted plan
-        if (Object.keys(updates).length > 0 || labelIds !== undefined) {
-          // cm:why sql`now()`, matching transitionIssueStatus below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
-          updates.updatedAt = sql`now()`;
-          const actor = { type: 'device' as const, id: device.id };
-          await db.transaction(async (tx) => {
-            await tx.update(issues).set(updates).where(eq(issues.id, issue.id));
-
-            // ISS-633 — replace-set label delta, in-tx (rolls back together
-            // with the field update on failure) with issue.labeled/unlabeled
-            // activity, matching REST PATCH (issues/routes.ts ~609-645).
-            if (labelIds !== undefined) {
-              const existing = await tx
-                .select({ labelId: issueLabels.labelId })
-                .from(issueLabels)
-                .where(eq(issueLabels.issueId, issue.id))
-                .limit(500);
-              const oldSet = new Set(existing.map((r) => r.labelId));
-              const newSet = new Set(labelIds);
-              const labelsAdded = [...newSet].filter((l) => !oldSet.has(l));
-              const labelsRemoved = [...oldSet].filter((l) => !newSet.has(l));
-
-              await tx.delete(issueLabels).where(eq(issueLabels.issueId, issue.id));
-              if (labelIds.length > 0) {
-                await tx
-                  .insert(issueLabels)
-                  .values(labelIds.map((labelId) => ({ issueId: issue.id, labelId })));
-              }
-
-              for (const labelId of labelsAdded) {
-                await recordActivityTx(tx, {
-                  issueId: issue.id,
-                  actor,
-                  action: 'issue.labeled',
-                  payload: { labelId },
-                });
-              }
-              for (const labelId of labelsRemoved) {
-                await recordActivityTx(tx, {
-                  issueId: issue.id,
-                  actor,
-                  action: 'issue.unlabeled',
-                  payload: { labelId },
-                });
-              }
-            }
+        if (data.status && data.status !== issue.status) {
+          const transition = await transitionIssueStatus(
+            issue,
+            data.status,
+            principalActor(principal, device),
+            {
+              transitionReason: data.reason ?? data.note,
+              waitingKind: data.waitingKind,
+              // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker
+              beforeStatusWrite: async (tx) => {
+                await writeFields(tx);
+                pendingRelations = await applyIssueRelations(
+                  ctx,
+                  issue.projectId,
+                  issue.id,
+                  data.relations,
+                  tx,
+                );
+              },
+            },
+          );
+          await triggerTerminalIssueDispatch(issue, transition);
+        } else {
+          pendingRelations = await db.transaction(async (tx) => {
+            await writeFields(tx);
+            return applyIssueRelations(ctx, issue.projectId, issue.id, data.relations, tx);
           });
         }
-
-        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker
-        const r = await applyIssueRelations(ctx, issue.projectId, issue.id, input.data.relations);
-
-        if (input.data.status && input.data.status !== issue.status) {
-          await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {
-            transitionReason: input.data.reason ?? input.data.note,
-            waitingKind: input.data.waitingKind,
-          });
-        }
+        if (!pendingRelations)
+          throw new Error('forge_issues update: relation transaction returned no result');
+        await finalizeIssueRelations(ctx, pendingRelations);
 
         const fresh = await loadIssue(issue.id);
         // cm:guard report what the call DID under `action`, matching mark_merged/unmark below — this used to return the literal `status:'updated'` over the issue's own status enum, so a caller could not read back the status it had just written, and `relations` was parsed and silently discarded (ISS-868)
@@ -1116,26 +1153,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...(await serializeWithAttachments(fresh)),
           action: 'updated',
         };
-        if (r.length > 0) updateResult.relations = r;
+        if (pendingRelations.relations.length > 0) {
+          updateResult.relations = pendingRelations.relations;
+        }
         return updateResult;
       }
 
-      case 'transition': {
-        if (!input.documentId) {
-          throw new Error('BAD_REQUEST: documentId is required for transition');
-        }
-        const target = input.data?.status;
-        if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
-        const issue = await loadIssue(input.documentId);
-        await assertPrincipalIsWriter(principal, issue.projectId);
-        await transitionIssueStatus(issue, target, principalActor(principal, device), {
-          transitionReason: input.data?.reason ?? input.data?.note,
-          waitingKind: input.data?.waitingKind,
-        });
-        const fresh = await loadIssue(issue.id);
-        const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
-        return transitionOutput;
-      }
+      case 'transition':
+        return handleIssueTransition(ctx, input);
 
       // ISS-286 — explicit, idempotent, auditable merge-marker. Decouples
       // `merged_at` from the implicit `markMergedIfLeavingBase` side-effect so

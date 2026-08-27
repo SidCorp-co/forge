@@ -597,7 +597,13 @@ issueRoutes.patch(
           cause: { code: 'BRANCH_SELF_REFERENCE' },
         });
       }
-      updates.metadata = patch.metadata;
+      updates.metadata =
+        patch.metadata === null
+          ? null
+          : sql`jsonb_strip_nulls(jsonb_build_object(
+              'integrationBranch', ${issues.metadata}->'integrationBranch',
+              'useIntegrationBranch', ${issues.metadata}->'useIntegrationBranch'
+            )) || ${JSON.stringify(patch.metadata)}::jsonb`;
       track('metadata', patch.metadata);
     }
 

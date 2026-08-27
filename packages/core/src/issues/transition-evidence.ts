@@ -10,7 +10,7 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
@@ -27,11 +27,14 @@ export interface TransitionEvidenceViolation {
   details: Record<string, unknown>;
 }
 
+type EvidenceExecutor = Pick<Db, 'select'>;
+
 export interface TransitionEvidenceContext {
   issue: Pick<TransitionIssueRow, 'id' | 'projectId'>;
   toStatus: string;
   actorType: 'user' | 'device';
   skip: boolean;
+  executor?: EvidenceExecutor;
 }
 
 type EvidenceRule = (ctx: TransitionEvidenceContext) => Promise<TransitionEvidenceViolation | null>;
@@ -81,7 +84,7 @@ export const isBlankPlan = (plan: string | null | undefined): boolean =>
  */
 const planRequiredRule: EvidenceRule = async (ctx) => {
   if (ctx.toStatus !== 'approved') return null;
-  const [row] = await db
+  const [row] = await (ctx.executor ?? db)
     .select({ plan: issues.plan })
     .from(issues)
     .where(eq(issues.id, ctx.issue.id))
@@ -111,7 +114,7 @@ const NO_WORK_EVIDENCE_STATUSES: ReadonlySet<string> = new Set(['developed', 'te
  */
 const noWorkEvidenceRule: EvidenceRule = async (ctx) => {
   if (!NO_WORK_EVIDENCE_STATUSES.has(ctx.toStatus)) return null;
-  const detail = await findMissingWorkEvidence(ctx.issue.id);
+  const detail = await findMissingWorkEvidence(ctx.issue.id, ctx.executor ?? db);
   if (!detail) return null;
   return {
     code: 'NO_WORK_EVIDENCE',

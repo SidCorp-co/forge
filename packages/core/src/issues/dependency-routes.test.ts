@@ -39,7 +39,7 @@ afterEach(() => {
 
 describe('detectCycle', () => {
   it('returns "cycle" for a self-edge target', async () => {
-    expect(await detectCycle('A', 'A')).toBe('cycle');
+    expect(await detectCycle('project', 'A', 'A')).toBe('cycle');
   });
 
   it('returns null when the graph is empty', async () => {
@@ -47,7 +47,7 @@ describe('detectCycle', () => {
     dbSelect.mockImplementation(() => ({
       from: () => ({ where: () => Promise.resolve([]) }),
     }));
-    expect(await detectCycle('B', 'A')).toBeNull();
+    expect(await detectCycle('project', 'B', 'A')).toBeNull();
   });
 
   it('returns "cycle" when DFS reaches the target', async () => {
@@ -56,7 +56,7 @@ describe('detectCycle', () => {
     dbSelect.mockImplementationOnce(() => ({
       from: () => ({ where: () => Promise.resolve([{ to: 'A' }]) }),
     }));
-    expect(await detectCycle('B', 'A')).toBe('cycle');
+    expect(await detectCycle('project', 'B', 'A')).toBe('cycle');
   });
 
   it('returns null when DFS exhausts without reaching target', async () => {
@@ -71,7 +71,7 @@ describe('detectCycle', () => {
       .mockImplementationOnce(() => ({
         from: () => ({ where: () => Promise.resolve([]) }),
       }));
-    expect(await detectCycle('B', 'A')).toBeNull();
+    expect(await detectCycle('project', 'B', 'A')).toBeNull();
   });
 });
 

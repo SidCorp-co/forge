@@ -1076,6 +1076,7 @@ export const issues = pgTable(
     metadata: jsonb('metadata').$type<
       | ({
           branchConfig?: IssueBranchOverride | null;
+          integrationBranch?: string | null;
           // ISS-138 (PR-D) — opt-out flag for the decomposition helper.
           // Defaults to true (helper creates the shared integration branch).
           useIntegrationBranch?: boolean;
@@ -2007,6 +2008,7 @@ export const notificationTypes = [
   // cm:why ISS-762 — `waiting` + merged code is the one issue state that contradicts itself, and nothing else surfaces it
   'issue_stranded',
   'retry_rescue_threshold',
+  'ops_alert',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

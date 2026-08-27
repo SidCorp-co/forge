@@ -139,9 +139,6 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
         .limit(1),
     ]);
 
-    // Mirror forge_config's issue-aware branch resolution (metadata override,
-    // falling back to sessionContext until the real issues.metadata column
-    // lands — see ISS PR-C).
     const branchOverride = extractIssueBranchOverride(
       issue as unknown as Parameters<typeof extractIssueBranchOverride>[0],
     );

@@ -15,6 +15,16 @@ vi.mock('../config/env.js', () => ({
 
 const gitCreateBranch = vi.fn(async (_input: unknown) => ({ remote: 'github', branch: '' }));
 const gitHasBranch = vi.fn(async (_repo: string, _branch: string) => false);
+const postTransitionReasonComment = vi.fn(async () => undefined);
+
+vi.mock('./transition-reason.js', () => ({ postTransitionReasonComment }));
+vi.mock('./pipeline-health.js', () => ({
+  publishPipelineHealthChanged: vi.fn(async () => undefined),
+}));
+vi.mock('../pipeline/runs.js', () => ({
+  setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+}));
+vi.mock('./apply-transition.js', () => ({ publishIssueStatusChange: vi.fn() }));
 
 vi.mock('../git/branches.js', async () => {
   const actual = await vi.importActual<typeof import('../git/branches.js')>('../git/branches.js');
@@ -179,6 +189,9 @@ function executeQuery(q: QueryChain): unknown {
     if (q._table === 'projects') {
       return [state.project];
     }
+    if (q._table === 'issue_dependencies') {
+      return [...state.edges];
+    }
     return [];
   }
   if (q._kind === 'insert') {
@@ -237,11 +250,7 @@ function executeQuery(q: QueryChain): unknown {
   }
   if (q._kind === 'update') {
     if (q._table === 'issues') {
-      // Walk all issues and pretend the metadata patch sql() applies as an
-      // object merge. We can't read the actual SQL — instead, _set.metadata
-      // here is a SQL fragment object; tests verify behaviour through the
-      // returned `integrationBranch` rather than the metadata column.
-      return [];
+      return [{ updatedAt: new Date() }];
     }
     return [];
   }
@@ -262,6 +271,7 @@ const fakeDb = {
     c._table = tableName(t);
     return c;
   }),
+  execute: vi.fn(async () => undefined),
   delete: vi.fn(() => makeChain('delete')),
   transaction: dbTransactionFn,
 };
@@ -363,6 +373,13 @@ describe('decomposeParent — happy path', () => {
     expect(
       state.activity.some((a) => a.action === 'issue.decomposed' && a.issueId === PARENT_ID),
     ).toBe(true);
+    expect(postTransitionReasonComment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: PARENT_ID,
+        reason: expect.stringContaining('Decomposed into 3 child issues.'),
+      }),
+      fakeDb,
+    );
   });
 });
 
@@ -401,7 +418,7 @@ describe('decomposeParent — parent status guard', () => {
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 
-  it('allows further decomposition when the parent already owns an integration branch', async () => {
+  it('requires the recorded branch before adding children to a legacy decomposition', async () => {
     seedParent({
       status: 'in_progress',
       metadata: {
@@ -409,10 +426,26 @@ describe('decomposeParent — parent status guard', () => {
         branchConfig: { baseBranch: 'main', targetBranch: 'main' },
       },
     });
+
+    await expect(
+      decomposeParent(PARENT_ID, [{ title: 'Late Child' }], { userId: USER_ID }),
+    ).rejects.toMatchObject({ code: 'LEGACY_INTEGRATION_BRANCH_UNKNOWN' });
+    expect(gitCreateBranch).not.toHaveBeenCalled();
+  });
+
+  it('prefers the recorded integration branch over the parent base branch', async () => {
+    seedParent({
+      status: 'in_progress',
+      metadata: {
+        useIntegrationBranch: true,
+        integrationBranch: 'iss-7-pr-d-parent-epic',
+        branchConfig: { baseBranch: 'main', targetBranch: 'main' },
+      },
+    });
+
     const out = await decomposeParent(PARENT_ID, [{ title: 'Late Child' }], { userId: USER_ID });
-    // Reuses the existing branch name from metadata (which is 'main' in our
-    // contrived fixture); the helper does not re-issue a git push.
-    expect(out.integrationBranch).toBe('main');
+
+    expect(out.integrationBranch).toBe('iss-7-pr-d-parent-epic');
     expect(gitCreateBranch).not.toHaveBeenCalled();
   });
 });

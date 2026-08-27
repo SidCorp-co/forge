@@ -29,10 +29,11 @@ export interface IssueBranchOverride {
 
 export interface IssueLike {
   metadata?:
-    | ({ branchConfig?: IssueBranchOverride | null; useIntegrationBranch?: boolean } & Record<
-        string,
-        unknown
-      >)
+    | ({
+        branchConfig?: IssueBranchOverride | null;
+        integrationBranch?: string | null;
+        useIntegrationBranch?: boolean;
+      } & Record<string, unknown>)
     | null;
 }
 

@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
@@ -80,7 +80,10 @@ export type TransitionIssueRow = {
   reopenCount: number;
 };
 
+type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export interface ApplyStatusTransitionOptions {
+  beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
   /**
    * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
    * as a target and restricts `draft`'s own exits, so this flag buys exactly
@@ -221,26 +224,6 @@ export async function transitionIssueStatus(
         { from: fromStatus, to: requestedStatus },
       );
     }
-    await postTransitionReasonComment({
-      issueId: issue.id,
-      authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-      fromStatus,
-      toStatus: requestedStatus,
-      reason,
-      waitingKind: options.waitingKind ?? null,
-      isAi: actor.type !== 'user',
-    });
-  }
-
-  // cm:why skip exempts auto-skip/failover (both pass {skip:true} into `approved`) — only an unskipped device write is the fabrication class this guards against
-  const violation = await checkTransitionEvidence({
-    issue: { id: issue.id, projectId: issue.projectId },
-    toStatus: requestedStatus,
-    actorType: actor.type,
-    skip: options.skip === true,
-  });
-  if (violation) {
-    throw new TransitionError(violation.code, violation.detail, violation.details);
   }
 
   const reopening = isReopenEntry(fromStatus, requestedStatus);
@@ -265,55 +248,98 @@ export async function transitionIssueStatus(
   // cm:guard never insert into activity_log here — F5 owns that write, and a second one double-counts every transition
   // cm:edge sideeffect -> packages/core/drizzle/migrations/0070_pipeline_outbox.sql — trg_issues_status_outbox fires on this UPDATE and writes pipeline_outbox; no call site references it, so a reader of this file cannot see the row being produced
   // cm:why withActorContext wraps the UPDATE because the trigger reads actor metadata off SET LOCAL session settings — outside the wrapper the outbox row is written with no actor at all
-  const txResult = await db.transaction((tx) =>
-    withActorContext(tx, { type: actor.type, id: actor.id }, options.reason ?? null, async (t) => {
-      const [row] = await t
-        .update(issues)
-        .set({
-          status: toStatus,
-          reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-          // cm:guard the CLEAR arm is the load-bearing half — a kind left behind on an issue that has moved on renders a live "a human is needed" banner on work already in flight, and nothing else in the system would ever clear it
-          waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
-          updatedAt: sql`now()`,
-        })
-        .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
-        .returning({
-          id: issues.id,
-          status: issues.status,
-          reopenCount: issues.reopenCount,
-          updatedAt: issues.updatedAt,
-        });
-      let stampedOnClose = false;
-      let unblockedDependents: UnblockedDependent[] = [];
-      if (row) {
-        // ISS-232 — stamp `merged_at` inside the same tx so a rollback
-        // drops the column write alongside the status flip.
-        await markMergedIfLeavingBase(t, {
-          issueId: issue.id,
-          projectId: issue.projectId,
-          fromStatus,
-          toStatus: toStatus,
-        });
-        // cm:guard pass the REQUESTED status, not the written one: a close held at the release gate has merged into the base branch, and that is exactly what `merged_at` means — dropping the stamp would keep every `blocks` dependent waiting for a release rather than for the merge
-        const closeStamp = await markMergedOnClose(t, {
-          issueId: issue.id,
-          toStatus: requestedStatus,
-        });
-        stampedOnClose = closeStamp.stamped;
-        if (toStatus === 'dropped') {
-          unblockedDependents = await expireBlocksEdgesOnDrop(t, issue.id);
-        }
+  const txResult = await db.transaction(async (tx) => {
+    await options.beforeStatusWrite?.(tx);
+    if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
+      const reason = options.transitionReason?.trim();
+      if (!reason) {
+        throw new TransitionError(
+          'TRANSITION_REASON_REQUIRED',
+          `a transition to \`${requestedStatus}\` must carry a reason saying what is needed or what is wrong`,
+          { from: fromStatus, to: requestedStatus },
+        );
       }
-      return row ? { row, stampedOnClose, unblockedDependents } : undefined;
-    }),
-  );
-  const updated = txResult?.row;
-  if (!updated) {
-    throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
-      from: fromStatus,
-      to: toStatus,
+      await postTransitionReasonComment(
+        {
+          issueId: issue.id,
+          authorId: actor.type === 'user' ? actor.id : actor.ownerId,
+          fromStatus,
+          toStatus: requestedStatus,
+          reason,
+          waitingKind: options.waitingKind ?? null,
+          isAi: actor.type !== 'user',
+        },
+        tx,
+      );
+    }
+
+    // cm:why skip exempts auto-skip/failover (both pass {skip:true} into `approved`) — only an unskipped device write is the fabrication class this guards against
+    const violation = await checkTransitionEvidence({
+      issue: { id: issue.id, projectId: issue.projectId },
+      toStatus: requestedStatus,
+      actorType: actor.type,
+      skip: options.skip === true,
+      executor: tx,
     });
-  }
+    if (violation) {
+      throw new TransitionError(violation.code, violation.detail, violation.details);
+    }
+
+    const result = await withActorContext(
+      tx,
+      { type: actor.type, id: actor.id },
+      options.reason ?? null,
+      async (t) => {
+        const [row] = await t
+          .update(issues)
+          .set({
+            status: toStatus,
+            reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
+            // cm:guard the CLEAR arm is the load-bearing half — a kind left behind on an issue that has moved on renders a live "a human is needed" banner on work already in flight, and nothing else in the system would ever clear it
+            waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
+            updatedAt: sql`now()`,
+          })
+          .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
+          .returning({
+            id: issues.id,
+            status: issues.status,
+            reopenCount: issues.reopenCount,
+            updatedAt: issues.updatedAt,
+          });
+        let stampedOnClose = false;
+        let unblockedDependents: UnblockedDependent[] = [];
+        if (row) {
+          // ISS-232 — stamp `merged_at` inside the same tx so a rollback
+          // drops the column write alongside the status flip.
+          await markMergedIfLeavingBase(t, {
+            issueId: issue.id,
+            projectId: issue.projectId,
+            fromStatus,
+            toStatus: toStatus,
+          });
+          // cm:guard pass the REQUESTED status, not the written one: a close held at the release gate has merged into the base branch, and that is exactly what `merged_at` means — dropping the stamp would keep every `blocks` dependent waiting for a release rather than for the merge
+          const closeStamp = await markMergedOnClose(t, {
+            issueId: issue.id,
+            toStatus: requestedStatus,
+          });
+          stampedOnClose = closeStamp.stamped;
+          if (toStatus === 'dropped') {
+            unblockedDependents = await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id);
+          }
+        }
+        return row ? { row, stampedOnClose, unblockedDependents } : undefined;
+      },
+    );
+    // cm:guard throw a stale transition inside this transaction — combined update callbacks may already have written fields and relations, so returning from the callback would commit a mutation whose caller was told it failed
+    if (!result) {
+      throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
+        from: fromStatus,
+        to: toStatus,
+      });
+    }
+    return result;
+  });
+  const updated = txResult.row;
 
   publishIssueStatusChange(issue.projectId, {
     issueId: updated.id,

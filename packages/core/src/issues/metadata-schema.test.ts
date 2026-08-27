@@ -55,6 +55,12 @@ describe('issueMetadataSchema', () => {
     expect(issueMetadataSchema.safeParse({ branchConfig: null }).success).toBe(true);
   });
 
+  it('accepts the recorded integration branch', () => {
+    expect(issueMetadataSchema.safeParse({ integrationBranch: 'iss-138-parent' }).success).toBe(
+      true,
+    );
+  });
+
   it('rejects unknown keys (strict, forward-compat is opt-in via migration)', () => {
     expect(issueMetadataSchema.safeParse({ skillKnobs: {} }).success).toBe(false);
   });

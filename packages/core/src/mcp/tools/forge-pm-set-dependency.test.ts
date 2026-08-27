@@ -12,6 +12,10 @@ const queue: unknown[] = [];
 
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
+chain.select = () => chain;
+chain.insert = () => chain;
+chain.update = () => chain;
+chain.execute = async () => undefined;
 chain.from = () => chain;
 chain.leftJoin = () => chain;
 chain.where = () => chain;
@@ -29,6 +33,7 @@ vi.mock('../../db/client.js', () => ({
     select: vi.fn(() => chain),
     insert: vi.fn(() => chain),
     update: vi.fn(() => chain),
+    transaction: (cb: (tx: typeof chain) => Promise<unknown>) => cb(chain),
   },
 }));
 
@@ -41,22 +46,8 @@ vi.mock('../../issues/dependency-routes.js', () => ({
   detectCycle: vi.fn(async () => null),
 }));
 
-// ISS-138 (PR-D) — the tool now calls `decomposeParent` after a successful
-// `decomposes` edge insert. The helper has its own DB shape so we mock it
-// at the module boundary; the helper's own tests cover its internals.
-const decomposeSpy = vi.fn(async () => ({
-  parentId: 'parent',
-  childIds: ['child'],
-  integrationBranch: 'iss-1-foo',
-  createdEdges: 0,
-}));
-vi.mock('../../issues/decompose.js', () => ({
-  decomposeParent: decomposeSpy,
-}));
-
 const { forgePmSetDependencyTool } = await import('./forge-pm-set-dependency.js');
 const { hooks } = await import('../../pipeline/hooks.js');
-
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const FROM_ID = '22222222-2222-4222-8222-222222222222';
 const TO_ID = '33333333-3333-4333-8333-333333333333';
@@ -99,7 +90,6 @@ function pushMemberOk() {
 beforeEach(() => {
   queue.length = 0;
   vi.clearAllMocks();
-  decomposeSpy.mockClear();
 });
 
 describe('forge_pm.set_dependency', () => {
@@ -142,6 +132,7 @@ describe('forge_pm.set_dependency', () => {
     ]);
     // detectCycle is module-mocked to return null — does NOT consume the
     // queue, so we go straight to insert.
+    queue.push([]);
     queue.push([{ id: EDGE_ID }]); // insert returning
 
     hooks.reset();
@@ -174,8 +165,7 @@ describe('forge_pm.set_dependency', () => {
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
     // detectCycle is module-mocked to return null — does NOT consume the queue.
-    queue.push([]); // insert returns no row (conflict)
-    queue.push([{ id: EDGE_ID }]); // existing row lookup
+    queue.push([{ id: EDGE_ID, validUntil: null }]);
 
     hooks.reset();
     const depSpy = vi.fn();
@@ -208,6 +198,7 @@ describe('forge_pm.set_dependency', () => {
       { id: FROM_ID, projectId: PROJECT_ID },
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
+    queue.push([]);
     queue.push([{ id: EDGE_ID }]);
 
     const result = (await tool.handler({
@@ -219,72 +210,6 @@ describe('forge_pm.set_dependency', () => {
 
     expect(result.created).toBe(true);
     expect(result.id).toBe(EDGE_ID);
-  });
-
-  // ISS-138 (PR-D) — decomposes-edge inserts trigger the integration-branch
-  // helper. Blocks edges and opt-out callers must not.
-  it('calls decomposeParent after a fresh decomposes edge insert', async () => {
-    const tool = forgePmSetDependencyTool(ctx);
-    pushMemberOk();
-    queue.push([
-      { id: FROM_ID, projectId: PROJECT_ID },
-      { id: TO_ID, projectId: PROJECT_ID },
-    ]);
-    queue.push([{ id: EDGE_ID }]);
-
-    await tool.handler({
-      projectId: PROJECT_ID,
-      fromIssueId: FROM_ID,
-      toIssueId: TO_ID,
-      kind: 'decomposes',
-    });
-
-    expect(decomposeSpy).toHaveBeenCalledTimes(1);
-    expect(decomposeSpy).toHaveBeenCalledWith(
-      FROM_ID,
-      [{ existingIssueId: TO_ID }],
-      { userId: OWNER_ID },
-      { useIntegrationBranch: undefined },
-    );
-  });
-
-  it('skips decomposeParent when decomposeOpts.useIntegrationBranch is false', async () => {
-    const tool = forgePmSetDependencyTool(ctx);
-    pushMemberOk();
-    queue.push([
-      { id: FROM_ID, projectId: PROJECT_ID },
-      { id: TO_ID, projectId: PROJECT_ID },
-    ]);
-    queue.push([{ id: EDGE_ID }]);
-
-    await tool.handler({
-      projectId: PROJECT_ID,
-      fromIssueId: FROM_ID,
-      toIssueId: TO_ID,
-      kind: 'decomposes',
-      decomposeOpts: { useIntegrationBranch: false },
-    });
-
-    expect(decomposeSpy).not.toHaveBeenCalled();
-  });
-
-  it('does not call decomposeParent for non-decomposes edges', async () => {
-    const tool = forgePmSetDependencyTool(ctx);
-    pushMemberOk();
-    queue.push([
-      { id: FROM_ID, projectId: PROJECT_ID },
-      { id: TO_ID, projectId: PROJECT_ID },
-    ]);
-    queue.push([{ id: EDGE_ID }]);
-
-    await tool.handler({
-      projectId: PROJECT_ID,
-      fromIssueId: FROM_ID,
-      toIssueId: TO_ID,
-      kind: 'blocks',
-    });
-
-    expect(decomposeSpy).not.toHaveBeenCalled();
   });
 
   // Sanity check: a device whose owner is neither the project owner nor a
@@ -316,8 +241,7 @@ describe('forge_pm.set_dependency — retracting an existing edge', () => {
       { id: FROM_ID, projectId: PROJECT_ID },
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
-    queue.push([]);
-    queue.push([{ id: EDGE_ID }]);
+    queue.push([{ id: EDGE_ID, validUntil: null }]);
     queue.push([]);
 
     hooks.reset();

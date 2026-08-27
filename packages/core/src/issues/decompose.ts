@@ -26,35 +26,33 @@
  * followed by a commit failure leaks the remote branch (acceptable for v1,
  * PR-E adds cleanup).
  */
-import { eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { type Db, db } from '../db/client.js';
 import {
   type IssueDependencyKind,
   type IssuePriority,
   type IssueStatus,
   issueDependencies,
   issues,
-  projects,
 } from '../db/schema.js';
-import {
-  createIntegrationBranch,
-  gitRemoteHasBranch,
-  IntegrationBranchError,
-} from '../git/branches.js';
 import { logger } from '../logger.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
-import { applyStatusTransition } from './apply-transition.js';
+import {
+  DecomposeError,
+  loadParentLite,
+  type ParentDecompositionState,
+  pickBranch,
+  prepareParentDecomposition,
+} from './decompose-branch.js';
+import {
+  finalizeDecomposedParentReviewGate,
+  type ParentReviewGate,
+  parkDecomposedParent,
+} from './decompose-review-gate.js';
 
-const MAX_BRANCH_SUFFIX = 10;
-// Plan (the step that decides to decompose) runs at `clarified`; `confirmed`
-// is tolerated for manual decompose before clarify, `waiting` for re-splits
-// from the review gate.
-const ALLOWED_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set([
-  'confirmed',
-  'clarified',
-  'waiting',
-]);
+export { IntegrationBranchError } from '../git/branches.js';
+export { DecomposeError, slugifyIssueTitle } from './decompose-branch.js';
 
 export interface DecomposeChildSpec {
   title?: string | undefined;
@@ -80,49 +78,6 @@ export interface DecomposeResult {
   createdEdges: number;
 }
 
-export class DecomposeError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = 'DecomposeError';
-    this.code = code;
-  }
-}
-
-export { IntegrationBranchError } from '../git/branches.js';
-
-export function slugifyIssueTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-interface ParentMetadata {
-  branchConfig?: { baseBranch?: string | null; targetBranch?: string | null } | null;
-  useIntegrationBranch?: boolean;
-  [k: string]: unknown;
-}
-
-interface ParentRow {
-  id: string;
-  issSeq: number;
-  title: string;
-  projectId: string;
-  status: IssueStatus;
-  priority: IssuePriority;
-  category: string | null;
-  metadata: ParentMetadata | null;
-}
-
-interface ProjectRow {
-  id: string;
-  baseBranch: string | null;
-  productionBranch: string | null;
-  repoPath: string | null;
-}
-
 interface PendingEdgeHook {
   edgeId: string;
   projectId: string;
@@ -143,294 +98,368 @@ interface PendingChildHook {
   assigneeId: string | null;
 }
 
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+export interface DecompositionWriteResult extends DecomposeResult {
+  parentAlreadyDecomposed: boolean;
+  parentStatus: IssueStatus;
+  projectId: string;
+  hasActiveDecomposition: boolean;
+  reviewGate: ParentReviewGate | null;
+}
+
+export interface PendingDecomposition {
+  result: DecompositionWriteResult;
+  actor: Actor;
+  children: PendingChildHook[];
+  edges: PendingEdgeHook[];
+}
+
+export async function prepareDecomposition(
+  tx: Tx,
+  parentIssueId: string,
+  children: DecomposeChildSpec[],
+  actor: DecomposeActor,
+  options?: DecomposeOptions,
+): Promise<PendingDecomposition> {
+  if (children.length === 0) {
+    throw new DecomposeError('BAD_REQUEST', 'at least one child spec is required');
+  }
+
+  const actorRef: Actor = { type: 'user', id: actor.userId };
+  const pendingEdgeHooks: PendingEdgeHook[] = [];
+  const pendingChildHooks: PendingChildHook[] = [];
+  const state = await prepareParentDecomposition(tx, parentIssueId, options);
+  const writeResult = await writeDecomposition(
+    tx,
+    state,
+    children,
+    actor,
+    actorRef,
+    pendingEdgeHooks,
+    pendingChildHooks,
+  );
+  return {
+    result: {
+      ...writeResult,
+      reviewGate: await parkDecomposedParent(tx, writeResult, actorRef),
+    },
+    actor: actorRef,
+    children: pendingChildHooks,
+    edges: pendingEdgeHooks,
+  };
+}
+
+export async function finalizeDecomposition(
+  pending: PendingDecomposition,
+): Promise<DecomposeResult> {
+  await finalizeDecomposedParentReviewGate(pending.result, pending.result.reviewGate);
+  await emitDecompositionHooks(pending.children, pending.edges, pending.actor);
+  return {
+    parentId: pending.result.parentId,
+    childIds: pending.result.childIds,
+    integrationBranch: pending.result.integrationBranch,
+    createdEdges: pending.result.createdEdges,
+  };
+}
+
 export async function decomposeParent(
   parentIssueId: string,
   children: DecomposeChildSpec[],
   actor: DecomposeActor,
   options?: DecomposeOptions,
 ): Promise<DecomposeResult> {
-  if (children.length === 0) {
-    throw new DecomposeError('BAD_REQUEST', 'at least one child spec is required');
+  const pending = await db.transaction((tx) =>
+    prepareDecomposition(tx, parentIssueId, children, actor, options),
+  );
+  return finalizeDecomposition(pending);
+}
+
+async function writeDecomposition(
+  tx: Tx,
+  state: ParentDecompositionState,
+  children: DecomposeChildSpec[],
+  actor: DecomposeActor,
+  actorRef: Actor,
+  pendingEdgeHooks: PendingEdgeHook[],
+  pendingChildHooks: PendingChildHook[],
+): Promise<DecompositionWriteResult> {
+  const { parent: parentRow, integrationBranch, parentAlreadyDecomposed } = state;
+
+  await validateExistingChildren(tx, parentRow.projectId, children);
+  const childIds = await createDecompositionChildren(
+    tx,
+    parentRow,
+    children,
+    actor,
+    actorRef,
+    integrationBranch,
+    pendingChildHooks,
+  );
+
+  const createdEdges = await createDecompositionEdges(
+    tx,
+    parentRow,
+    childIds,
+    actor,
+    actorRef,
+    pendingEdgeHooks,
+  );
+
+  await writeDecompositionBranchConfig(tx, state, childIds);
+  const hasActiveDecomposition = await parentHasActiveDecomposition(tx, parentRow.id);
+
+  if (createdEdges > 0 || pendingChildHooks.length > 0) {
+    await recordActivityTx(tx, {
+      issueId: parentRow.id,
+      actor: actorRef,
+      action: 'issue.decomposed',
+      payload: { childIds, integrationBranch },
+    });
   }
 
-  const actorRef: Actor = { type: 'user', id: actor.userId };
+  return {
+    parentId: parentRow.id,
+    childIds,
+    integrationBranch,
+    createdEdges,
+    parentAlreadyDecomposed,
+    parentStatus: parentRow.status,
+    projectId: parentRow.projectId,
+    hasActiveDecomposition,
+    reviewGate: null,
+  };
+}
 
-  // Pre-flight: load parent + project, resolve the integration branch (or
-  // reuse the existing one) BEFORE opening the transaction so we don't hold
-  // a row lock across a git round-trip.
-  const preParent = await loadParentLite(parentIssueId);
-  if (!preParent) throw new DecomposeError('NOT_FOUND', `issue ${parentIssueId} not found`);
+async function parentHasActiveDecomposition(tx: Tx, parentIssueId: string): Promise<boolean> {
+  const [edge] = await tx
+    .select({ id: issueDependencies.id })
+    .from(issueDependencies)
+    .where(
+      and(
+        eq(issueDependencies.fromIssueId, parentIssueId),
+        eq(issueDependencies.kind, 'decomposes'),
+        or(isNull(issueDependencies.validUntil), gt(issueDependencies.validUntil, sql`now()`)),
+      ),
+    )
+    .limit(1);
+  return edge != null;
+}
 
-  const project = await loadProject(preParent.projectId);
-  if (!project) throw new DecomposeError('NOT_FOUND', 'parent project not found');
-
-  const existingBranch = pickBranch(preParent.metadata?.branchConfig?.baseBranch ?? null);
-  const parentAlreadyDecomposed = existingBranch != null;
-
-  if (!parentAlreadyDecomposed && !ALLOWED_PARENT_STATUSES.has(preParent.status)) {
-    throw new DecomposeError(
-      'BAD_REQUEST',
-      `parent status must be confirmed, clarified, or waiting (got ${preParent.status})`,
-    );
-  }
-
-  const explicitOpt = options?.useIntegrationBranch;
-  const metaOpt = preParent.metadata?.useIntegrationBranch;
-  const useIntegrationBranch = explicitOpt ?? metaOpt ?? true;
-
-  let integrationBranch: string | null = null;
-  if (useIntegrationBranch) {
-    if (existingBranch) {
-      integrationBranch = existingBranch;
-    } else {
-      if (!project.repoPath) {
-        throw new DecomposeError(
-          'BAD_REQUEST',
-          'project has no repoPath configured; cannot create integration branch',
-        );
-      }
-      const projectBase = pickBranch(project.baseBranch) ?? 'main';
-      const baseSlug = slugifyIssueTitle(preParent.title).slice(0, 40);
-      const baseCandidate = baseSlug
-        ? `iss-${preParent.issSeq}-${baseSlug}`
-        : `iss-${preParent.issSeq}`;
-      integrationBranch = await resolveIntegrationBranchName(project.repoPath, baseCandidate);
-      try {
-        await createIntegrationBranch({
-          repoPath: project.repoPath,
-          remoteRef: projectBase,
-          newBranch: integrationBranch,
-        });
-      } catch (e) {
-        if (e instanceof IntegrationBranchError) throw e;
-        throw new IntegrationBranchError('GIT_PUSH_FAILED', String(e));
-      }
+async function validateExistingChildren(
+  tx: Tx,
+  parentProjectId: string,
+  children: DecomposeChildSpec[],
+): Promise<void> {
+  const existingIds = children
+    .map((child) => child.existingIssueId)
+    .filter((value): value is string => typeof value === 'string');
+  if (existingIds.length === 0) return;
+  const existing = await tx
+    .select({ id: issues.id, projectId: issues.projectId })
+    .from(issues)
+    .where(inArray(issues.id, existingIds));
+  const byId = new Map(existing.map((row) => [row.id, row]));
+  for (const id of existingIds) {
+    const row = byId.get(id);
+    if (!row) throw new DecomposeError('NOT_FOUND', `child issue ${id} not found`);
+    if (row.projectId !== parentProjectId) {
+      throw new DecomposeError(
+        'BAD_REQUEST',
+        `child issue ${id} is not in the same project as the parent`,
+      );
     }
   }
+}
 
-  const pendingEdgeHooks: PendingEdgeHook[] = [];
-  const pendingChildHooks: PendingChildHook[] = [];
-
-  const result = await db.transaction(async (tx) => {
-    const parent = (await tx
-      .select({
+async function createDecompositionChildren(
+  tx: Tx,
+  parent: ParentDecompositionState['parent'],
+  children: DecomposeChildSpec[],
+  actor: DecomposeActor,
+  actorRef: Actor,
+  integrationBranch: string | null,
+  pendingHooks: PendingChildHook[],
+): Promise<string[]> {
+  const childIds: string[] = [];
+  for (const spec of children) {
+    if (spec.existingIssueId) {
+      childIds.push(spec.existingIssueId);
+      continue;
+    }
+    if (!spec.title || spec.title.trim().length === 0) {
+      throw new DecomposeError('BAD_REQUEST', 'each new child must have a non-empty title');
+    }
+    const [inserted] = await tx
+      .insert(issues)
+      .values({
+        projectId: parent.projectId,
+        title: spec.title.trim(),
+        description: spec.description ?? null,
+        status: 'draft',
+        priority: spec.priority ?? parent.priority,
+        category: spec.category ?? parent.category,
+        createdById: actor.userId,
+        createdVia: 'pipeline',
+      })
+      .returning({
         id: issues.id,
-        issSeq: issues.issSeq,
-        title: issues.title,
         projectId: issues.projectId,
         status: issues.status,
+        title: issues.title,
+        description: issues.description,
         priority: issues.priority,
         category: issues.category,
-        metadata: issues.metadata,
+        reportedBy: issues.reportedBy,
+        assigneeId: issues.assigneeId,
+      });
+    if (!inserted) throw new DecomposeError('INTERNAL', 'child insert returned no row');
+    childIds.push(inserted.id);
+    pendingHooks.push({
+      issueId: inserted.id,
+      projectId: inserted.projectId,
+      status: inserted.status as IssueStatus,
+      title: inserted.title,
+      description: inserted.description,
+      priority: inserted.priority as IssuePriority,
+      category: inserted.category,
+      reportedBy: inserted.reportedBy,
+      assigneeId: inserted.assigneeId,
+    });
+    await recordActivityTx(tx, {
+      issueId: inserted.id,
+      actor: actorRef,
+      action: 'issue.created_from_decomposition',
+      payload: { parentId: parent.id, integrationBranch },
+    });
+  }
+  return childIds;
+}
+
+async function createDecompositionEdges(
+  tx: Tx,
+  parent: ParentDecompositionState['parent'],
+  childIds: string[],
+  actor: DecomposeActor,
+  actorRef: Actor,
+  pendingHooks: PendingEdgeHook[],
+): Promise<number> {
+  let createdEdges = 0;
+  for (const childId of childIds) {
+    const inserted = await tx
+      .insert(issueDependencies)
+      .values({
+        projectId: parent.projectId,
+        fromIssueId: parent.id,
+        toIssueId: childId,
+        kind: 'decomposes',
+        reason: null,
+        createdById: actor.userId,
+        validUntil: null,
       })
-      .from(issues)
-      .where(eq(issues.id, parentIssueId))
-      .limit(1)
-      .for('update')) as ParentRow[];
+      .onConflictDoNothing({
+        target: [
+          issueDependencies.projectId,
+          issueDependencies.fromIssueId,
+          issueDependencies.toIssueId,
+          issueDependencies.kind,
+        ],
+      })
+      .returning({ id: issueDependencies.id });
+    const edgeId = inserted[0]?.id;
+    if (!edgeId) continue;
+    createdEdges++;
+    pendingHooks.push({
+      edgeId,
+      projectId: parent.projectId,
+      fromIssueId: parent.id,
+      toIssueId: childId,
+      kind: 'decomposes',
+    });
+    const payload = {
+      edgeId,
+      fromIssueId: parent.id,
+      toIssueId: childId,
+      kind: 'decomposes' as const,
+    };
+    await recordActivityTx(tx, {
+      issueId: parent.id,
+      actor: actorRef,
+      action: 'issue.dependency.added',
+      payload,
+    });
+    await recordActivityTx(tx, {
+      issueId: childId,
+      actor: actorRef,
+      action: 'issue.dependency.added',
+      payload,
+    });
+  }
+  return createdEdges;
+}
 
-    const parentRow = parent[0];
-    if (!parentRow) throw new DecomposeError('NOT_FOUND', `issue ${parentIssueId} not found`);
+async function writeDecompositionBranchConfig(
+  tx: Tx,
+  state: ParentDecompositionState,
+  childIds: string[],
+): Promise<void> {
+  const { parent, project, integrationBranch, parentAlreadyDecomposed, useIntegrationBranch } =
+    state;
+  if (useIntegrationBranch && integrationBranch && !parentAlreadyDecomposed) {
+    const projectBase = pickBranch(project.baseBranch) ?? 'main';
+    const projectProd = pickBranch(project.productionBranch) ?? projectBase;
+    const parentPatch = {
+      useIntegrationBranch: true,
+      integrationBranch,
+      branchConfig: {
+        baseBranch: integrationBranch,
+        targetBranch: projectBase,
+        prodBranch: projectProd,
+      },
+    };
+    await tx
+      .update(issues)
+      .set({
+        metadata: sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${JSON.stringify(parentPatch)}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(eq(issues.id, parent.id));
+  } else if (!useIntegrationBranch && parent.metadata?.useIntegrationBranch !== false) {
+    await tx
+      .update(issues)
+      .set({
+        metadata: sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${JSON.stringify({ useIntegrationBranch: false })}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(eq(issues.id, parent.id));
+  }
 
-    // Validate existing-issue specs (membership in the same project).
-    const existingIds = children
-      .map((c) => c.existingIssueId)
-      .filter((v): v is string => typeof v === 'string');
-    if (existingIds.length > 0) {
-      const existing = await tx
-        .select({ id: issues.id, projectId: issues.projectId })
-        .from(issues)
-        .where(inArray(issues.id, existingIds));
-      const byId = new Map(existing.map((r) => [r.id, r]));
-      for (const id of existingIds) {
-        const row = byId.get(id);
-        if (!row) throw new DecomposeError('NOT_FOUND', `child issue ${id} not found`);
-        if (row.projectId !== parentRow.projectId) {
-          throw new DecomposeError(
-            'BAD_REQUEST',
-            `child issue ${id} is not in the same project as the parent`,
-          );
-        }
-      }
-    }
-
-    const childIds: string[] = [];
-    for (const spec of children) {
-      if (spec.existingIssueId) {
-        childIds.push(spec.existingIssueId);
-        continue;
-      }
-      if (!spec.title || spec.title.trim().length === 0) {
-        throw new DecomposeError('BAD_REQUEST', 'each new child must have a non-empty title');
-      }
-      const [inserted] = await tx
-        .insert(issues)
-        .values({
-          projectId: parentRow.projectId,
-          title: spec.title.trim(),
-          description: spec.description ?? null,
-          status: 'draft',
-          priority: spec.priority ?? parentRow.priority,
-          category: spec.category ?? parentRow.category,
-          createdById: actor.userId,
-          createdVia: 'pipeline',
-        })
-        .returning({
-          id: issues.id,
-          projectId: issues.projectId,
-          status: issues.status,
-          title: issues.title,
-          description: issues.description,
-          priority: issues.priority,
-          category: issues.category,
-          reportedBy: issues.reportedBy,
-          assigneeId: issues.assigneeId,
-        });
-      if (!inserted) throw new DecomposeError('INTERNAL', 'child insert returned no row');
-      childIds.push(inserted.id);
-      pendingChildHooks.push({
-        issueId: inserted.id,
-        projectId: inserted.projectId,
-        status: inserted.status as IssueStatus,
-        title: inserted.title,
-        description: inserted.description,
-        priority: inserted.priority as IssuePriority,
-        category: inserted.category,
-        reportedBy: inserted.reportedBy,
-        assigneeId: inserted.assigneeId,
-      });
-      await recordActivityTx(tx, {
-        issueId: inserted.id,
-        actor: actorRef,
-        action: 'issue.created_from_decomposition',
-        payload: { parentId: parentRow.id, integrationBranch },
-      });
-    }
-
-    // Insert decomposes edges (idempotent on the unique edge index).
-    let createdEdges = 0;
-    for (const childId of childIds) {
-      const inserted = await tx
-        .insert(issueDependencies)
-        .values({
-          projectId: parentRow.projectId,
-          fromIssueId: parentRow.id,
-          toIssueId: childId,
-          kind: 'decomposes',
-          reason: null,
-          createdById: actor.userId,
-          validUntil: null,
-        })
-        .onConflictDoNothing({
-          target: [
-            issueDependencies.projectId,
-            issueDependencies.fromIssueId,
-            issueDependencies.toIssueId,
-            issueDependencies.kind,
-          ],
-        })
-        .returning({ id: issueDependencies.id });
-      const edgeId = inserted[0]?.id;
-      if (edgeId) {
-        createdEdges++;
-        pendingEdgeHooks.push({
-          edgeId,
-          projectId: parentRow.projectId,
-          fromIssueId: parentRow.id,
-          toIssueId: childId,
-          kind: 'decomposes',
-        });
-        const payload = {
-          edgeId,
-          fromIssueId: parentRow.id,
-          toIssueId: childId,
-          kind: 'decomposes' as const,
-        };
-        await recordActivityTx(tx, {
-          issueId: parentRow.id,
-          actor: actorRef,
-          action: 'issue.dependency.added',
-          payload,
-        });
-        await recordActivityTx(tx, {
-          issueId: childId,
-          actor: actorRef,
-          action: 'issue.dependency.added',
-          payload,
-        });
-      }
-    }
-
-    // Parent metadata: written on the FIRST decomposition only (i.e. when
-    // the parent does not yet record a branchConfig). Opt-out parents also
-    // get a metadata write so subsequent calls inherit the flag.
-    if (useIntegrationBranch && integrationBranch && !parentAlreadyDecomposed) {
-      const projectBase = pickBranch(project.baseBranch) ?? 'main';
-      const projectProd = pickBranch(project.productionBranch) ?? projectBase;
-      const parentPatch = {
-        useIntegrationBranch: true,
-        branchConfig: {
-          baseBranch: projectBase,
-          targetBranch: projectBase,
-          prodBranch: projectProd,
-        },
-      };
-      await tx
-        .update(issues)
-        .set({
-          metadata: sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${JSON.stringify(parentPatch)}::jsonb`,
-          updatedAt: new Date(),
-        })
-        .where(eq(issues.id, parentRow.id));
-    } else if (!useIntegrationBranch && parentRow.metadata?.useIntegrationBranch !== false) {
-      const parentPatch = { useIntegrationBranch: false };
-      await tx
-        .update(issues)
-        .set({
-          metadata: sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${JSON.stringify(parentPatch)}::jsonb`,
-          updatedAt: new Date(),
-        })
-        .where(eq(issues.id, parentRow.id));
-    }
-
-    if (useIntegrationBranch && integrationBranch) {
-      const childPatch = {
-        branchConfig: {
-          baseBranch: integrationBranch,
-          targetBranch: integrationBranch,
-        },
-      };
-      const patchJson = JSON.stringify(childPatch);
-      for (const childId of childIds) {
-        await tx
-          .update(issues)
-          .set({
-            metadata: sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${patchJson}::jsonb`,
-            updatedAt: new Date(),
-          })
-          .where(eq(issues.id, childId));
-      }
-    }
-
-    if (createdEdges > 0 || pendingChildHooks.length > 0) {
-      await recordActivityTx(tx, {
-        issueId: parentRow.id,
-        actor: actorRef,
-        action: 'issue.decomposed',
-        payload: { childIds, integrationBranch },
-      });
-    }
-
-    return { parentId: parentRow.id, childIds, createdEdges };
+  if (!useIntegrationBranch || !integrationBranch) return;
+  const patchJson = JSON.stringify({
+    branchConfig: { baseBranch: integrationBranch, targetBranch: integrationBranch },
   });
+  for (const childId of childIds) {
+    await tx
+      .update(issues)
+      .set({
+        metadata: sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${patchJson}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(eq(issues.id, childId));
+  }
+}
 
-  // Post-commit hooks. Failures here are logged but do not roll back the
-  // transaction (consistent with the issues routes' issueCreated emit site).
-  for (const child of pendingChildHooks) {
+async function emitDecompositionHooks(
+  children: PendingChildHook[],
+  edges: PendingEdgeHook[],
+  actor: Actor,
+): Promise<void> {
+  for (const child of children) {
     try {
       await hooks.emit('issueCreated', {
         issueId: child.issueId,
         projectId: child.projectId,
-        actor: actorRef,
+        actor,
         status: child.status,
         snapshot: {
           title: child.title,
@@ -446,117 +475,13 @@ export async function decomposeParent(
       logger.error({ err, issueId: child.issueId }, 'decompose: issueCreated emit failed');
     }
   }
-  for (const edge of pendingEdgeHooks) {
+  for (const edge of edges) {
     try {
       await hooks.emit('dependencyChanged', edge);
     } catch (err) {
       logger.error({ err, edgeId: edge.edgeId }, 'decompose: dependencyChanged emit failed');
     }
   }
-
-  // Core owns the parent's review-gate transition (decompose redesign). On the
-  // FIRST decomposition, park the parent at `waiting` so a human reviews the
-  // split before the cascade fires. This is system logic — it is NOT left to
-  // the skill (which historically drifted, e.g. setting `on_hold` instead of
-  // `waiting`, breaking the kickoff). The cascade still flips children
-  // `draft → approved` when the human approves the parent. Idempotent: skipped
-  // if the parent is already `waiting` (avoids a NO_OP transition error) and on
-  // subsequent (incremental) decompositions.
-  if (!parentAlreadyDecomposed && result.createdEdges > 0 && preParent.status !== 'waiting') {
-    try {
-      // Attribution only — `projects.createdBy` is the audit column standing
-      // in as the system actor for this core-owned transition (no authz here).
-      const [project] = await db
-        .select({ createdBy: projects.createdBy })
-        .from(projects)
-        .where(eq(projects.id, preParent.projectId))
-        .limit(1);
-      if (project?.createdBy) {
-        await applyStatusTransition(
-          {
-            id: result.parentId,
-            projectId: preParent.projectId,
-            status: preParent.status,
-            reopenCount: 0,
-          },
-          'waiting',
-          { id: project.createdBy, ownerId: project.createdBy },
-          // cm:guard the ONLY `waiting` write left in core, and it MUST carry BOTH a kind and a reason (RFC 0002 INV-5/INV-8) — core is held to the same bar as an agent here, and dropping either argument makes this transition throw, which the catch below would swallow into a warn log and leave the parent un-parked with its children already created
-          {
-            waitingKind: 'needs_decision',
-            transitionReason: `Decomposed into ${result.createdEdges} child issue${result.createdEdges === 1 ? '' : 's'}. Review the split, then approve this parent to promote every child from \`draft\` to \`approved\`. The parent's own integration work runs LAST, after every child's code has merged.`,
-          },
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        { err, parentId: result.parentId, from: preParent.status },
-        'decompose: parent → waiting review-gate transition failed',
-      );
-    }
-  }
-
-  return {
-    parentId: result.parentId,
-    childIds: result.childIds,
-    integrationBranch,
-    createdEdges: result.createdEdges,
-  };
-}
-
-function pickBranch(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
-}
-
-async function loadParentLite(parentIssueId: string): Promise<ParentRow | null> {
-  const rows = (await db
-    .select({
-      id: issues.id,
-      issSeq: issues.issSeq,
-      title: issues.title,
-      projectId: issues.projectId,
-      status: issues.status,
-      priority: issues.priority,
-      category: issues.category,
-      metadata: issues.metadata,
-    })
-    .from(issues)
-    .where(eq(issues.id, parentIssueId))
-    .limit(1)) as ParentRow[];
-  return rows[0] ?? null;
-}
-
-async function loadProject(projectId: string): Promise<ProjectRow | null> {
-  const [row] = await db
-    .select({
-      id: projects.id,
-      baseBranch: projects.baseBranch,
-      productionBranch: projects.productionBranch,
-      repoPath: projects.repoPath,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return (row as ProjectRow | undefined) ?? null;
-}
-
-async function resolveIntegrationBranchName(
-  repoPath: string,
-  baseCandidate: string,
-): Promise<string> {
-  if (!(await gitRemoteHasBranch(repoPath, baseCandidate))) {
-    return baseCandidate;
-  }
-  for (let i = 2; i <= MAX_BRANCH_SUFFIX; i++) {
-    const candidate = `${baseCandidate}-${i}`;
-    if (!(await gitRemoteHasBranch(repoPath, candidate))) return candidate;
-  }
-  throw new DecomposeError(
-    'INTEGRATION_BRANCH_CONFLICT',
-    `cannot find an unused integration branch name for ${baseCandidate}`,
-  );
 }
 
 // Exposed so call sites can decide whether to invoke the helper at all.
@@ -568,7 +493,7 @@ export async function parentHasIntegrationBranch(
   const meta = row.metadata ?? {};
   const cfg = meta.branchConfig ?? null;
   return {
-    branch: pickBranch(cfg?.baseBranch ?? null),
+    branch: pickBranch(meta.integrationBranch ?? null) ?? pickBranch(cfg?.baseBranch ?? null),
     useIntegrationBranch:
       typeof meta.useIntegrationBranch === 'boolean' ? meta.useIntegrationBranch : null,
   };
