@@ -7,7 +7,7 @@
 // different vitest than the one running this file.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InvokableSkill } from "@/features/skills/types";
 import { Composer } from "./composer";
@@ -56,6 +56,16 @@ function textarea() {
 /** Type `text` the way a user would: value + caret, then fire `change`. */
 function typeInto(el: HTMLTextAreaElement, text: string) {
   fireEvent.change(el, { target: { value: text, selectionStart: text.length } });
+}
+
+// cm:guard jsdom dispatches mousedown but performs NONE of its default actions, so a bare fireEvent.mouseDown never moves focus and never fires focusout. A press modelled without that step passes on code where the panel closes under the pointer and the click lands on nothing — which is exactly the defect this file failed to catch once already.
+function pressWithFocusShift(el: HTMLElement) {
+  act(() => {
+    fireEvent.mouseDown(el);
+    el.focus();
+  });
+  fireEvent.mouseUp(el);
+  fireEvent.click(el);
 }
 
 describe("Composer — slash skills menu", () => {
@@ -157,30 +167,77 @@ describe("Composer — slash skills menu", () => {
     expect(screen.queryByText(/No skills are invokable/)).not.toBeInTheDocument();
   });
 
-  it("shows a retry when the list failed to load, and a real click reaches it", () => {
+  it("shows a retry when the list failed to load, and a real press reaches it", () => {
     const { retry } = renderComposer({ items: [], error: new Error("boom") });
-    typeInto(textarea(), "/");
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
     expect(screen.getByText("Couldn't load skills.")).toBeInTheDocument();
-    // cm:guard press Retry the way a pointer does — mousedown, mouseup, THEN click. A bare fireEvent.click dispatches no mousedown, so it cannot catch a click-away handler that unmounts the panel before the click lands, which is exactly the bug this replaced.
     const btn = screen.getByRole("button", { name: "Retry" });
-    fireEvent.mouseDown(btn);
-    fireEvent.mouseUp(btn);
-    fireEvent.click(btn);
+    pressWithFocusShift(btn);
     expect(retry).toHaveBeenCalled();
     expect(screen.getByRole("listbox")).toBeInTheDocument();
   });
 
   it("a press inside the panel that is not a row does not dismiss it", () => {
     renderComposer();
-    typeInto(textarea(), "/");
-    fireEvent.mouseDown(screen.getByText("Skills"));
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    pressWithFocusShift(screen.getByText("Skills"));
     expect(screen.getByRole("listbox")).toBeInTheDocument();
+  });
+
+  it("a press on a row still inserts even with the focus shift", async () => {
+    renderComposer();
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/data");
+    pressWithFocusShift(screen.getByText("/dataviz"));
+    await waitFor(() => expect(textarea().value).toBe("/dataviz "));
+  });
+
+  // cm:guard the relatedTarget guard above only covers browsers that move focus TO the pressed node. Safari clears focus to the body, where relatedTarget is null, so cancelling mousedown's default action is the half that covers it — and it is invisible to a test that only checks the panel survived, since either half alone passes in jsdom.
+  it("cancels mousedown's focus default anywhere in the panel, which is what covers Safari", () => {
+    renderComposer({ items: [], error: new Error("boom") });
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    for (const node of [
+      screen.getByText("Skills"),
+      screen.getByRole("button", { name: "Retry" }),
+    ]) {
+      const ev = createEvent.mouseDown(node);
+      fireEvent(node, ev);
+      expect(ev.defaultPrevented).toBe(true);
+    }
+  });
+
+  it("cancels the focus default on a skill row too", () => {
+    renderComposer();
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/data");
+    const row = screen.getByText("/dataviz");
+    const ev = createEvent.mouseDown(row);
+    fireEvent(row, ev);
+    expect(ev.defaultPrevented).toBe(true);
   });
 
   it("a press outside both the row and the panel dismisses it", () => {
     renderComposer();
     typeInto(textarea(), "/");
     fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("leaving the textarea for something outside the panel still dismisses it", () => {
+    renderComposer();
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.blur(el, { relatedTarget: document.body });
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 

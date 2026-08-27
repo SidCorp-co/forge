@@ -45,8 +45,9 @@ import {
   useSessionTurns,
   useSetSessionRunner,
 } from "../hooks";
-import { type ModelTier, parseTurns } from "../types";
+import { parseTurns } from "../types";
 import { readSessionModel } from "../session-model";
+import { useModelPick } from "../use-model-pick";
 import { Composer, ReadOnlyComposerNote } from "./composer";
 import { ModelPicker } from "./model-picker";
 import { Conversation } from "./conversation";
@@ -121,8 +122,6 @@ export function ChatScreen({
   const [historyOpen, setHistoryOpen] = useState(false);
   // cm:why draft-mode pick only — a real session's runner is the server pin (session.deviceId via POST /:id/runner), not this state
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>();
-  // cm:guard three-state on purpose (ISS-718): undefined = untouched, null = explicitly back to the runner default, a tier = that tier. There is no save endpoint — the pick rides the next `send`, which is what persists it, so a failure surfaces through the existing send error path and needs no second one.
-  const [pendingModel, setPendingModel] = useState<ModelTier | null | undefined>();
 
   const recentSessions = latestQ.data?.items ?? [];
   const resolvedId = draft ? undefined : activeId ?? recentSessions[0]?.id;
@@ -154,6 +153,9 @@ export function ChatScreen({
   const setRunner = useSetSessionRunner(resolvedId ?? "");
 
   const session = sessionQ.data;
+  // cm:why the model pick has no save endpoint (ISS-718) — it rides the next `send`, so a failure surfaces through the existing send error path and needs no second one
+  const persistedModel = readSessionModel(session?.metadata);
+  const modelPick = useModelPick(persistedModel);
   const display = session ? deriveSessionDisplayStatus(session) : undefined;
   const live = display === "running" || display === "stalled";
   // cm:edge contract -> packages/core/src/agent-sessions/lifecycle-routes.ts — mirrors the POST /:id/runner SESSION_BUSY guard (running/queued) so the picker states the reason before the round-trip
@@ -178,7 +180,7 @@ export function ChatScreen({
     setDraft(true);
     setActiveId(undefined);
     setSelectedDeviceId(undefined);
-    setPendingModel(undefined);
+    modelPick.reset();
     setHistoryOpen(false);
   };
 
@@ -195,7 +197,7 @@ export function ChatScreen({
     setActiveId(id);
     // cm:why follow the newly-opened conversation's own runner binding and model rather than carrying the previous chat's picks across
     setSelectedDeviceId(undefined);
-    setPendingModel(undefined);
+    modelPick.reset();
     setHistoryOpen(false);
   };
 
@@ -231,11 +233,11 @@ export function ChatScreen({
       message,
       files,
       deviceId: selectedDeviceId,
-      model: pendingModel,
+      model: modelPick.pendingModel,
     });
     if (selectedDeviceId !== undefined) setSelectedDeviceId(undefined);
-    // cm:why the server now owns the choice, so dropping the local pick is what makes the picker read the persisted value and stop saying "applies from your next message"
-    if (pendingModel !== undefined) setPendingModel(undefined);
+    // cm:why the pick has applied to a real turn here; useModelPick retires it only once the refetched row agrees, so the trigger never regresses to the previous model in between
+    modelPick.markSent();
   };
 
   const busy = live || send.isPending || create.isPending;
@@ -445,9 +447,10 @@ export function ChatScreen({
           sticky={false}
           actions={
             <ModelPicker
-              activeModel={readSessionModel(session?.metadata)}
-              pendingModel={pendingModel}
-              onSelect={setPendingModel}
+              activeModel={persistedModel}
+              pendingModel={modelPick.pendingModel}
+              unsent={modelPick.unsent}
+              onSelect={modelPick.select}
               loading={sessionQ.isLoading}
             />
           }

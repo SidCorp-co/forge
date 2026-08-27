@@ -19,11 +19,19 @@ interface ModelPickerProps {
   /** The session's persisted model (`metadata.model`), null when never picked. */
   activeModel: ModelTier | null;
   /**
-   * A pick not yet carried by a send, as the same three-state the send takes:
-   * `undefined` = untouched, `null` = explicitly back to Default, a tier = that
-   * tier. Collapsing null into undefined would make "Default" un-pickable.
+   * The local pick, as the same three-state the send takes: `undefined` =
+   * untouched (show `activeModel`), `null` = explicitly back to Default, a tier
+   * = that tier. Collapsing null into undefined would make "Default"
+   * un-pickable.
    */
   pendingModel: ModelTier | null | undefined;
+  /**
+   * The pick has not been carried by a send yet. Owned by the caller, not
+   * derived from `pendingModel !== activeModel` here: between a send resolving
+   * and the session row refetching, those two differ while the pick HAS already
+   * applied, and the note would then claim the opposite of what happened.
+   */
+  unsent?: boolean;
   /** null selects "Default" — send no override and let the runner decide. */
   onSelect: (model: ModelTier | null) => void;
   /** Viewers / no-device: show the current model but don't allow changing it. */
@@ -40,6 +48,7 @@ export function ModelPicker({
   onSelect,
   disabled,
   loading,
+  unsent,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -53,7 +62,6 @@ export function ModelPicker({
 
   // cm:guard `??` is wrong here — `pendingModel` is a three-state (undefined = untouched, null = explicitly Default, a tier = that tier), and `??` would let an explicit null fall through to the persisted model, making Default un-pickable
   const effective = pendingModel === undefined ? activeModel : pendingModel;
-  const unsent = pendingModel !== undefined && pendingModel !== activeModel;
   const triggerLabel = effective ? MODEL_TIER_LABELS[effective].label : DEFAULT_LABEL;
 
   const pick = (model: ModelTier | null) => {

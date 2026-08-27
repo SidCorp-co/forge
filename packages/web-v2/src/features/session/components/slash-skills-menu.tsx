@@ -10,7 +10,7 @@
 // when the project has no invokable skills, so "nothing here" is a state this
 // panel only reaches on a race, not by design.
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Icon, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import type { InvokableSkill } from "@/features/skills/types";
@@ -36,6 +36,12 @@ interface SlashSkillsMenuProps extends SlashSkillsSource {
   onHighlight: (index: number) => void;
   onPick: (skill: InvokableSkill) => void;
   anchorRef: React.RefObject<HTMLElement | null>;
+  /**
+   * The panel node, owned by the composer: it needs it to tell a focus move
+   * INTO the panel from a focus move away, and the click-away needs it because
+   * the panel is not a descendant of the anchor.
+   */
+  panelRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export function SlashSkillsMenu({
@@ -51,13 +57,13 @@ export function SlashSkillsMenu({
   error,
   retry,
   anchorRef,
+  panelRef,
 }: SlashSkillsMenuProps) {
-  const listRef = useRef<HTMLDivElement>(null);
   const pos = useAnchoredMenu({
     open,
     onClose,
     anchorRef,
-    panelRef: listRef,
+    panelRef,
     width: 360,
     placement: "above",
   });
@@ -66,10 +72,10 @@ export function SlashSkillsMenu({
   // cm:guard index the row off `highlight` rather than querying a `[data-active]` attribute, so the dependency is genuinely read in the effect — otherwise a lint fix drops it from the deps and the panel silently stops following the cursor
   useEffect(() => {
     if (!open) return;
-    const rows = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
+    const rows = panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
     const el = rows?.[highlight];
     if (typeof el?.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
-  }, [open, highlight]);
+  }, [open, highlight, panelRef]);
 
   if (!open) return null;
 
@@ -85,7 +91,9 @@ export function SlashSkillsMenu({
         visibility: pos ? undefined : "hidden",
       }}
       className="forge-drop fixed z-50 max-h-[280px] overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
-      ref={listRef}
+      ref={panelRef}
+      // cm:guard preventDefault on the PANEL's mousedown, not just on each row — mousedown's default action moves focus, which blurs the textarea, which closes the menu, which detaches the target before its `click` is dispatched. That is what made the error state's Retry unpressable, and it is why a press on the header or an empty line dismissed the panel. Safari clears focus to the body here, so `relatedTarget` alone cannot cover it.
+      onMouseDown={(e) => e.preventDefault()}
     >
       <div className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-subtle">
         Skills
@@ -138,11 +146,8 @@ export function SlashSkillsMenu({
             aria-selected={i === highlight}
             // cm:why the textarea keeps focus while the menu drives off its keydown, so hover — not focus — is what moves the cursor here
             onMouseEnter={() => onHighlight(i)}
-            // cm:guard mousedown, not click: click fires after the textarea's blur handler has closed the menu, and by then the token the insert edits is gone
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onPick(skill);
-            }}
+            // cm:guard pick on mousedown, not click — the panel-level preventDefault above keeps focus in the textarea, but picking here (before any competing close can run) is what guarantees the token the insert edits still exists
+            onMouseDown={() => onPick(skill)}
             className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
               i === highlight ? "bg-hover" : ""
             } hover:bg-hover focus-visible:outline-none`}

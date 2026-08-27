@@ -112,6 +112,7 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
+  const slashPanelRef = useRef<HTMLDivElement>(null);
   // Sendable when there's text OR at least one staged file.
   const canSend = !disabled && !busy && (value.trim().length > 0 || files.length > 0);
 
@@ -423,7 +424,11 @@ export function Composer({
               const el = e.currentTarget;
               syncSlash(el.value, el.selectionStart ?? 0, false);
             }}
-            onBlur={() => setSlashOpen(false)}
+            // cm:guard a focus move INTO the panel must not close it — closing here detaches the node the pointer is pressing, so its `click` never lands. The panel also cancels mousedown's focus default (slash-skills-menu.tsx), which is what covers Safari, where this relatedTarget is null.
+            onBlur={(e) => {
+              if (slashPanelRef.current?.contains(e.relatedTarget as Node | null)) return;
+              setSlashOpen(false);
+            }}
             disabled={disabled}
             rows={1}
             placeholder={
@@ -453,6 +458,7 @@ export function Composer({
             onHighlight={setSlashHighlight}
             onPick={insertSkill}
             anchorRef={rowRef}
+            panelRef={slashPanelRef}
             items={slashSkills.items}
             loading={slashSkills.loading}
             error={slashSkills.error}

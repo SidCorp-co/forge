@@ -22,6 +22,7 @@ function renderPicker(
     pendingModel?: ModelTier | null | undefined;
     disabled?: boolean;
     loading?: boolean;
+    unsent?: boolean;
   } = {},
 ) {
   const onSelect = vi.fn();
@@ -29,6 +30,7 @@ function renderPicker(
     <ModelPicker
       activeModel={over.activeModel ?? null}
       pendingModel={over.pendingModel}
+      unsent={over.unsent}
       onSelect={onSelect}
       disabled={over.disabled}
       loading={over.loading}
@@ -93,16 +95,20 @@ describe("ModelPicker", () => {
     expect(onSelect).toHaveBeenCalledWith("opus");
   });
 
-  it("says a pick has not taken effect yet, and stops once it has", () => {
+  it("says a pick has not taken effect yet only while that is true", () => {
     const unsent = "Applies from your next message.";
-    renderPicker({ activeModel: "haiku", pendingModel: "opus" });
+    renderPicker({ activeModel: "haiku", pendingModel: "opus", unsent: true });
     fireEvent.click(trigger());
     expect(screen.getByText(unsent)).toBeInTheDocument();
 
     cleanup();
-    // cm:why the same tier already persisted means nothing is pending, so the claim must be absent
-    renderPicker({ activeModel: "opus", pendingModel: "opus" });
+    // cm:guard the claim is driven by the caller's `unsent`, NOT by pick-vs-persisted. Between a send resolving and the session row refetching those two differ while the pick HAS applied, so deriving it here would tell the user the opposite of what happened.
+    renderPicker({ activeModel: "haiku", pendingModel: "opus", unsent: false });
     fireEvent.click(trigger());
+    expect(screen.getByRole("menuitemradio", { name: /^Opus/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(screen.queryByText(unsent)).not.toBeInTheDocument();
   });
 
