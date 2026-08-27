@@ -488,10 +488,19 @@ sessionMode: 'print' | 'duplex';        // default 'print'
 sessionResidencySeconds: number;        // default 0
 ```
 
-`runtimeState` is what repays principle №10. The reaper's quiet-timeout applies **only** while
-`runtimeState = 'working'`; `awaiting_input` is exempt from it and bounded by residency instead. So
-"alive but not progressing" stops being indistinguishable from "wedged", and the runner no longer has
-to assert progress it cannot observe.
+`runtimeState` narrows what the reaper has to guess. The quiet-timeout applies **only** while
+`runtimeState = 'working'`; `awaiting_input` is exempt and bounded by residency instead.
+
+**Scope this claim precisely, because it is easy to overstate.** What is fixed is the *park*: a
+session waiting on stdin declares that it is waiting, instead of beating a synthetic `progress` event
+that asserts something it cannot observe. That is a real principle №10 repayment and it is the whole
+of it.
+
+What is **not** fixed is a wedge *inside* a turn. A turn can run the length of the job, the 25 s beat
+still fires throughout `working`, and a stuck agent and a thinking agent remain the same observation.
+This RFC moves the ambiguity from between turns to inside one; it does not remove it. Distinguishing
+those two needs a progress signal with semantics — phases, tool calls, diff growth — and that is not
+this RFC.
 
 ## Turn end: report, then classify
 
@@ -512,7 +521,7 @@ claim-instead-of-measurement this repo refuses elsewhere.
 | # | Lands | Useful on its own because |
 |---|---|---|
 | 1 | `DuplexClaudeRunner` behind `sessionMode: 'duplex'`, `work` only — functional parity with print mode | proves a job runs start to finish on the new path with nothing else changed; print mode stays the default |
-| 2 | `TurnEnded` + core classification + `runtimeState` | **the observability payoff, at residency 0** — a dashboard can finally say *working* vs *awaiting input*, and the reaper stops guessing from silence |
+| 2 | `TurnEnded` + core classification + `runtimeState` | turn-end classification replaces inference-from-silence for the **anomaly** case — a turn that ended with the work unfinished is now a reported fact rather than a timeout. Note what this row does **not** buy: at residency 0 `awaiting_input` exists for milliseconds and nothing observes it, so the *working*-vs-*awaiting-input* dashboard needs phase 3 |
 | 3 | `answer` + ack-is-commit in `answer-resume` + the residency timer | the park fast path; safe at every residency value including 0 |
 | 4 | `inject`, `checkpoint`, `cancel` replacing signal-kill | steering a live agent, and a teardown that writes down what it knew |
 
@@ -528,3 +537,9 @@ before any pipeline job depends on it.
   with phase 3, never before: under `sessionMode: 'print'` waiting really is a lie.
 - `jobs/loop-monitor.ts` — the quiet computation reads `runtimeState`. Ships with phase 2.
 - `docs/architecture/runner-daemon.md` — the spawn description. Ships with phase 1.
+- **`docs/modules/issues-pipeline/autonomous-status.md` (THE STANDARD) and
+  `scripts/check-autonomous-transitions.mjs`.** S1 says the driver may write `needs_info`; the ledger
+  says only `flush` may. Those are two rules over one status. R1 of the checker validates S1 against
+  the skill's status table, so a skill that changes to *"call `flush`, never set the status"* breaks
+  it. S1, S4 and the checker move with the ledger or the gate lands with the published standard
+  describing a vocabulary the code no longer has.
