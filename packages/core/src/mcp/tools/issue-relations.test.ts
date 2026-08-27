@@ -24,9 +24,11 @@ const pmSpy = vi.fn(
   ) => {
     if (inFlight > 0) sawOverlap = true;
     inFlight++;
-    await Promise.resolve();
+    // cm:guard the suspension here must be a REAL one (a timer, not `await Promise.resolve()`) — a microtask-only await resolves before any sibling iteration can start, so `sawOverlap` stays false even under `Promise.all` and the test green-lights the exact refactor the guard in issue-relations.ts forbids
+    await new Promise((resolve) => setTimeout(resolve, 5));
     inFlight--;
-    return { id: `edge-${input.toIssueId}`, created: true, updated: false, deferred: opts };
+    void opts;
+    return { id: `edge-${input.toIssueId}`, created: true, updated: false };
   },
 );
 vi.mock('./forge-pm-set-dependency.js', () => ({
