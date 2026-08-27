@@ -208,6 +208,8 @@ export function ChatScreen({
   const handleActiveRemoved = () => {
     setActiveId(undefined);
     setDraft(false);
+    setSelectedDeviceId(undefined);
+    modelPick.reset();
   };
 
   // `await`s the send so a failure rejects up into the Composer, which then
