@@ -65,6 +65,50 @@ pipeline job on duplex — not with the cleanup.
 schema makes every stored project config still carrying it **fail validation**. Order: strip the key
 from `projects.agent_config` in a migration, then remove it from the schema. Never the reverse.
 
+## Session accounting — the pooling the design does not name
+
+RFC 0003 has a section titled *"No pooling"*. It answers a different question: may several **jobs**
+share one session for a warm prefix. No — and the measurement backs it (43 % cache hit, a 1-hour
+`ephemeral_1h_input_tokens` TTL against a p50 drive job of 67 minutes, and the one safe mechanism,
+in-band `/clear` emitting `conversation_reset`, destroys the warm prefix that was the only prize).
+See `docs/proposals/autonomous-session-pooling.md`, withdrawn.
+
+That decision leaves a second question untouched: **a runner box now holds several live Claude
+processes at once, arrived at as a consequence rather than a design.** `ClaudeCodeRunner` is one
+shared exec path for `daemon/mod.rs`, `daemon/chat.rs` and `daemon/dispatch.rs`, and residency means
+a process outlives the work that started it.
+
+| Surface | Bounded today by | Bounded after replacement by |
+|---|---|---|
+| chat | `chat_max_concurrent` semaphore, default **3** (`config.rs:205`) — and today that bounds **processes**, because a turn's process spawns and exits inside `run_turn`, so turn count and process count are the same number | the same semaphore, still per-turn: `_permit` is a local dropped when `run_turn` returns (`chat.rs:325`). The process stays. **Turns stay bounded at 3; live processes become unbounded — one per open chat** |
+| pipeline job | `RUNNER_CAP_PER_RUNNER = 1` (`dispatch-gates.ts:142`), process exits at the end of the job | cap 1 still, but a **parked** session holds the slot — RFC 0003 §Slot accounting: *"`working` and `awaiting_input` both hold a slot"*, so **the residency bound is the slot bound**. Correct at the default `0`; above it, the first unanswered question takes the project's throughput to zero (live: forge-dev 7 parks against cap 3) |
+
+### Consequence: chat is not the safe first phase
+
+The plan's phase 1 put chat first on the RFC's reasoning — no residency window needed, no pipeline
+blast radius. That reasoning is exactly backwards on this axis. Pipeline session count is bounded at
+1 **by construction**; chat is the only surface where the count is set by how many conversations
+people happen to open. Phase 1 as written is the phase with the *unbounded* blast radius, and it is
+the one scheduled first.
+
+### What has to land with it
+
+1. **The permit becomes session-scoped, not turn-scoped.** Acquire when a session is created, release
+   when it closes. Without this the semaphore stops measuring anything that exists.
+2. **Chat gets an idle window of its own.** RFC 0003 gives residency to pipeline sessions only; chat
+   has no such concept because it never needed one. An idle chat session must `checkpoint` and close,
+   rehydrating through the CLI's `--resume` on the next turn — the cold path kept load-bearing,
+   exactly as the pipeline design does it. This costs nothing where it matters: an *active*
+   conversation stays warm and stops paying 7.5 s a turn, an abandoned one stops holding a process.
+3. **A real resource bound, not a count.** Three resident processes each holding a conversation
+   context is not the same footprint as three that spawn and exit. The default of 3 was chosen for
+   the second shape.
+
+The eviction *mechanism* already exists in the design — RFC 0003 §Ownership: *"the runner may end
+residency unilaterally — upgrade, drain, reboot, OOM — but must `checkpoint` first and must report
+the reason."* What is missing is the **accounting**: who counts a resident session, against what
+budget, and what happens at the limit.
+
 ## Lockstep
 
 | Moves with | What |
