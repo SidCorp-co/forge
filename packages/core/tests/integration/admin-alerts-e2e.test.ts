@@ -90,7 +90,9 @@ describe('admin alert routes (ISS-652)', () => {
       expect(a1?.status).toBe('crit');
       expect(a1?.count).toBe(1);
       expect(a1?.entities).toHaveLength(1);
-      expect(a1?.since).not.toBeNull();
+      // cm:guard `since` is typed `string | null` and MUST be an ISO string, not the JS Date postgres-js hands back for a timestamptz — over HTTP the difference is invisible, but computeAlerts is called in-process by the sweeper too, where a consumer calling .startsWith on it throws
+      expect(typeof a1?.since).toBe('string');
+      expect(new Date(a1?.since ?? '').toISOString()).toBe(a1?.since);
     });
   });
 
@@ -114,6 +116,9 @@ describe('admin alert routes (ISS-652)', () => {
       const a2 = findAlert(body, 'A2');
       expect(a2?.count).toBe(3);
       expect(a2?.status).not.toBe('ok');
+
+      expect(typeof a2?.since).toBe('string');
+      expect(new Date(a2?.since ?? '').toISOString()).toBe(a2?.since);
 
       const { body: cleared } = await getAlerts(ctx, token, '?staleSeconds=86400');
       expect(findAlert(cleared, 'A2')?.status).toBe('ok');

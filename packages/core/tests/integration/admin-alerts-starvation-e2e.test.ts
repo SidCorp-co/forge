@@ -128,6 +128,57 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).not.toBe('ok');
   });
 
+  // cm:guard `->` on a JSON null yields jsonb 'null', not SQL NULL, so a coalesce with no nullif leaves `@> 'null'` matching no runner at all. dispatcher.ts reads the same field with `?? {}` and places the job on this very runner, so a fire here is pure noise on a queue that is moving.
+  it('stays ok when the queued job carries an explicitly null requiredCapabilities', async () => {
+    const owner = await createTestUser(ctx.harness.db);
+    const project = await createTestProject(ctx.harness.db, owner.id);
+    const run = await fx.insertRun(project.id, 'running');
+    await fx.insertRunner({ projectId: project.id, status: 'online' });
+    await fx.insertJob({
+      projectId: project.id,
+      runId: run,
+      status: 'queued',
+      queuedAgoMinutes: 10,
+      payload: { requiredCapabilities: null },
+    });
+
+    const { body } = await getAlerts(ctx, await ctx.adminToken());
+    expect(findAlert(body, 'A3')?.status).toBe('ok');
+  });
+
+  // cm:guard the per-stage device pool is applied by selectRunnerForJob and by NOTHING in the picker's CTE, so a pool naming only devices that are gone leaves every gate passing and the job unplaceable — a wedge with no gate reason for any UI to show, which is the case A3 exists to name
+  it('fires when the stage device pool names no runner the project has', async () => {
+    const owner = await createTestUser(ctx.harness.db);
+    const project = await createTestProject(ctx.harness.db, owner.id);
+    await ctx.harness.db.execute(sql`
+      UPDATE projects
+      SET agent_config = '{"pipelineConfig":{"states":{"approved":{"deviceIds":["11111111-1111-4111-8111-111111111111"]}}}}'::jsonb
+      WHERE id = ${project.id}
+    `);
+    const run = await fx.insertRun(project.id, 'running');
+    await fx.insertRunner({ projectId: project.id, status: 'online' });
+    await fx.insertJob({
+      projectId: project.id,
+      runId: run,
+      status: 'queued',
+      queuedAgoMinutes: 10,
+      payload: { stageStatus: 'approved' },
+    });
+
+    const token = await ctx.adminToken();
+    const { body } = await getAlerts(ctx, token);
+    expect(findAlert(body, 'A3')?.status).not.toBe('ok');
+
+    // cm:why an EMPTY pool means "the whole fleet", not "no device" — clearing it must clear the alert, which is what separates this from a plain no-runner case
+    await ctx.harness.db.execute(sql`
+      UPDATE projects
+      SET agent_config = '{"pipelineConfig":{"states":{"approved":{"deviceIds":[]}}}}'::jsonb
+      WHERE id = ${project.id}
+    `);
+    const { body: cleared } = await getAlerts(ctx, token);
+    expect(findAlert(cleared, 'A3')?.status).toBe('ok');
+  });
+
   // cm:why cap=2 so issue B PASSES project_cap and the sole runner being full is the only thing left holding it — genuine capacity starvation, which no upstream gate clears
   it('fires when a job past project_cap still has no free runner slot', async () => {
     const owner = await createTestUser(ctx.harness.db);

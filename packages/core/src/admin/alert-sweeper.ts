@@ -44,10 +44,12 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
  *
  * - No active row yet for this admin+key → `INSERT ... ON CONFLICT DO NOTHING`
  *   claims it; a losing race just no-ops (the winner already claimed it).
- * - An active row already exists at a different severity (escalation, e.g.
- *   warn -> crit) → updated in place; the unique index means there is never a
- *   second row to reconcile.
- * - An active row exists at the same severity → no-op.
+ * - An active row already exists → its title and body are refreshed in place on
+ *   every sweep (the unique index means there is never a second row to
+ *   reconcile), but the recipient is re-notified ONLY when the severity moved,
+ *   e.g. warn -> crit.
+ *
+ * Returns whether the recipient was notified, NOT whether a row was written.
  */
 // cm:why escalation updates the active row instead of resolving then re-emitting — the active-row index preserves one incident per recipient/key until the condition itself clears
 async function claimOrEscalate(input: {
@@ -68,14 +70,18 @@ async function claimOrEscalate(input: {
   let notificationId = claimed[0]?.id;
 
   if (!notificationId) {
-    const escalated = await db.execute<{ id: string }>(sql`
-      UPDATE notifications
+    const updated = await db.execute<{ id: string; escalated: boolean }>(sql`
+      UPDATE notifications n
       SET severity = ${severity}, title = ${title}, body = ${body}
-      WHERE user_id = ${userId} AND resolution_key = ${resolutionKey}
-        AND type = 'ops_alert' AND resolved_at IS NULL AND severity IS DISTINCT FROM ${severity}
-      RETURNING id
+      FROM notifications prev
+      WHERE prev.id = n.id
+        AND n.user_id = ${userId} AND n.resolution_key = ${resolutionKey}
+        AND n.type = 'ops_alert' AND n.resolved_at IS NULL
+      RETURNING n.id, (prev.severity IS DISTINCT FROM ${severity}) AS escalated
     `);
-    notificationId = escalated[0]?.id;
+    // cm:guard refresh title/body on EVERY sweep but notify only on a severity move — gating the whole UPDATE on the severity change froze the text for the life of the incident, so an A2 that opened at 3 stuck jobs still read "3 jobs" at 30. `FROM notifications prev` is what makes both possible in one statement: RETURNING yields the NEW row, so the pre-update severity is unreachable without the self-join.
+    if (!updated[0]?.escalated) return false;
+    notificationId = updated[0].id;
   }
 
   if (!notificationId) return false;

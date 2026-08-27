@@ -141,7 +141,7 @@ type OrphanRow = {
   id: string;
   job_type: string;
   project_slug: string;
-  queued_at: string;
+  queued_at: PgTimestamp | null;
 };
 
 /** A1 — ISS-258 invariant: a non-terminal job under a terminal pipeline_run. Any count > 0 is crit; the invariant is 0. */
@@ -165,7 +165,7 @@ async function alertOrphanJobs(): Promise<AdminAlert> {
     count,
     detail:
       count > 0 ? `${pluralJobs(count)} stuck under a terminal pipeline run` : 'No orphan jobs',
-    since: rows[0]?.queued_at ?? null,
+    since: oldestIso([rows[0]?.queued_at ?? null]),
     entities: rows.map((r) => ({
       ref: r.id,
       kind: 'job',
@@ -177,7 +177,7 @@ async function alertOrphanJobs(): Promise<AdminAlert> {
 type StuckRow = {
   id: string;
   job_type: string;
-  dispatched_at: string;
+  dispatched_at: PgTimestamp | null;
   age_seconds: number;
 };
 
@@ -205,7 +205,7 @@ async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
       count > 0
         ? `${pluralJobs(count)} dispatched or running past ${staleSeconds}s`
         : 'No stuck jobs',
-    since: rows[0]?.dispatched_at ?? null,
+    since: oldestIso([rows[0]?.dispatched_at ?? null]),
     entities: rows.map((r) => ({
       ref: r.id,
       kind: 'job',
@@ -236,10 +236,12 @@ type StarvedProject = {
  * To stay drift-free with the real dispatcher, this replays the SSOT gate
  * fragments (`buildBarrierFragments`, the same builder the picker/asserter use)
  * per candidate project — both halves: the barrier predicates AND the
- * `fresh_capable_runners` CTE that decides runner health — then adds the one
- * clause the picker leaves to `selectRunnerForJob`, the per-job capability
- * match. The candidate pre-filter is a cheap cross-tenant scan, so on healthy
- * data (no old queued jobs) the per-project replay never runs.
+ * `fresh_capable_runners` CTE that decides runner health — then adds the two
+ * clauses the picker leaves to `selectRunnerForJob`: the per-job capability
+ * match and the per-stage device pool. Those two are why an offered job can
+ * still be unplaceable, so leaving them out is how starvation reads `ok`. The
+ * candidate pre-filter is a cheap cross-tenant scan, so on healthy data (no old
+ * queued jobs) the per-project replay never runs.
  */
 async function alertRunnerStarved(): Promise<AdminAlert> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
@@ -265,6 +267,9 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
     });
     // cm:guard take runner health from the SSOT `fresh_capable_runners` CTE, never a hand-rolled copy of its clauses — the copy that used to live here drifted twice (main added `limit_reason <> 'auth'` and the `provision_status` gate without this file), and each missing clause counts a runner the dispatcher will never use as available, so real starvation reads `ok` and the alert meant to catch a wedged queue is what hides it.
     // cm:edge lockstep -> packages/core/src/runners/select.ts — the `capabilities @>` join is the ONE clause `selectRunnerForJob` applies that the picker's CTE does not, and it must stay: a job no runner is capable of is offered by the picker, rejected by the selector, and spins queued with no gate reason for any UI to show (measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state). Surfacing that is A3's whole reason to exist.
+    // cm:guard nullif BEFORE coalesce on requiredCapabilities — `->` on a JSON null yields jsonb 'null', not SQL NULL, so a bare coalesce leaves `@> 'null'` matching nothing and every job carrying `requiredCapabilities: null` reads as starved while dispatcher.ts (`?? {}`) places it fine
+    // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — the `pool` lateral reads the per-stage device pool from exactly the path resolveStageOverrides reads, keyed by the job's own `payload.stageStatus`; a pool naming only offline devices wedges a queue with every gate passing, which is the shape A3 exists to name
+    // cm:guard keep BOTH of those clauses: they are the two `selectRunnerForJob` applies that `fresh_capable_runners` does not, so a job can pass every picker gate and still be unplaceable — drop either and genuine starvation reports `ok`
     const rows = await db.execute<{
       queued_count: number;
       oldest_queued_at: PgTimestamp | null;
@@ -274,6 +279,11 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
       FROM jobs j
       LEFT JOIN issues i ON i.id = j.issue_id
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+      LEFT JOIN LATERAL (
+        SELECT p.agent_config -> 'pipelineConfig' -> 'states' -> (j.payload->>'stageStatus') -> 'deviceIds'
+                 AS device_ids
+        FROM projects p WHERE p.id = j.project_id
+      ) pool ON true
       WHERE j.project_id = ${c.project_id}
         AND j.status = 'queued'
         AND j.type <> 'pm'
@@ -293,7 +303,12 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
           SELECT 1 FROM fresh_capable_runners fcr
           JOIN runners rr ON rr.id = fcr.id
           WHERE fcr.in_flight < fcr.cap
-            AND rr.capabilities @> coalesce(j.payload -> 'requiredCapabilities', '{}'::jsonb)
+            AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
+            AND (
+              pool.device_ids IS NULL
+              OR jsonb_array_length(pool.device_ids) = 0
+              OR rr.device_id::text IN (SELECT jsonb_array_elements_text(pool.device_ids))
+            )
         )
     `);
     const row = rows[0];

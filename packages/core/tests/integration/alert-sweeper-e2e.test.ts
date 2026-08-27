@@ -99,26 +99,23 @@ async function seedStuckJobs(count: number, ageSeconds: number) {
   }
 }
 
-async function opsAlertRows(resolutionKey = 'ops-alert:A1') {
-  const rows = await harness.db.execute<{
-    id: string;
-    user_id: string;
-    severity: string | null;
-    read: boolean;
-    resolved_at: Date | null;
-    resolution_key: string;
-  }>(sql`
-    SELECT id, user_id, severity, read, resolved_at, resolution_key FROM notifications
+type OpsAlertRow = {
+  id: string;
+  user_id: string;
+  severity: string | null;
+  read: boolean;
+  resolved_at: Date | null;
+  resolution_key: string;
+  title: string;
+  body: string | null;
+};
+
+async function opsAlertRows(resolutionKey = 'ops-alert:A1'): Promise<OpsAlertRow[]> {
+  const rows = await harness.db.execute<OpsAlertRow>(sql`
+    SELECT id, user_id, severity, read, resolved_at, resolution_key, title, body FROM notifications
     WHERE type = 'ops_alert' AND resolution_key = ${resolutionKey}
   `);
-  return rows as unknown as Array<{
-    id: string;
-    user_id: string;
-    severity: string | null;
-    read: boolean;
-    resolved_at: Date | null;
-    resolution_key: string;
-  }>;
+  return rows as unknown as OpsAlertRow[];
 }
 
 describe('runAlertSweep E2E (ISS-652)', () => {
@@ -282,6 +279,29 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(critRows[0]?.user_id).toBe(admin.id);
     expect(critRows[0]?.severity).toBe('error');
     expect(critRows[0]?.read).toBe(false);
+  });
+
+  // cm:guard the active row's TEXT must track the condition on every sweep, while the recipient is pinged only on a severity move. Gating the whole UPDATE on the severity change froze the count for the life of the incident, so an A2 opened at 1 stuck job still read "1 job" once 2 were stuck — the operator's only number, stale, with no second notification coming to correct it.
+  it('refreshes the active row body as the condition grows, without re-notifying', async () => {
+    await seedAdmin();
+    await seedStuckJobs(1, 700);
+
+    const first = await mods.runAlertSweep(nextNow());
+    expect(first.notified).toBe(1);
+    const opened = await opsAlertRows('ops-alert:A2');
+    expect(opened[0]?.body).toContain('1 job');
+
+    // cm:why a second stuck job keeps A2 at `warn` (crit needs 3) — the count moves but the severity does not, which is the ONLY combination that distinguishes a refresh from a re-notify
+    await seedStuckJobs(1, 700);
+    const second = await mods.runAlertSweep(nextNow());
+    expect(second.notified).toBe(0);
+
+    const refreshed = await opsAlertRows('ops-alert:A2');
+    expect(refreshed).toHaveLength(1);
+    expect(refreshed[0]?.id).toBe(opened[0]?.id);
+    expect(refreshed[0]?.severity).toBe('warning');
+    expect(refreshed[0]?.body).toContain('2 jobs');
+    expect(refreshed[0]?.body).not.toContain('1 job ');
   });
 
   // cm:guard platformAdminUserIds() must require a verified email — an allow-listed-but-unverified account must not receive cross-tenant alert details
