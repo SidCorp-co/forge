@@ -110,6 +110,7 @@ with branches:
 
 | Document | Description |
 |----------|-------------|
-| [status-pipeline.md](status-pipeline.md) | Full 15-status lifecycle reference — transition rules, skill mappings, gate semantics |
+| [status-pipeline.md](status-pipeline.md) | Full 16-status lifecycle reference — transition rules, skill mappings, gate semantics |
+| [autonomous-status.md](autonomous-status.md) | How status transitions work in autonomous mode — the two vocabularies, the one-status-wide dispatch, the two kernel rewrites, and **THE STANDARD**: the five statuses the driver may write |
 | [decompose.md](decompose.md) | Epic → children decomposition lifecycle — create/approve cascade, children-first + parent-last gating |
 | [release-gate.md](release-gate.md) | The release gate that closes the autonomous pipeline — `awaiting_release`, the batch release path, deploy channels and the verify probe. As-built; the design record six `core`/`contracts` modules cite |

@@ -30,7 +30,7 @@ request it; the cloud allows it or does not. A refusal is not an error to work a
 is gated, the gate is the answer.
 
 If a deploy runs and does not come up, do not close the issue. Comment with what you saw and set
-`needs_human`. A green merge with a dead deploy is the exact state that looks finished and is not.
+`needs_info`. A green merge with a dead deploy is the exact state that looks finished and is not.
 
 ## Account for it
 
@@ -56,11 +56,11 @@ is noise in a file people read to find out what changed for them.
 
 ## Close
 
-`done` when your work is on the base branch. It stamps `merged_at`, which unblocks every issue that
+`closed` when your work is on the base branch. It stamps `merged_at`, which unblocks every issue that
 declared a `blocks` edge on this one — so closing something that did not actually land releases work
 that is not ready.
 
-On a project with a release gate the cloud does not take your `done` at face value: it stamps the
+On a project with a release gate the cloud does not take your `closed` at face value: it stamps the
 merge, closes your session, and parks the issue at the gate. It is `awaiting release`, not done, and
 a release closes it later. You cannot write past that, so do not try, and do not describe the issue
 as shipped, deployed or live in your comment — say what you merged. You do not know whether anything
@@ -68,4 +68,4 @@ was released, and the comment is the record a human reads.
 
 `dropped` when it turned out not to be work. It closes without stamping and is never held.
 
-Never leave it `running` because you are unsure which. Say which in a comment and pick.
+Never leave it `in_progress` because you are unsure which. Say which in a comment and pick.
