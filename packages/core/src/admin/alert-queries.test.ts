@@ -49,6 +49,10 @@ describe('classifyStuck (A2)', () => {
   it('stays warn exactly at the 4x boundary', () => {
     expect(classifyStuck(1, 600 * 4, 600)).toBe('warn');
   });
+
+  it('is crit a fraction of a second past the 4x boundary — the age must not arrive truncated', () => {
+    expect(classifyStuck(1, 600 * 4 + 0.25, 600)).toBe('crit');
+  });
 });
 
 describe('classifySpend (A4)', () => {

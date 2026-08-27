@@ -183,9 +183,10 @@ type StuckRow = {
 
 /** A2 — jobs dispatched or running past staleSeconds (AC 5: BOTH statuses, not dispatched alone). */
 async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
+  // cm:guard age_seconds is float8, never ::int — classifyStuck compares it against staleSeconds * 4, so truncating SQL-side makes a job already past the crit boundary report warn until the next whole second ticks over
   const rows = await db.execute<StuckRow & { total: number }>(sql`
     SELECT j.id, j.type AS job_type, j.dispatched_at,
-           extract(epoch FROM (now() - j.dispatched_at))::int AS age_seconds,
+           extract(epoch FROM (now() - j.dispatched_at))::float8 AS age_seconds,
            count(*) OVER ()::int AS total
     FROM jobs j
     WHERE j.status IN ('dispatched', 'running')
