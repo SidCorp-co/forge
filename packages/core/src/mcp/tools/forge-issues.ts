@@ -1340,7 +1340,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           items: rows.map((r) => serializeTaskListRow(r)),
           limit: tasksLimit,
           hint: 'filter by taskStatus, or fetch tasks individually',
-          oldestAt: 'head',
+          order: 'asc',
         });
       }
 

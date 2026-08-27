@@ -86,7 +86,7 @@ describe('buildListEnvelope', () => {
       items: fat,
       limit: 25,
       hint: 'read it in the UI',
-      oldestAt: 'head',
+      order: 'asc',
       maxChars: 4_000,
     });
     expect((result.comments as Array<{ id: number }>).at(-1)?.id).toBe(4);
@@ -119,7 +119,7 @@ describe('buildListEnvelope notice — an oldest-first list is not described as 
       items: [1, 2, 3],
       limit: 2,
       hint: 'read the thread in the UI',
-      oldestAt: 'head',
+      order: 'asc',
     });
 
     expect(res.notice).toContain('the first 2 in order');
@@ -143,7 +143,7 @@ describe('buildListEnvelope notice — an oldest-first list is not described as 
       items: [{ body: 'x'.repeat(400) }, { body: 'y'.repeat(400) }, { body: 'z'.repeat(400) }],
       limit: 2,
       hint: 'read the thread in the UI',
-      oldestAt: 'head',
+      order: 'asc',
       maxChars: 500,
     });
 

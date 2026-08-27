@@ -190,7 +190,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           items: serialized,
           limit: commentsLimit,
           hint: 'read the full thread in the UI',
-          oldestAt: 'head',
+          order: 'asc',
         });
       }
 

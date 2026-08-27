@@ -37,31 +37,36 @@ export interface ListEnvelopeArgs<T> {
   limit: number;
   /** What to narrow by, appended to the notice. Tool-specific. */
   hint: string;
-  /** Which end of `items` the least-useful rows sit at, for the size trim. */
-  oldestAt?: 'tail' | 'head';
+  /** Sort order of `items`. `desc` (the default) means newest first. */
+  order?: 'desc' | 'asc';
+  /**
+   * Which end the SIZE trim sheds. Default `oldest`, which is what a reader
+   * of a thread or a feed wants.
+   */
+  // cm:guard a CURSOR-paginated surface must pass 'newest' — shedding the oldest rows moves the cursor past events the caller has not seen, and they are never replayed. forge_jobs.events is the one such caller.
+  sizeTrimSheds?: 'oldest' | 'newest';
   maxChars?: number;
 }
 
 /**
  * Trim `items` to what may be returned and describe what was dropped.
  *
- * The LIMIT trim always drops the tail — that is what `overfetch` fetched,
- * whatever the sort. The SIZE trim drops from `oldestAt`, so a `desc` query
- * (default) sheds its oldest rows and an `asc` one sheds them from the head.
+ * The LIMIT trim always drops the tail — that is where `overfetch` put the
+ * probe row, whatever the sort. The SIZE trim drops from whichever end
+ * {@link ListEnvelopeArgs.sizeTrimSheds} names, resolved against `order`.
  */
 export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, unknown> {
   const { key, items, limit, hint } = args;
   const maxChars = args.maxChars ?? MAX_RESPONSE_CHARS;
+  const ascending = args.order === 'asc';
+  const shedsNewest = args.sizeTrimSheds === 'newest';
 
   const boundByLimit = items.length > limit;
-  let kept = boundByLimit ? items.slice(0, limit) : items;
+  const withinLimit = boundByLimit ? items.slice(0, limit) : items;
 
-  const beforeSizeTrim = kept.length;
-  const dropOne = args.oldestAt === 'head' ? (r: T[]) => r.slice(1) : (r: T[]) => r.slice(0, -1);
-  while (kept.length > 0 && JSON.stringify({ [key]: kept }).length > maxChars) {
-    kept = dropOne(kept);
-  }
-  const boundBySize = kept.length < beforeSizeTrim;
+  const shedFromHead = ascending ? !shedsNewest : shedsNewest;
+  const kept = trimToBudget(key, withinLimit, maxChars, shedFromHead);
+  const boundBySize = kept.length < withinLimit.length;
 
   const envelope: Record<string, unknown> = {
     [key]: kept,
@@ -77,24 +82,44 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
 
   envelope.truncated = true;
   envelope.truncatedBy = truncatedBy;
-  envelope.notice = buildNotice(kept.length, truncatedBy, limit, hint, args.oldestAt);
+  envelope.notice = buildNotice({ returned: kept.length, truncatedBy, limit, hint, ascending, shedsNewest });
   return envelope;
 }
 
+/**
+ * Drop rows from one end until the serialized payload fits. Sizes are measured
+ * once and subtracted, rather than re-serializing the survivors per drop —
+ * `forge_jobs.events` can hand this 200 rows carrying the whole agent
+ * transcript, and the naive loop is quadratic in exactly that case.
+ */
+function trimToBudget<T>(key: string, items: T[], maxChars: number, fromHead: boolean): T[] {
+  const overhead = JSON.stringify({ [key]: [] }).length;
+  const sizes = items.map((item) => JSON.stringify(item).length + 1);
+  let total = overhead + sizes.reduce((a, b) => a + b, 0);
+  let head = 0;
+  let tail = items.length;
+  while (head < tail && total > maxChars) {
+    const dropAt = fromHead ? head++ : --tail;
+    total -= sizes[dropAt] ?? 0;
+  }
+  return head === 0 && tail === items.length ? items : items.slice(head, tail);
+}
+
 // cm:guard never state a count that reads as a DB total — the only numbers here are `returned` and the caller's own `limit`, both of which the caller can verify. forge_feedback and forge_ux_findings used to say "the N most recent of M" where M was the rows already bounded by the limit; an agent read that as a total and it never was one.
-// cm:guard name WHICH rows survived, not just how many — the two trims drop from opposite ends on an `oldestAt:'head'` list (the limit sheds the newest, the size cap sheds the oldest), so "the N most recent" is false there and sends the caller looking for rows it already has
-function buildNotice(
-  returned: number,
-  by: TruncatedBy,
-  limit: number,
-  hint: string,
-  oldestAt?: 'tail' | 'head',
-): string {
-  const ascending = oldestAt === 'head';
-  const underLimit = ascending ? `the first ${returned} in order` : `the ${returned} most recent`;
-  const underSize = ascending
-    ? `the ${returned} most recent of them`
-    : `the ${returned} most recent`;
+// cm:guard name WHICH rows survived, not just how many — the two trims drop from opposite ends on an ascending list, so "the N most recent" is false there and sends the caller looking for rows it already has
+function buildNotice(args: {
+  returned: number;
+  truncatedBy: TruncatedBy;
+  limit: number;
+  hint: string;
+  ascending: boolean;
+  shedsNewest: boolean;
+}): string {
+  const { returned, truncatedBy: by, limit, hint } = args;
+  const underLimit = args.ascending ? `the first ${returned} in order` : `the ${returned} most recent`;
+  const underSize = args.shedsNewest
+    ? `the first ${returned} of them in order`
+    : `the ${returned} most recent of them`;
   const cause =
     by === 'response-size'
       ? `the response-size cap cut this to ${underSize}`

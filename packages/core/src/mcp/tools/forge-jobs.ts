@@ -152,10 +152,31 @@ export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => 
   },
 });
 
+/**
+ * Replace an oversized `job_events.data` with its own measurement.
+ *
+ * ISS-787 review round 2. `data` is the only unbounded column on this surface —
+ * the runner maps each Claude stream-json line to one event and stores the
+ * whole JSON — and dropping such a row for size wedged the replay: the page
+ * came back empty, `lastSeq` fell back to the caller's own `sinceSeq`, and the
+ * notice told them to re-call with it. Bounding the payload instead keeps the
+ * row, so the cursor always clears the event that could not be sent.
+ */
+// cm:guard keep this cap well under MAX_RESPONSE_CHARS — it is what guarantees no SINGLE event can exhaust the response budget, which is what stops the size trim ever returning zero rows and freezing the cursor
+const MAX_EVENT_DATA_CHARS = 8_000;
+
+function boundEventData<T extends { data: unknown }>(event: T): T {
+  const bytes = JSON.stringify(event.data ?? null).length;
+  if (bytes <= MAX_EVENT_DATA_CHARS) return event;
+  return { ...event, data: { omitted: true, bytes } };
+}
+
 export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.events',
   description:
-    'Stream-replay job_events for a job (paginated by sinceSeq). Read-only; returns { items, lastSeq }.',
+    'Stream-replay job_events for a job (paginated by sinceSeq). Read-only; returns { items, lastSeq, returned, limit, hasMore }. ' +
+    'READ `hasMore`: a page bound by your own limit looks exactly like the end of the stream. `lastSeq` ALWAYS advances past every event this page accounted for, so re-calling with sinceSeq:lastSeq never replays and never stalls. ' +
+    'An event whose `data` exceeds the per-event cap is returned with `data:{omitted:true,bytes:N}` rather than dropped — the stream stays contiguous and the cursor keeps moving.',
   inputSchema: zodToMcpSchema(eventsInputSchema),
   handler: async (args) => {
     const { jobId, sinceSeq, limit } = eventsInputSchema.parse(args);
@@ -175,14 +196,18 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
       .orderBy(asc(jobEvents.seq))
       .limit(overfetch(eventsLimit));
 
-    // cm:guard `lastSeq` must come from the RETURNED tail, never the overfetched probe row — it is the cursor the caller passes back as `sinceSeq`, so reading it off the dropped row skips one event on every page and the replay silently loses it
+    const bounded = fetched.map(boundEventData);
+    // cm:guard events are CURSOR-paginated, so the size trim must shed the NEWEST rows — shedding the oldest would move lastSeq past events the caller never received, and nothing replays them
     const envelope = buildListEnvelope({
       key: 'items',
-      items: fetched,
+      items: bounded,
       limit: eventsLimit,
       hint: 're-call with the returned sinceSeq',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
     });
-    const items = envelope.items as typeof fetched;
+    const items = envelope.items as typeof bounded;
+    // cm:guard `lastSeq` must come from the RETURNED tail, never the overfetched probe row — it is the cursor the caller passes back as `sinceSeq`, so reading it off the dropped row skips one event on every page and the replay silently loses it
     const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
     const { items: _, notice: __, ...metadata } = envelope;
     return {

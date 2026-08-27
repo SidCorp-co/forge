@@ -91,6 +91,39 @@ describe('forge_agent_sessions.list', () => {
     expect(result.sessions[0]?.id).toBe(SESSION_ID);
   });
 
+  // ISS-787 — the disclosure is wiring, not a helper: the SAME limit must reach
+  // `.limit()` as limit+1 and reach the envelope as-is, or hasMore lies.
+  it('over-fetches by one and discloses the limit that bound the page', async () => {
+    const tool = forgeAgentSessionsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce(
+      Array.from({ length: 3 }, (_, i) => ({ ...baseSessionRow, id: `s${i}` })),
+    );
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, limit: 2 })) as {
+      sessions: unknown[];
+      returned: number;
+      limit: number;
+      hasMore: boolean;
+      truncatedBy: string;
+    };
+
+    expect(selectLimit).toHaveBeenLastCalledWith(3);
+    expect(result).toMatchObject({ returned: 2, limit: 2, hasMore: true, truncatedBy: 'limit' });
+    expect(result.sessions).toHaveLength(2);
+  });
+
+  it('says hasMore:false on a complete page, so a short list is not read as a whole one', async () => {
+    const tool = forgeAgentSessionsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([baseSessionRow]);
+
+    const result = await tool.handler({ projectId: PROJECT_ID, limit: 2 });
+
+    expect(result).toMatchObject({ returned: 1, limit: 2, hasMore: false });
+    expect(result).not.toHaveProperty('truncated');
+  });
+
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgeAgentSessionsListTool(fakeDevice);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member

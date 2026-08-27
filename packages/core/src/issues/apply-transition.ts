@@ -322,6 +322,14 @@ export async function transitionIssueStatus(
     });
   }
 
+  // cm:guard the never-ran check is re-asserted IN the UPDATE's WHERE, not just read above it — a freshly-`open` issue acquires its run within seconds, so a count read a moment earlier can hand `draft` to an issue that is already working, and the status would then claim nothing had started
+  const draftGate =
+    toStatus === 'draft' && !options.skip
+      ? [
+          sql`not exists (select 1 from pipeline_runs pr where pr.issue_id = ${issue.id}) and not exists (select 1 from jobs j where j.issue_id = ${issue.id})`,
+        ]
+      : [];
+
   // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
   // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
   // cm:guard never insert into activity_log here — F5 owns that write, and a second one double-counts every transition
@@ -338,7 +346,7 @@ export async function transitionIssueStatus(
           waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
           updatedAt: sql`now()`,
         })
-        .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
+        .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus), ...draftGate))
         .returning({
           id: issues.id,
           status: issues.status,
@@ -371,6 +379,13 @@ export async function transitionIssueStatus(
   );
   const updated = txResult?.row;
   if (!updated) {
+    if (draftGate.length > 0) {
+      throw new TransitionError(
+        'ILLEGAL_TRANSITION',
+        '`draft` is reachable only while the issue has never entered the pipeline, and a run or job appeared while this transition was being applied. Use `on_hold` to pause active work.',
+        { from: fromStatus, to: toStatus, raced: true },
+      );
+    }
     throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
       from: fromStatus,
       to: toStatus,
