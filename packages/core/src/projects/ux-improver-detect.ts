@@ -108,6 +108,7 @@ export interface UxImproverFindingInput {
 
 export interface UxImproverRuleInput {
   id: string;
+  supersedesRuleId: string | null;
   group: UxRuleGroup;
   text: string;
   severity: UxRuleSeverity;
@@ -218,6 +219,27 @@ function proposedRuleText(detail: string): string {
   return stripFrameTokens(sanitizeUntrusted(detail)).trim();
 }
 
+// cm:guard `already-proposed` is the ONLY refusal `applyUxImproverProposals` acts on — it unions `evidenceIssueIds` onto `targetRuleId`. Emit it without those two fields populated and a proposal's evidence silently freezes at whatever the first run saw, while the inbox keeps showing three issues for a gap that has now hit ten.
+function alreadyProposed(ruleId: string, sample: string, issues: string[]): UxImproverRefusal {
+  return {
+    kind: 'add',
+    reason: 'already-proposed',
+    detail: `Rule ${ruleId} is already waiting in the inbox for this gap; its evidence is refreshed instead.`,
+    sample,
+    distinctIssueCount: issues.length,
+    targetRuleId: ruleId,
+    evidenceIssueIds: issues,
+  };
+}
+
+/** A `proposed` row already queued to replace `targetId` — a second one would double the inbox. */
+function pendingSupersede(
+  rules: UxImproverRuleInput[],
+  targetId: string,
+): UxImproverRuleInput | undefined {
+  return rules.find((r) => r.status === 'proposed' && r.supersedesRuleId === targetId);
+}
+
 function distinctIssueIds(cluster: Cluster): string[] {
   const seen: string[] = [];
   for (const m of cluster.members) if (!seen.includes(m.issueId)) seen.push(m.issueId);
@@ -289,6 +311,8 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
         detail: `Seen on ${issues.length} issue(s); needs ${MIN_RECURRENCE_ISSUES} to count as recurring.`,
         sample: rep.detail,
         distinctIssueCount: issues.length,
+        targetRuleId: null,
+        evidenceIssueIds: issues,
       });
       continue;
     }
@@ -303,7 +327,14 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
           detail: `Rule ${citedRule.id} already binds at "must" — repeat violations are a compliance problem, not a contract gap.`,
           sample: rep.detail,
           distinctIssueCount: issues.length,
+          targetRuleId: citedRule.id,
+          evidenceIssueIds: issues,
         });
+        continue;
+      }
+      const pending = pendingSupersede(rules, citedRule.id);
+      if (pending) {
+        refused.push(alreadyProposed(pending.id, rep.detail, issues));
         continue;
       }
       candidates.push({
@@ -321,6 +352,11 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
     const coveredByActive = bestCover(repTokens, group, rules, 'active');
     if (coveredByActive) {
       if (coveredByActive.rule.severity === 'should') {
+        const pending = pendingSupersede(rules, coveredByActive.rule.id);
+        if (pending) {
+          refused.push(alreadyProposed(pending.id, rep.detail, issues));
+          continue;
+        }
         candidates.push({
           ...shared,
           key: candidateKey('strengthen', group, `rule:${coveredByActive.rule.id}`),
@@ -337,6 +373,8 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
           detail: `An active "must" rule already covers this (${coveredByActive.rule.id}).`,
           sample: rep.detail,
           distinctIssueCount: issues.length,
+          targetRuleId: coveredByActive.rule.id,
+          evidenceIssueIds: issues,
         });
       }
       continue;
@@ -344,13 +382,7 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
 
     const coveredByProposed = bestCover(repTokens, group, rules, 'proposed');
     if (coveredByProposed) {
-      refused.push({
-        kind: 'add',
-        reason: 'already-proposed',
-        detail: `Rule ${coveredByProposed.rule.id} is already waiting in the inbox for this gap; its evidence is refreshed instead.`,
-        sample: rep.detail,
-        distinctIssueCount: issues.length,
-      });
+      refused.push(alreadyProposed(coveredByProposed.rule.id, rep.detail, issues));
       continue;
     }
 
@@ -368,6 +400,8 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
   const staleBefore = new Date(now.getTime() - STALE_PROPOSAL_DAYS * DAY_MS);
   for (const rule of rules) {
     if (rule.status !== 'proposed' || rule.source !== 'learned') continue;
+    // cm:guard The admin create route lets a human set `source: 'learned'` by hand, so source alone does not prove the improver authored this. Non-empty evidence does: `ruleCreateSchema` has no evidenceIssueIds field, so only the improver can produce one. Drop this and the improver silently withdraws a human's proposal.
+    if (rule.evidenceIssueIds.length === 0) continue;
     if (rule.updatedAt >= staleBefore) continue;
     const ruleTokens = normalizeTokens(rule.text);
     if (recurringSignatures.some((s) => jaccard(s, ruleTokens) >= SIMILARITY_THRESHOLD)) continue;

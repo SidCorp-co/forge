@@ -245,7 +245,7 @@ uxContractProjectRoutes.get(
 );
 
 const improverProposeSchema = z
-  .object({ keys: z.array(z.string().min(1).max(200)).min(1).max(50) })
+  .object({ keys: z.array(z.string().min(1).max(200)).max(50) })
   .strict();
 
 uxContractProjectRoutes.post(

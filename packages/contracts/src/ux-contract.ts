@@ -117,6 +117,9 @@ export interface UxImproverRefusal {
 	detail: string;
 	sample: string;
 	distinctIssueCount: number;
+	/** `already-proposed`: the inbox row this gap belongs to. `propose` unions the evidence below onto it. */
+	targetRuleId: string | null;
+	evidenceIssueIds: string[];
 }
 
 export interface UxImproverReport {

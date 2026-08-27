@@ -2,10 +2,13 @@
 // detector in `ux-improver-detect.ts`, and commits the candidates an agent
 // selected.
 //
-// Every write here lands at status `proposed` with source `learned`. Nothing in
-// this module can activate a rule: approving a proposal is the human's move in
-// project settings, and that is the whole propose-only guarantee the UX
-// Completeness Contract epic locked in.
+// Nothing in this module can ACTIVATE a rule — `add` and `strengthen` land at
+// status `proposed` with source `learned`, and approving one is the human's move
+// in project settings. That is the propose-only guarantee the UX Completeness
+// Contract epic locked in, and it is about activation, not about every write:
+// `retire` is applied here rather than proposed, because it only ever withdraws
+// an unapproved proposal the improver itself authored (evidence-backed, source
+// `learned`), which no human ever agreed to.
 
 import type { UxImproverProposalOutcome, UxImproverReport } from '@forge/contracts';
 import { and, eq, gte } from 'drizzle-orm';
@@ -58,6 +61,7 @@ export async function loadUxImproverReport(
       severity: r.severity,
       source: r.source,
       status: r.status,
+      supersedesRuleId: r.supersedesRuleId,
       evidenceIssueIds: Array.isArray(r.evidenceIssueIds) ? (r.evidenceIssueIds as string[]) : [],
       orderIndex: r.orderIndex,
       updatedAt: r.updatedAt,
@@ -76,6 +80,11 @@ function unionEvidence(existing: unknown, incoming: string[]): string[] {
  * Writes the selected candidates. `add`/`strengthen` land at status `proposed`
  * with `source='learned'`; `retire` withdraws a stale proposal. Nothing here
  * touches an active rule's status — that is the human's move in the inbox.
+ *
+ * `keys` MAY be empty: every call also runs the evidence-refresh pass below, so
+ * a run whose candidates were all refuted still keeps the inbox's evidence
+ * current. That is why the improver prompt tells the agent to call this at the
+ * end of every run rather than only when something survived.
  */
 export async function applyUxImproverProposals(
   projectId: string,
@@ -91,6 +100,25 @@ export async function applyUxImproverProposals(
     .select()
     .from(uxContractRules)
     .where(eq(uxContractRules.projectId, projectId));
+
+  // cm:guard This pass, not the `duplicate` branch below, is what keeps an inbox proposal's evidence current: once a proposal exists the detector REFUSES the gap as `already-proposed`, so it never reaches `candidates` and the duplicate branch never sees it again. Delete this and evidence freezes at whatever the first run happened to observe.
+  for (const refusal of report.refused) {
+    if (refusal.reason !== 'already-proposed' || !refusal.targetRuleId) continue;
+    const target = existing.find((r) => r.id === refusal.targetRuleId);
+    if (!target) continue;
+    const merged = unionEvidence(target.evidenceIssueIds, refusal.evidenceIssueIds);
+    if (merged.length === (target.evidenceIssueIds as string[]).length) continue;
+    await db
+      .update(uxContractRules)
+      .set({ evidenceIssueIds: merged, updatedAt: now })
+      .where(eq(uxContractRules.id, target.id));
+    outcomes.push({
+      key: `evidence:${target.id}`,
+      action: 'evidence-refreshed',
+      ruleId: target.id,
+    });
+    mutated = true;
+  }
 
   for (const key of keys) {
     const candidate = byKey.get(key);

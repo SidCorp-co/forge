@@ -29,6 +29,7 @@ function finding(over: Partial<UxImproverFindingInput> & { id: string }): UxImpr
 
 function rule(over: Partial<UxImproverRuleInput> & { id: string }): UxImproverRuleInput {
   return {
+    supersedesRuleId: null,
     group: 'states',
     text: 'happy → data render with hover and disabled substates on interactive elements.',
     severity: 'must',
@@ -172,6 +173,34 @@ describe('detectUxImproverCandidates — the recurrence bar', () => {
     expect(report.candidates).toHaveLength(2);
     expect(new Set(report.candidates.map((c) => c.text))).toHaveProperty('size', 2);
   });
+
+  it('does not CHAIN A~B~C into one rule when A and C are unrelated', () => {
+    const A = 'alpha bravo charlie delta';
+    const B = 'bravo charlie delta echo';
+    const C = 'charlie delta echo foxtrot';
+    const a = normalizeTokens(A);
+    const b = normalizeTokens(B);
+    const c = normalizeTokens(C);
+    expect(jaccard(a, b)).toBeGreaterThanOrEqual(SIMILARITY_THRESHOLD);
+    expect(jaccard(b, c)).toBeGreaterThanOrEqual(SIMILARITY_THRESHOLD);
+    expect(jaccard(a, c)).toBeLessThan(SIMILARITY_THRESHOLD);
+
+    const findings = [A, B, C].map((detail, i) =>
+      finding({
+        id: `c${i}`,
+        issueId: `chain-${i}`,
+        detail,
+        createdAt: new Date(NOW.getTime() - (i + 1) * DAY),
+      }),
+    );
+
+    const report = detectUxImproverCandidates({ findings, rules: [], now: NOW });
+
+    // cm:why single-linkage would compare C against B rather than against the seed, fold all three into one 3-issue cluster, clear the recurrence bar, and propose one rule spanning two unrelated gaps — this assertion is the only thing standing between the seed comparison and that
+    expect(report.clusters).toBe(2);
+    expect(report.candidates).toHaveLength(0);
+    expect(report.refused.every((r) => r.reason === 'one-off')).toBe(true);
+  });
 });
 
 describe('detectUxImproverCandidates — against the existing rule set', () => {
@@ -235,6 +264,36 @@ describe('detectUxImproverCandidates — against the existing rule set', () => {
 
     expect(report.candidates.filter((c) => c.kind === 'add')).toHaveLength(0);
     expect(report.refused[0]?.reason).toBe('already-proposed');
+    expect(report.refused[0]?.targetRuleId).toBe(pending.id);
+    expect([...(report.refused[0]?.evidenceIssueIds ?? [])].sort()).toEqual([
+      'issue-0',
+      'issue-1',
+      'issue-2',
+    ]);
+  });
+
+  it('refuses a SECOND strengthen once one is already queued against the same rule', () => {
+    const target = rule({
+      id: 'rule-should',
+      severity: 'should',
+      text: 'empty-search → distinct from first-run empty; offer a clear-filter action.',
+    });
+    const queued = rule({
+      id: 'rule-queued',
+      status: 'proposed',
+      source: 'learned',
+      severity: 'must',
+      text: target.text,
+      supersedesRuleId: target.id,
+      evidenceIssueIds: ['issue-0'],
+    });
+    const findings = recurringEmptySearch().map((f) => ({ ...f, ruleId: target.id }));
+
+    const report = detectUxImproverCandidates({ findings, rules: [target, queued], now: NOW });
+
+    expect(report.candidates).toHaveLength(0);
+    expect(report.refused[0]?.reason).toBe('already-proposed');
+    expect(report.refused[0]?.targetRuleId).toBe(queued.id);
   });
 });
 
@@ -245,6 +304,7 @@ describe('detectUxImproverCandidates — withdrawing its own stale proposals', (
       status: 'proposed',
       source: 'learned',
       text: 'Toasts must announce the result of every destructive bulk action.',
+      evidenceIssueIds: ['issue-a', 'issue-b', 'issue-c'],
       updatedAt: new Date(NOW.getTime() - (STALE_PROPOSAL_DAYS + 5) * DAY),
     });
 
@@ -261,6 +321,7 @@ describe('detectUxImproverCandidates — withdrawing its own stale proposals', (
       status: 'proposed',
       source: 'learned',
       text: EMPTY_SEARCH_DETAILS[0] as string,
+      evidenceIssueIds: ['issue-a', 'issue-b', 'issue-c'],
       updatedAt: new Date(NOW.getTime() - (STALE_PROPOSAL_DAYS + 5) * DAY),
     });
 
@@ -273,13 +334,54 @@ describe('detectUxImproverCandidates — withdrawing its own stale proposals', (
     expect(report.candidates.filter((c) => c.kind === 'retire')).toHaveLength(0);
   });
 
+  it('leaves a RECENT learned proposal alone — only the stale window may withdraw one', () => {
+    const fresh = rule({
+      id: 'rule-fresh',
+      status: 'proposed',
+      source: 'learned',
+      evidenceIssueIds: ['issue-a', 'issue-b', 'issue-c'],
+      text: 'Toasts must announce the result of every destructive bulk action.',
+      updatedAt: new Date(NOW.getTime() - (STALE_PROPOSAL_DAYS - 5) * DAY),
+    });
+
+    const report = detectUxImproverCandidates({ findings: [], rules: [fresh], now: NOW });
+
+    expect(report.candidates).toHaveLength(0);
+  });
+
+  it('never withdraws a proposal with no evidence — the create route lets a human set source=learned by hand', () => {
+    const handAuthored = rule({
+      id: 'rule-by-hand',
+      status: 'proposed',
+      source: 'learned',
+      evidenceIssueIds: [],
+      updatedAt: new Date(NOW.getTime() - (STALE_PROPOSAL_DAYS + 30) * DAY),
+    });
+
+    const report = detectUxImproverCandidates({ findings: [], rules: [handAuthored], now: NOW });
+
+    expect(report.candidates).toHaveLength(0);
+  });
+
   it('never retires a rule a human authored or approved', () => {
     const old = new Date(NOW.getTime() - (STALE_PROPOSAL_DAYS + 30) * DAY);
     const report = detectUxImproverCandidates({
       findings: [],
       rules: [
-        rule({ id: 'manual', status: 'proposed', source: 'manual', updatedAt: old }),
-        rule({ id: 'active-learned', status: 'active', source: 'learned', updatedAt: old }),
+        rule({
+          id: 'manual',
+          status: 'proposed',
+          source: 'manual',
+          evidenceIssueIds: ['issue-a'],
+          updatedAt: old,
+        }),
+        rule({
+          id: 'active-learned',
+          status: 'active',
+          source: 'learned',
+          evidenceIssueIds: ['issue-a'],
+          updatedAt: old,
+        }),
       ],
       now: NOW,
     });

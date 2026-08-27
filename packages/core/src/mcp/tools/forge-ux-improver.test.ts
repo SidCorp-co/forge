@@ -146,14 +146,15 @@ describe('forge_ux_improver action=propose', () => {
     expect(result.outcomes[0]?.action).toBe('proposed');
   });
 
-  it('refuses a propose with no keys instead of writing anything', async () => {
+  it('accepts a keyless propose — that call is how a barren run still refreshes inbox evidence', async () => {
+    applyProposals.mockResolvedValue({ outcomes: [], report: REPORT });
+
     const result = (await forgeUxImproverTool(makeCtx()).handler({ action: 'propose' })) as {
       ok: boolean;
-      reason: string;
+      outcomes: unknown[];
     };
 
-    expect(result).toEqual({ ok: false, reason: 'keys_required' });
-    expect(applyProposals).not.toHaveBeenCalled();
-    expect(assertAdmin).not.toHaveBeenCalled();
+    expect(applyProposals).toHaveBeenCalledWith(PROJECT_ID, []);
+    expect(result).toEqual({ ok: true, outcomes: [] });
   });
 });

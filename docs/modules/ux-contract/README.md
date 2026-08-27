@@ -109,7 +109,11 @@ Two tiers, split so the testable half is not a prompt.
 3. Recurring clusters become `add` (nothing active covers it), `strengthen` (an existing
    `should` rule does — proposed as the same text at `must`, linked by `supersedesRuleId`),
    or nothing. `retire` covers only the improver withdrawing its OWN `learned` proposals
-   after `STALE_PROPOSAL_DAYS` (60) with the gap no longer recurring.
+   after `STALE_PROPOSAL_DAYS` (60) with the gap no longer recurring. Once a proposal exists
+   for a gap, the gap is refused as `already-proposed` rather than re-proposed — and that
+   refusal is what `applyUxImproverProposals` acts on to keep the inbox row's evidence
+   current, which is why the agent calls `propose` at the end of EVERY run even with an
+   empty `keys` list.
 4. The `add` text is the cluster medoid's finding detail, run through
    `prompt/sanitize.ts` first (`sanitizeUntrusted` + `stripFrameTokens`). An approved rule is
    injected verbatim into every agent prompt on the project, and the detail was authored by an
@@ -146,8 +150,13 @@ is a live gap, not an oversight.
    check reviewers or verify-live consult.
 4. **`projectFacts['ux-contract']` is the whole contract surface.** Nothing outside
    `ux-contract-recompile.ts` reads `ux_contract_rules` directly for prompt purposes.
-5. **The improver is propose-only.** Nothing in `ux-improver.ts` can write `status: 'active'`
-   — it writes `proposed` + `source: 'learned'`, and a human approves in the settings inbox.
+5. **The improver can never ACTIVATE a rule.** Nothing in `ux-improver.ts` writes
+   `status: 'active'`; `add`/`strengthen` write `proposed` + `source: 'learned'` and a human
+   approves in the settings inbox. Propose-only is about activation, not about every write —
+   `retire` is APPLIED, not proposed, because it only withdraws an unapproved proposal the
+   improver itself authored. It is fenced by `status='proposed'` AND `source='learned'` AND
+   non-empty `evidenceIssueIds`; the last is what excludes a rule a human hand-created with
+   `source: 'learned'`, since `ruleCreateSchema` has no `evidenceIssueIds` field.
    Re-running is safe by construction: a candidate matching an existing proposal unions its
    evidence instead of queueing a second row, because the schedule fires every cadence tick.
 6. **An approved supersede retires its target in the same request** — `ux-contract-routes.ts`

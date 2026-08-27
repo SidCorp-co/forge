@@ -178,8 +178,30 @@ describe('UX improver — safe to re-run on a cadence (ISS-579)', () => {
     expect(second.candidates.filter((c) => c.kind === 'add')).toHaveLength(0);
     expect(second.refused.some((r) => r.reason === 'already-proposed')).toBe(true);
 
+    const { outcomes } = await improver.applyUxImproverProposals(project.id, []);
+    expect(outcomes).toEqual([
+      expect.objectContaining({ action: 'evidence-refreshed', ruleId: expect.any(String) }),
+    ]);
+
     const rules = await proposedRules(project.id);
     expect(rules).toHaveLength(1);
+    expect(rules[0]?.evidence_issue_ids).toHaveLength(4);
+    expect(rules[0]?.evidence_issue_ids).toContain(fourth);
+  });
+
+  it('a third pass with no new findings writes nothing at all', async () => {
+    const { owner, project } = await seedProject();
+    for (let i = 0; i < EMPTY_SEARCH.length; i += 1) {
+      const issueId = await seedIssue(project.id, owner.id, `UI issue ${i}`);
+      await seedFinding(project.id, issueId, EMPTY_SEARCH[i] as string);
+    }
+    const first = await improver.loadUxImproverReport(project.id);
+    await improver.applyUxImproverProposals(project.id, [first.candidates[0]?.key as string]);
+
+    const { outcomes } = await improver.applyUxImproverProposals(project.id, []);
+
+    expect(outcomes).toEqual([]);
+    expect(await proposedRules(project.id)).toHaveLength(1);
   });
 });
 
