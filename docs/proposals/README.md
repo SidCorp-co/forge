@@ -26,7 +26,6 @@ carries the evidence.
 | [browser-session-survival.md](browser-session-survival.md) | Open residual — a UI stage's browser crashes mid-session and the recovery is paid by hand, which is anhome's 3.38× clarify p95 | 2026-08-26 | answer whether a mid-session MCP death emits a `system`/`mcp_servers` event (the `got_init` line in `claude_code.rs`), then measure the crash rate by cause and choose between a session-surviving browser and a per-attempt isolated one |
 | [release-permission-parity.md](release-permission-parity.md) | Open residual — the server requires `admin` to release, the three client surfaces require member / nothing / nothing, so a member is shown a button that always 403s | 2026-08-26 | one `useCanRelease` hook consumed by all three, disabled control stating its reason |
 | [retry-context-continuity.md](retry-context-continuity.md) | Proposed, none of the four layers implemented — a retry starts its conversation from zero and abandons the failed attempt's uncommitted work, measured live on ISS-862 (645 messages lost, `session_context` NULL) | 2026-08-26 | L2 (retry prompt names the failed attempt) first; L1 (runner salvages WIP to the branch) needs a runner release |
-| [issue-field-surface.md](issue-field-surface.md) | Proposed — five issue columns are written at create, read by no pipeline stage, and plumbed through 81 non-test source sites; `parent_issue_id` is 0/3442 fleet-wide yet has two live readers | 2026-08-27 | drop all six columns; the Onboarding C3 conflict was apparent only — ISS-454 shipped without ever building a consumer |
 
 ## Retired
 
@@ -41,6 +40,7 @@ the only reason `release-gate-and-deploy.md` still exists as a file.
 | Retired | Why | Where it lives now |
 |---|---|---|
 | `release-gate-and-deploy.md` | All five waves shipped 2026-08-24; six modules in `core`/`contracts` name it as their design record, so it moved instead of being deleted | [../modules/issues-pipeline/release-gate.md](../modules/issues-pipeline/release-gate.md) |
+| `issue-field-surface.md` | All three steps shipped in `5d69e35f` 2026-08-27: five write-only columns plus `parent_issue_id` dropped by migration `0188`, 81 plumbing sites removed, and the two dead readers of `parent_issue_id` deleted. Kept as a file because it is the only record of WHY the surface is five fields wide | [issue-field-surface.md](issue-field-surface.md), until a module doc absorbs it |
 | `mcp-principal-agency.md` | The decision it was blocked on was made 2026-08-25 (attribution follows the token's owner; the ISS-812 guard's scope is unchanged) and shipped in `aba0b10d` | `agency` on `McpPrincipal` + `principalActor()` in `mcp/tools/lib.ts` |
 | `fan-out-scope.md` | The fix belongs to archmap, which is its own repo now — a Forge proposal describing another repo's work is filed in the wrong tracker | [SidCorp-co/archmap#1](https://github.com/SidCorp-co/archmap/issues/1) |
 | `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | [../modules/chat/README.md](../modules/chat/README.md) § RocketChat inbound flow |

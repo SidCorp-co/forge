@@ -1,13 +1,16 @@
 # Issue field surface
 
-Status: **Proposed, nothing implemented** · Verified against the tree and the live DB 2026-08-27
+Status: **Shipped** in `5d69e35f`, live on forge-beta 2026-08-27 — all six columns dropped by migration
+`0188`, verified against `information_schema` and the deployed MCP schema · measurements below verified
+against the tree and the live DB 2026-08-27
 
-The `issues` table carries 30 columns. Nine of them drive machinery. Five are written at create,
-read by nothing, and plumbed through 81 non-test source sites. Two are consumed by live code but
+The `issues` table carried 33 columns. Nine drive machinery. Five were written at create, read by
+nothing, and plumbed through 81 non-test source sites. One more was consumed by live code but
 written by nobody — `0` rows fleet-wide.
 
-This proposal cuts the five, deletes the two dead readers, and records why the one decision it
-named turned out to be already made.
+All six are gone; the table is 27 columns wide. What follows is the measurement that justified each
+cut, the test that decides any future one, and why the decision this was blocked on turned out to
+have already been made.
 
 ## The read half already shipped — this is about the write half
 
@@ -125,10 +128,10 @@ The issue is not reopened to correct its description — reopening a closed issu
 re-stamps lifecycle state to solve a text problem. A comment on ISS-454 records that the columns
 were dropped and what replaced them.
 
-## Sequencing
+## Sequencing — all three landed in one commit
 
-Column drops need a migration, and this repo's journal `when` trap makes that a change to make
-deliberately, not on momentum. Order:
+They shipped together rather than in three deploys: a commit that removes the write path but leaves
+the column is a state where code and schema disagree and nothing tests the gap.
 
 1. **No migration.** Remove the five from the MCP + REST *create* schemas and from `patch-fields.ts`.
    Writes stop; existing values are untouched and still readable. This alone lands the
