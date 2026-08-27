@@ -41,26 +41,7 @@ From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `p
 
 DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:studio` (drizzle-kit).
 
-## Key patterns
 
-- TypeScript everywhere (Rust only for the runner)
-- All UI clients share the same `core` Hono REST contract (mirrored in `packages/contracts`)
-- React Query for server state
-- Real-time: WebSocket broadcasts from `core` (`/ws`) to all UIs
-- core domain modules: `routes.ts` + service/helper files + co-located `*.test.ts`; web feature
-  modules: `api.ts`, `types.ts`, `components/`, `hooks/`
-- Bearer token in Authorization header; web always uses `apiClient` (`src/lib/api/client.ts`),
-  never raw `fetch`
-- DB is source of truth: enums/tables live in `packages/core/src/db/schema.ts`; change via
-  `pnpm db:generate` + `pnpm db:migrate` (drizzle-kit)
-
-## Comments
-
-**If a tool can derive it, don't write it.** No `TODO`/`FIXME` — fix it in the change you are
-already making and declare it under `Extra fixes:`. Couplings no tool can see are recorded as
-one-line `cm:` annotations: `cm:guard` `cm:edge` `cm:flow` `cm:hack` `cm:why`. Full doctrine, and
-what earns an annotation: **[`.claude/rules/codemap.md`](.claude/rules/codemap.md)**, which loads
-automatically when you open a source file. Gate: `cm verify` (CI job `codemap`).
 
 ## Ten gates, five axes
 
@@ -81,22 +62,65 @@ already owns** — no ESLint, no comment rules outside codemap, no comments insi
 Which gate owns what, the conformance levels and their baseline directions, and what each rule was
 born from: **[`scripts/README.md`](scripts/README.md)**.
 
+## Doing the work
+
+**Take the complete fix and pay the larger workload for it.** Where a smaller change and a whole
+one both close the issue, the whole one is the deliverable — effort is not a reason to defer
+structural work, and a workaround that becomes routine is a defect. The bound is the ownership
+line, in this same breath because the two are one rule: no merging or reverting a shared branch, no
+doing another issue's work, no silently overriding a human's decision. Everything inside that line
+is yours whether or not it is in your AC; the first thing outside it is not, however cheap.
+
+**A trade-off is priced or it is not taken.** `--update-baseline`, a waiver, a skipped test, a
+`cm:hack` — each is an amnesty, and an amnesty with no stated price is how a gate stops meaning
+what its row says. Name what was traded, what it costs, and the condition that ends it. An
+undeclared trade-off is indistinguishable from an unnoticed one six weeks later.
+
+**Before you change behaviour, know what you are replacing.** Requirement, then the design, then
+the business changelog (which `BR-`/`UC-` moves — [`docs/requirements/`](docs/requirements/README.md)),
+then the old logic this supersedes, then the cleanup that removes it. Code that ships beside the
+thing it replaced leaves two live paths and a reader who cannot tell which one runs.
+
 ### There is no "already red"
 
 **A defect you have seen may not leave your hands labelled "not mine".** In reach and inside the
-ownership line (no merging or reverting a shared branch, no doing another issue's work, no silently
-overriding a human's decision) → **fix it**, whoever caused it and whether or not it is in your AC.
-Out of reach → it leaves as someone's work: a `blocks` edge, a `docs/proposals/` line, or a comment
-with evidence (`waiting` + `reason` when it blocks this issue). **Never a new issue** — filing a
-fixable defect instead of fixing it is the `file-instead-of-fix` red flag, and it is what put 30
-unread drafts on forge-dev by 2026-08-18.
+ownership line → **fix it**, whoever caused it. Out of reach → it leaves as someone's work: a
+`blocks` edge, a `docs/proposals/` line, or a comment with evidence (`waiting` + `reason` when it
+blocks this issue). **Never a new issue** — filing a fixable defect instead of fixing it is the
+`file-instead-of-fix` red flag, and it is what put 30 unread drafts on forge-dev by 2026-08-18.
 
-"Pre-existing", "untouched", "out of scope" are reasons to **record**, never reasons to go quiet.
-Measured 2026-08-13: five `forge-test` runs wrote *"lint remains red only on pre-existing, untouched
-diagnostics"* and merged — `core` is a required check. `core-integration` was red on 5 tests at the
-same time, one of them ISS-812's own regression suite, which had never run anywhere: code wrote it
-without running it, review approved it, test could not run it, all three disclosed honestly and
-moved on. Nobody lied and nobody fixed it. "Already red" only means earlier steps dodged too.
+**Disclosure is not a discharge.** A step that names a defect and ships anyway is a failed step,
+not an honest one. Measured 2026-08-13: five `forge-test` runs wrote *"lint remains red only on
+pre-existing, untouched diagnostics"* and merged — `core` is a required check. `core-integration`
+was red on 5 tests at the same time, one of them ISS-812's own regression suite, which had never
+run anywhere: code wrote it without running it, review approved it, test could not run it, all
+three disclosed honestly and moved on. Nobody lied and nobody fixed it. "Pre-existing",
+"untouched" and "out of scope" are reasons to **record**, never reasons to go quiet, and never
+reasons to go green.
+
+## Green is a claim about one proposition
+
+**A green check is evidence for exactly one thing: that assertion held in the runtime that ran
+it.** Where the runtime cannot represent the failure, a pass is not weak evidence — it is none, and
+it is indistinguishable from a strong one. So ask what would have to be true for the assertion to
+go red, **plant exactly that, and watch it go red naming its own rule** before the green means
+anything. A test that cannot fail has not been written yet.
+
+Cover the axes, not just the happy path: happy · negative · boundary · extreme/edge · the business
+rule itself. Which axes a given step owes, and the evidence it must show: the `forge-test` skill.
+
+## Documentation is deleted, not carried
+
+**Better no document than a wrong one.** A doc that cannot be verified is removed in the change
+that discovers it — no deprecation note, no "may be stale" header. Both are a second copy of a
+status the code already holds.
+
+**The files you read are your doc-review worklist.** Finishing an issue means every `.md` you
+opened while working it comes back marked *still true* / *edited* / *deleted*. "Did not touch" is
+not one of the three. Enforced in the pipeline by `forge-code`.
+
+Cite a doc claim so it can be checked: name the identifier or the `file.ts:symbol` anchor, never a
+line number — a line number is stale the moment anything above it moves, and stale in silence.
 
 ## Invariants
 
@@ -112,15 +136,6 @@ moved on. Nobody lied and nobody fixed it. "Already red" only means earlier step
   (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). Take `max(when)` across the
   journal and add `86400000`; never a real timestamp. Gated by `db/migrations-journal.test.ts`.
 
-## Recipes
-
-- **New core endpoint** → route module `packages/core/src/<domain>/routes.ts` (Hono + Drizzle) +
-  mount in `src/index.ts`
-- **New MCP tool** → `packages/core/src/mcp/tools/forge-<name>.ts`
-- **New web feature** → `packages/web-v2/src/features/<name>/` with `api.ts` + `types.ts` +
-  `hooks/` + `components/`
-- **Schema change** → `packages/core/src/db/schema.ts` → `pnpm db:generate` + `pnpm db:migrate` →
-  propagate to `packages/contracts` → web/dev TS types → MCP tool descriptions
 
 ## Where the detail lives
 
@@ -130,3 +145,4 @@ moved on. Nobody lied and nobody fixed it. "Already red" only means earlier step
 | Every gate, its baseline, its origin | `scripts/README.md` |
 | Architecture, orphan hygiene, observability | `docs/architecture/` |
 | Per-domain deep detail | `docs/modules/<domain>/` |
+| Business rules & use cases (`BR-`/`UC-`) | `docs/requirements/README.md` |

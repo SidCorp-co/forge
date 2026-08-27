@@ -148,7 +148,7 @@ describe('storeCiFixPattern', () => {
 });
 
 describe('registerCiFixPatternLearner', () => {
-  it('skips when reopenCount === 0 (UC-6)', async () => {
+  it('skips when reopenCount === 0', async () => {
     const bus = new HooksBus();
     registerCiFixPatternLearner(bus);
     await bus.emit('transition', {
@@ -195,7 +195,7 @@ describe('registerCiFixPatternLearner', () => {
     expect(indexMemoryMock).not.toHaveBeenCalled();
   });
 
-  it('stores pattern on reopen→developed with ciFixContext (UC-1)', async () => {
+  it('stores pattern on reopen→developed with ciFixContext', async () => {
     nextSelect.mockResolvedValueOnce([
       {
         sessionContext: {

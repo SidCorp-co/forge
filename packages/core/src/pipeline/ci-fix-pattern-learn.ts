@@ -199,8 +199,7 @@ export function registerCiFixPatternLearner(bus: HooksBus): () => void {
     });
 
   const unsub = bus.on('transition', (payload) => {
-    // UC-6: only learn from a fix loop (reopen → ... → developed). First-pass
-    // developed has no fix context to learn from.
+    // cm:why only a fix loop (reopen → ... → developed) teaches anything — a first-pass `developed` carries no fix context to learn from
     if (payload.to !== 'developed') return;
     if (payload.reopenCount <= 0) return;
 

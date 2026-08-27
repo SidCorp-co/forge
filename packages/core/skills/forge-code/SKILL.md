@@ -131,6 +131,30 @@ This takes one extra `forge_issues → get` call per relation — cheap insuranc
 3. **Post a comment** — see `references/comments.md`
 4. **Build to the UX contract (if the project has one)** — when the project has a `ux-contract` projectFact and the change is user-facing, implement against it: reuse the project's design-system primitives/tokens (no 3rd-party UI lib / raw hex) and cover every applicable required state (loading / empty / empty-search / error+retry / feedback on each mutation / destructive-confirm / keyboard+visible-focus / responsive), not just the happy path. A missing applicable state will be flagged at review/QA and bounce the issue. Projects without a `ux-contract`, and backend-only changes, are unaffected.
 
+## Doc review — the files you read are the worklist
+
+Before you post the completion comment, take **every `.md` you opened while working this issue**
+and account for each one. Three outcomes, no fourth:
+
+| | |
+|---|---|
+| **still true** | you re-read it against what you just changed and it holds |
+| **edited** | it disagreed with the new behaviour, so you fixed it in this diff |
+| **deleted** | it could not be verified, so it is gone — better no document than a wrong one |
+
+"Did not touch" is not an outcome. Neither is a deprecation note or a "may be stale" header: both
+leave a second copy of a status the code already holds.
+
+Two things widen the list beyond what you happened to open. A change that moves a `BR-`/`UC-` must
+update [`docs/requirements/README.md`](../../../../docs/requirements/README.md) in the same diff —
+the register's anchor column is the join that makes the business↔module map generable, so an
+anchor pointing at a symbol you just renamed silently breaks it. And a doc claim you write must
+cite an identifier or a `file.ts:symbol` anchor, never a line number.
+
+Report the list under `Docs reviewed:` in the completion comment, one line per file with its
+outcome. An empty list is a claim that the issue opened no documentation, and it is checkable
+against the transcript.
+
 (Status discipline, branch rules, output rules, sessionContext schema — see pipeline preamble.)
 
 ## Session Context fields code should populate

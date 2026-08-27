@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 
 describe('queryPreventivePatterns', () => {
-  it('returns [] when issueText is empty (UC-5 boundary)', async () => {
+  it('returns [] when issueText is empty (boundary)', async () => {
     const out = await queryPreventivePatterns({
       projectId: 'proj-1',
       issueText: '   ',

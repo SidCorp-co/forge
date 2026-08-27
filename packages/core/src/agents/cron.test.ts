@@ -129,7 +129,7 @@ describe('runAgentCronTickOnce', () => {
     expect(fired).toEqual(['agent-2']);
   });
 
-  it('UC-5: two ticks in the same day → only one effective spawn (already-active resolves the second)', async () => {
+  it('two ticks in the same day → only one effective spawn (already-active resolves the second)', async () => {
     // First tick → spawn returns ok:true; second tick → existing
     // jobs_pm_per_project_unique_idx forces spawnPmSession to return
     // {ok:false, reason:'already-active'}. The cron must propagate that as a
