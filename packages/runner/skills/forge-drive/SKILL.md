@@ -97,15 +97,72 @@ board.
 | `closed` | finished; stamps `merged_at` |
 | `dropped` | not work; does not stamp `merged_at` |
 
-## When to stop and ask
+## When you hit a question
 
-Set `needs_info` and say why in a comment when, and only when, a human has something you cannot
-get for yourself: a credential, a decision between real tradeoffs, access, or an answer about
-intent.
+Most questions are already answered. There is a standing direction on this project, and it decides
+before you ask:
 
-Then **end your session**. Do not wait, poll, or keep the run alive — asking is a stopping point,
-not a pause. The comment you leave is the whole question, so write it to be answered by someone who
-was not here: what you tried, what you need, and what you will do with each possible answer.
+> Decide on the recommendation, grounded in project information. Prefer the best and most complete
+> outcome over the cheapest to build; a large workload is accepted to get there.
+
+This is a preference rule, not an exemption. It tells you which branch to take when more than one is
+open. It never lets you skip a guard, and it never makes an irreversible thing reversible.
+
+So when you hit a question, settle two things before anything else — the **recommendation** (what you
+would do if nobody answered) and whether being wrong is **recoverable**. Then:
+
+| | When |
+|---|---|
+| **Decide, now, in this session** | you have a grounded recommendation and being wrong is recoverable |
+| **Stop and ask** | you have no grounded recommendation — you genuinely have no basis to prefer a branch |
+| **Stop and ask** | being wrong is not recoverable — the list below |
+
+A question in the first row never parks. Waiting on it buys nothing: the direction has already
+answered it, and the answer will not change by tomorrow.
+
+### Grounded is the load-bearing word
+
+A recommendation is grounded when you derived it from this project's own information — `projectFacts`,
+`forge_knowledge`, project memory, the repo itself — and you can **name what you derived it from**. A
+recommendation you cannot source is not a recommendation, it is a guess in a confident tone. That
+question has no basis, and it goes in the second row.
+
+### Not recoverable is a list, not a feeling
+
+Left to taste this test gets used either never or always. Being wrong is **not** recoverable when the
+answer would:
+
+- change or delete data that cannot be rebuilt from the repo
+- change a published contract that other code, another package, or another team depends on
+- touch auth, permissions, money, or a customer-visible default
+- run a migration
+- contradict a decision a human already recorded on this issue
+
+Everything else is recoverable, **including work that is large**. Size is not impact. If the better
+answer is the more expensive path, that is not a reason to prefer the cheaper one — the direction says
+so outright, because the default incentive runs the other way: choosing between the narrow fix and the
+right one, an agent defaults to narrow and calls it scope.
+
+### Record it before you act on it, never after
+
+Comment on the issue first, then do the thing. One comment per decision, naming the question, the
+recommendation you took, what you grounded it in, and that the standing direction is what decided it.
+
+The order is not a style preference. This comment is the **only** place the owner ever sees that you
+decided — nobody was asked, nothing parked, no notification fired. Act first and the change ships
+while the reason does not.
+
+If you find a comment on this issue that contradicts a decision recorded this way, **the human wins**:
+say what it contradicts, reopen that specific decision, and redo the work it touched. You are the only
+mechanism here — their disagreement arrives as an ordinary comment on an issue that never parked, so
+nothing else will catch it.
+
+### When you do stop
+
+Set `needs_info` and say why in a comment. Then **end your session** — do not wait, poll, or keep the
+run alive; asking is a stopping point, not a pause. The comment you leave is the whole question, so
+write it to be answered by someone who was not here: what you tried, what you need, and what you will
+do with each possible answer.
 
 A human answering with a comment is what starts you again. The next session declares its phases from
 the same journal, so `forge_phase` action `resume_point` puts it back where you stopped — which is

@@ -809,6 +809,17 @@ before any pipeline job depends on it.
 
 ## Lockstep
 
+**Shipped 2026-08-27.** The standing direction is live in
+`packages/runner/skills/forge-drive/SKILL.md` — the decide/ask table, the grounding requirement, the
+five-item irreversibility list, and record-before-act. It needed no schema, no tool, no deadline and
+no sweep, which is what the second owner decision bought. `build.rs` `include_str!`s the bundled
+skills, so it reaches the fleet on the next runner release and nothing has to be pushed.
+
+The three sub-agent parks (`forge-understand` twice, `forge-ship` once) were left alone on purpose:
+"cannot tell what finished looks like", "cannot reproduce" and "the deploy is dead" are missing
+**facts**, not open preferences, so the direction has nothing to decide there and widening it to them
+would turn a factual gap into a guess.
+
 - `forge-drive/SKILL.md` — *"Then **end your session**"* becomes *"then finish your turn"*. Ship it
   with phase 3, never before: under `sessionMode: 'print'` waiting really is a lie.
 - `jobs/loop-monitor.ts` — the quiet computation reads `runtimeState`. Ships with phase 2.
