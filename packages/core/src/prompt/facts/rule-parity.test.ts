@@ -116,6 +116,7 @@ const SHARED_AFFORDANCE_RULES: ReadonlyArray<{ rule: string; must: RegExp }> = [
 
 const SHARED_RED_FLAGS = [
   'prose-deps',
+  'open-then-block',
   'open-as-note',
   'draft-as-note',
   'plan-by-hand',

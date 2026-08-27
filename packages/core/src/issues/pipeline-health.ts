@@ -34,6 +34,7 @@ import { freshRunnerAvailability, resolveGateSettings } from '../jobs/dispatch-g
 import { extractStageStatus } from '../jobs/stage-overrides.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
+import { isBlockerSatisfied } from './dependency-satisfaction.js';
 import {
   heldWaitingOn,
   retryCooldownWaitingOn,
@@ -231,15 +232,10 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  // cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts#blockedBy — must mirror that gate's
-  //   satisfaction rule EXACTLY, or the gate holds an issue while this reports no waitingOn reason
-  // cm:why a status check (`released|closed` = satisfied) drifted from the ISS-639 gate fix and starved
-  //   a dependent 40min with a blank blocker banner — hence merged_at, with closed only when unstampable
-  const depSatisfied = (status: string, mergedAt: Date | null): boolean =>
-    mergedAt !== null || (!baseStampable && status === 'closed');
-
   const blockers = deps.filter(
-    (d) => d.kind === 'blocks' && !depSatisfied(d.fromStatus, d.fromMergedAt),
+    (d) =>
+      d.kind === 'blocks' &&
+      !isBlockerSatisfied({ status: d.fromStatus, mergedAt: d.fromMergedAt }, baseStampable),
   );
   if (blockers.length > 0) {
     const closedUnmerged = blockers.filter((b) => b.fromStatus === 'closed');
@@ -262,7 +258,9 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   // for every child to land. (The old inverse rule — child release waiting on
   // its parent — was removed from the gate; it deadlocked umbrella epics.)
   if (['code', 'review', 'test', 'fix'].includes(candidate.type)) {
-    const pendingChildren = decompChildren.filter((c) => !depSatisfied(c.status, c.mergedAt));
+    const pendingChildren = decompChildren.filter(
+      (c) => !isBlockerSatisfied({ status: c.status, mergedAt: c.mergedAt }, baseStampable),
+    );
     if (pendingChildren.length > 0) {
       out.waitingOn = {
         reason: 'waiting_on_decomp_children',

@@ -141,6 +141,38 @@ describe('ISS-868 issue relations read', () => {
     expect(edge?.gatesDispatch).toBe(false);
   });
 
+  it('stops gating once the blocker has merged, the way L2 does', async () => {
+    const blocker = await insertIssue(601, 'released');
+    const dependent = await insertIssue(602);
+    await insertEdge(blocker, dependent, 'blocks');
+    await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${blocker}`);
+
+    const [edge] = (await loadIssueRelations(dependent)).blockedBy;
+    expect(edge?.expired).toBe(false);
+    expect(edge?.otherMergedAt).toBeInstanceOf(Date);
+    expect(edge?.gatesDispatch).toBe(false);
+  });
+
+  it('gates again while a merged blocker sits at reopen — merged_at is never cleared', async () => {
+    const blocker = await insertIssue(611, 'reopen');
+    const dependent = await insertIssue(612);
+    await insertEdge(blocker, dependent, 'blocks');
+    await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${blocker}`);
+
+    const [edge] = (await loadIssueRelations(dependent)).blockedBy;
+    expect(edge?.gatesDispatch).toBe(true);
+  });
+
+  it('still gates on a closed blocker whose code never landed, on a stampable base', async () => {
+    const blocker = await insertIssue(621, 'closed');
+    const dependent = await insertIssue(622);
+    await insertEdge(blocker, dependent, 'blocks');
+
+    const [edge] = (await loadIssueRelations(dependent)).blockedBy;
+    expect(edge?.otherMergedAt).toBeNull();
+    expect(edge?.gatesDispatch).toBe(true);
+  });
+
   it('omits the other issue title and the edge reason', async () => {
     const blocker = await insertIssue(401);
     const dependent = await insertIssue(402);
