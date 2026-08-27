@@ -3,6 +3,7 @@
 // `packages/core/src/skills/{crud-routes,routes}.ts` for ISS-299.
 import { apiClient } from "@/lib/api/client";
 import type {
+  InvokableSkill,
   SkillFile,
   SkillRegistration,
   SkillRow,
@@ -28,6 +29,17 @@ export const skillsApi = {
   /** `GET /api/skills?projectId&scope=all` — global + project skills. */
   list: (projectId: string) =>
     apiClient<SkillRow[]>(`/skills?projectId=${encodeURIComponent(projectId)}&scope=all`),
+
+  /**
+   * `GET /api/skills/invokable?projectId=` — the install-only skills a human may
+   * invoke as a slash-command in an interactive chat (ISS-718). Name +
+   * description only; this is what the composer's `/` menu lists, and it is the
+   * same set `POST /api/agent-sessions/start` accepts as `skillName`.
+   */
+  invokable: (projectId: string) =>
+    apiClient<{ skills: InvokableSkill[] }>(
+      `/skills/invokable?projectId=${encodeURIComponent(projectId)}`,
+    ),
 
   /** `POST /api/skills/sync-status` — per-skill registered stages + hash. */
   syncStatus: (projectId: string) =>

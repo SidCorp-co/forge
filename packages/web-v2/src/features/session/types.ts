@@ -12,6 +12,10 @@
 // `@forge/contracts` has no agent-session-turn types yet, so these are re-typed
 // locally (same note as ISS-291's `features/sessions/types.ts`).
 
+import type { ModelTier } from "@forge/contracts";
+
+export type { ModelTier };
+
 /** A single tool invocation as serialized by the runner. */
 export interface ToolCallData {
   id: string;
@@ -129,6 +133,22 @@ export interface TurnsResponse {
   turns: TurnRow[];
   nextCursor: string | null;
 }
+
+/**
+ * How the composer's model picker labels each tier (ISS-718). Typed as a total
+ * `Record<ModelTier, …>` over the shared enum on purpose: adding or removing a
+ * tier in core's `db/schema.ts` then fails this file's typecheck instead of
+ * silently leaving the picker offering a stale set — the picker's options may
+ * never drift from what POST /api/agent-sessions/{start,send} accept.
+ */
+export const MODEL_TIER_LABELS: Record<ModelTier, { label: string; sub: string }> = {
+  haiku: { label: "Haiku", sub: "Fastest, for simple asks" },
+  sonnet: { label: "Sonnet", sub: "Balanced" },
+  opus: { label: "Opus", sub: "Deepest reasoning" },
+};
+
+/** Declaration order of {@link MODEL_TIER_LABELS} — cheapest to deepest. */
+export const MODEL_TIERS = Object.keys(MODEL_TIER_LABELS) as ModelTier[];
 
 /** A block ready to render inside an agent turn. */
 export type RenderBlock =

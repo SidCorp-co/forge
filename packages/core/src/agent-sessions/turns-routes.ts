@@ -1,16 +1,13 @@
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
-import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { assertProjectRole } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import {
   broadcastSession,
   broadcastTurnAppended,
@@ -18,10 +15,17 @@ import {
   broadcastTurnTruncated,
 } from './broadcast.js';
 import {
+  createChatSessionRow,
+  dispatchChatTurn,
+  noClaudeClient,
+  resolveChatDevice,
+} from './chat-turn.js';
+import {
   assertAgentChatOwner,
   assertSessionOwnerOrAdmin,
   badRequest,
   ensureSessionMember,
+  ensureSessionOwnerOrAdmin,
   idParamSchema,
   notFound,
 } from './session-access.js';
@@ -181,7 +185,7 @@ agentSessionTurnsRoutes.post(
     assertProjectRole(access, 'member');
     assertSessionOwnerOrAdmin(session, access, userId);
 
-    if (session.status === 'running') {
+    if (session.status === 'running' || session.status === 'queued') {
       throw new HTTPException(409, {
         message: 'abort the in-flight turn before regenerating',
         cause: { code: 'SESSION_RUNNING' },
@@ -191,69 +195,68 @@ agentSessionTurnsRoutes.post(
     const turn = await findTurnInSession(id, turnId);
     if (!turn) throw notFound('turn not found');
 
-    // Truncate everything after the turn (keep the turn itself). For a user
-    // turn this means "regenerate replies"; for an assistant turn this means
-    // "drop this reply and re-generate from the prior user message".
     const keepThrough = turn.role === 'assistant' ? turn.turnIndex - 1 : turn.turnIndex;
-    const messages = sliceMessagesThrough(session.messages, keepThrough);
-    const truncatedFromIndex = keepThrough + 1;
-
-    // Resolve the prompt for the worker dispatch up-front so we can fail fast
-    // if there's no usable string to send. Otherwise the truncate would commit
-    // and the row would sit in `queued` forever with no agent:send fired.
-    const lastUserEntry = [...messages].reverse().find((m) => {
+    const replayMessages = sliceMessagesThrough(session.messages, keepThrough);
+    const lastUserEntry = [...replayMessages].reverse().find((m) => {
       return !!m && typeof m === 'object' && (m as { role?: string }).role === 'user';
     }) as { content?: unknown } | undefined;
     const targetMessage = extractPromptString(lastUserEntry?.content);
-    const meta = (session.metadata ?? {}) as { deviceId?: string };
-    const targetDeviceId = meta.deviceId ?? session.deviceId ?? null;
-    if (targetDeviceId && !targetMessage) {
+    if (!targetMessage) {
       throw new HTTPException(409, {
         message: 'no dispatchable prompt found before this turn',
         cause: { code: 'NO_DISPATCHABLE_PROMPT' },
       });
     }
 
+    const client = await resolveChatDevice(session);
+    if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
+
+    const [project] = await db
+      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+      .limit(1);
+    if (!project) throw notFound('project not found');
+
+    const priorMessages = replayMessages.slice(0, -1);
+    const truncatedFromIndex = priorMessages.length;
     const regenNow = new Date();
-    const updated = await db.transaction(async (tx) => {
-      await truncateTurnsAfter(id, keepThrough, tx);
+    const locked = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(agentSessions)
         .set({
-          messages: messages as never,
+          messages: priorMessages as never,
           status: 'queued',
           failureReason: null,
           dispatchedAt: regenNow,
           updatedAt: regenNow,
         })
-        .where(eq(agentSessions.id, id))
+        .where(
+          and(
+            eq(agentSessions.id, id),
+            eq(agentSessions.status, session.status),
+            eq(agentSessions.updatedAt, session.updatedAt),
+          ),
+        )
         .returning();
-      if (!row) throw notFound('agent session not found');
+      if (!row) return null;
+      await truncateTurnsAfter(id, priorMessages.length - 1, tx);
       return row;
     });
-
-    // Re-publish to the device with the most recent user turn as the prompt
-    // (already validated above; reuse the resolved values).
-    if (targetDeviceId && targetMessage) {
-      const [project] = await db
-        .select({ slug: projects.slug })
-        .from(projects)
-        .where(eq(projects.id, updated.projectId))
-        .limit(1);
-      roomManager.publish(deviceRoom(targetDeviceId), {
-        event: 'agent:send',
-        data: {
-          sessionId: updated.id,
-          message: targetMessage,
-          claudeSessionId: updated.claudeSessionId ?? null,
-          repoPath: updated.repoPath ?? null,
-          projectSlug: project?.slug ?? null,
-        },
+    if (!locked) {
+      throw new HTTPException(409, {
+        message: 'session changed before regeneration could start',
+        cause: { code: 'SESSION_STALE' },
       });
     }
 
-    broadcastTurnTruncated(updated, truncatedFromIndex);
-    broadcastSession(updated, 'agent-session.status');
+    broadcastTurnTruncated(locked, truncatedFromIndex);
+    const updated = await dispatchChatTurn({
+      session: locked,
+      project,
+      client,
+      message: targetMessage,
+    });
     return c.json({ status: updated.status });
   },
 );
@@ -336,8 +339,14 @@ agentSessionTurnsRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session, access } = await ensureSessionMember(id, userId);
-    assertProjectRole(access, 'member');
+    const { session } = await ensureSessionOwnerOrAdmin(id, userId);
+    if (session.status === 'running' || session.status === 'queued') {
+      throw new HTTPException(409, {
+        message: 'wait for the in-flight turn before rerunning',
+        cause: { code: 'SESSION_RUNNING' },
+      });
+    }
+
     const messages = Array.isArray(session.messages) ? session.messages : [];
     const firstUser = messages.find((m) => {
       return !!m && typeof m === 'object' && (m as { role?: string }).role === 'user';
@@ -350,75 +359,35 @@ agentSessionTurnsRoutes.post(
       });
     }
 
-    const prevMeta = (session.metadata ?? {}) as Record<string, unknown>;
-    const newMetadata = {
-      ...prevMeta,
-      rerunOfSessionId: id,
-    };
+    const client = await resolveChatDevice(session);
+    if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
 
-    const nowDate = new Date();
-    const seedMessage = { role: 'user', content: prompt, timestamp: nowDate.getTime() };
-    // Mirror the start-flow status rule: only flip to `running` when a device
-    // is bound (a runner will pick it up). Without one, leave the session
-    // `queued` until a device claims it — otherwise the row is `running` with
-    // no worker attached and stays stuck forever.
-    const hasDevice = !!session.deviceId;
-    // ISS-101 — rerun spawns a fresh interactive session with its own run.
-    const rerunRun = await openOneShotRun({
+    const [project] = await db
+      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+      .limit(1);
+    if (!project) throw notFound('project not found');
+
+    const inserted = await createChatSessionRow({
       projectId: session.projectId,
-      kind: 'interactive',
+      userId: session.userId ?? userId,
+      title: session.title ? `${session.title} (rerun)` : null,
+      metadata: {
+        ...((session.metadata ?? {}) as Record<string, unknown>),
+        rerunOfSessionId: id,
+      },
     });
-    const { inserted, seedSync } = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(agentSessions)
-        .values({
-          projectId: session.projectId,
-          userId: session.userId ?? userId,
-          deviceId: session.deviceId,
-          pipelineRunId: rerunRun.id,
-          title: session.title ? `${session.title} (rerun)` : null,
-          status: hasDevice ? 'running' : 'queued',
-          startedAt: hasDevice ? nowDate : null,
-          lastHeartbeatAt: hasDevice ? nowDate : null,
-          repoPath: session.repoPath,
-          messages: [seedMessage] as never,
-          metadata: newMetadata as never,
-        })
-        .returning();
-      if (!row) throw new Error('agent_sessions: insert returned no row');
-      const sync = await syncTurnsWithMessages(row.id, [], [seedMessage], tx);
-      return { inserted: row, seedSync: sync };
+    const updated = await dispatchChatTurn({
+      session: inserted,
+      project,
+      client,
+      message: prompt,
+      broadcastEvent: 'agent-session.created',
     });
-    for (const t of seedSync.appended) {
-      broadcastTurnAppended(inserted, t);
-    }
 
-    const targetDeviceId = inserted.deviceId;
-    if (targetDeviceId) {
-      const [project] = await db
-        .select({ slug: projects.slug })
-        .from(projects)
-        .where(eq(projects.id, inserted.projectId))
-        .limit(1);
-      // cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — a rerun must resolve MCP servers through the same chain as a normal turn, or the re-spawned `claude` sees a different toolset than the session it reruns
-      const { mcpServers: mcpServersOverride } = await resolveSessionMcpServers(inserted.projectId);
-      roomManager.publish(deviceRoom(targetDeviceId), {
-        event: 'agent:start',
-        data: {
-          sessionId: inserted.id,
-          repoPath: inserted.repoPath ?? null,
-          prompt,
-          projectSlug: project?.slug ?? null,
-          preBuilt: false,
-          mcpServersOverride,
-        },
-      });
-    }
+    await recordSessionCreatedActivity(updated, userId);
 
-    broadcastSession(inserted, 'agent-session.created');
-
-    await recordSessionCreatedActivity(inserted, userId);
-
-    return c.json(inserted, 201);
+    return c.json(updated, 201);
   },
 );

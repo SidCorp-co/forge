@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { agentSessions, devices, type MemberLens, memberLenses } from '../db/schema.js';
+import {
+  agentSessions,
+  devices,
+  type MemberLens,
+  type ModelTier,
+  memberLenses,
+} from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import {
@@ -10,6 +16,7 @@ import {
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { openOneShotRun } from '../pipeline/runs.js';
+import { isSlashCommandSkillName } from '../skills/skill-name.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
@@ -22,6 +29,7 @@ import {
   readPersistedPageContext,
   samePageContext,
 } from './page-context.js';
+import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
 // ============================================================================
@@ -303,10 +311,18 @@ export interface DispatchChatTurnArgs {
    * project skill BEFORE calling — this module only sanity-checks the shape.
    */
   skillName?: string | null;
+  /**
+   * ISS-718 — the model this turn (and every later turn of this session) runs
+   * on, as a THREE-state value:
+   *   - `undefined` — no override: inherit `metadata.model`, so a plain /send
+   *     keeps the last pick.
+   *   - a tier — switch to it, and remember it on `metadata.model`.
+   *   - `null` — select Claude Code's Default for this turn and later ones.
+   *     Collapsing this into `undefined` would make "back to Default" silently
+   *     keep the old model.
+   */
+  model?: ModelTier | null | undefined;
 }
-
-/** Slash-command-safe skill name: lowercase, digits, hyphens, 1–128 chars. */
-const SKILL_NAME_RE = /^[a-z][a-z0-9-]{0,127}$/;
 
 /**
  * Append one user turn to a session and dispatch it to its Claude client.
@@ -364,11 +380,14 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // the remote branch only ever publishes a WS event, it never writes the DB.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
+  // cm:guard an explicit Default must emit `--model default` on resume, because omission inherits the prior Claude session model instead of the configured default
+  const model =
+    args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
   // Fail BEFORE any write when the shape is wrong, rather than after the user
   // turn + status='running' have already been committed with nothing to
   // dispatch it (the previous validation point was inside the cold-start
   // publish branch, after this transaction).
-  if (args.skillName && !SKILL_NAME_RE.test(args.skillName)) {
+  if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
 
@@ -383,12 +402,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   };
   // Pin the freshly-picked device so the next /send reuses it.
   if (deviceId && session.deviceId !== deviceId) updates.deviceId = deviceId;
-  // On migration the old Claude session id points at a file on the dead box —
-  // drop it so this turn cold-starts here and the new runner stamps a fresh id
-  // (which the next follow-up will `--resume` against this device).
   if (migrated) updates.claudeSessionId = null;
   const nextMeta = { ...prevMeta };
   if (deviceId) nextMeta.deviceId = deviceId;
+  // cm:why `default` must remain in jsonb — omission means inherit the existing selection, while an explicit null asks Claude Code to clear its restored model
+  if (args.model !== undefined) nextMeta.model = args.model ?? 'default';
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
   // ISS-733 fix — mark this turn as "invoked a skill on cold start" so the
   // PATCH /:id terminal-report handler can detect the sync-then-dispatch race
@@ -447,7 +465,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   if (isLocal) {
-    // Desktop runs Claude locally — just mirror the user turn to web viewers.
+    // cm:guard a local turn is run by the CALLER, not by us — we only mirror it to web viewers. The resolved `model` deliberately does not travel here (ISS-718 AC#6): the only client that ever set origin='desktop' was packages/dev, deleted 2026-08-23. `metadata.model` is still persisted above, so a future local client inherits the pick — but it has to read that marker itself, because nothing on this branch hands it over.
     roomManager.publish(projectRoom(project.id), {
       event: 'agent:user-message',
       data: {
@@ -511,6 +529,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
         mcpServersOverride,
+        ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
       },
     });
@@ -525,6 +544,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         repoPath,
         projectSlug: project.slug,
         mcpServersOverride,
+        ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
       },
     });
