@@ -93,6 +93,31 @@ Five, each carrying an idempotency key so a redelivered message is dropped rathe
 The CLI queues input turns rather than dropping them — the result payload reports
 `queued_turn_count` — so a message arriving while the agent is mid-turn is delivered, not lost.
 
+### One session per job — which is not one per issue
+
+The unit is the **job**, not the issue, and an issue is not one job:
+
+```
+issue  ──►  1..N jobs        measured: 195 drive jobs / 104 issues = 1.88
+ job   ──►  exactly 1 session      one claim, one spawn
+session ──► all 7 phases           same process throughout
+phase 5 ──► an in-process Task fork, NOT a second session
+```
+
+`claude_code.rs` spawns exactly one child per job (line 492, the only `spawn()` in the file), so the
+reviewer the driver forks in phase 5 — and every sub-agent skill, `forge-understand` / `plan` /
+`review` / `ship` — lives inside that one session. A `request_changes` round goes back to phase 3 in
+the same session too.
+
+**At most one live session per issue at any instant**, enforced by `jobs_active_unique` on
+`(issueId, type)`, partial on `status IN ('queued','dispatched','running','held')`.
+
+What creates a *second* session for the same issue is a second job: a park answered outside the
+residency window, or a retry after a failure. Of the two, **retry dominates** — 84 of 195 drive jobs
+failed over 90 days (43 %), against 29 parks. So the residency window is the knob that moves
+sessions-per-issue toward 1, but it is the smaller of the two levers; the failure rate is the larger
+one and this RFC does not touch it.
+
 ### Three queues, three owners — and one rule
 
 An inbox adds a queue. The hazard is not the queue, it is that two queues could now decide the same
