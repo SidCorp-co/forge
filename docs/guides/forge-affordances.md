@@ -36,6 +36,23 @@ names like `blocked_by`/`depends_on`; they are not valid kinds.
 **Red flag — `prose-deps`:** describing the dependency in a comment or plan
 instead of setting the edge. Prose does not gate the dispatcher.
 
+**Credential class (ISS-868):** `set_dependency` needs a **paired-device**
+token — a personal access token is refused with `PM_REQUIRES_DEVICE`, because
+`kind: 'decomposes'` can create an integration branch. With a PAT, set the edge
+through `forge_issues` instead: `create`/`update` with
+`data.relations: [{ kind: 'blocks', dependsOnId: <A> }]` (relative to the issue
+you are writing — `dependsOnId` means *this issue is blocked by it*,
+`blocksId` means *this issue blocks it*), restricted to `blocks`/`relates`.
+Both write surfaces commit the edge **before** the call's own dispatch trigger,
+and both report a `relations[]` array with `edgeId` + `created`/`updated` so you
+can tell the write landed. Retract by re-sending the same edge with `validUntil`
+in the past. Read edges back with `forge_issues action=get`, which returns
+`relations.blocks` (issues this one blocks) and `relations.blockedBy` (issues
+that block it), each flagged `expired` once its `validUntil` has passed.
+
+The read-only PM actions — `snapshot`, `graph`, `runner_load` — work with either
+credential class.
+
 > The legacy dotted shim `forge_pm.set_dependency` is **deprecated** — its
 > description redirects to `forge_project_pm (action=set_dependency)`. Prefer
 > the action form.

@@ -32,11 +32,16 @@ const ORIENTATION_RS = join(
 
 /** Strip the escaping each surface needs so intent can be compared directly. */
 function normalize(text: string): string {
-  return text
-    .replaceAll('\\`', '`')
-    .replaceAll('\\n', '\n')
-    .replaceAll('\\"', '"')
-    .replace(/\s+/g, ' ');
+  return (
+    text
+      .replaceAll('\\`', '`')
+      .replaceAll('\\n', '\n')
+      .replaceAll('\\"', '"')
+      // cm:why the runner copy is a `format!` template, where a literal brace is doubled — without this an affordance rule containing `{` can never match on that side, and the parity rule silently becomes unassertable
+      .replaceAll('{{', '{')
+      .replaceAll('}}', '}')
+      .replace(/\s+/g, ' ')
+  );
 }
 
 const promptCopy = normalize(OPERATING_AFFORDANCES_TEXT);
@@ -47,6 +52,18 @@ const runnerCopy = normalize(readFileSync(ORIENTATION_RS, 'utf8'));
  * when you add it to either copy — that is the whole point of the file.
  */
 const SHARED_AFFORDANCE_RULES: ReadonlyArray<{ rule: string; must: RegExp }> = [
+  {
+    rule: 'a blocks edge is set through data.relations, which any credential class can reach',
+    must: /data\.relations:\[\{ kind:'blocks', dependsOnId \}\]/,
+  },
+  {
+    rule: 'set_dependency needs a paired device, so it is the second-choice route',
+    must: /needs a paired device/,
+  },
+  {
+    rule: 'an edge is verified, not assumed',
+    must: /Verify with `forge_issues\.get` → `relations`/,
+  },
   {
     rule: 'a note/learning/decision goes to memory, never an issue',
     must: /To record a note, learning, or decision \| `forge_memory[._]write`/,
@@ -99,6 +116,7 @@ const SHARED_AFFORDANCE_RULES: ReadonlyArray<{ rule: string; must: RegExp }> = [
 
 const SHARED_RED_FLAGS = [
   'prose-deps',
+  'open-then-block',
   'open-as-note',
   'draft-as-note',
   'plan-by-hand',
