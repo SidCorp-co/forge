@@ -102,6 +102,7 @@ function makeCtx(projectSlug = PROJECT_SLUG) {
   };
 }
 
+// cm:guard the re-install block below is load-bearing, not duplication — `vi.resetAllMocks()` clears IMPLEMENTATIONS as well as calls, so dropping it fails every test with `Cannot read properties of undefined (reading 'where')`, which points at the drizzle chain mock and never at the reset that emptied it
 beforeEach(() => {
   vi.resetAllMocks();
   selectFrom.mockImplementation(() => ({
@@ -336,10 +337,7 @@ describe('forge_feedback list', () => {
 
   // cm:guard assert BOTH halves — the limit reaching `.limit()` as limit+1 AND the un-inflated limit reaching the envelope. Passing overfetch() to both is the mutation that reports a bound page as `hasMore:false`, and it leaves every other test in this file green because they only assert row counts.
   it('over-fetches by one and reports the limit that bound the page', async () => {
-    queueSlugAndMember();
-    selectLimit.mockResolvedValueOnce(
-      Array.from({ length: 4 }, (_, i) => ({ ...baseReport, id: `r${i}` })),
-    );
+    queueSlugAndMember(Array.from({ length: 4 }, (_, i) => ({ ...baseReport, id: `r${i}` })));
 
     const result = (await forgeFeedbackTool(makeCtx()).handler({
       action: 'list',

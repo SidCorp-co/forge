@@ -470,9 +470,9 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
 
     expect((await req({ toStatus: 'draft' }, token)).status).toBe(200);
     const where = sqlText((updateWhere.mock.calls[0] as unknown[])?.[0]);
-    expect(where).toContain('not exists');
-    expect(where).toContain('pipeline_runs');
-    expect(where).toContain('from jobs');
+    // cm:guard match the CORRELATION columns too, not just `not exists` — writing `pr.id` in place of `pr.issue_id` keeps every coarse substring, stays green, and makes both subqueries permanently non-empty so the gate blocks nothing. sqlText erases operands, so a column is only visible as the raw template text it is.
+    expect(where).toContain('not exists (select 1 from pipeline_runs pr where pr.issue_id = )');
+    expect(where).toContain('not exists (select 1 from jobs j where j.issue_id = )');
   });
 
   it('leaves the never-ran predicate off a transition that is not to draft', async () => {

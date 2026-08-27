@@ -245,7 +245,7 @@ describe('forge_ux_findings write', () => {
     expect(inserted.runId).toBeUndefined();
   });
 
-  // cm:guard assert the rendered SQL, not the refusal — the db mock returns whatever count the test queues, so a `rate_limited` assertion passes with `eq(runId, null)` in place of `isNull` and the cap it is meant to defend is gone. `eq(col, null)` renders ` = ` with a null param and is never true; `isNull` renders ` is null`.
+  // cm:guard assert the rendered SQL, not the refusal — the db mock returns whatever count the test queues, so a `rate_limited` assertion passes with `eq(runId, null)` in place of `isNull` and the cap it is meant to defend is gone. `eq(col, null)` renders ` = ` with a null param and is never true; `isNull` renders ` is null`. Do not add `not.toContain(' = null')` — the null is an ERASED param, so that text can never appear and the assertion is unfalsifiable.
   it('matches the null runId with IS NULL, so the escape hatch stays capped', async () => {
     const tool = forgeUxFindingsTool(makeCtx());
 
@@ -265,7 +265,6 @@ describe('forge_ux_findings write', () => {
     expect(result).toMatchObject({ ok: false, reason: 'rate_limited' });
     const capWhere = sqlText((selectWhere.mock.calls.at(-1) as unknown[])?.[0]);
     expect(capWhere).toContain('is null');
-    expect(capWhere).not.toContain(' = null');
     expect(insertValues).not.toHaveBeenCalled();
   });
 
@@ -359,6 +358,23 @@ describe('forge_ux_findings list', () => {
     };
 
     expect(result.findings[0]?.detail).toContain('UNTRUSTED_DATA');
+  });
+
+  // cm:guard assert BOTH halves — limit+1 reaching `.limit()` AND the UN-inflated limit reaching the envelope. Pass overfetch() to both and a page bound by the caller's own limit reports hasMore:false, which is exactly the ISS-787 lie this surface was fixed for, and no other test in this file reads the envelope.
+  it('over-fetches by one and reports the limit that bound the page', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([baseFinding, baseFinding, baseFinding]);
+
+    const result = (await tool.handler({ action: 'list', limit: 2 })) as {
+      findings: unknown[];
+    };
+
+    expect(selectLimit).toHaveBeenLastCalledWith(3);
+    expect(result.findings).toHaveLength(2);
+    expect(result).toMatchObject({ returned: 2, limit: 2, hasMore: true, truncatedBy: 'limit' });
   });
 
   it('returns empty array when no findings match', async () => {

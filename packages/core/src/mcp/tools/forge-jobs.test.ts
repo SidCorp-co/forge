@@ -190,7 +190,6 @@ describe('forge_jobs.list', () => {
 
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    // effective-role lookup: caller has no role
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
@@ -202,15 +201,8 @@ describe('forge_jobs.list', () => {
 
     await tool.handler({ projectId: PROJECT_ID });
 
-    // last db.select() call is the jobs list projection
-    const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
-    const projection = lastCall?.[0] as Record<string, unknown> | undefined;
-    expect(projection).toBeDefined();
-    const keys = Object.keys(projection ?? {});
-    expect(keys).toContain('id');
-    expect(keys).toContain('type');
-    expect(keys).toContain('status');
-    expect(keys).toContain('issueId');
+    const keys = Object.keys((selectSpy.mock.calls.at(-1) as unknown[])?.[0] as object);
+    expect(keys).toEqual(expect.arrayContaining(['id', 'type', 'status', 'issueId']));
     for (const heavy of ['payload', 'promptBlocks', 'failureMeta', 'userPromptSnapshot', 'error']) {
       expect(keys).not.toContain(heavy);
     }
@@ -238,11 +230,9 @@ describe('forge_jobs.list', () => {
     expect(result.returned).toBe(result.jobs.length);
     expect(result.limit).toBe(200);
     expect(JSON.stringify(result).length).toBeLessThan(45_000);
-    // Newest-first order preserved: the kept rows are the head of the input.
     expect(result.jobs[0]?.id).toBe(fatRows[0]?.id);
   });
 
-  // A small list (under budget) returns the plain shape — no truncation noise.
   it('returns the plain { jobs } shape when under the size budget', async () => {
     const tool = forgeJobsListTool(fakeDevice);
     mockMemberThenJobs([baseJobRow, { ...baseJobRow, id: JOB_ID2 }]);
@@ -365,6 +355,19 @@ describe('forge_jobs.events', () => {
     expect(JSON.stringify(result).length).toBeLessThan(38_000);
   });
 
+  // cm:guard lastSeq must land on the LAST RETURNED event, never on the over-fetched probe row — the probe exists only to prove hasMore, and letting it set the cursor skips that event forever because nothing replays it
+  it('over-fetches by one and leaves the cursor on the last event it returned', async () => {
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
+    mockJobThenMember();
+    selectLimit.mockResolvedValueOnce([event(5), event(6), event(7), event(8)]);
+
+    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 4, limit: 3 })) as EventsPage;
+    expect(selectLimit).toHaveBeenLastCalledWith(4);
+    expect(result).toMatchObject({ returned: 3, hasMore: true });
+    expect(result.items.map((i) => i.seq)).toEqual([5, 6, 7]);
+    expect(result.lastSeq).toBe(7);
+  });
+
   it('returns lastSeq = sinceSeq when no items match', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     mockJobThenMember();
@@ -437,8 +440,7 @@ describe('forge_jobs.cancel', () => {
   });
 
   it('cancels a queued job whose project membership holds even with a terminal run (no run guard)', async () => {
-    // The tool never inspects pipeline_run status; cancelJob owns that (and has
-    // no run guard). A writer cancel succeeds regardless of run state.
+    // cm:edge contract -> packages/core/src/jobs/cancel-job.ts — this tool never reads pipeline_run status; cancel-job.ts owns whether a run state may block a cancel, and today it has no such guard, so a writer cancel succeeds regardless of run state
     const tool = forgeJobsCancelTool(makeDeviceCtx());
     mockJobThenMember({ status: 'dispatched' });
     cancelJobMock.mockResolvedValueOnce({
