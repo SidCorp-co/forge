@@ -54,7 +54,15 @@ vi.mock('../../issues/decompose.js', () => ({
   decomposeParent: decomposeSpy,
 }));
 
-const { forgePmSetDependencyTool } = await import('./forge-pm-set-dependency.js');
+const publishHealthSpy = vi.fn(async (_projectId: string, _ids: string[]) => undefined);
+vi.mock('../../issues/pipeline-health.js', () => ({
+  publishPipelineHealthChanged: (projectId: string, ids: string[]) =>
+    publishHealthSpy(projectId, ids),
+}));
+
+const { forgePmSetDependencyTool, pmSetDependencyHandler } = await import(
+  './forge-pm-set-dependency.js'
+);
 const { hooks } = await import('../../pipeline/hooks.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -100,6 +108,7 @@ beforeEach(() => {
   queue.length = 0;
   vi.clearAllMocks();
   decomposeSpy.mockClear();
+  publishHealthSpy.mockClear();
 });
 
 describe('forge_pm.set_dependency', () => {
@@ -341,5 +350,46 @@ describe('forge_pm.set_dependency — retracting an existing edge', () => {
       toIssueId: TO_ID,
       kind: 'blocks',
     });
+  });
+});
+
+// cm:guard these two tests are the ONLY gate on `deferHealthPublish`'s default — the flag suppresses a WS refresh a caller then owes itself (see issue-relations.ts), so a refactor that flips the default to "always defer" is invisible without the first of them and every relations caller silently stops refreshing the dependent's waiting banner
+describe('forge_pm.set_dependency — deferHealthPublish', () => {
+  function queueFreshBlocksInsert() {
+    pushMemberOk();
+    queue.push([
+      { id: FROM_ID, projectId: PROJECT_ID },
+      { id: TO_ID, projectId: PROJECT_ID },
+    ]);
+    queue.push([{ id: EDGE_ID }]);
+  }
+
+  const input = {
+    projectId: PROJECT_ID,
+    fromIssueId: FROM_ID,
+    toIssueId: TO_ID,
+    kind: 'blocks' as const,
+  };
+
+  it('publishes the health refresh when the caller does not defer', async () => {
+    queueFreshBlocksInsert();
+    const result = await pmSetDependencyHandler(fakeDevice, input);
+    expect(result.created).toBe(true);
+    expect(publishHealthSpy).toHaveBeenCalledWith(PROJECT_ID, [TO_ID]);
+  });
+
+  it('writes the edge and emits dependencyChanged but skips the publish when deferred', async () => {
+    queueFreshBlocksInsert();
+    hooks.reset();
+    const depSpy = vi.fn();
+    hooks.on('dependencyChanged', (p) => depSpy(p));
+
+    const result = await pmSetDependencyHandler(fakeDevice, input, undefined, {
+      deferHealthPublish: true,
+    });
+
+    expect(result.created).toBe(true);
+    expect(depSpy).toHaveBeenCalledTimes(1);
+    expect(publishHealthSpy).not.toHaveBeenCalled();
   });
 });

@@ -851,6 +851,7 @@ describe('forge_issues tool', () => {
           kind: 'blocks',
         }),
         { type: 'device', id: fakeDevice.id },
+        { deferHealthPublish: true },
       );
     });
 
@@ -881,6 +882,7 @@ describe('forge_issues tool', () => {
           kind: 'blocks',
         }),
         { type: 'device', id: fakeDevice.id },
+        { deferHealthPublish: true },
       );
     });
 

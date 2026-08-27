@@ -5,8 +5,19 @@
  * side silently becomes reachable from a room the bot answers.
  */
 
-import { expect, it } from 'vitest';
-import { guardIssueWrites } from './guards.js';
+import { expect, it, vi } from 'vitest';
+import { CHAT_REFUSED_DATA_KEYS, CHAT_TOLERATED_DATA_KEYS, guardIssueWrites } from './guards.js';
+
+vi.mock('../../config/env.js', () => ({
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://localhost/stub',
+    UPLOADS_MAX_BYTES: 10 * 1024 * 1024,
+  },
+}));
+
+const { ISSUE_UPDATE_DATA_KEYS } = await import('../../mcp/tools/forge-issues.js');
 
 const RETRACTION = {
   action: 'update',
@@ -54,4 +65,22 @@ it('still refuses unblock and a dispatching status', () => {
   expect(guardIssueWrites({ action: 'update', data: { status: 'approved' } })).toMatch(
     /leave that transition to a human/,
   );
+});
+
+// cm:edge contract -> packages/core/src/chat/tools/guards.ts — this is the checker half of the classification edge: the guard is open-by-default, so a `forge_issues` data key nobody classified is a key that reached chat with nobody deciding it should
+it('forces every forge_issues data key to be classified refused or tolerated', () => {
+  const classified = new Set([...CHAT_REFUSED_DATA_KEYS, ...CHAT_TOLERATED_DATA_KEYS]);
+  const unclassified = ISSUE_UPDATE_DATA_KEYS.filter((k) => !classified.has(k));
+  expect(unclassified).toEqual([]);
+});
+
+it('does not classify a key the update schema no longer has', () => {
+  const schemaKeys = new Set<string>(ISSUE_UPDATE_DATA_KEYS);
+  expect(CHAT_TOLERATED_DATA_KEYS.filter((k) => !schemaKeys.has(k))).toEqual([]);
+});
+
+it('refuses every key it declares refused', () => {
+  for (const key of CHAT_REFUSED_DATA_KEYS) {
+    expect(guardIssueWrites({ action: 'update', data: { [key]: 'x' } })).not.toBeNull();
+  }
 });

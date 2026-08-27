@@ -5,6 +5,7 @@
  * from the caller's issue-relative shape to the graph's `from`/`to` shape.
  */
 
+import { publishPipelineHealthChanged } from '../../issues/pipeline-health.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import { type McpContext, principalHookActor } from './lib.js';
 
@@ -40,6 +41,8 @@ export async function applyIssueRelations(
   const { device } = ctx;
   const actor = principalHookActor(ctx.principal, device);
   const applied: AppliedIssueRelation[] = [];
+  const refreshHealthFor: string[] = [];
+  // cm:guard keep this loop SEQUENTIAL — `pmSetDependencyHandler` runs `detectCycle` against edges already COMMITTED, so A→B and B→A sent in one `relations` array are each individually acyclic and only the serial order rejects the pair; `onConflictDoNothing` does not catch a cycle. A `Promise.all` here reads like an obvious win and admits the cycle the gate exists to refuse.
   for (const rel of relations ?? []) {
     // cm:guard enforce EXACTLY one side here, not just "at least one" — the zod `.refine` in forge-issues.ts is the only other check, so a second caller of this helper (or a widened schema) would otherwise get the `dependsOnId` branch silently and lose the `blocksId` edge it also asked for
     if ((rel.dependsOnId == null) === (rel.blocksId == null)) {
@@ -59,7 +62,11 @@ export async function applyIssueRelations(
         validUntil: rel.validUntil,
       },
       actor,
+      { deferHealthPublish: true },
     );
+    if (rel.kind === 'blocks' && (result.created || result.updated)) {
+      refreshHealthFor.push(toIssueId);
+    }
     applied.push({
       edgeId: result.id,
       kind: rel.kind,
@@ -68,6 +75,10 @@ export async function applyIssueRelations(
       created: result.created,
       updated: result.updated ?? false,
     });
+  }
+  // cm:guard ONE publish for the whole array, not one per edge — `publishPipelineHealthChanged` fans out to `hydratePipelineHealthForIssues`, which is ~9 sequential round trips, and it already batches by `inArray(ids)`; per-edge publishing cost 9N reads for the schema's 20-edge maximum. It must still run HERE, before the caller's `issueCreated` emit / status transition wakes the dispatcher.
+  if (refreshHealthFor.length > 0) {
+    await publishPipelineHealthChanged(projectId, refreshHealthFor);
   }
   return applied;
 }

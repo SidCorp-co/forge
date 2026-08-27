@@ -172,10 +172,9 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
 
 // cm:guard DERIVE the PAT-reachable list from DEVICE_REQUIRED, never retype it — the refusal is the one place that names actions a PAT CAN call, so a hand-written copy tells callers a newly-gated action still works while every test stays green
 // cm:edge contract -> packages/core/src/mcp/tools/forge-project-pm.ts — PM_ACTIONS is the enum this complement is taken against
-const patReachablePmActions: readonly string[] = PM_ACTIONS.filter((a: string) => {
-  const gated = DEVICE_REQUIRED.get('forge_project_pm');
-  return gated === true ? false : !gated?.has(a);
-});
+const pmGate = DEVICE_REQUIRED.get('forge_project_pm');
+const patReachablePmActions: readonly string[] =
+  pmGate === true ? [] : PM_ACTIONS.filter((a) => !pmGate?.has(a));
 
 // cm:guard a refusal names the condition to SATISFY, not only the one that failed (ISS-787/ISS-868) — the bare code sent callers hunting for a scope that does not exist, when the answer is a different credential class plus a PAT-reachable route for the common case
 // cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — names data.relations as the PAT path for blocks/relates edges; if that field stops being applied on create/update this text becomes a lie

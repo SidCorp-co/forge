@@ -258,9 +258,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   // for every child to land. (The old inverse rule — child release waiting on
   // its parent — was removed from the gate; it deadlocked umbrella epics.)
   if (['code', 'review', 'test', 'fix'].includes(candidate.type)) {
-    const pendingChildren = decompChildren.filter(
-      (c) => !isBlockerSatisfied({ status: c.status, mergedAt: c.mergedAt }, baseStampable),
-    );
+    const pendingChildren = decompChildren.filter((c) => !isBlockerSatisfied(c, baseStampable));
     if (pendingChildren.length > 0) {
       out.waitingOn = {
         reason: 'waiting_on_decomp_children',

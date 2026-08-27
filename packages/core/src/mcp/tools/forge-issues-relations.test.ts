@@ -72,9 +72,12 @@ vi.mock('../../issues/attachment-service.js', async (importActual) => {
 });
 vi.mock('../../issues/label-service.js', () => ({ listIssueLabels: vi.fn(async () => []) }));
 
-const loadIssueRelationsMock = vi.fn(async (_id?: string) => ({ blocks: [], blockedBy: [] }));
+const loadIssueRelationsMock = vi.fn(async (_id?: string, _projectId?: string) => ({
+  blocks: [],
+  blockedBy: [],
+}));
 vi.mock('../../issues/dependency-read.js', () => ({
-  loadIssueRelations: (id: string) => loadIssueRelationsMock(id),
+  loadIssueRelations: (id: string, projectId: string) => loadIssueRelationsMock(id, projectId),
 }));
 
 // cm:guard `applyIssueRelations` lives in issue-relations.ts and reaches this handler across a module boundary, which is the only reason overriding the EXPORT works — move it back inside forge-pm-set-dependency.ts and the internal call bypasses this mock, so every relation test starts hitting the real DB chain and passes for the wrong reason
@@ -175,6 +178,7 @@ it('update writes the edge with dependsOnId on the from side and reports it back
       kind: 'blocks',
     }),
     { type: 'device', id: fakeDevice.id },
+    { deferHealthPublish: true },
   );
   expect(result.relations).toEqual([
     {
@@ -201,6 +205,7 @@ it('update writes the edge with blocksId on the to side', async () => {
     fakeDevice,
     expect.objectContaining({ fromIssueId: ISSUE_ID, toIssueId: BLOCKED_ID }),
     { type: 'device', id: fakeDevice.id },
+    { deferHealthPublish: true },
   );
 });
 
@@ -226,6 +231,7 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
     fakeDevice,
     expect.objectContaining({ validUntil: '2020-01-01T00:00:00.000Z' }),
     { type: 'device', id: fakeDevice.id },
+    { deferHealthPublish: true },
   );
   expect(result.relations?.[0]).toMatchObject({ created: false, updated: true });
 });
@@ -285,7 +291,7 @@ it('get returns the edges on both sides of the issue', async () => {
     relations: { blocks: unknown[]; blockedBy: Array<Record<string, unknown>> };
   };
 
-  expect(loadIssueRelationsMock).toHaveBeenCalledWith(ISSUE_ID);
+  expect(loadIssueRelationsMock).toHaveBeenCalledWith(ISSUE_ID, PROJECT_ID);
   expect(result.relations.blocks).toEqual([]);
   expect(result.relations.blockedBy[0]).toMatchObject({ edgeId: 'dep-id-1', expired: false });
 });
@@ -315,8 +321,10 @@ it('attributes the edge to the PAT user, not to the synthetic device standing in
     data: { relations: [{ dependsOnId: BLOCKER_ID, kind: 'blocks' }] },
   });
 
-  expect(pmSetDependencyMock).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
-    type: 'user',
-    id: PAT_USER,
-  });
+  expect(pmSetDependencyMock).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.anything(),
+    { type: 'user', id: PAT_USER },
+    { deferHealthPublish: true },
+  );
 });

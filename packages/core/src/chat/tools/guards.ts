@@ -25,8 +25,44 @@ const CHAT_SETTABLE_STATUSES = new Set(['draft', 'waiting', 'needs_info', 'on_ho
 const MIN_TITLE_CHARS = 10;
 const MIN_DESCRIPTION_CHARS = 200;
 
-// cm:guard every field this guard does NOT name is permitted, so widening `forge_issues` widens chat with it — `data.relations` reached update in ISS-868 and a room could retract a live `blocks` edge (re-send it with `validUntil` in the past) and dispatch a dependent ahead of its blocker, which is exactly what the `unblock` refusal below exists to stop
+/**
+ * The `forge_issues` `data` keys chat is refused outright, and the ones it may
+ * pass through. Declared rather than derived: the point is that adding a key to
+ * `forge_issues` forces a decision here instead of silently widening chat.
+ */
+export const CHAT_REFUSED_DATA_KEYS: readonly string[] = ['relations', 'unblock'];
+
+export const CHAT_TOLERATED_DATA_KEYS: readonly string[] = [
+  'acceptanceCriteria',
+  'attachments',
+  'category',
+  'complexity',
+  'description',
+  'detectorKey',
+  'isAgentTask',
+  'issueId',
+  'labels',
+  'mergedAt',
+  'note',
+  'plan',
+  'priority',
+  'reason',
+  'releaseNotes',
+  'sessionContext',
+  'status',
+  'target',
+  'taskAcceptanceCriteria',
+  'taskDescription',
+  'taskPriority',
+  'taskStatus',
+  'taskTitle',
+  'title',
+  'waitingKind',
+];
+
+// cm:guard CLASSIFY a new `forge_issues` data key in one of the two sets above — the guard below is open-by-default (every field it does not name is permitted), so an unclassified key reaches chat silently; `data.relations` arrived that way in ISS-868 and a room could retract a live `blocks` edge (re-send it with `validUntil` in the past) and dispatch a dependent ahead of its blocker, which is exactly what the `unblock` refusal exists to stop
 // cm:edge lockstep -> packages/core/src/mcp/tools/forge-issues.ts — that tool's `data` schema is what chat can reach; a new side-effecting key there needs a decision here, not silence
+// cm:edge contract -> packages/core/src/chat/tools/guards.test.ts — that suite asserts CHAT_REFUSED_DATA_KEYS ∪ CHAT_TOLERATED_DATA_KEYS covers ISSUE_UPDATE_DATA_KEYS exactly, which is what turns the guard above from advice into a gate
 export function guardIssueWrites(args: Record<string, unknown>): string | null {
   const action = args.action;
   const data = (args.data ?? {}) as Record<string, unknown>;

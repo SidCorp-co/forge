@@ -52,10 +52,12 @@ export const pmSetDependencyInputSchema = z
   .strict();
 
 // cm:guard pass `actor` whenever the caller knows its principal — a PAT reaches here behind a SYNTHETIC device (mcp/handler.ts stubDeviceForPat) whose id is an api_tokens row, so the default writes an activity_log actor_id that matches no `devices` row while the same request's status transition is attributed correctly through principalActor()
+// cm:guard `deferHealthPublish` suppresses ONLY the WS refresh, never the edge write or the `dependencyChanged` hook — a caller that defers owes the batched `publishPipelineHealthChanged` itself, before whatever wakes the dispatcher (see issue-relations.ts), or the dependent's waiting banner goes stale until the next event.
 export async function pmSetDependencyHandler(
   device: Device,
   input: z.infer<typeof pmSetDependencyInputSchema>,
   actorOverride?: Actor,
+  opts?: { deferHealthPublish?: boolean },
 ) {
   // ISS-131 — was `assertPmActor`. Plan-pipeline agents legitimately need to
   // declare `blocks`/`decomposes` edges as part of writing a plan, but they
@@ -153,7 +155,7 @@ export async function pmSetDependencyHandler(
     await maybeRunDecomposeHelper(input, device.ownerId);
     // ISS-164 — `blocks` / `decomposes` edges change the gated side's
     // waiting reason; refresh pipelineHealth for the dependent (`to`) side.
-    if (input.kind === 'blocks' || input.kind === 'decomposes') {
+    if (!opts?.deferHealthPublish && (input.kind === 'blocks' || input.kind === 'decomposes')) {
       await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
     }
     return { id, created: true };
@@ -215,7 +217,7 @@ export async function pmSetDependencyHandler(
         payload: updatePayload,
       }),
     ]);
-    if (input.kind === 'blocks' || input.kind === 'decomposes') {
+    if (!opts?.deferHealthPublish && (input.kind === 'blocks' || input.kind === 'decomposes')) {
       await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
     }
   }

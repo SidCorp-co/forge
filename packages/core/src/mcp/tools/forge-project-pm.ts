@@ -81,8 +81,9 @@ const inputSchema = z
 export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => ({
   name: 'forge_project_pm',
   description:
-    'PM agent action dispatcher. Actions: snapshot | graph | runner_load | dispatch | set_dependency | write_decision. ' +
-    'CREDENTIAL CLASS: dispatch, write_decision and set_dependency require a paired-device token and refuse a personal access token with PM_REQUIRES_DEVICE; snapshot, graph and runner_load work with either. With a PAT, set or retract a blocks/relates edge through forge_issues create/update data.relations and read edges back from forge_issues get. ' +
+    `PM agent action dispatcher. Actions: ${PM_ACTIONS.join(' | ')}. ` +
+    // cm:guard do NOT enumerate the device/PAT split here — `PM_DEVICE_REFUSAL` in mcp/server.ts derives that list from DEVICE_REQUIRED and delivers it at the moment a caller hits the gate, and this description cannot import DEVICE_REQUIRED back (server.ts already imports PM_ACTIONS from here, so the reverse edge is a real ESM cycle over top-level const init). A hand-typed copy here would advertise a newly-gated action as PAT-safe with every test still green.
+    'CREDENTIAL CLASS: some actions require a paired-device token and refuse a personal access token with PM_REQUIRES_DEVICE; the refusal names the actions a PAT can still call. With a PAT, set or retract a blocks/relates edge through forge_issues create/update data.relations and read edges back from forge_issues get. ' +
     'snapshot/graph/runner_load: read-only; require projectId + project membership. ' +
     'graph also accepts optional rootIssueId (BFS) and depth (default 2, max 5); without rootIssueId returns the full graph capped at 200 nodes with truncated:true + remainingNodes:N. ' +
     'dispatch: enqueue a coder-skill job for an issue (projectId, issueId, jobType, reason; optional payload, modelTier); requires PM-actor capability. ' +

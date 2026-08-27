@@ -63,9 +63,7 @@ describe('ISS-868 issue relations writer', () => {
     return id;
   }
 
-  it('persists update-style direction mapping and retraction for a PAT principal', async () => {
-    const blocker = await insertIssue(91, 'developed');
-    const dependent = await insertIssue(92);
+  function makePatCtx(): Parameters<WriteModule['applyIssueRelations']>[0] {
     const tokenId = randomUUID();
     const device = {
       id: tokenId,
@@ -84,7 +82,7 @@ describe('ISS-868 issue relations writer', () => {
       gitCredentialRef: null,
       createdAt: new Date(),
     };
-    const ctx = {
+    return {
       device,
       principal: {
         kind: 'pat' as const,
@@ -97,6 +95,12 @@ describe('ISS-868 issue relations writer', () => {
       },
       projectSlug: null,
     } as Parameters<WriteModule['applyIssueRelations']>[0];
+  }
+
+  it('persists update-style direction mapping and retraction for a PAT principal', async () => {
+    const blocker = await insertIssue(91, 'developed');
+    const dependent = await insertIssue(92);
+    const ctx = makePatCtx();
 
     const [created] = await applyIssueRelations(ctx, projectId, dependent, [
       { kind: 'blocks', dependsOnId: blocker },
@@ -109,7 +113,7 @@ describe('ISS-868 issue relations writer', () => {
       updated: false,
     });
 
-    const [live] = (await loadIssueRelations(dependent)).blockedBy;
+    const [live] = (await loadIssueRelations(dependent, projectId)).blockedBy;
     expect(live).toMatchObject({ fromIssueId: blocker, toIssueId: dependent, gatesDispatch: true });
 
     const [retracted] = await applyIssueRelations(ctx, projectId, dependent, [
@@ -117,7 +121,7 @@ describe('ISS-868 issue relations writer', () => {
     ]);
     expect(retracted).toMatchObject({ edgeId: created?.edgeId, created: false, updated: true });
 
-    const [expired] = (await loadIssueRelations(dependent)).blockedBy;
+    const [expired] = (await loadIssueRelations(dependent, projectId)).blockedBy;
     expect(expired).toMatchObject({ expired: true, gatesDispatch: false });
 
     const activityRows = await harness.db.execute<{
@@ -130,5 +134,39 @@ describe('ISS-868 issue relations writer', () => {
         AND action = 'issue.dependency.added'
     `);
     expect(activityRows).toContainEqual({ actor_type: 'user', actor_id: ownerId });
+  });
+
+  it('commits every edge of a multi-entry relations array, both directions, in one call', async () => {
+    const blockerA = await insertIssue(93, 'developed');
+    const blockerB = await insertIssue(94);
+    const dependent = await insertIssue(95);
+    const downstream = await insertIssue(96);
+    const ctx = makePatCtx();
+
+    const applied = await applyIssueRelations(ctx, projectId, dependent, [
+      { kind: 'blocks', dependsOnId: blockerA },
+      { kind: 'blocks', dependsOnId: blockerB },
+      { kind: 'blocks', blocksId: downstream },
+      { kind: 'relates', dependsOnId: blockerA },
+    ]);
+    expect(applied.every((e) => e.created)).toBe(true);
+
+    const rows = await harness.db.execute<{ from_issue_id: string; to_issue_id: string }>(sql`
+      SELECT from_issue_id, to_issue_id FROM issue_dependencies
+      WHERE project_id = ${projectId} AND kind = 'blocks'
+      ORDER BY from_issue_id
+    `);
+    expect(rows).toHaveLength(3);
+
+    const { blocks, blockedBy } = await loadIssueRelations(dependent, projectId);
+    expect(
+      blockedBy
+        .filter((e) => e.kind === 'blocks')
+        .map((e) => e.fromIssueId)
+        .sort(),
+    ).toEqual([blockerA, blockerB].sort());
+    expect(blocks.map((e) => e.toIssueId)).toEqual([downstream]);
+    expect(blockedBy.find((e) => e.fromIssueId === blockerA)?.gatesDispatch).toBe(true);
+    expect(blockedBy.find((e) => e.fromIssueId === blockerB)?.gatesDispatch).toBe(true);
   });
 });

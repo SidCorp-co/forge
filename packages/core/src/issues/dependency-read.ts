@@ -5,7 +5,7 @@
  * `ISS-<seq>` without N extra round-trips (ISS-331).
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
@@ -38,33 +38,42 @@ export type IssueDependencyEdges = {
   incoming: IssueDependencyEdge[];
 };
 
-export async function loadIssueDependencyEdges(issueId: string): Promise<IssueDependencyEdges> {
+// cm:guard `projectId` is REQUIRED and must stay in the WHERE clause — `issue_dependencies` carries only the composite indexes `(project_id, from_issue_id)` and `(project_id, to_issue_id)` (schema.ts), so filtering on an endpoint alone constrains the NON-leading column and Postgres degrades to scanning every edge in the table. This read runs on `forge_issues get`, i.e. every agent turn. Measured 2026-08-28 on a 399-edge fixture: with `project_id` the plan is a BitmapOr over both indexes; on the endpoint alone it is a Seq Scan, 398 rows removed by filter.
+export async function loadIssueDependencyEdges(
+  issueId: string,
+  projectId: string,
+): Promise<IssueDependencyEdges> {
   const fromIssue = alias(issues, 'from_issue');
   const toIssue = alias(issues, 'to_issue');
-  const baseQuery = () =>
-    db
-      .select({
-        id: issueDependencies.id,
-        projectId: issueDependencies.projectId,
-        fromIssueId: issueDependencies.fromIssueId,
-        toIssueId: issueDependencies.toIssueId,
-        kind: issueDependencies.kind,
-        reason: issueDependencies.reason,
-        createdById: issueDependencies.createdById,
-        createdAt: issueDependencies.createdAt,
-        validUntil: issueDependencies.validUntil,
-        fromIssSeq: fromIssue.issSeq,
-        fromTitle: fromIssue.title,
-        fromStatus: fromIssue.status,
-        fromMergedAt: fromIssue.mergedAt,
-        toIssSeq: toIssue.issSeq,
-        toTitle: toIssue.title,
-        toStatus: toIssue.status,
-        toMergedAt: toIssue.mergedAt,
-      })
-      .from(issueDependencies)
-      .leftJoin(fromIssue, eq(fromIssue.id, issueDependencies.fromIssueId))
-      .leftJoin(toIssue, eq(toIssue.id, issueDependencies.toIssueId));
+  const rows = await db
+    .select({
+      id: issueDependencies.id,
+      projectId: issueDependencies.projectId,
+      fromIssueId: issueDependencies.fromIssueId,
+      toIssueId: issueDependencies.toIssueId,
+      kind: issueDependencies.kind,
+      reason: issueDependencies.reason,
+      createdById: issueDependencies.createdById,
+      createdAt: issueDependencies.createdAt,
+      validUntil: issueDependencies.validUntil,
+      fromIssSeq: fromIssue.issSeq,
+      fromTitle: fromIssue.title,
+      fromStatus: fromIssue.status,
+      fromMergedAt: fromIssue.mergedAt,
+      toIssSeq: toIssue.issSeq,
+      toTitle: toIssue.title,
+      toStatus: toIssue.status,
+      toMergedAt: toIssue.mergedAt,
+    })
+    .from(issueDependencies)
+    .leftJoin(fromIssue, eq(fromIssue.id, issueDependencies.fromIssueId))
+    .leftJoin(toIssue, eq(toIssue.id, issueDependencies.toIssueId))
+    .where(
+      and(
+        eq(issueDependencies.projectId, projectId),
+        or(eq(issueDependencies.fromIssueId, issueId), eq(issueDependencies.toIssueId, issueId)),
+      ),
+    );
 
   const enrich = <T extends { fromIssSeq: number | null; toIssSeq: number | null }>(edge: T) => {
     const { fromIssSeq, toIssSeq, ...rest } = edge;
@@ -75,12 +84,12 @@ export async function loadIssueDependencyEdges(issueId: string): Promise<IssueDe
     };
   };
 
-  const [outgoingRows, incomingRows] = await Promise.all([
-    baseQuery().where(eq(issueDependencies.fromIssueId, issueId)),
-    baseQuery().where(eq(issueDependencies.toIssueId, issueId)),
-  ]);
-
-  return { outgoing: outgoingRows.map(enrich), incoming: incomingRows.map(enrich) };
+  const outgoing: IssueDependencyEdge[] = [];
+  const incoming: IssueDependencyEdge[] = [];
+  for (const row of rows) {
+    (row.fromIssueId === issueId ? outgoing : incoming).push(enrich(row));
+  }
+  return { outgoing, incoming };
 }
 
 export type IssueRelationDigest = {
@@ -125,10 +134,7 @@ function digest(
       !outgoing &&
       edge.kind === 'blocks' &&
       !expired &&
-      !isBlockerSatisfied(
-        { status: edge.fromStatus ?? '', mergedAt: edge.fromMergedAt },
-        baseStampable,
-      ),
+      !isBlockerSatisfied({ status: edge.fromStatus, mergedAt: edge.fromMergedAt }, baseStampable),
   };
 }
 
@@ -141,16 +147,13 @@ function digest(
  */
 export async function loadIssueRelations(
   issueId: string,
+  projectId: string,
 ): Promise<{ blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] }> {
-  const { outgoing, incoming } = await loadIssueDependencyEdges(issueId);
+  const { outgoing, incoming } = await loadIssueDependencyEdges(issueId, projectId);
   const now = Date.now();
-  // cm:guard keep this predicate the SAME SHAPE as `gatesDispatch`'s first three conjuncts — `baseStampable` costs a `projects` read on a path that runs on every agent turn, and only an unexpired incoming `blocks` edge ever consumes it; widening the test back to "any incoming edge" pays that read for every decomposes-only or all-expired graph, narrowing it past `gatesDispatch` reports a satisfied blocker as gating
-  const gatingProjectId = incoming.find(
-    (e) => e.kind === 'blocks' && !isExpired(e, now),
-  )?.projectId;
-  const baseStampable = gatingProjectId
-    ? (await resolveGateSettings(gatingProjectId)).baseStampable
-    : true;
+  // cm:guard keep this predicate the SAME SHAPE as `gatesDispatch`'s first two conjuncts — `resolveGateSettings` is an UNCACHED `projects` read on a path that runs on every agent turn, and only an unexpired incoming `blocks` edge ever consumes its answer; widening the test to "any incoming edge" pays that read for every decomposes-only or all-expired graph, narrowing it past `gatesDispatch` reports a satisfied blocker as gating
+  const gates = incoming.some((e) => e.kind === 'blocks' && !isExpired(e, now));
+  const baseStampable = gates ? (await resolveGateSettings(projectId)).baseStampable : true;
   return {
     blocks: outgoing.map((e) => digest(e, issueId, now, baseStampable)),
     blockedBy: incoming.map((e) => digest(e, issueId, now, baseStampable)),

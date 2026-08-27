@@ -763,6 +763,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, projectId);
 
         const issuesLimit = input.limit ?? 25;
+        const issuesEnvelope = {
+          key: 'issues' as const,
+          limit: issuesLimit,
+          hint: 'add status/priority/category/label filters',
+        };
         const conds = [eq(issues.projectId, projectId)];
         const f = input.filters;
         if (f?.status) conds.push(eq(issues.status, f.status));
@@ -791,7 +796,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           const resolvedIds = await resolveLabelIdsTolerant(projectId, rawValues);
 
           if (resolvedIds.length === 0) {
-            return { issues: [], returned: 0, limit: issuesLimit, hasMore: false };
+            return buildListEnvelope({ ...issuesEnvelope, items: [] });
           }
 
           conds.push(
@@ -835,10 +840,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .limit(overfetch(issuesLimit));
 
         return buildListEnvelope({
-          key: 'issues',
+          ...issuesEnvelope,
           items: rows.map((r) => serializeListRow(r)),
-          limit: issuesLimit,
-          hint: 'add status/priority/category/label filters',
         });
       }
 
@@ -863,7 +866,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // cm:edge contract -> packages/core/src/issues/dependency-read.ts — the ONLY read path an agent has onto its own edges; REST GET /api/issues/:id/dependencies is JWT-only, so without this a token that can write an edge still cannot verify one landed
         const [full, relations] = await Promise.all([
           serializeWithAttachments(issue),
-          loadIssueRelations(issue.id),
+          loadIssueRelations(issue.id, issue.projectId),
         ]);
         return { ...full, relations };
       }
@@ -1085,7 +1088,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
-        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker
+        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
         const r = await applyIssueRelations(ctx, issue.projectId, issue.id, input.data.relations);
 
         if (input.data.status && input.data.status !== issue.status) {
