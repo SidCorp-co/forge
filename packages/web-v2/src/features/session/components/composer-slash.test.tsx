@@ -224,6 +224,77 @@ describe("Composer — slash skills menu", () => {
     expect(ev.defaultPrevented).toBe(true);
   });
 
+  it("Tab reaches the error state's Retry, so it is not mouse-only", () => {
+    const { retry } = renderComposer({ items: [], error: new Error("boom") });
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    const btn = screen.getByRole("button", { name: "Retry" });
+    fireEvent.keyDown(el, { key: "Tab" });
+    // cm:why both assertions are needed — the panel surviving the focus move is the half the round-2 bug broke, and the button holding focus is the half that makes Retry reachable at all
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(document.activeElement).toBe(btn);
+    fireEvent.click(btn);
+    expect(retry).toHaveBeenCalled();
+  });
+
+  it("Escape from inside the panel closes it and hands focus back", () => {
+    renderComposer({ items: [], error: new Error("boom") });
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    fireEvent.keyDown(el, { key: "Tab" });
+    const btn = screen.getByRole("button", { name: "Retry" });
+    fireEvent.keyDown(btn, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(textarea());
+  });
+
+  it("Tab is left alone when there is no error to retry", () => {
+    renderComposer();
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/forge");
+    fireEvent.keyDown(el, { key: "Tab" });
+    expect(document.activeElement).toBe(el);
+  });
+
+  it("Escape stays dismissed while the same token is still being typed", () => {
+    renderComposer();
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/for");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.keyDown(el, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    // cm:why continuing to type inside the DISMISSED token is the case that used to resurrect the panel, costing an Escape per keystroke
+    typeInto(el, "/forg");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    typeInto(el, "/forge");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("a NEW token after a dismissal opens the menu again", () => {
+    renderComposer();
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/for");
+    fireEvent.keyDown(el, { key: "Escape" });
+    typeInto(el, "/for and now /data");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.getByText("/dataviz")).toBeInTheDocument();
+  });
+
+  it("the trigger reopens a dismissed token on demand", async () => {
+    renderComposer();
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/for");
+    fireEvent.keyDown(el, { key: "Escape" });
+    fireEvent.click(screen.getByLabelText("Insert a skill"));
+    await waitFor(() => expect(screen.getByRole("listbox")).toBeInTheDocument());
+  });
+
   it("a press outside both the row and the panel dismisses it", () => {
     renderComposer();
     typeInto(textarea(), "/");

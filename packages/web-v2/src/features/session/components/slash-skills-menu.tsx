@@ -42,6 +42,12 @@ interface SlashSkillsMenuProps extends SlashSkillsSource {
    * the panel is not a descendant of the anchor.
    */
   panelRef: React.RefObject<HTMLDivElement | null>;
+  /**
+   * Focus has been moved INTO the panel (only the error state's Retry is
+   * reachable that way) and is now leaving it, or Escape was pressed there.
+   * The caller closes and returns focus to the textarea.
+   */
+  onLeave: () => void;
 }
 
 export function SlashSkillsMenu({
@@ -58,6 +64,7 @@ export function SlashSkillsMenu({
   retry,
   anchorRef,
   panelRef,
+  onLeave,
 }: SlashSkillsMenuProps) {
   const pos = useAnchoredMenu({
     open,
@@ -92,6 +99,17 @@ export function SlashSkillsMenu({
       }}
       className="forge-drop fixed z-50 max-h-[280px] overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
       ref={panelRef}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onLeave();
+        }
+      }}
+      // cm:guard onBlur, not onFocusOut-on-window — the panel only ever holds focus when Tab was redirected into its error state, so focus leaving it again means the user is done with the panel, and leaving it mounted would strand an invisible tab stop over the conversation
+      onBlur={(e) => {
+        if (panelRef.current?.contains(e.relatedTarget as Node | null)) return;
+        onLeave();
+      }}
       // cm:guard preventDefault on the PANEL's mousedown, not just on each row — mousedown's default action moves focus, which blurs the textarea, which closes the menu, which detaches the target before its `click` is dispatched. That is what made the error state's Retry unpressable, and it is why a press on the header or an empty line dismissed the panel. Safari clears focus to the body here, so `relatedTarget` alone cannot cover it.
       onMouseDown={(e) => e.preventDefault()}
     >

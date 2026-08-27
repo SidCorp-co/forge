@@ -120,6 +120,8 @@ export function Composer({
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [slashCaret, setSlashCaret] = useState(0);
+  // cm:guard Escape has to be remembered against the DISMISSED TOKEN's start offset, not just as `slashOpen=false` — keeping on typing inside the same token calls syncSlash again, which would re-open the panel the user just dismissed and cost an Escape per keystroke. A new token (different start) is a new question and does re-open.
+  const [slashDismissedAt, setSlashDismissedAt] = useState<number | null>(null);
   // cm:guard the trigger exists only once there is something to insert, but loading AND error keep it visible — otherwise the button appears and vanishes as the query settles, and a failed fetch becomes invisible instead of offering its retry
   const skillsKnown = !!slashSkills;
   const hasSkills =
@@ -138,12 +140,14 @@ export function Composer({
       const token = findSlashToken(next, caret);
       if (!token) {
         setSlashOpen(false);
+        setSlashDismissedAt(null);
         return;
       }
       setSlashHighlight(0);
-      if (reopen) setSlashOpen(true);
+      if (token.start !== slashDismissedAt) setSlashDismissedAt(null);
+      if (reopen && token.start !== slashDismissedAt) setSlashOpen(true);
     },
-    [],
+    [slashDismissedAt],
   );
 
   /** Replace the active token with the picked skill and restore the caret. */
@@ -175,6 +179,7 @@ export function Composer({
     if (findSlashToken(value, caret)) {
       setSlashCaret(caret);
       setSlashHighlight(0);
+      setSlashDismissedAt(null);
       setSlashOpen(true);
       el?.focus();
       return;
@@ -188,6 +193,7 @@ export function Composer({
     setValue(next);
     setSlashCaret(nextCaret);
     setSlashHighlight(0);
+    setSlashDismissedAt(null);
     setSlashOpen(true);
     requestAnimationFrame(() => {
       const node = textareaRef.current;
@@ -298,6 +304,15 @@ export function Composer({
         );
         return;
       }
+      // cm:guard Tab has to be redirected INTO the panel while it is showing its error state, or the error's Retry is mouse-only: the next tabbable element is the send button, whose focus blurs the textarea and unmounts the panel before Tab arrives — and the panel deliberately refuses mouse focus (see slash-skills-menu.tsx). The skills query lives in the parent and never remounts, so without this a keyboard user's only recovery is to navigate away and back.
+      if (e.key === "Tab" && !e.shiftKey && slashSkills?.error) {
+        const focusable = slashPanelRef.current?.querySelector<HTMLElement>("button");
+        if (focusable) {
+          e.preventDefault();
+          focusable.focus();
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         const picked = slashMatches[slashHighlight];
         if (picked) {
@@ -311,6 +326,7 @@ export function Composer({
         // cm:guard Escape dismisses the menu ONLY — the typed text stays, which is the whole point of it here
         e.preventDefault();
         setSlashOpen(false);
+        setSlashDismissedAt(slashToken?.start ?? null);
         return;
       }
     }
@@ -459,6 +475,10 @@ export function Composer({
             onPick={insertSkill}
             anchorRef={rowRef}
             panelRef={slashPanelRef}
+            onLeave={() => {
+              setSlashOpen(false);
+              textareaRef.current?.focus();
+            }}
             items={slashSkills.items}
             loading={slashSkills.loading}
             error={slashSkills.error}
