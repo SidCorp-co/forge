@@ -268,9 +268,69 @@ for one release, selected per project, so the shared exec path
 Chat is the natural first consumer and the honest smoke test: it is a conversation that has been
 running one-shot this whole time, and it needs no residency window at all.
 
+## Asking once — the question ledger
+
+A duplex channel makes a park cheap, and a cheap park is a trap: an agent that asks the moment it
+hits a blocker will park three times for one issue, and each park is a separate round trip to a
+human. The channel must come with a rule about **when** to ask, not only a mechanism for asking.
+
+> **You do not ask when you find a question. You record it and keep going. You ask when you run out
+> of work you can do without an answer — and then you ask all of them, in one message.**
+
+### Why the rule can be one sentence
+
+Questions differ only in how much they block:
+
+| blocking radius | example | what the rule does with it |
+|---|---|---|
+| everything | no credential to even read the system | "run out of work" is immediate → flush now |
+| this path only | which of two APIs is authoritative | record it, work the other phases, flush later |
+| the final step only | may I merge into a branch I did not check out | record it, do all the work, flush before shipping |
+
+No special case is needed. *Run out of work* collapses all three: a total blocker flushes
+immediately because there is nothing else to do, and a narrow one waits because there is.
+
+### The primitive
+
+Two actions, and the ledger is durable from the first `add` — so a session that dies before flushing
+does not lose the questions it had already found.
+
+```ts
+forge_questions.add   { issueId, question, blocks: 'all'|'path'|'final', context }
+  → durable row · NO status change · NO notification · returns the pending count
+
+forge_questions.flush { issueId }
+  → composes ONE comment numbering every pending question, posts it,
+    then transitions to `needs_info` (comment before status, per RFC 0002 INV-8)
+```
+
+**`needs_info` is enterable only through `flush`** on an autonomous project, and `flush` always takes
+the whole ledger. That makes "ask once" structural rather than a prompt instruction: a second park
+with nothing new recorded is not expressible.
+
+### On the answer
+
+The human replies in one comment. The agent reads it and resolves what it can:
+
+- every question answered → the ledger empties, the agent goes back to work;
+- some answered, some not → the unanswered ones **stay pending**. The agent works whatever the
+  answers unblocked, and flushes the remainder when it again runs out of work.
+
+A second flush is therefore legitimate — but only ever for questions that are still open. Re-asking
+something already answered is what the ledger makes impossible.
+
+### Interaction with residency
+
+Residency is armed by the **flush**, not by a question. So there is exactly one `awaiting_input` per
+batch, and the number of round trips per issue is bounded by how many times the agent genuinely runs
+out of work — not by how many blockers it happens to encounter.
+
 ## Drawbacks
 
 - Two exec paths to maintain until print mode is retired.
+- The question ledger is a new durable surface (`forge_questions`) and a new gate on `needs_info`.
+  Getting the gate wrong locks an agent out of asking at all, which is worse than asking twice — so
+  it ships with the flush path, never before it.
 - The `forge-drive` skill's *"Then **end your session**. Do not wait, poll, or keep the run alive"*
   becomes *"finish your turn"* under a duplex channel. That line exists because under print mode
   waiting was a lie — the process was going to die anyway. It stops being one, but the skill must be
