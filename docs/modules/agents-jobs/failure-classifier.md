@@ -127,3 +127,14 @@ the classifier on archived rows. Bump the version on any pattern change.
   prefers it over `deriveActionFromKind`; the fallback is untouched, so
   historical rows (`failure_action IS NULL`) keep the verdict they were written
   with. Nothing else changes bucket.
+
+- **v9** — RFC 0003's duplex send path gets its own bucket. Three strings,
+  `session_send_failed` / `session_ack_timeout` /
+  `session_checkpoint_deadline_exceeded`, classify as `kind: 'infra'` with the
+  derived `retry` policy. The bucket sits **ahead of TIMEOUT**, and that
+  ordering is the whole reason it exists as a bucket rather than three
+  additions to existing lists: `session_ack_timeout` matches the generic
+  `/\btimeout\b/` and would be diagnosed as a stalled agent, when what actually
+  failed is the channel — the agent may be working normally on the other side
+  of a pipe core stopped hearing from. A wrong diagnosis here routes a human to
+  the transcript instead of to the socket.

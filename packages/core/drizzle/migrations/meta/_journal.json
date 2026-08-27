@@ -1324,6 +1324,13 @@
       "when": 1789862400000,
       "tag": "0190_duplex_session_runtime_state",
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1789948800000,
+      "tag": "0191_session_inbox",
+      "breakpoints": true
     }
   ]
 }

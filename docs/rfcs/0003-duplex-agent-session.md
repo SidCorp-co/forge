@@ -731,13 +731,32 @@ await transitionIssueStatus(/* → open, today's path */);
 
 ## Schema
 
-One new column and one new config key. No new table.
+Two columns, one config key, and — since Revision 2 — **one new table**. The draft said "no new
+table" on the strength of *"no retry loop, no pending state"*, and corrections 1, 2 and 6 each
+independently require a durable per-message row: an episode to scope the answer, an idempotency key
+that a per-attempt counter cannot be, and a commit point that is not the echo.
 
 ```ts
 // agent_sessions
-runtimeState: text('runtime_state', { enum: runtimeStates }).notNull().default('starting'),
+runtimeState: text('runtime_state', { enum: sessionRuntimeStates }),   // NULL = print mode, infer nothing
 lastInboxSeq: integer('last_inbox_seq').notNull().default(0),
 ```
+
+```ts
+// session_inbox — one row per INTENT, not per attempt
+seq, kind, intentId,                                    // unique (session, kind, intentId)
+sendRequestedAt, sendConfirmedAt, sendOutcome,          // the episode, mirroring the kill gate
+appliedAt, appliedTurn,                                 // the commit point: a COMPLETED turn consumed it
+```
+
+Three timestamps because there are three different questions, and the draft conflated the second and
+third. `sendConfirmedAt` records what the runner said; `appliedAt` records the only event that means
+the model read the message. A caller may stand down its durable path on `appliedAt` and never on
+`sendConfirmedAt`.
+
+`runtimeState` ships nullable rather than `notNull().default('starting')`: a print-mode session never
+reports one, and a default would assert a runtime state for every session in the table that no runner
+ever observed.
 
 ```ts
 // pipelineConfig
