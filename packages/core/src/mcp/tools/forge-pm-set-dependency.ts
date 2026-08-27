@@ -27,7 +27,7 @@ import { decomposeParent } from '../../issues/decompose.js';
 import { detectCycle } from '../../issues/dependency-routes.js';
 import { publishPipelineHealthChanged } from '../../issues/pipeline-health.js';
 import { logger } from '../../logger.js';
-import { safeRecordActivity } from '../../pipeline/activity.js';
+import { type Actor, safeRecordActivity } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { deprecationFor } from '../deprecation.js';
 import {
@@ -51,9 +51,11 @@ export const pmSetDependencyInputSchema = z
   })
   .strict();
 
+// cm:guard pass `actor` whenever the caller knows its principal — a PAT reaches here behind a SYNTHETIC device (mcp/handler.ts stubDeviceForPat) whose id is an api_tokens row, so the default writes an activity_log actor_id that matches no `devices` row while the same request's status transition is attributed correctly through principalActor()
 export async function pmSetDependencyHandler(
   device: Device,
   input: z.infer<typeof pmSetDependencyInputSchema>,
+  actorOverride?: Actor,
 ) {
   // ISS-131 — was `assertPmActor`. Plan-pipeline agents legitimately need to
   // declare `blocks`/`decomposes` edges as part of writing a plan, but they
@@ -129,7 +131,7 @@ export async function pmSetDependencyHandler(
       kind: input.kind,
       ...(input.reason ? { reason: input.reason } : {}),
     };
-    const actor = { type: 'device' as const, id: device.id };
+    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
     await Promise.all([
       safeRecordActivity({
         issueId: input.fromIssueId,
@@ -198,7 +200,7 @@ export async function pmSetDependencyHandler(
       ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
     };
-    const actor = { type: 'device' as const, id: device.id };
+    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
     await Promise.all([
       safeRecordActivity({
         issueId: input.fromIssueId,

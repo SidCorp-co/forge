@@ -56,7 +56,7 @@ instead: guide `what-is-an-issue`.\n\
 \n\
 | When you need | Use | Red flag (DON'T) |\n\
 |---|---|---|\n\
-| Ordering between issues | `forge_project_pm action=set_dependency kind:blocks` (`from` = the blocker) | Describing the dependency in prose instead of setting the edge — only a `blocks` edge gates dispatch |\n\
+| Ordering between issues | Blocker known **at create time** → `forge_issues.create {{ data.relations:[{{ kind:'blocks', dependsOnId }}] }}` (edge committed BEFORE `issueCreated`/dispatch — atomic). Both issues already exist → `forge_issues.update {{ data.relations:[{{ kind:'blocks', dependsOnId }}] }}` (works with any credential; retract by re-sending with `validUntil` in the past), or `forge_project_pm action=set_dependency kind:blocks` (`from` = the blocker; needs a paired device). Verify with `forge_issues.get` → `relations`. | Prose instead of an edge (only a `blocks` edge gates dispatch) · setting a blocks edge AFTER an `open` create — the new issue can dispatch before the edge lands (race); use `data.relations` or create at `draft` first |\n\
 | To record a note, learning, or decision | `forge_memory_write` (durable business logic → repo `docs/`) | Filing it as an issue — `draft` or not, nobody browses the issue list for notes |\n\
 | To queue work that must actually happen LATER | create an issue at `draft` | Creating it at `open` — that auto-triages and spawns a pipeline run |\n\
 | To report an issue | fill `title`, `description`, `priority`, `category` | Pre-filling `plan`/`acceptanceCriteria` — those are written by the clarify/plan steps |\n\
@@ -68,7 +68,7 @@ instead: guide `what-is-an-issue`.\n\
 | A bug, gap or defect you find WHILE working an issue | **Fix it now, in this issue**, and DECLARE it in your comment under `Extra fixes:` — extra work is REPORTED, never filed | Filing it instead of fixing it. A new `draft` is not a hand-off: nobody owns it, nothing ages it, and a two-minute fix becomes backlog nobody reads |\n\
 | A residual genuinely out of reach (needs a human decision, or work no diff here can carry) | ONE of: a `blocks` edge onto the issue that would ship without it · a line in `docs/proposals/` · `waiting` + `reason` when it blocks THIS issue | Filing a new issue to carry it — that is not one of the options. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |\n\
 \n\
-**Forge red flags:** prose-deps · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork · file-instead-of-fix.\n",
+**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork · file-instead-of-fix.\n",
     )
 }
 

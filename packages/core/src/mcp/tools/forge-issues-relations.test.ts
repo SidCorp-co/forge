@@ -174,6 +174,7 @@ it('update writes the edge with dependsOnId on the from side and reports it back
       toIssueId: ISSUE_ID,
       kind: 'blocks',
     }),
+    { type: 'device', id: fakeDevice.id },
   );
   expect(result.relations).toEqual([
     {
@@ -199,6 +200,7 @@ it('update writes the edge with blocksId on the to side', async () => {
   expect(pmSetDependencyMock).toHaveBeenCalledWith(
     fakeDevice,
     expect.objectContaining({ fromIssueId: ISSUE_ID, toIssueId: BLOCKED_ID }),
+    { type: 'device', id: fakeDevice.id },
   );
 });
 
@@ -223,6 +225,7 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
   expect(pmSetDependencyMock).toHaveBeenCalledWith(
     fakeDevice,
     expect.objectContaining({ validUntil: '2020-01-01T00:00:00.000Z' }),
+    { type: 'device', id: fakeDevice.id },
   );
   expect(result.relations?.[0]).toMatchObject({ created: false, updated: true });
 });
@@ -285,4 +288,35 @@ it('get returns the edges on both sides of the issue', async () => {
   expect(loadIssueRelationsMock).toHaveBeenCalledWith(ISSUE_ID);
   expect(result.relations.blocks).toEqual([]);
   expect(result.relations.blockedBy[0]).toMatchObject({ edgeId: 'dep-id-1', expired: false });
+});
+
+it('attributes the edge to the PAT user, not to the synthetic device standing in for it', async () => {
+  const PAT_USER = '55555555-5555-4555-8555-555555555555';
+  stageUpdate();
+  selectLimit.mockResolvedValueOnce([memberAccessRow]);
+  const patTool = forgeIssuesTool({
+    principal: {
+      kind: 'pat',
+      agency: 'human',
+      userId: PAT_USER,
+      tokenId: '66666666-6666-4666-8666-666666666666',
+      scopes: ['read', 'write'],
+      projectIds: null,
+      boundProjectId: null,
+    },
+    // cm:guard this device is the SYNTHETIC one mcp/handler.ts builds for a PAT — its id is an api_tokens row, not a devices row, which is exactly why the edge must not be attributed to it; give it a real device id and the test stops proving anything
+    device: { ...fakeDevice, id: '66666666-6666-4666-8666-666666666666', ownerId: PAT_USER },
+    projectSlug: PROJECT_SLUG,
+  });
+
+  await patTool.handler({
+    action: 'update',
+    documentId: ISSUE_ID,
+    data: { relations: [{ dependsOnId: BLOCKER_ID, kind: 'blocks' }] },
+  });
+
+  expect(pmSetDependencyMock).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+    type: 'user',
+    id: PAT_USER,
+  });
 });

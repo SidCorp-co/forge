@@ -991,7 +991,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
 
         // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — the edges MUST commit before the issueCreated emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
-        const rels = await applyIssueRelations(device, projectId, created.id, input.data.relations);
+        const r = await applyIssueRelations(ctx, projectId, created.id, input.data.relations);
 
         await hooks.emit('issueCreated', {
           issueId: created.id,
@@ -1011,7 +1011,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const result: Record<string, unknown> = serialize(created);
         result.labels = labelIds.length > 0 ? await listIssueLabels(created.id) : [];
-        if (rels.length > 0) result.relations = rels;
+        if (r.length > 0) result.relations = r;
         if (decodedAttachments.length > 0) {
           const { persisted, errors } = await persistDecodedIssueAttachments(
             created.id,
@@ -1101,12 +1101,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker
-        const rels = await applyIssueRelations(
-          device,
-          issue.projectId,
-          issue.id,
-          input.data.relations,
-        );
+        const r = await applyIssueRelations(ctx, issue.projectId, issue.id, input.data.relations);
 
         if (input.data.status && input.data.status !== issue.status) {
           await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {
@@ -1121,7 +1116,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...(await serializeWithAttachments(fresh)),
           action: 'updated',
         };
-        if (rels.length > 0) updateResult.relations = rels;
+        if (r.length > 0) updateResult.relations = r;
         return updateResult;
       }
 

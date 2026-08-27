@@ -87,12 +87,15 @@ export type IssueRelationDigest = {
   otherStatus: string | null;
   validUntil: Date | null;
   expired: boolean;
+  gatesDispatch: boolean;
 };
 
+// cm:guard `gatesDispatch` is the answer to "am I blocked", and it is NOT `kind === 'blocks'`: a `decomposes` edge also lands in `blockedBy` (from=parent, to=child) while dispatch-gates.ts L2 gates children on merged_at, not on this edge, so a reader that treats every incoming edge as a blocker sees a live blocker that is not there
 // cm:guard `expired` mirrors the dispatcher's own predicate (`valid_until IS NULL OR valid_until > now()` — dispatch-gates.ts L2): an expired `blocks` edge still has a row but gates nothing, so an agent told only that the row exists reads a live blocker where there is none
 // cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts — same expiry rule; if L2 stops honouring valid_until, this flag starts lying
 function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueRelationDigest {
   const outgoing = edge.fromIssueId === issueId;
+  const expired = edge.validUntil != null && edge.validUntil.getTime() <= now;
   return {
     edgeId: edge.id,
     kind: edge.kind,
@@ -102,7 +105,8 @@ function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueR
     otherDisplayId: outgoing ? edge.toDisplayId : edge.fromDisplayId,
     otherStatus: outgoing ? edge.toStatus : edge.fromStatus,
     validUntil: edge.validUntil,
-    expired: edge.validUntil != null && edge.validUntil.getTime() <= now,
+    expired,
+    gatesDispatch: !outgoing && edge.kind === 'blocks' && !expired,
   };
 }
 

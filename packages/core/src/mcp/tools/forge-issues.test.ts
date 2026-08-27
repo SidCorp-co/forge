@@ -848,6 +848,7 @@ describe('forge_issues tool', () => {
           toIssueId: ISSUE_ID,
           kind: 'blocks',
         }),
+        { type: 'device', id: fakeDevice.id },
       );
     });
 
@@ -877,6 +878,7 @@ describe('forge_issues tool', () => {
           toIssueId: BLOCKED_ID,
           kind: 'blocks',
         }),
+        { type: 'device', id: fakeDevice.id },
       );
     });
 
