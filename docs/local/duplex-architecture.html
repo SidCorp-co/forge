@@ -293,52 +293,68 @@ the failure this rule forecloses.</figcaption>
 </figure>
 
 <h2>Figure 4 · the one subtle flow</h2>
-<h3>The ack is the commit point, not the send</h3>
+<h3>The commit point is a consumed turn, not an ack</h3>
 
 <figure>
-<svg viewBox="0 0 1000 300" role="img" aria-label="Sequence: a human comment reaches answer-resume, which sends to the session; a delivered ack means the agent continues, a gone ack means core transitions and dispatches.">
+<svg viewBox="0 0 1000 340" role="img" aria-label="Sequence: a human comment reaches answer-resume, which records a durable send request; three outcomes follow — a turn confirmed consumed, an unknown that must be resolved, and an enforced gone that routes through the kill gate before dispatching.">
  <defs><marker id="f4" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink2)"/></marker>
  <marker id="f4s" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--sess)"/></marker>
  <marker id="f4w" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--warn)"/></marker></defs>
 
  <rect x="16" y="26" width="150" height="40" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
  <text class="st" x="30" y="51">human comments</text>
- <path d="M166,46 L232,46" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f4)"/>
+ <path d="M166,46 L212,46" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f4)"/>
 
- <rect x="236" y="26" width="176" height="40" rx="7" fill="var(--core-bg)" stroke="var(--core)"/>
- <text class="st" x="250" y="51" fill="var(--core)">answer-resume.ts</text>
- <path d="M412,46 L478,46" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f4)"/>
+ <rect x="216" y="26" width="176" height="40" rx="7" fill="var(--core-bg)" stroke="var(--core)"/>
+ <text class="st" x="230" y="51" fill="var(--core)">answer-resume.ts</text>
+ <path d="M392,46 L438,46" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f4)"/>
 
- <rect x="482" y="26" width="260" height="40" rx="7" fill="var(--core-bg)" stroke="var(--core)" stroke-dasharray="4 3"/>
- <text class="st" x="496" y="51" fill="var(--core)">sendToSession(id,'answer')</text>
+ <rect x="442" y="20" width="330" height="52" rx="7" fill="var(--core-bg)" stroke="var(--core)" stroke-dasharray="4 3"/>
+ <text class="st" x="456" y="40" fill="var(--core)">send — durable, two-phase</text>
+ <text class="sm" x="456" y="59">send_requested_at written BEFORE the frame</text>
 
- <path d="M612,66 L612,96" fill="none" stroke="var(--ink2)" stroke-width="1.5"/>
- <path d="M612,96 L300,96 L300,126" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f4s)"/>
- <path d="M612,96 L862,96 L862,126" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f4w)"/>
- <text class="sm" x="330" y="90" fill="var(--sess)">ack = delivered</text>
- <text class="sm" x="736" y="90" fill="var(--warn)">ack = gone</text>
+ <path d="M607,72 L607,102" fill="none" stroke="var(--ink2)" stroke-width="1.5"/>
+ <path d="M607,102 L170,102 L170,140" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f4s)"/>
+ <path d="M607,102 L500,102 L500,140" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f4w)"/>
+ <path d="M607,102 L830,102 L830,140" fill="none" stroke="var(--ink2)" stroke-width="1.8" marker-end="url(#f4)"/>
 
- <rect x="120" y="130" width="360" height="96" rx="8" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
- <text class="sl" x="134" y="150" fill="var(--sess)">the agent continues, full context</text>
- <text class="sm" x="134" y="170">core does NOT transition</text>
- <text class="sm" x="134" y="186">core does NOT dispatch</text>
- <text class="sm" x="134" y="202">no new job → no new session</text>
- <text class="sm" x="134" y="218" fill="var(--sess)">the fast path</text>
+ <rect x="20" y="144" width="300" height="118" rx="8" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="sl" x="34" y="164" fill="var(--sess)">confirmed — a turn consumed it</text>
+ <text class="sm" x="34" y="185">core does NOT transition</text>
+ <text class="sm" x="34" y="201">core does NOT dispatch</text>
+ <text class="sm" x="34" y="217">the cold path disarms HERE</text>
+ <text class="sm" x="34" y="233">and only here</text>
+ <text class="sm" x="34" y="252" fill="var(--sess)">the fast path</text>
 
- <rect x="628" y="130" width="358" height="96" rx="8" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
- <text class="sl" x="642" y="150" fill="var(--warn)">today's path, unchanged</text>
- <text class="sm" x="642" y="170">transition issue → open</text>
- <text class="sm" x="642" y="186">dispatch a fresh job</text>
- <text class="sm" x="642" y="202">resume from the phase journal</text>
- <text class="sm" x="642" y="218" fill="var(--warn)">the cold path — always load-bearing</text>
+ <rect x="350" y="144" width="300" height="118" rx="8" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="sl" x="364" y="164" fill="var(--warn)">unknown — the third outcome</text>
+ <text class="sm" x="364" y="185">echo seen, or nothing seen</text>
+ <text class="sm" x="364" y="201">answer recorded pending-applied</text>
+ <text class="sm" x="364" y="217">cold path STAYS ARMED</text>
+ <text class="sm" x="364" y="233">an episode resolves it</text>
+ <text class="sm" x="364" y="252" fill="var(--warn)">never relabelled as gone</text>
 
- <rect x="16" y="242" width="970" height="46" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
- <text class="sl" x="30" y="261">Exactly one branch runs, chosen by a single authoritative ack — so an answer is never both delivered and re-dispatched.</text>
- <text class="sm" x="30" y="279">It also removes a collision: a parked job is still `running`, so a dispatch would fail jobs_active_unique. Here it is never attempted.</text>
+ <rect x="680" y="144" width="300" height="118" rx="8" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.6"/>
+ <text class="sl" x="694" y="164">gone — enforced, not inferred</text>
+ <text class="sm" x="694" y="185">runner destroyed what it</text>
+ <text class="sm" x="694" y="201">could not vouch for</text>
+ <text class="sm" x="694" y="217">kill gate drives the job terminal</text>
+ <text class="sm" x="694" y="233">THEN transition to open + dispatch</text>
+ <text class="sm" x="694" y="252">the cold path — load-bearing</text>
+
+ <rect x="16" y="274" width="964" height="50" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="30" y="294">Three outcomes, not two. An echo proves the CLI parsed the line, never that a turn consumed it.</text>
+ <text class="sm" x="30" y="313">And gone must not dispatch on its own: the job row is still running, so jobs_active_unique wedges the issue at open with no job.</text>
 </svg>
-<figcaption><b>Every failure degrades to <code>gone</code>.</b> Missing ack, dead socket, unknown
-session, residency already expired — all one answer, and that answer routes to a path that works
-today. That is what keeps the change additive at every setting, including the default.</figcaption>
+<figcaption><b>Revision 2 redrew this figure.</b> It used to say <i>&quot;exactly one branch runs,
+chosen by a single authoritative ack&quot;</i> and that every failure degrades to <code>gone</code>.
+Both were false. A <code>ChildStdin</code> pipe that is not being drained makes the write await past
+core&#39;s deadline, so core can call it <code>gone</code> and then have the answer consumed anyway —
+both branches run. And a half-written line does not degrade to <code>gone</code> at all: the CLI skips
+a malformed line and keeps going, leaving the session <b>alive</b> with a message silently lost. The
+figure now shows the shape this repo already uses for the same question in the kill gate — a durable
+request, a confirmation, and an <code>unknown</code> that must be <i>resolved</i> rather than
+assumed.</figcaption>
 </figure>
 
 <h2>Figure 5 · asking once</h2>
