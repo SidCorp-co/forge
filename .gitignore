@@ -72,3 +72,6 @@ __pycache__
 # per-package agent notes and personal/maintainer instructions stay local.
 packages/*/CLAUDE.md
 CLAUDE.local.md
+
+# Local-only scratch renders — the committed architecture lives in docs/proposals/
+docs/local/
