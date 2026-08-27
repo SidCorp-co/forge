@@ -251,10 +251,10 @@ it('update leaves the response status as the issue own status, not the literal "
     action: 'update',
     documentId: ISSUE_ID,
     data: { plan: 'new plan' },
-  })) as { status: string; applied: string };
+  })) as { status: string; action: string };
 
   expect(result.status).toBe('open');
-  expect(result.applied).toBe('updated');
+  expect(result.action).toBe('updated');
 });
 
 it('update without relations does not touch the dependency graph', async () => {

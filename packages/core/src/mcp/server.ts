@@ -173,7 +173,7 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
 // cm:guard a refusal names the condition to SATISFY, not only the one that failed (ISS-787/ISS-868) — the bare code sent callers hunting for a scope that does not exist, when the answer is a different credential class plus a PAT-reachable route for the common case
 // cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — names data.relations as the PAT path for blocks/relates edges; if that field stops being applied on create/update this text becomes a lie
 const PM_DEVICE_REFUSAL =
-  'FORBIDDEN: PM_REQUIRES_DEVICE — this action needs a paired-device token (pair a runner with `forge-runner pair`); ' +
+  'FORBIDDEN: PM_REQUIRES_DEVICE — this action needs a paired-device token (pair a device with `forge-runner login`, then `forge-runner start`); ' +
   'a personal access token has no runner state to act on, and no PAT scope grants it. ' +
   'Read-only forge_project_pm actions (snapshot, graph, runner_load) do work with a PAT. ' +
   'To set or retract a blocks/relates edge with a PAT, use forge_issues create/update with data.relations ' +

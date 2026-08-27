@@ -79,6 +79,7 @@ it('names the condition to satisfy and a reachable alternative when it refuses a
   const text = await callAsPat('00000000-0000-4000-8000-0000000000c1', 'set_dependency');
   expect(text).toContain('PM_REQUIRES_DEVICE');
   expect(text).toContain('paired-device token');
+  expect(text).toContain('forge-runner login');
   expect(text).toContain('forge_issues');
   expect(text).toContain('data.relations');
 });

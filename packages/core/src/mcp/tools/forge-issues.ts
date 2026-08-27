@@ -1116,10 +1116,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         const fresh = await loadIssue(issue.id);
-        // cm:guard report what the call DID, and never under a key that shadows a real column — this used to return the literal `status:'updated'` over the issue's own status enum, so a caller could not read back the status it had just written, and `relations` was parsed and silently discarded (ISS-868)
+        // cm:guard report what the call DID under `action`, matching mark_merged/unmark below — this used to return the literal `status:'updated'` over the issue's own status enum, so a caller could not read back the status it had just written, and `relations` was parsed and silently discarded (ISS-868)
         const updateResult: Record<string, unknown> = {
           ...(await serializeWithAttachments(fresh)),
-          applied: 'updated',
+          action: 'updated',
         };
         if (rels.length > 0) updateResult.relations = rels;
         return updateResult;
