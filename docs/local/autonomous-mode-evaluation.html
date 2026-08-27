@@ -1,0 +1,183 @@
+<title>Autonomous Mode Evaluation</title>
+<style>
+:root{--bg:#fbfaf9;--fg:#1c1a17;--mut:#6b6560;--line:#e3ded8;--card:#fff;--ok:#1a7f4b;--warn:#a8620a;--bad:#b3261e;--acc:#2a5db0}
+:root:not([data-theme=light]) @media(prefers-color-scheme:dark){}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#17161a;--fg:#eceaf0;--mut:#9d97a3;--line:#33303a;--card:#1f1e24;--ok:#5fd39a;--warn:#e0a44a;--bad:#f2837c;--acc:#8fb3f5}}
+:root[data-theme=dark]{--bg:#17161a;--fg:#eceaf0;--mut:#9d97a3;--line:#33303a;--card:#1f1e24;--ok:#5fd39a;--warn:#e0a44a;--bad:#f2837c;--acc:#8fb3f5}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.62 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;padding:40px 22px 90px}
+main{max-width:920px;margin:0 auto}
+h1{font-size:31px;line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:21px;margin:46px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);letter-spacing:-.01em}
+h3{font-size:16px;margin:26px 0 8px}
+p,li{color:var(--fg)} .sub{color:var(--mut);margin:0 0 26px;font-size:14.5px}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);font-weight:600}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.wrap{overflow-x:auto}
+code{background:var(--line);padding:1px 5px;border-radius:4px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:16px 0}
+.card.w{border-left:4px solid var(--warn)} .card.b{border-left:4px solid var(--bad)} .card.g{border-left:4px solid var(--ok)} .card.a{border-left:4px solid var(--acc)}
+.card h3{margin-top:0}
+.k{color:var(--ok);font-weight:600}.r{color:var(--bad);font-weight:600}.y{color:var(--warn);font-weight:600}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:4px;background:var(--line);color:var(--mut);vertical-align:middle}
+.tag.bad{background:var(--bad);color:#fff}.tag.ok{background:var(--ok);color:#fff}.tag.warn{background:var(--warn);color:#fff}
+ul{padding-left:20px}li{margin:5px 0}
+.foot{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);color:var(--mut);font-size:13px}
+</style>
+<main>
+<h1>Autonomous mode — đánh giá chất lượng &amp; kế hoạch chuyển đổi</h1>
+<p class="sub">Đo trên DB read-only forge-beta · cửa sổ so sánh 2026-08-20 → 2026-08-27 (theo <em>đường thực thi thật</em>, không theo cờ project) · đã loại toàn bộ lỗi quota/limit theo yêu cầu.</p>
+
+<div class="card b">
+<h3>Đọc trước: hai chỉ số phải bỏ đi</h3>
+<p>Trong lần đo đầu tôi định dùng <code>issues.reopen_count</code> làm chỉ số chất lượng — <strong>sai về cấu trúc</strong>. Bộ đếm đó chỉ tăng khi issue chuyển status sang <code>reopen</code>. Staged rework đi qua status (<code>test → reopen → fix</code>) nên có đếm; autonomous rework nằm <em>trong phase</em> (phase 5 đẩy ngược về phase 3) và không bao giờ chạm status. Con số "0.02 vs 0.37" là <strong>artifact</strong>, không phải chất lượng gấp 9 lần.</p>
+<p>Tương tự, <code>kernel_transitions</code> không có một dòng <code>entity='issue'</code> nào (chỉ session/run/job), nên mọi phép đo defect dựa trên bảng đó trả về 0% vì bảng trống, không phải vì không có lỗi. Số liệu dưới đây dùng <code>activity_log</code> và <code>issue_intervention_events</code> — hai bảng <strong>cả hai mode đều ghi</strong>.</p>
+</div>
+
+<h2>1. Chất lượng — bằng chỉ số cả hai mode đều đo được</h2>
+
+<h3>Defect sau merge <span class="tag ok">apples-to-apples</span></h3>
+<p>Chỉ lấy issue đã merge ≥ 48h (để hai bên có cùng cửa sổ quan sát), tính transition dạng defect (<code>→ reopen</code>, <code>→ needs_info</code>) xảy ra sau <code>merged_at</code>:</p>
+<div class="wrap"><table>
+<tr><th>Mode</th><th class="n">Issue merged</th><th class="n">Bị mở lại vì lỗi</th><th class="n">Tỷ lệ</th></tr>
+<tr><td>autonomous (drive)</td><td class="n">43</td><td class="n">2</td><td class="n"><span class="k">4.7%</span></td></tr>
+<tr><td>staged</td><td class="n">681</td><td class="n">51</td><td class="n">7.5%</td></tr>
+</table></div>
+<p><strong>Đọc đúng:</strong> nghiêng về autonomous, nhưng <span class="y">n=43 và chỉ 2 ca</span> — khoảng tin cậy rộng, chưa đủ để tuyên bố hơn hẳn. Kết luận trung thực: <strong>chất lượng sau merge ngang nhau, không xấu đi</strong>. Đó đã là kết quả tốt cho một mode mới chạy 7 ngày.</p>
+
+<h3>North-star: can thiệp tay / issue <span class="tag warn">chưa cải thiện</span></h3>
+<div class="wrap"><table>
+<tr><th>Mode</th><th class="n">Merged</th><th class="n">Interventions</th><th class="n">/issue</th><th class="n">% issue cần người</th></tr>
+<tr><td>autonomous (drive)</td><td class="n">43</td><td class="n">32</td><td class="n"><span class="y">0.74</span></td><td class="n">27.9%</td></tr>
+<tr><td>staged</td><td class="n">681</td><td class="n">399</td><td class="n">0.59</td><td class="n">18.9%</td></tr>
+</table></div>
+<p>Phân rã: <code>wedge</code> drive 25 / staged 354 — tính trên đầu issue là 0.58 vs 0.52, <strong>tương đương</strong>. Autonomous <em>chưa</em> giảm được wedge. Điểm sáng duy nhất: <code>manual_resume</code> = 0 ở drive (staged 16) — không còn cảnh phải đẩy tay từng stage.</p>
+<p class="sub">Đây là chỉ số bắc-đẩu theo CLAUDE.local.md. Nó nói: autonomous mua được <em>ít job hơn, ít bàn giao hơn</em>, nhưng <strong>chưa</strong> mua được ít can thiệp hơn. Kỳ vọng cho migration nên đặt ở đó, không phải ở "hết cần người".</p>
+
+<h3>Rework nội tại — chỗ autonomous đắt hơn</h3>
+<div class="wrap"><table>
+<tr><th>Chỉ số tương đương</th><th class="n">Trung bình/issue</th><th class="n">p50</th><th class="n">p90</th><th class="n">max</th></tr>
+<tr><td>drive: số vòng phase <code>code</code></td><td class="n"><span class="r">2.98</span></td><td class="n">2</td><td class="n">6</td><td class="n">11</td></tr>
+<tr><td>staged: số job <code>fix</code></td><td class="n">0.91</td><td class="n">0</td><td class="n">2</td><td class="n">62</td></tr>
+</table></div>
+<p>Trừ vòng code đầu tiên, drive vẫn ~2 vòng sửa/issue so với 0.91 của staged. Hai đơn vị không hoàn toàn đồng nhất (một vòng <code>code</code> của drive rẻ hơn một job <code>fix</code> phải re-dispatch cả stage), nhưng hướng thì rõ: <strong>autonomous lặp nhiều hơn ở bên trong</strong>. Đây chính là nguồn của cái đuôi chi phí và thời lượng ở mục 2.</p>
+
+<h3>Những điểm mạnh không phụ thuộc chỉ số nào gây tranh cãi</h3>
+<div class="wrap"><table>
+<tr><th></th><th class="n">autonomous (drive)</th><th class="n">staged</th></tr>
+<tr><td>Job / issue</td><td class="n"><span class="k">2.6</span></td><td class="n">6.2</td></tr>
+<tr><td>Issue độ khó <code>l</code></td><td class="n"><span class="k">20/46 (43%)</span></td><td class="n">18/142 (13%)</td></tr>
+<tr><td>Chi phí median</td><td class="n"><span class="k">$23.4</span></td><td class="n">$32.8</td></tr>
+<tr><td>Chi phí p90 / p95 / max</td><td class="n"><span class="r">$180 / $281 / $379</span></td><td class="n">$89 / $104 / $357</td></tr>
+<tr><td>Lead time median</td><td class="n">11.3h</td><td class="n"><span class="k">6.4h</span></td></tr>
+</table></div>
+<p><strong>Sự thật mạnh nhất ủng hộ autonomous:</strong> nó nhận việc <em>khó hơn</em> (43% size <code>l</code> so với 13%) mà chất lượng sau merge không xấu đi, với 2.6 job thay vì 6.2. Median rẻ hơn 29%.</p>
+<div class="card w"><p><strong>Cảnh báo về độ tin cậy của số tiền:</strong> 81/95 job <code>drive</code> đã <code>done</code> <strong>không có dòng <code>usage_records</code> nào</strong>. Mọi con số chi phí ở trên dựng trên phần thiểu số có ghi nhận — dùng để so sánh xu hướng, <strong>không</strong> dùng để quyết toán.</p></div>
+
+<h2>2. Job chạy 2–3 tiếng — có sự cố hay không?</h2>
+<div class="card g"><p><strong>Trả lời ngắn: phần lớn là bình thường, và reaper sẽ không giết oan.</strong> <code>RESULT_QUIET_MINUTES = 60</code> trong <code>jobs/loop-monitor.ts</code> đo theo <code>LAST_PROGRESS_AT</code> (im lặng), <strong>không</strong> theo tổng thời lượng. Một phiên drive 4 tiếng vẫn báo tiến độ thì không bị reap. Nỗi lo tự nhiên ở đây là không có cơ sở.</p></div>
+
+<h3>Phân bố thời lượng thật <span class="tag warn">mẫu số 59, không phải 95</span></h3>
+<div class="wrap"><table>
+<tr><th>Khoảng</th><th class="n">Số job</th><th>Ghi chú</th></tr>
+<tr><td>&lt; 15 phút</td><td class="n">7</td><td></td></tr>
+<tr><td>15–45 phút</td><td class="n">9</td><td></td></tr>
+<tr><td>45–90 phút</td><td class="n">23</td><td>vùng phổ biến nhất</td></tr>
+<tr><td>1.5–3 giờ</td><td class="n"><span class="y">17</span></td><td>đúng cái anh đang thấy — 29% số job đo được</td></tr>
+<tr><td>&gt; 3 giờ</td><td class="n">3</td><td>dài nhất 250 phút</td></tr>
+<tr><td><strong>không có timestamp</strong></td><td class="n"><span class="r">36</span></td><td>không đo được — 38% tổng số</td></tr>
+</table></div>
+<p>Vậy cảm nhận của anh đúng: <strong>17/59 job đo được rơi vào 1.5–3h</strong>, không phải ngoại lệ. Nhưng "&gt;3h chỉ có 3 ca" là 3-trên-59, không phải 3-trên-95 — <strong>38% số job không có <code>dispatched_at</code>/<code>finished_at</code> nên không ai biết chúng chạy bao lâu</strong>. Đó là defect quan sát riêng, và nó là lý do chính khiến câu hỏi "có sự cố gì không" không trả lời được từ dashboard.</p>
+
+<h3>Nguyên nhân gốc: vòng review không có bộ đếm</h3>
+<p><code>forge-drive/SKILL.md</code> viết nguyên văn về vòng phase 5 → phase 3: <em>"That loop has no counter — go around as many times as the verdict requires."</em> Đó là chủ ý thiết kế, và đây là cái giá đo được:</p>
+<div class="wrap"><table>
+<tr><th>Số vòng code</th><th class="n">Thời lượng TB</th><th class="n">Chi phí TB</th><th class="n">Max</th></tr>
+<tr><td>1 vòng</td><td class="n">42 phút</td><td class="n">$8.7</td><td class="n">—</td></tr>
+<tr><td>2–3 vòng</td><td class="n">85 phút</td><td class="n">—</td><td class="n">—</td></tr>
+<tr><td>4–6 vòng</td><td class="n"><span class="r">107 phút</span></td><td class="n"><span class="r">$83.3</span></td><td class="n">$328</td></tr>
+<tr><td>7+ vòng</td><td class="n">85 phút</td><td class="n">$50.3</td><td class="n">—</td></tr>
+</table></div>
+<p>Ba ca tệ nhất, tất cả đều là vòng lặp chạy hoang:</p>
+<ul>
+<li><strong>forge-dev ISS-855</strong> — 175 phút, $328, 6 vòng, kết thúc <code>done</code></li>
+<li><strong>getcontent ISS-417</strong> — chạy hai lần, 11 vòng mỗi lần (173ph/$148 và 211ph/$100), <span class="r">cả hai đều failed</span></li>
+<li><strong>getcontent ISS-453</strong> — 252 phút, $98, 10 vòng, <span class="r">failed</span></li>
+</ul>
+<div class="card a">
+<h3>Cái này sửa được ngay hôm nay</h3>
+<p><code>phase_journal</code> <strong>đã</strong> ghi từng vòng. Không cần schema mới, không cần thay skill. Một cảnh báo đếm vòng là toàn bộ câu trả lời cho "không biết có sự cố gì không":</p>
+<ul>
+<li><strong>≥ 4 vòng <code>code</code> trên cùng một run</strong> → phát alarm. Ngưỡng này chính là điểm chi phí nhảy từ $8.7 lên $83.3.</li>
+<li><strong>≥ 8 vòng</strong> → coi là loop hoang; ISS-417/ISS-453 đều fail ở 10–11 vòng sau khi đốt $250 và 6.4 giờ. Dừng và gọi người rẻ hơn để nó chạy tiếp.</li>
+<li><strong>Vá timestamp trước</strong> — 36 job không có mốc thời gian làm mọi cảnh báo theo thời lượng vô nghĩa. Đây là việc phải làm đầu tiên.</li>
+</ul>
+</div>
+<div class="card w"><p><strong>Defect còn treo (từ lần review trước):</strong> 37 dòng phase <code>ship</code> vẫn mở dưới các job drive đã <code>done</code> trên issue đã <code>closed</code>, dòng mới nhất hôm nay. Reconciler đã live (có dòng <code>source='system'</code> từ 08-21) nhưng chỉ nổ 5 lần. Agent đang <code>start</code> phase <code>ship</code> rồi kết thúc phiên mà không <code>end</code>.</p></div>
+
+<h2>3. Kế hoạch chuyển toàn bộ project sang autonomous</h2>
+<div class="card b">
+<h3>Con số quyết định kế hoạch: 5/23</h3>
+<p><code>forge-drive</code> yêu cầu <code>projectFacts</code> có <code>build-commands</code> + <code>test-commands</code>. Trong 23 project còn hoạt động (có job trong 30 ngày), <strong>chỉ 5 project có đủ</strong> — và đó đúng là 5 project đã chạy drive. <strong>Kế hoạch migration vì thế không phải "bật cờ", mà là "viết facts cho 18 project."</strong></p>
+</div>
+<div class="wrap"><table>
+<tr><th>Nhóm</th><th>Project</th><th class="n">Job staged/30d</th><th>Việc cần làm</th></tr>
+<tr><td><span class="tag ok">đã chuyển</span></td><td>getcontent, forge-dev, kinetrak, epodsystem-core, apiflow</td><td class="n">—</td><td>không</td></tr>
+<tr><td><span class="tag warn">sẵn facts, chưa bật</span></td><td>mowment, archmap</td><td class="n">231 · 86</td><td>bật cờ, chạy thử 1 issue</td></tr>
+<tr><td><span class="tag bad">thiếu facts, tải nặng</span></td><td>pixelight, sidpeak, sid-desk, ceo-dashboard, finance-automation, brand-gateway, anhome, portal-lighthuman, sidboss</td><td class="n">2861 · 2562 · 1284 · 494 · 431 · 381 · 319 · 270 · 241</td><td>viết <code>projectFacts</code> trước</td></tr>
+<tr><td><span class="tag">thiếu facts, tải nhẹ</span></td><td>sidcorp-mail, codemap, dodgeprint-api, dodgeprint-ui-v2, adminhub-ui, devbox, qa-project</td><td class="n">&lt; 75 mỗi cái</td><td>chuyển cuối, chi phí thấp</td></tr>
+</table></div>
+<h3>Điều kiện tiên quyết — một cái đã sạch</h3>
+<p><span class="k">Fleet runner không phải rào cản.</span> Toàn bộ 15 runner online đều ở <code>0.7.12</code>, và 7 trong số đó đã chạy job drive thành công. Không cần rollout version trước khi migrate.</p>
+<h3>Thứ tự đề xuất</h3>
+<ol>
+<li><strong>Vá quan sát trước, migrate sau.</strong> Timestamp thiếu (38%), usage_records thiếu (85%), 37 phase <code>ship</code> treo. Chuyển pixelight (2861 job/tháng) sang một mode mà ta không đo được thời lượng lẫn chi phí là bay mù.</li>
+<li><strong>Dựng cảnh báo đếm vòng</strong> ở ngưỡng 4 và 8. Không có nó, mỗi project mới chuyển sang là thêm rủi ro đốt $328/issue mà không ai biết.</li>
+<li><strong>mowment + archmap</strong> — đã có facts, tải vừa. Đây là mẻ kiểm chứng thật, không phải thử nghiệm.</li>
+<li><strong>Viết <code>projectFacts</code> cho 9 project tải nặng</strong>, mỗi project một issue riêng. Đây là phần công việc lớn nhất và nó là công việc của con người, không phải cờ bật/tắt.</li>
+<li><strong>Chuyển theo lô</strong>, mỗi lô một project, giữ staged path còn nguyên cho tới khi lô đó có 10 issue merged sạch.</li>
+</ol>
+<div class="card w"><p><strong>Kỳ vọng cần đặt đúng:</strong> dữ liệu <em>không</em> cho thấy autonomous sẽ giảm can thiệp tay (0.74 vs 0.59) hay rút ngắn lead time (11.3h vs 6.4h). Cái nó mua được là: ít job hơn 2.4 lần, median rẻ hơn 29%, và <strong>nhận được việc khó hơn nhiều</strong>. Nếu mục tiêu của lần chuyển đổi này là giảm interventions, dữ liệu hiện tại chưa ủng hộ — mục tiêu đúng hơn là <em>đơn giản hoá đường ống và nhận việc lớn hơn</em>.</p></div>
+
+<h2>4. Dọn code chết của staged mode</h2>
+<div class="card b">
+<h3>Chưa được xoá gì cả — và đây là lý do</h3>
+<p>Bốn module trông giống staged-only nhưng <strong>đường drive đi qua chúng</strong>. Một bảng LOC liệt kê chúng là "xoá được" chính là cách vệ sinh orphan bị xoá nhầm sau ba tháng:</p>
+<ul>
+<li><code>pipeline/orchestrator.ts</code> — <code>dispatchAutonomous</code> được gọi <em>từ đây</em> (dòng 494)</li>
+<li><code>jobs/dispatch-gates.ts</code> — phòng tuyến orphan #3; dòng 506 mang <code>cm:guard</code> <strong>viết riêng về <code>drive</code></strong>, nói rõ để drive lọt vào scope là hỏng không cứu được</li>
+<li><code>pipeline/runs-cascade.ts</code> — phòng tuyến #1; <code>openIssueRun</code> do chính <code>dispatchAutonomous</code> gọi</li>
+<li><code>pipeline/sweeper.ts</code> + <code>loop-monitor.ts</code> — phòng tuyến #2, và là <strong>lưới an toàn tự động duy nhất</strong> của một phiên drive 4 tiếng</li>
+</ul>
+<p><code>skills/</code> (9.720 LOC) cũng không xoá thẳng được — nó mang cả user-invocable skill, meta-skill và reconcile, không chỉ stage-binding.</p>
+</div>
+<h3>Cách làm đúng, theo thứ tự</h3>
+<ol>
+<li><strong>Không xoá gì trước khi 23/23 project chạy autonomous.</strong> Chừng nào pixelight còn 2861 job staged/tháng thì staged path là code sống.</li>
+<li><strong>Bước một là suy ra danh sách, không phải đoán.</strong> Bật coverage trên bộ integration, chạy một lô issue thuần drive, và lấy <em>phần không được chạm</em> làm ứng viên. 21 file đang tham chiếu binding staged registry (<code>STATUS_TO_JOB_TYPE</code>, <code>PIPELINE_STEPS</code>…) — đó là điểm khởi đầu để đo, không phải danh sách xoá.</li>
+<li><strong>Xoá theo tầng, mỗi tầng một PR:</strong> skill markdown staged-only (<code>packages/core/skills/</code>, 32 file / 360K) → mapping stage→skill → registry binding → cuối cùng mới tới nhánh staged trong orchestrator.</li>
+<li><strong>Giữ nguyên toàn bộ ba phòng tuyến orphan.</strong> Chúng bảo vệ job drive mạnh hơn cả staged, vì phiên drive dài hơn nhiều.</li>
+</ol>
+<p class="sub">Tôi cố tình <strong>không</strong> đưa bảng LOC "xoá được" vào tài liệu này. Danh sách đó phải sinh ra từ coverage của đường drive thật; viết bằng cảm giác là cách chắc chắn nhất để mất vệ sinh orphan.</p>
+
+<h2>5. Announcement bar / tour guideline ở bước release</h2>
+<div class="card a">
+<p><strong>Giả định tôi đang dùng</strong> (nói rõ ra vì câu hỏi có hai cách hiểu): anh muốn <strong>phase <code>ship</code> sinh thêm sản phẩm hướng người dùng</strong> — dòng announcement bar và bước tour — chứ không chỉ CHANGELOG. Cách hiểu còn lại là "web-v2 có thêm tính năng hiển thị release"; nếu ý anh là cái đó thì đây là việc khác hẳn, nói một câu là tôi đổi hướng.</p>
+</div>
+<p>Theo cách hiểu trên, đây là việc <strong>mở rộng năng lực</strong>, không thuộc phạm vi review này, và nó có một tiền đề chưa đạt:</p>
+<ul>
+<li><code>releaseNotes.userFacing</code> đã tồn tại — forge-clarify bắt buộc mọi issue phải rời stage với một giá trị (<code>section: "Skip"</code> cho việc nội bộ). <strong>Hạ tầng dữ liệu đã có sẵn.</strong></li>
+<li>Nhưng phase <code>ship</code> hiện <strong>còn đang lỗi</strong>: 37 phase mở treo, nghĩa là agent thường kết thúc phiên mà chưa đóng <code>ship</code>. Thêm sản phẩm đầu ra cho một phase chưa chạy hết là xây trên nền chưa vững.</li>
+<li><strong>Thứ tự đề nghị:</strong> sửa việc đóng phase <code>ship</code> trước → gom <code>releaseNotes.userFacing</code> theo lô release → sinh announcement bar từ đó. Bước tour cần một mô hình dữ liệu riêng (anchor phần tử UI, thứ tự bước) mà hiện chưa có gì trong repo — đó là một issue thiết kế độc lập.</li>
+</ul>
+
+<h2>Kết luận</h2>
+<div class="card g">
+<p><strong>Chất lượng code: đạt.</strong> Defect sau merge 4.7% so với 7.5%, trên tập việc khó hơn ba lần, với 2.6 job thay vì 6.2. Không có bằng chứng nào cho thấy autonomous làm code tệ hơn.</p>
+<p><strong>Hiệu quả: một nửa.</strong> Median rẻ hơn 29%, nhưng đuôi p90 đắt gấp đôi và can thiệp tay chưa giảm. Nút thắt duy nhất là vòng review không đếm.</p>
+<p><strong>Sẵn sàng chuyển đổi: chưa.</strong> Không phải vì mode kém, mà vì 18/23 project thiếu <code>projectFacts</code>, và vì 38% job không đo được thời lượng, 85% không ghi chi phí. Vá quan sát và dựng alarm đếm vòng trước; hai việc đó dùng dữ liệu đã có sẵn trong <code>phase_journal</code>.</p>
+</div>
+<p class="foot">Đo trên forge-beta read-only replica, 2026-08-27. So sánh theo đường thực thi thật (issue có job <code>drive</code>) chứ không theo cờ project, vì cutover chỉ diễn ra trong tuần 08-17 → 08-24 nên mọi phép so theo cờ đều nhiễm. Đã loại lỗi quota/limit theo yêu cầu.</p>
+</main>
