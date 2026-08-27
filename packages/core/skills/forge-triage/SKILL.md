@@ -59,7 +59,7 @@ If, after the look-before-you-bounce pass, the issue is still incomplete under t
 
 ```
 forge_issues → update → { documentId: "<id>", data: { status: "needs_info" } }
-forge_comments → create → { data: { body: "<specific questions>", issue: "<documentId>", author: "Snorlax" } }
+forge_comments → create → { data: { body: "<specific questions>", issue: "<documentId>" } }
 ```
 
 Ask **specific questions** — vague "please add more detail" wastes time because the reporter doesn't know what's needed:
@@ -168,8 +168,7 @@ Post a triage summary comment:
 forge_comments → create → {
   data: {
     body: "<triage summary>",
-    issue: "<documentId>",
-    author: "Snorlax"
+    issue: "<documentId>"
   }
 }
 ```

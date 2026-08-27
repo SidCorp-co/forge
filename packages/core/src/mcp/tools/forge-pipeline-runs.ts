@@ -36,6 +36,7 @@ import {
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
+import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 export const pipelineRunsListInputSchema = z
   .object({
@@ -65,6 +66,7 @@ export async function pipelineRunsListHandler(
 ) {
   await assertDeviceOwnerIsMember(device, input.projectId);
 
+  const runsLimit = input.limit ?? 50;
   const conds: SQL[] = [eq(pipelineRuns.projectId, input.projectId)];
   if (input.issueId) conds.push(eq(pipelineRuns.issueId, input.issueId));
   if (input.status) conds.push(eq(pipelineRuns.status, input.status));
@@ -94,9 +96,14 @@ export async function pipelineRunsListHandler(
     .from(pipelineRuns)
     .where(and(...conds))
     .orderBy(desc(pipelineRuns.startedAt))
-    .limit(input.limit ?? 50);
+    .limit(overfetch(runsLimit));
 
-  return { runs: rows };
+  return buildListEnvelope({
+    key: 'runs',
+    items: rows,
+    limit: runsLimit,
+    hint: 'narrow with status/issueId filters',
+  });
 }
 
 export async function pipelineRunsGetHandler(
@@ -156,7 +163,9 @@ function recordDeprecation(ctx: McpContext | { deprecations?: Set<string> }, too
 export const forgePipelineRunsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pipeline_runs.list',
   description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=list)] List pipeline runs scoped to a project. Optional issueId/status filters. Ordered newest-first by started_at. Requires device owner to be a project member.',
+    '[DEPRECATED — use forge_project_pipeline_runs (action=list)] List pipeline runs scoped to a project. Optional issueId/status filters. Ordered newest-first by started_at. ' +
+    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
+    'Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(pipelineRunsListInputSchema),
   handler: async (args) => {
     recordDeprecation(ctx, 'forge_pipeline_runs.list');

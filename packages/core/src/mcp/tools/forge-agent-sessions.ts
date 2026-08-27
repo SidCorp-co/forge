@@ -9,6 +9,7 @@ import {
   type DeviceScopedMcpToolFactory,
   zodToMcpSchema,
 } from './lib.js';
+import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 /**
  * MCP Phase 1 (ISS-7) — read-only access to the agent_sessions table.
@@ -33,12 +34,13 @@ const getInputSchema = z.object({ sessionId: z.uuid() }).strict();
 export const forgeAgentSessionsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_agent_sessions.list',
   description:
-    'List agent sessions for a project. Optional issueId/status filters. Returns a lightweight projection per session: the heavy jsonb columns (messages transcript, diff, usage, pipelineTelemetry, pipelineHealth, pipelineControl) are OMITTED to stay under the response token cap — `messageCount` exposes the transcript length; fetch the messages (last-20 tail) via forge_agent_sessions.get. Requires device owner to be a project member.',
+    'List agent sessions for a project. Optional issueId/status filters. Returns a lightweight projection per session: the heavy jsonb columns (messages transcript, diff, usage, pipelineTelemetry, pipelineHealth, pipelineControl) are OMITTED to stay under the response token cap — `messageCount` exposes the transcript length; fetch the messages (last-20 tail) via forge_agent_sessions.get. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, issueId, status, limit } = listInputSchema.parse(args);
     await assertDeviceOwnerIsMember(device, projectId);
 
+    const sessionsLimit = limit ?? 50;
     const conds: SQL[] = [eq(agentSessions.projectId, projectId)];
     if (status) conds.push(eq(agentSessions.status, status));
     if (issueId) {
@@ -71,9 +73,14 @@ export const forgeAgentSessionsListTool: DeviceScopedMcpToolFactory = (device) =
       .from(agentSessions)
       .where(and(...conds))
       .orderBy(desc(agentSessions.updatedAt))
-      .limit(limit ?? 50);
+      .limit(overfetch(sessionsLimit));
 
-    return { sessions: rows };
+    return buildListEnvelope({
+      key: 'sessions',
+      items: rows,
+      limit: sessionsLimit,
+      hint: 'narrow with status/issueId/jobId filters',
+    });
   },
 });
 

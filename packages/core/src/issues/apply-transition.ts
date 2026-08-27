@@ -1,10 +1,17 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
+import {
+  comments,
+  type IssueStatus,
+  issues,
+  jobs,
+  pipelineRuns,
+  type WaitingKind,
+} from '../db/schema.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
+import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -169,6 +176,103 @@ export function publishIssueStatusChange(
 }
 
 /**
+ * ISS-787 — `draft` is the safe entry status you only get by remembering to
+ * ask for it, and `open` (the default) auto-triages and spawns a pipeline run.
+ * Three agents on three projects made that mistake, and `ILLEGAL_TRANSITION`
+ * left them no way back: one parked at `on_hold`, another left the run going.
+ *
+ * So `draft` is reachable, but only while the mistake is still only a mistake:
+ * nothing has run. A run or a job means work exists, and demoting to `draft`
+ * would make the status claim the issue was never started.
+ */
+/** `null` when the counts could not be read — callers must treat that as "refuse". */
+async function countRunsAndJobs(
+  issueId: string,
+): Promise<{ runCount: number; jobCount: number } | null> {
+  try {
+    const [[runRow], [jobRow]] = await Promise.all([
+      db
+        .select({ n: count() })
+        .from(pipelineRuns)
+        .where(eq(pipelineRuns.issueId, issueId))
+        .limit(1),
+      db.select({ n: count() }).from(jobs).where(eq(jobs.issueId, issueId)).limit(1),
+    ]);
+    return { runCount: Number(runRow?.n ?? 0), jobCount: Number(jobRow?.n ?? 0) };
+  } catch (err) {
+    logger.warn({ err, issueId }, 'draft-exemption check failed; refusing the transition');
+    return null;
+  }
+}
+
+async function assertIssueNeverEnteredPipeline(
+  issueId: string,
+  fromStatus: IssueStatus,
+): Promise<void> {
+  const refuse = (detail: string, details: Record<string, unknown>): never => {
+    throw new TransitionError('ILLEGAL_TRANSITION', detail, {
+      from: fromStatus,
+      to: 'draft',
+      ...details,
+    });
+  };
+
+  const counts = await countRunsAndJobs(issueId);
+  if (!counts) {
+    // cm:guard this ONE guard fails CLOSED, unlike every sibling. Failing open here would GRANT the exemption on a database hiccup and demote an issue with real work to `draft` — a status that says nothing ever started. Refusing is also exactly the behaviour that shipped before this exemption existed, so an unavailable check costs nobody anything they had.
+    return refuse(
+      '`draft` is reachable only while the issue has never entered the pipeline, and that could not be checked just now. Retry, or use `on_hold` to pause active work.',
+      { checkFailed: true },
+    );
+  }
+
+  const { runCount, jobCount } = counts;
+  if (runCount === 0 && jobCount === 0) return;
+  return refuse(
+    `\`draft\` is reachable only while the issue has never entered the pipeline; this one has ${runCount} pipeline run(s) and ${jobCount} job(s). Use \`on_hold\` to pause active work, or \`dropped\` to abandon it.`,
+    { runCount, jobCount },
+  );
+}
+
+/**
+ * Two conditions share the `draft` UPDATE's WHERE — the status must still be
+ * `fromStatus`, and the never-ran counts must still be zero — so a zero-row
+ * result alone does not say which one bit. Re-read both and name the one that
+ * did, rather than reporting a lost status race as a run appearing.
+ */
+async function explainDraftRace(
+  issueId: string,
+  fromStatus: IssueStatus,
+  toStatus: IssueStatus,
+): Promise<TransitionError> {
+  const details = { from: fromStatus, to: toStatus, raced: true };
+  const [[row], counts] = await Promise.all([
+    db.select({ status: issues.status }).from(issues).where(eq(issues.id, issueId)).limit(1),
+    countRunsAndJobs(issueId),
+  ]);
+  if (row && row.status !== fromStatus) {
+    return new TransitionError(
+      'STALE_TRANSITION',
+      `issue status changed concurrently — it left \`${fromStatus}\` for \`${row.status}\` while this transition was being applied`,
+      { ...details, observedStatus: row.status },
+    );
+  }
+  if (counts && (counts.runCount > 0 || counts.jobCount > 0)) {
+    return new TransitionError(
+      'ILLEGAL_TRANSITION',
+      `\`draft\` is reachable only while the issue has never entered the pipeline, and it acquired ${counts.runCount} pipeline run(s) and ${counts.jobCount} job(s) while this transition was being applied. Use \`on_hold\` to pause active work.`,
+      { ...details, runCount: counts.runCount, jobCount: counts.jobCount },
+    );
+  }
+  // cm:guard the fallback must name BOTH conditions, never guess one — the re-read is not in the failed UPDATE's transaction, so a value that raced back (a run cancelled and deleted, a status restored) leaves nothing to attribute it to, and naming the wrong one is the misdiagnosis ISS-787 exists to remove
+  return new TransitionError(
+    'ILLEGAL_TRANSITION',
+    `the \`draft\` transition from \`${fromStatus}\` did not apply, and re-reading found neither a status change nor a pipeline run/job to attribute it to. Retry; if it refuses again, use \`on_hold\` to pause active work.`,
+    { ...details, attributable: false },
+  );
+}
+
+/**
  * THE issue state-machine writer. Every surface — REST `/transition`,
  * REST `PATCH /batch`, MCP `forge_issues`, orchestrator soft-skip,
  * reconciler, decompose cascade, finalize-failure — routes through here so
@@ -192,15 +296,18 @@ export async function transitionIssueStatus(
     });
   }
 
-  // Transitions are intentionally permissive (the system prompt guides the
-  // happy path); only `draft` is a forbidden target. `skip` still bypasses
-  // even that for the orchestrator's curated soft-skip chain.
+  // cm:guard `skip` bypasses this whole check ON PURPOSE — it is the orchestrator's curated soft-skip chain, and every other runtime transition is deliberately permissive because the system prompt, not this function, guides the happy path
   if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
-    throw new TransitionError(
-      'ILLEGAL_TRANSITION',
-      `'${requestedStatus}' is not a valid runtime status target`,
-      { from: fromStatus, to: requestedStatus },
-    );
+    if (requestedStatus === 'draft') {
+      await assertIssueNeverEnteredPipeline(issue.id, fromStatus);
+    } else {
+      // cm:guard reaching here means fromStatus is `draft` — once the target is not `draft`, canTransitionFree fails for no other reason — so blame the SOURCE, never the target. The old wording said `'<target>' is not a valid runtime status target`, which is false for every status it ever named: walking ISS-787's AC6 hit it on `needs_info` and on `waiting`, both legal from everywhere except `draft`, and it reads as "that status was removed".
+      throw new TransitionError(
+        'ILLEGAL_TRANSITION',
+        `a \`draft\` issue may only move to ${DRAFT_EXIT_TARGETS.map((s) => `\`${s}\``).join(', ')}. \`${requestedStatus}\` is a legal target from every other status, but not from \`draft\` — promote it to \`open\` first, or use \`dropped\` to discard it.`,
+        { from: fromStatus, to: requestedStatus, allowedFromDraft: [...DRAFT_EXIT_TARGETS] },
+      );
+    }
   }
 
   // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
@@ -260,6 +367,14 @@ export async function transitionIssueStatus(
     });
   }
 
+  // cm:guard the never-ran check is re-asserted IN the UPDATE's WHERE, not just read above it — a freshly-`open` issue acquires its run within seconds, so a count read a moment earlier can hand `draft` to an issue that is already working, and the status would then claim nothing had started
+  const draftGate =
+    toStatus === 'draft' && !options.skip
+      ? [
+          sql`not exists (select 1 from pipeline_runs pr where pr.issue_id = ${issue.id}) and not exists (select 1 from jobs j where j.issue_id = ${issue.id})`,
+        ]
+      : [];
+
   // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
   // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
   // cm:guard never insert into activity_log here — F5 owns that write, and a second one double-counts every transition
@@ -276,7 +391,7 @@ export async function transitionIssueStatus(
           waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
           updatedAt: sql`now()`,
         })
-        .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
+        .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus), ...draftGate))
         .returning({
           id: issues.id,
           status: issues.status,
@@ -309,6 +424,7 @@ export async function transitionIssueStatus(
   );
   const updated = txResult?.row;
   if (!updated) {
+    if (draftGate.length > 0) throw await explainDraftRace(issue.id, fromStatus, toStatus);
     throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
       from: fromStatus,
       to: toStatus,

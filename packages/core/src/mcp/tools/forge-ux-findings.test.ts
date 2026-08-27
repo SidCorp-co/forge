@@ -35,6 +35,15 @@ vi.mock('../../db/client.js', () => ({
 
 const { forgeUxFindingsTool } = await import('./forge-ux-findings.js');
 
+/** The literal SQL a drizzle condition would render, with its params dropped. */
+function sqlText(node: unknown): string {
+  if (node === null || typeof node !== 'object') return '';
+  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
+  if (Array.isArray(chunks)) return chunks.map(sqlText).join('');
+  const value = (node as { value?: unknown }).value;
+  return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value.join('') : '';
+}
+
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_SLUG = 'forge-dev';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
@@ -68,6 +77,22 @@ const fakeDevice = {
 function makeCtx(projectSlug = PROJECT_SLUG) {
   return {
     principal: { kind: 'device' as const, device: fakeDevice },
+    device: fakeDevice,
+    projectSlug,
+  };
+}
+
+function makePatCtx(projectSlug = PROJECT_SLUG) {
+  return {
+    principal: {
+      kind: 'pat' as const,
+      agency: 'human' as const,
+      userId: OWNER_ID,
+      tokenId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      scopes: ['read', 'write'],
+      projectIds: [PROJECT_ID],
+      boundProjectId: null,
+    },
     device: fakeDevice,
     projectSlug,
   };
@@ -138,7 +163,25 @@ describe('forge_ux_findings write', () => {
     expect(inserted.ruleId).toBeUndefined();
   });
 
-  it('soft-rejects with no_active_issue when no issue-bound job is running', async () => {
+  it('soft-rejects a non-device principal with the actionable pipeline-context cause', async () => {
+    const tool = forgeUxFindingsTool(makePatCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    const result = (await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'A finding from an interactive session',
+    })) as { ok: boolean; reason: string; detail: string };
+
+    expect(result).toMatchObject({ ok: false, reason: 'not_pipeline_context' });
+    expect(result.detail).toMatch(/issueId/);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('soft-rejects with no_active_job, naming the cause, when nothing is running', async () => {
     const tool = forgeUxFindingsTool(makeCtx());
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -152,7 +195,95 @@ describe('forge_ux_findings write', () => {
       detail: 'Layout breaks at 375px',
     });
 
-    expect(result).toMatchObject({ ok: false, reason: 'no_active_issue' });
+    expect(result).toMatchObject({ ok: false, reason: 'no_active_job' });
+    expect((result as { detail: string }).detail).toMatch(/issueId/);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('names job_not_issue_bound distinctly — a pm run is not the same miss', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([
+      { jobId: JOB_ID, runId: RUN_ID, issueId: null, stage: 'pm' },
+    ]);
+
+    const result = (await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'A finding from a pm run',
+    })) as { ok: boolean; reason: string; detail: string };
+
+    expect(result.reason).toBe('job_not_issue_bound');
+    expect(result.detail).toContain('pm');
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('writes against an explicit issueId when job resolution would have refused', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID }]);
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    insertReturning.mockResolvedValueOnce([{ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }]);
+
+    const result = await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'microcopy',
+      detail: 'Error copy apologises instead of naming the next action',
+      issueId: ISSUE_ID,
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    const inserted = (insertValues.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
+    expect(inserted.issueId).toBe(ISSUE_ID);
+    // cm:guard runId MUST stay undefined on this path — the finding is not attributable to a run, and inventing one would misreport which pass found it
+    expect(inserted.runId).toBeUndefined();
+  });
+
+  // cm:guard assert the rendered SQL, not the refusal — the db mock returns whatever count the test queues, so a `rate_limited` assertion passes with `eq(runId, null)` in place of `isNull` and the cap it is meant to defend is gone. `eq(col, null)` renders ` = ` with a null param and is never true; `isNull` renders ` is null`. Do not add `not.toContain(' = null')` — the null is an ERASED param, so that text can never appear and the assertion is unfalsifiable.
+  it('matches the null runId with IS NULL, so the escape hatch stays capped', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID }]);
+    selectLimit.mockResolvedValueOnce([{ n: 50 }]);
+
+    const result = await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'The fiftieth finding on this issue',
+      issueId: ISSUE_ID,
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: 'rate_limited' });
+    const capWhere = sqlText((selectWhere.mock.calls.at(-1) as unknown[])?.[0]);
+    expect(capWhere).toContain('is null');
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('refuses an explicit issueId from another project, by name', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([]);
+
+    const result = (await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'Finding aimed at a foreign issue',
+      issueId: '12121212-1212-4121-8121-121212121212',
+    })) as { ok: boolean; reason: string };
+
+    expect(result.reason).toBe('issue_not_in_project');
     expect(insertValues).not.toHaveBeenCalled();
   });
 
@@ -227,6 +358,23 @@ describe('forge_ux_findings list', () => {
     };
 
     expect(result.findings[0]?.detail).toContain('UNTRUSTED_DATA');
+  });
+
+  // cm:guard assert BOTH halves — limit+1 reaching `.limit()` AND the UN-inflated limit reaching the envelope. Pass overfetch() to both and a page bound by the caller's own limit reports hasMore:false, which is exactly the ISS-787 lie this surface was fixed for, and no other test in this file reads the envelope.
+  it('over-fetches by one and reports the limit that bound the page', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([baseFinding, baseFinding, baseFinding]);
+
+    const result = (await tool.handler({ action: 'list', limit: 2 })) as {
+      findings: unknown[];
+    };
+
+    expect(selectLimit).toHaveBeenLastCalledWith(3);
+    expect(result.findings).toHaveLength(2);
+    expect(result).toMatchObject({ returned: 2, limit: 2, hasMore: true, truncatedBy: 'limit' });
   });
 
   it('returns empty array when no findings match', async () => {

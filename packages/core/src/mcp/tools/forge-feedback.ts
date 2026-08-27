@@ -20,8 +20,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
-
-const MAX_RESPONSE_CHARS = 38_000;
+import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 const inputSchema = z
   .object({
@@ -135,7 +134,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
     'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). ' +
     'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
-    'Large histories are tail-trimmed with truncated:true. ' +
+    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). ' +
     'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
     'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
     'reportId stamps a single report (unchanged single-project behaviour). ' +
@@ -238,7 +237,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         let limit: number;
         if (input.scope === 'all') {
           const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-          if (visibleIds.length === 0) return { reports: [] };
+          if (visibleIds.length === 0)
+            return { reports: [], returned: 0, limit: input.limit ?? 50, hasMore: false };
           scopeCondition = inArray(feedbackReports.projectId, visibleIds);
           limit = input.limit ?? 50;
         } else {
@@ -262,25 +262,14 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
             ),
           )
           .orderBy(desc(feedbackReports.createdAt))
-          .limit(limit);
+          .limit(overfetch(limit));
 
-        const serialized = rows.map((r) => frameReport(r));
-
-        // Tail-trim oldest rows when the serialized response would exceed the cap.
-        let kept = serialized;
-        let truncated = false;
-        const totalCount = kept.length;
-        while (kept.length > 1 && JSON.stringify({ reports: kept }).length > MAX_RESPONSE_CHARS) {
-          kept = kept.slice(0, kept.length - 1);
-          truncated = true;
-        }
-
-        const result: Record<string, unknown> = { reports: kept };
-        if (truncated) {
-          result.truncated = true;
-          result.notice = `Response truncated to the ${kept.length} most recent of ${totalCount} reports to stay under the MCP output cap. Narrow with kind/target/severity filters or a smaller limit.`;
-        }
-        return result;
+        return buildListEnvelope({
+          key: 'reports',
+          items: rows.map((r) => frameReport(r)),
+          limit,
+          hint: 'narrow with kind/target/severity/reviewed filters',
+        });
       }
 
       case 'get': {

@@ -62,19 +62,20 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     title: 'Issue dependencies & decompose',
     summary:
       'How blocks edges gate dispatch, the merged_at unblock signal, why decompose lifecycle is system-owned, and the one decompose action that IS yours.',
-    version: 2,
+    version: 4,
     body: `## Issue dependencies & decompose
 
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
-- \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — concretely, until A has \`merged_at\` set OR A is \`closed\`. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
+- \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — normally, until A has \`merged_at\` set. A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
 - \`relates\`, \`duplicates\`, \`parent\` — metadata only, no dispatch effect.
 - \`decomposes\` — epic → child; engages the system-owned decomposition lifecycle below. Do not create this edge by hand outside that flow.
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
-- Both issues already exist → set the edge via the PM dependency tool with \`from\` = the blocker.
+- Both issues already exist → \`forge_issues action=update\` with \`data.relations: [{ kind: 'blocks', dependsOnId }]\`, relative to the issue you are updating (\`dependsOnId\` = it blocks me, \`blocksId\` = I block it). This works with any credential class and commits the edge before the call's own status transition. Or set it via the PM dependency tool with \`from\` = the blocker — that route needs a paired-device token.
 - Red flag: creating the new issue at \`open\` and setting the blocks edge in a second call — the issue can dispatch in the gap between the two calls.
+- Verify, don't assume: \`forge_issues action=get\` returns \`relations.blocks\` and \`relations.blockedBy\`, each edge flagged \`expired\` once its \`validUntil\` has passed. Retract an edge by re-sending it with \`validUntil\` in the past — the write reports \`updated: true\`.
 
 ### The merged_at unblock signal
 A dependent dispatches the moment its blocker's \`merged_at\` is stamped, not when the blocker reaches \`released\`. \`merged_at\` auto-stamps only when a project's pipeline actually walks through the base-merge state. If you merge an issue's branch to the base branch and then **park** at that state manually (a gate the system doesn't auto-advance through), nothing stamps it and every downstream dependent stalls silently — stamp it yourself right after the merge lands.
@@ -146,7 +147,7 @@ Verify liveness on the deployed environment before declaring success — a deplo
     title: 'What is an issue?',
     summary:
       'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
-    version: 1,
+    version: 2,
     // cm:edge lockstep -> docs/guides/what-is-an-issue.md — the contributor-facing copy of this guide;
     //   the four gates and the routing table must say the same thing on both surfaces
     body: `## What is an issue?
@@ -201,7 +202,7 @@ Finding a filed item that fails the gates is not someone else's job. You are the
 Do not move it INTO \`draft\` — nothing may transition into \`draft\`, by design. \`closed\` + \`unmark\` is the exit for something that turned out not to be work.
 
 ### Then read
-Statuses, the three exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
+Statuses, the four exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
 
 Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.md\`.`,
   },
@@ -267,8 +268,8 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
-    version: 6,
+      'What belongs in a description, the four exits from draft (including the direct-ship route and the discard that does not stamp `merged_at`), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
+    version: 7,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -277,19 +278,19 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
 But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later, and for decompose children awaiting parent approval. Red flags: \`open-as-note\` AND \`draft-as-note\`.
 
 ### Working an issue directly, outside the pipeline
-\`draft\` vs \`open\` is not the whole choice. \`draft\` has **three** exits, and picking the wrong one is what makes a direct session expensive:
+\`draft\` vs \`open\` is not the whole choice. \`draft\` has **four** exits, and picking the wrong one is what makes a direct session expensive:
 
 | You have | Set | Why |
 |---|---|---|
 | Finished the work entirely by hand; the pipeline has nothing left to do | \`closed\` | See the \`merged_at\` warning below before you do this |
 | Written AND pushed the \`ISS-*\` branch yourself; you want review → test → release run on it | \`developed\` **+ \`sessionContext.branch\`** | Enters at the REVIEW gate. Walking \`open\` instead re-runs triage/clarify/plan/code over already-finished work |
 | Not started it; you want the pipeline to do the whole thing | \`open\` | Full ladder from triage |
+| Decided against it; the work will not happen | \`dropped\` | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
-| It turned out not to be work at all | delete it; write the content to memory/docs | \`draft-as-note\` |
 
-The \`developed\` route is the one people miss. It is the direct-ship path: you did the coding, the pipeline still gates it.
+Two of the four are easy to mix up. The \`developed\` route is the one people miss: it is the direct-ship path, where you did the coding and the pipeline still gates it. And \`dropped\` is the one people reach for \`closed\` instead of.
 
-**Closing is not free.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue. Closing something you ABANDONED rather than finished silently unblocks work that should still be blocked — call \`forge_issues\` \`unmark\` to clear the stamp in that case.
+**Closing is not free, and \`dropped\` is why you rarely need it.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue — so closing something you ABANDONED silently unblocks work that should still be blocked. \`dropped\` is terminal without the stamp (dependents are freed by edge expiry instead), so use it for anything discarded and keep \`closed\` for work that actually landed. If you have already closed an abandoned issue, call \`forge_issues\` \`unmark\` to clear the stamp.
 
 ### What is actually enforced, and what is only advice
 The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`developed\`, \`closed\` or \`dropped\`. That is the whole rule. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.
@@ -399,7 +400,7 @@ against live code or git before you rely on it.
 | You need | Call |
 |---|---|
 | Issues, status, tasks | \`forge_issues\`, \`forge_comments\` |
-| Ordering between issues | \`forge_project_pm action=set_dependency\` (\`from\` = the blocker) |
+| Ordering between issues | \`forge_issues.create\`/\`.update\` with \`data.relations\`, or \`forge_project_pm action=set_dependency\` (\`from\` = the blocker; needs a paired device) |
 | Repo path, branches, preview URLs, test credentials | \`forge_projects.get\` |
 | Pipeline gates, \`projectFacts\` | \`forge_config\` |
 | A decision, learning or convention worth keeping | \`forge_memory_write\` |

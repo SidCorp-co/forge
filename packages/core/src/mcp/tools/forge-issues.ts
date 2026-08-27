@@ -22,6 +22,7 @@ import {
   listIssueAttachments,
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
+import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { claimDetectorKey, isValidDetectorKey } from '../../issues/detector-key.js';
 import { applyIntakeGate, finalizeIntake } from '../../issues/intake-gate.js';
 import { listIssueLabels } from '../../issues/label-service.js';
@@ -36,7 +37,7 @@ import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
-import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
+import { applyIssueRelations } from './issue-relations.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -47,10 +48,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
-
-// Hard total-response cap for list surfaces. ~38K leaves headroom under the
-// observed spill threshold (matches the forge-jobs.ts precedent, ISS-478).
-const MAX_RESPONSE_CHARS = 38_000;
+import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 // Kinds allowed in the create-time `relations` field. `decomposes` is excluded
 // because it triggers integration-branch side effects that belong in the
@@ -691,6 +689,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'to stay under the response token cap; fetch the full body with action=get. ' +
     'list supports filters.label (a label name or uuid, or an array of either — ' +
     'OR semantics; unknown names return an empty set). ' +
+    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'Token discipline: use list (projection) to browse/triage many issues, and ' +
     'get for the single full issue you are about to work on. When forge_step_start ' +
     'returned a lean manifest (bodyTruncated:true), pull only the fields you need ' +
@@ -731,16 +730,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'requires filters.issue and accepts filters.taskStatus; updateTask/deleteTask ' +
     'use documentId as the task UUID. Tasks inherit project membership from the ' +
     'parent issue. ' +
-    'Atomic relations (ISS-571): pass data.relations (optional array, max 20) at ' +
-    'create time to insert dependency edges BEFORE issueCreated fires — this closes ' +
-    'the race where the dispatcher picks up the new issue before a subsequent ' +
-    'forge_project_pm set_dependency call can land. Each entry requires kind ' +
-    '(blocks|relates, default blocks) and exactly one of dependsOnId (new issue is ' +
-    'blocked-by it) or blocksId (new issue blocks it). For decomposes edges, use ' +
-    'forge_project_pm set_dependency kind=decomposes directly. Draft-first fallback: ' +
-    'create with status:draft, set deps, then transition to open — draft issues are ' +
-    'never dispatched, so the edge is always present before the issue enters the ' +
-    'pipeline. ' +
+    'Relations (ISS-571, ISS-868): data.relations (optional array, max 20) is applied by ' +
+    'BOTH create and update, and works with a personal access token — unlike ' +
+    'forge_project_pm set_dependency, which needs a paired device. Edges commit before ' +
+    'the dispatch trigger (issueCreated on create, the status transition on update), so ' +
+    'the dispatcher cannot pick the issue up ahead of its blocker. Each entry takes kind ' +
+    '(blocks|relates, default blocks) and exactly one of dependsOnId (THIS issue is ' +
+    'blocked-by it) or blocksId (THIS issue blocks it). The response carries a relations[] ' +
+    'array — one entry per edge with edgeId + created/updated — so you can tell the write ' +
+    'landed; re-send an existing edge with validUntil in the past to RETRACT it ' +
+    '(reported as updated:true). For decomposes edges, use forge_project_pm ' +
+    'set_dependency kind=decomposes directly. Read edges back with action=get, which ' +
+    'returns relations.blocks (this issue blocks them) and relations.blockedBy (they ' +
+    'block this issue), each entry flagged `expired` when its validUntil has passed and ' +
+    'the edge no longer gates dispatch. ' +
     'Labels (ISS-633): data.labels (create/update) accepts an array of label NAMES or ' +
     'UUIDs, resolved server-side against the current project — an unknown name/uuid ' +
     '(or one from another project) throws BAD_REQUEST; labels are never auto-created. ' +
@@ -758,6 +761,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
 
+        const issuesLimit = input.limit ?? 25;
         const conds = [eq(issues.projectId, projectId)];
         const f = input.filters;
         if (f?.status) conds.push(eq(issues.status, f.status));
@@ -786,8 +790,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           const resolvedIds = await resolveLabelIdsTolerant(projectId, rawValues);
 
           if (resolvedIds.length === 0) {
-            // Caller supplied a label filter but no ids resolved (unknown name or empty input).
-            return { issues: [] };
+            return { issues: [], returned: 0, limit: issuesLimit, hasMore: false };
           }
 
           conds.push(
@@ -828,31 +831,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .from(issues)
           .where(and(...conds))
           .orderBy(desc(issues.updatedAt))
-          .limit(input.limit ?? 25);
+          .limit(overfetch(issuesLimit));
 
-        // Hard total-response cap: trim from the tail (oldest) until the
-        // serialized payload fits MAX_RESPONSE_CHARS. Newest-first ordering
-        // means trimming the tail keeps the most-recent issues. Always keep
-        // at least one issue.
-        const serialized = rows.map((r) => serializeListRow(r));
-        let keptIssues = serialized;
-        while (
-          keptIssues.length > 1 &&
-          JSON.stringify({ issues: keptIssues }).length > MAX_RESPONSE_CHARS
-        ) {
-          keptIssues = keptIssues.slice(0, -1);
-        }
-
-        if (keptIssues.length < serialized.length) {
-          return {
-            issues: keptIssues,
-            truncated: true,
-            returned: keptIssues.length,
-            requested: input.limit ?? 25,
-            notice: `Response truncated to the ${keptIssues.length} most recent of ${serialized.length} issues to stay under the MCP output cap. Add status/priority/category filters or use a smaller limit.`,
-          };
-        }
-        return { issues: keptIssues };
+        return buildListEnvelope({
+          key: 'issues',
+          items: rows.map((r) => serializeListRow(r)),
+          limit: issuesLimit,
+          hint: 'add status/priority/category/label filters',
+        });
       }
 
       case 'get': {
@@ -873,7 +859,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           return projected;
         }
-        return serializeWithAttachments(issue);
+        // cm:edge contract -> packages/core/src/issues/dependency-read.ts — the ONLY read path an agent has onto its own edges; REST GET /api/issues/:id/dependencies is JWT-only, so without this a token that can write an edge still cannot verify one landed
+        const full = await serializeWithAttachments(issue);
+        return { ...full, relations: await loadIssueRelations(issue.id) };
       }
 
       case 'create': {
@@ -983,24 +971,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // ISS-606: label + owner notification for a gated (parked) create.
         if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
 
-        // ISS-571 — insert dependency edges BEFORE issueCreated fires.
-        // issueCreated is the synchronous trigger for considerEnqueue→dispatch,
-        // so edges committed here are visible to the L2 dispatch gate on the
-        // very first tick with no race window.
-        if (input.data?.relations && input.data.relations.length > 0) {
-          for (const rel of input.data.relations) {
-            const fromIssueId = rel.dependsOnId ?? created.id;
-            const toIssueId = rel.dependsOnId != null ? created.id : rel.blocksId!;
-            await pmSetDependencyHandler(device, {
-              projectId,
-              fromIssueId,
-              toIssueId,
-              kind: rel.kind,
-              reason: rel.reason,
-              validUntil: rel.validUntil,
-            });
-          }
-        }
+        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — the edges MUST commit before the issueCreated emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
+        const r = await applyIssueRelations(ctx, projectId, created.id, input.data.relations);
 
         await hooks.emit('issueCreated', {
           issueId: created.id,
@@ -1020,6 +992,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const result: Record<string, unknown> = serialize(created);
         result.labels = labelIds.length > 0 ? await listIssueLabels(created.id) : [];
+        if (r.length > 0) result.relations = r;
         if (decodedAttachments.length > 0) {
           const { persisted, errors } = await persistDecodedIssueAttachments(
             created.id,
@@ -1108,6 +1081,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
+        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker
+        const r = await applyIssueRelations(ctx, issue.projectId, issue.id, input.data.relations);
+
         if (input.data.status && input.data.status !== issue.status) {
           await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {
             transitionReason: input.data.reason ?? input.data.note,
@@ -1116,10 +1092,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         const fresh = await loadIssue(issue.id);
+        // cm:guard report what the call DID under `action`, matching mark_merged/unmark below — this used to return the literal `status:'updated'` over the issue's own status enum, so a caller could not read back the status it had just written, and `relations` was parsed and silently discarded (ISS-868)
         const updateResult: Record<string, unknown> = {
           ...(await serializeWithAttachments(fresh)),
-          status: 'updated',
+          action: 'updated',
         };
+        if (r.length > 0) updateResult.relations = r;
         return updateResult;
       }
 
@@ -1276,6 +1254,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ? and(eq(tasks.issueId, issueId), eq(tasks.status, input.filters.taskStatus))
           : eq(tasks.issueId, issueId);
 
+        const tasksLimit = input.limit ?? 25;
         // ISS-562 — SQL-level projection: omit description (up to 50KB each)
         // so the list query never loads heavy TOAST content from disk. Default
         // limit lowered 100→25 (100 tasks × 50KB = 5MB theoretical max).
@@ -1297,31 +1276,15 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .from(tasks)
           .where(where)
           .orderBy(asc(tasks.createdAt))
-          .limit(input.limit ?? 25);
+          .limit(overfetch(tasksLimit));
 
-        // Hard total-response cap: trim from the front (oldest) until the
-        // serialized payload fits MAX_RESPONSE_CHARS. Oldest-first ordering
-        // means trimming the front keeps the newest tasks. Always keep at
-        // least one task.
-        const tasksSerialized = rows.map((r) => serializeTaskListRow(r));
-        let keptTasks = tasksSerialized;
-        while (
-          keptTasks.length > 1 &&
-          JSON.stringify({ tasks: keptTasks }).length > MAX_RESPONSE_CHARS
-        ) {
-          keptTasks = keptTasks.slice(1);
-        }
-
-        if (keptTasks.length < tasksSerialized.length) {
-          return {
-            tasks: keptTasks,
-            truncated: true,
-            returned: keptTasks.length,
-            requested: input.limit ?? 25,
-            notice: `Response truncated to the ${keptTasks.length} most recent of ${tasksSerialized.length} tasks to stay under the MCP output cap. Use a smaller limit or fetch tasks individually.`,
-          };
-        }
-        return { tasks: keptTasks };
+        return buildListEnvelope({
+          key: 'tasks',
+          items: rows.map((r) => serializeTaskListRow(r)),
+          limit: tasksLimit,
+          hint: 'filter by taskStatus, or fetch tasks individually',
+          order: 'asc',
+        });
       }
 
       case 'createTask': {

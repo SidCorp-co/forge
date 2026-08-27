@@ -16,6 +16,20 @@ export function useSkills(projectId: string | undefined) {
   });
 }
 
+/**
+ * The install-only skills invokable as a slash-command in chat (ISS-718) — what
+ * the composer's `/` menu lists. Keyed under `['skills', projectId]` so the
+ * existing create/update/delete/register mutations already invalidate it when a
+ * skill's eligibility changes; nothing new has to remember to.
+ */
+export function useInvokableSkills(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["skills", projectId, "invokable"],
+    queryFn: async () => (await skillsApi.invokable(projectId as string)).skills,
+    enabled: !!projectId,
+  });
+}
+
 export function useSkillSyncStatus(projectId: string | undefined) {
   return useQuery({
     queryKey: ["skills", projectId, "sync-status"],

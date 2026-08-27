@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Lists from the Forge tools now say whether they were cut short: each one reports how many rows came back, the limit that bound them, and whether more rows match.
+- A UX finding that cannot work out which issue it belongs to now names the condition that refused it, and can be written against an issue you name instead of being dropped.
+- An issue created in the wrong status can be moved back to draft for as long as nothing has run on it, instead of being stuck out of reach.
+- Refusing to move a draft issue now says a draft is what blocks it and lists where it may go, instead of claiming the status you asked for does not exist.
+- The status menu on a draft issue now offers Dropped alongside the other exits, so a draft can be discarded without closing it — closing a draft marked its work as shipped and unblocked everything waiting on it.
+- Deploy logs now carry the time they were read and a short fingerprint of their contents, so a fresh read is distinguishable from an unchanged one, and the line count you ask for is honoured instead of ignored.
 - The UX contract now learns from what reviews keep finding: a gap flagged across three or more issues becomes a proposed rule, complete with links to the issues that taught it, waiting in project settings for you to approve or reject.
 - Pipeline runs now show their real live job count, and outdated stage jobs are stopped before they can run.
 - Pipeline merge prompts now use the configured Git branches, and test verification preserves fixture blocks instead of reporting them as failures.

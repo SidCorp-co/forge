@@ -1,7 +1,8 @@
 // Pure log-shaping helpers for the Coolify `logs` action. Kept dependency-free
 // (no db / client imports) so they can be unit-tested without env, and reused
-// by the adapter's `fetchCoolifyDeploymentLogs`.
+// by `log-fetch.ts`'s `fetchCoolifyDeploymentLogs`.
 
+import { createHash } from 'node:crypto';
 import { FILTERED } from '@forge/observability';
 import type { CoolifyDeploymentLogLine } from './types.js';
 
@@ -107,4 +108,16 @@ export function tailLog(
     truncated = true;
   }
   return { text: out, truncated };
+}
+
+/**
+ * ISS-787 — a stable fingerprint of a log snapshot, so a caller can say
+ * "byte-identical across 5 calls spanning 20 minutes" from two short strings
+ * instead of holding both blobs. Report `3e1dc095` had to make exactly that
+ * claim by eye, and could not distinguish a running build from a stale
+ * cached one. 12 hex is ~48 bits — far past collision risk for comparing two
+ * consecutive reads of the same log, and short enough to sit in a comment.
+ */
+export function logDigest(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 12);
 }

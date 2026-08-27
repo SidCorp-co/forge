@@ -54,6 +54,17 @@ export const STAGE_LABELS: Record<RegisterableStage, string> = {
   released: "Release",
 };
 
+/**
+ * One entry of `GET /api/skills/invokable` (ISS-718) — an install-only skill a
+ * human may invoke as a slash-command inside a chat. Deliberately narrow: the
+ * composer's `/` menu needs a name to insert and a line to explain it, not a
+ * skill body.
+ */
+export interface InvokableSkill {
+  name: string;
+  description: string;
+}
+
 /** Flat skill row from `GET /api/skills`. The list endpoint returns the full
  *  row, so `skillMd` + `files` are present and drive the Studio editor. */
 export interface SkillRow {

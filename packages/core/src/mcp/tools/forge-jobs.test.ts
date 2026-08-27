@@ -11,11 +11,9 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
-// Named spy so tests can inspect the projection map passed to db.select(...).
 const selectSpy = vi.fn(() => ({ from: selectFrom }));
 
 vi.mock('../../db/client.js', () => ({
@@ -32,10 +30,6 @@ vi.mock('../../jobs/dispatch-gates.js', () => ({
   assertDispatchable: (jobId: string) => assertDispatchableMock(jobId),
 }));
 
-// ISS-442 C0 — the MCP cancel tool delegates to the shared cancelJob() helper.
-// Mock it here so these tests cover only the MCP layer (writer gate, arg
-// passthrough, JobCancelError → Error mapping); the helper's transactional
-// behaviour is exercised through the REST path tests.
 const cancelJobMock = vi.fn();
 class JobCancelError extends Error {
   constructor(
@@ -133,20 +127,29 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+type JobsPage = { jobs: Array<{ id?: string; gateReason?: string | null }> };
+const mockMember = () =>
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+const mockMemberThenJobs = (rows: unknown[]) => {
+  mockMember();
+  selectLimit.mockResolvedValueOnce(rows);
+};
+const mockJobThenMember = (over: Record<string, unknown> = {}) => {
+  selectLimit.mockResolvedValueOnce([{ ...baseJobRow, ...over }]);
+  mockMember();
+};
+
 describe('forge_jobs.list', () => {
   it('lists jobs scoped by project + filters when device owner is member', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    // assertDeviceOwnerIsMember → projects.ownerId match
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    // jobs query
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    mockMemberThenJobs([baseJobRow]);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
       status: 'queued',
       type: 'code',
       issueId: ISSUE_ID,
-    })) as { jobs: Array<{ id: string }> };
+    })) as JobsPage;
 
     expect(result.jobs).toHaveLength(1);
     expect(result.jobs[0]?.id).toBe(JOB_ID);
@@ -155,13 +158,10 @@ describe('forge_jobs.list', () => {
   // cm:guard the gate reason must reach the CALLER, not just exist server-side — `queued` is the status of a job about to run AND of one blocked for weeks, and every diagnosis of the latter before this went through a hand-written database script
   it('attaches gateReason to queued rows', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    mockMemberThenJobs([baseJobRow]);
     gateReasonsMock.mockResolvedValueOnce(new Map([[JOB_ID, 'blocked_by']]));
 
-    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
-      jobs: Array<{ gateReason?: string | null }>;
-    };
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as JobsPage;
 
     expect(gateReasonsMock).toHaveBeenCalledWith(PROJECT_ID);
     expect(result.jobs[0]?.gateReason).toBe('blocked_by');
@@ -169,13 +169,10 @@ describe('forge_jobs.list', () => {
 
   it('reports gateReason null for a queued job that is merely awaiting its turn', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    mockMemberThenJobs([baseJobRow]);
     gateReasonsMock.mockResolvedValueOnce(new Map());
 
-    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
-      jobs: Array<{ gateReason?: string | null }>;
-    };
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as JobsPage;
 
     expect(result.jobs[0]?.gateReason).toBeNull();
   });
@@ -183,12 +180,9 @@ describe('forge_jobs.list', () => {
   // cm:guard skip the gate query when nothing is queued — a terminal-only page must not pay for a scan whose every answer would be omitted anyway
   it('does not query gates when no row is queued', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'done' as const }]);
+    mockMemberThenJobs([{ ...baseJobRow, status: 'done' as const }]);
 
-    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
-      jobs: Array<{ gateReason?: string | null }>;
-    };
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as JobsPage;
 
     expect(gateReasonsMock).not.toHaveBeenCalled();
     expect(result.jobs[0]).not.toHaveProperty('gateReason');
@@ -196,47 +190,27 @@ describe('forge_jobs.list', () => {
 
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    // effective-role lookup: caller has no role
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
-  // ISS-478 (sibling of ISS-428) — the list query must use a body-free column
-  // projection (never a bare db.select()) so the heavy payload/promptBlocks/
-  // failureMeta jsonb + unbounded userPromptSnapshot/error text can't overflow
-  // the MCP token cap. Assert the projection map of the final (jobs) select.
   it('projects a body-free column set (no payload/promptBlocks/failureMeta/userPromptSnapshot/error)', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
-    selectLimit.mockResolvedValueOnce([baseJobRow]); // jobs query
+    mockMemberThenJobs([baseJobRow]);
 
     await tool.handler({ projectId: PROJECT_ID });
 
-    // last db.select() call is the jobs list projection
-    const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
-    const projection = lastCall?.[0] as Record<string, unknown> | undefined;
-    expect(projection).toBeDefined();
-    const keys = Object.keys(projection ?? {});
-    expect(keys).toContain('id');
-    expect(keys).toContain('type');
-    expect(keys).toContain('status');
-    expect(keys).toContain('issueId');
+    const keys = Object.keys((selectSpy.mock.calls.at(-1) as unknown[])?.[0] as object);
+    expect(keys).toEqual(expect.arrayContaining(['id', 'type', 'status', 'issueId']));
     for (const heavy of ['payload', 'promptBlocks', 'failureMeta', 'userPromptSnapshot', 'error']) {
       expect(keys).not.toContain(heavy);
     }
   });
 
-  // ISS-478 fix-forward — the projection alone bounds per-row size but NOT the
-  // total response: at the old default limit of 50 a real-history project still
-  // produced ~52K chars and spilled to a file. The handler now trims from the
-  // tail to a hard char budget. Assert a large list is trimmed and the
-  // serialized result stays well under the live spill threshold.
   it('caps the total response size and flags truncation for a large list', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
-    // 200 realistically-sized projected rows (every scalar column populated incl.
-    // a bounded failureReason) → well over the char budget before trimming.
+    mockMember();
     const fatRows = Array.from({ length: 200 }, (_, i) => ({
       ...baseJobRow,
       id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
@@ -248,25 +222,20 @@ describe('forge_jobs.list', () => {
       jobs: Array<{ id: string }>;
       truncated?: boolean;
       returned?: number;
-      requested?: number;
+      limit?: number;
     };
 
-    // Trimmed below the requested 200, flagged, and serialized well under the
-    // ~45K live spill threshold.
     expect(result.truncated).toBe(true);
     expect(result.jobs.length).toBeLessThan(200);
     expect(result.returned).toBe(result.jobs.length);
-    expect(result.requested).toBe(200);
+    expect(result.limit).toBe(200);
     expect(JSON.stringify(result).length).toBeLessThan(45_000);
-    // Newest-first order preserved: the kept rows are the head of the input.
     expect(result.jobs[0]?.id).toBe(fatRows[0]?.id);
   });
 
-  // A small list (under budget) returns the plain shape — no truncation noise.
   it('returns the plain { jobs } shape when under the size budget', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
-    selectLimit.mockResolvedValueOnce([baseJobRow, { ...baseJobRow, id: JOB_ID2 }]); // jobs query
+    mockMemberThenJobs([baseJobRow, { ...baseJobRow, id: JOB_ID2 }]);
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
       jobs: Array<{ id: string }>;
@@ -303,10 +272,7 @@ const makePatCtx = (projectIds: string[] | null) => ({
 describe('forge_jobs.get', () => {
   it('returns the job + agentSessionId when device owner is member', async () => {
     const tool = forgeJobsGetTool(makeDeviceCtx());
-    // load job
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
-    // membership
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember();
 
     const result = (await tool.handler({ jobId: JOB_ID })) as {
       job: { id: string; agentSessionId: string };
@@ -337,36 +303,77 @@ describe('forge_jobs.get', () => {
   });
 });
 
+type EventsPage = {
+  items: Array<{ seq: number; data?: unknown }>;
+  lastSeq: number;
+  returned?: number;
+  hasMore?: boolean;
+};
+const event = (seq: number, data: unknown = {}) => ({
+  id: `e${seq}`,
+  jobId: JOB_ID,
+  ts: new Date(),
+  kind: 'stdout',
+  data,
+  seq,
+});
+
 describe('forge_jobs.events', () => {
   it('returns paginated { items, lastSeq } with sinceSeq filter', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
-    // load job
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
-    // membership
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    // events query
-    selectLimit.mockResolvedValueOnce([
-      { id: 'e1', jobId: JOB_ID, ts: new Date(), kind: 'stdout', data: {}, seq: 5 },
-      { id: 'e2', jobId: JOB_ID, ts: new Date(), kind: 'stdout', data: {}, seq: 7 },
-    ]);
+    mockJobThenMember();
+    selectLimit.mockResolvedValueOnce([event(5), event(7)]);
 
-    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 4 })) as {
-      items: Array<{ seq: number }>;
-      lastSeq: number;
-    };
+    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 4 })) as EventsPage;
     expect(result.items).toHaveLength(2);
+    expect(result.lastSeq).toBe(7);
+  });
+
+  // cm:guard an event whose own data exceeds the response budget must be ELIDED, never dropped — dropping it left lastSeq at the caller's own sinceSeq while the notice told them to re-call with it, so the replay looped on that one event forever
+  it('elides an oversized event payload rather than wedging the cursor', async () => {
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
+    mockJobThenMember();
+    selectLimit.mockResolvedValueOnce([event(5, { blob: 'x'.repeat(50_000) })]);
+
+    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 4 })) as EventsPage;
+    expect(result).toMatchObject({ lastSeq: 5, returned: 1, hasMore: false });
+    expect(result.items[0]?.data).toEqual({ omitted: true, bytes: 50_011 });
+    expect(JSON.stringify(result).length).toBeLessThan(38_000);
+  });
+
+  // cm:guard the size trim sheds the NEWEST events on this cursor-paginated surface — shedding the oldest moves lastSeq past pages the caller never received, and nothing ever replays them
+  it('keeps the earliest events when the page as a whole is too big', async () => {
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
+    mockJobThenMember();
+    const page = Array.from({ length: 20 }, (_, i) => event(i + 1, { blob: 'x'.repeat(7_000) }));
+    selectLimit.mockResolvedValueOnce(page);
+
+    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 0 })) as EventsPage;
+    expect(result.items[0]?.seq).toBe(1);
+    expect(result.lastSeq).toBe(result.items.at(-1)?.seq);
+    expect(result.hasMore).toBe(true);
+    expect(JSON.stringify(result).length).toBeLessThan(38_000);
+  });
+
+  // cm:guard lastSeq must land on the LAST RETURNED event, never on the over-fetched probe row — the probe exists only to prove hasMore, and letting it set the cursor skips that event forever because nothing replays it
+  it('over-fetches by one and leaves the cursor on the last event it returned', async () => {
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
+    mockJobThenMember();
+    selectLimit.mockResolvedValueOnce([event(5), event(6), event(7), event(8)]);
+
+    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 4, limit: 3 })) as EventsPage;
+    expect(selectLimit).toHaveBeenLastCalledWith(4);
+    expect(result).toMatchObject({ returned: 3, hasMore: true });
+    expect(result.items.map((i) => i.seq)).toEqual([5, 6, 7]);
     expect(result.lastSeq).toBe(7);
   });
 
   it('returns lastSeq = sinceSeq when no items match', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember();
     selectLimit.mockResolvedValueOnce([]);
 
-    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 42 })) as {
-      lastSeq: number;
-    };
+    const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 42 })) as EventsPage;
     expect(result.lastSeq).toBe(42);
   });
 
@@ -393,8 +400,7 @@ describe('forge_jobs.events', () => {
 describe('forge_jobs.cancel', () => {
   it('cancels a queued job for a writer and passes actor + reason + source', async () => {
     const tool = forgeJobsCancelTool(makePatCtx(null));
-    selectLimit.mockResolvedValueOnce([baseJobRow]); // load job
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // writer gate
+    mockJobThenMember();
     cancelJobMock.mockResolvedValueOnce({
       jobId: JOB_ID,
       status: 'cancelled',
@@ -418,8 +424,7 @@ describe('forge_jobs.cancel', () => {
 
   it('defaults the reason when none is supplied', async () => {
     const tool = forgeJobsCancelTool(makePatCtx(null));
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember();
     cancelJobMock.mockResolvedValueOnce({
       jobId: JOB_ID,
       status: 'cancelled',
@@ -435,11 +440,9 @@ describe('forge_jobs.cancel', () => {
   });
 
   it('cancels a queued job whose project membership holds even with a terminal run (no run guard)', async () => {
-    // The tool never inspects pipeline_run status; cancelJob owns that (and has
-    // no run guard). A writer cancel succeeds regardless of run state.
+    // cm:edge contract -> packages/core/src/jobs/cancel-job.ts — this tool never reads pipeline_run status; cancel-job.ts owns whether a run state may block a cancel, and today it has no such guard, so a writer cancel succeeds regardless of run state
     const tool = forgeJobsCancelTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'dispatched' }]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember({ status: 'dispatched' });
     cancelJobMock.mockResolvedValueOnce({
       jobId: JOB_ID,
       status: 'dispatched',
@@ -477,8 +480,7 @@ describe('forge_jobs.cancel', () => {
 
   it('maps a NOT_CANCELLABLE JobCancelError to an Error result', async () => {
     const tool = forgeJobsCancelTool(makePatCtx(null));
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember();
     cancelJobMock.mockRejectedValueOnce(
       new JobCancelError('NOT_CANCELLABLE', 'job is not cancellable'),
     );
@@ -490,8 +492,7 @@ describe('forge_jobs.cancel', () => {
 describe('forge_jobs.resume', () => {
   it('resumes for a writer and passes actor + reason + source', async () => {
     const tool = forgeJobsResumeTool(makePatCtx(null));
-    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'held' }]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember({ status: 'held' });
     resumeJobMock.mockResolvedValueOnce({
       jobId: JOB_ID,
       status: 'queued',
@@ -517,8 +518,7 @@ describe('forge_jobs.resume', () => {
 
   it('defaults the reason when none is supplied', async () => {
     const tool = forgeJobsResumeTool(makePatCtx(null));
-    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'held' }]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember({ status: 'held' });
     resumeJobMock.mockResolvedValueOnce({ jobId: JOB_ID, status: 'queued', heldReason: null });
 
     await tool.handler({ jobId: JOB_ID });
@@ -548,8 +548,7 @@ describe('forge_jobs.resume', () => {
 
   it('maps a NOT_HELD JobResumeError to an Error result', async () => {
     const tool = forgeJobsResumeTool(makePatCtx(null));
-    selectLimit.mockResolvedValueOnce([baseJobRow]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    mockJobThenMember();
     resumeJobMock.mockRejectedValueOnce(new JobResumeError('NOT_HELD', 'job is running, not held'));
 
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_HELD/);

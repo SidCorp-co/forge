@@ -141,6 +141,10 @@ vi.mock('../../issues/label-service.js', () => ({
   listIssueLabels: (...args: unknown[]) => listIssueLabelsMock(...args),
 }));
 
+// cm:guard the relations read joins `issues` twice, which the generic db.select chain above does not model — leave this mocked to an EMPTY graph, because every pre-existing `get` test in this file reaches it and would otherwise die on `outgoingRows.map is not a function` (ISS-868)
+vi.mock('../../issues/dependency-read.js', () => ({
+  loadIssueRelations: vi.fn(async () => ({ blocks: [], blockedBy: [] })),
+}));
 // ISS-571 — stub pmSetDependencyHandler so create-with-relations tests don't
 // need to program the full DB query chain that the real handler executes.
 const pmSetDependencyMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
@@ -365,14 +369,16 @@ describe('forge_issues tool', () => {
       issues: unknown[];
       truncated: boolean;
       returned: number;
-      requested: number;
+      limit: number;
+      truncatedBy: string;
       notice: string;
     };
 
     expect(result.truncated).toBe(true);
     expect(result.returned).toBeLessThan(50);
-    expect(result.requested).toBe(25);
-    expect(result.notice).toMatch(/truncated/i);
+    expect(result.limit).toBe(25);
+    expect(result.truncatedBy).toBe('limit+response-size');
+    expect(result.notice).toMatch(/more rows match/i);
     expect(JSON.stringify(result).length).toBeLessThan(50_000);
   });
 
@@ -444,9 +450,9 @@ describe('forge_issues tool', () => {
     const result = (await tool.handler({
       action: 'list',
       filters: { label: 'nonexistent-label' },
-    })) as { issues: unknown[] };
+    })) as { issues: unknown[]; returned: number; limit: number; hasMore: boolean };
 
-    expect(result.issues).toHaveLength(0);
+    expect(result).toMatchObject({ issues: [], returned: 0, limit: 25, hasMore: false });
   });
 
   it('list filters.label array mixes uuid and name, deduplicates resolved ids', async () => {
@@ -844,6 +850,7 @@ describe('forge_issues tool', () => {
           toIssueId: ISSUE_ID,
           kind: 'blocks',
         }),
+        { type: 'device', id: fakeDevice.id },
       );
     });
 
@@ -873,6 +880,7 @@ describe('forge_issues tool', () => {
           toIssueId: BLOCKED_ID,
           kind: 'blocks',
         }),
+        { type: 'device', id: fakeDevice.id },
       );
     });
 
@@ -2128,14 +2136,16 @@ describe('forge_issues tool', () => {
         tasks: unknown[];
         truncated: boolean;
         returned: number;
-        requested: number;
+        limit: number;
+        truncatedBy: string;
         notice: string;
       };
 
       expect(result.truncated).toBe(true);
       expect(result.returned).toBeLessThan(50);
-      expect(result.requested).toBe(25);
-      expect(result.notice).toMatch(/truncated/i);
+      expect(result.limit).toBe(25);
+      expect(result.truncatedBy).toBe('limit+response-size');
+      expect(result.notice).toMatch(/more rows match/i);
       expect(JSON.stringify(result).length).toBeLessThan(50_000);
     });
 

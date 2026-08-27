@@ -198,35 +198,6 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn).toBeUndefined();
   });
 
-  it('classifies waiting_on_decomp_children for a parent forward job with unmerged children', () => {
-    // Non-forward job types are not gated on decompose children.
-    const triage = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ type: 'triage' })],
-        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
-      }),
-    );
-    expect(triage.waitingOn).toBeUndefined();
-
-    const code = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ type: 'code' })],
-        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
-      }),
-    );
-    expect(code.waitingOn?.reason).toBe('waiting_on_decomp_children');
-    expect(code.waitingOn?.details.childIssueIds).toEqual(['iss-child']);
-
-    // A merged child satisfies the gate.
-    const satisfied = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ type: 'code' })],
-        decompChildren: [{ childIssueId: 'iss-child', status: 'released', mergedAt: QUEUED_AT }],
-      }),
-    );
-    expect(satisfied.waitingOn).toBeUndefined();
-  });
-
   it('classifies project_full when running count >= cap', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
@@ -283,6 +254,60 @@ describe('classifyPipelineHealthForIssue', () => {
       }),
     );
     expect(out.waitingOn?.since).toBe(QUEUED_AT.toISOString());
+  });
+});
+
+describe('classifyPipelineHealthForIssue — dependency satisfaction parity', () => {
+  it('keeps a merged blocker at reopen in waiting_on_dep', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job()],
+        deps: [
+          {
+            fromIssueId: 'iss-blocker',
+            kind: 'blocks',
+            fromStatus: 'reopen',
+            fromMergedAt: QUEUED_AT,
+          },
+        ],
+      }),
+    );
+    expect(out.waitingOn?.reason).toBe('waiting_on_dep');
+    expect(out.waitingOn?.details.blockerIssueIds).toEqual(['iss-blocker']);
+  });
+
+  it('gates parent work only on unsatisfied decompose children', () => {
+    const triage = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ type: 'triage' })],
+        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
+      }),
+    );
+    expect(triage.waitingOn).toBeUndefined();
+
+    const code = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ type: 'code' })],
+        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
+      }),
+    );
+    expect(code.waitingOn?.reason).toBe('waiting_on_decomp_children');
+
+    const satisfied = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ type: 'code' })],
+        decompChildren: [{ childIssueId: 'iss-child', status: 'released', mergedAt: QUEUED_AT }],
+      }),
+    );
+    expect(satisfied.waitingOn).toBeUndefined();
+
+    const reopened = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ type: 'code' })],
+        decompChildren: [{ childIssueId: 'iss-child', status: 'reopen', mergedAt: QUEUED_AT }],
+      }),
+    );
+    expect(reopened.waitingOn?.reason).toBe('waiting_on_decomp_children');
   });
 });
 
