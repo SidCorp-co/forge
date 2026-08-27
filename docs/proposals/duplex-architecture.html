@@ -419,6 +419,16 @@ question exists, every deadline expires unanswered and this collapses into <i>al
 ask</i>.</figcaption>
 </figure>
 
+<p class="note"><b>Superseded in part, 2026-08-27 (second owner decision).</b> The figure below draws
+the first decision, in which the <i>deadline</i> decides. It does not: the standing direction —
+<i>decide on the recommendation, grounded in project information; best and most complete over cheapest
+to build</i> — answers the question before it is asked. A question with a grounded recommendation that
+is <code>reversible: true</code> is now decided <b>on the spot</b>, in the same session, and never
+enters <code>needs_info</code>. That was the only row the deadline ever decided, so <b>path C no longer
+exists</b> and the park deadline is not built. Paths <b>A</b>, <b>B</b> and <b>D</b> are unchanged.
+The geometry here still shows C; the redraw is pending. RFC 0003 §<i>The direction decides; what it
+cannot decide, parks</i> is authoritative.</p>
+
 <h2>Figure 6 · the journey</h2>
 <h3>One issue, every branch</h3>
 
@@ -433,7 +443,7 @@ ask</i>.</figcaption>
  <rect x="14" y="14" width="452" height="20" rx="4" fill="var(--sess-bg)"/>
  <text class="sk" x="24" y="29" fill="var(--sess)">ONE JOB · ONE SESSION · WARM</text>
  <rect x="536" y="14" width="450" height="20" rx="4" fill="var(--warn-bg)"/>
- <text class="sk" x="546" y="29" fill="var(--warn)">A SECOND JOB · A SECOND SESSION · COLD</text>
+ <text class="sk" x="546" y="29" fill="var(--warn)">SESSION CLOSED · COLD CLI · WARM LEDGER</text>
 
  <rect x="180" y="48" width="200" height="34" rx="7" fill="var(--core-bg)" stroke="var(--core)"/>
  <text class="st" x="194" y="70" fill="var(--core)">issue → open</text>
@@ -522,8 +532,12 @@ ask</i>.</figcaption>
 <b>B</b> parks and is answered in time, so the same session picks up with its context intact — one
 job. <b>C</b> parks, nobody answers, and the deadline expires: the agent proceeds on the
 recommendation it wrote when it found the question, comments what it decided, and a second session
-carries that decision forward. <b>D</b> is the only branch that genuinely waits — no recommendation
-was possible, or the answer is not reversible. Two branches are still undrawn: a <b>partial</b> answer
+carries that decision forward. That second session is <b>cold at the CLI</b> — <code>drive</code> jobs
+are excluded from <code>--resume</code> at <code>resume-policy.ts:145</code>, because on this project
+<code>states.open.sessionGroup</code> is <code>planning</code> and a resume would load a stale triage
+transcript — but the issue's context is <b>not</b> lost: it re-enters through <code>forge_phase</code>
+action <code>resume_point</code>. <b>D</b> is the only branch that genuinely waits, and the only one
+that spawns <b>no second job</b> — no recommendation was possible, or the answer is not reversible. Two branches are still undrawn: a <b>partial</b> answer
 re-enters flush with only what is still pending, and a turn that ends with the work unfinished and
 nothing to ask is an anomaly, which core checkpoints. <b>Note what C creates:</b>
 <code>answer-resume.ts</code> requires <code>status === 'needs_info'</code>, so an answer arriving
