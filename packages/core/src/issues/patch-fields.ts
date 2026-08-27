@@ -22,17 +22,12 @@ export const SHARED_ISSUE_PATCH_FIELDS = [
   'complexity',
   'plan',
   'acceptanceCriteria',
-  'suggestedSolution',
   'releaseNotes',
 ] as const;
 
 /** Agent-facing fields accepted only by the MCP update surface. */
 export const MCP_ONLY_ISSUE_PATCH_FIELDS = [
   'sessionContext',
-  'aiSummary',
-  'aiSuggestedSolution',
-  'aiAcceptanceCriteria',
-  'aiConfidence',
   // cm:why lets an existing issue adopt a detector's key so the next run lands on it instead of opening a rival; the partial unique index rejects the write if another live issue already holds that key
   'detectorKey',
 ] as const;

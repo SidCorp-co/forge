@@ -88,7 +88,6 @@ export interface IssueRow {
   creatorEmail: string | null;
   creatorIsAgent: boolean;
   creatorLabel: string;
-  parentIssueId: string | null;
   reopenCount: number;
   mergedAt: string | null;
   createdAt: string;
@@ -205,8 +204,6 @@ export interface IssueLabel {
 export interface IssueDetail extends IssueRow {
   plan: string | null;
   acceptanceCriteria: string | null;
-  aiAcceptanceCriteria: string[] | null;
-  suggestedSolution: string | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
   pipelineHealth?: PipelineHealth;

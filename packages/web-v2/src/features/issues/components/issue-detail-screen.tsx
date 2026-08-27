@@ -141,10 +141,7 @@ export function IssueDetailScreen({
 
   const issue = issueQ.data;
   const checklist = useMemo(() => {
-    const criteria =
-      issue?.aiAcceptanceCriteria && issue.aiAcceptanceCriteria.length > 0
-        ? issue.aiAcceptanceCriteria.map((text) => ({ text, checked: false }))
-        : parseChecklist(issue?.acceptanceCriteria);
+    const criteria = parseChecklist(issue?.acceptanceCriteria);
     const counts = new Map<string, number>();
 
     return criteria.map((item) => {
@@ -152,7 +149,7 @@ export function IssueDetailScreen({
       counts.set(item.text, count + 1);
       return { ...item, key: `${item.text}-${count}` };
     });
-  }, [issue?.aiAcceptanceCriteria, issue?.acceptanceCriteria]);
+  }, [issue?.acceptanceCriteria]);
   const issueDisplayId = issue?.displayId;
   const issueTitle = issue?.title;
 

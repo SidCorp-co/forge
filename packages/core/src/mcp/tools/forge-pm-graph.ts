@@ -1,9 +1,8 @@
 /**
  * `forge_pm.graph` (Epic 3, ISS-19) — dependency / parent-child graph that
  * the PM agent inspects when reasoning about blockers, parallelism, and
- * epic decomposition. Combines `issue_dependencies` rows (kind = blocks /
- * relates / duplicates / parent) with the implicit `issues.parent_issue_id`
- * edge (`kind: 'parent'`).
+ * epic decomposition. Every edge comes from `issue_dependencies`
+ * (kind = blocks / relates / duplicates / parent).
  *
  * - `rootIssueId` omitted → return the whole project graph, capped at
  *   `MAX_NODES`. Returns `truncated:true` + `remainingNodes:N` when the
@@ -19,7 +18,7 @@
  * deprecation window closes.
  */
 
-import { and, count, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
@@ -76,7 +75,6 @@ export async function pmGraphHandler(device: Device, input: z.infer<typeof pmGra
         status: issues.status,
         priority: issues.priority,
         assigneeId: issues.assigneeId,
-        parentIssueId: issues.parentIssueId,
       })
       .from(issues)
       .where(eq(issues.projectId, input.projectId))
@@ -96,12 +94,6 @@ export async function pmGraphHandler(device: Device, input: z.infer<typeof pmGra
     const edges: GraphEdge[] = depEdges
       .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
       .map((e) => ({ from: e.from, to: e.to, kind: e.kind }));
-
-    for (const n of nodes) {
-      if (n.parentIssueId && nodeIds.has(n.parentIssueId)) {
-        edges.push({ from: n.id, to: n.parentIssueId, kind: 'parent' });
-      }
-    }
 
     return {
       nodes: nodes.map((n) => ({
@@ -158,34 +150,6 @@ export async function pmGraphHandler(device: Device, input: z.infer<typeof pmGra
     for (const e of [...dependencyEdges, ...dependencyEdgesReverse]) {
       allEdges.push(e);
       for (const id of [e.from, e.to]) {
-        if (!visited.has(id)) {
-          visited.add(id);
-          nextFrontier.add(id);
-        }
-      }
-    }
-
-    // parent edges: child → parent (frontier child) and child → parent (frontier parent)
-    const childRows = await db
-      .select({ id: issues.id, parentIssueId: issues.parentIssueId })
-      .from(issues)
-      .where(
-        and(
-          eq(issues.projectId, input.projectId),
-          inArray(issues.id, frontierIds),
-          isNotNull(issues.parentIssueId),
-        ),
-      );
-    const parentRows = await db
-      .select({ id: issues.id, parentIssueId: issues.parentIssueId })
-      .from(issues)
-      .where(
-        and(eq(issues.projectId, input.projectId), inArray(issues.parentIssueId, frontierIds)),
-      );
-    for (const r of [...childRows, ...parentRows]) {
-      if (!r.parentIssueId) continue;
-      allEdges.push({ from: r.id, to: r.parentIssueId, kind: 'parent' });
-      for (const id of [r.id, r.parentIssueId]) {
         if (!visited.has(id)) {
           visited.add(id);
           nextFrontier.add(id);
