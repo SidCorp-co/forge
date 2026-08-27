@@ -445,6 +445,10 @@ export const pipelineConfigSchema = z
     // cm:guard MUST stay declared here — this schema STRIPS unknown keys, so a lock that is not in the object literal is dropped by PATCH /pipeline-config and silently never takes effect, while skills/lock.ts keeps reporting the project as unlocked
     // cm:edge contract -> packages/core/src/skills/lock.ts — readLockedSkills() parses exactly this field; `false` and a malformed value read as ABSENT there, never as "unlocked"
     lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
+    // cm:guard ships ABSENT, which reads as `print`. Duplex is opt-in per project on purpose: it inverts the runner's terminal model (claude_code.rs tears the child down RESULT_EXIT_GRACE after the FIRST result line), so a project flipped here is running a different process lifecycle, not a tuned one.
+    sessionMode: z.enum(['print', 'duplex']).optional(),
+    // cm:guard 0 is the DEFAULT and it is not a disabled value — at 0 a duplex session that finishes a turn is told to close immediately, which is the safe shape: `awaiting_input` exists for milliseconds and no runner slot is held. Raising it trades a held slot (RUNNER_CAP_PER_RUNNER = 1) for the park fast path, so it is a capacity decision, never a latency tweak.
+    sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo
