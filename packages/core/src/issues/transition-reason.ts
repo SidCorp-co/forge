@@ -11,7 +11,7 @@
 // existed because the question was invisible, so the only available check was
 // on the answer's author. A question that is on the record needs no such check.
 
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { comments } from '../db/schema.js';
 
@@ -52,18 +52,21 @@ export function buildTransitionReasonBody(
  * with it.
  */
 // cm:guard this MUST NOT swallow its error, unlike every other comment helper in this repo — the comment IS the reason the transition was allowed, so a park that commits without it is the unexplained park the requirement exists to prevent
-export async function postTransitionReasonComment(args: {
-  issueId: string;
-  authorId: string | null;
-  fromStatus: IssueStatus;
-  toStatus: IssueStatus;
-  reason: string;
-  waitingKind?: WaitingKind | null;
-  /** True when a device actor wrote it — an agent's rationale is still an agent's. */
-  isAi: boolean;
-}): Promise<void> {
+export async function postTransitionReasonComment(
+  args: {
+    issueId: string;
+    authorId: string | null;
+    fromStatus: IssueStatus;
+    toStatus: IssueStatus;
+    reason: string;
+    waitingKind?: WaitingKind | null;
+    /** True when a device actor wrote it — an agent's rationale is still an agent's. */
+    isAi: boolean;
+  },
+  executor: Pick<Db, 'insert'> = db,
+): Promise<void> {
   if (!args.authorId) return;
-  await db.insert(comments).values({
+  await executor.insert(comments).values({
     issueId: args.issueId,
     authorId: args.authorId,
     body: buildTransitionReasonBody(

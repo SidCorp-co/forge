@@ -2007,6 +2007,7 @@ export const notificationTypes = [
   // cm:why ISS-762 — `waiting` + merged code is the one issue state that contradicts itself, and nothing else surfaces it
   'issue_stranded',
   'retry_rescue_threshold',
+  'ops_alert',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

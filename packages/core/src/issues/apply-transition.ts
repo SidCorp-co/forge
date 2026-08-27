@@ -1,5 +1,5 @@
 import { and, count, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import {
   comments,
   type IssueStatus,
@@ -17,6 +17,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { resolveAutonomousReopenTarget } from './autonomous-reopen.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
+import { recordDropUnblock } from './drop-unblock.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
@@ -87,7 +88,10 @@ export type TransitionIssueRow = {
   reopenCount: number;
 };
 
+type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export interface ApplyStatusTransitionOptions {
+  beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
   /**
    * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
    * as a target and restricts `draft`'s own exits, so this flag buys exactly
@@ -328,26 +332,6 @@ export async function transitionIssueStatus(
         { from: fromStatus, to: requestedStatus },
       );
     }
-    await postTransitionReasonComment({
-      issueId: issue.id,
-      authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-      fromStatus,
-      toStatus: requestedStatus,
-      reason,
-      waitingKind: options.waitingKind ?? null,
-      isAi: actor.type !== 'user',
-    });
-  }
-
-  // cm:why skip exempts auto-skip/failover (both pass {skip:true} into `approved`) — only an unskipped device write is the fabrication class this guards against
-  const violation = await checkTransitionEvidence({
-    issue: { id: issue.id, projectId: issue.projectId },
-    toStatus: requestedStatus,
-    actorType: actor.type,
-    skip: options.skip === true,
-  });
-  if (violation) {
-    throw new TransitionError(violation.code, violation.detail, violation.details);
   }
 
   const reopening = isReopenEntry(fromStatus, requestedStatus);
@@ -367,69 +351,16 @@ export async function transitionIssueStatus(
     });
   }
 
-  // cm:guard the never-ran check is re-asserted IN the UPDATE's WHERE, not just read above it — a freshly-`open` issue acquires its run within seconds, so a count read a moment earlier can hand `draft` to an issue that is already working, and the status would then claim nothing had started
-  const draftGate =
-    toStatus === 'draft' && !options.skip
-      ? [
-          sql`not exists (select 1 from pipeline_runs pr where pr.issue_id = ${issue.id}) and not exists (select 1 from jobs j where j.issue_id = ${issue.id})`,
-        ]
-      : [];
-
-  // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
-  // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
-  // cm:guard never insert into activity_log here — F5 owns that write, and a second one double-counts every transition
-  // cm:edge sideeffect -> packages/core/drizzle/migrations/0070_pipeline_outbox.sql — trg_issues_status_outbox fires on this UPDATE and writes pipeline_outbox; no call site references it, so a reader of this file cannot see the row being produced
-  // cm:why withActorContext wraps the UPDATE because the trigger reads actor metadata off SET LOCAL session settings — outside the wrapper the outbox row is written with no actor at all
-  const txResult = await db.transaction((tx) =>
-    withActorContext(tx, { type: actor.type, id: actor.id }, options.reason ?? null, async (t) => {
-      const [row] = await t
-        .update(issues)
-        .set({
-          status: toStatus,
-          reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-          // cm:guard the CLEAR arm is the load-bearing half — a kind left behind on an issue that has moved on renders a live "a human is needed" banner on work already in flight, and nothing else in the system would ever clear it
-          waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
-          updatedAt: sql`now()`,
-        })
-        .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus), ...draftGate))
-        .returning({
-          id: issues.id,
-          status: issues.status,
-          reopenCount: issues.reopenCount,
-          updatedAt: issues.updatedAt,
-        });
-      let stampedOnClose = false;
-      let unblockedDependents: UnblockedDependent[] = [];
-      if (row) {
-        // ISS-232 — stamp `merged_at` inside the same tx so a rollback
-        // drops the column write alongside the status flip.
-        await markMergedIfLeavingBase(t, {
-          issueId: issue.id,
-          projectId: issue.projectId,
-          fromStatus,
-          toStatus: toStatus,
-        });
-        // cm:guard pass the REQUESTED status, not the written one: a close held at the release gate has merged into the base branch, and that is exactly what `merged_at` means — dropping the stamp would keep every `blocks` dependent waiting for a release rather than for the merge
-        const closeStamp = await markMergedOnClose(t, {
-          issueId: issue.id,
-          toStatus: requestedStatus,
-        });
-        stampedOnClose = closeStamp.stamped;
-        if (toStatus === 'dropped') {
-          unblockedDependents = await expireBlocksEdgesOnDrop(t, issue.id);
-        }
-      }
-      return row ? { row, stampedOnClose, unblockedDependents } : undefined;
-    }),
-  );
-  const updated = txResult?.row;
-  if (!updated) {
-    if (draftGate.length > 0) throw await explainDraftRace(issue.id, fromStatus, toStatus);
-    throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
-      from: fromStatus,
-      to: toStatus,
-    });
-  }
+  const txResult = await executeTransitionWrite({
+    issue,
+    fromStatus,
+    requestedStatus,
+    toStatus,
+    actor,
+    options,
+    reopening,
+  });
+  const updated = txResult.row;
 
   publishIssueStatusChange(issue.projectId, {
     issueId: updated.id,
@@ -521,42 +452,111 @@ export async function transitionIssueStatus(
   };
 }
 
-/**
- * Durable record of a drop-unblock, one comment per released dependent.
- *
- * The WS cascade is transient and `pipeline-health.ts` filters expired edges
- * out, so without this the dependent simply starts moving one day with nothing
- * anywhere saying why.
- */
-// cm:guard write this on each DEPENDENT, never only on the dropped issue. The question it answers — "why did this start?" — is asked on the issue that moved, and once the edge is expired no surface in this repo can still show the pair.
-async function recordDropUnblock(
-  issue: TransitionIssueRow,
-  dependents: UnblockedDependent[],
-  actor: TransitionActor,
-): Promise<void> {
+type TransitionWriteInput = {
+  issue: TransitionIssueRow;
+  fromStatus: IssueStatus;
+  requestedStatus: IssueStatus;
+  toStatus: IssueStatus;
+  actor: TransitionActor;
+  options: ApplyStatusTransitionOptions;
+  reopening: boolean;
+};
+
+type TransitionWriteResult = {
+  row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
+  stampedOnClose: boolean;
+  unblockedDependents: UnblockedDependent[];
+};
+
+async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
+  const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
+  // cm:guard the never-ran check is re-asserted IN the UPDATE's WHERE, not just read above it — a freshly-`open` issue acquires its run within seconds, so a count read a moment earlier can hand `draft` to an issue that is already working, and the status would then claim nothing had started
+  const draftGate =
+    toStatus === 'draft' && !options.skip
+      ? [
+          sql`not exists (select 1 from pipeline_runs pr where pr.issue_id = ${issue.id}) and not exists (select 1 from jobs j where j.issue_id = ${issue.id})`,
+        ]
+      : [];
   try {
-    const [blocker] = await db
-      .select({ issSeq: issues.issSeq })
-      .from(issues)
-      .where(eq(issues.id, issue.id))
-      .limit(1);
-    const label = blocker ? `ISS-${blocker.issSeq}` : issue.id;
-    const authorId = actor.type === 'user' ? actor.id : actor.ownerId;
-    // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
-    await db.insert(comments).values(
-      dependents.map((d) => ({
-        issueId: d.issueId,
-        authorId,
-        body: `Unblocked — ${label} was dropped, so its \`blocks\` edge on this issue expired and this issue can dispatch. \`merged_at\` was NOT stamped on ${label}: dropped means the work will not happen, not that it shipped. If this issue genuinely needs that work, re-point the dependency rather than letting it proceed.`,
-        parentId: null,
-        isAi: true,
-      })),
-    );
-  } catch (err) {
-    logger.warn(
-      { err, issueId: issue.id, dependents: dependents.length },
-      'transition: drop-unblock audit comments failed (transition already committed)',
-    );
+    return await db.transaction(async (tx) => {
+      await options.beforeStatusWrite?.(tx);
+      if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
+        await postTransitionReasonComment(
+          {
+            issueId: issue.id,
+            authorId: actor.type === 'user' ? actor.id : actor.ownerId,
+            fromStatus,
+            toStatus: requestedStatus,
+            reason: options.transitionReason?.trim() ?? '',
+            waitingKind: options.waitingKind ?? null,
+            isAi: actor.type !== 'user',
+          },
+          tx,
+        );
+      }
+      const violation = await checkTransitionEvidence({
+        issue: { id: issue.id, projectId: issue.projectId },
+        toStatus: requestedStatus,
+        actorType: actor.type,
+        skip: options.skip === true,
+        executor: tx,
+      });
+      if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);
+      // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
+      // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
+      // cm:edge sideeffect -> packages/core/drizzle/migrations/0070_pipeline_outbox.sql — trg_issues_status_outbox fires on this UPDATE and writes pipeline_outbox; no call site references it, so a reader of this file cannot see the row being produced
+      const result = await withActorContext(
+        tx,
+        { type: actor.type, id: actor.id },
+        options.reason ?? null,
+        async (t) => {
+          const [row] = await t
+            .update(issues)
+            .set({
+              status: toStatus,
+              reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
+              // cm:guard the CLEAR arm is the load-bearing half — a kind left behind on an issue that has moved on renders a live "a human is needed" banner on work already in flight, and nothing else in the system would ever clear it
+              waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
+              updatedAt: sql`now()`,
+            })
+            .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus), ...draftGate))
+            .returning({
+              id: issues.id,
+              status: issues.status,
+              reopenCount: issues.reopenCount,
+              updatedAt: issues.updatedAt,
+            });
+          if (!row) return null;
+          await markMergedIfLeavingBase(t, {
+            issueId: issue.id,
+            projectId: issue.projectId,
+            fromStatus,
+            toStatus,
+          });
+          const closeStamp = await markMergedOnClose(t, {
+            issueId: issue.id,
+            toStatus: requestedStatus,
+          });
+          const unblockedDependents =
+            toStatus === 'dropped'
+              ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id)
+              : [];
+          return { row, stampedOnClose: closeStamp.stamped, unblockedDependents };
+        },
+      );
+      // cm:guard throw a stale transition inside this transaction — combined update callbacks may already have written fields and relations, so returning from the callback would commit a mutation whose caller was told it failed
+      if (!result)
+        throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
+          from: fromStatus,
+          to: toStatus,
+        });
+      return result;
+    });
+  } catch (error) {
+    if (error instanceof TransitionError && error.code === 'STALE_TRANSITION' && draftGate.length) {
+      throw await explainDraftRace(issue.id, fromStatus, toStatus);
+    }
+    throw error;
   }
 }
 
