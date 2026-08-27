@@ -2163,7 +2163,7 @@ export const agentSessionStatuses = [
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
 // cm:guard `status` and `runtimeState` answer different questions and must never be collapsed: `status` is the JOB's lifecycle (a `running` session may be mid-turn or parked on stdin), `runtimeState` is the PROCESS's, and it is the only one that distinguishes a session waiting for input from one still working. Print-mode sessions leave it NULL — a NULL here means "this runner never reported, infer nothing", which is not the same as `working`.
-// cm:guard `awaiting_input` is EXEMPT from the loop-monitor quiet-timeout and bounded by the residency window instead; `working` is not. Exempting the wrong one leaks a runner slot forever, because RUNNER_CAP_PER_RUNNER = 1 and nothing else reaps a parked duplex session.
+// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only — it still HOLDS ITS RUNNER SLOT the entire time it is parked, exactly like `working`, and the residency window is what bounds it instead. Reading this as slot-exempt is the misreading that leaks a runner permanently: RUNNER_CAP_PER_RUNNER = 1, and once the quiet clock no longer applies, the residency deadline is the only thing that will ever reap a parked duplex session.
 export const sessionRuntimeStates = [
   'starting',
   'working',

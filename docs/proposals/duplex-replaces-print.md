@@ -45,6 +45,7 @@ this plan adds over the RFC's build order.
 | **0** | substrate (`0190`) · durable send, `session_inbox`, classifier v9 (`0191`) | — | done — `f98fe7ce`, `1c597208` |
 | **A1** | `needs_info` into `NOTIFY_ON_STATUS` **and** `PROBLEM_STATUSES` (`notifications/notify-transitions.ts:25,37`) | — | unit |
 | **A2** | credential-watch path re-checks idle before `exit(0)` (`daemon/mod.rs:276-285`) | — | `cargo test`; **blocks every piped-stdin phase** |
+| **A3** | chat's concurrency permit becomes **session-scoped**: acquired when a session is created, released when it closes; a chat idle window is the close signal. `chat_max_concurrent` stays 3 | — | `cargo test`; a no-op under one-shot, **blocks phase 1** |
 | **1** | duplex spawn + inverted completion task, **chat only**: `Stdio::piped()`, `--input-format stream-json`, `--replay-user-messages`, `--session-id`; prompt moves off `-p` into a `work` message; `send` stops returning `NotImplemented` (`claude_code.rs:821`) | chat's per-turn one-shot lane — `chat.rs:11-13`, `resume_id` at `:104,:250,:293,:369`, and the two `cm:guard`s at `:291`/`:336` that exist **only** because a follow-up respawns | chat end-to-end; no pipeline job touched |
 | **2** | `TurnEnded` + `StateChanged` events · core classifies turn end · loop-monitor quiet reads `runtimeState` | the 25 s synthetic `progress` beat (`daemon/dispatch.rs:549-589`) — a session that declares its state does not need a beat asserting one | verify + integration |
 | **3** | pipeline jobs on duplex · `answer` + ack-is-commit in `answer-resume.ts` · durable core-side residency deadline | — | one project on forge-beta |
@@ -83,7 +84,7 @@ a process outlives the work that started it.
 | chat | `chat_max_concurrent` semaphore, default **3** (`config.rs:205`) — and today that bounds **processes**, because a turn's process spawns and exits inside `run_turn`, so turn count and process count are the same number | the same semaphore, still per-turn: `_permit` is a local dropped when `run_turn` returns (`chat.rs:325`). The process stays. **Turns stay bounded at 3; live processes become unbounded — one per open chat** |
 | pipeline job | `RUNNER_CAP_PER_RUNNER = 1` (`dispatch-gates.ts:142`), process exits at the end of the job | cap 1 still, but a **parked** session holds the slot — RFC 0003 §Slot accounting: *"`working` and `awaiting_input` both hold a slot"*, so **the residency bound is the slot bound**. Correct at the default `0`; above it, the first unanswered question takes the project's throughput to zero (live: forge-dev 7 parks against cap 3) |
 
-### Consequence: chat is not the safe first phase
+### Consequence: chat is not the safe first phase without A3
 
 The plan's phase 1 put chat first on the RFC's reasoning — no residency window needed, no pipeline
 blast radius. That reasoning is exactly backwards on this axis. Pipeline session count is bounded at
@@ -91,18 +92,32 @@ blast radius. That reasoning is exactly backwards on this axis. Pipeline session
 people happen to open. Phase 1 as written is the phase with the *unbounded* blast radius, and it is
 the one scheduled first.
 
+The fix is not to reorder. Pipeline-first would make the first duplex code to run the code that also
+touches `kind='result'` in both reaper queries, the completion task and `RUNNER_CAP_PER_RUNNER` —
+trading a bounded accounting gap for an unbounded correctness surface. Chat-first exists precisely to
+exercise `send` where none of that is live. So the accounting lands **first, as A3**, on the same
+pattern as A2: behaviour-preserving today, load-bearing the moment residency exists. A session-scoped
+permit is arithmetically identical to a turn-scoped one while a session's lifetime IS a turn's, which
+is why it can ship green before any duplex code.
+
 ### What has to land with it
 
 1. **The permit becomes session-scoped, not turn-scoped.** Acquire when a session is created, release
    when it closes. Without this the semaphore stops measuring anything that exists.
-2. **Chat gets an idle window of its own.** RFC 0003 gives residency to pipeline sessions only; chat
-   has no such concept because it never needed one. An idle chat session must `checkpoint` and close,
+2. **Chat gets an idle window of its own — and it is the same mechanism as item 1.** Verified
+   2026-08-27: nothing ever closes a chat session. `chat-turn.ts` never writes a terminal
+   `agent_sessions.status`, so a conversation sits at `idle`/`running` for good. The permit therefore
+   has no release event until the idle window invents one; the two are one mechanism, not two.
+   RFC 0003 gives residency to pipeline sessions only; chat has no such concept because it never
+   needed one. An idle chat session must `checkpoint` and close,
    rehydrating through the CLI's `--resume` on the next turn — the cold path kept load-bearing,
    exactly as the pipeline design does it. This costs nothing where it matters: an *active*
    conversation stays warm and stops paying 7.5 s a turn, an abandoned one stops holding a process.
-3. **A real resource bound, not a count.** Three resident processes each holding a conversation
-   context is not the same footprint as three that spawn and exit. The default of 3 was chosen for
-   the second shape.
+3. **The bound stays a count, and the idle window carries the safety.** Three resident processes
+   each holding a conversation context is not the footprint of three that spawn and exit, and the
+   default of 3 was chosen for the second shape. But nothing in `packages/runner/crates/` prices
+   memory at all — no `sysinfo`, no `MemAvailable` read (verified 2026-08-27) — so a memory-derived
+   budget would be a number invented here. Keep 3; let eviction, not arithmetic, hold the ceiling.
 
 The eviction *mechanism* already exists in the design — RFC 0003 §Ownership: *"the runner may end
 residency unilaterally — upgrade, drain, reboot, OOM — but must `checkpoint` first and must report
