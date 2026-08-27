@@ -504,7 +504,7 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
         AND st.last_run_at >= now() - (${SCHEDULE_ACTIVE_WINDOW_HOURS}::int * interval '1 hour')
       ORDER BY st.streak DESC
     `),
-    // cm:why no LIMIT here — classification (below) must see every qualifying binding, or a low-volume/high-rate binding can be excluded while a high-volume/low-rate one survives
+    // cm:guard no LIMIT here — classification (below) must see every qualifying binding, or a low-volume/high-rate binding can be excluded while a high-volume/low-rate one survives
     // cm:edge contract -> packages/core/src/integrations/deliveries.ts — direction='outbound' mirrors that module's outbound-only delivery health filtering; inbound webhook rows are recorded 'ok' by Coolify even on a reported deploy failure
     db.execute<DeliveryFailRow>(sql`
       SELECT b.id AS binding_id, b.provider, b.project_id, p.slug AS project_slug,
