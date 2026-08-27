@@ -43,9 +43,8 @@ Find the triage comment (starts with `**Triage**` by Snorlax) and extract **comp
 
 Determine where to test:
 
-1. Issue's `previewUrl` / `previewApiUrl` (if a preview deployment exists)
-2. Project's staging URLs from `forge_config → get` (previewDeploy.stagingUrl / stagingApiUrl)
-3. If none available → skip browser testing, note in comment
+1. Project's staging URLs from `forge_config → get` (previewDeploy.stagingUrl / stagingApiUrl)
+2. If none available → skip browser testing, note in comment
 
 ### Step 3a: Bug Investigation
 

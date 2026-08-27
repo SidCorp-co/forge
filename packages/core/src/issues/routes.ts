@@ -89,7 +89,6 @@ export const issueCreateSchema = z
     complexity: z.enum(issueComplexities).nullable().optional(),
     reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
-    parentIssueId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     // ISS-130 — narrow allow-list for entry status. The F4 transition
@@ -98,13 +97,6 @@ export const issueCreateSchema = z
     // atomically with the insert. ISS-236 — also `draft` for AI-generated
     // proposals (Dream / Doc-Sync) that wait for human promote/discard.
     status: z.enum(['open', 'on_hold', 'draft']).optional(),
-    // ISS-454 — quick-capture intake. Operator-entered context so triage can
-    // act without bouncing to needs_info. Shapes mirror the MCP create tool
-    // (forge-issues.ts); all optional + nullable, default null preserves the
-    // pre-ISS-454 behaviour. No LLM populates these on create.
-    aiSummary: z.string().max(100_000).nullable().optional(),
-    aiSuggestedSolution: z.string().max(100_000).nullable().optional(),
-    aiAcceptanceCriteria: z.array(z.string().max(2_000)).max(50).nullable().optional(),
   })
   .strict();
 
@@ -122,7 +114,6 @@ export const issuePatchSchema = z
     complexity: z.enum(issueComplexities).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
-    suggestedSolution: z.string().max(100_000).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
     metadata: issueMetadataSchema.optional(),
@@ -171,15 +162,9 @@ type IssueRow = {
   complexity: string | null;
   plan: string | null;
   acceptanceCriteria: string | null;
-  suggestedSolution: string | null;
-  aiSummary: string | null;
-  aiSuggestedSolution: string | null;
-  aiAcceptanceCriteria: string[] | null;
-  aiConfidence: number | null;
   assigneeId: string | null;
   createdById: string;
   createdVia: string | null;
-  parentIssueId: string | null;
   metadata: ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null;
   releaseNotes: ReleaseNotes | null;
   createdAt: Date;
@@ -277,10 +262,6 @@ issueProjectRoutes.post(
           complexity: input.complexity ?? null,
           reportedBy: input.reportedBy ?? null,
           assigneeId: input.assigneeId ?? null,
-          parentIssueId: input.parentIssueId ?? null,
-          aiSummary: input.aiSummary ?? null,
-          aiSuggestedSolution: input.aiSuggestedSolution ?? null,
-          aiAcceptanceCriteria: input.aiAcceptanceCriteria ?? null,
           createdById: userId,
           createdVia: 'web',
         })

@@ -159,7 +159,7 @@ forge_comments → create → {
 Set status — **never `deploying`** (retired; from `reopen` the valid exits are `developed`, `testing`, `in_progress`). Mirror the code step so the fix is re-verified the same way the original change was:
 
 **Deploy mode · distinct-branch:**
-- **`xs` / `s`** → `testing` (set staging `previewUrl`/`previewApiUrl`) — re-QA the fix directly on the deployed staging build; the inline self-review covered it.
+- **`xs` / `s`** → `testing` — re-QA the fix directly on the deployed staging build; the inline self-review covered it.
 - **`m` / `l` / `xl`** → `developed` — the independent forge-review re-checks the fix, then it advances to testing.
 
 **Deploy mode · same-branch** — `developed` for all complexities (incl. `xs`/`s`): the fix is not deployed anywhere yet, so there is no build to fast-path QA onto; independent review runs first and forge-release lands it.

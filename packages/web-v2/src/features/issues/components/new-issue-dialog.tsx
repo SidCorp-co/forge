@@ -8,10 +8,11 @@
 // the New Project dialog (ISS-319).
 //
 // ISS-454 — adds a "Quick capture" mode (tab) for small-request intake: a
-// one-liner title plus an optional Context textarea. The context is sent as
-// both `description` and `aiSummary` so triage has enough to act on without
-// bouncing to needs_info. The issue enters at the server default status
-// (`open`) and rides the normal pipeline — the standard form is unchanged.
+// one-liner title plus an optional Context textarea, sent as `description` so
+// triage has enough to act on without bouncing to needs_info. The issue enters
+// at the server default status (`open`) and rides the normal pipeline — the
+// standard form is unchanged.
+
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -236,14 +237,10 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     try {
       let created;
       if (mode === "quick") {
-        // ISS-454 — quick capture: one-liner + optional context. The context
-        // doubles as `description` and `aiSummary` so triage can act on the
-        // issue without bouncing it to needs_info. Status defaults to `open`
-        // server-side; the issue rides the normal pipeline.
         const trimmedContext = context.trim();
         created = await create.mutateAsync({
           title: trimmedTitle,
-          ...(trimmedContext ? { description: trimmedContext, aiSummary: trimmedContext } : {}),
+          ...(trimmedContext ? { description: trimmedContext } : {}),
         });
       } else {
         const trimmedDesc = description.trim();

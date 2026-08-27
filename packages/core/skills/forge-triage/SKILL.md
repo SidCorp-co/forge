@@ -35,7 +35,7 @@ forge_issues → get → { documentId: "<id>" }
 forge_comments → list → { filters: { issue: "<documentId>" } }
 ```
 
-Review all available fields: title, description, acceptanceCriteria, aiAcceptanceCriteria, suggestedSolution, aiSuggestedSolution, plan, category, priority, status, comments.
+Review all available fields: title, description, acceptanceCriteria, plan, category, priority, complexity, status, comments.
 
 For multiple issues, triage each independently — separate assessments, separate comments.
 

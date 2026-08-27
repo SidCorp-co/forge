@@ -1043,7 +1043,6 @@ export const issues = pgTable(
     createdById: uuid('created_by_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    parentIssueId: uuid('parent_issue_id'),
     // ISS-232 — git-aware Layer-2 dependency gate. Set by the state-machine
     // (see `issues/merged-at.ts`) when an issue transitions OUT of
     // `pipelineConfig.mergeStates.baseBranch` (default `"released"`). NULL =
@@ -1064,15 +1063,7 @@ export const issues = pgTable(
     // Migration 0031.
     plan: text('plan'),
     acceptanceCriteria: text('acceptance_criteria'),
-    suggestedSolution: text('suggested_solution'),
     sessionContext: jsonb('session_context'),
-    // ISS-59 — AI enrichment fields. Populated by the skill pipeline
-    // (forge-clarify / forge-plan) via the MCP forge_issues.update tool.
-    // Read-only from REST clients. Migration 0048.
-    aiSummary: text('ai_summary'),
-    aiSuggestedSolution: text('ai_suggested_solution'),
-    aiAcceptanceCriteria: jsonb('ai_acceptance_criteria').$type<string[]>(),
-    aiConfidence: real('ai_confidence'),
     // ISS-199 — user-facing release notes. Written by forge-clarify per
     // issue, read by forge-release at close time to append a CHANGELOG.md
     // `## [Unreleased]` bullet. Shape validated at the app layer; see
@@ -1105,11 +1096,6 @@ export const issues = pgTable(
     projectSourceExternalIdUq: uniqueIndex('issues_project_source_external_id_uq')
       .on(t.projectId, t.source, t.externalId)
       .where(sql`external_id IS NOT NULL`),
-    parentFk: foreignKey({
-      columns: [t.parentIssueId],
-      foreignColumns: [t.id],
-      name: 'issues_parent_issue_id_fk',
-    }).onDelete('set null'),
     releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),
@@ -1240,12 +1226,6 @@ export const issuesRelations = relations(issues, ({ one, many }) => ({
   project: one(projects, { fields: [issues.projectId], references: [projects.id] }),
   assignee: one(users, { fields: [issues.assigneeId], references: [users.id] }),
   createdBy: one(users, { fields: [issues.createdById], references: [users.id] }),
-  parent: one(issues, {
-    fields: [issues.parentIssueId],
-    references: [issues.id],
-    relationName: 'issue_parent',
-  }),
-  children: many(issues, { relationName: 'issue_parent' }),
   comments: many(comments),
   labels: many(issueLabels),
   activity: many(activityLog),

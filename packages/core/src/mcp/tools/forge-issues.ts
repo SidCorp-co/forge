@@ -179,7 +179,7 @@ export function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolati
   return walk(value, '', 0);
 }
 
-const dataSchema = z
+const dataObject = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
@@ -191,7 +191,6 @@ const dataSchema = z
     detectorKey: z.string().trim().min(1).max(120).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
-    suggestedSolution: z.string().max(100_000).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
     // sessionContext is opaque JSON the skill pipeline uses to persist
     // accumulated context across sessions. Validated as a record here with a
@@ -212,13 +211,6 @@ const dataSchema = z
           ctx.addIssue({ code: 'custom', path: [violation.path], message: violation.message });
         }
       }),
-    // ISS-59 — AI enrichment fields. Skill pipeline (forge-clarify /
-    // forge-plan) writes these via this tool; REST PATCH does not accept
-    // them (read-only from clients).
-    aiSummary: z.string().max(100_000).nullable().optional(),
-    aiSuggestedSolution: z.string().max(100_000).nullable().optional(),
-    aiAcceptanceCriteria: z.array(z.string().max(2_000)).max(50).nullable().optional(),
-    aiConfidence: z.number().min(0).max(1).nullable().optional(),
     // ISS-199 — user-facing release notes. forge-clarify writes this; the
     // shape is validated by `ReleaseNotesSchema` so an invalid section enum
     // is rejected at the MCP boundary.
@@ -276,8 +268,12 @@ const dataSchema = z
     // to avoid clobbering the existing set.
     labels: z.array(z.string().trim().min(1)).max(50).optional(),
   })
-  .strict()
-  .optional();
+  .strict();
+
+// cm:edge contract -> packages/core/skills — the bundled skill markdown hand-writes `forge_issues → update → { data: { ... } }` payloads, and this object is `.strict()`, so a key named in a skill but absent here fails the whole call (the `status` write included) with a 400; `builtin-seed-field-names.test.ts` asserts the two sides agree.
+export const ISSUE_UPDATE_DATA_KEYS = Object.keys(dataObject.shape);
+
+const dataSchema = dataObject.optional();
 
 /**
  * Heavy free-text fields — large TOAST bodies that dominate token count on
@@ -290,11 +286,7 @@ export const STEP_START_HEAVY_FIELDS = [
   'description',
   'plan',
   'acceptanceCriteria',
-  'suggestedSolution',
   'sessionContext',
-  'aiSummary',
-  'aiSuggestedSolution',
-  'aiAcceptanceCriteria',
 ] as const;
 
 export type StepStartHeavyField = (typeof STEP_START_HEAVY_FIELDS)[number];
@@ -350,18 +342,12 @@ export type IssueRow = {
   complexity: string | null;
   assigneeId: string | null;
   createdById: string;
-  parentIssueId: string | null;
   reopenCount: number;
   source: string;
   externalId: string | null;
   plan: string | null;
   acceptanceCriteria: string | null;
-  suggestedSolution: string | null;
   sessionContext: unknown;
-  aiSummary: string | null;
-  aiSuggestedSolution: string | null;
-  aiAcceptanceCriteria: string[] | null;
-  aiConfidence: number | null;
   releaseNotes: ReleaseNotes | null;
   mergedAt: Date | null;
   createdAt: Date;
@@ -385,15 +371,7 @@ function sanitizeDeep(value: unknown): unknown {
   return value;
 }
 
-// Exported for reuse by forge-step-start (same issue payload shape in its
-// bundle as `forge_issues.get` returns — agents see one serialization).
-//
-// ISS-532: this is the agent-facing MCP surface (and the step-start bundle), so
-// untrusted human/external free-text (title/description/acceptanceCriteria) is
-// framed in a labeled DATA delimiter via `markUntrusted`, and agent-authored
-// fields (plan/suggestedSolution/sessionContext/ai*) get char-strip only via
-// `sanitizeUntrusted`. REST/web-v2 use their own serializers, so the human UI
-// is unaffected.
+// cm:guard ISS-532 — human/external free-text reaching an agent must be framed by `markUntrusted`, never merely char-stripped: `sanitizeUntrusted` neutralizes invisible/bidi smuggling but does NOT tell the model the span is data, so a field promoted from agent-authored to human-authored and left on char-strip becomes an injection surface. REST/web-v2 serialize separately, so the human UI never shows the framing.
 export function serialize(row: IssueRow): Record<string, unknown> {
   return {
     documentId: row.id,
@@ -408,22 +386,13 @@ export function serialize(row: IssueRow): Record<string, unknown> {
     category: row.category,
     complexity: row.complexity,
     assigneeId: row.assigneeId,
-    parentIssueId: row.parentIssueId,
     reopenCount: row.reopenCount,
     plan: row.plan == null ? null : sanitizeUntrusted(row.plan),
     acceptanceCriteria:
       row.acceptanceCriteria == null
         ? null
         : markUntrusted(row.acceptanceCriteria, { source: 'issue.acceptanceCriteria' }),
-    suggestedSolution:
-      row.suggestedSolution == null ? null : sanitizeUntrusted(row.suggestedSolution),
     sessionContext: sanitizeDeep(row.sessionContext),
-    aiSummary: row.aiSummary == null ? null : sanitizeUntrusted(row.aiSummary),
-    aiSuggestedSolution:
-      row.aiSuggestedSolution == null ? null : sanitizeUntrusted(row.aiSuggestedSolution),
-    aiAcceptanceCriteria:
-      row.aiAcceptanceCriteria == null ? null : row.aiAcceptanceCriteria.map(sanitizeUntrusted),
-    aiConfidence: row.aiConfidence,
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
     createdAt: row.createdAt,
@@ -447,7 +416,6 @@ type IssueListProjection = Pick<
   | 'category'
   | 'complexity'
   | 'assigneeId'
-  | 'parentIssueId'
   | 'reopenCount'
   | 'mergedAt'
   | 'createdAt'
@@ -457,8 +425,8 @@ type IssueListProjection = Pick<
 /**
  * ISS-428 — body-free projection for the `list` (browse) surface. Returns only
  * light scalar fields and OMITS the heavy bodies (`description`, `plan`,
- * `acceptanceCriteria`, `suggestedSolution`, `sessionContext`, `ai*`,
- * `releaseNotes`) so a list over many populated issues never overflows the MCP
+ * `acceptanceCriteria`, `sessionContext`, `releaseNotes`) so a list over many
+ * populated issues never overflows the MCP
  * token cap. Heavy fields stay reachable per-issue via `action=get`. Do NOT
  * widen this back to `serialize()`.
  */
@@ -477,7 +445,6 @@ function serializeListRow(row: IssueListProjection): Record<string, unknown> {
     category: row.category,
     complexity: row.complexity,
     assigneeId: row.assigneeId,
-    parentIssueId: row.parentIssueId,
     reopenCount: row.reopenCount,
     mergedAt: row.mergedAt,
     createdAt: row.createdAt,
@@ -574,11 +541,7 @@ export function heavyFieldChars(row: IssueRow): number {
   if (row.description != null) total += row.description.length;
   if (row.plan != null) total += row.plan.length;
   if (row.acceptanceCriteria != null) total += row.acceptanceCriteria.length;
-  if (row.suggestedSolution != null) total += row.suggestedSolution.length;
   if (row.sessionContext != null) total += JSON.stringify(row.sessionContext).length;
-  if (row.aiSummary != null) total += row.aiSummary.length;
-  if (row.aiSuggestedSolution != null) total += row.aiSuggestedSolution.length;
-  if (row.aiAcceptanceCriteria != null) total += JSON.stringify(row.aiAcceptanceCriteria).length;
   return total;
 }
 
@@ -589,8 +552,8 @@ export function heavyFieldChars(row: IssueRow): number {
  * `forge_issues.get { documentId, fields: ['plan', ...] }`.
  *
  * Heavy fields are NOT emitted — only their sizes. Title framing is preserved
- * (still needed for orientation). aiConfidence and releaseNotes are small
- * scalars and remain inline.
+ * (still needed for orientation). releaseNotes is a small scalar and remains
+ * inline.
  */
 export function serializeManifest(row: IssueRow): Record<string, unknown> {
   return {
@@ -602,9 +565,7 @@ export function serializeManifest(row: IssueRow): Record<string, unknown> {
     category: row.category,
     complexity: row.complexity,
     assigneeId: row.assigneeId,
-    parentIssueId: row.parentIssueId,
     reopenCount: row.reopenCount,
-    aiConfidence: row.aiConfidence,
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
     createdAt: row.createdAt,
@@ -615,17 +576,8 @@ export function serializeManifest(row: IssueRow): Record<string, unknown> {
       plan: row.plan != null ? { chars: row.plan.length } : null,
       acceptanceCriteria:
         row.acceptanceCriteria != null ? { chars: row.acceptanceCriteria.length } : null,
-      suggestedSolution:
-        row.suggestedSolution != null ? { chars: row.suggestedSolution.length } : null,
       sessionContext:
         row.sessionContext != null ? { chars: JSON.stringify(row.sessionContext).length } : null,
-      aiSummary: row.aiSummary != null ? { chars: row.aiSummary.length } : null,
-      aiSuggestedSolution:
-        row.aiSuggestedSolution != null ? { chars: row.aiSuggestedSolution.length } : null,
-      aiAcceptanceCriteria:
-        row.aiAcceptanceCriteria != null
-          ? { chars: JSON.stringify(row.aiAcceptanceCriteria).length }
-          : null,
     },
   };
 }
@@ -732,7 +684,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'CRUD for project issues. Actions: list, get, create, update, transition, ' +
     'createTask, listTasks, updateTask, deleteTask, mark_merged, unmark. ' +
     'list returns a lightweight summary projection per issue (no description/' +
-    'plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*/releaseNotes) ' +
+    'plan/acceptanceCriteria/sessionContext/releaseNotes) ' +
     'to stay under the response token cap; fetch the full body with action=get. ' +
     'list supports filters.label (a label name or uuid, or an array of either — ' +
     'OR semantics; unknown names return an empty set). ' +
@@ -866,7 +818,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             category: issues.category,
             complexity: issues.complexity,
             assigneeId: issues.assigneeId,
-            parentIssueId: issues.parentIssueId,
             reopenCount: issues.reopenCount,
             mergedAt: issues.mergedAt,
             createdAt: issues.createdAt,
@@ -995,12 +946,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             detectorKey,
             plan: input.data.plan ?? null,
             acceptanceCriteria: input.data.acceptanceCriteria ?? null,
-            suggestedSolution: input.data.suggestedSolution ?? null,
             sessionContext: input.data.sessionContext ?? null,
-            aiSummary: input.data.aiSummary ?? null,
-            aiSuggestedSolution: input.data.aiSuggestedSolution ?? null,
-            aiAcceptanceCriteria: input.data.aiAcceptanceCriteria ?? null,
-            aiConfidence: input.data.aiConfidence ?? null,
             releaseNotes: input.data.releaseNotes ?? null,
           })
           .returning();

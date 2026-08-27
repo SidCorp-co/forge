@@ -476,8 +476,7 @@ export interface ChecklistItem {
 /**
  * Parse an acceptance-criteria blob into checklist items. Recognises markdown
  * task syntax (`- [ ]` / `- [x]`), plain bullets (`-`/`*`), and bare lines.
- * Blank lines + pure markdown headings are dropped. Prefer the structured
- * `aiAcceptanceCriteria[]` when the caller has it; this is the text fallback.
+ * Blank lines + pure markdown headings are dropped.
  */
 export function parseChecklist(
 	text: string | null | undefined,

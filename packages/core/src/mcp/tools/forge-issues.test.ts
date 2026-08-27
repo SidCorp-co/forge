@@ -195,18 +195,12 @@ const baseIssueRow = {
   category: null,
   assigneeId: null,
   createdById: OWNER_ID,
-  parentIssueId: null,
   reopenCount: 0,
   source: 'manual' as const,
   externalId: null,
   plan: null,
   acceptanceCriteria: null,
-  suggestedSolution: null,
   sessionContext: null,
-  aiSummary: null,
-  aiSuggestedSolution: null,
-  aiAcceptanceCriteria: null,
-  aiConfidence: null,
   releaseNotes: null,
   mergedAt: null,
   createdAt: new Date(),
@@ -276,9 +270,7 @@ describe('forge_issues tool', () => {
         description: 'x'.repeat(5000),
         plan: 'p'.repeat(5000),
         acceptanceCriteria: 'a'.repeat(5000),
-        suggestedSolution: 's'.repeat(5000),
         sessionContext: { big: 'c'.repeat(5000) },
-        aiSummary: 'ai'.repeat(2500),
         releaseNotes: { section: 'Fixed', userFacing: 'note' },
       },
     ]);
@@ -297,11 +289,7 @@ describe('forge_issues tool', () => {
       'description',
       'plan',
       'acceptanceCriteria',
-      'suggestedSolution',
       'sessionContext',
-      'aiSummary',
-      'aiSuggestedSolution',
-      'aiAcceptanceCriteria',
       'releaseNotes',
     ]) {
       expect(row).not.toHaveProperty(heavy);
@@ -338,7 +326,6 @@ describe('forge_issues tool', () => {
       'category',
       'complexity',
       'assigneeId',
-      'parentIssueId',
       'reopenCount',
       'mergedAt',
       'createdAt',
@@ -351,12 +338,7 @@ describe('forge_issues tool', () => {
       'description',
       'plan',
       'acceptanceCriteria',
-      'suggestedSolution',
       'sessionContext',
-      'aiSummary',
-      'aiSuggestedSolution',
-      'aiAcceptanceCriteria',
-      'aiConfidence',
       'releaseNotes',
     ]) {
       expect(callArg).not.toHaveProperty(heavy);
@@ -1292,97 +1274,6 @@ describe('forge_issues tool', () => {
     expect(result.status).toBe('confirmed');
   });
 
-  it('create persists AI enrichment fields and serializes them in the response', async () => {
-    const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: PROJECT_SLUG,
-    });
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    insertReturning.mockResolvedValueOnce([
-      {
-        ...baseIssueRow,
-        aiSummary: 'one-line summary',
-        aiSuggestedSolution: 'do the thing',
-        aiAcceptanceCriteria: ['ac one', 'ac two'],
-        aiConfidence: 0.75,
-      },
-    ]);
-
-    const result = (await tool.handler({
-      action: 'create',
-      data: {
-        title: 'Enriched',
-        aiSummary: 'one-line summary',
-        aiSuggestedSolution: 'do the thing',
-        aiAcceptanceCriteria: ['ac one', 'ac two'],
-        aiConfidence: 0.75,
-      },
-    })) as {
-      aiSummary: string | null;
-      aiSuggestedSolution: string | null;
-      aiAcceptanceCriteria: string[] | null;
-      aiConfidence: number | null;
-    };
-
-    expect(result.aiSummary).toBe('one-line summary');
-    expect(result.aiSuggestedSolution).toBe('do the thing');
-    expect(result.aiAcceptanceCriteria).toEqual(['ac one', 'ac two']);
-    expect(result.aiConfidence).toBe(0.75);
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        aiSummary: 'one-line summary',
-        aiSuggestedSolution: 'do the thing',
-        aiAcceptanceCriteria: ['ac one', 'ac two'],
-        aiConfidence: 0.75,
-      }),
-    );
-  });
-
-  it('update writes AI enrichment fields onto an existing issue', async () => {
-    const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: PROJECT_SLUG,
-    });
-    selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([
-      {
-        ...baseIssueRow,
-        aiSummary: 'updated summary',
-        aiAcceptanceCriteria: ['x'],
-        aiConfidence: 0.9,
-      },
-    ]);
-
-    const result = (await tool.handler({
-      action: 'update',
-      documentId: ISSUE_ID,
-      data: {
-        aiSummary: 'updated summary',
-        aiAcceptanceCriteria: ['x'],
-        aiConfidence: 0.9,
-      },
-    })) as {
-      aiSummary: string | null;
-      aiAcceptanceCriteria: string[] | null;
-      aiConfidence: number | null;
-    };
-
-    expect(result.aiSummary).toBe('updated summary');
-    expect(result.aiAcceptanceCriteria).toEqual(['x']);
-    expect(result.aiConfidence).toBe(0.9);
-    expect(txUpdateSet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        aiSummary: 'updated summary',
-        aiAcceptanceCriteria: ['x'],
-        aiConfidence: 0.9,
-      }),
-    );
-  });
-
   // ISS-199 — typed releaseNotes round-trip + zod rejection.
 
   it('create persists releaseNotes and serializes them on the response', async () => {
@@ -1444,21 +1335,6 @@ describe('forge_issues tool', () => {
           string,
           unknown
         >,
-      }),
-    ).rejects.toThrow();
-  });
-
-  it('update rejects aiConfidence outside [0,1]', async () => {
-    const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: PROJECT_SLUG,
-    });
-    await expect(
-      tool.handler({
-        action: 'update',
-        documentId: ISSUE_ID,
-        data: { aiConfidence: 1.5 },
       }),
     ).rejects.toThrow();
   });

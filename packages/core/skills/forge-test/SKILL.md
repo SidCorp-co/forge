@@ -21,7 +21,7 @@ This is NOT a test runner (vitest/playwright). It's a manual QA replacement that
 
 ## Tools
 
-- **forge_issues** — get issue data (acceptance criteria, preview URLs, plan, changeHistory)
+- **forge_issues** — get issue data (acceptance criteria, plan, reopenCount)
 - **forge_comments** — list previous comments (review/fix feedback) + post test report
 - **forge_config** — get project config (staging URLs, test credentials)
 - **forge_coolify_deploy** — check deployment status before testing
@@ -77,13 +77,13 @@ forge_issues → get → { documentId: "<id>" }
 forge_comments → list → { filters: { issue: "<id>" } }
 ```
 
-Read from issue: title, description, acceptanceCriteria, aiAcceptanceCriteria, plan, previewUrl, previewApiUrl, changeHistory.
+Read from issue: title, description, acceptanceCriteria, plan, reopenCount. Test URLs and credentials are NOT issue fields — Step 4 reads them from `forge_config`.
 
 Read from comments: triage report, review findings, previous QA reports, fix notes.
 
 ### Step 2: Detect Reopen Cycle
 
-Check `changeHistory` for previous `testing → reopen` transitions.
+Check `reopenCount` on the issue — anything above 0 means a previous QA cycle failed.
 
 - **First test (no prior reopen):** test all acceptance criteria normally.
 - **Reopen cycle (prior QA failure exists):** find the most recent QA Test Report comment. Extract the FAIL items — these are **mandatory regression tests** that must pass this time. Also re-test all other acceptance criteria.
@@ -108,9 +108,9 @@ If no Coolify resources are configured, skip this step.
 
 Fetch project config via `forge_config → get`. This returns `previewDeploy` with `stagingUrl`, `stagingApiUrl`, and `testCredentials`.
 
-**URL resolution (issue preview takes priority, staging as fallback):**
-- `testUrl` = issue `previewUrl` ?? project `previewDeploy.stagingUrl`
-- `testApiUrl` = issue `previewApiUrl` ?? project `previewDeploy.stagingApiUrl`
+**URL resolution — the project config is the only source; an issue carries no URLs of its own:**
+- `testUrl` = project `previewDeploy.stagingUrl`
+- `testApiUrl` = project `previewDeploy.stagingApiUrl`
 
 **If both testUrl and testApiUrl are null** → post comment "No preview or staging deployment found, cannot test", stop.
 
