@@ -53,7 +53,7 @@ The threshold is intentionally low for confirming. Triage doesn't need to prove 
 
 ## Edge Cases
 
-- **AI-generated criteria** (`aiAcceptanceCriteria`, `aiSuggestedSolution`) count as sufficient detail, even if the human description is vague. The system generated these from the original description, so if they make sense, treat them as valid.
+- **Criteria already written** — if `acceptanceCriteria` has content, that counts as sufficient detail even when the description is vague. Whoever wrote them, a human or an earlier clarify/plan run, already resolved the ambiguity; if they make sense, treat them as valid.
 - **Plan already populated** — if the `plan` field has content, the issue is past triage. Confirm immediately.
 - **Short but clear** — "Fix typo: 'Submited' → 'Submitted' on settings page" is one line but fully actionable. Length ≠ quality.
 - **References external context** — if the issue mentions a Slack thread, screenshot, or PR without including the content, ask for the relevant details to be inlined. External references go stale.

@@ -154,3 +154,29 @@ It is materially weaker today than it was then: ISS-820 shipped a bounded recurs
 200,000-byte cap in `mcp/tools/forge-issues.ts:102-153`. The pattern that proposal established —
 **free-form blob, one narrow guard on the dangerous shape** — is the same one this proposal applies,
 and it is already running in production.
+
+## Residual — the skill prose the cut left behind
+
+Dropping a column does not edit the prose that names it. Measured 2026-08-27, after the cut:
+
+| Where | State |
+|---|---|
+| Bundled templates (`packages/core/skills/`) | Clean. 15 stale instructions across 6 skills fixed in `40fe7d81`; `builtin-seed.ts` re-seeded all 14 global rows on deploy (`lastSeed.updated: 6`), `skill_md` **and** `files[]`. |
+| forge-dev's own project copies | Clean. Only `forge-clarify` was affected; patched to v10 and confirmed on the runner mirror. Its copies are tailored, not stale clones, so they were hand-patched rather than re-adopted. |
+| 27 other projects | **151 rows still stale, 25 of them carrying a write payload.** Not touched. |
+
+The 25 are the ones that matter: they hand-write `previewUrl` / `previewApiUrl` / `previewStatus`
+into `forge_issues.update`, whose schema is `.strict()`, so the call fails whole — the `status`
+write with it. Those three names never existed: no migration, no schema, nothing in the git history
+of `packages/core/src` or `packages/contracts`. Impact is retry friction, not a wedge — over 60 days
+288/348 `s` and 59/84 `xs` issues still merged, so agents were recovering.
+
+They stay for the reconcile lane (ISS-795). Fanning out by hand would overwrite deliberate
+tailoring — dodgeprint-fe forked 8 skills, dodgeprint-api has its own forge-clarify — and
+`template-propagation.ts` is signal-only *by design*, after the last push-per-project mechanism
+rotted into a mute switch (75 drafts, 10 of 15 projects invisible to a forge-test bump).
+
+`builtin-seed-field-names.test.ts` stops the class recurring in the templates: every hand-written
+`forge_issues` update payload is parsed against `ISSUE_UPDATE_DATA_KEYS`, plus a denylist of the ten
+dead names. It covers the bundled skills only — a project copy is not in the tree, which is why the
+25 are a reconcile item and not a gate failure.

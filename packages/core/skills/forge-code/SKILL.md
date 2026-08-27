@@ -57,7 +57,7 @@ When the issue has a plan and triage/plan comments from Forge AI:
     - **decompose child/parent** — different base/target branch; see **Decompose-aware branching** above (child → integration branch, no deploy; parent → integrate-verify, no merge).
 12. Post comment
 13. Set status LAST (triggers the next step). **Never set `deploying` — it was retired from the lifecycle; the only valid exits from the code step are `developed` or `testing`.**
-    - **deploy mode · distinct-branch** — `xs`/`s` → **`testing`** (skip independent review — the inline self-review is enough for a trivial change; set `previewUrl`/`previewApiUrl` to the staging URLs). `m`/`l`/`xl` → **`developed`** (independent forge-review runs, then advances to testing).
+    - **deploy mode · distinct-branch** — `xs`/`s` → **`testing`** (skip independent review — the inline self-review is enough for a trivial change; forge-test reads the staging URLs from `forge_config`). `m`/`l`/`xl` → **`developed`** (independent forge-review runs, then advances to testing).
     - **deploy mode · same-branch** — **`developed`** for ALL complexities (incl. xs/s) — there is no separate staging environment to fast-path to, so independent review, QA, and the deferred merge/deploy all run downstream.
     - **local-only mode** — **`developed`** for ALL complexities (human reviews at `developed` and closes manually).
 

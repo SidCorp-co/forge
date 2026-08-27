@@ -37,5 +37,8 @@ driver or its independent review is not degraded, it is unsafe.
 
 ## Extraction
 
-At daemon start into `~/.local/share/forge-runner/bundled-skills/<runner version>/`. Nothing reads
-that tree yet — wiring it into worktrees is phase 3, behind `pipelineConfig.mode`.
+At daemon start into `~/.local/share/forge-runner/bundled-skills/<runner version>/`, then
+`seed_into` copies the set into each `drive` job's worktree (`runner/claude_code.rs`). Only a
+`drive` job gets it: `packages/core/src/skills/lock.ts` refuses a project skill that would shadow a
+bundled name, which is what makes seeding at job start safe here when it was not for the staged
+lanes.

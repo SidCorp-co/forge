@@ -27,7 +27,7 @@ If forge-review posted findings before this reached testing, check those comment
 - Performance concerns that should be observable
 
 ### From Previous QA Failures (reopen cycles)
-If changeHistory shows a prior `testing → reopen` transition:
+If `reopenCount` is above 0, a prior QA cycle failed:
 1. Find the most recent "QA Test Report" comment
 2. Extract all FAIL items — these are mandatory regression tests
 3. Tag them as `Regression` source in the new report
@@ -37,7 +37,7 @@ If no explicit acceptance criteria exist, derive from the issue description and 
 
 ## Backend API Testing
 
-Use `testApiUrl` (resolved from issue `previewApiUrl` or project `stagingApiUrl`) as the base URL for all API calls.
+Use `testApiUrl` (project `previewDeploy.stagingApiUrl`) as the base URL for all API calls.
 
 **Tools:** WebFetch for simple requests, `Bash` (curl) for complex ones (custom headers, multipart).
 
@@ -55,7 +55,7 @@ Use `testApiUrl` (resolved from issue `previewApiUrl` or project `stagingApiUrl`
 
 ## Frontend UI Testing
 
-Use `testUrl` (resolved from issue `previewUrl` or project `stagingUrl`) as the base URL.
+Use `testUrl` (project `previewDeploy.stagingUrl`) as the base URL.
 
 **With browser tools (preferred):** if a browser-automation MCP is available, use whatever browser tools the runner exposes (auto-detected; usually surfaced as `browser_*`). Do not hardcode a provider — map these actions onto whatever the runner offers:
 - navigate — open pages

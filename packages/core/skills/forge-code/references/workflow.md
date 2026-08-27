@@ -17,7 +17,7 @@ Check comments for pipeline artifacts:
 - **Triage comment** (starts with `**Triage**`) → pipeline mode, extract complexity (`xs/s/m/l/xl`)
 - **Plan comment** (starts with `**Plan**`) → has forge-plan output
 
-**Pipeline mode** (has triage/plan comments): deploy · distinct-branch (`baseBranch !== productionBranch`) merges **every** complexity to `baseBranch` + `forge_coolify_deploy`, then exits `xs/s` → `testing` (set staging previewUrl) and `m/l/xl` → `developed` (independent review, then testing); deploy · same-branch (`baseBranch === productionBranch`) and local-only both push the ISS-* branch only — no merge, no deploy — and exit `developed` for every complexity. **Never `deploying`** (retired). See Steps 13 + 15.
+**Pipeline mode** (has triage/plan comments): deploy · distinct-branch (`baseBranch !== productionBranch`) merges **every** complexity to `baseBranch` + `forge_coolify_deploy`, then exits `xs/s` → `testing` and `m/l/xl` → `developed` (independent review, then testing); deploy · same-branch (`baseBranch === productionBranch`) and local-only both push the ISS-* branch only — no merge, no deploy — and exit `developed` for every complexity. **Never `deploying`** (retired). See Steps 13 + 15.
 **Standalone mode** (no pipeline comments): exit as `closed`
 
 ## Step 3: Check Actionability
@@ -183,7 +183,7 @@ What was implemented, notable decisions. No file paths or code snippets.
 
 **Deploy mode · distinct-branch, `xs` / `s`** — skip independent review, go straight to QA on the deployed staging build:
 ```
-forge_issues → update → { documentId: "<id>", data: { status: "testing", previewUrl: "<stagingUrl>", previewApiUrl: "<stagingApiUrl>", previewStatus: "live" } }
+forge_issues → update → { documentId: "<id>", data: { status: "testing" } }
 ```
 
 **Deploy mode · distinct-branch, `m` / `l` / `xl`** — the independent forge-review stage runs at `developed`, then advances to testing:
