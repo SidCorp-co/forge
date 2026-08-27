@@ -185,6 +185,26 @@ export function publishIssueStatusChange(
  * nothing has run. A run or a job means work exists, and demoting to `draft`
  * would make the status claim the issue was never started.
  */
+/** `null` when the counts could not be read — callers must treat that as "refuse". */
+async function countRunsAndJobs(
+  issueId: string,
+): Promise<{ runCount: number; jobCount: number } | null> {
+  try {
+    const [[runRow], [jobRow]] = await Promise.all([
+      db
+        .select({ n: count() })
+        .from(pipelineRuns)
+        .where(eq(pipelineRuns.issueId, issueId))
+        .limit(1),
+      db.select({ n: count() }).from(jobs).where(eq(jobs.issueId, issueId)).limit(1),
+    ]);
+    return { runCount: Number(runRow?.n ?? 0), jobCount: Number(jobRow?.n ?? 0) };
+  } catch (err) {
+    logger.warn({ err, issueId }, 'draft-exemption check failed; refusing the transition');
+    return null;
+  }
+}
+
 async function assertIssueNeverEnteredPipeline(
   issueId: string,
   fromStatus: IssueStatus,
@@ -197,32 +217,58 @@ async function assertIssueNeverEnteredPipeline(
     });
   };
 
-  let runCount: number;
-  let jobCount: number;
-  try {
-    const [[runRow], [jobRow]] = await Promise.all([
-      db
-        .select({ n: count() })
-        .from(pipelineRuns)
-        .where(eq(pipelineRuns.issueId, issueId))
-        .limit(1),
-      db.select({ n: count() }).from(jobs).where(eq(jobs.issueId, issueId)).limit(1),
-    ]);
-    runCount = Number(runRow?.n ?? 0);
-    jobCount = Number(jobRow?.n ?? 0);
-  } catch (err) {
+  const counts = await countRunsAndJobs(issueId);
+  if (!counts) {
     // cm:guard this ONE guard fails CLOSED, unlike every sibling. Failing open here would GRANT the exemption on a database hiccup and demote an issue with real work to `draft` — a status that says nothing ever started. Refusing is also exactly the behaviour that shipped before this exemption existed, so an unavailable check costs nobody anything they had.
-    logger.warn({ err, issueId }, 'draft-exemption check failed; refusing the transition');
     return refuse(
       '`draft` is reachable only while the issue has never entered the pipeline, and that could not be checked just now. Retry, or use `on_hold` to pause active work.',
       { checkFailed: true },
     );
   }
 
+  const { runCount, jobCount } = counts;
   if (runCount === 0 && jobCount === 0) return;
   return refuse(
     `\`draft\` is reachable only while the issue has never entered the pipeline; this one has ${runCount} pipeline run(s) and ${jobCount} job(s). Use \`on_hold\` to pause active work, or \`dropped\` to abandon it.`,
     { runCount, jobCount },
+  );
+}
+
+/**
+ * Two conditions share the `draft` UPDATE's WHERE — the status must still be
+ * `fromStatus`, and the never-ran counts must still be zero — so a zero-row
+ * result alone does not say which one bit. Re-read both and name the one that
+ * did, rather than reporting a lost status race as a run appearing.
+ */
+async function explainDraftRace(
+  issueId: string,
+  fromStatus: IssueStatus,
+  toStatus: IssueStatus,
+): Promise<TransitionError> {
+  const details = { from: fromStatus, to: toStatus, raced: true };
+  const [[row], counts] = await Promise.all([
+    db.select({ status: issues.status }).from(issues).where(eq(issues.id, issueId)).limit(1),
+    countRunsAndJobs(issueId),
+  ]);
+  if (row && row.status !== fromStatus) {
+    return new TransitionError(
+      'STALE_TRANSITION',
+      `issue status changed concurrently — it left \`${fromStatus}\` for \`${row.status}\` while this transition was being applied`,
+      { ...details, observedStatus: row.status },
+    );
+  }
+  if (counts && (counts.runCount > 0 || counts.jobCount > 0)) {
+    return new TransitionError(
+      'ILLEGAL_TRANSITION',
+      `\`draft\` is reachable only while the issue has never entered the pipeline, and it acquired ${counts.runCount} pipeline run(s) and ${counts.jobCount} job(s) while this transition was being applied. Use \`on_hold\` to pause active work.`,
+      { ...details, runCount: counts.runCount, jobCount: counts.jobCount },
+    );
+  }
+  // cm:guard the fallback must name BOTH conditions, never guess one — the re-read is not in the failed UPDATE's transaction, so a value that raced back (a run cancelled and deleted, a status restored) leaves nothing to attribute it to, and naming the wrong one is the misdiagnosis ISS-787 exists to remove
+  return new TransitionError(
+    'ILLEGAL_TRANSITION',
+    `the \`draft\` transition from \`${fromStatus}\` did not apply, and re-reading found neither a status change nor a pipeline run/job to attribute it to. Retry; if it refuses again, use \`on_hold\` to pause active work.`,
+    { ...details, attributable: false },
   );
 }
 
@@ -379,13 +425,7 @@ export async function transitionIssueStatus(
   );
   const updated = txResult?.row;
   if (!updated) {
-    if (draftGate.length > 0) {
-      throw new TransitionError(
-        'ILLEGAL_TRANSITION',
-        '`draft` is reachable only while the issue has never entered the pipeline, and a run or job appeared while this transition was being applied. Use `on_hold` to pause active work.',
-        { from: fromStatus, to: toStatus, raced: true },
-      );
-    }
+    if (draftGate.length > 0) throw await explainDraftRace(issue.id, fromStatus, toStatus);
     throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
       from: fromStatus,
       to: toStatus,

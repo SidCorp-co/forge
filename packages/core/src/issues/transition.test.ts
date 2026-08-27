@@ -419,6 +419,23 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     ).toBe(true);
   });
 
+  it('blames the status race, not a phantom run, when the conditional UPDATE loses', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    updateReturning.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([{ status: 'confirmed' }]);
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+
+    const res = await req({ toStatus: 'draft' }, token);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('STALE_TRANSITION');
+    expect(body.message).toContain('confirmed');
+    expect(body.message).not.toMatch(/run or job appeared/i);
+  });
+
   it('refuses draft when the run/job check itself fails — fails CLOSED', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
