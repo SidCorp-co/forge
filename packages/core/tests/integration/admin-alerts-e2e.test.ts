@@ -136,15 +136,17 @@ describe('admin alert routes (ISS-652)', () => {
     // cm:why defaults to a fresh heartbeat (now), like a real 'online' runner; override to simulate the A3 staleness/rate-limit contributors
     lastSeenAt?: string | null;
     rateLimitedUntil?: string | null;
+    limitReason?: string | null;
+    provisionStatus?: string | null;
   }): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, name, status, capabilities, quarantined_until, last_seen_at, rate_limited_until)
+      INSERT INTO runners (id, project_id, type, host, name, status, capabilities, quarantined_until, last_seen_at, rate_limited_until, limit_reason, provision_status)
       VALUES (
         ${id}, ${args.projectId}, 'claude-code', 'remote', 'test-runner', ${args.status},
         ${JSON.stringify(args.capabilities ?? {})}::jsonb, ${args.quarantinedUntil ?? null},
         ${args.lastSeenAt === undefined ? new Date().toISOString() : args.lastSeenAt},
-        ${args.rateLimitedUntil ?? null}
+        ${args.rateLimitedUntil ?? null}, ${args.limitReason ?? null}, ${args.provisionStatus ?? null}
       )
     `);
     return id;
@@ -424,6 +426,73 @@ describe('admin alert routes (ISS-652)', () => {
         status: string;
       }>;
       expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
+    });
+
+    // cm:guard these two clauses reached `main` in dispatch-gates' fresh_capable_runners while A3 still hand-rolled its own runner filter, so for that whole window an auth-dead or unprovisioned box read as available and a genuinely starved queue reported `ok`. They fail the moment A3 stops sourcing runner health from the SSOT CTE.
+    it.each([
+      ['auth-limited (no reset time, so the rate-limit clause passes it)', { limitReason: 'auth' }],
+      ['provisioning, not ready', { provisionStatus: 'provisioning' }],
+    ])('A3 fires when the only runner is online and fresh but %s', async (_label, runnerState) => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const run = await insertRun(project.id, 'running');
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        status: 'queued',
+        queuedAgoMinutes: 10,
+      });
+      const runnerId = await insertRunner({
+        projectId: project.id,
+        status: 'online',
+        ...runnerState,
+      });
+
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string }>;
+      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
+
+      await harness.db.execute(
+        sql`UPDATE runners SET limit_reason = NULL, provision_status = 'ready' WHERE id = ${runnerId}`,
+      );
+      const clearRes = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
+      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
+    });
+
+    // cm:guard a stale-trigger job is discarded by jobs/stale-trigger.ts, never dispatched — no runner would have helped, so counting it is the same class of false positive as the project_cap case below
+    it('A3 stays ok when the queued job is held by a stale trigger', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const run = await insertRun(project.id, 'running');
+      const issueId = await insertIssue({
+        projectId: project.id,
+        createdById: owner.id,
+        seq: 1,
+        status: 'developed',
+      });
+      await insertJob({
+        projectId: project.id,
+        runId: run,
+        status: 'queued',
+        type: 'code',
+        issueId,
+        // the enqueuer stamped `approved`, but the issue has since moved to `developed`
+        payload: { stageStatus: 'approved' },
+        queuedAgoMinutes: 10,
+      });
+      // cm:why no runner at all — the discriminating case: were staleTrigger dropped, zero runners would make A3 fire, so a passing test proves the gate is replayed
+      const token = await adminToken();
+      const res = await app.request('/api/admin/alerts', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as Array<{ id: string; status: string }>;
+      expect(body.find((a) => a.id === 'A3')?.status).toBe('ok');
     });
 
     it('A3 fires when a job past project_cap still has no free runner slot', async () => {

@@ -12,13 +12,8 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  RUNNER_CAP_PER_RUNNER,
-  buildBarrierFragments,
-  resolveGateSettings,
-} from '../jobs/dispatch-gates.js';
+import { buildBarrierFragments, resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { NOT_DISABLED_DEVICE, NOT_QUARANTINED } from '../runners/select.js';
 
 export type AdminAlertId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5';
 export type AdminAlertStatus = 'ok' | 'warn' | 'crit';
@@ -234,14 +229,16 @@ type StarvedProject = {
  * dispatcher is correctly holding it and it dispatches on its own once the
  * upstream gate clears. Counting those as "no usable runner" is a false positive
  * (e.g. at the default cap of 1, a second issue's job queued behind an actively
- * running one).
+ * running one), and a stale trigger is the same story — `jobs/stale-trigger.ts`
+ * ends that job, no runner would have helped.
  *
  * To stay drift-free with the real dispatcher, this replays the SSOT gate
  * fragments (`buildBarrierFragments`, the same builder the picker/asserter use)
- * per candidate project, then flags only jobs left unplaceable by runner state:
- * a stale heartbeat, active rate limit, disabled device, full slot, or missing
- * per-job capability. The candidate pre-filter is a cheap cross-tenant scan, so
- * on healthy data (no old queued jobs) the per-project replay never runs.
+ * per candidate project — both halves: the barrier predicates AND the
+ * `fresh_capable_runners` CTE that decides runner health — then adds the one
+ * clause the picker leaves to `selectRunnerForJob`, the per-job capability
+ * match. The candidate pre-filter is a cheap cross-tenant scan, so on healthy
+ * data (no old queued jobs) the per-project replay never runs.
  */
 async function alertRunnerStarved(): Promise<AdminAlert> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
@@ -265,7 +262,8 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
       livenessSeconds,
       baseStampable,
     });
-    // cm:why mirrors pickNextDispatchableJobForProject's WHERE with runner availability INVERTED — a job passing every other gate yet with no fresh/capable/unloaded/un-rate-limited/unquarantined/enabled-device runner is genuine starvation (runner_load comes from the shared CTEs)
+    // cm:guard take runner health from the SSOT `fresh_capable_runners` CTE, never a hand-rolled copy of its clauses — the copy that used to live here drifted twice (main added `limit_reason <> 'auth'` and the `provision_status` gate without this file), and each missing clause counts a runner the dispatcher will never use as available, so real starvation reads `ok` and the alert meant to catch a wedged queue is what hides it.
+    // cm:edge lockstep -> packages/core/src/runners/select.ts — the `capabilities @>` join is the ONE clause `selectRunnerForJob` applies that the picker's CTE does not, and it must stay: a job no runner is capable of is offered by the picker, rejected by the selector, and spins queued with no gate reason for any UI to show (measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state). Surfacing that is A3's whole reason to exist.
     const rows = await db.execute<{
       queued_count: number;
       oldest_queued_at: PgTimestamp | null;
@@ -283,6 +281,7 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
         AND NOT (${predicates.issueBusySession})
         AND NOT (${predicates.issueBusyJob})
+        AND NOT (${predicates.staleTrigger})
         AND NOT (${predicates.blockedBy})
         AND NOT (${predicates.decomposeChildrenPending})
         AND (
@@ -290,17 +289,10 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
           OR (SELECT COUNT(*) FROM running_ids) < ${cap}
         )
         AND NOT EXISTS (
-          SELECT 1 FROM runners rr
-          LEFT JOIN runner_load rl ON rl.runner_id = rr.id
-          WHERE rr.project_id = j.project_id
-            AND rr.status = 'online'
-            AND rr.last_seen_at IS NOT NULL
-            AND rr.last_seen_at > now() - (${livenessSeconds}::int * interval '1 second')
-            AND (rr.rate_limited_until IS NULL OR rr.rate_limited_until <= now())
+          SELECT 1 FROM fresh_capable_runners fcr
+          JOIN runners rr ON rr.id = fcr.id
+          WHERE fcr.in_flight < fcr.cap
             AND rr.capabilities @> coalesce(j.payload -> 'requiredCapabilities', '{}'::jsonb)
-            AND coalesce(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
-            ${NOT_QUARANTINED}
-            ${NOT_DISABLED_DEVICE}
         )
     `);
     const row = rows[0];
