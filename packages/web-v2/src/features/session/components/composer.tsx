@@ -404,7 +404,8 @@ export function Composer({
               aria-haspopup="listbox"
               aria-expanded={slashMenuOpen}
               className="h-11 w-11 flex-none"
-              disabled={disabled || busy}
+              // cm:guard NOT disabled by `busy` — the menu only edits the draft, the textarea stays editable while the agent works, and a control disabled with no stated reason is what the UX contract forbids
+              disabled={disabled}
               onClick={openSlashMenu}
             />
           )}

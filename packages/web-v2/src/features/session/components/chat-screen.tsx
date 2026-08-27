@@ -448,6 +448,7 @@ export function ChatScreen({
               activeModel={readSessionModel(session?.metadata)}
               pendingModel={pendingModel}
               onSelect={setPendingModel}
+              loading={sessionQ.isLoading}
             />
           }
           slashSkills={{

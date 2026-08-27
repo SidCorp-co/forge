@@ -21,6 +21,7 @@ function renderPicker(
     activeModel?: ModelTier | null;
     pendingModel?: ModelTier | null | undefined;
     disabled?: boolean;
+    loading?: boolean;
   } = {},
 ) {
   const onSelect = vi.fn();
@@ -30,6 +31,7 @@ function renderPicker(
       pendingModel={over.pendingModel}
       onSelect={onSelect}
       disabled={over.disabled}
+      loading={over.loading}
     />,
   );
   return { onSelect };
@@ -102,6 +104,16 @@ describe("ModelPicker", () => {
     renderPicker({ activeModel: "opus", pendingModel: "opus" });
     fireEvent.click(trigger());
     expect(screen.queryByText(unsent)).not.toBeInTheDocument();
+  });
+
+  it("shows a placeholder rather than a wrong label while the session loads", () => {
+    renderPicker({ activeModel: "opus", loading: true });
+    expect(screen.queryByText("Opus")).not.toBeInTheDocument();
+    expect(screen.queryByText("Default")).not.toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: /Model this conversation runs on/ });
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("a viewer sees the model but cannot open the menu", () => {

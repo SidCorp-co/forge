@@ -59,7 +59,6 @@ export function SlashSkillsMenu({
     anchorRef,
     width: 360,
     placement: "above",
-    maxHeight: 280,
   });
 
   // cm:guard feature-test scrollIntoView instead of calling it blind — keeping the cursor in view is a nicety, and an environment without the method (jsdom) must still get a working menu rather than a crash inside an effect
@@ -79,6 +78,7 @@ export function SlashSkillsMenu({
       aria-label="Insert a skill"
       style={{
         top: pos?.top,
+        bottom: pos?.bottom,
         left: pos?.left,
         width: pos?.width,
         visibility: pos ? undefined : "hidden",

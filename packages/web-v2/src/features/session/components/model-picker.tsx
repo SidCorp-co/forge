@@ -11,7 +11,7 @@
 // pick — the panel says so instead of overclaiming.
 
 import { useRef, useState } from "react";
-import { Icon } from "@/design";
+import { Icon, Skeleton } from "@/design";
 import { type ModelTier, MODEL_TIER_LABELS, MODEL_TIERS } from "../types";
 import { useAnchoredMenu } from "./anchored-menu";
 
@@ -28,6 +28,8 @@ interface ModelPickerProps {
   onSelect: (model: ModelTier | null) => void;
   /** Viewers / no-device: show the current model but don't allow changing it. */
   disabled?: boolean;
+  /** The session row is still loading — show a placeholder, not a wrong label. */
+  loading?: boolean;
 }
 
 const DEFAULT_LABEL = "Default";
@@ -37,6 +39,7 @@ export function ModelPicker({
   pendingModel,
   onSelect,
   disabled,
+  loading,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -46,7 +49,6 @@ export function ModelPicker({
     anchorRef: wrapRef,
     width: 260,
     placement: "above",
-    maxHeight: 240,
   });
 
   // cm:guard `??` is wrong here — `pendingModel` is a three-state (undefined = untouched, null = explicitly Default, a tier = that tier), and `??` would let an explicit null fall through to the persisted model, making Default un-pickable
@@ -63,16 +65,22 @@ export function ModelPicker({
     <div ref={wrapRef} className="relative flex-none">
       <button
         type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setOpen((v) => !v)}
+        // cm:guard no leading icon, and a 5rem cap at base width — at 375px the row already carries three 44px touch targets, and every pixel this trigger takes comes straight off the textarea
+        disabled={disabled || loading}
+        onClick={() => !disabled && !loading && setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Model this conversation runs on"
-        className="inline-flex h-11 max-w-[7.5rem] items-center gap-1 rounded-xl px-2 text-[13px] text-fg transition-colors hover:bg-hover disabled:cursor-default disabled:opacity-70 sm:max-w-[9rem]"
+        title={`Model this conversation runs on — ${triggerLabel}`}
+        className="inline-flex h-11 max-w-[5rem] items-center gap-0.5 rounded-xl px-1.5 text-[13px] text-fg transition-colors hover:bg-hover disabled:cursor-default disabled:opacity-70 sm:max-w-[8rem] sm:gap-1 sm:px-2"
       >
-        <Icon name="cpu" size={15} className="flex-none text-subtle" />
-        <span className="truncate">{triggerLabel}</span>
-        {!disabled && <Icon name="chevronDown" size={13} className="flex-none text-subtle" />}
+        {loading ? (
+          <Skeleton variant="text" className="w-10" />
+        ) : (
+          <span className="truncate">{triggerLabel}</span>
+        )}
+        {!disabled && !loading && (
+          <Icon name="chevronDown" size={13} className="flex-none text-subtle" />
+        )}
       </button>
 
       {open && (
@@ -81,6 +89,7 @@ export function ModelPicker({
           aria-label="Choose a model"
           style={{
             top: pos?.top,
+            bottom: pos?.bottom,
             left: pos?.left,
             width: pos?.width,
             visibility: pos ? undefined : "hidden",

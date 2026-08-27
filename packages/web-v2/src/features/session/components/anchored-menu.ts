@@ -5,11 +5,18 @@
 // `conversation-list.tsx` already implement by hand so the model picker and the
 // slash menu cannot drift from it — a popover that spills off a 375px screen, or
 // that Escape does not close, is the failure this hook exists to prevent.
+//
+// An upward-opening panel is anchored by its BOTTOM edge rather than a computed
+// top, so its height never has to be guessed: the composer sits at the bottom of
+// the viewport, and a guessed height leaves either a gap or an overlap.
 
 import { type RefObject, useEffect, useLayoutEffect, useState } from "react";
 
 export interface MenuPosition {
-  top: number;
+  /** Set for `below` placement. */
+  top?: number;
+  /** Set for `above` placement — distance from the viewport bottom. */
+  bottom?: number;
   left: number;
   width: number;
 }
@@ -23,16 +30,15 @@ export interface AnchoredMenuOpts {
   width?: number;
   /** `above` opens upward — the composer sits at the bottom of the screen. */
   placement?: "below" | "above";
-  /** Panel height used when placing upward (a max; the panel may be shorter). */
-  maxHeight?: number;
 }
 
 const GUTTER = 12;
+const OFFSET = 6;
 
 /**
- * Viewport-fixed placement under (or over) `anchorRef`, plus Escape and
- * click-away dismissal. Returns null until the first measurement so the caller
- * can render the panel hidden rather than flashing it at 0,0.
+ * Viewport-fixed placement against `anchorRef`, plus Escape and click-away
+ * dismissal. Returns null until the first measurement so the caller can render
+ * the panel hidden rather than flashing it at 0,0.
  */
 export function useAnchoredMenu({
   open,
@@ -40,7 +46,6 @@ export function useAnchoredMenu({
   anchorRef,
   width = 300,
   placement = "below",
-  maxHeight = 320,
 }: AnchoredMenuOpts): MenuPosition | null {
   const [pos, setPos] = useState<MenuPosition | null>(null);
 
@@ -74,9 +79,11 @@ export function useAnchoredMenu({
       const w = Math.min(width, vw - GUTTER * 2);
       // cm:why right-align to the anchor, then clamp BOTH edges — at 375px a right-aligned panel of the desired width starts off-screen, so clamping only the left edge is not enough
       const left = Math.min(Math.max(r.right - w, GUTTER), Math.max(vw - GUTTER - w, GUTTER));
-      const above = placement === "above";
-      const top = above ? Math.max(GUTTER, r.top - 6 - maxHeight) : r.bottom + 6;
-      setPos({ top, left, width: w });
+      setPos(
+        placement === "above"
+          ? { bottom: Math.max(GUTTER, window.innerHeight - r.top + OFFSET), left, width: w }
+          : { top: r.bottom + OFFSET, left, width: w },
+      );
     };
     place();
     window.addEventListener("resize", place);
@@ -85,7 +92,7 @@ export function useAnchoredMenu({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, anchorRef, width, placement, maxHeight]);
+  }, [open, anchorRef, width, placement]);
 
   return pos;
 }
