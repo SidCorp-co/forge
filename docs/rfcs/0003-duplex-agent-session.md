@@ -93,6 +93,90 @@ Five, each carrying an idempotency key so a redelivered message is dropped rathe
 The CLI queues input turns rather than dropping them — the result payload reports
 `queued_turn_count` — so a message arriving while the agent is mid-turn is delivered, not lost.
 
+### Three queues, three owners — and one rule
+
+An inbox adds a queue. The hazard is not the queue, it is that two queues could now decide the same
+thing.
+
+| queue | owner | holds | rule |
+|---|---|---|---|
+| job queue (pg-boss) | core | work that has not started | unchanged — **the only scheduler** |
+| runner slot | `dispatch-gates.ts` | which job may start now | unchanged — `RUNNER_CAP_PER_RUNNER = 1` |
+| session inbox | the session | messages **about the job it is already running** | never a second job |
+
+> **THE RULE: work enters only through the job queue. The inbox never admits work.**
+
+That is what makes this not-pooling at the protocol level rather than by convention. `work` is sent
+exactly once per session, as the first message; a session that receives a second `work` rejects it.
+Every other kind is scoped to the job that session is already running. No new scheduler exists, and
+`dispatch-gates.ts` remains the single answer to "what runs where".
+
+### Ordering, redelivery, backpressure
+
+Core assigns a monotonic `seq` per session. The runner writes in `seq` order and drops any `seq` at
+or below the last one written, so a redelivered message is idempotent without the agent seeing it
+twice. `--replay-user-messages` echoes the accepted line; that echo carries the `seq` back and is
+what marks the message delivered.
+
+The CLI queues input turns rather than dropping them (`queued_turn_count` in the result payload), but
+an unbounded queue is its own defect: fifty comments arriving during a long turn should not become
+fifty turns. So:
+
+- **`inject` coalesces.** Several pending `inject`s collapse into one *"here is what changed"*. The
+  agent needs the current state, not the arrival history.
+- **`answer`, `checkpoint` and `cancel` never coalesce and are never dropped.** If the inbox cannot
+  take one, that is a `gone`, not a silent loss.
+
+### Spawn
+
+One job claim, one spawn. Never a spawn without a claim; never a claim without a spawn. Session
+lifetime is therefore bounded by job lifetime plus the residency window, which defaults to zero.
+
+1. The runner claims the job through the existing lease / `inflight` machinery.
+2. `sessionId` arrives **in the `JobSpec`** — core minted it. Nothing is scraped from stdout.
+3. The runner writes the MCP config and spawns with `Stdio::piped()`.
+4. The runner writes `work` as `seq 1`.
+5. `starting → working` on the first assistant event.
+
+### Turn end is reported, never interpreted, by the runner
+
+The agent asks its question by setting `needs_info` through MCP — which the runner cannot see, and
+must not be told by the agent, because a self-reported state is the claim-instead-of-measurement this
+repo already refuses elsewhere.
+
+So the runner reports the one thing it can observe — **the turn ended** — and core, which owns the
+state, decides what that means:
+
+| issue status when the turn ends | meaning | action |
+|---|---|---|
+| `needs_info` | the agent asked a question | `awaiting_input`; start the residency timer |
+| `closed` / `dropped` | the agent finished | close the session; job `done` |
+| anything else | the turn ended with the work unfinished — an anomaly | `checkpoint`, close, route to the cold path |
+
+A stream-json session that finishes a turn does not exit; it waits for input. That is what makes
+`awaiting_input` a state rather than a death, and it is why the skill's *"then end your session"*
+becomes *"then finish your turn"* — a policy change, not a kernel one.
+
+### The answer race, and why `answer-resume` stops colliding
+
+Core must never both deliver an answer and dispatch a fresh job for it. So **the ack is the commit
+point, not the send**:
+
+```
+answer-resume  ──►  send(sessionId, answer)
+                      ├─ delivered ──► the agent continues; core does NOT transition or dispatch
+                      └─ gone      ──► core transitions to `open` and dispatches (today's path)
+```
+
+Exactly one branch runs, chosen by a single authoritative ack. This also removes the collision the
+capacity review found: under a naive design the parked job is still `running`, so
+`dispatchAutonomous` hits `jobs_active_unique` and `autonomous-dispatch.ts:171` swallows the
+conflict. Here that dispatch is never attempted — if the job is still running, `send` returned
+`delivered`.
+
+`send` therefore has exactly two outcomes and no third. There is no pending state, no retry loop, and
+no core decision that waits on a process. A device that is offline is `gone`.
+
 ### Session states
 
 ```
@@ -159,6 +243,10 @@ running one-shot this whole time, and it needs no residency window at all.
 ## Drawbacks
 
 - Two exec paths to maintain until print mode is retired.
+- The `forge-drive` skill's *"Then **end your session**. Do not wait, poll, or keep the run alive"*
+  becomes *"finish your turn"* under a duplex channel. That line exists because under print mode
+  waiting was a lie — the process was going to die anyway. It stops being one, but the skill must be
+  changed in lockstep with the channel or the agent will keep ending sessions that could have waited.
 - `awaiting_input` is new liveness vocabulary: the loop monitor, the sweeper and the dashboards all
   learn a state that did not exist.
 - A duplex channel is a new failure surface — a half-written line, a full pipe, a wedged reader. The
@@ -171,5 +259,9 @@ running one-shot this whole time, and it needs no residency window at all.
 - The `checkpoint` deadline, which needs one round of measurement against real agents.
 - Whether `inject` should interrupt the current turn or queue behind it. Queuing is the safe default
   and what the CLI already does; interrupting is a later question.
+- What the runner does with a turn that ends while core is unreachable. It cannot classify the turn
+  end itself (that is the whole point of the table above), so it must either hold the session on a
+  short timer or checkpoint and close. Closing is the safe default; holding is the one that keeps the
+  fast path alive across a brief core outage.
 - Whether the CLI re-reads `--mcp-config` after `system/init`, which decides whether a long-resident
   session survives a device-token rotation. Not determinable from this repo.
